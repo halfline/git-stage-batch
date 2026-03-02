@@ -1,0 +1,365 @@
+"""Tests for command implementations."""
+
+import subprocess
+
+import pytest
+
+from git_stage_batch.commands import (
+    command_again,
+    command_discard,
+    command_discard_line,
+    command_exclude,
+    command_exclude_line,
+    command_include,
+    command_include_line,
+    command_show,
+    command_start,
+    command_status,
+    command_stop,
+)
+from git_stage_batch.state import (
+    get_current_hunk_patch_file_path,
+    get_state_directory_path,
+)
+
+
+@pytest.fixture
+def temp_git_repo(tmp_path, monkeypatch):
+    """Create a temporary git repository for testing."""
+    repo = tmp_path / "test_repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+
+    subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+
+    # Create initial commit with a file
+    (repo / "test.txt").write_text("line1\nline2\nline3\n")
+    subprocess.run(["git", "add", "test.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
+
+    return repo
+
+
+class TestCommandStart:
+    """Tests for command_start."""
+
+    def test_start_with_changes(self, temp_git_repo, capsys):
+        """Test starting with pending changes."""
+        # Modify the file
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+
+        command_start()
+
+        captured = capsys.readouterr()
+        assert "test.txt" in captured.out
+        assert get_current_hunk_patch_file_path().exists()
+
+    def test_start_without_changes(self, temp_git_repo):
+        """Test starting with no changes exits with code 2."""
+        # No modifications
+        with pytest.raises(SystemExit) as exc_info:
+            command_start()
+        assert exc_info.value.code == 2
+
+    def test_start_clears_previous_state(self, temp_git_repo, capsys):
+        """Test that start clears previous hunk state."""
+        # Create changes and start
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+        command_start()
+
+        # Verify state exists
+        assert get_current_hunk_patch_file_path().exists()
+
+        # Start again should clear and re-find
+        command_start()
+        assert get_current_hunk_patch_file_path().exists()
+
+
+class TestCommandShow:
+    """Tests for command_show."""
+
+    def test_show_current_hunk(self, temp_git_repo, capsys):
+        """Test showing the current hunk."""
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+        command_start()
+
+        capsys.readouterr()  # Clear start output
+        command_show()
+
+        captured = capsys.readouterr()
+        assert "test.txt" in captured.out
+
+    def test_show_without_start_errors(self, temp_git_repo):
+        """Test show without start fails."""
+        with pytest.raises(SystemExit):
+            command_show()
+
+
+class TestCommandInclude:
+    """Tests for command_include."""
+
+    def test_include_stages_hunk(self, temp_git_repo):
+        """Test including a hunk stages it to the index."""
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+        command_start()
+        command_include()
+
+        # Check that change is staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified" in result.stdout
+
+    def test_include_advances_to_next_hunk(self, temp_git_repo, capsys):
+        """Test that include advances to next hunk if available."""
+        # Create two separate changes
+        (temp_git_repo / "test.txt").write_text("modified1\nline2\nline3\n")
+        (temp_git_repo / "test2.txt").write_text("new file\n")
+
+        command_start()
+        capsys.readouterr()
+
+        command_include()
+
+        # Should show next hunk or "No pending hunks"
+        captured = capsys.readouterr()
+        assert "test2.txt" in captured.out or "No pending hunks" in captured.err
+
+
+class TestCommandExclude:
+    """Tests for command_exclude."""
+
+    def test_exclude_skips_hunk(self, temp_git_repo, capsys):
+        """Test excluding a hunk skips it."""
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+        command_start()
+
+        capsys.readouterr()
+        command_exclude()
+
+        # Check that nothing is staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert result.stdout == ""
+
+
+class TestCommandDiscard:
+    """Tests for command_discard."""
+
+    def test_discard_removes_from_working_tree(self, temp_git_repo):
+        """Test discarding removes changes from working tree."""
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+        command_start()
+        command_discard()
+
+        # Check that working tree is restored
+        content = (temp_git_repo / "test.txt").read_text()
+        assert content == "line1\nline2\nline3\n"
+
+
+class TestCommandIncludeLine:
+    """Tests for command_include_line."""
+
+    def test_include_line_stages_specific_lines(self, temp_git_repo):
+        """Test including specific lines."""
+        (temp_git_repo / "test.txt").write_text("modified1\nmodified2\nline3\n")
+        command_start()
+
+        # The hunk has deletions (IDs 1,2) and additions (IDs 3,4)
+        # Include the deletion of line1 and addition of modified1
+        command_include_line("1,3")
+
+        # Check staged content has only first change
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified1" in result.stdout
+        # Second line should still be original
+        assert "line2" in result.stdout
+
+    def test_include_line_with_range(self, temp_git_repo):
+        """Test including a range of lines."""
+        (temp_git_repo / "test.txt").write_text("mod1\nmod2\nmod3\n")
+        command_start()
+
+        # Include all changes (deletions 1-3, additions 4-6)
+        command_include_line("1-6")
+
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "mod1" in result.stdout
+        assert "mod2" in result.stdout
+        assert "mod3" in result.stdout
+
+
+class TestCommandExcludeLine:
+    """Tests for command_exclude_line."""
+
+    def test_exclude_line_marks_as_excluded(self, temp_git_repo, capsys):
+        """Test excluding specific lines."""
+        (temp_git_repo / "test.txt").write_text("mod1\nmod2\nline3\n")
+        command_start()
+
+        capsys.readouterr()
+        command_exclude_line("1")
+
+        # Should still show hunk with remaining lines
+        captured = capsys.readouterr()
+        assert "[#2]" in captured.out
+
+
+class TestCommandDiscardLine:
+    """Tests for command_discard_line."""
+
+    def test_discard_line_removes_from_working_tree(self, temp_git_repo):
+        """Test discarding specific lines."""
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+        command_start()
+
+        # Discard the modification (line ID 2 is the + line)
+        command_discard_line("2")
+
+        # Check working tree
+        content = (temp_git_repo / "test.txt").read_text()
+        assert "modified" not in content
+
+
+class TestCommandAgain:
+    """Tests for command_again."""
+
+    def test_again_clears_and_restarts(self, temp_git_repo, capsys):
+        """Test that again clears state and starts fresh."""
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+        command_start()
+
+        # Exclude the hunk
+        command_exclude()
+
+        capsys.readouterr()
+        # Run again - should show the same hunk again
+        command_again()
+
+        captured = capsys.readouterr()
+        assert "test.txt" in captured.out
+
+
+class TestCommandStop:
+    """Tests for command_stop."""
+
+    def test_stop_clears_state(self, temp_git_repo, capsys):
+        """Test that stop clears all state."""
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+        command_start()
+
+        command_stop()
+
+        captured = capsys.readouterr()
+        assert "State cleared" in captured.out
+        assert not get_state_directory_path().exists()
+
+
+class TestCommandStatus:
+    """Tests for command_status."""
+
+    def test_status_with_current_hunk(self, temp_git_repo, capsys):
+        """Test status shows current hunk info."""
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+        command_start()
+
+        capsys.readouterr()
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "current:" in captured.out
+        assert "test.txt" in captured.out
+        assert "remaining lines:" in captured.out
+
+    def test_status_without_current_hunk(self, temp_git_repo, capsys):
+        """Test status without a current hunk."""
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "current: none" in captured.out
+        assert "blocked: 0" in captured.out
+
+
+class TestIntegrationWorkflow:
+    """Integration tests for complete workflows."""
+
+    def test_partial_staging_workflow(self, temp_git_repo):
+        """Test a complete workflow of partial staging."""
+        # Create multiple changes
+        (temp_git_repo / "test.txt").write_text("mod1\nmod2\nmod3\n")
+
+        # Start and include first two changes
+        # IDs 1,2,3 are deletions, IDs 4,5,6 are additions
+        command_start()
+        command_include_line("1,4")  # First change: delete line1, add mod1
+
+        command_include_line("2,5")  # Second change: delete line2, add mod2
+
+        # Exclude remaining lines (completes the hunk)
+        command_exclude_line("3,6")
+
+        # Verify staged content
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "mod1" in result.stdout
+        assert "mod2" in result.stdout
+        assert "line3" in result.stdout  # Third line unchanged
+
+    def test_mixed_include_and_discard(self, temp_git_repo):
+        """Test mixing include and discard operations."""
+        (temp_git_repo / "test.txt").write_text("keep\ndiscard\nline3\n")
+
+        command_start()
+
+        # IDs 1,2 are deletions (line1, line2), IDs 3,4 are additions (keep, discard)
+        # Include first change (delete line1, add keep)
+        command_include_line("1,3")
+
+        # Discard second change (the addition of "discard")
+        command_discard_line("4")
+
+        # Check staged
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "keep" in result.stdout
+        assert "line2" in result.stdout  # line2 kept (deletion ID 2 not included)
+
+        # Check working tree - "discard" removed, but line2 wasn't restored
+        # (we only discarded the addition, not the deletion)
+        content = (temp_git_repo / "test.txt").read_text()
+        assert "discard" not in content
+        assert "keep" in content
+        assert "line3" in content

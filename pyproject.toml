@@ -1,0 +1,14 @@
+[project]
+name = "git-stage-batch"
+version = "0.1.0"
+description = "Non-interactive hunk-by-hunk and line-by-line staging for git"
+readme = "README.md"
+authors = [
+    { name = "Ray Strode", email = "rstrode@redhat.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.8.11,<0.9.0"]
+build-backend = "uv_build"

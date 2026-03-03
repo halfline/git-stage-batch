@@ -10,8 +10,10 @@ from git_stage_batch.commands import (
     command_discard,
     command_discard_line,
     command_exclude,
+    command_exclude_file,
     command_exclude_line,
     command_include,
+    command_include_file,
     command_include_line,
     command_show,
     command_start,
@@ -365,7 +367,6 @@ class TestIntegrationWorkflow:
         assert "discard" not in content
         assert "keep" in content
         assert "line3" in content
-
 class TestAutoAddUntrackedFiles:
     """Tests for auto-adding untracked files."""
 
@@ -768,3 +769,137 @@ class TestCleanupAutoAddedFiles:
         (temp_git_repo / "temp.txt").unlink()
 
         # Stop should not error even though file is gone
+        command_stop()  # Should not raise
+
+
+class TestIncludeFileCommand:
+    """Tests for include-file command."""
+
+    def test_include_file_stages_all_hunks_in_file(self, temp_git_repo):
+        """Test that include-file stages all changes in the current file."""
+        # Create a file with multiple separate changes (multiple hunks)
+        (temp_git_repo / "multi.txt").write_text("line1\nline2\nline3\nline4\nline5\n")
+        subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make changes that will create multiple hunks (separated by context)
+        (temp_git_repo / "multi.txt").write_text("mod1\nline2\nline3\nline4\nmod5\n")
+
+        # Start
+        command_start()
+
+        # Include entire file
+        command_include_file()
+
+        # Check staged content - both changes should be staged
+        result = subprocess.run(
+            ["git", "show", ":multi.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "mod1" in result.stdout
+        assert "mod5" in result.stdout
+
+    def test_include_file_advances_to_next_file(self, temp_git_repo, capsys):
+        """Test that include-file advances to the next file."""
+        # Create two files with changes
+        (temp_git_repo / "file1.txt").write_text("change1\n")
+        (temp_git_repo / "file2.txt").write_text("change2\n")
+
+        # Start
+        command_start()
+
+        # Note which file is current
+        captured = capsys.readouterr()
+        first_file = "file1.txt" if "file1.txt" in captured.out else "file2.txt"
+        second_file = "file2.txt" if first_file == "file1.txt" else "file1.txt"
+
+        # Include entire first file
+        command_include_file()
+
+        # Should advance to second file
+        captured = capsys.readouterr()
+        assert second_file in captured.out
+
+    def test_include_file_with_single_hunk(self, temp_git_repo):
+        """Test include-file works with a file that has only one hunk."""
+        # Create file with single change
+        (temp_git_repo / "single.txt").write_text("line1\nline2\n")
+        subprocess.run(["git", "add", "single.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add single.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "single.txt").write_text("modified\nline2\n")
+
+        command_start()
+        command_include_file()
+
+        # Check staged
+        result = subprocess.run(
+            ["git", "show", ":single.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified" in result.stdout
+
+    def test_include_file_error_without_current_hunk(self, temp_git_repo):
+        """Test that include-file errors when no current hunk."""
+        import pytest
+
+        with pytest.raises(SystemExit):
+            command_include_file()
+
+
+class TestExcludeFileCommand:
+    """Tests for exclude-file command."""
+
+    def test_exclude_file_skips_all_hunks_in_file(self, temp_git_repo):
+        """Test that exclude-file skips all changes in the current file."""
+        # Create a file with multiple hunks
+        (temp_git_repo / "multi.txt").write_text("line1\nline2\nline3\nline4\nline5\n")
+        subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "multi.txt").write_text("mod1\nline2\nline3\nline4\nmod5\n")
+
+        command_start()
+        command_exclude_file()
+
+        # Check nothing staged from multi.txt
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "multi.txt" not in result.stdout
+
+    def test_exclude_file_advances_to_next_file(self, temp_git_repo, capsys):
+        """Test that exclude-file advances to the next file."""
+        # Create two files
+        (temp_git_repo / "file1.txt").write_text("change1\n")
+        (temp_git_repo / "file2.txt").write_text("change2\n")
+
+        command_start()
+
+        captured = capsys.readouterr()
+        first_file = "file1.txt" if "file1.txt" in captured.out else "file2.txt"
+        second_file = "file2.txt" if first_file == "file1.txt" else "file1.txt"
+
+        # Exclude entire first file
+        command_exclude_file()
+
+        # Should advance to second file
+        captured = capsys.readouterr()
+        assert second_file in captured.out
+
+    def test_exclude_file_error_without_current_hunk(self, temp_git_repo):
+        """Test that exclude-file errors when no current hunk."""
+        import pytest
+
+        with pytest.raises(SystemExit):
+            command_exclude_file()

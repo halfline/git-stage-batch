@@ -317,6 +317,97 @@ def command_discard_line(line_id_specification: str) -> None:
     advance_if_hunk_complete_else_show()
 
 
+def command_include_file() -> None:
+    """Stage all remaining hunks from the current file."""
+    require_git_repository()
+    ensure_state_directory_exists()
+    if not get_current_hunk_patch_file_path().exists():
+        exit_with_error("No current hunk. Run 'start' first.")
+
+    # Get current file path
+    current_lines = load_current_lines_from_state()
+    current_file_path = current_lines.path
+
+    # Get all hunks from diff
+    auto_add_untracked_files()
+    diff_text = run_git_command(["diff", "-U3", "--no-color"], check=False).stdout
+    if not diff_text.strip():
+        return
+
+    single_hunk_patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+
+    # Process all hunks from this file
+    for single_hunk in single_hunk_patches:
+        patch_text = single_hunk.to_patch_text()
+        hunk_current_lines = build_current_lines_from_patch_text(patch_text)
+
+        # Only process hunks from the current file
+        if hunk_current_lines.path != current_file_path:
+            continue
+
+        # Stage all changes in this hunk
+        changed_ids = hunk_current_lines.changed_line_ids()
+        base_text = read_text_file_contents(get_index_snapshot_file_path())
+
+        # Write snapshots for this file if not already done
+        write_snapshots_for_current_file_path(hunk_current_lines.path)
+        base_text_path = get_index_snapshot_file_path()
+        if base_text_path.exists():
+            base_text = read_text_file_contents(base_text_path)
+        else:
+            base_text = ""
+
+        target_index_content = build_target_index_content_with_selected_lines(
+            hunk_current_lines, changed_ids, base_text
+        )
+        update_index_with_blob_content(hunk_current_lines.path, target_index_content)
+
+        # Block this hunk
+        hunk_hash = compute_stable_hunk_hash(patch_text)
+        append_lines_to_file(get_block_list_file_path(), [hunk_hash])
+
+    # Clear current state and advance
+    clear_current_hunk_state_files()
+    find_and_cache_next_unblocked_hunk()
+
+
+def command_exclude_file() -> None:
+    """Skip all remaining hunks from the current file."""
+    require_git_repository()
+    ensure_state_directory_exists()
+    if not get_current_hunk_patch_file_path().exists():
+        exit_with_error("No current hunk. Run 'start' first.")
+
+    # Get current file path
+    current_lines = load_current_lines_from_state()
+    current_file_path = current_lines.path
+
+    # Get all hunks from diff
+    auto_add_untracked_files()
+    diff_text = run_git_command(["diff", "-U3", "--no-color"], check=False).stdout
+    if not diff_text.strip():
+        return
+
+    single_hunk_patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+
+    # Block all hunks from this file
+    for single_hunk in single_hunk_patches:
+        patch_text = single_hunk.to_patch_text()
+        hunk_current_lines = build_current_lines_from_patch_text(patch_text)
+
+        # Only process hunks from the current file
+        if hunk_current_lines.path != current_file_path:
+            continue
+
+        # Block this hunk
+        hunk_hash = compute_stable_hunk_hash(patch_text)
+        append_lines_to_file(get_block_list_file_path(), [hunk_hash])
+
+    # Clear current state and advance
+    clear_current_hunk_state_files()
+    find_and_cache_next_unblocked_hunk()
+
+
 def command_again() -> None:
     """Clear all state and start fresh."""
     require_git_repository()

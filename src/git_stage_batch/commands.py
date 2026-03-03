@@ -25,10 +25,13 @@ from .parser import (
     write_snapshots_for_current_file_path,
 )
 from .state import (
+    append_file_path_to_file,
     append_lines_to_file,
     clear_current_hunk_state_files,
     ensure_state_directory_exists,
     exit_with_error,
+    get_auto_added_files_file_path,
+    get_blocked_files_file_path,
     get_block_list_file_path,
     get_current_hunk_hash_file_path,
     get_current_hunk_patch_file_path,
@@ -39,6 +42,7 @@ from .state import (
     get_processed_include_ids_file_path,
     get_state_directory_path,
     get_working_tree_snapshot_file_path,
+    read_file_paths_file,
     read_text_file_contents,
     require_git_repository,
     run_git_command,
@@ -128,8 +132,34 @@ def advance_if_hunk_complete_else_show() -> None:
         print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
 
 
+def auto_add_untracked_files() -> None:
+    """Automatically run git add -N on untracked files (except blocked ones)."""
+    # Get list of untracked files
+    result = run_git_command(["ls-files", "--others", "--exclude-standard"], check=False)
+    if result.returncode != 0:
+        return
+
+    untracked_files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not untracked_files:
+        return
+
+    # Get blocked files list
+    blocked_files = set(read_file_paths_file(get_blocked_files_file_path()))
+
+    # Get already auto-added files to avoid redundant git add -N
+    auto_added_files = set(read_file_paths_file(get_auto_added_files_file_path()))
+
+    # Add untracked files that aren't blocked and haven't been auto-added yet
+    for file_path in untracked_files:
+        if file_path not in blocked_files and file_path not in auto_added_files:
+            result = run_git_command(["add", "-N", file_path], check=False)
+            if result.returncode == 0:
+                append_file_path_to_file(get_auto_added_files_file_path(), file_path)
+
+
 def find_and_cache_next_unblocked_hunk() -> bool:
     """Find the next hunk that isn't blocked and cache it as current."""
+    auto_add_untracked_files()
     diff_text = run_git_command(["diff", "-U3", "--no-color"], check=False).stdout
     if not diff_text.strip():
         print("No pending hunks.", file=sys.stderr)
@@ -286,6 +316,11 @@ def command_discard_line(line_id_specification: str) -> None:
 def command_again() -> None:
     """Clear all state and start fresh."""
     require_git_repository()
+    # Reset auto-added files before clearing state
+    if get_auto_added_files_file_path().exists():
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        for file_path in auto_added:
+            run_git_command(["reset", "--", file_path], check=False)
     try:
         for path in get_state_directory_path().glob("*"):
             path.unlink(missing_ok=True)
@@ -299,6 +334,11 @@ def command_again() -> None:
 def command_stop() -> None:
     """Clear all state."""
     require_git_repository()
+    # Reset auto-added files before clearing state
+    if get_auto_added_files_file_path().exists():
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        for file_path in auto_added:
+            run_git_command(["reset", "--", file_path], check=False)
     try:
         for path in get_state_directory_path().glob("*"):
             path.unlink(missing_ok=True)

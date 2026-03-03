@@ -46,3 +46,5 @@ htmlcov/
 .mypy_cache/
 .pytype/
 .pyre/
+.claude/settings.local.json
+# git-stage-batch: blocked

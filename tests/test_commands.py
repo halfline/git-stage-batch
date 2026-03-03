@@ -363,3 +363,183 @@ class TestIntegrationWorkflow:
         assert "discard" not in content
         assert "keep" in content
         assert "line3" in content
+
+class TestAutoAddUntrackedFiles:
+    """Tests for auto-adding untracked files."""
+
+    def test_auto_add_untracked_file_on_start(self, temp_git_repo, capsys):
+        """Test that untracked files are auto-added when starting."""
+        # Create an untracked file
+        (temp_git_repo / "new_file.txt").write_text("new content\n")
+
+        # Start should auto-add the file
+        command_start()
+
+        # Verify file was added with -N (intent to add)
+        result = subprocess.run(
+            ["git", "ls-files", "-t"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "new_file.txt" in result.stdout
+
+        # Verify it appears in the diff
+        captured = capsys.readouterr()
+        assert "new_file.txt" in captured.out
+
+    def test_auto_add_respects_gitignore(self, temp_git_repo, capsys):
+        """Test that auto-add respects .gitignore patterns."""
+        # Create .gitignore
+        (temp_git_repo / ".gitignore").write_text("*.log\n")
+
+        # Create files - one tracked, one ignored
+        (temp_git_repo / "new_file.txt").write_text("should appear\n")
+        (temp_git_repo / "debug.log").write_text("should not appear\n")
+
+        command_start()
+
+        # Verify .log file was not auto-added
+        result = subprocess.run(
+            ["git", "ls-files", "-t"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "new_file.txt" in result.stdout
+        assert "debug.log" not in result.stdout
+
+    def test_auto_add_multiple_untracked_files(self, temp_git_repo, capsys):
+        """Test auto-adding multiple untracked files."""
+        # Create multiple untracked files
+        (temp_git_repo / "file1.txt").write_text("content1\n")
+        (temp_git_repo / "file2.txt").write_text("content2\n")
+        (temp_git_repo / "file3.txt").write_text("content3\n")
+
+        command_start()
+
+        # All should be added
+        result = subprocess.run(
+            ["git", "ls-files", "-t"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "file1.txt" in result.stdout
+        assert "file2.txt" in result.stdout
+        assert "file3.txt" in result.stdout
+
+    def test_auto_add_idempotent(self, temp_git_repo):
+        """Test that auto-add doesn't re-add already added files within same session."""
+        from git_stage_batch.state import (
+            get_auto_added_files_file_path,
+            read_file_paths_file,
+        )
+
+        # Create untracked file
+        (temp_git_repo / "new_file.txt").write_text("content\n")
+
+        # First start
+        command_start()
+
+        # Check auto-added file list
+        auto_added_1 = read_file_paths_file(get_auto_added_files_file_path())
+        assert "new_file.txt" in auto_added_1
+
+        # Create a new untracked file and call start again without clearing state
+        (temp_git_repo / "another_file.txt").write_text("more content\n")
+
+        # Manually call the function that would be triggered on next hunk advancement
+        from git_stage_batch.commands import auto_add_untracked_files
+        auto_add_untracked_files()
+
+        # Should have both files now, with new_file.txt not duplicated
+        auto_added_2 = read_file_paths_file(get_auto_added_files_file_path())
+        assert "new_file.txt" in auto_added_2
+        assert "another_file.txt" in auto_added_2
+        # List should be sorted and deduplicated (only 2 items total)
+        assert len(auto_added_2) == 2
+
+class TestCleanupAutoAddedFiles:
+    """Tests for cleaning up auto-added files on stop/again."""
+
+    def test_stop_resets_auto_added_files(self, temp_git_repo):
+        """Test that stop resets auto-added files to untracked."""
+        # Create untracked file
+        (temp_git_repo / "temp.txt").write_text("content\n")
+
+        # Start - auto-adds the file
+        command_start()
+
+        # Verify it was auto-added (appears in git ls-files)
+        result = subprocess.run(
+            ["git", "ls-files", "-t"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "temp.txt" in result.stdout
+
+        # Stop should reset it
+        command_stop()
+
+        # File should no longer be in index (not in git ls-files)
+        result = subprocess.run(
+            ["git", "ls-files", "-t"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "temp.txt" not in result.stdout
+
+        # But file should still exist on disk
+        assert (temp_git_repo / "temp.txt").exists()
+
+    def test_again_resets_auto_added_files(self, temp_git_repo, capsys):
+        """Test that again resets auto-added files before restarting."""
+        # Create untracked file
+        (temp_git_repo / "temp.txt").write_text("content\n")
+
+        # Start - auto-adds the file
+        command_start()
+
+        # Verify it was auto-added
+        result = subprocess.run(
+            ["git", "ls-files", "-t"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "temp.txt" in result.stdout
+
+        # Again should reset and re-add
+        command_again()
+
+        # File should still be in index (re-added by again)
+        result = subprocess.run(
+            ["git", "ls-files", "-t"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "temp.txt" in result.stdout
+
+    def test_stop_handles_missing_auto_added_file(self, temp_git_repo):
+        """Test that stop handles case where auto-added file was deleted."""
+        # Create untracked file
+        (temp_git_repo / "temp.txt").write_text("content\n")
+
+        # Start - auto-adds the file
+        command_start()
+
+        # Delete the file from disk
+        (temp_git_repo / "temp.txt").unlink()
+
+        # Stop should not error even though file is gone

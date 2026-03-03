@@ -45,6 +45,7 @@ from .state import (
     get_working_tree_snapshot_file_path,
     read_file_paths_file,
     read_text_file_contents,
+    remove_file_from_gitignore,
     remove_file_path_from_file,
     require_git_repository,
     resolve_file_path_to_repo_relative,
@@ -408,3 +409,27 @@ def command_block_file(file_path_arg: str) -> None:
             find_and_cache_next_unblocked_hunk()
 
     print(f"Blocked file: {file_path}", file=sys.stderr)
+
+
+def command_unblock_file(file_path_arg: str) -> None:
+    """Remove a file from .gitignore and blocked list."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Require file path argument
+    if not file_path_arg:
+        exit_with_error("File path required for unblock-file command.")
+
+    # Resolve to repo-relative path
+    file_path = resolve_file_path_to_repo_relative(file_path_arg)
+
+    # Remove from .gitignore (only if it has our marker)
+    removed = remove_file_from_gitignore(file_path)
+
+    # Remove from blocked-files state
+    remove_file_path_from_file(get_blocked_files_file_path(), file_path)
+
+    if removed:
+        print(f"Unblocked file: {file_path}", file=sys.stderr)
+    else:
+        print(f"Removed from blocked list: {file_path} (was not in .gitignore with our marker)", file=sys.stderr)

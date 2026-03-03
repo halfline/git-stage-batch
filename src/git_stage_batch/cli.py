@@ -7,16 +7,20 @@ import sys
 
 from .commands import (
     command_again,
+    command_block_file,
     command_discard,
     command_discard_line,
     command_exclude,
+    command_exclude_file,
     command_exclude_line,
     command_include,
+    command_include_file,
     command_include_line,
     command_show,
     command_start,
     command_status,
     command_stop,
+    command_unblock_file,
 )
 
 
@@ -33,7 +37,8 @@ def main() -> None:
     if command in ("", "-h", "--help", "help"):
         print(
             "Usage: git-stage-batch {start|show|include|exclude|discard|"
-            "include-line IDS|exclude-line IDS|discard-line IDS|again|stop|status}"
+            "include-line IDS|exclude-line IDS|discard-line IDS|"
+            "include-file|exclude-file|block-file [PATH]|unblock-file PATH|again|stop|status}"
         )
         sys.exit(0)
 
@@ -46,6 +51,10 @@ def main() -> None:
         "include-line":  lambda: command_include_line(argument),
         "exclude-line":  lambda: command_exclude_line(argument),
         "discard-line":  lambda: command_discard_line(argument),
+        "include-file":  lambda: command_include_file(),
+        "exclude-file":  lambda: command_exclude_file(),
+        "block-file":    lambda: command_block_file(argument),
+        "unblock-file":  lambda: command_unblock_file(argument),
         "again":         lambda: command_again(),
         "stop":          lambda: command_stop(),
         "status":        lambda: command_status(),

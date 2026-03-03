@@ -17,6 +17,7 @@ from git_stage_batch.commands import (
     command_start,
     command_status,
     command_stop,
+    command_unblock_file,
 )
 from git_stage_batch.state import (
     get_current_hunk_patch_file_path,
@@ -584,6 +585,108 @@ class TestBlockFileCommand:
         content = gitignore.read_text()
         assert "blocked.txt\n" in content
         assert "# git-stage-batch: blocked" in content
+
+
+class TestUnblockFileCommand:
+    """Tests for unblock-file command."""
+
+    def test_unblock_file_removes_from_gitignore(self, temp_git_repo, capsys):
+        """Test that unblock-file removes file from .gitignore."""
+        from git_stage_batch.state import get_gitignore_path
+
+        # Create and block a file
+        (temp_git_repo / "temp.txt").write_text("content\n")
+        command_start()
+        command_block_file("temp.txt")
+
+        # Verify it's in .gitignore
+        gitignore = get_gitignore_path()
+        assert "temp.txt" in gitignore.read_text()
+
+        # Unblock it
+        command_unblock_file("temp.txt")
+
+        # Should be removed from .gitignore
+        content = gitignore.read_text()
+        assert "temp.txt" not in content
+
+        captured = capsys.readouterr()
+        assert "Unblocked file: temp.txt" in captured.err
+
+    def test_unblock_file_removes_from_blocked_list(self, temp_git_repo):
+        """Test that unblock-file removes from blocked list."""
+        from git_stage_batch.state import (
+            get_blocked_files_file_path,
+            read_file_paths_file,
+        )
+
+        # Create and block a file
+        (temp_git_repo / "temp.txt").write_text("content\n")
+        command_start()
+        command_block_file("temp.txt")
+
+        # Verify it's in blocked list
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "temp.txt" in blocked
+
+        # Unblock it
+        command_unblock_file("temp.txt")
+
+        # Should be removed from blocked list
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "temp.txt" not in blocked
+
+    def test_unblock_file_requires_argument(self, temp_git_repo):
+        """Test that unblock-file requires a file path argument."""
+        import pytest
+
+        with pytest.raises(SystemExit):
+            command_unblock_file("")
+
+    def test_unblock_file_makes_file_available_again(self, temp_git_repo):
+        """Test that unblocked file is removed from blocked list."""
+        from git_stage_batch.state import (
+            get_blocked_files_file_path,
+            get_gitignore_path,
+            read_file_paths_file,
+        )
+
+        # Create and block a file
+        (temp_git_repo / "temp.txt").write_text("content\n")
+        command_start()
+        command_block_file("temp.txt")
+
+        # Verify it's blocked
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "temp.txt" in blocked
+        assert "temp.txt" in get_gitignore_path().read_text()
+
+        # Unblock it
+        command_unblock_file("temp.txt")
+
+        # Should be removed from blocked list and .gitignore
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "temp.txt" not in blocked
+        assert "temp.txt" not in get_gitignore_path().read_text()
+
+    def test_unblock_preserves_manual_gitignore_entries(self, temp_git_repo, capsys):
+        """Test that unblock doesn't remove manual .gitignore entries."""
+        from git_stage_batch.state import get_gitignore_path
+
+        # Create .gitignore with manual entry
+        gitignore = get_gitignore_path()
+        gitignore.write_text("manual_entry.txt\n")
+
+        # Try to unblock it (shouldn't remove it)
+        command_unblock_file("manual_entry.txt")
+
+        # Manual entry should still be there
+        content = gitignore.read_text()
+        assert "manual_entry.txt" in content
+
+        captured = capsys.readouterr()
+        assert "was not in .gitignore with our marker" in captured.err
+
 
 class TestCleanupAutoAddedFiles:
     """Tests for cleaning up auto-added files on stop/again."""

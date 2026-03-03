@@ -7,23 +7,35 @@ from pathlib import Path
 import pytest
 
 from git_stage_batch.state import (
+    add_file_to_gitignore,
+    append_file_path_to_file,
     append_lines_to_file,
     clear_current_hunk_state_files,
     ensure_state_directory_exists,
     exit_with_error,
+    get_auto_added_files_file_path,
+    get_blocked_files_file_path,
     get_block_list_file_path,
     get_current_hunk_hash_file_path,
     get_current_hunk_patch_file_path,
     get_current_lines_json_file_path,
     get_git_repository_root_path,
+    get_gitignore_path,
     get_index_snapshot_file_path,
     get_processed_exclude_ids_file_path,
     get_processed_include_ids_file_path,
     get_state_directory_path,
     get_working_tree_snapshot_file_path,
+    read_file_paths_file,
+    read_gitignore_lines,
     read_text_file_contents,
+    remove_file_from_gitignore,
+    remove_file_path_from_file,
     require_git_repository,
+    resolve_file_path_to_repo_relative,
     run_git_command,
+    write_file_paths_file,
+    write_gitignore_lines,
     write_text_file_contents,
 )
 
@@ -213,6 +225,24 @@ class TestStatePaths:
         path = get_working_tree_snapshot_file_path()
         assert path.name == "snapshot-new"
 
+    def test_get_auto_added_files_file_path(self, temp_git_repo):
+        """Test getting the auto-added files file path."""
+        path = get_auto_added_files_file_path()
+        assert path.name == "auto-added-files"
+        assert path.parent.name == "git-stage-batch"
+
+    def test_get_blocked_files_file_path(self, temp_git_repo):
+        """Test getting the blocked files file path."""
+        path = get_blocked_files_file_path()
+        assert path.name == "blocked-files"
+        assert path.parent.name == "git-stage-batch"
+
+    def test_get_gitignore_path(self, temp_git_repo):
+        """Test getting the .gitignore path."""
+        path = get_gitignore_path()
+        assert path.name == ".gitignore"
+        assert path.parent == temp_git_repo
+
 
 class TestStateManagement:
     """Tests for state management functions."""
@@ -228,6 +258,14 @@ class TestStateManagement:
         blocklist = get_block_list_file_path()
         assert blocklist.exists()
         assert blocklist.is_file()
+
+        auto_added = get_auto_added_files_file_path()
+        assert auto_added.exists()
+        assert auto_added.is_file()
+
+        blocked = get_blocked_files_file_path()
+        assert blocked.exists()
+        assert blocked.is_file()
 
     def test_ensure_state_directory_exists_idempotent(self, temp_git_repo):
         """Test that ensure_state_directory_exists is idempotent."""
@@ -266,3 +304,225 @@ class TestStateManagement:
         """Test clearing state files when none exist."""
         ensure_state_directory_exists()
         clear_current_hunk_state_files()  # Should not raise
+
+
+class TestFilePathListManagement:
+    """Tests for file path list management functions."""
+
+    def test_read_file_paths_file_empty(self, temp_git_repo):
+        """Test reading an empty file paths file."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+        result = read_file_paths_file(path)
+        assert result == []
+
+    def test_read_file_paths_file_nonexistent(self, tmp_path):
+        """Test reading a nonexistent file paths file."""
+        path = tmp_path / "nonexistent.txt"
+        result = read_file_paths_file(path)
+        assert result == []
+
+    def test_write_file_paths_file(self, temp_git_repo):
+        """Test writing file paths to a file."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+
+        file_paths = ["path/to/file1.txt", "path/to/file2.txt", "another/file.py"]
+        write_file_paths_file(path, file_paths)
+
+        # Read back and verify sorted and deduplicated
+        result = read_file_paths_file(path)
+        assert result == sorted(file_paths)
+
+    def test_write_file_paths_file_deduplicates(self, temp_git_repo):
+        """Test that write_file_paths_file deduplicates entries."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+
+        file_paths = ["file1.txt", "file2.txt", "file1.txt", "file3.txt", "file2.txt"]
+        write_file_paths_file(path, file_paths)
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt", "file3.txt"]
+
+    def test_append_file_path_to_file(self, temp_git_repo):
+        """Test appending a file path to a list."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+
+        append_file_path_to_file(path, "file1.txt")
+        append_file_path_to_file(path, "file2.txt")
+        append_file_path_to_file(path, "file3.txt")
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt", "file3.txt"]
+
+    def test_append_file_path_to_file_no_duplicates(self, temp_git_repo):
+        """Test that appending doesn't create duplicates."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+
+        append_file_path_to_file(path, "file1.txt")
+        append_file_path_to_file(path, "file2.txt")
+        append_file_path_to_file(path, "file1.txt")  # Duplicate
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt"]
+
+    def test_remove_file_path_from_file(self, temp_git_repo):
+        """Test removing a file path from a list."""
+        ensure_state_directory_exists()
+        path = get_blocked_files_file_path()
+
+        write_file_paths_file(path, ["file1.txt", "file2.txt", "file3.txt"])
+        remove_file_path_from_file(path, "file2.txt")
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file3.txt"]
+
+    def test_remove_file_path_from_file_nonexistent(self, temp_git_repo):
+        """Test removing a nonexistent file path doesn't error."""
+        ensure_state_directory_exists()
+        path = get_blocked_files_file_path()
+
+        write_file_paths_file(path, ["file1.txt", "file2.txt"])
+        remove_file_path_from_file(path, "nonexistent.txt")
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt"]
+
+    def test_resolve_file_path_to_repo_relative_relative(self, temp_git_repo):
+        """Test resolving a relative file path."""
+        result = resolve_file_path_to_repo_relative("src/file.txt")
+        assert result == "src/file.txt"
+
+    def test_resolve_file_path_to_repo_relative_absolute(self, temp_git_repo):
+        """Test resolving an absolute file path inside repo."""
+        abs_path = temp_git_repo / "src" / "file.txt"
+        result = resolve_file_path_to_repo_relative(str(abs_path))
+        assert result == "src/file.txt"
+
+    def test_resolve_file_path_to_repo_relative_outside_repo(self, temp_git_repo):
+        """Test resolving a path outside the repo."""
+        outside_path = "/tmp/some/file.txt"
+        result = resolve_file_path_to_repo_relative(outside_path)
+        assert result == outside_path  # Returns as-is
+
+
+class TestGitignoreManipulation:
+    """Tests for .gitignore manipulation functions."""
+
+    def test_read_gitignore_lines_nonexistent(self, temp_git_repo):
+        """Test reading .gitignore when it doesn't exist."""
+        lines = read_gitignore_lines()
+        assert lines == []
+
+    def test_read_gitignore_lines_existing(self, temp_git_repo):
+        """Test reading existing .gitignore."""
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc\n__pycache__/\n.env\n")
+
+        lines = read_gitignore_lines()
+        assert lines == ["*.pyc\n", "__pycache__/\n", ".env\n"]
+
+    def test_write_gitignore_lines(self, temp_git_repo):
+        """Test writing .gitignore lines."""
+        lines = ["*.pyc\n", "__pycache__/\n", ".env\n"]
+        write_gitignore_lines(lines)
+
+        gitignore = get_gitignore_path()
+        content = gitignore.read_text()
+        assert content == "*.pyc\n__pycache__/\n.env\n"
+
+    def test_add_file_to_gitignore_new(self, temp_git_repo):
+        """Test adding a file to .gitignore when .gitignore doesn't exist."""
+        add_file_to_gitignore("test.txt")
+
+        lines = read_gitignore_lines()
+        assert "test.txt\n" in lines
+        assert "# git-stage-batch: blocked\n" in lines
+
+        # Verify they're consecutive
+        idx = lines.index("test.txt\n")
+        assert lines[idx + 1] == "# git-stage-batch: blocked\n"
+
+    def test_add_file_to_gitignore_existing(self, temp_git_repo):
+        """Test adding a file to existing .gitignore."""
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc\n__pycache__/\n")
+
+        add_file_to_gitignore("test.txt")
+
+        lines = read_gitignore_lines()
+        assert "*.pyc\n" in lines
+        assert "__pycache__/\n" in lines
+        assert "test.txt\n" in lines
+        assert "# git-stage-batch: blocked\n" in lines
+
+    def test_add_file_to_gitignore_no_duplicates(self, temp_git_repo):
+        """Test adding a file twice doesn't create duplicates."""
+        add_file_to_gitignore("test.txt")
+        add_file_to_gitignore("test.txt")
+
+        content = get_gitignore_path().read_text()
+        # Should only appear once
+        assert content.count("test.txt") == 1
+
+    def test_add_file_to_gitignore_preserves_no_trailing_newline(self, temp_git_repo):
+        """Test adding to .gitignore when existing file has no trailing newline."""
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc")  # No trailing newline
+
+        add_file_to_gitignore("test.txt")
+
+        content = gitignore.read_text()
+        assert content == "*.pyc\ntest.txt\n# git-stage-batch: blocked\n"
+
+    def test_remove_file_from_gitignore_with_marker(self, temp_git_repo):
+        """Test removing a file from .gitignore that has our marker."""
+        add_file_to_gitignore("test.txt")
+
+        removed = remove_file_from_gitignore("test.txt")
+        assert removed is True
+
+        lines = read_gitignore_lines()
+        assert "test.txt\n" not in lines
+        assert "# git-stage-batch: blocked\n" not in lines
+
+    def test_remove_file_from_gitignore_without_marker(self, temp_git_repo):
+        """Test that we don't remove entries without our marker."""
+        gitignore = get_gitignore_path()
+        gitignore.write_text("test.txt\n*.pyc\n")
+
+        removed = remove_file_from_gitignore("test.txt")
+        assert removed is False
+
+        # Entry should still be there
+        lines = read_gitignore_lines()
+        assert "test.txt\n" in lines
+
+    def test_remove_file_from_gitignore_preserves_other_entries(self, temp_git_repo):
+        """Test that removing one entry preserves others."""
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc\n")
+
+        add_file_to_gitignore("test1.txt")
+        add_file_to_gitignore("test2.txt")
+
+        remove_file_from_gitignore("test1.txt")
+
+        lines = read_gitignore_lines()
+        assert "*.pyc\n" in lines
+        assert "test1.txt\n" not in lines
+        assert "test2.txt\n" in lines
+
+    def test_remove_file_from_gitignore_nonexistent(self, temp_git_repo):
+        """Test removing a file that doesn't exist in .gitignore."""
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc\n")
+
+        removed = remove_file_from_gitignore("nonexistent.txt")
+        assert removed is False
+
+        # Original content unchanged
+        assert gitignore.read_text() == "*.pyc\n"

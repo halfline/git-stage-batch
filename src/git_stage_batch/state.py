@@ -72,10 +72,21 @@ def get_index_snapshot_file_path() -> Path:
 def get_working_tree_snapshot_file_path() -> Path:
     return get_state_directory_path() / "snapshot-new"   # working tree side
 
+def get_auto_added_files_file_path() -> Path:
+    return get_state_directory_path() / "auto-added-files"
+
+def get_blocked_files_file_path() -> Path:
+    return get_state_directory_path() / "blocked-files"
+
+def get_gitignore_path() -> Path:
+    return get_git_repository_root_path() / ".gitignore"
+
 
 def ensure_state_directory_exists() -> None:
     get_state_directory_path().mkdir(parents=True, exist_ok=True)
     get_block_list_file_path().touch(exist_ok=True)
+    get_auto_added_files_file_path().touch(exist_ok=True)
+    get_blocked_files_file_path().touch(exist_ok=True)
 
 def clear_current_hunk_state_files() -> None:
     for path in (
@@ -91,3 +102,115 @@ def clear_current_hunk_state_files() -> None:
             path.unlink(missing_ok=True)
         except Exception:
             pass
+
+
+# --------------------------- File path list management ---------------------------
+
+def read_file_paths_file(path: Path) -> list[str]:
+    """Read a file containing one path per line, returning a deduplicated sorted list."""
+    content = read_text_file_contents(path)
+    if not content:
+        return []
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    return sorted(set(lines))
+
+def write_file_paths_file(path: Path, file_paths: Iterable[str]) -> None:
+    """Write file paths to a file, one per line, sorted and deduplicated."""
+    unique_paths = sorted(set(file_paths))
+    content = "\n".join(unique_paths)
+    if unique_paths:
+        content += "\n"
+    write_text_file_contents(path, content)
+
+def append_file_path_to_file(path: Path, file_path: str) -> None:
+    """Append a file path to a list file, ensuring no duplicates."""
+    existing = read_file_paths_file(path)
+    if file_path not in existing:
+        existing.append(file_path)
+        write_file_paths_file(path, existing)
+
+def remove_file_path_from_file(state_file_path: Path, file_path: str) -> None:
+    """Remove a file path from a list file."""
+    existing = read_file_paths_file(state_file_path)
+    if file_path in existing:
+        existing.remove(file_path)
+        write_file_paths_file(state_file_path, existing)
+
+def resolve_file_path_to_repo_relative(file_path: str) -> str:
+    """Convert a file path to repository-relative format."""
+    repo_root = get_git_repository_root_path()
+    path = Path(file_path)
+
+    # If it's already relative, use it as-is
+    if not path.is_absolute():
+        return file_path
+
+    # If it's absolute, make it relative to repo root
+    try:
+        return str(path.relative_to(repo_root))
+    except ValueError:
+        # Path is outside repo, return as-is
+        return file_path
+
+
+# --------------------------- .gitignore manipulation ---------------------------
+
+GITIGNORE_MARKER = "# git-stage-batch: blocked"
+
+def read_gitignore_lines() -> list[str]:
+    """Read .gitignore file, returning lines preserving original formatting."""
+    gitignore_path = get_gitignore_path()
+    if not gitignore_path.exists():
+        return []
+    content = read_text_file_contents(gitignore_path)
+    # Preserve exact formatting including trailing newline
+    return content.splitlines(keepends=True)
+
+def write_gitignore_lines(lines: list[str]) -> None:
+    """Write lines to .gitignore, preserving formatting."""
+    gitignore_path = get_gitignore_path()
+    content = "".join(lines)
+    write_text_file_contents(gitignore_path, content)
+
+def add_file_to_gitignore(file_path: str) -> None:
+    """Add a file path to .gitignore with marker comment."""
+    lines = read_gitignore_lines()
+
+    # Check if already present (with our marker)
+    file_path_normalized = file_path.rstrip("\n")
+    for i, line in enumerate(lines):
+        if line.rstrip("\n") == file_path_normalized:
+            # Check if next line has our marker
+            if i + 1 < len(lines) and GITIGNORE_MARKER in lines[i + 1]:
+                return  # Already added by us
+
+    # Add to end with marker
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+
+    lines.append(f"{file_path}\n")
+    lines.append(f"{GITIGNORE_MARKER}\n")
+
+    write_gitignore_lines(lines)
+
+def remove_file_from_gitignore(file_path: str) -> bool:
+    """Remove a file path from .gitignore (only if it has our marker). Returns True if removed."""
+    lines = read_gitignore_lines()
+    file_path_normalized = file_path.rstrip("\n")
+
+    i = 0
+    removed = False
+    while i < len(lines):
+        if lines[i].rstrip("\n") == file_path_normalized:
+            # Check if next line has our marker
+            if i + 1 < len(lines) and GITIGNORE_MARKER in lines[i + 1]:
+                # Remove both the path and the marker
+                del lines[i:i+2]
+                removed = True
+                continue  # Don't increment i, check same position again
+        i += 1
+
+    if removed:
+        write_gitignore_lines(lines)
+
+    return removed

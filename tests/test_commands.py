@@ -6,6 +6,7 @@ import pytest
 
 from git_stage_batch.commands import (
     command_again,
+    command_block_file,
     command_discard,
     command_discard_line,
     command_exclude,
@@ -462,6 +463,127 @@ class TestAutoAddUntrackedFiles:
         assert "another_file.txt" in auto_added_2
         # List should be sorted and deduplicated (only 2 items total)
         assert len(auto_added_2) == 2
+
+class TestBlockFileCommand:
+    """Tests for block-file command."""
+
+    def test_block_file_adds_to_gitignore(self, temp_git_repo, capsys):
+        """Test that block-file adds file to .gitignore with marker."""
+        from git_stage_batch.state import get_gitignore_path
+
+        # Create untracked file
+        (temp_git_repo / "unwanted.txt").write_text("ignore me\n")
+        command_start()
+
+        # Block the file
+        command_block_file("unwanted.txt")
+
+        # Check .gitignore
+        gitignore = get_gitignore_path()
+        content = gitignore.read_text()
+        assert "unwanted.txt" in content
+        assert "# git-stage-batch: blocked" in content
+
+        captured = capsys.readouterr()
+        assert "Blocked file: unwanted.txt" in captured.err
+
+    def test_block_file_without_argument_uses_current_hunk(self, temp_git_repo, capsys):
+        """Test that block-file without argument blocks current hunk's file."""
+        from git_stage_batch.state import (
+            get_blocked_files_file_path,
+            get_gitignore_path,
+            read_file_paths_file,
+        )
+
+        # Create untracked file
+        (temp_git_repo / "current.txt").write_text("content\n")
+        command_start()
+
+        # Block current hunk's file (no argument)
+        command_block_file("")
+
+        # Check it was blocked
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "current.txt" in blocked
+
+        gitignore = get_gitignore_path()
+        assert "current.txt" in gitignore.read_text()
+
+    def test_block_file_resets_auto_added(self, temp_git_repo):
+        """Test that blocking a file resets it if it was auto-added."""
+        from git_stage_batch.state import (
+            get_auto_added_files_file_path,
+            read_file_paths_file,
+        )
+
+        # Create untracked file
+        (temp_git_repo / "temp.txt").write_text("temporary\n")
+        command_start()
+
+        # Verify it was auto-added
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        assert "temp.txt" in auto_added
+
+        # Block it
+        command_block_file("temp.txt")
+
+        # Should be removed from auto-added list
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        assert "temp.txt" not in auto_added
+
+        # File should no longer appear in git ls-files
+        result = subprocess.run(
+            ["git", "ls-files", "-t"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "temp.txt" not in result.stdout
+
+    def test_block_file_advances_to_next_hunk(self, temp_git_repo, capsys):
+        """Test that blocking current file advances to next hunk."""
+        # Create two untracked files
+        (temp_git_repo / "file1.txt").write_text("first\n")
+        (temp_git_repo / "file2.txt").write_text("second\n")
+
+        command_start()
+        captured = capsys.readouterr()
+
+        # Should show one of the files
+        assert "file1.txt" in captured.out or "file2.txt" in captured.out
+
+        # Block current file
+        command_block_file("")
+
+        captured = capsys.readouterr()
+        # Should advance to another file or show "No pending hunks"
+        assert "file1.txt" in captured.out or "file2.txt" in captured.out or "No pending hunks" in captured.err
+
+    def test_block_file_respects_blocked_list(self, temp_git_repo):
+        """Test that blocked files are in blocked list and .gitignore."""
+        from git_stage_batch.state import (
+            get_blocked_files_file_path,
+            get_gitignore_path,
+            read_file_paths_file,
+        )
+
+        # Create untracked file
+        (temp_git_repo / "blocked.txt").write_text("blocked content\n")
+        command_start()
+
+        # Block it
+        command_block_file("blocked.txt")
+
+        # Verify it's in blocked list
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "blocked.txt" in blocked
+
+        # Verify it's in .gitignore
+        gitignore = get_gitignore_path()
+        content = gitignore.read_text()
+        assert "blocked.txt\n" in content
+        assert "# git-stage-batch: blocked" in content
 
 class TestCleanupAutoAddedFiles:
     """Tests for cleaning up auto-added files on stop/again."""

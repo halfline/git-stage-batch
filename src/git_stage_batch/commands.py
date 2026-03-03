@@ -25,6 +25,7 @@ from .parser import (
     write_snapshots_for_current_file_path,
 )
 from .state import (
+    add_file_to_gitignore,
     append_file_path_to_file,
     append_lines_to_file,
     clear_current_hunk_state_files,
@@ -44,7 +45,9 @@ from .state import (
     get_working_tree_snapshot_file_path,
     read_file_paths_file,
     read_text_file_contents,
+    remove_file_path_from_file,
     require_git_repository,
+    resolve_file_path_to_repo_relative,
     run_git_command,
     write_text_file_contents,
 )
@@ -364,3 +367,44 @@ def command_status() -> None:
     block_list_lines = read_text_file_contents(get_block_list_file_path()).splitlines() if get_block_list_file_path().exists() else []
     print(f"blocked: {len([x for x in block_list_lines if x.strip()])}")
     print(f"state:   {get_state_directory_path()}")
+
+
+def command_block_file(file_path_arg: str) -> None:
+    """Add a file to .gitignore and blocked list."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Determine which file to block
+    if not file_path_arg:
+        # Try to infer from current hunk
+        if not get_current_hunk_patch_file_path().exists():
+            exit_with_error("No file path provided and no current hunk to infer from.")
+        current_lines = load_current_lines_from_state()
+        file_path = current_lines.path
+    else:
+        file_path = file_path_arg
+
+    # Resolve to repo-relative path
+    file_path = resolve_file_path_to_repo_relative(file_path)
+
+    # Add to .gitignore
+    add_file_to_gitignore(file_path)
+
+    # Add to blocked-files state
+    append_file_path_to_file(get_blocked_files_file_path(), file_path)
+
+    # If file was auto-added, reset it and remove from auto-added list
+    auto_added_files = read_file_paths_file(get_auto_added_files_file_path())
+    if file_path in auto_added_files:
+        run_git_command(["reset", "--", file_path], check=False)
+        remove_file_path_from_file(get_auto_added_files_file_path(), file_path)
+
+    # If current hunk is from this file, advance to next
+    if get_current_hunk_patch_file_path().exists():
+        current_lines = load_current_lines_from_state()
+        if current_lines.path == file_path:
+            append_current_hunk_hash_to_block_list()
+            clear_current_hunk_state_files()
+            find_and_cache_next_unblocked_hunk()
+
+    print(f"Blocked file: {file_path}", file=sys.stderr)

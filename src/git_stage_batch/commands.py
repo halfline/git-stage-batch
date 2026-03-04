@@ -201,6 +201,14 @@ def find_and_cache_next_unblocked_hunk() -> bool:
 def command_start() -> None:
     """Find and display the first unprocessed hunk."""
     require_git_repository()
+
+    # Check if batch staging is already in progress
+    state_dir = get_state_directory_path()
+    if state_dir.exists() and any(state_dir.iterdir()):
+        print("Batch staging already in process, starting again", file=sys.stderr)
+        command_again()
+        return
+
     ensure_state_directory_exists()
     clear_current_hunk_state_files()
     if not find_and_cache_next_unblocked_hunk():

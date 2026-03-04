@@ -19,7 +19,6 @@ Create atomic, well-structured commits with fine-grained control over what gets 
   - `include` - stage to index
   - `skip` - skip for now
   - `discard` - remove from working tree
-- **Non-interactive workflow**: Perfect for automation and AI assistants
 
 ## Installation
 

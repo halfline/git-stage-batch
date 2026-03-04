@@ -13,6 +13,7 @@ from git_stage_batch.commands import (
     command_include,
     command_include_file,
     command_include_line,
+    command_interactive,
     command_show,
     command_skip,
     command_skip_file,
@@ -1028,3 +1029,208 @@ class TestCLIDefaultBehavior:
         )
         assert "modified" in staged.stdout
 
+
+class TestCommandInteractive:
+    """Tests for command_interactive."""
+
+    def test_interactive_include_quit(self, temp_git_repo):
+        """Test interactive mode with include then quit."""
+        # Make a change
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Mock user input: 'i' to include, then 'q' to quit
+        with patch('builtins.input', side_effect=['i', 'q']):
+            command_interactive()
+
+        # Check that content was staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert "modified" in result.stdout
+
+    def test_interactive_skip_quit(self, temp_git_repo):
+        """Test interactive mode with skip then quit."""
+        # Make a change
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Mock user input: 's' to skip, then 'q' to quit
+        with patch('builtins.input', side_effect=['s', 'q']):
+            command_interactive()
+
+        # Check that nothing was staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert result.stdout == ""
+
+        # Check that change is still in working tree
+        result = subprocess.run(
+            ["git", "diff"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert "modified" in result.stdout
+
+    def test_interactive_discard_with_confirmation(self, temp_git_repo):
+        """Test interactive mode with discard and confirmation."""
+        # Make a change
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Mock user input: 'd' to discard, 'yes' to confirm
+        with patch('builtins.input', side_effect=['d', 'yes']):
+            command_interactive()
+
+        # Check that change is gone from working tree
+        result = subprocess.run(
+            ["git", "diff"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert result.stdout == ""
+
+        # Check original content restored
+        content = (temp_git_repo / "test.txt").read_text()
+        assert content == "line1\nline2\nline3\n"
+
+    def test_interactive_discard_cancelled(self, temp_git_repo):
+        """Test interactive mode with discard cancelled."""
+        # Make a change
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Mock user input: 'd' to discard, 'no' to cancel, 'q' to quit
+        with patch('builtins.input', side_effect=['d', 'no', 'q']):
+            command_interactive()
+
+        # Check that change is still in working tree
+        result = subprocess.run(
+            ["git", "diff"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert "modified" in result.stdout
+
+    def test_interactive_help_display(self, temp_git_repo, capsys):
+        """Test interactive mode help display."""
+        # Make a change
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Mock user input: '?' for help, 'q' to quit
+        with patch('builtins.input', side_effect=['?', 'q']):
+            command_interactive()
+
+        # Check that help was displayed
+        captured = capsys.readouterr()
+        assert 'y - yes, stage this hunk' in captured.out
+        assert 'n - no, skip this hunk for now' in captured.out
+        assert 'd - discard this hunk from working tree' in captured.out
+        assert 'q - quit interactive mode' in captured.out
+
+    def test_interactive_all_with_confirmation(self, temp_git_repo):
+        """Test interactive mode with accept all."""
+        # Make multiple changes
+        (temp_git_repo / "file1.txt").write_text("change1\n")
+        (temp_git_repo / "file2.txt").write_text("change2\n")
+
+        # Mock user input: 'a' for all, 'yes' to confirm
+        with patch('builtins.input', side_effect=['a', 'yes']):
+            command_interactive()
+
+        # Check that all changes were staged
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert "file1.txt" in result.stdout
+        assert "file2.txt" in result.stdout
+
+    def test_interactive_all_cancelled(self, temp_git_repo):
+        """Test interactive mode with accept all cancelled."""
+        # Make multiple changes
+        (temp_git_repo / "file1.txt").write_text("change1\n")
+        (temp_git_repo / "file2.txt").write_text("change2\n")
+
+        # Mock user input: 'a' for all, 'no' to cancel, 'q' to quit
+        with patch('builtins.input', side_effect=['a', 'no', 'q']):
+            command_interactive()
+
+        # Check that nothing was staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert result.stdout == ""
+
+    def test_interactive_block_with_confirmation(self, temp_git_repo):
+        """Test interactive mode with block file."""
+        # Make a change
+        (temp_git_repo / "temp.txt").write_text("temporary\n")
+
+        # Mock user input: 'b' to block, 'yes' to confirm, 'q' to quit (after .gitignore hunk)
+        with patch('builtins.input', side_effect=['b', 'yes', 'q']):
+            command_interactive()
+
+        # Check that file was added to .gitignore
+        gitignore_content = (temp_git_repo / ".gitignore").read_text()
+        assert "temp.txt" in gitignore_content
+        assert "# git-stage-batch: blocked" in gitignore_content
+
+    def test_interactive_unknown_option(self, temp_git_repo, capsys):
+        """Test interactive mode with unknown option."""
+        # Make a change
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Mock user input: 'x' (unknown), 'q' to quit
+        with patch('builtins.input', side_effect=['x', 'q']):
+            command_interactive()
+
+        # Check that unknown option message was displayed
+        captured = capsys.readouterr()
+        assert "Unknown option: 'x'" in captured.out
+
+    def test_interactive_empty_input_redisplays_hunk(self, temp_git_repo, capsys):
+        """Test interactive mode with empty input redisplays hunk."""
+        # Make a change
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Mock user input: '' (empty), 'q' to quit
+        with patch('builtins.input', side_effect=['', 'q']):
+            command_interactive()
+
+        # Check that hunk was redisplayed (captured output should contain the hunk twice)
+        captured = capsys.readouterr()
+        # The hunk should appear at least twice (initial display + redisplay)
+        assert captured.out.count('test.txt') >= 2
+
+    def test_interactive_ctrl_c_exits(self, temp_git_repo):
+        """Test interactive mode exits cleanly on Ctrl+C."""
+        # Make a change
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Mock user input: Ctrl+C (raises KeyboardInterrupt)
+        with patch('builtins.input', side_effect=KeyboardInterrupt()):
+            command_interactive()
+
+        # Should exit cleanly without raising exception
+        # The test passing means no exception was raised
+
+    def test_interactive_no_changes_exits_early(self, temp_git_repo):
+        """Test interactive mode exits early when no changes."""
+        # Don't make any changes
+
+        # Should exit with code 2
+        with pytest.raises(SystemExit) as exc_info:
+            command_interactive()
+        assert exc_info.value.code == 2

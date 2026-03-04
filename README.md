@@ -66,6 +66,48 @@ git-stage-batch again   # or: git-stage-batch a
 git-stage-batch stop
 ```
 
+## Interactive Mode
+
+For a workflow similar to `git add -p`, use interactive mode:
+
+```bash
+git-stage-batch --interactive
+```
+
+Interactive mode presents hunks one at a time with beginner-friendly prompts:
+
+```
+What do you want to do with this hunk?
+  [i]nclude  - Stage this hunk to the index
+  [s]kip     - Skip this hunk for now
+  [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)
+  [q]uit     - Exit interactive mode
+
+More options: [a]ll, [l]ines, [f]ile, [b]lock, [?]help
+
+Action:
+```
+
+### Available Actions
+
+- **i** / **include** - Stage this hunk
+- **s** / **skip** - Skip this hunk for now
+- **d** / **discard** - Remove from working tree (asks for confirmation)
+- **q** / **quit** - Exit interactive mode
+- **a** / **all** - Stage all remaining hunks (asks for confirmation)
+- **l** / **lines** - Enter line selection sub-menu
+- **f** / **file** - Stage or skip all hunks in current file
+- **b** / **block** - Block this file permanently via .gitignore (asks for confirmation)
+- **?** - Show help
+
+### Why Interactive Mode?
+
+- **Clear prompts**: Explains each option as you go
+- **Single-letter shortcuts**: Fast for power users
+- **Familiar workflow**: Similar to `git add -p`
+
+Use interactive mode for manual staging and the command-based workflow for automation or AI assistants.
+
 ## Commands
 
 ### Core Operations

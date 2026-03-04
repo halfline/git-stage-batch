@@ -91,6 +91,59 @@ git-stage-batch stop
 
 **Line ID syntax**: Comma-separated list with ranges, e.g. `1,3,5-7`
 
+## Machine-Readable Output
+
+For scripting and automation, some commands support a `--porcelain` flag for machine-readable output:
+
+### `status --porcelain`
+
+Outputs JSON with current state:
+
+```bash
+$ git-stage-batch status --porcelain
+{"current_hunk": "file.py :: @@ -10,5 +10,5 @@", "remaining_line_ids": [1, 3, 5], "blocked_hunks": 42, "state_directory": "/path/.git/git-stage-batch"}
+```
+
+Fields:
+- `current_hunk`: Summary of current hunk (null if none)
+- `remaining_line_ids`: Array of unprocessed line IDs
+- `blocked_hunks`: Count of processed hunks
+- `state_directory`: Path to state directory
+
+Example usage:
+```bash
+# Check if a hunk is active
+if [ "$(git-stage-batch status --porcelain | jq -r '.current_hunk')" != "null" ]; then
+  echo "Session active"
+fi
+
+# Get remaining line count
+git-stage-batch status --porcelain | jq '.remaining_line_ids | length'
+```
+
+### `show --porcelain`
+
+Suppresses output and uses exit codes to indicate hunk presence:
+
+```bash
+$ git-stage-batch show --porcelain
+$ echo $?
+0  # Exit 0: hunk exists, Exit 1: no hunk
+```
+
+Example usage:
+```bash
+# Check if hunk exists
+if git-stage-batch show --porcelain; then
+  echo "Current hunk exists"
+fi
+
+# Wait for hunk
+while ! git-stage-batch show --porcelain; do
+  sleep 1
+done
+```
+
 ## Configuring Your AI Assistant
 
 This tool is designed for AI coding assistants to create atomic, well-structured commits. Add the following instructions to your project's AI configuration:

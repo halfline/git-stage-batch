@@ -1234,3 +1234,4 @@ class TestCommandInteractive:
         with pytest.raises(SystemExit) as exc_info:
             command_interactive()
         assert exc_info.value.code == 2
+

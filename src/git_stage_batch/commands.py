@@ -451,22 +451,43 @@ def command_stop() -> None:
     print("✓ State cleared.")
 
 
-def command_status() -> None:
+def command_status(porcelain: bool = False) -> None:
     """Show current state summary."""
     require_git_repository()
+
+    # Gather status information
+    current_hunk = None
+    remaining_line_ids = []
     if get_current_hunk_patch_file_path().exists():
-        print("current:",
-              summarize_current_hunk_header_line(read_text_file_contents(get_current_hunk_patch_file_path())))
-        remaining = compute_remaining_changed_line_ids()
-        if remaining:
-            print("remaining lines:", ",".join(map(str, remaining)))
-        else:
-            print("remaining lines: 0")
-    else:
-        print("current: none")
+        current_hunk = summarize_current_hunk_header_line(
+            read_text_file_contents(get_current_hunk_patch_file_path())
+        )
+        remaining_line_ids = compute_remaining_changed_line_ids()
+
     block_list_lines = read_text_file_contents(get_block_list_file_path()).splitlines() if get_block_list_file_path().exists() else []
-    print(f"blocked: {len([x for x in block_list_lines if x.strip()])}")
-    print(f"state:   {get_state_directory_path()}")
+    blocked_count = len([x for x in block_list_lines if x.strip()])
+
+    if porcelain:
+        # Output machine-readable JSON
+        status_data = {
+            "current_hunk": current_hunk,
+            "remaining_line_ids": remaining_line_ids,
+            "blocked_hunks": blocked_count,
+            "state_directory": str(get_state_directory_path()),
+        }
+        print(json.dumps(status_data, ensure_ascii=False))
+    else:
+        # Human-readable output
+        if current_hunk:
+            print("current:", current_hunk)
+            if remaining_line_ids:
+                print("remaining lines:", ",".join(map(str, remaining_line_ids)))
+            else:
+                print("remaining lines: 0")
+        else:
+            print("current: none")
+        print(f"blocked: {blocked_count}")
+        print(f"state:   {get_state_directory_path()}")
 
 
 def command_block_file(file_path_arg: str) -> None:

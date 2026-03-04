@@ -306,6 +306,43 @@ class TestCommandStatus:
         assert "current: none" in captured.out
         assert "blocked: 0" in captured.out
 
+    def test_status_porcelain_output(self, temp_git_repo):
+        """Test status with --porcelain flag outputs JSON."""
+        import subprocess
+        import sys
+        import json
+
+        # Make a change and start
+        (temp_git_repo / "test.txt").write_text("modified\n")
+        subprocess.run([sys.executable, "-m", "git_stage_batch.cli", "start"],
+                       check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Run status with --porcelain
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        assert result.returncode == 0
+
+        # Parse JSON output
+        status_data = json.loads(result.stdout)
+
+        # Verify structure
+        assert "current_hunk" in status_data
+        assert "remaining_line_ids" in status_data
+        assert "blocked_hunks" in status_data
+        assert "state_directory" in status_data
+
+        # Verify values
+        assert status_data["current_hunk"] is not None
+        assert "test.txt" in status_data["current_hunk"]
+        assert isinstance(status_data["remaining_line_ids"], list)
+        assert len(status_data["remaining_line_ids"]) > 0
+        assert status_data["blocked_hunks"] == 0
+
 
 class TestIntegrationWorkflow:
     """Integration tests for complete workflows."""
@@ -955,3 +992,4 @@ class TestCLIDefaultBehavior:
             cwd=temp_git_repo
         )
         assert "modified" in staged.stdout
+

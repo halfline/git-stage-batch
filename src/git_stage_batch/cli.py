@@ -197,7 +197,12 @@ def main() -> None:
         help="Show current state",
         description="Show brief state (current hunk summary, remaining line IDs)",
     )
-    parser_status.set_defaults(func=lambda _: command_status())
+    parser_status.add_argument(
+        "--porcelain",
+        action="store_true",
+        help="Output in machine-readable format (JSON)",
+    )
+    parser_status.set_defaults(func=lambda args: command_status(porcelain=args.porcelain))
 
     args = parser.parse_args()
 

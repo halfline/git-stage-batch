@@ -903,3 +903,55 @@ class TestSkipFileCommand:
 
         with pytest.raises(SystemExit):
             command_skip_file()
+
+
+class TestCLIDefaultBehavior:
+    """Tests for CLI default command behavior."""
+
+    def test_no_command_with_no_session(self, temp_git_repo):
+        """Test that no command with no session shows helpful message."""
+        import subprocess
+        import sys
+        
+        # Run git-stage-batch with no command
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        
+        assert result.returncode == 1
+        assert "No batch staging session in progress" in result.stderr
+        assert "git-stage-batch start" in result.stderr
+
+    def test_no_command_with_active_session(self, temp_git_repo):
+        """Test that no command with active session defaults to include."""
+        import subprocess
+        import sys
+        
+        # Make a change
+        (temp_git_repo / "test.txt").write_text("modified\n")
+        
+        # Start session
+        subprocess.run([sys.executable, "-m", "git_stage_batch.cli", "start"], 
+                       check=True, cwd=temp_git_repo, capture_output=True)
+        
+        # Run with no command (should include)
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        
+        assert result.returncode == 0
+        
+        # Check that content was staged
+        staged = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert "modified" in staged.stdout

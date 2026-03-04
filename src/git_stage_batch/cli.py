@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from . import __version__
 from .commands import (
@@ -22,6 +23,7 @@ from .commands import (
     command_stop,
     command_unblock_file,
 )
+from .state import get_current_hunk_patch_file_path
 
 
 def main() -> None:
@@ -38,7 +40,7 @@ def main() -> None:
 
     subparsers = parser.add_subparsers(
         dest="command",
-        required=True,
+        required=False,
         help="Available commands",
     )
 
@@ -185,7 +187,20 @@ def main() -> None:
     parser_status.set_defaults(func=lambda _: command_status())
 
     args = parser.parse_args()
-    args.func(args)
+
+    # Handle no command provided
+    if args.command is None:
+        # Check if a session is active
+        if get_current_hunk_patch_file_path().exists():
+            # Default to include when session is active
+            command_include()
+        else:
+            # No session - show helpful message
+            print("No batch staging session in progress.", file=sys.stderr)
+            print("Run 'git-stage-batch start' to begin.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        args.func(args)
 
 
 if __name__ == "__main__":

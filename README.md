@@ -35,23 +35,27 @@ git-stage-batch start
 
 # Include the current hunk (stage it)
 git-stage-batch include
+# Or use the short alias:
+git-stage-batch i
+# Or just run with no command (defaults to include when session is active):
+git-stage-batch
 
-# Or skip it (skip for now)
-git-stage-batch skip
+# Skip it (skip for now)
+git-stage-batch skip    # or: git-stage-batch s
 
-# Or discard it (remove from working tree)
-git-stage-batch discard
+# Discard it (remove from working tree)
+git-stage-batch discard # or: git-stage-batch d
 
 # For fine-grained control, include/skip/discard specific lines
-git-stage-batch include-line 1,3,5-7
-git-stage-batch skip-line 2,4
-git-stage-batch discard-line 8-10
+git-stage-batch include-line 1,3,5-7  # or: git-stage-batch il 1,3,5-7
+git-stage-batch skip-line 2,4         # or: git-stage-batch sl 2,4
+git-stage-batch discard-line 8-10     # or: git-stage-batch dl 8-10
 
 # Check status
-git-stage-batch status
+git-stage-batch status  # or: git-stage-batch st
 
 # Start fresh after committing
-git-stage-batch again
+git-stage-batch again   # or: git-stage-batch a
 
 # Clear all state
 git-stage-batch stop
@@ -195,6 +199,31 @@ No pending hunks.
 # Working tree is now clean
 $ git status
 nothing to commit, working tree clean
+```
+
+### Fast Workflow with Aliases
+
+For even faster operation, use short aliases and the bare command (which defaults to `include`):
+
+```bash
+$ git-stage-batch start
+[hunk displayed]
+
+$ git-stage-batch        # No command = include
+[next hunk displayed]
+
+$ git-stage-batch        # Include again
+[next hunk displayed]
+
+$ git-stage-batch s      # Skip this one
+[next hunk displayed]
+
+$ git-stage-batch        # Include
+No pending hunks.
+
+$ git commit -m "..."
+$ git-stage-batch a      # Again
+[first skipped hunk displayed]
 ```
 
 ## How It Works

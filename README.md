@@ -63,17 +63,31 @@ git-stage-batch stop
 
 ## Commands
 
+### Core Operations
 - **`start`** - Find and display the first unprocessed hunk; cache as "current"
-- **`show`** - Reprint the cached "current" hunk (annotated with line IDs)
-- **`include`** - Stage the cached hunk (entire hunk) to the index; advance
-- **`skip`** - Mark the cached hunk as skipped; advance
-- **`discard`** - Reverse-apply the cached hunk to the working tree; advance
-- **`include-line IDS`** - Stage ONLY the listed changed line IDs (+/-) to the index
-- **`skip-line IDS`** - Mark ONLY the listed changed line IDs as skipped (skip)
-- **`discard-line IDS`** - Remove ONLY the listed changed line IDs from working tree
-- **`again`** - Clear state and immediately start a fresh pass
+- **`show`** (alias: `sh`) - Reprint the cached "current" hunk (annotated with line IDs)
+- **`include`** (alias: `i`) - Stage the cached hunk (entire hunk) to the index; advance
+- **`skip`** (alias: `s`) - Mark the cached hunk as skipped; advance
+- **`discard`** (alias: `d`) - Reverse-apply the cached hunk to the working tree; advance
+- **`status`** (alias: `st`) - Show brief state (current hunk summary, remaining line IDs)
+
+### Line-Level Operations
+- **`include-line IDS`** (alias: `il`) - Stage ONLY the listed changed line IDs (+/-) to the index
+- **`skip-line IDS`** (alias: `sl`) - Mark ONLY the listed changed line IDs as skipped
+- **`discard-line IDS`** (alias: `dl`) - Remove ONLY the listed changed line IDs from working tree
+
+### File-Level Operations
+- **`include-file`** (alias: `if`) - Stage the entire file containing the current hunk
+- **`skip-file`** (alias: `sf`) - Skip all hunks in the file containing the current hunk
+- **`block-file [PATH]`** (alias: `b`) - Permanently exclude a file via .gitignore
+- **`unblock-file PATH`** (alias: `ub`) - Remove a file from permanent exclusion
+
+### Session Management
+- **`again`** (alias: `a`) - Clear state and immediately start a fresh pass
 - **`stop`** - Clear all state (blocklist and cached hunk)
-- **`status`** - Show brief state (current hunk summary, remaining line IDs)
+
+### Special Behavior
+- **No command** - When a session is active, running `git-stage-batch` with no command defaults to `include`
 
 **Line ID syntax**: Comma-separated list with ranges, e.g. `1,3,5-7`
 
@@ -165,14 +179,14 @@ file1.py :: @@ -10,5 +10,5 @@
 [#2] + new_function()
       context_line()
 
-# Include this change for first commit
-$ git-stage-batch include
+# Include this change for first commit (using alias)
+$ git-stage-batch i
 file2.py :: @@ -20,3 +20,4 @@
 [#1] + debug_line()
       production_code()
 
-# This debug line shouldn't be committed, skip it
-$ git-stage-batch skip
+# This debug line shouldn't be committed, skip it (using alias)
+$ git-stage-batch s
 No pending hunks.
 
 # Create first commit
@@ -187,13 +201,13 @@ This commit addresses that by replacing old_function with new_function,
 which is 2x faster and handles both old and new data formats."
 
 # Go through skipped hunks for next commit
-$ git-stage-batch again
+$ git-stage-batch a
 file2.py :: @@ -20,3 +20,4 @@
 [#1] + debug_line()
       production_code()
 
 # Discard this debug line instead
-$ git-stage-batch discard
+$ git-stage-batch d
 No pending hunks.
 
 # Working tree is now clean

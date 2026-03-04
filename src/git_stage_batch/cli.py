@@ -55,6 +55,7 @@ def main() -> None:
     # show - Reprint the cached current hunk
     parser_show = subparsers.add_parser(
         "show",
+        aliases=["sh"],
         help="Reprint the cached current hunk",
         description="Reprint the cached 'current' hunk (annotated with line IDs)",
     )
@@ -63,6 +64,7 @@ def main() -> None:
     # include - Stage the current hunk
     parser_include = subparsers.add_parser(
         "include",
+        aliases=["i"],
         help="Stage the current hunk to the index",
         description="Stage the cached hunk (entire hunk) to the index; advance to next",
     )
@@ -71,6 +73,7 @@ def main() -> None:
     # skip - Skip the current hunk
     parser_skip = subparsers.add_parser(
         "skip",
+        aliases=["s"],
         help="Mark the current hunk as skipped",
         description="Mark the cached hunk as skipped; advance to next",
     )
@@ -79,6 +82,7 @@ def main() -> None:
     # discard - Remove the current hunk from working tree
     parser_discard = subparsers.add_parser(
         "discard",
+        aliases=["d"],
         help="Remove the current hunk from working tree",
         description="Reverse-apply the cached hunk to the working tree; advance to next",
     )
@@ -87,6 +91,7 @@ def main() -> None:
     # include-line - Stage specific lines
     parser_include_line = subparsers.add_parser(
         "include-line",
+        aliases=["il"],
         help="Stage specific lines from the current hunk",
         description="Stage ONLY the listed changed line IDs (+/-) to the index",
     )
@@ -99,6 +104,7 @@ def main() -> None:
     # skip-line - Skip specific lines
     parser_skip_line = subparsers.add_parser(
         "skip-line",
+        aliases=["sl"],
         help="Mark specific lines as skipped",
         description="Mark ONLY the listed changed line IDs as skipped",
     )
@@ -111,6 +117,7 @@ def main() -> None:
     # discard-line - Remove specific lines from working tree
     parser_discard_line = subparsers.add_parser(
         "discard-line",
+        aliases=["dl"],
         help="Remove specific lines from working tree",
         description="Remove ONLY the listed changed line IDs from working tree",
     )
@@ -123,6 +130,7 @@ def main() -> None:
     # include-file - Stage the entire file
     parser_include_file = subparsers.add_parser(
         "include-file",
+        aliases=["if"],
         help="Stage the entire file containing the current hunk",
         description="Stage the entire file containing the current hunk to the index",
     )
@@ -131,6 +139,7 @@ def main() -> None:
     # skip-file - Skip the entire file
     parser_skip_file = subparsers.add_parser(
         "skip-file",
+        aliases=["sf"],
         help="Skip all hunks in the current file",
         description="Skip all hunks in the file containing the current hunk",
     )
@@ -139,6 +148,7 @@ def main() -> None:
     # block-file - Permanently exclude a file
     parser_block_file = subparsers.add_parser(
         "block-file",
+        aliases=["b"],
         help="Permanently exclude a file via .gitignore",
         description="Add a file to .gitignore and blocked list (defaults to current hunk's file)",
     )
@@ -153,6 +163,7 @@ def main() -> None:
     # unblock-file - Reverse permanent exclusion
     parser_unblock_file = subparsers.add_parser(
         "unblock-file",
+        aliases=["ub"],
         help="Remove a file from permanent exclusion",
         description="Remove a file from .gitignore and blocked list",
     )
@@ -165,6 +176,7 @@ def main() -> None:
     # again - Clear state and start fresh
     parser_again = subparsers.add_parser(
         "again",
+        aliases=["a"],
         help="Clear state and start a fresh pass",
         description="Clear state and immediately start a fresh pass through all hunks",
     )
@@ -181,6 +193,7 @@ def main() -> None:
     # status - Show current state
     parser_status = subparsers.add_parser(
         "status",
+        aliases=["st"],
         help="Show current state",
         description="Show brief state (current hunk summary, remaining line IDs)",
     )

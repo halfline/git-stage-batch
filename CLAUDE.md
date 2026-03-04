@@ -59,15 +59,16 @@ uv run pytest tests/test_state.py -v
    uv run git-stage-batch start
    ```
 
-2. For each presented hunk:
-   - `uv run git-stage-batch include` (stage this hunk)
-   - `uv run git-stage-batch skip` (skip for now)
-   - `uv run git-stage-batch discard` (remove from working tree)
+2. For each presented hunk, use one of:
+   - `uv run git-stage-batch include` or `uv run git-stage-batch i` (stage this hunk)
+   - `uv run git-stage-batch skip` or `uv run git-stage-batch s` (skip for now)
+   - `uv run git-stage-batch discard` or `uv run git-stage-batch d` (remove from working tree)
+   - `uv run git-stage-batch` (no command defaults to include when session is active)
 
 3. For fine-grained control:
    ```bash
-   uv run git-stage-batch include-line 1,3,5-7
-   uv run git-stage-batch skip-line 2,4
+   uv run git-stage-batch include-line 1,3,5-7  # or: il 1,3,5-7
+   uv run git-stage-batch skip-line 2,4         # or: sl 2,4
    ```
 
 4. After staging changes for one logical commit:

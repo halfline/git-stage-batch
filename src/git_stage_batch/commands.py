@@ -645,3 +645,99 @@ def command_unblock_file(file_path_arg: str) -> None:
         print(f"Unblocked file: {file_path}", file=sys.stderr)
     else:
         print(f"Removed from blocked list: {file_path} (was not in .gitignore with our marker)", file=sys.stderr)
+
+
+def command_interactive() -> None:
+    """Interactive mode similar to git add -p."""
+    require_git_repository()
+
+    # Initialize session if needed, otherwise use existing
+    state_dir = get_state_directory_path()
+    if not state_dir.exists() or not any(state_dir.iterdir()):
+        ensure_state_directory_exists()
+        clear_current_hunk_state_files()
+        if not find_and_cache_next_unblocked_hunk():
+            sys.exit(2)
+    elif not get_current_hunk_patch_file_path().exists():
+        # Session exists but no current hunk, find next
+        if not find_and_cache_next_unblocked_hunk():
+            print("No pending hunks.", file=sys.stderr)
+            sys.exit(2)
+    else:
+        # Current hunk exists, display it
+        print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
+
+    # Main interactive loop
+    while get_current_hunk_patch_file_path().exists():
+        # Show beginner-friendly prompt
+        print()
+        print("What do you want to do with this hunk?")
+        print("  [i]nclude  - Stage this hunk to the index")
+        print("  [s]kip     - Skip this hunk for now")
+        print("  [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
+        print("  [q]uit     - Exit interactive mode")
+        print()
+        print("More options: [a]ll, [l]ines, [f]ile, [b]lock, [?]help")
+        print()
+
+        try:
+            choice = input("Action: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()  # New line after ^C
+            break
+
+        if choice in ('y', 'i', 'include'):
+            # Include - stage this hunk
+            command_include()
+        elif choice in ('n', 's', 'skip'):
+            # Skip - skip this hunk for now
+            command_skip()
+        elif choice in ('d', 'discard'):
+            # Discard - remove from working tree (with confirmation)
+            if confirm_destructive_operation("discard", "This will permanently remove the changes from your working tree."):
+                command_discard()
+            else:
+                print("Cancelled.")
+                print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
+        elif choice in ('q', 'quit'):
+            # Quit interactive mode
+            break
+        elif choice in ('a', 'all'):
+            # Accept all remaining hunks (with confirmation)
+            if confirm_destructive_operation("all", "This will stage ALL remaining hunks."):
+                while get_current_hunk_patch_file_path().exists():
+                    command_include()
+            else:
+                print("Cancelled.")
+                print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
+        elif choice in ('l', 'lines'):
+            # Line-level operations
+            handle_interactive_line_selection()
+        elif choice in ('f', 'file'):
+            # File-level operations
+            handle_interactive_file_selection()
+        elif choice in ('b', 'block'):
+            # Block current file (with confirmation)
+            current_lines = load_current_lines_from_state()
+            if confirm_destructive_operation("block", f"This will add '{current_lines.path}' to .gitignore permanently."):
+                command_block_file("")
+            else:
+                print("Cancelled.")
+                print_annotated_hunk_with_aligned_gutter(current_lines)
+        elif choice in ('e', 'edit'):
+            # Edit hunk manually (future enhancement)
+            print("Edit mode not yet implemented")
+            print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
+        elif choice == '?':
+            print_interactive_help()
+            print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
+        elif choice == '':
+            # Empty input, re-display hunk
+            print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
+        else:
+            print(f"Unknown option: '{choice}'")
+            print_interactive_help()
+            print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
+
+    if not get_current_hunk_patch_file_path().exists():
+        print("No pending hunks.")

@@ -100,6 +100,40 @@ class TestCommandShow:
         with pytest.raises(SystemExit):
             command_show()
 
+    def test_show_porcelain_with_hunk(self, temp_git_repo):
+        """Test show --porcelain exits 0 when hunk exists."""
+        import subprocess
+        import sys
+
+        (temp_git_repo / "test.txt").write_text("modified\n")
+        subprocess.run([sys.executable, "-m", "git_stage_batch.cli", "start"],
+                       check=True, cwd=temp_git_repo, capture_output=True)
+
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "show", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        assert result.returncode == 0
+        assert result.stdout == ""  # No output in porcelain mode
+
+    def test_show_porcelain_without_hunk(self, temp_git_repo):
+        """Test show --porcelain exits 1 when no hunk exists."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "show", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        assert result.returncode == 1
+        assert result.stdout == ""  # No output in porcelain mode
+
 
 class TestCommandInclude:
     """Tests for command_include."""

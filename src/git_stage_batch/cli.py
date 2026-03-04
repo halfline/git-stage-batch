@@ -59,7 +59,12 @@ def main() -> None:
         help="Reprint the cached current hunk",
         description="Reprint the cached 'current' hunk (annotated with line IDs)",
     )
-    parser_show.set_defaults(func=lambda _: command_show())
+    parser_show.add_argument(
+        "--porcelain",
+        action="store_true",
+        help="Suppress output, exit 0 if hunk exists, 1 if not",
+    )
+    parser_show.set_defaults(func=lambda args: command_show(porcelain=args.porcelain))
 
     # include - Stage the current hunk
     parser_include = subparsers.add_parser(

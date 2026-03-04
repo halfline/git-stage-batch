@@ -215,13 +215,21 @@ def command_start() -> None:
         sys.exit(2)
 
 
-def command_show() -> None:
+def command_show(porcelain: bool = False) -> None:
     """Display the current hunk."""
     require_git_repository()
     ensure_state_directory_exists()
-    if not get_current_hunk_patch_file_path().exists() or not get_current_lines_json_file_path().exists():
-        exit_with_error("No current hunk. Run 'start' first.")
-    print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
+
+    has_hunk = get_current_hunk_patch_file_path().exists() and get_current_lines_json_file_path().exists()
+
+    if porcelain:
+        # Porcelain mode: exit 0 if hunk exists, 1 if not (no output)
+        sys.exit(0 if has_hunk else 1)
+    else:
+        # Normal mode: display hunk or show error
+        if not has_hunk:
+            exit_with_error("No current hunk. Run 'start' first.")
+        print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
 
 
 def command_include() -> None:

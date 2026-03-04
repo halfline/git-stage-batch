@@ -60,8 +60,8 @@ class TestBuildTargetIndexContent:
 
         assert result == "line1\nline2\n"
 
-    def test_exclude_addition(self):
-        """Test excluding an added line (not including it)."""
+    def test_skip_addition(self):
+        """Test skipping an added line (not including it)."""
         header = HunkHeader(1, 2, 1, 3)
         lines = [
             LineEntry(None, " ", 1, 1, "line1"),
@@ -76,8 +76,8 @@ class TestBuildTargetIndexContent:
         # Not including the addition means base stays the same
         assert result == "line1\nline2\n"
 
-    def test_exclude_deletion(self):
-        """Test excluding a deleted line (keeping it)."""
+    def test_skip_deletion(self):
+        """Test skipping a deleted line (keeping it)."""
         header = HunkHeader(1, 3, 1, 2)
         lines = [
             LineEntry(None, " ", 1, 1, "line1"),

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .line_selection import read_line_ids_file
 from .models import CurrentLines
-from .state import get_processed_exclude_ids_file_path, get_processed_include_ids_file_path
+from .state import get_processed_include_ids_file_path, get_processed_skip_ids_file_path
 
 
 def print_annotated_hunk_with_aligned_gutter(current_lines: CurrentLines) -> None:
@@ -22,7 +22,7 @@ def print_annotated_hunk_with_aligned_gutter(current_lines: CurrentLines) -> Non
     label_width = maximum_digits + 3  # "[#N]" plus one space
 
     processed_include_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
-    processed_exclude_ids = set(read_line_ids_file(get_processed_exclude_ids_file_path()))
+    processed_skip_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
 
     for line_entry in current_lines.lines:
         if line_entry.id is not None:

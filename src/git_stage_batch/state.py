@@ -63,8 +63,8 @@ def get_current_lines_json_file_path() -> Path:
 def get_processed_include_ids_file_path() -> Path:
     return get_state_directory_path() / "processed.include"
 
-def get_processed_exclude_ids_file_path() -> Path:
-    return get_state_directory_path() / "processed.exclude"
+def get_processed_skip_ids_file_path() -> Path:
+    return get_state_directory_path() / "processed.skip"
 
 def get_index_snapshot_file_path() -> Path:
     return get_state_directory_path() / "snapshot-base"  # index side
@@ -94,7 +94,7 @@ def clear_current_hunk_state_files() -> None:
         get_current_hunk_hash_file_path(),
         get_current_lines_json_file_path(),
         get_processed_include_ids_file_path(),
-        get_processed_exclude_ids_file_path(),
+        get_processed_skip_ids_file_path(),
         get_index_snapshot_file_path(),
         get_working_tree_snapshot_file_path(),
     ):

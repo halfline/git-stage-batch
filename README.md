@@ -11,7 +11,7 @@ Similar to `git add -p` (interactive patch mode), but non-interactive and more g
 - **State persistence**: Track processed/skipped hunks across multiple command invocations
 - **Three operations**:
   - `include` - stage to index
-  - `exclude` - skip for now
+  - `skip` - skip for now
   - `discard` - remove from working tree
 - **Non-interactive workflow**: Perfect for automation and AI assistants
 
@@ -36,15 +36,15 @@ git-stage-batch start
 # Include the current hunk (stage it)
 git-stage-batch include
 
-# Or exclude it (skip for now)
-git-stage-batch exclude
+# Or skip it (skip for now)
+git-stage-batch skip
 
 # Or discard it (remove from working tree)
 git-stage-batch discard
 
-# For fine-grained control, include/exclude/discard specific lines
+# For fine-grained control, include/skip/discard specific lines
 git-stage-batch include-line 1,3,5-7
-git-stage-batch exclude-line 2,4
+git-stage-batch skip-line 2,4
 git-stage-batch discard-line 8-10
 
 # Check status
@@ -62,10 +62,10 @@ git-stage-batch stop
 - **`start`** - Find and display the first unprocessed hunk; cache as "current"
 - **`show`** - Reprint the cached "current" hunk (annotated with line IDs)
 - **`include`** - Stage the cached hunk (entire hunk) to the index; advance
-- **`exclude`** - Mark the cached hunk as skipped; advance
+- **`skip`** - Mark the cached hunk as skipped; advance
 - **`discard`** - Reverse-apply the cached hunk to the working tree; advance
 - **`include-line IDS`** - Stage ONLY the listed changed line IDs (+/-) to the index
-- **`exclude-line IDS`** - Mark ONLY the listed changed line IDs as excluded (skip)
+- **`skip-line IDS`** - Mark ONLY the listed changed line IDs as skipped (skip)
 - **`discard-line IDS`** - Remove ONLY the listed changed line IDs from working tree
 - **`again`** - Clear state and immediately start a fresh pass
 - **`stop`** - Clear all state (blocklist and cached hunk)
@@ -98,14 +98,14 @@ automation.
 1. Run `git-stage-batch start` to begin the process
 2. For each presented patch hunk, run either:
    - `git-stage-batch include` (stage this hunk)
-   - `git-stage-batch exclude` (skip this hunk for now)
+   - `git-stage-batch skip` (skip this hunk for now)
 
    These commands automatically display the next hunk to evaluate.
 
 3. Repeatedly run these commands until all hunks relevant to the current commit
    are processed, then commit the results.
 
-4. Run `git-stage-batch again` to run through all previously excluded
+4. Run `git-stage-batch again` to run through all previously skipped
    and unprocessed hunks for the next commit.
 
 5. Repeat until all commits are in place.
@@ -113,9 +113,9 @@ automation.
 ### Fine-Grained Line Selection
 
 If a hunk is too coarse and contains multiple orthogonal changes, individual lines
-may be included or excluded using:
+may be included or skipped using:
 - `git-stage-batch include-line 1,3,5-7` (stage specific lines)
-- `git-stage-batch exclude-line 2,4` (skip specific lines)
+- `git-stage-batch skip-line 2,4` (skip specific lines)
 
 Line IDs are shown in the hunk output as `[#N]` markers.
 
@@ -167,8 +167,8 @@ file2.py :: @@ -20,3 +20,4 @@
 [#1] + debug_line()
       production_code()
 
-# This debug line shouldn't be committed, exclude it
-$ git-stage-batch exclude
+# This debug line shouldn't be committed, skip it
+$ git-stage-batch skip
 No pending hunks.
 
 # Create first commit
@@ -182,7 +182,7 @@ data format we need.
 This commit addresses that by replacing old_function with new_function,
 which is 2x faster and handles both old and new data formats."
 
-# Go through excluded hunks for next commit
+# Go through skipped hunks for next commit
 $ git-stage-batch again
 file2.py :: @@ -20,3 +20,4 @@
 [#1] + debug_line()
@@ -200,10 +200,10 @@ nothing to commit, working tree clean
 ## How It Works
 
 The tool maintains state in `.git/git-stage-batch/`:
-- `blocklist` - Hashes of hunks you've processed (included, excluded, or discarded)
+- `blocklist` - Hashes of hunks you've processed (included, skipped, or discarded)
 - `current-hunk.patch` - The hunk currently being evaluated
 - `current-lines.json` - Structured representation with line IDs
-- `processed.include` / `processed.exclude` - Track line-level decisions
+- `processed.include` / `processed.skip` - Track line-level decisions
 - `snapshot-base` / `snapshot-new` - File snapshots for accurate reconstruction
 
 State persists across invocations, allowing you to stage changes incrementally.

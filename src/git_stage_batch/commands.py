@@ -39,8 +39,8 @@ from .state import (
     get_current_lines_json_file_path,
     get_git_repository_root_path,
     get_index_snapshot_file_path,
-    get_processed_exclude_ids_file_path,
     get_processed_include_ids_file_path,
+    get_processed_skip_ids_file_path,
     get_state_directory_path,
     get_working_tree_snapshot_file_path,
     read_file_paths_file,
@@ -120,8 +120,8 @@ def compute_remaining_changed_line_ids() -> list[int]:
     current_lines = load_current_lines_from_state()
     all_changed_ids = set(current_lines.changed_line_ids())
     included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
-    excluded_ids = set(read_line_ids_file(get_processed_exclude_ids_file_path()))
-    remaining = sorted(all_changed_ids - included_ids - excluded_ids)
+    skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
+    remaining = sorted(all_changed_ids - included_ids - skipped_ids)
     return remaining
 
 
@@ -241,12 +241,12 @@ def command_include() -> None:
     find_and_cache_next_unblocked_hunk()
 
 
-def command_exclude() -> None:
-    """Skip the current hunk (mark as excluded)."""
+def command_skip() -> None:
+    """Skip the current hunk (mark as skipped)."""
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_hunk_hash_file_path().exists():
-        exit_with_error("No current hunk to exclude. Run 'start' first.")
+        exit_with_error("No current hunk to skip. Run 'start' first.")
     append_current_hunk_hash_to_block_list()
     clear_current_hunk_state_files()
     find_and_cache_next_unblocked_hunk()
@@ -289,16 +289,16 @@ def command_include_line(line_id_specification: str) -> None:
     advance_if_hunk_complete_else_show()
 
 
-def command_exclude_line(line_id_specification: str) -> None:
-    """Mark the specified lines as excluded (skip them)."""
+def command_skip_line(line_id_specification: str) -> None:
+    """Mark the specified lines as skipped."""
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_lines_json_file_path().exists():
         exit_with_error("No current hunk. Run 'start' first.")
     requested_ids = parse_line_id_specification(line_id_specification)
-    existing_excluded_ids = set(read_line_ids_file(get_processed_exclude_ids_file_path()))
-    existing_excluded_ids |= set(requested_ids)
-    write_line_ids_file(get_processed_exclude_ids_file_path(), existing_excluded_ids)
+    existing_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
+    existing_skipped_ids |= set(requested_ids)
+    write_line_ids_file(get_processed_skip_ids_file_path(), existing_skipped_ids)
     advance_if_hunk_complete_else_show()
 
 
@@ -319,9 +319,9 @@ def command_discard_line(line_id_specification: str) -> None:
     new_working_text = build_target_working_tree_content_with_discarded_lines(current_lines, discard_ids, working_text)
     write_text_file_contents(absolute_path, new_working_text)
 
-    existing_excluded_ids = set(read_line_ids_file(get_processed_exclude_ids_file_path()))
-    existing_excluded_ids |= discard_ids
-    write_line_ids_file(get_processed_exclude_ids_file_path(), existing_excluded_ids)
+    existing_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
+    existing_skipped_ids |= discard_ids
+    write_line_ids_file(get_processed_skip_ids_file_path(), existing_skipped_ids)
     advance_if_hunk_complete_else_show()
 
 
@@ -379,7 +379,7 @@ def command_include_file() -> None:
     find_and_cache_next_unblocked_hunk()
 
 
-def command_exclude_file() -> None:
+def command_skip_file() -> None:
     """Skip all remaining hunks from the current file."""
     require_git_repository()
     ensure_state_directory_exists()

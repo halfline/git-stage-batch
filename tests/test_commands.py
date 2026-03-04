@@ -9,13 +9,13 @@ from git_stage_batch.commands import (
     command_block_file,
     command_discard,
     command_discard_line,
-    command_exclude,
-    command_exclude_file,
-    command_exclude_line,
     command_include,
     command_include_file,
     command_include_line,
     command_show,
+    command_skip,
+    command_skip_file,
+    command_skip_line,
     command_start,
     command_status,
     command_stop,
@@ -136,16 +136,16 @@ class TestCommandInclude:
         assert "test2.txt" in captured.out or "No pending hunks" in captured.err
 
 
-class TestCommandExclude:
-    """Tests for command_exclude."""
+class TestCommandSkip:
+    """Tests for command_skip."""
 
-    def test_exclude_skips_hunk(self, temp_git_repo, capsys):
-        """Test excluding a hunk skips it."""
+    def test_skip_skips_hunk(self, temp_git_repo, capsys):
+        """Test skipping a hunk skips it."""
         (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
         command_start()
 
         capsys.readouterr()
-        command_exclude()
+        command_skip()
 
         # Check that nothing is staged
         result = subprocess.run(
@@ -216,16 +216,16 @@ class TestCommandIncludeLine:
         assert "mod3" in result.stdout
 
 
-class TestCommandExcludeLine:
-    """Tests for command_exclude_line."""
+class TestCommandSkipLine:
+    """Tests for command_skip_line."""
 
-    def test_exclude_line_marks_as_excluded(self, temp_git_repo, capsys):
-        """Test excluding specific lines."""
+    def test_skip_line_marks_as_skipped(self, temp_git_repo, capsys):
+        """Test skipping specific lines."""
         (temp_git_repo / "test.txt").write_text("mod1\nmod2\nline3\n")
         command_start()
 
         capsys.readouterr()
-        command_exclude_line("1")
+        command_skip_line("1")
 
         # Should still show hunk with remaining lines
         captured = capsys.readouterr()
@@ -256,8 +256,8 @@ class TestCommandAgain:
         (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
         command_start()
 
-        # Exclude the hunk
-        command_exclude()
+        # Skip the hunk
+        command_skip()
 
         capsys.readouterr()
         # Run again - should show the same hunk again
@@ -322,8 +322,8 @@ class TestIntegrationWorkflow:
 
         command_include_line("2,5")  # Second change: delete line2, add mod2
 
-        # Exclude remaining lines (completes the hunk)
-        command_exclude_line("3,6")
+        # Skip remaining lines (completes the hunk)
+        command_skip_line("3,6")
 
         # Verify staged content
         result = subprocess.run(
@@ -853,11 +853,11 @@ class TestIncludeFileCommand:
             command_include_file()
 
 
-class TestExcludeFileCommand:
-    """Tests for exclude-file command."""
+class TestSkipFileCommand:
+    """Tests for skip-file command."""
 
-    def test_exclude_file_skips_all_hunks_in_file(self, temp_git_repo):
-        """Test that exclude-file skips all changes in the current file."""
+    def test_skip_file_skips_all_hunks_in_file(self, temp_git_repo):
+        """Test that skip-file skips all changes in the current file."""
         # Create a file with multiple hunks
         (temp_git_repo / "multi.txt").write_text("line1\nline2\nline3\nline4\nline5\n")
         subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
@@ -866,7 +866,7 @@ class TestExcludeFileCommand:
         (temp_git_repo / "multi.txt").write_text("mod1\nline2\nline3\nline4\nmod5\n")
 
         command_start()
-        command_exclude_file()
+        command_skip_file()
 
         # Check nothing staged from multi.txt
         result = subprocess.run(
@@ -878,8 +878,8 @@ class TestExcludeFileCommand:
         )
         assert "multi.txt" not in result.stdout
 
-    def test_exclude_file_advances_to_next_file(self, temp_git_repo, capsys):
-        """Test that exclude-file advances to the next file."""
+    def test_skip_file_advances_to_next_file(self, temp_git_repo, capsys):
+        """Test that skip-file advances to the next file."""
         # Create two files
         (temp_git_repo / "file1.txt").write_text("change1\n")
         (temp_git_repo / "file2.txt").write_text("change2\n")
@@ -890,16 +890,16 @@ class TestExcludeFileCommand:
         first_file = "file1.txt" if "file1.txt" in captured.out else "file2.txt"
         second_file = "file2.txt" if first_file == "file1.txt" else "file1.txt"
 
-        # Exclude entire first file
-        command_exclude_file()
+        # Skip entire first file
+        command_skip_file()
 
         # Should advance to second file
         captured = capsys.readouterr()
         assert second_file in captured.out
 
-    def test_exclude_file_error_without_current_hunk(self, temp_git_repo):
-        """Test that exclude-file errors when no current hunk."""
+    def test_skip_file_error_without_current_hunk(self, temp_git_repo):
+        """Test that skip-file errors when no current hunk."""
         import pytest
 
         with pytest.raises(SystemExit):
-            command_exclude_file()
+            command_skip_file()

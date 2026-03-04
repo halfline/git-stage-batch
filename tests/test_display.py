@@ -9,8 +9,8 @@ from git_stage_batch.line_selection import write_line_ids_file
 from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
 from git_stage_batch.state import (
     ensure_state_directory_exists,
-    get_processed_exclude_ids_file_path,
     get_processed_include_ids_file_path,
+    get_processed_skip_ids_file_path,
 )
 
 
@@ -228,7 +228,7 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
 
         # Write some processed IDs
         write_line_ids_file(get_processed_include_ids_file_path(), [1])
-        write_line_ids_file(get_processed_exclude_ids_file_path(), [2])
+        write_line_ids_file(get_processed_skip_ids_file_path(), [2])
 
         header = HunkHeader(1, 4, 1, 4)
         lines = [

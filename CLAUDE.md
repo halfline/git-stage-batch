@@ -16,7 +16,7 @@ src/git_stage_batch/
 ├── line_selection.py    # Parse and persist line ID selections
 ├── display.py           # Print annotated hunks with line IDs
 ├── editor.py            # Core logic: apply line-level changes to index/worktree
-├── commands.py          # Command implementations (start, include, exclude, etc.)
+├── commands.py          # Command implementations (start, include, skip, etc.)
 └── cli.py               # CLI entry point and argument parsing
 
 tests/                   # Comprehensive test suite (176 tests)
@@ -61,13 +61,13 @@ uv run pytest tests/test_state.py -v
 
 2. For each presented hunk:
    - `uv run git-stage-batch include` (stage this hunk)
-   - `uv run git-stage-batch exclude` (skip for now)
+   - `uv run git-stage-batch skip` (skip for now)
    - `uv run git-stage-batch discard` (remove from working tree)
 
 3. For fine-grained control:
    ```bash
    uv run git-stage-batch include-line 1,3,5-7
-   uv run git-stage-batch exclude-line 2,4
+   uv run git-stage-batch skip-line 2,4
    ```
 
 4. After staging changes for one logical commit:

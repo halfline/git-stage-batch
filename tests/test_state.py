@@ -22,8 +22,8 @@ from git_stage_batch.state import (
     get_git_repository_root_path,
     get_gitignore_path,
     get_index_snapshot_file_path,
-    get_processed_exclude_ids_file_path,
     get_processed_include_ids_file_path,
+    get_processed_skip_ids_file_path,
     get_state_directory_path,
     get_working_tree_snapshot_file_path,
     read_file_paths_file,
@@ -210,10 +210,10 @@ class TestStatePaths:
         path = get_processed_include_ids_file_path()
         assert path.name == "processed.include"
 
-    def test_get_processed_exclude_ids_file_path(self, temp_git_repo):
-        """Test getting the processed exclude IDs file path."""
-        path = get_processed_exclude_ids_file_path()
-        assert path.name == "processed.exclude"
+    def test_get_processed_skip_ids_file_path(self, temp_git_repo):
+        """Test getting the processed skip IDs file path."""
+        path = get_processed_skip_ids_file_path()
+        assert path.name == "processed.skip"
 
     def test_get_index_snapshot_file_path(self, temp_git_repo):
         """Test getting the index snapshot file path."""
@@ -284,7 +284,7 @@ class TestStateManagement:
             get_current_hunk_hash_file_path(),
             get_current_lines_json_file_path(),
             get_processed_include_ids_file_path(),
-            get_processed_exclude_ids_file_path(),
+            get_processed_skip_ids_file_path(),
             get_index_snapshot_file_path(),
             get_working_tree_snapshot_file_path(),
         ]

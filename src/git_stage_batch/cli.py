@@ -10,13 +10,13 @@ from .commands import (
     command_block_file,
     command_discard,
     command_discard_line,
-    command_exclude,
-    command_exclude_file,
-    command_exclude_line,
     command_include,
     command_include_file,
     command_include_line,
     command_show,
+    command_skip,
+    command_skip_file,
+    command_skip_line,
     command_start,
     command_status,
     command_stop,
@@ -66,13 +66,13 @@ def main() -> None:
     )
     parser_include.set_defaults(func=lambda _: command_include())
 
-    # exclude - Skip the current hunk
-    parser_exclude = subparsers.add_parser(
-        "exclude",
+    # skip - Skip the current hunk
+    parser_skip = subparsers.add_parser(
+        "skip",
         help="Mark the current hunk as skipped",
         description="Mark the cached hunk as skipped; advance to next",
     )
-    parser_exclude.set_defaults(func=lambda _: command_exclude())
+    parser_skip.set_defaults(func=lambda _: command_skip())
 
     # discard - Remove the current hunk from working tree
     parser_discard = subparsers.add_parser(
@@ -94,17 +94,17 @@ def main() -> None:
     )
     parser_include_line.set_defaults(func=lambda args: command_include_line(args.line_ids))
 
-    # exclude-line - Skip specific lines
-    parser_exclude_line = subparsers.add_parser(
-        "exclude-line",
+    # skip-line - Skip specific lines
+    parser_skip_line = subparsers.add_parser(
+        "skip-line",
         help="Mark specific lines as skipped",
-        description="Mark ONLY the listed changed line IDs as excluded (skip)",
+        description="Mark ONLY the listed changed line IDs as skipped",
     )
-    parser_exclude_line.add_argument(
+    parser_skip_line.add_argument(
         "line_ids",
-        help="Line IDs to exclude (e.g., '1,3,5-7')",
+        help="Line IDs to skip (e.g., '1,3,5-7')",
     )
-    parser_exclude_line.set_defaults(func=lambda args: command_exclude_line(args.line_ids))
+    parser_skip_line.set_defaults(func=lambda args: command_skip_line(args.line_ids))
 
     # discard-line - Remove specific lines from working tree
     parser_discard_line = subparsers.add_parser(
@@ -126,13 +126,13 @@ def main() -> None:
     )
     parser_include_file.set_defaults(func=lambda _: command_include_file())
 
-    # exclude-file - Skip the entire file
-    parser_exclude_file = subparsers.add_parser(
-        "exclude-file",
+    # skip-file - Skip the entire file
+    parser_skip_file = subparsers.add_parser(
+        "skip-file",
         help="Skip all hunks in the current file",
         description="Skip all hunks in the file containing the current hunk",
     )
-    parser_exclude_file.set_defaults(func=lambda _: command_exclude_file())
+    parser_skip_file.set_defaults(func=lambda _: command_skip_file())
 
     # block-file - Permanently exclude a file
     parser_block_file = subparsers.add_parser(

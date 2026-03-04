@@ -1,6 +1,7 @@
 """Tests for command implementations."""
 
 import subprocess
+from unittest.mock import patch
 
 import pytest
 

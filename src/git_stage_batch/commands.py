@@ -539,6 +539,90 @@ def command_block_file(file_path_arg: str) -> None:
     print(f"Blocked file: {file_path}", file=sys.stderr)
 
 
+# --------------------------- Interactive mode helpers ---------------------------
+
+def confirm_destructive_operation(operation: str, message: str) -> bool:
+    """Confirm a destructive operation with the user. Returns True if confirmed."""
+    print()
+    print(f"⚠️  {message}")
+    try:
+        response = input("Are you sure? [yes/NO]: ").strip().lower()
+        return response in ('yes', 'y')
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
+def print_interactive_help() -> None:
+    """Print help for interactive mode."""
+    print("""
+y - yes, stage this hunk
+n - no, skip this hunk for now
+d - discard this hunk from working tree
+q - quit interactive mode
+a - stage this hunk and all remaining hunks
+l - interactively select lines from this hunk
+f - stage or skip all hunks in current file
+b - block current file (add to .gitignore)
+? - print help
+""")
+
+
+def handle_interactive_line_selection() -> None:
+    """Handle line-level selection in interactive mode."""
+    current_lines = load_current_lines_from_state()
+    changed_ids = current_lines.changed_line_ids()
+
+    if not changed_ids:
+        print("No changed lines in this hunk")
+        return
+
+    print(f"Changed line IDs: {','.join(map(str, changed_ids))}")
+
+    try:
+        action = input("Action for lines [i]nclude, [s]kip, or [d]iscard? ").strip().lower()
+        if action not in ('i', 's', 'd'):
+            print("Cancelled")
+            print_annotated_hunk_with_aligned_gutter(current_lines)
+            return
+
+        line_spec = input("Enter line IDs (e.g., 1,3,5-7): ").strip()
+        if not line_spec:
+            print("Cancelled")
+            print_annotated_hunk_with_aligned_gutter(current_lines)
+            return
+
+        if action == 'i':
+            command_include_line(line_spec)
+        elif action == 's':
+            command_skip_line(line_spec)
+        elif action == 'd':
+            command_discard_line(line_spec)
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled")
+        print_annotated_hunk_with_aligned_gutter(current_lines)
+
+
+def handle_interactive_file_selection() -> None:
+    """Handle file-level selection in interactive mode."""
+    current_lines = load_current_lines_from_state()
+
+    try:
+        action = input(f"Action for all hunks in {current_lines.path} - [i]nclude or [s]kip? ").strip().lower()
+        if action == 'i':
+            command_include_file()
+        elif action == 's':
+            command_skip_file()
+        else:
+            print("Cancelled")
+            print_annotated_hunk_with_aligned_gutter(current_lines)
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled")
+        print_annotated_hunk_with_aligned_gutter(current_lines)
+
+
+# --------------------------- Command implementations ---------------------------
+
 def command_unblock_file(file_path_arg: str) -> None:
     """Remove a file from .gitignore and blocked list."""
     require_git_repository()

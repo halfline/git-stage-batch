@@ -14,6 +14,7 @@ from .commands import (
     command_include,
     command_include_file,
     command_include_line,
+    command_interactive,
     command_show,
     command_skip,
     command_skip_file,
@@ -36,6 +37,11 @@ def main() -> None:
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Enter interactive mode (process hunks one by one)",
     )
 
     subparsers = parser.add_subparsers(
@@ -210,6 +216,11 @@ def main() -> None:
     parser_status.set_defaults(func=lambda args: command_status(porcelain=args.porcelain))
 
     args = parser.parse_args()
+
+    # Handle --interactive flag
+    if args.interactive:
+        command_interactive()
+        return
 
     # Handle no command provided
     if args.command is None:

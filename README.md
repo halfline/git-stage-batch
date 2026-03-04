@@ -1,11 +1,17 @@
 # git-stage-batch
 
-Non-interactive hunk-by-hunk and line-by-line staging for git, designed for AI-assisted development and automation.
+Hunk-by-hunk and line-by-line staging for git, with both interactive and command-based workflows.
 
-Similar to `git add -p` (interactive patch mode), but non-interactive and more granular. Perfect for AI coding assistants to create atomic, well-structured commits.
+Similar to `git add -p` but more granular and flexible:
+- **Interactive mode**: Beginner-friendly prompts similar to `git add -p`
+- **Command-based mode**: Perfect for automation and AI coding assistants
+
+Create atomic, well-structured commits with fine-grained control over what gets staged.
 
 ## Features
 
+- **Interactive mode**: Beginner-friendly prompts (like `git add -p`)
+- **Command-based mode**: Perfect for automation and AI assistants
 - **Hunk-by-hunk staging**: Review and stage individual hunks one at a time
 - **Line-by-line staging**: Stage specific lines within a hunk for maximum granularity
 - **State persistence**: Track processed/skipped hunks across multiple command invocations

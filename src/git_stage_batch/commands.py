@@ -100,6 +100,57 @@ def convert_current_lines_to_serializable_dict(current_lines: CurrentLines) -> d
     }
 
 
+def _snapshots_are_stale(file_path: str) -> bool:
+    """Check if cached snapshots are stale (file changed since snapshots taken).
+
+    Returns True if the file has been committed or otherwise changed such that
+    the cached hunk no longer applies.
+    """
+    snapshot_base_path = get_index_snapshot_file_path()
+    snapshot_new_path = get_working_tree_snapshot_file_path()
+
+    # Missing snapshots means state is incomplete/stale
+    if not snapshot_base_path.exists() or not snapshot_new_path.exists():
+        return True
+
+    # Read cached snapshots
+    cached_index_content = read_text_file_contents(snapshot_base_path)
+    cached_worktree_content = read_text_file_contents(snapshot_new_path)
+
+    # Get current file content from index
+    try:
+        result = run_git_command(["show", f":{file_path}"], check=False)
+        if result.returncode != 0:
+            # File not in index (was deleted, or never added)
+            current_index_content = ""
+        else:
+            current_index_content = result.stdout
+    except Exception:
+        return True  # Error reading means state is stale
+
+    # Get current file content from working tree
+    repo_root = get_git_repository_root_path()
+    file_full_path = repo_root / file_path
+
+    if not file_full_path.exists():
+        # File was deleted
+        current_worktree_content = ""
+    else:
+        current_worktree_content = read_text_file_contents(file_full_path)
+
+    # Check if index content changed (file was staged/committed)
+    # This is the most common case - changes were committed
+    if current_index_content != cached_index_content:
+        return True
+
+    # Check if working tree changed but doesn't match our cached working tree snapshot
+    # This means file was edited externally
+    if current_worktree_content != cached_worktree_content:
+        return True
+
+    return False
+
+
 def load_current_lines_from_state() -> CurrentLines:
     """Load the current hunk from saved state."""
     if not get_current_hunk_patch_file_path().exists() or not get_current_lines_json_file_path().exists():
@@ -222,6 +273,14 @@ def command_show(porcelain: bool = False) -> None:
 
     has_hunk = get_current_hunk_patch_file_path().exists() and get_current_lines_json_file_path().exists()
 
+    # Check for stale state and clear silently if detected
+    if has_hunk:
+        data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+        file_path = data["path"]
+        if _snapshots_are_stale(file_path):
+            clear_current_hunk_state_files()
+            has_hunk = False
+
     if porcelain:
         # Porcelain mode: exit 0 if hunk exists, 1 if not (no output)
         sys.exit(0 if has_hunk else 1)
@@ -238,6 +297,15 @@ def command_include() -> None:
     ensure_state_directory_exists()
     if not get_current_hunk_patch_file_path().exists():
         exit_with_error("No current hunk to include. Run 'start' first.")
+
+    # Check for stale state
+    if get_current_lines_json_file_path().exists():
+        data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+        file_path = data["path"]
+        if _snapshots_are_stale(file_path):
+            clear_current_hunk_state_files()
+            exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+
     try:
         run_git_command(["apply", "--cached", "--index", str(get_current_hunk_patch_file_path())])
     except Exception as error:
@@ -255,6 +323,15 @@ def command_skip() -> None:
     ensure_state_directory_exists()
     if not get_current_hunk_hash_file_path().exists():
         exit_with_error("No current hunk to skip. Run 'start' first.")
+
+    # Check for stale state
+    if get_current_lines_json_file_path().exists():
+        data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+        file_path = data["path"]
+        if _snapshots_are_stale(file_path):
+            clear_current_hunk_state_files()
+            exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+
     append_current_hunk_hash_to_block_list()
     clear_current_hunk_state_files()
     find_and_cache_next_unblocked_hunk()
@@ -266,6 +343,15 @@ def command_discard() -> None:
     ensure_state_directory_exists()
     if not get_current_hunk_patch_file_path().exists():
         exit_with_error("No current hunk to discard. Run 'start' first.")
+
+    # Check for stale state
+    if get_current_lines_json_file_path().exists():
+        data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+        file_path = data["path"]
+        if _snapshots_are_stale(file_path):
+            clear_current_hunk_state_files()
+            exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+
     try:
         run_git_command(["apply", "-R", str(get_current_hunk_patch_file_path())])
     except Exception as error:
@@ -303,6 +389,7 @@ def command_skip_line(line_id_specification: str) -> None:
     ensure_state_directory_exists()
     if not get_current_lines_json_file_path().exists():
         exit_with_error("No current hunk. Run 'start' first.")
+
     requested_ids = parse_line_id_specification(line_id_specification)
     existing_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
     existing_skipped_ids |= set(requested_ids)
@@ -462,6 +549,13 @@ def command_stop() -> None:
 def command_status(porcelain: bool = False) -> None:
     """Show current state summary."""
     require_git_repository()
+
+    # Check for stale state and clear silently if detected
+    if get_current_hunk_patch_file_path().exists() and get_current_lines_json_file_path().exists():
+        data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+        file_path = data["path"]
+        if _snapshots_are_stale(file_path):
+            clear_current_hunk_state_files()
 
     # Gather status information
     current_hunk = None

@@ -14,9 +14,11 @@ class Colors:
     """ANSI color codes for terminal output."""
     RESET = "\033[0m"
     BOLD = "\033[1m"
+    DIM = "\033[2m"
     RED = "\033[31m"
     GREEN = "\033[32m"
     CYAN = "\033[36m"
+    GRAY = "\033[90m"  # Bright black (muted gray)
 
     @staticmethod
     def enabled() -> bool:
@@ -59,14 +61,19 @@ def print_annotated_hunk_with_aligned_gutter(current_lines: CurrentLines) -> Non
             label_area = " " * label_width
 
         sign_character = line_entry.kind if line_entry.kind in ("+", "-", " ") else " "
-        line_content = f"{label_area} {sign_character} {line_entry.text}"
+        line_content_part = f" {sign_character} {line_entry.text}"
 
         if use_color:
+            # Color the gutter (line number) in gray, rest based on line type
+            colored_gutter = f"{Colors.GRAY}{label_area}{Colors.RESET}"
+
             if line_entry.kind == "+":
-                print(f"{Colors.GREEN}{line_content}{Colors.RESET}")
+                colored_content = f"{Colors.GREEN}{line_content_part}{Colors.RESET}"
             elif line_entry.kind == "-":
-                print(f"{Colors.RED}{line_content}{Colors.RESET}")
+                colored_content = f"{Colors.RED}{line_content_part}{Colors.RESET}"
             else:
-                print(line_content)
+                colored_content = line_content_part
+
+            print(f"{colored_gutter}{colored_content}")
         else:
-            print(line_content)
+            print(f"{label_area}{line_content_part}")

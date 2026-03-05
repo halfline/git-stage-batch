@@ -1077,25 +1077,27 @@ def handle_interactive_line_selection() -> None:
         print(f"Changed line IDs: {','.join(map(str, changed_ids))}")
 
     try:
-        if use_color:
-            action = input(f"Action for lines {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude, {Colors.BOLD}[s]{Colors.RESET}kip, or {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard? ").strip().lower()
-        else:
-            action = input("Action for lines [i]nclude, [s]kip, or [d]iscard? ").strip().lower()
+        # Get action
+        while True:
+            if use_color:
+                action = input(f"Action for lines {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude, {Colors.BOLD}[s]{Colors.RESET}kip, or {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard? ").strip().lower()
+            else:
+                action = input("Action for lines [i]nclude, [s]kip, or [d]iscard? ").strip().lower()
 
-        if action not in ('i', 's', 'd'):
-            print("Cancelled")
-            print_annotated_hunk_with_aligned_gutter(current_lines)
-            return
+            if action in ('i', 's', 'd'):
+                break
+            print(f"Invalid action: '{action}'")
 
-        if use_color:
-            line_spec = input(f"{Colors.BOLD}Enter line IDs{Colors.RESET} (e.g., 1,3,5-7): ").strip()
-        else:
-            line_spec = input("Enter line IDs (e.g., 1,3,5-7): ").strip()
+        # Get line IDs
+        while True:
+            if use_color:
+                line_spec = input(f"{Colors.BOLD}Enter line IDs{Colors.RESET} (e.g., 1,3,5-7): ").strip()
+            else:
+                line_spec = input("Enter line IDs (e.g., 1,3,5-7): ").strip()
 
-        if not line_spec:
-            print("Cancelled")
-            print_annotated_hunk_with_aligned_gutter(current_lines)
-            return
+            if line_spec:
+                break
+            print("Line IDs required")
 
         if action == 'i':
             command_include_line(line_spec)
@@ -1114,18 +1116,20 @@ def handle_interactive_file_selection() -> None:
     current_lines = load_current_lines_from_state()
 
     try:
-        if use_color:
-            action = input(f"Action for all hunks in {Colors.BOLD}{current_lines.path}{Colors.RESET} - {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude or {Colors.BOLD}[s]{Colors.RESET}kip? ").strip().lower()
-        else:
-            action = input(f"Action for all hunks in {current_lines.path} - [i]nclude or [s]kip? ").strip().lower()
+        while True:
+            if use_color:
+                action = input(f"Action for all hunks in {Colors.BOLD}{current_lines.path}{Colors.RESET} - {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude or {Colors.BOLD}[s]{Colors.RESET}kip? ").strip().lower()
+            else:
+                action = input(f"Action for all hunks in {current_lines.path} - [i]nclude or [s]kip? ").strip().lower()
 
-        if action == 'i':
-            command_include_file()
-        elif action == 's':
-            command_skip_file()
-        else:
-            print("Cancelled")
-            print_annotated_hunk_with_aligned_gutter(current_lines)
+            if action == 'i':
+                command_include_file()
+                break
+            elif action == 's':
+                command_skip_file()
+                break
+            else:
+                print(f"Invalid action: '{action}'")
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled")
         print_annotated_hunk_with_aligned_gutter(current_lines)

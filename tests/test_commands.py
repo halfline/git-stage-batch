@@ -662,6 +662,51 @@ class TestBlockFileCommand:
         content = gitignore.read_text()
         assert "blocked.txt\n" in content
 
+    def test_block_file_persists_across_again(self, temp_git_repo, capsys):
+        """Test that blocked files remain blocked after running again."""
+        import subprocess
+        from git_stage_batch.state import (
+            get_blocked_files_file_path,
+            read_file_paths_file,
+        )
+
+        # Create two untracked files
+        (temp_git_repo / "keep.txt").write_text("keep me\n")
+        (temp_git_repo / "block.txt").write_text("block me\n")
+
+        command_start()
+
+        # Block one file
+        command_block_file("block.txt")
+
+        # Verify it's blocked
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "block.txt" in blocked
+
+        # Include and commit the .gitignore hunk
+        command_include()
+        subprocess.run(["git", "commit", "-m", "Add .gitignore"], cwd=temp_git_repo, check=True, capture_output=True)
+
+        # Include and commit keep.txt
+        command_include()
+        subprocess.run(["git", "commit", "-m", "Add keep.txt"], cwd=temp_git_repo, check=True, capture_output=True)
+
+        # Clear captured output before testing again
+        capsys.readouterr()
+
+        # Run again - should not show blocked file
+        command_again()
+
+        # Verify block.txt is still in blocked list
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "block.txt" in blocked
+
+        # Should show "No pending hunks" since everything is processed/blocked
+        captured = capsys.readouterr()
+        assert "No pending hunks" in captured.err
+        # Should NOT show block.txt's actual content
+        assert "block me" not in captured.out
+
 
 class TestUnblockFileCommand:
     """Tests for unblock-file command."""

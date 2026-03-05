@@ -51,6 +51,7 @@ from .state import (
     require_git_repository,
     resolve_file_path_to_repo_relative,
     run_git_command,
+    write_file_paths_file,
     write_text_file_contents,
 )
 
@@ -275,16 +276,23 @@ def find_and_cache_next_unblocked_hunk() -> bool:
         print("No pending hunks.", file=sys.stderr)
         return False
 
+    # Get list of blocked files
+    blocked_files = set(read_file_paths_file(get_blocked_files_file_path()))
+
     for single_hunk in single_hunk_patches:
         patch_text = single_hunk.to_patch_text()
         hunk_hash = compute_stable_hunk_hash(patch_text)
         if is_hunk_hash_in_block_list(hunk_hash):
             continue
 
+        # Skip hunks from blocked files
+        current_lines = build_current_lines_from_patch_text(patch_text)
+        if current_lines.path in blocked_files:
+            continue
+
         write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
         write_text_file_contents(get_current_hunk_hash_file_path(), hunk_hash)
 
-        current_lines = build_current_lines_from_patch_text(patch_text)
         write_text_file_contents(get_current_lines_json_file_path(),
                                  json.dumps(convert_current_lines_to_serializable_dict(current_lines),
                                             ensure_ascii=False, indent=0))
@@ -576,6 +584,13 @@ def command_again() -> None:
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
         for file_path in auto_added:
             run_git_command(["reset", "--", file_path], check=False)
+
+    # Save persistent state (blocked-files) before clearing
+    blocked_files = []
+    if get_blocked_files_file_path().exists():
+        blocked_files = read_file_paths_file(get_blocked_files_file_path())
+
+    # Clear all state
     try:
         for path in get_state_directory_path().glob("*"):
             path.unlink(missing_ok=True)
@@ -583,6 +598,11 @@ def command_again() -> None:
     except Exception:
         pass
     ensure_state_directory_exists()
+
+    # Restore persistent state
+    if blocked_files:
+        write_file_paths_file(get_blocked_files_file_path(), blocked_files)
+
     find_and_cache_next_unblocked_hunk()
 
 

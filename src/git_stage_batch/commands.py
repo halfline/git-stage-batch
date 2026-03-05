@@ -177,6 +177,55 @@ def compute_remaining_changed_line_ids() -> list[int]:
     return remaining
 
 
+def _recalculate_current_hunk_for_file(file_path: str) -> None:
+    """Recalculate the current hunk for a specific file after modifications.
+
+    After discard-line or include-line changes the working tree or index,
+    the cached hunk is stale. This recalculates it for the same file.
+    """
+    # Clear processed IDs since old line numbers don't apply to fresh hunk
+    write_line_ids_file(get_processed_include_ids_file_path(), set())
+
+    # Get fresh diff
+    auto_add_untracked_files()
+    diff_text = run_git_command(["diff", "-U3", "--no-color"], check=False).stdout
+
+    if not diff_text.strip():
+        clear_current_hunk_state_files()
+        print("No pending hunks.", file=sys.stderr)
+        return
+
+    # Parse diff and find first hunk for this file
+    single_hunk_patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+
+    for single_hunk in single_hunk_patches:
+        if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
+            continue
+
+        patch_text = single_hunk.to_patch_text()
+        hunk_hash = compute_stable_hunk_hash(patch_text)
+
+        if is_hunk_hash_in_block_list(hunk_hash):
+            continue
+
+        # Cache this hunk as current
+        write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
+        write_text_file_contents(get_current_hunk_hash_file_path(), hunk_hash)
+
+        current_lines = build_current_lines_from_patch_text(patch_text)
+        write_text_file_contents(get_current_lines_json_file_path(),
+                                json.dumps(convert_current_lines_to_serializable_dict(current_lines),
+                                          ensure_ascii=False, indent=0))
+        write_snapshots_for_current_file_path(current_lines.path)
+
+        print_annotated_hunk_with_aligned_gutter(current_lines)
+        return
+
+    # No more hunks for this file, advance to next file
+    clear_current_hunk_state_files()
+    find_and_cache_next_unblocked_hunk()
+
+
 def advance_if_hunk_complete_else_show() -> None:
     """Advance to next hunk if current is complete, otherwise show current."""
     remaining_ids = compute_remaining_changed_line_ids()
@@ -376,12 +425,17 @@ def command_include_line(line_id_specification: str) -> None:
     combined_include_ids = already_included_ids | set(requested_ids)
 
     current_lines = load_current_lines_from_state()
+    # Save the current file path before modifying index
+    current_file_path = current_lines.path
+
     base_text = read_text_file_contents(get_index_snapshot_file_path())
     target_index_content = build_target_index_content_with_selected_lines(current_lines, combined_include_ids, base_text)
     update_index_with_blob_content(current_lines.path, target_index_content)
 
     write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
-    advance_if_hunk_complete_else_show()
+
+    # After modifying index, recalculate hunk for the SAME file
+    _recalculate_current_hunk_for_file(current_file_path)
 
 
 def command_skip_line(line_id_specification: str) -> None:
@@ -412,13 +466,15 @@ def command_discard_line(line_id_specification: str) -> None:
     absolute_path = get_git_repository_root_path() / current_lines.path
     working_text = read_text_file_contents(absolute_path) if absolute_path.exists() else ""
 
+    # Save the current file path before modifying working tree
+    current_file_path = current_lines.path
+
     new_working_text = build_target_working_tree_content_with_discarded_lines(current_lines, discard_ids, working_text)
     write_text_file_contents(absolute_path, new_working_text)
 
-    existing_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
-    existing_skipped_ids |= discard_ids
-    write_line_ids_file(get_processed_skip_ids_file_path(), existing_skipped_ids)
-    advance_if_hunk_complete_else_show()
+    # After modifying working tree, recalculate hunk for the SAME file
+    # Note: Don't track discarded lines in processed-skip since they no longer exist
+    _recalculate_current_hunk_for_file(current_file_path)
 
 
 def command_include_file() -> None:

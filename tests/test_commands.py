@@ -393,10 +393,13 @@ class TestIntegrationWorkflow:
         command_start()
         command_include_line("1,4")  # First change: delete line1, add mod1
 
-        command_include_line("2,5")  # Second change: delete line2, add mod2
+        # After include-line, hunk recalculates with fresh line IDs
+        # Now IDs are: 1,2 deletions (line2,line3), 3,4 additions (mod2,mod3)
+        command_include_line("1,3")  # Second change: delete line2, add mod2
 
+        # After include-line again, fresh IDs: 1 deletion (line3), 2 addition (mod3)
         # Skip remaining lines (completes the hunk)
-        command_skip_line("3,6")
+        command_skip_line("1,2")
 
         # Verify staged content
         result = subprocess.run(
@@ -420,8 +423,9 @@ class TestIntegrationWorkflow:
         # Include first change (delete line1, add keep)
         command_include_line("1,3")
 
+        # After include-line, hunk recalculates: 1 deletion (line2), 2 addition (discard)
         # Discard second change (the addition of "discard")
-        command_discard_line("4")
+        command_discard_line("2")
 
         # Check staged
         result = subprocess.run(

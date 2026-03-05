@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 import sys
 from typing import Any
 
@@ -32,6 +35,10 @@ from .state import (
     clear_current_hunk_state_files,
     ensure_state_directory_exists,
     exit_with_error,
+    get_abort_head_file_path,
+    get_abort_snapshot_list_file_path,
+    get_abort_snapshots_directory_path,
+    get_abort_stash_file_path,
     get_auto_added_files_file_path,
     get_blocked_files_file_path,
     get_block_list_file_path,
@@ -305,6 +312,64 @@ def find_and_cache_next_unblocked_hunk() -> bool:
     return False
 
 
+# --------------------------- Abort state management ---------------------------
+
+def initialize_abort_state() -> None:
+    """Save current HEAD and stash for abort functionality."""
+    # Save current HEAD
+    head_result = run_git_command(["rev-parse", "HEAD"])
+    write_text_file_contents(get_abort_head_file_path(), head_result.stdout.strip())
+
+    # Create stash of tracked file changes
+    # Note: git stash create (without -u) only captures changes to tracked files
+    # Untracked files that we modify will be handled by lazy snapshots
+    stash_result = run_git_command(["stash", "create"], check=False)
+    if stash_result.returncode == 0 and stash_result.stdout.strip():
+        write_text_file_contents(get_abort_stash_file_path(), stash_result.stdout.strip())
+
+
+def snapshot_file_if_untracked(file_path: str) -> None:
+    """Snapshot an untracked file before modification for abort functionality."""
+    # Check index status using git ls-files --stage
+    # - Not in output: untracked (should snapshot)
+    # - Empty blob hash (e69de29...): intent-to-add (should snapshot)
+    # - Real blob hash: tracked with content (don't snapshot)
+    EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+
+    stage_result = run_git_command(["ls-files", "--stage", "--", file_path], check=False)
+    if not stage_result.stdout.strip():
+        # File not in index at all - it's untracked
+        pass  # Continue to snapshot
+    else:
+        # File is in index - check if it has real content or is intent-to-add
+        # Format: <mode> <hash> <stage>\t<path>
+        parts = stage_result.stdout.strip().split()
+        if len(parts) >= 2:
+            blob_hash = parts[1]
+            if blob_hash != EMPTY_BLOB_HASH:
+                return  # File has real content in index, don't snapshot
+
+    # Check if already snapshotted
+    snapshotted_files = read_file_paths_file(get_abort_snapshot_list_file_path())
+    if file_path in snapshotted_files:
+        return  # Already snapshotted
+
+    # Read current file content
+    repo_root = get_git_repository_root_path()
+    full_path = repo_root / file_path
+    if not full_path.exists():
+        return  # File doesn't exist
+
+    # Save snapshot (use binary copy to handle all file types)
+    snapshot_dir = get_abort_snapshots_directory_path()
+    snapshot_path = snapshot_dir / file_path
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(full_path, snapshot_path)
+
+    # Add to snapshot list
+    append_file_path_to_file(get_abort_snapshot_list_file_path(), file_path)
+
+
 # --------------------------- Command handlers ---------------------------
 
 def command_start() -> None:
@@ -318,7 +383,11 @@ def command_start() -> None:
         command_again()
         return
 
+    # Ensure state directory exists before initializing abort state
     ensure_state_directory_exists()
+
+    # Initialize abort state for new session
+    initialize_abort_state()
     clear_current_hunk_state_files()
     if not find_and_cache_next_unblocked_hunk():
         sys.exit(2)

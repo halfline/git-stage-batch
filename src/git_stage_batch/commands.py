@@ -854,50 +854,126 @@ def command_abort() -> None:
     print("✓ Session aborted. All changes reverted.", file=sys.stderr)
 
 
+def estimate_remaining_hunks() -> int:
+    """Estimate number of remaining unprocessed hunks."""
+    # Run git diff and count hunks
+    auto_add_untracked_files()
+    diff_text = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"], check=False).stdout
+
+    if not diff_text.strip():
+        return 0
+
+    # Parse to count total hunks
+    single_hunk_patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+
+    # Filter out blocked hunks
+    blocklist_content = read_text_file_contents(get_block_list_file_path())
+    blocked_hashes = set(blocklist_content.splitlines()) if blocklist_content else set()
+
+    # Filter out hunks from blocked files
+    blocked_files = read_file_paths_file(get_blocked_files_file_path())
+
+    remaining = 0
+    for patch in single_hunk_patches:
+        hunk_hash = compute_stable_hunk_hash(patch.to_patch_text())
+        file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
+        file_path = file_path.removeprefix("a/").removeprefix("b/")
+
+        if hunk_hash not in blocked_hashes and file_path not in blocked_files:
+            remaining += 1
+
+    return remaining
+
+
 def command_status(porcelain: bool = False) -> None:
-    """Show current state summary."""
+    """Show session progress and current state."""
     require_git_repository()
+    ensure_state_directory_exists()
 
-    # Check for stale state and clear silently if detected
-    if get_current_hunk_patch_file_path().exists() and get_current_lines_json_file_path().exists():
-        data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
-        file_path = data["path"]
-        if _snapshots_are_stale(file_path):
-            clear_current_hunk_state_files()
+    # Gather metrics
+    iteration = get_iteration_count()
 
-    # Gather status information
-    current_hunk = None
-    remaining_line_ids = []
-    if get_current_hunk_patch_file_path().exists():
-        current_hunk = summarize_current_hunk_header_line(
-            read_text_file_contents(get_current_hunk_patch_file_path())
-        )
-        remaining_line_ids = compute_remaining_changed_line_ids()
+    # Count processed hunks this iteration
+    included_content = read_text_file_contents(get_included_hunks_file_path())
+    included_count = len([h for h in included_content.splitlines() if h.strip()])
 
-    block_list_lines = read_text_file_contents(get_block_list_file_path()).splitlines() if get_block_list_file_path().exists() else []
-    blocked_count = len([x for x in block_list_lines if x.strip()])
+    discarded_content = read_text_file_contents(get_discarded_hunks_file_path())
+    discarded_count = len([h for h in discarded_content.splitlines() if h.strip()])
+
+    # Parse skipped hunks JSONL
+    skipped_hunks = []
+    jsonl_path = get_skipped_hunks_jsonl_file_path()
+    if jsonl_path.exists():
+        for line in read_text_file_contents(jsonl_path).splitlines():
+            if line.strip():
+                try:
+                    skipped_hunks.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass  # Skip malformed lines
+
+    # Check for current hunk
+    has_current = get_current_hunk_patch_file_path().exists()
+    current_summary = None
+    if has_current:
+        if get_current_lines_json_file_path().exists():
+            data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+            file_path = data["path"]
+            if _snapshots_are_stale(file_path):
+                clear_current_hunk_state_files()
+                has_current = False
+            else:
+                current_lines = load_current_lines_from_state()
+                current_summary = {
+                    "file": current_lines.path,
+                    "line": current_lines.header.old_start,
+                    "ids": current_lines.changed_line_ids()
+                }
+
+    # Estimate remaining hunks
+    remaining_estimate = estimate_remaining_hunks()
 
     if porcelain:
-        # Output machine-readable JSON
-        status_data = {
-            "current_hunk": current_hunk,
-            "remaining_line_ids": remaining_line_ids,
-            "blocked_hunks": blocked_count,
-            "state_directory": str(get_state_directory_path()),
+        # JSON output
+        output = {
+            "session": {
+                "iteration": iteration,
+                "in_progress": has_current
+            },
+            "current": current_summary,
+            "progress": {
+                "included": included_count,
+                "skipped": len(skipped_hunks),
+                "discarded": discarded_count,
+                "remaining": remaining_estimate
+            },
+            "skipped_hunks": skipped_hunks
         }
-        print(json.dumps(status_data, ensure_ascii=False))
+        print(json.dumps(output, indent=2))
     else:
-        # Human-readable output
-        if current_hunk:
-            print("current:", current_hunk)
-            if remaining_line_ids:
-                print("remaining lines:", format_line_ids_as_ranges(remaining_line_ids))
-            else:
-                print("remaining lines: 0")
-        else:
-            print("current: none")
-        print(f"blocked: {blocked_count}")
-        print(f"state:   {get_state_directory_path()}")
+        # Human-readable progress report
+        status = "in progress" if has_current else "complete"
+        print(f"Session: iteration {iteration} ({status})")
+        print()
+
+        if current_summary:
+            ids_str = format_id_range(current_summary["ids"])
+            print(f"Current hunk:")
+            print(f"  {current_summary['file']}:{current_summary['line']}")
+            print(f"  [#{ids_str}]")
+            print()
+
+        print(f"Progress this iteration:")
+        print(f"  Included:  {included_count} hunks")
+        print(f"  Skipped:   {len(skipped_hunks)} hunks")
+        print(f"  Discarded: {discarded_count} hunks")
+        print(f"  Remaining: ~{remaining_estimate} hunks")
+
+        if skipped_hunks:
+            print()
+            print("Skipped hunks:")
+            for hunk in skipped_hunks:
+                ids_str = format_id_range(hunk["ids"])
+                print(f"  {hunk['file']}:{hunk['line']} [#{ids_str}]")
 
 
 def command_block_file(file_path_arg: str) -> None:

@@ -7,6 +7,7 @@ import sys
 
 from . import __version__
 from .commands import (
+    command_abort,
     command_again,
     command_block_file,
     command_discard,
@@ -200,6 +201,14 @@ def main() -> None:
         description="Clear all state (blocklist and cached hunk)",
     )
     parser_stop.set_defaults(func=lambda _: command_stop())
+
+    # abort - Undo all changes and clear state
+    parser_abort = subparsers.add_parser(
+        "abort",
+        help="Abort session and undo all changes",
+        description="Undo all changes including commits and discards, restore to session start state",
+    )
+    parser_abort.set_defaults(func=lambda _: command_abort())
 
     # status - Show current state
     parser_status = subparsers.add_parser(

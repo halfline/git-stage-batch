@@ -27,6 +27,7 @@ We follow strict commit message conventions to maintain a clear and understandab
 - **Write for drive-by reviewers with limited context.** Assume the reader does not know the project well.
 - **Use the tense that reflects the state of the project just before the commit is applied.** When discussing the old behavior, treat it as the current behavior. When discussing the changes, treat them as new behavior.
 - **Do not use `Co-Authored-By` for contributions produced from AI.** Only use it for human co-authors.
+- **Only use the word `this` when referring to the commit itself** Use `that` or similar for other contexts.
 
 ### Format
 

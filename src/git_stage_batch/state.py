@@ -81,6 +81,18 @@ def get_blocked_files_file_path() -> Path:
 def get_gitignore_path() -> Path:
     return get_git_repository_root_path() / ".gitignore"
 
+def get_abort_head_file_path() -> Path:
+    return get_state_directory_path() / "abort-head"
+
+def get_abort_stash_file_path() -> Path:
+    return get_state_directory_path() / "abort-stash"
+
+def get_abort_snapshots_directory_path() -> Path:
+    return get_state_directory_path() / "abort-snapshots"
+
+def get_abort_snapshot_list_file_path() -> Path:
+    return get_state_directory_path() / "abort-snapshot-list"
+
 
 def ensure_state_directory_exists() -> None:
     get_state_directory_path().mkdir(parents=True, exist_ok=True)

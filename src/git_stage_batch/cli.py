@@ -40,7 +40,7 @@ def main() -> None:
         version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
-        "--interactive",
+        "-i", "--interactive",
         action="store_true",
         help="Enter interactive mode (process hunks one by one)",
     )

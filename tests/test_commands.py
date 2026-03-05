@@ -561,7 +561,6 @@ class TestBlockFileCommand:
         gitignore = get_gitignore_path()
         content = gitignore.read_text()
         assert "unwanted.txt" in content
-        assert "# git-stage-batch: blocked" in content
 
         captured = capsys.readouterr()
         assert "Blocked file: unwanted.txt" in captured.err
@@ -662,7 +661,6 @@ class TestBlockFileCommand:
         gitignore = get_gitignore_path()
         content = gitignore.read_text()
         assert "blocked.txt\n" in content
-        assert "# git-stage-batch: blocked" in content
 
 
 class TestUnblockFileCommand:
@@ -747,23 +745,23 @@ class TestUnblockFileCommand:
         assert "temp.txt" not in blocked
         assert "temp.txt" not in get_gitignore_path().read_text()
 
-    def test_unblock_preserves_manual_gitignore_entries(self, temp_git_repo, capsys):
-        """Test that unblock doesn't remove manual .gitignore entries."""
+    def test_unblock_removes_gitignore_entries(self, temp_git_repo, capsys):
+        """Test that unblock removes .gitignore entries."""
         from git_stage_batch.state import get_gitignore_path
 
-        # Create .gitignore with manual entry
+        # Create .gitignore with entry
         gitignore = get_gitignore_path()
         gitignore.write_text("manual_entry.txt\n")
 
-        # Try to unblock it (shouldn't remove it)
+        # Unblock it (should remove it)
         command_unblock_file("manual_entry.txt")
 
-        # Manual entry should still be there
+        # Entry should be removed
         content = gitignore.read_text()
-        assert "manual_entry.txt" in content
+        assert "manual_entry.txt" not in content
 
         captured = capsys.readouterr()
-        assert "was not in .gitignore with our marker" in captured.err
+        assert "Unblocked file: manual_entry.txt" in captured.err
 
 
 class TestCleanupAutoAddedFiles:
@@ -1189,7 +1187,6 @@ class TestCommandInteractive:
         # Check that file was added to .gitignore
         gitignore_content = (temp_git_repo / ".gitignore").read_text()
         assert "temp.txt" in gitignore_content
-        assert "# git-stage-batch: blocked" in gitignore_content
 
     def test_interactive_unknown_option(self, temp_git_repo, capsys):
         """Test interactive mode with unknown option."""

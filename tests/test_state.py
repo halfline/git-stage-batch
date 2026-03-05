@@ -440,11 +440,6 @@ class TestGitignoreManipulation:
 
         lines = read_gitignore_lines()
         assert "test.txt\n" in lines
-        assert "# git-stage-batch: blocked\n" in lines
-
-        # Verify they're consecutive
-        idx = lines.index("test.txt\n")
-        assert lines[idx + 1] == "# git-stage-batch: blocked\n"
 
     def test_add_file_to_gitignore_existing(self, temp_git_repo):
         """Test adding a file to existing .gitignore."""
@@ -457,7 +452,6 @@ class TestGitignoreManipulation:
         assert "*.pyc\n" in lines
         assert "__pycache__/\n" in lines
         assert "test.txt\n" in lines
-        assert "# git-stage-batch: blocked\n" in lines
 
     def test_add_file_to_gitignore_no_duplicates(self, temp_git_repo):
         """Test adding a file twice doesn't create duplicates."""
@@ -476,10 +470,10 @@ class TestGitignoreManipulation:
         add_file_to_gitignore("test.txt")
 
         content = gitignore.read_text()
-        assert content == "*.pyc\ntest.txt\n# git-stage-batch: blocked\n"
+        assert content == "*.pyc\ntest.txt\n"
 
     def test_remove_file_from_gitignore_with_marker(self, temp_git_repo):
-        """Test removing a file from .gitignore that has our marker."""
+        """Test removing a file from .gitignore."""
         add_file_to_gitignore("test.txt")
 
         removed = remove_file_from_gitignore("test.txt")
@@ -487,19 +481,20 @@ class TestGitignoreManipulation:
 
         lines = read_gitignore_lines()
         assert "test.txt\n" not in lines
-        assert "# git-stage-batch: blocked\n" not in lines
 
     def test_remove_file_from_gitignore_without_marker(self, temp_git_repo):
-        """Test that we don't remove entries without our marker."""
+        """Test that we can remove any entry from .gitignore."""
         gitignore = get_gitignore_path()
         gitignore.write_text("test.txt\n*.pyc\n")
 
         removed = remove_file_from_gitignore("test.txt")
-        assert removed is False
+        assert removed is True
 
-        # Entry should still be there
+        # Entry should be removed
         lines = read_gitignore_lines()
-        assert "test.txt\n" in lines
+        assert "test.txt\n" not in lines
+        # Other entries should remain
+        assert "*.pyc\n" in lines
 
     def test_remove_file_from_gitignore_preserves_other_entries(self, temp_git_repo):
         """Test that removing one entry preserves others."""

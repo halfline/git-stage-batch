@@ -155,8 +155,6 @@ def resolve_file_path_to_repo_relative(file_path: str) -> str:
 
 # --------------------------- .gitignore manipulation ---------------------------
 
-GITIGNORE_MARKER = "# git-stage-batch: blocked"
-
 def read_gitignore_lines() -> list[str]:
     """Read .gitignore file, returning lines preserving original formatting."""
     gitignore_path = get_gitignore_path()
@@ -173,28 +171,25 @@ def write_gitignore_lines(lines: list[str]) -> None:
     write_text_file_contents(gitignore_path, content)
 
 def add_file_to_gitignore(file_path: str) -> None:
-    """Add a file path to .gitignore with marker comment."""
+    """Add a file path to .gitignore."""
     lines = read_gitignore_lines()
 
-    # Check if already present (with our marker)
+    # Check if already present
     file_path_normalized = file_path.rstrip("\n")
-    for i, line in enumerate(lines):
+    for line in lines:
         if line.rstrip("\n") == file_path_normalized:
-            # Check if next line has our marker
-            if i + 1 < len(lines) and GITIGNORE_MARKER in lines[i + 1]:
-                return  # Already added by us
+            return  # Already present
 
-    # Add to end with marker
+    # Add to end
     if lines and not lines[-1].endswith("\n"):
         lines[-1] += "\n"
 
     lines.append(f"{file_path}\n")
-    lines.append(f"{GITIGNORE_MARKER}\n")
 
     write_gitignore_lines(lines)
 
 def remove_file_from_gitignore(file_path: str) -> bool:
-    """Remove a file path from .gitignore (only if it has our marker). Returns True if removed."""
+    """Remove a file path from .gitignore. Returns True if removed."""
     lines = read_gitignore_lines()
     file_path_normalized = file_path.rstrip("\n")
 
@@ -202,12 +197,10 @@ def remove_file_from_gitignore(file_path: str) -> bool:
     removed = False
     while i < len(lines):
         if lines[i].rstrip("\n") == file_path_normalized:
-            # Check if next line has our marker
-            if i + 1 < len(lines) and GITIGNORE_MARKER in lines[i + 1]:
-                # Remove both the path and the marker
-                del lines[i:i+2]
-                removed = True
-                continue  # Don't increment i, check same position again
+            # Remove the path
+            del lines[i]
+            removed = True
+            continue  # Don't increment i, check same position again
         i += 1
 
     if removed:

@@ -479,6 +479,9 @@ def command_discard() -> None:
             clear_current_hunk_state_files()
             exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
 
+        # Snapshot file if untracked before discarding
+        snapshot_file_if_untracked(file_path)
+
     try:
         run_git_command(["apply", "-R", str(get_current_hunk_patch_file_path())])
     except Exception as error:
@@ -504,6 +507,9 @@ def command_include_line(line_id_specification: str) -> None:
     current_lines = load_current_lines_from_state()
     # Save the current file path before modifying index
     current_file_path = current_lines.path
+
+    # Snapshot file if untracked before modifying
+    snapshot_file_if_untracked(current_file_path)
 
     base_text = read_text_file_contents(get_index_snapshot_file_path())
     target_index_content = build_target_index_content_with_selected_lines(current_lines, combined_include_ids, base_text)
@@ -545,6 +551,9 @@ def command_discard_line(line_id_specification: str) -> None:
 
     # Save the current file path before modifying working tree
     current_file_path = current_lines.path
+
+    # Snapshot file if untracked before discarding lines
+    snapshot_file_if_untracked(current_file_path)
 
     new_working_text = build_target_working_tree_content_with_discarded_lines(current_lines, discard_ids, working_text)
     write_text_file_contents(absolute_path, new_working_text)

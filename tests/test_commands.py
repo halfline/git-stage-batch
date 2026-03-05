@@ -330,17 +330,19 @@ class TestCommandStatus:
         command_status()
 
         captured = capsys.readouterr()
-        assert "current:" in captured.out
+        assert "Session: iteration 1 (in progress)" in captured.out
+        assert "Current hunk:" in captured.out
         assert "test.txt" in captured.out
-        assert "remaining lines:" in captured.out
+        assert "Progress this iteration:" in captured.out
 
     def test_status_without_current_hunk(self, temp_git_repo, capsys):
         """Test status without a current hunk."""
         command_status()
 
         captured = capsys.readouterr()
-        assert "current: none" in captured.out
-        assert "blocked: 0" in captured.out
+        assert "Session: iteration 1 (complete)" in captured.out
+        assert "Progress this iteration:" in captured.out
+        assert "Included:  0 hunks" in captured.out
 
     def test_status_porcelain_output(self, temp_git_repo):
         """Test status with --porcelain flag outputs JSON."""
@@ -367,17 +369,26 @@ class TestCommandStatus:
         status_data = json.loads(result.stdout)
 
         # Verify structure
-        assert "current_hunk" in status_data
-        assert "remaining_line_ids" in status_data
-        assert "blocked_hunks" in status_data
-        assert "state_directory" in status_data
+        assert "session" in status_data
+        assert "current" in status_data
+        assert "progress" in status_data
+        assert "skipped_hunks" in status_data
 
-        # Verify values
-        assert status_data["current_hunk"] is not None
-        assert "test.txt" in status_data["current_hunk"]
-        assert isinstance(status_data["remaining_line_ids"], list)
-        assert len(status_data["remaining_line_ids"]) > 0
-        assert status_data["blocked_hunks"] == 0
+        # Verify session
+        assert status_data["session"]["iteration"] == 1
+        assert status_data["session"]["in_progress"] is True
+
+        # Verify current hunk
+        assert status_data["current"] is not None
+        assert "test.txt" in status_data["current"]["file"]
+
+        # Verify progress
+        assert "included" in status_data["progress"]
+        assert "skipped" in status_data["progress"]
+        assert "discarded" in status_data["progress"]
+        assert "remaining" in status_data["progress"]
+        assert status_data["progress"]["included"] == 0
+        assert status_data["progress"]["remaining"] >= 0
 
 
 class TestIntegrationWorkflow:

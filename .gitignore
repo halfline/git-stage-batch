@@ -48,3 +48,7 @@ htmlcov/
 .pyre/
 .claude/settings.local.json
 # git-stage-batch: blocked
+
+# Documentation
+/site/
+docs/assets/demo.gif

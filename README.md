@@ -374,3 +374,19 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for commit message guidelines and develop
 ## License
 
 MIT
+
+## Documentation
+
+Full documentation available at: https://halfline.github.io/git-stage-batch/
+
+To deploy updated documentation:
+
+```bash
+# Generate demo GIF (not in git, auto-generated)
+./scripts/generate-demo.sh
+
+# Deploy to GitHub Pages
+uv run mkdocs gh-deploy
+```
+
+See [docs/assets/README.md](docs/assets/README.md) for details on the demo generation process.

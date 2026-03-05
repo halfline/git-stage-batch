@@ -93,12 +93,25 @@ def get_abort_snapshots_directory_path() -> Path:
 def get_abort_snapshot_list_file_path() -> Path:
     return get_state_directory_path() / "abort-snapshot-list"
 
+def get_context_lines_file_path() -> Path:
+    return get_state_directory_path() / "context-lines"
+
 
 def ensure_state_directory_exists() -> None:
     get_state_directory_path().mkdir(parents=True, exist_ok=True)
     get_block_list_file_path().touch(exist_ok=True)
     get_auto_added_files_file_path().touch(exist_ok=True)
     get_blocked_files_file_path().touch(exist_ok=True)
+
+def get_context_lines() -> int:
+    """Get stored context lines value, defaulting to 3."""
+    context_file = get_context_lines_file_path()
+    if context_file.exists():
+        try:
+            return int(read_text_file_contents(context_file).strip())
+        except ValueError:
+            return 3
+    return 3
 
 def clear_current_hunk_state_files() -> None:
     for path in (

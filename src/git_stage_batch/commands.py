@@ -42,6 +42,8 @@ from .state import (
     get_auto_added_files_file_path,
     get_blocked_files_file_path,
     get_block_list_file_path,
+    get_context_lines,
+    get_context_lines_file_path,
     get_current_hunk_hash_file_path,
     get_current_hunk_patch_file_path,
     get_current_lines_json_file_path,
@@ -196,7 +198,7 @@ def _recalculate_current_hunk_for_file(file_path: str) -> None:
 
     # Get fresh diff
     auto_add_untracked_files()
-    diff_text = run_git_command(["diff", "-U3", "--no-color"], check=False).stdout
+    diff_text = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"], check=False).stdout
 
     if not diff_text.strip():
         clear_current_hunk_state_files()
@@ -273,7 +275,7 @@ def auto_add_untracked_files() -> None:
 def find_and_cache_next_unblocked_hunk() -> bool:
     """Find the next hunk that isn't blocked and cache it as current."""
     auto_add_untracked_files()
-    diff_text = run_git_command(["diff", "-U3", "--no-color"], check=False).stdout
+    diff_text = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"], check=False).stdout
     if not diff_text.strip():
         print("No pending hunks.", file=sys.stderr)
         return False
@@ -372,7 +374,7 @@ def snapshot_file_if_untracked(file_path: str) -> None:
 
 # --------------------------- Command handlers ---------------------------
 
-def command_start() -> None:
+def command_start(unified: int = 3) -> None:
     """Find and display the first unprocessed hunk."""
     require_git_repository()
 
@@ -385,6 +387,9 @@ def command_start() -> None:
 
     # Ensure state directory exists before initializing abort state
     ensure_state_directory_exists()
+
+    # Save context lines for this session
+    write_text_file_contents(get_context_lines_file_path(), str(unified))
 
     # Initialize abort state for new session
     initialize_abort_state()
@@ -576,7 +581,7 @@ def command_include_file() -> None:
 
     # Get all hunks from diff
     auto_add_untracked_files()
-    diff_text = run_git_command(["diff", "-U3", "--no-color"], check=False).stdout
+    diff_text = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"], check=False).stdout
     if not diff_text.strip():
         return
 
@@ -630,7 +635,7 @@ def command_skip_file() -> None:
 
     # Get all hunks from diff
     auto_add_untracked_files()
-    diff_text = run_git_command(["diff", "-U3", "--no-color"], check=False).stdout
+    diff_text = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"], check=False).stdout
     if not diff_text.strip():
         return
 

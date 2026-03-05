@@ -44,7 +44,7 @@ Create atomic, well-structured commits with fine-grained control over what gets 
 
 ![git-stage-batch demo](assets/demo.gif)
 
-*Complete workflow: start → include → skip → status → commit → again → discard*
+*Creating atomic commits: bug fix, validation feature, and build artifact exclusion*
 
 ## Why git-stage-batch?
 

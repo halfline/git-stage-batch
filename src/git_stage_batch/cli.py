@@ -57,7 +57,14 @@ def main() -> None:
         help="Find and display the first unprocessed hunk",
         description="Find and display the first unprocessed hunk; cache as 'current'",
     )
-    parser_start.set_defaults(func=lambda _: command_start())
+    parser_start.add_argument(
+        "-U", "--unified",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Number of context lines in diff output (default: 3)",
+    )
+    parser_start.set_defaults(func=lambda args: command_start(unified=args.unified))
 
     # show - Reprint the cached current hunk
     parser_show = subparsers.add_parser(

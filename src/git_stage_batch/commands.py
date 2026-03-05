@@ -746,12 +746,9 @@ def command_again() -> None:
     next_iteration = get_iteration_count() + 1
 
     # Clear all state
-    try:
-        for path in get_state_directory_path().glob("*"):
-            path.unlink(missing_ok=True)
-        get_state_directory_path().rmdir()
-    except Exception:
-        pass
+    state_dir = get_state_directory_path()
+    if state_dir.exists():
+        shutil.rmtree(state_dir)
     ensure_state_directory_exists()
 
     # Restore persistent state
@@ -772,12 +769,10 @@ def command_stop() -> None:
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
         for file_path in auto_added:
             run_git_command(["reset", "--", file_path], check=False)
-    try:
-        for path in get_state_directory_path().glob("*"):
-            path.unlink(missing_ok=True)
-        get_state_directory_path().rmdir()
-    except Exception:
-        pass
+
+    state_dir = get_state_directory_path()
+    if state_dir.exists():
+        shutil.rmtree(state_dir)
     print("✓ State cleared.")
 
 
@@ -842,16 +837,9 @@ def command_abort() -> None:
             print(f"⚠ Warning: Could not apply stash cleanly: {result.stderr}", file=sys.stderr)
 
     # Clear all state
-    try:
-        for path in get_state_directory_path().glob("*"):
-            if path.is_dir():
-                import shutil
-                shutil.rmtree(path)
-            else:
-                path.unlink(missing_ok=True)
-        get_state_directory_path().rmdir()
-    except Exception:
-        pass
+    state_dir = get_state_directory_path()
+    if state_dir.exists():
+        shutil.rmtree(state_dir)
 
     print("✓ Session aborted. All changes reverted.", file=sys.stderr)
 

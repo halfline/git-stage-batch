@@ -14,6 +14,7 @@ from .editor import (
 )
 from .hashing import compute_stable_hunk_hash
 from .line_selection import (
+    format_line_ids_as_ranges,
     parse_line_id_specification,
     read_line_ids_file,
     write_line_ids_file,
@@ -583,7 +584,7 @@ def command_status(porcelain: bool = False) -> None:
         if current_hunk:
             print("current:", current_hunk)
             if remaining_line_ids:
-                print("remaining lines:", ",".join(map(str, remaining_line_ids)))
+                print("remaining lines:", format_line_ids_as_ranges(remaining_line_ids))
             else:
                 print("remaining lines: 0")
         else:

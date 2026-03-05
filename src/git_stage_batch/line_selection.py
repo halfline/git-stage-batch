@@ -39,6 +39,50 @@ def parse_line_id_specification(specification: str) -> list[int]:
     return sorted(result)
 
 
+def format_line_ids_as_ranges(ids: list[int]) -> str:
+    """
+    Format a list of integers as a compact range string.
+
+    Examples:
+    - [1, 2, 3, 4, 5] -> "1-5"
+    - [1, 3, 5] -> "1,3,5"
+    - [1, 2, 3, 5, 7, 8, 9] -> "1-3,5,7-9"
+    - [] -> ""
+    """
+    if not ids:
+        return ""
+
+    sorted_ids = sorted(set(ids))
+    ranges: list[str] = []
+    range_start = sorted_ids[0]
+    range_end = sorted_ids[0]
+
+    for i in range(1, len(sorted_ids)):
+        if sorted_ids[i] == range_end + 1:
+            # Continue current range
+            range_end = sorted_ids[i]
+        else:
+            # End current range and start a new one
+            if range_start == range_end:
+                ranges.append(str(range_start))
+            elif range_end == range_start + 1:
+                ranges.append(f"{range_start},{range_end}")
+            else:
+                ranges.append(f"{range_start}-{range_end}")
+            range_start = sorted_ids[i]
+            range_end = sorted_ids[i]
+
+    # Add the final range
+    if range_start == range_end:
+        ranges.append(str(range_start))
+    elif range_end == range_start + 1:
+        ranges.append(f"{range_start},{range_end}")
+    else:
+        ranges.append(f"{range_start}-{range_end}")
+
+    return ",".join(ranges)
+
+
 def read_line_ids_file(path: Path) -> list[int]:
     """Read a file containing line IDs (one per line) and return as a list."""
     if not path.exists():

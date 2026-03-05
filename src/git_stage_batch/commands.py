@@ -9,7 +9,7 @@ import subprocess
 import sys
 from typing import Any
 
-from .display import print_annotated_hunk_with_aligned_gutter
+from .display import Colors, print_annotated_hunk_with_aligned_gutter
 from .editor import (
     build_target_index_content_with_selected_lines,
     build_target_working_tree_content_with_discarded_lines,
@@ -1033,7 +1033,22 @@ def confirm_destructive_operation(operation: str, message: str) -> bool:
 
 def print_interactive_help() -> None:
     """Print help for interactive mode."""
-    print("""
+    use_color = Colors.enabled()
+
+    if use_color:
+        print(f"""
+{Colors.BOLD}y{Colors.RESET} - yes, stage this hunk
+{Colors.BOLD}n{Colors.RESET} - no, skip this hunk for now
+{Colors.BOLD}d{Colors.RESET} - discard this hunk from working tree
+{Colors.BOLD}q{Colors.RESET} - quit interactive mode
+{Colors.BOLD}a{Colors.RESET} - stage this hunk and all remaining hunks
+{Colors.BOLD}l{Colors.RESET} - interactively select lines from this hunk
+{Colors.BOLD}f{Colors.RESET} - stage or skip all hunks in current file
+{Colors.BOLD}b{Colors.RESET} - block current file (add to .gitignore)
+{Colors.BOLD}?{Colors.RESET} - print help
+""")
+    else:
+        print("""
 y - yes, stage this hunk
 n - no, skip this hunk for now
 d - discard this hunk from working tree
@@ -1048,6 +1063,7 @@ b - block current file (add to .gitignore)
 
 def handle_interactive_line_selection() -> None:
     """Handle line-level selection in interactive mode."""
+    use_color = Colors.enabled()
     current_lines = load_current_lines_from_state()
     changed_ids = current_lines.changed_line_ids()
 
@@ -1055,16 +1071,27 @@ def handle_interactive_line_selection() -> None:
         print("No changed lines in this hunk")
         return
 
-    print(f"Changed line IDs: {','.join(map(str, changed_ids))}")
+    if use_color:
+        print(f"{Colors.CYAN}Changed line IDs:{Colors.RESET} {','.join(map(str, changed_ids))}")
+    else:
+        print(f"Changed line IDs: {','.join(map(str, changed_ids))}")
 
     try:
-        action = input("Action for lines [i]nclude, [s]kip, or [d]iscard? ").strip().lower()
+        if use_color:
+            action = input(f"Action for lines {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude, {Colors.BOLD}[s]{Colors.RESET}kip, or {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard? ").strip().lower()
+        else:
+            action = input("Action for lines [i]nclude, [s]kip, or [d]iscard? ").strip().lower()
+
         if action not in ('i', 's', 'd'):
             print("Cancelled")
             print_annotated_hunk_with_aligned_gutter(current_lines)
             return
 
-        line_spec = input("Enter line IDs (e.g., 1,3,5-7): ").strip()
+        if use_color:
+            line_spec = input(f"{Colors.BOLD}Enter line IDs{Colors.RESET} (e.g., 1,3,5-7): ").strip()
+        else:
+            line_spec = input("Enter line IDs (e.g., 1,3,5-7): ").strip()
+
         if not line_spec:
             print("Cancelled")
             print_annotated_hunk_with_aligned_gutter(current_lines)
@@ -1083,10 +1110,15 @@ def handle_interactive_line_selection() -> None:
 
 def handle_interactive_file_selection() -> None:
     """Handle file-level selection in interactive mode."""
+    use_color = Colors.enabled()
     current_lines = load_current_lines_from_state()
 
     try:
-        action = input(f"Action for all hunks in {current_lines.path} - [i]nclude or [s]kip? ").strip().lower()
+        if use_color:
+            action = input(f"Action for all hunks in {Colors.BOLD}{current_lines.path}{Colors.RESET} - {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude or {Colors.BOLD}[s]{Colors.RESET}kip? ").strip().lower()
+        else:
+            action = input(f"Action for all hunks in {current_lines.path} - [i]nclude or [s]kip? ").strip().lower()
+
         if action == 'i':
             command_include_file()
         elif action == 's':
@@ -1147,19 +1179,34 @@ def command_interactive() -> None:
 
     # Main interactive loop
     while get_current_hunk_patch_file_path().exists():
-        # Show beginner-friendly prompt
+        # Show beginner-friendly prompt with colors
+        use_color = Colors.enabled()
         print()
-        print("What do you want to do with this hunk?")
-        print("  [i]nclude  - Stage this hunk to the index")
-        print("  [s]kip     - Skip this hunk for now")
-        print("  [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
-        print("  [q]uit     - Exit interactive mode")
-        print()
-        print("More options: [a]ll, [l]ines, [f]ile, [b]lock, [?]help")
+
+        if use_color:
+            print(f"{Colors.BOLD}What do you want to do with this hunk?{Colors.RESET}")
+            print(f"  {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude  - Stage this hunk to the index")
+            print(f"  {Colors.BOLD}[s]{Colors.RESET}kip     - Skip this hunk for now")
+            print(f"  {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
+            print(f"  {Colors.BOLD}[q]{Colors.RESET}uit     - Exit interactive mode")
+            print()
+            print(f"{Colors.CYAN}More options:{Colors.RESET} {Colors.BOLD}[a]{Colors.RESET}ll, {Colors.BOLD}[l]{Colors.RESET}ines, {Colors.BOLD}[f]{Colors.RESET}ile, {Colors.BOLD}[b]{Colors.RESET}lock, {Colors.BOLD}[?]{Colors.RESET}help")
+        else:
+            print("What do you want to do with this hunk?")
+            print("  [i]nclude  - Stage this hunk to the index")
+            print("  [s]kip     - Skip this hunk for now")
+            print("  [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
+            print("  [q]uit     - Exit interactive mode")
+            print()
+            print("More options: [a]ll, [l]ines, [f]ile, [b]lock, [?]help")
+
         print()
 
         try:
-            choice = input("Action: ").strip().lower()
+            if use_color:
+                choice = input(f"{Colors.BOLD}Action:{Colors.RESET} ").strip().lower()
+            else:
+                choice = input("Action: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()  # New line after ^C
             break

@@ -42,7 +42,10 @@ def parse_unified_diff_into_single_hunk_patches(diff_text: str) -> list[SingleHu
         if current_hunk_buffer:
             hunk_lists.append(current_hunk_buffer)
         for hunk in hunk_lists:
-            lines = [f"--- a/{old_path_value}", f"+++ b/{new_path_value}", *hunk]
+            # Absolute paths (like /dev/null) don't get a/ or b/ prefix
+            old_header = f"--- {old_path_value}" if Path(old_path_value).is_absolute() else f"--- a/{old_path_value}"
+            new_header = f"+++ {new_path_value}" if Path(new_path_value).is_absolute() else f"+++ b/{new_path_value}"
+            lines = [old_header, new_header, *hunk]
             single_hunk_patches.append(SingleHunkPatch(old_path_value, new_path_value, lines))
 
     for raw_line in diff_text.splitlines():

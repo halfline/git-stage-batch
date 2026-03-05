@@ -597,6 +597,23 @@ def command_discard() -> None:
         stdout = getattr(error, 'stdout', '').strip() if hasattr(error, 'stdout') else ''
         exit_with_error(f"Failed to discard hunk: {stderr or stdout or 'git apply -R failed.'}")
 
+    # After reverse-applying a new file, delete it if it became empty
+    # (git apply -R on new files empties them but doesn't delete them)
+    if get_current_lines_json_file_path().exists():
+        data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+        file_path = data["path"]
+
+        # Check if this was a new file by looking at the patch header
+        patch_content = read_text_file_contents(get_current_hunk_patch_file_path())
+        is_new_file = "--- /dev/null" in patch_content
+
+        if is_new_file:
+            absolute_path = get_git_repository_root_path() / file_path
+            if absolute_path.exists():
+                content = read_text_file_contents(absolute_path)
+                if not content.strip():  # File is empty
+                    absolute_path.unlink()
+
     # Record hunk as discarded for progress tracking
     hunk_hash = read_text_file_contents(get_current_hunk_hash_file_path()).strip()
     record_hunk_discarded(hunk_hash)

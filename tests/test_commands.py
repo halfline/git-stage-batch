@@ -1163,8 +1163,8 @@ class TestCommandInteractive:
         # Make a change
         (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
 
-        # Mock user input: 'd' to discard, 'no' to cancel, 'q' to quit
-        with patch('builtins.input', side_effect=['d', 'no', 'q']):
+        # Mock user input: 'd' to discard, 'no' to cancel, 'q' to quit, 'y' to keep changes
+        with patch('builtins.input', side_effect=['d', 'no', 'q', 'y']):
             command_interactive()
 
         # Check that change is still in working tree
@@ -1181,8 +1181,8 @@ class TestCommandInteractive:
         # Make a change
         (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
 
-        # Mock user input: '?' for help, 'q' to quit
-        with patch('builtins.input', side_effect=['?', 'q']):
+        # Mock user input: '?' for help, 'q' to quit, 'k' to keep changes
+        with patch('builtins.input', side_effect=['?', 'q', 'y']):
             command_interactive()
 
         # Check that help was displayed
@@ -1218,8 +1218,8 @@ class TestCommandInteractive:
         (temp_git_repo / "file1.txt").write_text("change1\n")
         (temp_git_repo / "file2.txt").write_text("change2\n")
 
-        # Mock user input: 'a' for all, 'no' to cancel, 'q' to quit
-        with patch('builtins.input', side_effect=['a', 'no', 'q']):
+        # Mock user input: 'a' for all, 'no' to cancel, 'q' to quit, 'k' to keep changes
+        with patch('builtins.input', side_effect=['a', 'no', 'q', 'y']):
             command_interactive()
 
         # Check that nothing was staged
@@ -1236,8 +1236,8 @@ class TestCommandInteractive:
         # Make a change
         (temp_git_repo / "temp.txt").write_text("temporary\n")
 
-        # Mock user input: 'b' to block, 'yes' to confirm, 'q' to quit (after .gitignore hunk)
-        with patch('builtins.input', side_effect=['b', 'yes', 'q']):
+        # Mock user input: 'b' to block, 'yes' to confirm, 'q' to quit (after .gitignore hunk), 'k' to keep changes
+        with patch('builtins.input', side_effect=['b', 'yes', 'q', 'y']):
             command_interactive()
 
         # Check that file was added to .gitignore
@@ -1249,8 +1249,8 @@ class TestCommandInteractive:
         # Make a change
         (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
 
-        # Mock user input: 'x' (unknown), 'q' to quit
-        with patch('builtins.input', side_effect=['x', 'q']):
+        # Mock user input: 'x' (unknown), 'q' to quit, 'k' to keep changes
+        with patch('builtins.input', side_effect=['x', 'q', 'y']):
             command_interactive()
 
         # Check that unknown option message was displayed
@@ -1262,8 +1262,8 @@ class TestCommandInteractive:
         # Make a change
         (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
 
-        # Mock user input: '' (empty), 'q' to quit
-        with patch('builtins.input', side_effect=['', 'q']):
+        # Mock user input: '' (empty), 'q' to quit, 'k' to keep changes
+        with patch('builtins.input', side_effect=['', 'q', 'y']):
             command_interactive()
 
         # Check that hunk was redisplayed (captured output should contain the hunk twice)
@@ -1291,4 +1291,129 @@ class TestCommandInteractive:
         with pytest.raises(SystemExit) as exc_info:
             command_interactive()
         assert exc_info.value.code == 2
+
+    def test_interactive_quit_with_keep(self, temp_git_repo):
+        """Test quit with keep option clears state but preserves staged changes."""
+        # Modify existing tracked file (test.txt), not new files
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Add another tracked file to have multiple hunks
+        (temp_git_repo / "other.txt").write_text("other content\n")
+        subprocess.run(["git", "add", "other.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "add other"], cwd=temp_git_repo, check=True)
+        (temp_git_repo / "other.txt").write_text("modified other\n")
+
+        # Mock user input: 'i' to include first, 'q' to quit before second, 'k' to keep changes
+        with patch('builtins.input', side_effect=['i', 'q', 'y']):
+            command_interactive()
+
+        # Check that first change is staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        # Should have either test.txt or other.txt staged (whichever came first)
+        assert len(result.stdout) > 0
+
+        # Check that state is cleared
+        state_dir = temp_git_repo / ".git" / "git-stage-batch"
+        assert not state_dir.exists()
+
+    def test_interactive_quit_with_undo(self, temp_git_repo):
+        """Test quit with undo option reverts session changes and restores to session start state."""
+        # Create test.txt with enough lines to get two separate hunks
+        lines = [f"line{i}\n" for i in range(1, 21)]
+        (temp_git_repo / "test.txt").write_text("".join(lines))
+        subprocess.run(["git", "add", "test.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "update test"], cwd=temp_git_repo, check=True)
+
+        # Make changes at line 1 and line 20 (these are the "session start" changes)
+        lines[0] = "modified1\n"
+        lines[19] = "modified20\n"
+        session_start_content = "".join(lines)
+        (temp_git_repo / "test.txt").write_text(session_start_content)
+
+        # Mock user input: 'i' to include first hunk, 'q' to quit before second, 'n' to undo
+        with patch('builtins.input', side_effect=['i', 'q', 'n']):
+            command_interactive()
+
+        # Check that staged changes are reverted
+        result_staged = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert result_staged.stdout == ""
+
+        # Check that working tree is restored to session start state (with the original modifications)
+        assert (temp_git_repo / "test.txt").read_text() == session_start_content
+
+    def test_interactive_quit_with_cancel(self, temp_git_repo):
+        """Test quit with cancel returns to interactive mode."""
+        # Make multiple changes to get multiple hunks
+        (temp_git_repo / "file1.txt").write_text("modified1\n")
+        (temp_git_repo / "file2.txt").write_text("modified2\n")
+
+        # Mock user input: 'i' to include first, 'q' to quit, Ctrl-C to cancel, 'i' to include second, 'q' to quit, 'y' to keep
+        with patch('builtins.input', side_effect=['i', 'q', KeyboardInterrupt(), 'i', 'q', 'y']):
+            command_interactive()
+
+        # Check that both changes were staged (because we cancelled the first quit and continued)
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert "file1.txt" in result.stdout
+        assert "file2.txt" in result.stdout
+
+    def test_interactive_quit_without_changes(self, temp_git_repo):
+        """Test quit without any changes exits immediately without prompting."""
+        # Make changes to working tree
+        (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
+
+        # Mock user input: 'q' to quit immediately (no include/skip/discard)
+        # Should exit without prompting since HEAD and index are unchanged
+        with patch('builtins.input', side_effect=['q']):
+            command_interactive()
+
+        # Check that nothing was staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+        assert result.stdout == ""
+
+        # Check that state was cleared
+        state_dir = temp_git_repo / ".git" / "git-stage-batch"
+        assert not state_dir.exists()
+
+    def test_interactive_quit_after_discarding_untracked_file(self, temp_git_repo):
+        """Test quit after discarding file prompts even when HEAD/index unchanged."""
+        # Create an untracked file and another untracked file
+        (temp_git_repo / "aaa-first.txt").write_text("first\n")
+        (temp_git_repo / "zzz-last.txt").write_text("last\n")
+
+        # Mock user input:
+        # - 'd' to discard aaa-first.txt (shown first), 'y' to confirm
+        # - 'q' to quit on zzz-last.txt
+        # - 'y' to keep (prompt should appear because aaa-first.txt was discarded)
+        with patch('builtins.input', side_effect=['d', 'y', 'q', 'y']):
+            command_interactive()
+
+        # Check that the first file was discarded
+        assert not (temp_git_repo / "aaa-first.txt").exists()
+
+        # Check that state was cleared (confirming quit prompt appeared)
+        state_dir = temp_git_repo / ".git" / "git-stage-batch"
+        assert not state_dir.exists()
+
+        # Last file should still exist (we quit before processing it)
+        assert (temp_git_repo / "zzz-last.txt").exists()
 

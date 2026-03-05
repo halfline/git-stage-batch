@@ -55,6 +55,8 @@ from .state import (
     get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
+    get_start_head_file_path,
+    get_start_index_tree_file_path,
     get_state_directory_path,
     get_working_tree_snapshot_file_path,
     read_file_paths_file,
@@ -1031,6 +1033,29 @@ def confirm_destructive_operation(operation: str, message: str) -> bool:
         return False
 
 
+def prompt_quit_session() -> str:
+    """Prompt user for what to do when quitting. Returns 'keep', 'undo', or 'cancel'."""
+    use_color = Colors.enabled()
+    print()
+
+    try:
+        while True:
+            if use_color:
+                response = input(f"{Colors.BOLD}Keep staged changes?{Colors.RESET} {Colors.BOLD}{Colors.GREEN}[y]{Colors.RESET}es / {Colors.BOLD}{Colors.RED}[n]{Colors.RESET}o: ").strip().lower()
+            else:
+                response = input("Keep staged changes? [y]es / [n]o: ").strip().lower()
+
+            if response in ('y', 'yes'):
+                return 'keep'
+            elif response in ('n', 'no'):
+                return 'undo'
+            else:
+                print(f"Invalid response: '{response}'")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return 'cancel'
+
+
 def print_interactive_help() -> None:
     """Print help for interactive mode."""
     use_color = Colors.enabled()
@@ -1169,6 +1194,13 @@ def command_interactive() -> None:
     state_dir = get_state_directory_path()
     if not state_dir.exists() or not any(state_dir.iterdir()):
         ensure_state_directory_exists()
+        # Initialize abort state for new session
+        initialize_abort_state()
+        # Record starting state for quit check
+        start_head = run_git_command(["rev-parse", "HEAD"]).stdout.strip()
+        start_index_tree = run_git_command(["write-tree"]).stdout.strip()
+        write_text_file_contents(get_start_head_file_path(), start_head)
+        write_text_file_contents(get_start_index_tree_file_path(), start_index_tree)
         clear_current_hunk_state_files()
         if not find_and_cache_next_unblocked_hunk():
             sys.exit(2)
@@ -1229,8 +1261,37 @@ def command_interactive() -> None:
                 print("Cancelled.")
                 print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice in ('q', 'quit'):
-            # Quit interactive mode
-            break
+            # Quit interactive mode - check if the session made any changes
+            # Compare current state against start state
+            start_head = read_text_file_contents(get_start_head_file_path()).strip()
+            start_index_tree = read_text_file_contents(get_start_index_tree_file_path()).strip()
+
+            end_head = run_git_command(["rev-parse", "HEAD"]).stdout.strip()
+            end_index_tree = run_git_command(["write-tree"]).stdout.strip()
+
+            # Check if any files were discarded (snapshots created)
+            snapshot_list = get_abort_snapshot_list_file_path()
+            files_were_discarded = snapshot_list.exists() and bool(read_file_paths_file(snapshot_list))
+
+            # If HEAD, index tree are unchanged, and no files were discarded, nothing is pending
+            # (Note: working tree is expected to have changes - that's what we're reviewing)
+            if start_head == end_head and start_index_tree == end_index_tree and not files_were_discarded:
+                # Session made no changes, just clear and exit
+                command_stop()
+                break
+
+            # Prompt for what to do with changes
+            action = prompt_quit_session()
+            if action == 'keep':
+                command_stop()
+                break
+            elif action == 'undo':
+                command_abort()
+                break
+            else:  # cancel
+                print("Continuing interactive mode...")
+                if get_current_hunk_patch_file_path().exists():
+                    print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice in ('a', 'all'):
             # Accept all remaining hunks (with confirmation)
             if confirm_destructive_operation("all", "This will stage ALL remaining hunks."):

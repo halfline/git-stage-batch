@@ -108,6 +108,12 @@ def get_skipped_hunks_jsonl_file_path() -> Path:
 def get_discarded_hunks_file_path() -> Path:
     return get_state_directory_path() / "discarded-hunks"
 
+def get_start_head_file_path() -> Path:
+    return get_state_directory_path() / "start-head"
+
+def get_start_index_tree_file_path() -> Path:
+    return get_state_directory_path() / "start-index-tree"
+
 
 def ensure_state_directory_exists() -> None:
     get_state_directory_path().mkdir(parents=True, exist_ok=True)

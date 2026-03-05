@@ -116,7 +116,7 @@ Use interactive mode for manual staging and the command-based workflow for autom
 - **`include`** (alias: `i`) - Stage the cached hunk (entire hunk) to the index; advance
 - **`skip`** (alias: `s`) - Mark the cached hunk as skipped; advance
 - **`discard`** (alias: `d`) - Reverse-apply the cached hunk to the working tree; advance
-- **`status`** (alias: `st`) - Show brief state (current hunk summary, remaining line IDs)
+- **`status`** (alias: `st`) - Show session progress (iteration, current location, metrics, skipped hunks)
 
 ### Line-Level Operations
 - **`include-line IDS`** (alias: `il`) - Stage ONLY the listed changed line IDs (+/-) to the index
@@ -144,28 +144,36 @@ For scripting and automation, some commands support a `--porcelain` flag for mac
 
 ### `status --porcelain`
 
-Outputs JSON with current state:
+Outputs JSON with session progress:
 
 ```bash
 $ git-stage-batch status --porcelain
-{"current_hunk": "file.py :: @@ -10,5 +10,5 @@", "remaining_line_ids": [1, 3, 5], "blocked_hunks": 42, "state_directory": "/path/.git/git-stage-batch"}
+{
+  "session": {"iteration": 1, "in_progress": true},
+  "current": {"file": "file.py", "line": 10, "ids": [1, 2]},
+  "progress": {"included": 5, "skipped": 2, "discarded": 1, "remaining": 3},
+  "skipped_hunks": [{"hash": "abc...", "file": "config.py", "line": 20, "ids": [1]}]
+}
 ```
 
 Fields:
-- `current_hunk`: Summary of current hunk (null if none)
-- `remaining_line_ids`: Array of unprocessed line IDs
-- `blocked_hunks`: Count of processed hunks
-- `state_directory`: Path to state directory
+- `session`: Iteration number and whether session is in progress
+- `current`: Current hunk location (null if none)
+- `progress`: Counts of included/skipped/discarded/remaining hunks
+- `skipped_hunks`: Array of skipped hunks with metadata
 
 Example usage:
 ```bash
-# Check if a hunk is active
-if [ "$(git-stage-batch status --porcelain | jq -r '.current_hunk')" != "null" ]; then
+# Check if session is active
+if [ "$(git-stage-batch status --porcelain | jq -r '.session.in_progress')" == "true" ]; then
   echo "Session active"
 fi
 
-# Get remaining line count
-git-stage-batch status --porcelain | jq '.remaining_line_ids | length'
+# Get count of skipped hunks
+git-stage-batch status --porcelain | jq '.progress.skipped'
+
+# Get iteration number
+git-stage-batch status --porcelain | jq '.session.iteration'
 ```
 
 ### `show --porcelain`

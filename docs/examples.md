@@ -255,18 +255,32 @@ Monitor progress during a session:
 
 ```bash
 $ git-stage-batch status
-current: auth.py :: @@ -10,5 +10,5 @@
-remaining lines: 1-4
-blocked: 3
-state:   .git/git-stage-batch
+Session: iteration 1 (in progress)
+
+Current hunk:
+  auth.py:10
+  [#1-4]
+
+Progress this iteration:
+  Included:  2 hunks
+  Skipped:   1 hunks
+  Discarded: 0 hunks
+  Remaining: ~3 hunks
+
+Skipped hunks:
+  config.py:20 [#1-2]
 
 # Check from scripts
-$ git-stage-batch status --porcelain | jq '.blocked_hunks'
-3
+$ git-stage-batch status --porcelain | jq '.progress.included'
+2
 
-# Count remaining work
-$ git-stage-batch status --porcelain | jq '.remaining_line_ids | length'
-4
+# Count skipped hunks
+$ git-stage-batch status --porcelain | jq '.skipped_hunks | length'
+1
+
+# Get current iteration
+$ git-stage-batch status --porcelain | jq '.session.iteration'
+1
 ```
 
 ## Tips

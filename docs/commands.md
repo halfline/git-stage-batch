@@ -12,6 +12,13 @@ Find and display the first unprocessed hunk; cache as "current".
 git-stage-batch start
 ```
 
+**Options:**
+- `-U N` or `--unified N`: Number of context lines in diff output (default: 3)
+
+```bash
+git-stage-batch start -U5  # Show 5 lines of context
+```
+
 Resets state if a session is already in progress.
 
 **Example output:**
@@ -85,7 +92,7 @@ git-stage-batch discard
 
 ### `status` (alias: `st`)
 
-Show brief state: current hunk summary and remaining line IDs.
+Show session progress: iteration number, current location, and progress metrics.
 
 ```bash
 git-stage-batch status
@@ -93,10 +100,20 @@ git-stage-batch status
 
 **Example output:**
 ```
-current: auth.py :: @@ -10,5 +10,5 @@
-remaining lines: 1-4
-blocked: 5
-state:   .git/git-stage-batch
+Session: iteration 1 (in progress)
+
+Current hunk:
+  auth.py:10
+  [#1-2]
+
+Progress this iteration:
+  Included:  2 hunks
+  Skipped:   1 hunks
+  Discarded: 0 hunks
+  Remaining: ~3 hunks
+
+Skipped hunks:
+  config.py:20 [#1]
 ```
 
 **Porcelain mode:**
@@ -107,10 +124,29 @@ git-stage-batch status --porcelain
 Returns JSON:
 ```json
 {
-  "current_hunk": "auth.py :: @@ -10,5 +10,5 @@",
-  "remaining_line_ids": [1, 2, 3, 4],
-  "blocked_hunks": 5,
-  "state_directory": "/path/.git/git-stage-batch"
+  "session": {
+    "iteration": 1,
+    "in_progress": true
+  },
+  "current": {
+    "file": "auth.py",
+    "line": 10,
+    "ids": [1, 2]
+  },
+  "progress": {
+    "included": 2,
+    "skipped": 1,
+    "discarded": 0,
+    "remaining": 3
+  },
+  "skipped_hunks": [
+    {
+      "hash": "abc123...",
+      "file": "config.py",
+      "line": 20,
+      "ids": [1]
+    }
+  ]
 }
 ```
 

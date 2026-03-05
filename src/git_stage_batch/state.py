@@ -96,6 +96,18 @@ def get_abort_snapshot_list_file_path() -> Path:
 def get_context_lines_file_path() -> Path:
     return get_state_directory_path() / "context-lines"
 
+def get_iteration_count_file_path() -> Path:
+    return get_state_directory_path() / "iteration-count"
+
+def get_included_hunks_file_path() -> Path:
+    return get_state_directory_path() / "included-hunks"
+
+def get_skipped_hunks_jsonl_file_path() -> Path:
+    return get_state_directory_path() / "skipped-hunks.jsonl"
+
+def get_discarded_hunks_file_path() -> Path:
+    return get_state_directory_path() / "discarded-hunks"
+
 
 def ensure_state_directory_exists() -> None:
     get_state_directory_path().mkdir(parents=True, exist_ok=True)

@@ -479,6 +479,9 @@ def command_start(unified: int = 3) -> None:
     # Save context lines for this session
     write_text_file_contents(get_context_lines_file_path(), str(unified))
 
+    # Initialize iteration counter
+    write_text_file_contents(get_iteration_count_file_path(), "1")
+
     # Initialize abort state for new session
     initialize_abort_state()
     clear_current_hunk_state_files()
@@ -532,6 +535,11 @@ def command_include() -> None:
         stderr = getattr(error, 'stderr', '').strip() if hasattr(error, 'stderr') else ''
         stdout = getattr(error, 'stdout', '').strip() if hasattr(error, 'stdout') else ''
         exit_with_error(f"Failed to apply hunk: {stderr or stdout or 'git apply failed.'}")
+
+    # Record hunk as included for progress tracking
+    hunk_hash = read_text_file_contents(get_current_hunk_hash_file_path()).strip()
+    record_hunk_included(hunk_hash)
+
     append_current_hunk_hash_to_block_list()
     clear_current_hunk_state_files()
     find_and_cache_next_unblocked_hunk()
@@ -551,6 +559,11 @@ def command_skip() -> None:
         if _snapshots_are_stale(file_path):
             clear_current_hunk_state_files()
             exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+
+    # Record hunk as skipped for progress tracking
+    current_lines = load_current_lines_from_state()
+    hunk_hash = read_text_file_contents(get_current_hunk_hash_file_path()).strip()
+    record_hunk_skipped(current_lines, hunk_hash)
 
     append_current_hunk_hash_to_block_list()
     clear_current_hunk_state_files()
@@ -581,6 +594,11 @@ def command_discard() -> None:
         stderr = getattr(error, 'stderr', '').strip() if hasattr(error, 'stderr') else ''
         stdout = getattr(error, 'stdout', '').strip() if hasattr(error, 'stdout') else ''
         exit_with_error(f"Failed to discard hunk: {stderr or stdout or 'git apply -R failed.'}")
+
+    # Record hunk as discarded for progress tracking
+    hunk_hash = read_text_file_contents(get_current_hunk_hash_file_path()).strip()
+    record_hunk_discarded(hunk_hash)
+
     append_current_hunk_hash_to_block_list()
     clear_current_hunk_state_files()
     find_and_cache_next_unblocked_hunk()
@@ -717,10 +735,13 @@ def command_again() -> None:
         for file_path in auto_added:
             run_git_command(["reset", "--", file_path], check=False)
 
-    # Save persistent state (blocked-files) before clearing
+    # Save persistent state before clearing
     blocked_files = []
     if get_blocked_files_file_path().exists():
         blocked_files = read_file_paths_file(get_blocked_files_file_path())
+
+    # Increment iteration counter before clearing
+    next_iteration = get_iteration_count() + 1
 
     # Clear all state
     try:
@@ -734,6 +755,9 @@ def command_again() -> None:
     # Restore persistent state
     if blocked_files:
         write_file_paths_file(get_blocked_files_file_path(), blocked_files)
+
+    # Restore incremented iteration count
+    write_text_file_contents(get_iteration_count_file_path(), str(next_iteration))
 
     find_and_cache_next_unblocked_hunk()
 

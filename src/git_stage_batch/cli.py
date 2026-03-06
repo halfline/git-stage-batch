@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 
 from . import __version__
@@ -30,9 +31,29 @@ from .commands import (
 from .state import get_current_hunk_patch_file_path
 
 
+class GitHelpArgumentParser(argparse.ArgumentParser):
+    """Custom ArgumentParser that tries to use git help for --help."""
+
+    def print_help(self, file=None):
+        """Try to use git help, fall back to argparse help."""
+        try:
+            result = subprocess.run(
+                ["git", "help", "stage-batch"],
+                check=False,
+                stderr=subprocess.DEVNULL,
+            )
+            if result.returncode == 0:
+                return
+        except (FileNotFoundError, OSError):
+            pass
+
+        # Fall back to standard argparse help
+        super().print_help(file)
+
+
 def main() -> None:
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(
+    parser = GitHelpArgumentParser(
         prog="git-stage-batch",
         description="Non-interactive hunk-by-hunk and line-by-line staging for git",
     )

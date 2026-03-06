@@ -5,6 +5,7 @@ project('git-stage-batch',
 )
 
 py = import('python').find_installation('python3', pure: false)
+i18n = import('i18n')
 
 # Generate version file from template
 version_py = configure_file(
@@ -24,6 +25,7 @@ py.install_sources(
   'src/git_stage_batch/display.py',
   'src/git_stage_batch/editor.py',
   'src/git_stage_batch/hashing.py',
+  'src/git_stage_batch/i18n.py',
   'src/git_stage_batch/line_selection.py',
   'src/git_stage_batch/models.py',
   'src/git_stage_batch/parser.py',
@@ -43,10 +45,15 @@ configure_file(
   install_tag: 'runtime',
 )
 
-# Generate and install man page (not tagged, so excluded from wheels but included in system install)
+# Generate and install man page (skip for wheels, include for system install)
 manpage = configure_file(
   input: 'docs/git-stage-batch.1.in',
   output: 'git-stage-batch.1',
   configuration: {'VERSION': meson.project_version()},
 )
-install_man(manpage)
+if not get_option('python_wheel')
+  install_man(manpage)
+endif
+
+# Process translations
+subdir('po')

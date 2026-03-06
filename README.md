@@ -382,6 +382,7 @@ This project uses [uv](https://docs.astral.sh/uv/) for development workflow and 
 - Python 3.13+
 - uv (for development)
 - meson and ninja (for building)
+- gettext (for i18n support)
 
 ```bash
 # Clone the repository

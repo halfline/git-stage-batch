@@ -22,6 +22,8 @@ Create atomic, well-structured commits with fine-grained control over what gets 
 
 ## Installation
 
+### Quick Install (Python/uv)
+
 **Recommended** (install once, use everywhere):
 ```bash
 uv tool install git-stage-batch
@@ -30,6 +32,17 @@ uv tool install git-stage-batch
 **Alternative** (try without installing):
 ```bash
 uvx git-stage-batch start
+```
+
+### System Install (with man page)
+
+For system-wide installation:
+
+```bash
+git clone https://github.com/halfline/git-stage-batch.git
+cd git-stage-batch
+meson setup build
+sudo meson install -C build
 ```
 
 ## Quick Start
@@ -361,18 +374,33 @@ State persists across invocations, allowing you to stage changes incrementally.
 
 ## Development
 
-This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+This project uses [uv](https://docs.astral.sh/uv/) for development workflow and [Meson](https://mesonbuild.com/) as the build backend.
+
+**Requirements:**
+- Python 3.13+
+- uv (for development)
+- meson and ninja (for building)
 
 ```bash
 # Clone the repository
 git clone https://github.com/halfline/git-stage-batch.git
 cd git-stage-batch
 
+# Install development dependencies and setup
+uv sync
+
 # Run tests
 uv run pytest
 
-# Install from source
+# Build a wheel for distribution
+uv build
+
+# Install from source (user install)
 uv tool install .
+
+# System install (with man page)
+meson setup build
+sudo meson install -C build
 ```
 
 ## Contributing

@@ -4,18 +4,29 @@ Thank you for your interest in contributing!
 
 ## Development Setup
 
-This project uses [uv](https://docs.astral.sh/uv/) for dependency management and development workflows.
+This project uses [uv](https://docs.astral.sh/uv/) for development workflow and [Meson](https://mesonbuild.com/) as the build backend.
+
+**Requirements:**
+- Python 3.13+
+- uv (for development)
+- meson and ninja-build (install via your system package manager)
 
 ```bash
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
+# Install meson and ninja (example for Fedora/RHEL)
+sudo dnf install meson ninja-build
+
 # Clone the repository
 git clone https://github.com/halfline/git-stage-batch.git
 cd git-stage-batch
 
-# Install dependencies (when added)
+# Install dependencies and build
 uv sync
+
+# Run tests
+uv run pytest
 ```
 
 ## Commit Message Guidelines
@@ -101,6 +112,39 @@ The CLI currently provides minimal feedback during operation...
 1. **Keep commits atomic.** Each commit should represent one logical change.
 2. **Use the `git-stage-batch` tool itself** to help stage micro-commits from larger working directory changes.
 3. **Follow existing code style.** The project uses standard Python conventions.
+
+## Making Releases
+
+This project follows [Semantic Versioning](https://semver.org/):
+- **MAJOR** (1.0.0): Breaking changes to CLI or behavior
+- **MINOR** (0.X.0): New features, backwards compatible
+- **PATCH** (0.0.X): Bug fixes, no new features
+
+To create a new release:
+
+1. **Update CHANGELOG.md** with the new version and changes
+
+2. **Update VERSION file:**
+   ```bash
+   echo "0.4.0" > VERSION
+   ```
+
+3. **Commit and tag:**
+   ```bash
+   git commit -am "release: Bump version to 0.4.0"
+   git tag -a v0.4.0 -m "Release version 0.4.0"
+   ```
+
+5. **Build and publish:**
+   ```bash
+   uv build
+   uv publish
+   ```
+
+6. **Push:**
+   ```bash
+   git push origin main --tags
+   ```
 
 ## Questions?
 

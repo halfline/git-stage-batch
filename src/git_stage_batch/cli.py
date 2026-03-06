@@ -23,6 +23,7 @@ from .commands import (
     command_start,
     command_status,
     command_stop,
+    command_suggest_fixup,
     command_unblock_file,
 )
 from .state import get_current_hunk_patch_file_path
@@ -230,6 +231,20 @@ def main() -> None:
         help="Output in machine-readable format (JSON)",
     )
     parser_status.set_defaults(func=lambda args: command_status(porcelain=args.porcelain))
+
+    # suggest-fixup - Suggest which commit to fixup
+    parser_suggest_fixup = subparsers.add_parser(
+        "suggest-fixup",
+        help="Suggest which commit the current hunk should be fixed up to",
+        description="Analyze the current hunk and suggest an appropriate commit for --fixup",
+    )
+    parser_suggest_fixup.add_argument(
+        "boundary",
+        nargs="?",
+        default="@{upstream}",
+        help="Boundary ref for commit search (default: @{upstream})",
+    )
+    parser_suggest_fixup.set_defaults(func=lambda args: command_suggest_fixup(args.boundary))
 
     args = parser.parse_args()
 

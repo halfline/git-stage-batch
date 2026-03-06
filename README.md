@@ -96,7 +96,7 @@ What do you want to do with this hunk?
   [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)
   [q]uit     - Exit interactive mode
 
-More options: [a]ll, [l]ines, [f]ile, [b]lock, [?]help
+More options: [a]ll, [l]ines, [f]ile, [b]lock, [x]suggest-fixup, [!]run, [?]help
 
 Action:
 ```
@@ -111,6 +111,8 @@ Action:
 - **l** / **lines** - Enter line selection sub-menu
 - **f** / **file** - Stage or skip all hunks in current file
 - **b** / **block** - Block this file permanently via .gitignore (asks for confirmation)
+- **x** / **suggest-fixup** - Suggest which commit to fixup
+- **!** - Run a shell command (e.g., git commit --fixup=abc123)
 - **?** - Show help
 
 ### Why Interactive Mode?

@@ -121,6 +121,8 @@ command each time:
 \fBl\fR, \fBlines\fR    - interactively select specific lines
 \fBf\fR, \fBfile\fR     - stage or skip entire file
 \fBb\fR, \fBblock\fR    - block current file (add to .gitignore)
+\fBx\fR, \fBsuggest-fixup\fR - suggest which commit to fixup
+\fB!\fR          - run a shell command
 \fB?\fR          - print help
 .RE
 .fi

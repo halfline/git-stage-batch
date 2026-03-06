@@ -1076,6 +1076,7 @@ def print_interactive_help() -> None:
 {Colors.BOLD}l{Colors.RESET} - interactively select lines from this hunk
 {Colors.BOLD}f{Colors.RESET} - stage or skip all hunks in current file
 {Colors.BOLD}b{Colors.RESET} - block current file (add to .gitignore)
+{Colors.BOLD}x{Colors.RESET} - suggest which commit to fixup
 {Colors.BOLD}!{Colors.RESET} - run a command
 {Colors.BOLD}?{Colors.RESET} - print help
 """)
@@ -1089,6 +1090,7 @@ a - stage this hunk and all remaining hunks
 l - interactively select lines from this hunk
 f - stage or skip all hunks in current file
 b - block current file (add to .gitignore)
+x - suggest which commit to fixup
 ! - run a command
 ? - print help
 """)
@@ -1113,11 +1115,11 @@ def handle_interactive_line_selection() -> None:
         # Get action
         while True:
             if use_color:
-                action = input(f"Action for lines {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude, {Colors.BOLD}[s]{Colors.RESET}kip, or {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard? ").strip().lower()
+                action = input(f"Action for lines {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude, {Colors.BOLD}[s]{Colors.RESET}kip, {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard, or {Colors.BOLD}[x]{Colors.RESET}suggest-fixup? ").strip().lower()
             else:
-                action = input("Action for lines [i]nclude, [s]kip, or [d]iscard? ").strip().lower()
+                action = input("Action for lines [i]nclude, [s]kip, [d]iscard, or [x]suggest-fixup? ").strip().lower()
 
-            if action in ('i', 's', 'd'):
+            if action in ('i', 's', 'd', 'x', 'suggest-fixup'):
                 break
             print(f"Invalid action: '{action}'")
 
@@ -1138,6 +1140,24 @@ def handle_interactive_line_selection() -> None:
             command_skip_line(line_spec)
         elif action == 'd':
             command_discard_line(line_spec)
+        elif action in ('x', 'suggest-fixup'):
+            # Resolve @{upstream} to show actual branch name
+            default_boundary = "@{upstream}"
+            try:
+                resolved = run_git_command(["rev-parse", "--abbrev-ref", "@{upstream}"], check=False)
+                if resolved.returncode == 0:
+                    default_display = resolved.stdout.strip()
+                else:
+                    default_display = "@{upstream}"
+            except subprocess.CalledProcessError:
+                default_display = "@{upstream}"
+
+            boundary = input(f"Search commits since (default: {default_display}): ").strip()
+            if not boundary:
+                boundary = default_boundary
+            command_suggest_fixup_line(line_spec, boundary)
+            if get_current_hunk_patch_file_path().exists():
+                print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
     except (EOFError, KeyboardInterrupt):
         print("\nCancelled")
         print_annotated_hunk_with_aligned_gutter(current_lines)
@@ -1237,7 +1257,7 @@ def command_interactive() -> None:
             print(f"  {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
             print(f"  {Colors.BOLD}[q]{Colors.RESET}uit     - Exit interactive mode")
             print()
-            print(f"{Colors.CYAN}More options:{Colors.RESET} {Colors.BOLD}[a]{Colors.RESET}ll, {Colors.BOLD}[l]{Colors.RESET}ines, {Colors.BOLD}[f]{Colors.RESET}ile, {Colors.BOLD}[b]{Colors.RESET}lock, {Colors.BOLD}[!]{Colors.RESET}run, {Colors.BOLD}[?]{Colors.RESET}help")
+            print(f"{Colors.CYAN}More options:{Colors.RESET} {Colors.BOLD}[a]{Colors.RESET}ll, {Colors.BOLD}[l]{Colors.RESET}ines, {Colors.BOLD}[f]{Colors.RESET}ile, {Colors.BOLD}[b]{Colors.RESET}lock, {Colors.BOLD}[x]{Colors.RESET}suggest-fixup, {Colors.BOLD}[!]{Colors.RESET}run, {Colors.BOLD}[?]{Colors.RESET}help")
         else:
             print("What do you want to do with this hunk?")
             print("  [i]nclude  - Stage this hunk to the index")
@@ -1245,7 +1265,7 @@ def command_interactive() -> None:
             print("  [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
             print("  [q]uit     - Exit interactive mode")
             print()
-            print("More options: [a]ll, [l]ines, [f]ile, [b]lock, [!]run, [?]help")
+            print("More options: [a]ll, [l]ines, [f]ile, [b]lock, [x]suggest-fixup, [!]run, [?]help")
 
         print()
 
@@ -1325,6 +1345,29 @@ def command_interactive() -> None:
             else:
                 print("Cancelled.")
                 print_annotated_hunk_with_aligned_gutter(current_lines)
+        elif choice in ('x', 'suggest-fixup'):
+            # Suggest which commit to fixup to
+            try:
+                # Resolve @{upstream} to show actual branch name
+                default_boundary = "@{upstream}"
+                try:
+                    resolved = run_git_command(["rev-parse", "--abbrev-ref", "@{upstream}"], check=False)
+                    if resolved.returncode == 0:
+                        default_display = resolved.stdout.strip()
+                    else:
+                        default_display = "@{upstream}"
+                except subprocess.CalledProcessError:
+                    default_display = "@{upstream}"
+
+                boundary = input(f"Search commits since (default: {default_display}): ").strip()
+                if not boundary:
+                    boundary = default_boundary
+                command_suggest_fixup(boundary)
+            except (EOFError, KeyboardInterrupt):
+                print()
+                print("Cancelled.")
+            if get_current_hunk_patch_file_path().exists():
+                print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice == '!':
             # Run arbitrary command
             try:

@@ -42,3 +42,11 @@ configure_file(
   install_mode: 'rwxr-xr-x',
   install_tag: 'runtime',
 )
+
+# Generate and install man page (not tagged, so excluded from wheels but included in system install)
+manpage = configure_file(
+  input: 'docs/git-stage-batch.1.in',
+  output: 'git-stage-batch.1',
+  configuration: {'VERSION': meson.project_version()},
+)
+install_man(manpage)

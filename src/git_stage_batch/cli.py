@@ -112,7 +112,7 @@ def main() -> None:
     # include-line - Stage specific lines
     parser_include_line = subparsers.add_parser(
         "include-line",
-        aliases=["il"],
+        aliases=["il", "include-lines", "ils"],
         help="Stage specific lines from the current hunk",
         description="Stage ONLY the listed changed line IDs (+/-) to the index",
     )
@@ -125,7 +125,7 @@ def main() -> None:
     # skip-line - Skip specific lines
     parser_skip_line = subparsers.add_parser(
         "skip-line",
-        aliases=["sl"],
+        aliases=["sl", "skip-lines", "sls"],
         help="Mark specific lines as skipped",
         description="Mark ONLY the listed changed line IDs as skipped",
     )
@@ -138,7 +138,7 @@ def main() -> None:
     # discard-line - Remove specific lines from working tree
     parser_discard_line = subparsers.add_parser(
         "discard-line",
-        aliases=["dl"],
+        aliases=["dl", "discard-lines", "dls"],
         help="Remove specific lines from working tree",
         description="Remove ONLY the listed changed line IDs from working tree",
     )
@@ -250,7 +250,7 @@ def main() -> None:
     # suggest-fixup-line - Suggest which commit specific lines should be fixed up to
     parser_suggest_fixup_line = subparsers.add_parser(
         "suggest-fixup-line",
-        aliases=["sfl"],
+        aliases=["sfl", "suggest-fixup-lines", "sfls"],
         help="Suggest which commit specific lines should be fixed up to",
         description="Analyze specific lines from the current hunk and suggest an appropriate commit for --fixup",
     )

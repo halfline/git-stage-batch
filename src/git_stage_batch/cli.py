@@ -24,6 +24,7 @@ from .commands import (
     command_status,
     command_stop,
     command_suggest_fixup,
+    command_suggest_fixup_line,
     command_unblock_file,
 )
 from .state import get_current_hunk_patch_file_path
@@ -245,6 +246,25 @@ def main() -> None:
         help="Boundary ref for commit search (default: @{upstream})",
     )
     parser_suggest_fixup.set_defaults(func=lambda args: command_suggest_fixup(args.boundary))
+
+    # suggest-fixup-line - Suggest which commit specific lines should be fixed up to
+    parser_suggest_fixup_line = subparsers.add_parser(
+        "suggest-fixup-line",
+        aliases=["sfl"],
+        help="Suggest which commit specific lines should be fixed up to",
+        description="Analyze specific lines from the current hunk and suggest an appropriate commit for --fixup",
+    )
+    parser_suggest_fixup_line.add_argument(
+        "line_ids",
+        help="Line IDs to analyze (e.g., '1,3,5-7')",
+    )
+    parser_suggest_fixup_line.add_argument(
+        "boundary",
+        nargs="?",
+        default="@{upstream}",
+        help="Boundary ref for commit search (default: @{upstream})",
+    )
+    parser_suggest_fixup_line.set_defaults(func=lambda args: command_suggest_fixup_line(args.line_ids, args.boundary))
 
     args = parser.parse_args()
 

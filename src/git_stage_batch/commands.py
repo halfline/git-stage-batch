@@ -1441,3 +1441,103 @@ def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
 
     print(f"Suggested fixup target: {commit_info}")
     print(f"Run: git commit --fixup={suggested_commit[:7]}")
+
+
+def command_suggest_fixup_line(line_id_specification: str, boundary: str = "@{upstream}") -> None:
+    """Suggest which commit specific lines should be fixed up to.
+
+    Analyzes specific line IDs from the current hunk to find which commits
+    modified those lines, and suggests the most recent matching commit in
+    the range boundary..HEAD.
+
+    Args:
+        line_id_specification: Line IDs to analyze (e.g., "1,3,5-7")
+        boundary: Git ref to use as the lower bound for commit search
+                 (default: @{upstream})
+    """
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Check for current hunk
+    if not get_current_hunk_patch_file_path().exists():
+        exit_with_error("No current hunk. Run 'start' first.")
+
+    # Check for stale state
+    if get_current_lines_json_file_path().exists():
+        data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+        file_path = data["path"]
+        if _snapshots_are_stale(file_path):
+            clear_current_hunk_state_files()
+            exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+
+    # Load current hunk
+    current_lines = load_current_lines_from_state()
+
+    # Parse the line IDs
+    requested_ids = parse_line_id_specification(line_id_specification)
+
+    # Extract old line numbers only for the specified line IDs
+    old_line_numbers = []
+    for entry in current_lines.lines:
+        if entry.id in requested_ids and entry.old_line_number is not None:
+            old_line_numbers.append(entry.old_line_number)
+
+    if not old_line_numbers:
+        exit_with_error("No old line numbers found for specified lines (they may be newly added lines).")
+
+    # Get the range of old lines
+    min_line = min(old_line_numbers)
+    max_line = max(old_line_numbers)
+
+    # Validate boundary ref
+    try:
+        run_git_command(["rev-parse", "--verify", boundary], check=True)
+    except subprocess.CalledProcessError:
+        exit_with_error(f"Invalid boundary ref: {boundary}")
+
+    # Check if there are any commits in the range
+    try:
+        rev_list_result = run_git_command(
+            ["rev-list", f"{boundary}..HEAD"],
+            check=True
+        )
+    except subprocess.CalledProcessError:
+        exit_with_error(f"Failed to get commit range {boundary}..HEAD")
+
+    if not rev_list_result.stdout.strip():
+        exit_with_error(f"No commits found in range {boundary}..HEAD")
+
+    # Use git log -L to find commits that modified this line range
+    # This directly gives us commits in boundary..HEAD that touched these lines,
+    # already sorted newest-first
+    try:
+        log_result = run_git_command(
+            ["log", "-L", f"{min_line},{max_line}:{current_lines.path}", f"{boundary}..HEAD", "--format=%H"],
+            check=True
+        )
+    except subprocess.CalledProcessError:
+        exit_with_error(f"Failed to run git log -L on {current_lines.path}")
+
+    # Parse commits (already in reverse chronological order)
+    commits = [line.strip() for line in log_result.stdout.splitlines() if line.strip()]
+
+    if not commits:
+        print(f"No commits in range {boundary}..HEAD modified these lines.")
+        print("The changes may be fixing code from before the boundary.")
+        sys.exit(1)
+
+    # First commit is the most recent
+    suggested_commit = commits[0]
+
+    # Display the suggestion
+    try:
+        show_result = run_git_command(
+            ["show", "--no-patch", "--format=%h %s", suggested_commit],
+            check=True
+        )
+        commit_info = show_result.stdout.strip()
+    except subprocess.CalledProcessError:
+        commit_info = suggested_commit[:7]
+
+    print(f"Suggested fixup target: {commit_info}")
+    print(f"Run: git commit --fixup={suggested_commit[:7]}")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import readline
 import shutil
 import subprocess
 import sys
@@ -1075,6 +1076,7 @@ def print_interactive_help() -> None:
 {Colors.BOLD}l{Colors.RESET} - interactively select lines from this hunk
 {Colors.BOLD}f{Colors.RESET} - stage or skip all hunks in current file
 {Colors.BOLD}b{Colors.RESET} - block current file (add to .gitignore)
+{Colors.BOLD}!{Colors.RESET} - run a command
 {Colors.BOLD}?{Colors.RESET} - print help
 """)
     else:
@@ -1087,6 +1089,7 @@ a - stage this hunk and all remaining hunks
 l - interactively select lines from this hunk
 f - stage or skip all hunks in current file
 b - block current file (add to .gitignore)
+! - run a command
 ? - print help
 """)
 
@@ -1195,6 +1198,9 @@ def command_interactive() -> None:
     """Interactive mode similar to git add -p."""
     require_git_repository()
 
+    # Configure readline to only save shell command history
+    readline.set_auto_history(False)
+
     # Initialize session if needed, otherwise use existing
     state_dir = get_state_directory_path()
     if not state_dir.exists() or not any(state_dir.iterdir()):
@@ -1231,7 +1237,7 @@ def command_interactive() -> None:
             print(f"  {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
             print(f"  {Colors.BOLD}[q]{Colors.RESET}uit     - Exit interactive mode")
             print()
-            print(f"{Colors.CYAN}More options:{Colors.RESET} {Colors.BOLD}[a]{Colors.RESET}ll, {Colors.BOLD}[l]{Colors.RESET}ines, {Colors.BOLD}[f]{Colors.RESET}ile, {Colors.BOLD}[b]{Colors.RESET}lock, {Colors.BOLD}[?]{Colors.RESET}help")
+            print(f"{Colors.CYAN}More options:{Colors.RESET} {Colors.BOLD}[a]{Colors.RESET}ll, {Colors.BOLD}[l]{Colors.RESET}ines, {Colors.BOLD}[f]{Colors.RESET}ile, {Colors.BOLD}[b]{Colors.RESET}lock, {Colors.BOLD}[!]{Colors.RESET}run, {Colors.BOLD}[?]{Colors.RESET}help")
         else:
             print("What do you want to do with this hunk?")
             print("  [i]nclude  - Stage this hunk to the index")
@@ -1239,7 +1245,7 @@ def command_interactive() -> None:
             print("  [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
             print("  [q]uit     - Exit interactive mode")
             print()
-            print("More options: [a]ll, [l]ines, [f]ile, [b]lock, [?]help")
+            print("More options: [a]ll, [l]ines, [f]ile, [b]lock, [!]run, [?]help")
 
         print()
 
@@ -1319,6 +1325,27 @@ def command_interactive() -> None:
             else:
                 print("Cancelled.")
                 print_annotated_hunk_with_aligned_gutter(current_lines)
+        elif choice == '!':
+            # Run arbitrary command
+            try:
+                command = input("Command: ").strip()
+                if command:
+                    # Add to readline history for recall
+                    readline.add_history(command)
+                    result = subprocess.run(
+                        command,
+                        shell=True,
+                        cwd=get_git_repository_root_path(),
+                    )
+                    if result.returncode != 0:
+                        print(f"Command exited with status {result.returncode}")
+                else:
+                    print("No command entered")
+            except (EOFError, KeyboardInterrupt):
+                print()
+                print("Cancelled.")
+            if get_current_hunk_patch_file_path().exists():
+                print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice in ('e', 'edit'):
             # Edit hunk manually (future enhancement)
             print("Edit mode not yet implemented")

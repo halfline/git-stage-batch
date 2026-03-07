@@ -264,6 +264,10 @@ img[alt*="demo"] {
   transition: none !important;
 }
 
+body.hide-primary-sidebar .md-sidebar--primary {
+  display: none !important;
+}
+
 /* Responsive: reduce effects on mobile */
 @media screen and (max-width: 768px) {
   .md-container::before {

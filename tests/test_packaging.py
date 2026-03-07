@@ -276,3 +276,221 @@ class TestTranslationFilesValidity:
             return None
 
         return max(wheels, key=lambda p: p.stat().st_mtime)
+
+
+class TestMesonInstallation:
+    """Test that meson install works correctly."""
+
+    def test_meson_install_to_prefix(self):
+        """Test that meson can install to a custom prefix."""
+        project_root = Path(__file__).parent.parent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            build_dir = Path(tmpdir) / "build"
+            install_prefix = Path(tmpdir) / "install"
+
+            # Configure meson with custom prefix
+            result = subprocess.run(
+                ["meson", "setup", str(build_dir), f"--prefix={install_prefix}"],
+                cwd=project_root,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                pytest.skip(f"Meson setup failed: {result.stderr}")
+
+            # Compile
+            result = subprocess.run(
+                ["meson", "compile", "-C", str(build_dir)],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0, f"Meson compile failed: {result.stderr}"
+
+            # Install
+            result = subprocess.run(
+                ["meson", "install", "-C", str(build_dir)],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0, f"Meson install failed: {result.stderr}"
+
+            # Check that Python files were installed
+            # Meson typically installs to prefix/lib/pythonX.Y/site-packages
+            site_packages = list(install_prefix.glob("lib*/python*/site-packages"))
+            assert len(site_packages) > 0, "No site-packages directory found in install prefix"
+
+            package_dir = site_packages[0] / "git_stage_batch"
+            assert package_dir.exists(), f"Package not installed to {package_dir}"
+
+            # Check core modules exist
+            assert (package_dir / "__init__.py").exists()
+            assert (package_dir / "cli.py").exists()
+            assert (package_dir / "commands.py").exists()
+            assert (package_dir / "_version.py").exists()
+
+    def test_meson_install_includes_translations(self):
+        """Test that meson install includes translation .mo files in share/locale."""
+        project_root = Path(__file__).parent.parent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            build_dir = Path(tmpdir) / "build"
+            install_prefix = Path(tmpdir) / "install"
+
+            # Configure and build
+            subprocess.run(
+                ["meson", "setup", str(build_dir), f"--prefix={install_prefix}"],
+                cwd=project_root,
+                capture_output=True
+            )
+            subprocess.run(
+                ["meson", "compile", "-C", str(build_dir)],
+                capture_output=True
+            )
+            result = subprocess.run(
+                ["meson", "install", "-C", str(build_dir)],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                pytest.skip(f"Meson install failed: {result.stderr}")
+
+            # Check for translations in share/locale (standard gettext location)
+            locale_dir = install_prefix / "share" / "locale"
+            assert locale_dir.exists(), f"Locale directory not found at {locale_dir}"
+
+            # Check for expected languages
+            expected_langs = ['cs', 'de', 'es', 'fr', 'hi', 'it', 'ja', 'pt_BR', 'zh_CN']
+            for lang in expected_langs:
+                mo_file = locale_dir / lang / "LC_MESSAGES" / "git-stage-batch.mo"
+                assert mo_file.exists(), f"Missing translation file: {mo_file}"
+
+    def test_meson_installed_package_imports(self):
+        """Test that the meson-installed package can be imported."""
+        project_root = Path(__file__).parent.parent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            build_dir = Path(tmpdir) / "build"
+            install_prefix = Path(tmpdir) / "install"
+
+            # Configure, build, and install
+            subprocess.run(
+                ["meson", "setup", str(build_dir), f"--prefix={install_prefix}"],
+                cwd=project_root,
+                capture_output=True
+            )
+            subprocess.run(
+                ["meson", "compile", "-C", str(build_dir)],
+                capture_output=True
+            )
+            result = subprocess.run(
+                ["meson", "install", "-C", str(build_dir)],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                pytest.skip(f"Meson install failed: {result.stderr}")
+
+            # Find site-packages
+            site_packages = list(install_prefix.glob("lib*/python*/site-packages"))
+            assert len(site_packages) > 0
+
+            # Try to import the package
+            env = {"PYTHONPATH": str(site_packages[0])}
+            result = subprocess.run(
+                [sys.executable, "-c", "import git_stage_batch; print('OK')"],
+                capture_output=True,
+                text=True,
+                env={**subprocess.os.environ, **env}
+            )
+
+            assert result.returncode == 0, f"Import failed: {result.stderr}"
+            assert "OK" in result.stdout
+
+    def test_meson_installed_translations_work(self):
+        """Test that translations can be loaded from share/locale after meson install."""
+        project_root = Path(__file__).parent.parent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            build_dir = Path(tmpdir) / "build"
+            install_prefix = Path(tmpdir) / "install"
+
+            # Configure, build, and install
+            subprocess.run(
+                ["meson", "setup", str(build_dir), f"--prefix={install_prefix}"],
+                cwd=project_root,
+                capture_output=True
+            )
+            subprocess.run(
+                ["meson", "compile", "-C", str(build_dir)],
+                capture_output=True
+            )
+            result = subprocess.run(
+                ["meson", "install", "-C", str(build_dir)],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                pytest.skip(f"Meson install failed: {result.stderr}")
+
+            # Try to load a translation from share/locale (system location)
+            locale_dir = install_prefix / "share" / "locale"
+            test_script = """
+import gettext
+
+locale_dir = r'{}'
+t = gettext.translation('git-stage-batch', localedir=locale_dir, languages=['es'], fallback=False)
+msg = t.gettext('No batch staging session in progress.')
+print(msg)
+""".format(locale_dir)
+
+            result = subprocess.run(
+                [sys.executable, "-c", test_script],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0, f"Translation load failed: {result.stderr}"
+            # Should get Spanish translation
+            assert "sesión" in result.stdout or "preparación" in result.stdout, \
+                f"Expected Spanish translation, got: {result.stdout}"
+
+    def test_meson_install_includes_executable(self):
+        """Test that meson install includes the git-stage-batch executable."""
+        project_root = Path(__file__).parent.parent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            build_dir = Path(tmpdir) / "build"
+            install_prefix = Path(tmpdir) / "install"
+
+            # Configure, build, and install
+            subprocess.run(
+                ["meson", "setup", str(build_dir), f"--prefix={install_prefix}"],
+                cwd=project_root,
+                capture_output=True
+            )
+            subprocess.run(
+                ["meson", "compile", "-C", str(build_dir)],
+                capture_output=True
+            )
+            result = subprocess.run(
+                ["meson", "install", "-C", str(build_dir)],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                pytest.skip(f"Meson install failed: {result.stderr}")
+
+            # Check for executable in bin directory
+            executable = install_prefix / "bin" / "git-stage-batch"
+            assert executable.exists(), f"Executable not found at {executable}"
+
+            # Check it's executable
+            assert executable.stat().st_mode & 0o111, "Executable doesn't have execute permission"

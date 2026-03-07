@@ -86,6 +86,19 @@ Similar to `git add -p` but **more granular and flexible**:
     pip install git-stage-batch
     ```
 
+=== "meson"
+
+    ```
+    # Clone and build
+    ❯ git clone https://github.com/halfline/git-stage-batch.git
+    ❯ cd git-stage-batch
+    ❯ meson setup build
+    ❯ meson compile -C build
+
+    # Install to system
+    ❯ sudo meson install -C build
+    ```
+
 ### Basic Usage
 
 ```bash

@@ -24,6 +24,37 @@ pipx install git-stage-batch
 pip install git-stage-batch
 ```
 
+### meson (system install)
+
+For system package managers or building from source:
+
+```
+# Clone the repository
+❯ git clone https://github.com/halfline/git-stage-batch.git
+❯ cd git-stage-batch
+
+# Configure and build
+❯ meson setup build
+❯ meson compile -C build
+
+# Install to system (requires root)
+❯ sudo meson install -C build
+```
+
+Or install to a custom prefix:
+
+```
+❯ meson setup build --prefix=/usr/local
+❯ meson compile -C build
+❯ meson install -C build
+```
+
+This installs:
+- Python modules to `lib/python*/site-packages/`
+- Translations to `share/locale/`
+- Executable to `bin/`
+- Man page to `share/man/man1/`
+
 ### Try Without Installing
 
 ```bash

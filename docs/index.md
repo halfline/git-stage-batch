@@ -1,8 +1,14 @@
 # git-stage-batch
 
-**Hunk-by-hunk and line-by-line staging for git**
+**Writing code is messy. Git history doesn't have to be.**
 
-Create atomic, well-structured commits with fine-grained control over what gets staged.
+During development we experiment, refactor, backtrack, and fix mistakes. If every step ends up as a commit, the history becomes noise.
+
+A curated history turns that process into a clear sequence of logical changes. Each commit captures one idea, and the message explains why it exists.
+
+This clarity assists contributors explore the codebase, maintainers review changes, and your future self try to understand how the system evolved.
+
+**git-stage-batch** helps you build that history incrementally by letting you stage changes hunk-by-hunk or line-by-line, shaping commits around meaning instead of the order the edits happened.
 
 <div class="grid cards" markdown>
 

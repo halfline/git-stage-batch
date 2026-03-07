@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import json
 import os
-import readline
 import shutil
 import subprocess
 import sys
 from typing import Any
+
+# readline is part of the standard library but not available on Windows
+try:
+    import readline
+    HAS_READLINE = True
+except ImportError:
+    HAS_READLINE = False
 
 from .i18n import _
 from .display import Colors, format_hotkey, format_option_list, print_annotated_hunk_with_aligned_gutter
@@ -1236,7 +1242,8 @@ def command_interactive() -> None:
     require_git_repository()
 
     # Configure readline to only save shell command history
-    readline.set_auto_history(False)
+    if HAS_READLINE:
+        readline.set_auto_history(False)
 
     # Initialize session if needed, otherwise use existing
     state_dir = get_state_directory_path()
@@ -1411,7 +1418,8 @@ def command_interactive() -> None:
                 command = input("Command: ").strip()
                 if command:
                     # Add to readline history for recall
-                    readline.add_history(command)
+                    if HAS_READLINE:
+                        readline.add_history(command)
                     result = subprocess.run(
                         command,
                         shell=True,

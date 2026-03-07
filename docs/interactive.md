@@ -4,7 +4,7 @@ Interactive mode provides a beginner-friendly workflow similar to `git add -p` w
 
 ## Starting Interactive Mode
 
-```bash
+```
 git-stage-batch --interactive
 ```
 
@@ -111,8 +111,8 @@ Perfect for polishing feature branches before submitting. When you notice a bug 
 
 ## Example Session
 
-```bash
-$ git-stage-batch --interactive
+```
+❯ git-stage-batch --interactive
 
 # First hunk appears
 auth.py :: @@ -10,5 +10,5 @@
@@ -174,7 +174,7 @@ No pending hunks.
 
 === "Interactive Mode"
 
-    ```bash
+    ```
     # One command, multiple decisions
     git-stage-batch --interactive
     # Then: i, s, i, d, etc.
@@ -185,7 +185,7 @@ No pending hunks.
 
 === "Command Mode"
 
-    ```bash
+    ```
     # Multiple commands, one decision each
     git-stage-batch start
     git-stage-batch include

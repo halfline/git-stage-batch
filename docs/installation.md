@@ -4,7 +4,7 @@
 
 Install once, use everywhere:
 
-```bash
+```
 uv tool install git-stage-batch
 ```
 
@@ -14,19 +14,19 @@ This installs `git-stage-batch` as a global command-line tool.
 
 ### pipx
 
-```bash
+```
 pipx install git-stage-batch
 ```
 
 ### pip
 
-```bash
+```
 pip install git-stage-batch
 ```
 
 ### Try Without Installing
 
-```bash
+```
 uvx git-stage-batch start
 ```
 
@@ -39,7 +39,7 @@ This runs the tool without permanently installing it.
 
 ## Verify Installation
 
-```bash
+```
 git-stage-batch --version
 ```
 

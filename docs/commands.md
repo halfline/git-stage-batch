@@ -8,14 +8,14 @@ Complete reference of all available commands and their options.
 
 Find and display the first unprocessed hunk; cache as "current".
 
-```bash
+```
 git-stage-batch start
 ```
 
 **Options:**
 - `-U N` or `--unified N`: Number of context lines in diff output (default: 3)
 
-```bash
+```
 git-stage-batch start -U5  # Show 5 lines of context
 ```
 
@@ -35,12 +35,12 @@ auth.py :: @@ -10,5 +10,5 @@
 
 Reprint the cached "current" hunk with line IDs.
 
-```bash
+```
 git-stage-batch show
 ```
 
 **Porcelain mode:**
-```bash
+```
 git-stage-batch show --porcelain
 ```
 
@@ -54,12 +54,12 @@ Exit codes:
 
 Stage the cached hunk (entire hunk) to the index; advance to next.
 
-```bash
+```
 git-stage-batch include
 ```
 
 Or use the bare command when session is active:
-```bash
+```
 git-stage-batch
 ```
 
@@ -69,7 +69,7 @@ git-stage-batch
 
 Mark the cached hunk as skipped; advance to next.
 
-```bash
+```
 git-stage-batch skip
 ```
 
@@ -81,7 +81,7 @@ Skipped hunks can be revisited with `again`.
 
 Reverse-apply the cached hunk to the working tree; advance to next.
 
-```bash
+```
 git-stage-batch discard
 ```
 
@@ -94,7 +94,7 @@ git-stage-batch discard
 
 Show session progress: iteration number, current location, and progress metrics.
 
-```bash
+```
 git-stage-batch status
 ```
 
@@ -117,7 +117,7 @@ Skipped hunks:
 ```
 
 **Porcelain mode:**
-```bash
+```
 git-stage-batch status --porcelain
 ```
 
@@ -156,7 +156,7 @@ Returns JSON:
 
 Stage ONLY the listed changed line IDs (+/-) to the index.
 
-```bash
+```
 git-stage-batch include-line 1,3,5-7
 ```
 
@@ -173,7 +173,7 @@ Line IDs are shown as `[#N]` in the hunk output.
 
 Mark ONLY the listed changed line IDs as skipped.
 
-```bash
+```
 git-stage-batch skip-line 2,4
 ```
 
@@ -183,7 +183,7 @@ git-stage-batch skip-line 2,4
 
 Remove ONLY the listed changed line IDs from working tree.
 
-```bash
+```
 git-stage-batch discard-line 8-10
 ```
 
@@ -196,7 +196,7 @@ git-stage-batch discard-line 8-10
 
 Stage the entire file containing the current hunk.
 
-```bash
+```
 git-stage-batch include-file
 ```
 
@@ -208,7 +208,7 @@ All remaining hunks in the file are staged and marked as processed.
 
 Skip all hunks in the file containing the current hunk.
 
-```bash
+```
 git-stage-batch skip-file
 ```
 
@@ -218,7 +218,7 @@ git-stage-batch skip-file
 
 Permanently exclude a file via .gitignore.
 
-```bash
+```
 # Block current hunk's file
 git-stage-batch block-file
 
@@ -234,7 +234,7 @@ Adds the file to `.gitignore` with a marker comment and to the internal blocked 
 
 Remove a file from permanent exclusion.
 
-```bash
+```
 git-stage-batch unblock-file path/to/file.txt
 ```
 
@@ -246,14 +246,14 @@ Removes the file from `.gitignore` (if marked by git-stage-batch) and from the b
 
 Clear state and immediately start a fresh pass through all hunks.
 
-```bash
+```
 git-stage-batch again
 ```
 
 Reviews all previously skipped and unprocessed hunks.
 
 **Typical workflow:**
-```bash
+```
 # First pass - include some hunks, skip others
 git-stage-batch start
 git-stage-batch i
@@ -273,7 +273,7 @@ git-stage-batch again
 
 Clear all state (blocklist and cached hunk).
 
-```bash
+```
 git-stage-batch stop
 ```
 
@@ -285,14 +285,14 @@ Removes all tracking of processed/skipped hunks. Use this to start completely fr
 
 Suggest which commit the current hunk should be fixed up to.
 
-```bash
+```
 git-stage-batch suggest-fixup
 ```
 
 **Options:**
 - `--boundary REF`: Git ref to use as lower bound for commit search (default: `@{upstream}`)
 
-```bash
+```
 git-stage-batch suggest-fixup --boundary main
 ```
 
@@ -301,7 +301,7 @@ git-stage-batch suggest-fixup --boundary main
 Analyzes the current hunk to find which commits in the range `boundary..HEAD` modified the lines being changed. Uses `git log -L` to identify commits that touched those lines, then suggests the most recent one as a fixup target.
 
 **Example:**
-```bash
+```
 ❯ git-stage-batch start
 auth.py :: @@ -10,5 +10,5 @@
 [#1] - old_hash_function()
@@ -323,14 +323,14 @@ Perfect for creating fixup commits during a feature branch development workflow.
 
 Suggest which commit specific line IDs should be fixed up to.
 
-```bash
+```
 git-stage-batch suggest-fixup-line 1,3,5-7
 ```
 
 **Options:**
 - `--boundary REF`: Git ref to use as lower bound for commit search (default: `@{upstream}`)
 
-```bash
+```
 git-stage-batch sfl 2-4 --boundary origin/main
 ```
 
@@ -342,7 +342,7 @@ Works like `suggest-fixup` but analyzes only the specified line IDs from the cur
 
 When a session is active, running `git-stage-batch` with no command defaults to `include`:
 
-```bash
+```
 # With active session
 git-stage-batch
 # Equivalent to: git-stage-batch include
@@ -360,7 +360,7 @@ Run 'git-stage-batch start' to begin.
 
 Show version information.
 
-```bash
+```
 git-stage-batch --version
 ```
 
@@ -368,7 +368,7 @@ git-stage-batch --version
 
 Enter interactive mode (process hunks one by one with prompts).
 
-```bash
+```
 git-stage-batch --interactive
 ```
 

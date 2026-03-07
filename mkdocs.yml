@@ -9,26 +9,24 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   palette:
-    # Light mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: indigo
-      accent: indigo
+    # Dark mode (default - hacker theme)
+    - scheme: slate
+      primary: black
+      accent: cyan
       toggle:
         icon: material/brightness-7
-        name: Switch to dark mode
-    # Dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: indigo
-      accent: indigo
+        name: Switch to light mode
+    # Light mode (optional)
+    - scheme: default
+      primary: black
+      accent: cyan
       toggle:
         icon: material/brightness-4
-        name: Switch to light mode
+        name: Switch to dark mode
 
   font:
-    text: Roboto
-    code: Roboto Mono
+    text: 'Fira Code'
+    code: 'Fira Code'
 
   features:
     - navigation.instant
@@ -81,6 +79,12 @@ nav:
 
 plugins:
   - search
+
+extra_css:
+  - assets/extra.css
+
+extra_javascript:
+  - assets/extra.js
 
 extra:
   social:

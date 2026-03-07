@@ -121,7 +121,7 @@ instructions: |
 
 Here's what an AI assistant would do:
 
-```bash
+```
 # AI makes changes to multiple files
 # Now needs to create atomic commits
 
@@ -172,7 +172,7 @@ pool size and timeout settings."
 
 AI assistants can use `--porcelain` flags for programmatic access:
 
-```bash
+```
 # Check if there's a current hunk
 if git-stage-batch show --porcelain; then
     echo "Hunk exists"
@@ -207,7 +207,7 @@ echo "$status" | jq '.blocked_hunks'
 
 ### Pattern 1: Feature Implementation
 
-```bash
+```
 # AI implements a feature touching multiple files
 git-stage-batch start
 
@@ -232,7 +232,7 @@ git commit -m "docs: Document dashboard feature"
 
 ### Pattern 2: Refactoring
 
-```bash
+```
 # AI refactors code with both rename and logic changes
 git-stage-batch start
 
@@ -248,7 +248,7 @@ git commit -m "refactor: Improve process_data algorithm"
 
 ### Pattern 3: Bug Fix with Tests
 
-```bash
+```
 # AI fixes bug and adds regression test
 git-stage-batch start
 git-stage-batch include  # bug fix

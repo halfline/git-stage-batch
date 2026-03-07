@@ -1,0 +1,276 @@
+/* Hacker/Cyberpunk Theme Overrides */
+
+:root {
+  --hacker-green: #00ff41;
+  --hacker-cyan: #00f0ff;
+  --hacker-purple: #bd00ff;
+  --hacker-pink: #ff006e;
+  --terminal-bg: #0d1117;
+  --terminal-fg: #00ff41;
+}
+
+/* Dark mode enhancements */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0d1117;
+  --md-primary-fg-color--light: #1a1f2e;
+  --md-primary-fg-color--dark: #000000;
+  --md-accent-fg-color: var(--hacker-cyan);
+  --md-typeset-a-color: var(--hacker-cyan);
+  --md-typeset-code-color: var(--hacker-green);
+}
+
+/* Terminal-style code blocks */
+.highlight pre,
+pre code {
+  background: var(--terminal-bg) !important;
+  border: 1px solid var(--hacker-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+  font-family: 'Fira Code', 'Source Code Pro', 'Roboto Mono', monospace;
+  position: relative;
+}
+
+/* Animated cursor removed - was overlapping with copy button */
+
+/* Glowing effect on links and buttons */
+.md-button,
+.md-typeset a {
+  text-shadow: 0 0 5px currentColor;
+  transition: all 0.3s ease;
+}
+
+.md-button:hover,
+.md-typeset a:hover {
+  text-shadow: 0 0 10px currentColor;
+  transform: translateY(-1px);
+}
+
+/* Scanlines effect (subtle) */
+.md-container::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.05),
+    rgba(0, 0, 0, 0.05) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0.3;
+}
+
+/* Glitch effect on title */
+.md-header__title {
+  position: relative;
+  animation: glitch 3s infinite;
+}
+
+@keyframes glitch {
+  0%, 90%, 100% {
+    text-shadow: none;
+  }
+  92% {
+    text-shadow: 2px 0 var(--hacker-cyan), -2px 0 var(--hacker-pink);
+  }
+  94% {
+    text-shadow: -2px 0 var(--hacker-cyan), 2px 0 var(--hacker-pink);
+  }
+}
+
+/* Matrix-style grid background */
+.md-main {
+  background-image:
+    linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+
+/* Neon border on cards */
+.md-typeset .grid.cards > ol > li,
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid > .card {
+  border: 1px solid var(--hacker-cyan);
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.md-typeset .grid.cards > ol > li:hover,
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid > .card:hover {
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.4);
+  transform: translateY(-3px);
+  border-color: var(--hacker-green);
+}
+
+/* Terminal window style for demo image */
+img[alt*="demo"] {
+  border: 2px solid var(--hacker-cyan);
+  border-radius: 8px;
+  box-shadow:
+    0 0 20px rgba(0, 240, 255, 0.3),
+    inset 0 0 20px rgba(0, 240, 255, 0.1);
+}
+
+/* Code inline elements */
+.md-typeset code {
+  background: var(--terminal-bg);
+  color: var(--hacker-green);
+  border: 1px solid rgba(0, 255, 65, 0.3);
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  font-family: 'Fira Code', 'Source Code Pro', 'Roboto Mono', monospace;
+}
+
+/* Emoji with glow */
+.twemoji {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+/* Search bar terminal style */
+.md-search__input {
+  background: var(--terminal-bg);
+  border: 1px solid var(--hacker-cyan);
+  color: var(--hacker-green);
+}
+
+.md-search__input::placeholder {
+  color: rgba(0, 255, 65, 0.5);
+}
+
+/* Table styling */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--hacker-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--terminal-bg);
+  color: var(--hacker-cyan);
+  border-bottom: 2px solid var(--hacker-cyan);
+}
+
+/* Admonitions with neon styling */
+.md-typeset .admonition {
+  border-left: 3px solid var(--hacker-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+}
+
+/* Navigation tabs with glow */
+.md-tabs {
+  background: var(--terminal-bg);
+  border-bottom: 1px solid var(--hacker-cyan);
+}
+
+.md-tabs__link {
+  transition: all 0.3s ease;
+}
+
+.md-tabs__link:hover {
+  text-shadow: 0 0 10px var(--hacker-cyan);
+}
+
+/* Footer with terminal style */
+.md-footer {
+  border-top: 1px solid var(--hacker-cyan);
+  background: var(--terminal-bg);
+}
+
+/* Syntax highlighting overrides for terminal look */
+.highlight .c1,
+.highlight .c,
+.highlight .cm {
+  color: #6a9955 !important; /* Comments in greenish */
+}
+
+.highlight .k,
+.highlight .kd,
+.highlight .kn {
+  color: var(--hacker-cyan) !important; /* Keywords in cyan */
+}
+
+.highlight .s,
+.highlight .s1,
+.highlight .s2 {
+  color: var(--hacker-pink) !important; /* Strings in pink */
+}
+
+.highlight .nf,
+.highlight .nb {
+  color: var(--hacker-green) !important; /* Functions in green */
+}
+
+/* Header with subtle glow */
+.md-header {
+  background: var(--terminal-bg);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+}
+
+/* Scroll progress indicator */
+.md-progress {
+  background: linear-gradient(
+    90deg,
+    var(--hacker-green) 0%,
+    var(--hacker-cyan) 50%,
+    var(--hacker-purple) 100%
+  );
+  box-shadow: 0 0 10px var(--hacker-cyan);
+}
+
+/* Feature icons with pulse effect */
+.md-typeset .grid.cards svg {
+  filter: drop-shadow(0 0 5px currentColor);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+/* Custom scrollbar (for webkit browsers) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--terminal-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--hacker-cyan);
+  border-radius: 5px;
+  box-shadow: 0 0 5px var(--hacker-cyan);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--hacker-green);
+  box-shadow: 0 0 10px var(--hacker-green);
+}
+
+/* Disable sidebar transitions for instant hide/show */
+.md-sidebar--primary {
+  transition: none !important;
+}
+
+body.hide-primary-sidebar .md-sidebar--primary {
+  display: none !important;
+}
+
+/* Responsive: reduce effects on mobile */
+@media screen and (max-width: 768px) {
+  .md-container::before {
+    opacity: 0.1;
+  }
+}

@@ -17,7 +17,7 @@ function updateSidebarVisibility() {
     if (shouldHideSidebar) {
       primarySidebar.style.setProperty('display', 'none', 'important');
     } else {
-      primarySidebar.style.removeProperty('display');
+      primarySidebar.style.setProperty('display', 'block', 'important');
     }
   }
 }

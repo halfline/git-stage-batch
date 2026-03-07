@@ -901,7 +901,14 @@ def estimate_remaining_hunks() -> int:
 
 
 def command_status(porcelain: bool = False) -> None:
-    """Show session progress and current state."""
+    """Show session progress (iteration, current location, metrics, skipped hunks).
+
+    With --porcelain, outputs JSON with:
+    - session: Iteration number and in_progress flag
+    - current: Current hunk location (file, line, ids) or null
+    - progress: Counts of included/skipped/discarded/remaining hunks
+    - skipped_hunks: Array of skipped hunks with metadata
+    """
     require_git_repository()
     ensure_state_directory_exists()
 

@@ -1,0 +1,437 @@
+# Hindi translations for git-stage-batch package.
+# Copyright (C) 2026 THE git-stage-batch'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the git-stage-batch package.
+# Automatically generated, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: git-stage-batch\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-06 19:40-0500\n"
+"PO-Revision-Date: 2026-03-06 19:40-0500\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: none\n"
+"Language: hi\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/git_stage_batch/cli.py:306
+msgid "No batch staging session in progress."
+msgstr "कोई बैच स्टेजिंग सत्र प्रगति में नहीं है।"
+
+#: src/git_stage_batch/cli.py:307
+msgid "Run 'git-stage-batch start' to begin."
+msgstr "शुरू करने के लिए 'git-stage-batch start' चलाएं।"
+
+#: src/git_stage_batch/commands.py:176 src/git_stage_batch/commands.py:517
+#: src/git_stage_batch/commands.py:633 src/git_stage_batch/commands.py:661
+#: src/git_stage_batch/commands.py:675 src/git_stage_batch/commands.py:703
+#: src/git_stage_batch/commands.py:729 src/git_stage_batch/commands.py:1464
+#: src/git_stage_batch/commands.py:1570
+msgid "No current hunk. Run 'start' first."
+msgstr "कोई वर्तमान हंक नहीं। पहले 'start' चलाएं।"
+
+#: src/git_stage_batch/commands.py:213 src/git_stage_batch/commands.py:288
+#: src/git_stage_batch/commands.py:293 src/git_stage_batch/commands.py:321
+#: src/git_stage_batch/commands.py:1258 src/git_stage_batch/commands.py:1445
+msgid "No pending hunks."
+msgstr "कोई लंबित हंक नहीं।"
+
+#: src/git_stage_batch/commands.py:476
+msgid "Batch staging already in process, starting again"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:526
+msgid "No current hunk to include. Run 'start' first."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:534 src/git_stage_batch/commands.py:565
+#: src/git_stage_batch/commands.py:590 src/git_stage_batch/commands.py:1472
+#: src/git_stage_batch/commands.py:1578
+msgid ""
+"Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:541
+msgid "Failed to apply hunk: {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:541
+msgid "git apply failed."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:557
+msgid "No current hunk to skip. Run 'start' first."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:582
+msgid "No current hunk to discard. Run 'start' first."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:600
+msgid "Failed to discard hunk: {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:600
+msgid "git apply -R failed."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:795
+msgid "✓ State cleared."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:804
+msgid "No session to abort. Abort state not found."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:822
+msgid "Resetting to {}..."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:844
+msgid "Restored: {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:848
+msgid "Applying original changes..."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:856
+msgid "⚠ Warning: Could not apply stash cleanly: {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:863
+msgid "✓ Session aborted. All changes reverted."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:963
+msgid "in progress"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:963
+msgid "complete"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:964
+msgid "Session: iteration {} ({})"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:969
+msgid "Current hunk:"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:974
+msgid "Progress this iteration:"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:975
+msgid "  Included:  {} hunks"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:976
+msgid "  Skipped:   {} hunks"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:977
+msgid "  Discarded: {} hunks"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:978
+msgid "  Remaining: ~{} hunks"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:982
+msgid "Skipped hunks:"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:997
+msgid "No file path provided and no current hunk to infer from."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1026
+msgid "Blocked file: {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1085
+msgid ""
+"\n"
+"y - yes, stage this hunk\n"
+"n - no, skip this hunk for now\n"
+"d - discard this hunk from working tree\n"
+"q - quit interactive mode\n"
+"a - stage this hunk and all remaining hunks\n"
+"l - interactively select lines from this hunk\n"
+"f - stage or skip all hunks in current file\n"
+"b - block current file (add to .gitignore)\n"
+"x - suggest which commit to fixup\n"
+"! - run a command\n"
+"? - print help\n"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1107
+msgid "No changed lines in this hunk"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1120 src/git_stage_batch/commands.py:1183
+msgid "include"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1120 src/git_stage_batch/commands.py:1183
+#: src/git_stage_batch/commands.py:1273
+msgid "i"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1121 src/git_stage_batch/commands.py:1184
+msgid "skip"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1121 src/git_stage_batch/commands.py:1184
+#: src/git_stage_batch/commands.py:1275
+msgid "s"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1122
+msgid "discard"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1122 src/git_stage_batch/commands.py:1277
+msgid "d"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1123 src/git_stage_batch/commands.py:1291
+msgid "suggest-fixup"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1123 src/git_stage_batch/commands.py:1291
+msgid "x"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1126
+#, python-brace-format
+msgid "Action for lines {options}? "
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1128
+msgid "Action for lines [i]nclude, [s]kip, [d]iscard, or [x]suggest-fixup? "
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1132 src/git_stage_batch/commands.py:1202
+msgid "Invalid action: '{}'"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1138
+msgid "Enter line IDs (e.g., 1,3,5-7):"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1140
+msgid "Enter line IDs (e.g., 1,3,5-7): "
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1144
+msgid "Line IDs required"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1171 src/git_stage_batch/commands.py:1204
+msgid "Cancelled"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1186
+#, python-brace-format
+msgid "Action for all hunks in {filename} - {include} or {skip}? "
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1193
+msgid "Action for all hunks in {} - [i]nclude or [s]kip? "
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1217
+msgid "File path required for unblock-file command."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1229
+msgid "Unblocked file: {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1231
+msgid "Removed from blocked list: {} (was not in .gitignore with our marker)"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1271 src/git_stage_batch/commands.py:1299
+msgid "What do you want to do with this hunk?"
+msgstr "आप इस हंक के साथ क्या करना चाहते हैं?"
+
+#: src/git_stage_batch/commands.py:1273
+msgid "include  - Stage this hunk to the index"
+msgstr "include  - इस हंक को इंडेक्स में स्टेज करें"
+
+#: src/git_stage_batch/commands.py:1275
+msgid "skip     - Skip this hunk for now"
+msgstr "skip     - इस हंक को अभी के लिए छोड़ें"
+
+#: src/git_stage_batch/commands.py:1277
+msgid "discard  - Remove this hunk from working tree (DESTRUCTIVE)"
+msgstr "discard  - इस हंक को वर्किंग ट्री से हटाएं (विनाशकारी)"
+
+#: src/git_stage_batch/commands.py:1279
+msgid "quit     - Exit interactive mode"
+msgstr "quit     - इंटरैक्टिव मोड से बाहर निकलें"
+
+#: src/git_stage_batch/commands.py:1279
+msgid "q"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1283
+msgid "all"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1283
+msgid "a"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1285
+msgid "lines"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1285
+msgid "l"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1287
+msgid "file"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1287
+msgid "f"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1289
+msgid "block"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1289
+msgid "b"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1293
+msgid "run"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1293
+msgid "!"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1295
+msgid "help"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1295
+msgid "?"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1297
+msgid "More options:"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1300
+msgid "  [i]nclude  - Stage this hunk to the index"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1301
+msgid "  [s]kip     - Skip this hunk for now"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1302
+msgid "  [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1303
+msgid "  [q]uit     - Exit interactive mode"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1305
+msgid ""
+"More options: [a]ll, [l]ines, [f]ile, [b]lock, [x]suggest-fixup, [!]run, "
+"[?]help"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1313
+msgid "Action: "
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1329 src/git_stage_batch/commands.py:1369
+#: src/git_stage_batch/commands.py:1383 src/git_stage_batch/commands.py:1405
+#: src/git_stage_batch/commands.py:1426
+msgid "Cancelled."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1360
+msgid "Continuing interactive mode..."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1421
+msgid "Command exited with status {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1423
+msgid "No command entered"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1431
+msgid "Edit mode not yet implemented"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1440
+msgid "Unknown option: '{}'"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1482
+msgid "No changes found in hunk."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1493
+msgid ""
+"No old line numbers found in hunk (this appears to be a new file addition)."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1503 src/git_stage_batch/commands.py:1603
+msgid "Invalid boundary ref: {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1512 src/git_stage_batch/commands.py:1612
+msgid "Failed to get commit range {}..HEAD"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1515 src/git_stage_batch/commands.py:1615
+msgid "No commits found in range {}..HEAD"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1526 src/git_stage_batch/commands.py:1626
+msgid "Failed to run git log -L on {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1532 src/git_stage_batch/commands.py:1632
+msgid "No commits in range {}..HEAD modified these lines."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1533 src/git_stage_batch/commands.py:1633
+msgid "The changes may be fixing code from before the boundary."
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1549 src/git_stage_batch/commands.py:1649
+msgid "Suggested fixup target: {}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1550 src/git_stage_batch/commands.py:1650
+msgid "Run: git commit --fixup={}"
+msgstr ""
+
+#: src/git_stage_batch/commands.py:1593
+msgid ""
+"No old line numbers found for specified lines (they may be newly added "
+"lines)."
+msgstr ""
+
+#: src/git_stage_batch/state.py:24
+msgid "Not inside a git repository."
+msgstr ""

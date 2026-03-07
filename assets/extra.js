@@ -1,3 +1,24 @@
+function getCurrentTopLevelLabel() {
+	const activeTabLink = document.querySelector(".md-tabs__link--active");
+
+	if (activeTabLink) {
+		return activeTabLink.textContent.trim();
+	}
+
+	const currentPath = window.location.pathname;
+
+	if (
+		currentPath.endsWith("/") ||
+		currentPath.endsWith("/index.html") ||
+		currentPath.endsWith("/git-stage-batch/") ||
+		currentPath.endsWith("/git-stage-batch/index.html")
+	) {
+		return "Home";
+	}
+
+	return null;
+}
+
 function updateSidebarVisibility() {
 	const primarySidebar = document.querySelector(".md-sidebar--primary");
 
@@ -5,34 +26,10 @@ function updateSidebarVisibility() {
 		return;
 	}
 
-	/*
-	 * Find the active top-level nav item in the primary sidebar.
-	 *
-	 * Material marks active items with .md-nav__item--active.
-	 * We want the top-level one, not a nested child page.
-	 */
-	const activeTopLevelItem = primarySidebar.querySelector(
-		":scope .md-nav--primary > .md-nav__list > .md-nav__item--active"
-	);
-
-	if (!activeTopLevelItem) {
-		primarySidebar.style.removeProperty("display");
-		return;
-	}
-
-	/*
-	 * Count child pages for the active top-level section.
-	 *
-	 * Cases:
-	 *   - Home: no nested list at all
-	 *   - Integration: one child page
-	 *   - Getting Started / Reference: multiple child pages
-	 */
-	const childLinks = activeTopLevelItem.querySelectorAll(
-		":scope > .md-nav > .md-nav__list > .md-nav__item"
-	);
-
-	const shouldHideSidebar = childLinks.length <= 1;
+	const currentTopLevelLabel = getCurrentTopLevelLabel();
+	const shouldHideSidebar =
+		currentTopLevelLabel === "Home" ||
+		currentTopLevelLabel === "Integration";
 
 	if (shouldHideSidebar) {
 		primarySidebar.style.setProperty("display", "none", "important");
@@ -42,13 +39,17 @@ function updateSidebarVisibility() {
 }
 
 if (typeof document$ !== "undefined") {
-	document$.subscribe(updateSidebarVisibility);
+	document$.subscribe(function () {
+		updateSidebarVisibility();
+	});
 } else {
-	document.addEventListener("DOMContentLoaded", updateSidebarVisibility);
+	document.addEventListener("DOMContentLoaded", function () {
+		updateSidebarVisibility();
+	});
 
 	let lastUrl = location.href;
 
-	setInterval(() => {
+	setInterval(function () {
 		if (location.href !== lastUrl) {
 			lastUrl = location.href;
 			updateSidebarVisibility();

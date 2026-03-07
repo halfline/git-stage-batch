@@ -547,6 +547,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#meson-system-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        meson (system install)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#try-without-installing" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -917,6 +928,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#meson-system-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        meson (system install)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#try-without-installing" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -998,8 +1020,31 @@
 <h3 id="pip">pip<a class="headerlink" href="#pip" title="Permanent link">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip install git-stage-batch
 </span></code></pre></div>
+<h3 id="meson-system-install">meson (system install)<a class="headerlink" href="#meson-system-install" title="Permanent link">&para;</a></h3>
+<p>For system package managers or building from source:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a># Clone the repository
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>❯ git clone https://github.com/halfline/git-stage-batch.git
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>❯ cd git-stage-batch
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a># Configure and build
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>❯ meson setup build
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>❯ meson compile -C build
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a># Install to system (requires root)
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>❯ sudo meson install -C build
+</span></code></pre></div>
+<p>Or install to a custom prefix:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>❯ meson setup build --prefix=/usr/local
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>❯ meson compile -C build
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>❯ meson install -C build
+</span></code></pre></div>
+<p>This installs:
+- Python modules to <code>lib/python*/site-packages/</code>
+- Translations to <code>share/locale/</code>
+- Executable to <code>bin/</code>
+- Man page to <code>share/man/man1/</code></p>
 <h3 id="try-without-installing">Try Without Installing<a class="headerlink" href="#try-without-installing" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uvx git-stage-batch start
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>uvx git-stage-batch start
 </span></code></pre></div>
 <p>This runs the tool without permanently installing it.</p>
 <h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
@@ -1008,10 +1053,10 @@
 <li>No other dependencies (pure stdlib!)</li>
 </ul>
 <h2 id="verify-installation">Verify Installation<a class="headerlink" href="#verify-installation" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>git-stage-batch --version
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>git-stage-batch --version
 </span></code></pre></div>
 <p>You should see:
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>git-stage-batch 0.2.0
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git-stage-batch 0.2.0
 </span></code></pre></div></p>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>

@@ -48,6 +48,7 @@ Action:
 | `l` | **lines** | Enter line selection sub-menu |
 | `f` | **file** | Stage or skip all hunks in current file |
 | `b` | **block** | Block this file permanently via .gitignore |
+| `x` | **suggest-fixup** | Suggest which commit to fixup for this hunk |
 | `?` | **help** | Show detailed help |
 
 ## Line Selection Sub-Menu
@@ -84,6 +85,29 @@ File operations for test.py:
 
 File action:
 ```
+
+## Fixup Suggestions
+
+When you press `x`, the tool analyzes which commits modified the lines in the current hunk:
+
+```
+Suggested fixup target: a1b2c3d auth: Implement new hashing
+Run: git commit --fixup=a1b2c3d
+```
+
+**Workflow:**
+1. Press `x` on a hunk to see which recent commit it should fix up
+2. Stage the hunk with `i` (or skip it with `s`)
+3. Later, create a fixup commit: `git commit --fixup=a1b2c3d`
+4. Use `git rebase -i --autosquash` to automatically squash fixups
+
+**Boundary:**
+
+By default, suggests commits in the range `@{upstream}..HEAD`. You'll be prompted to specify a different boundary ref if needed.
+
+**Use case:**
+
+Perfect for polishing feature branches before submitting. When you notice a bug or improvement opportunity in recently-committed code, use suggest-fixup to quickly identify which commit to amend, keeping your commit history clean and atomic.
 
 ## Example Session
 

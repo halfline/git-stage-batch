@@ -279,6 +279,64 @@ git-stage-batch stop
 
 Removes all tracking of processed/skipped hunks. Use this to start completely fresh or when abandoning a staging session.
 
+## Fixup Suggestions
+
+### `suggest-fixup` (alias: `x`)
+
+Suggest which commit the current hunk should be fixed up to.
+
+```bash
+git-stage-batch suggest-fixup [BOUNDARY]
+```
+
+**Arguments:**
+- `BOUNDARY`: Git ref to use as lower bound for commit search (default: `@{upstream}`)
+
+```bash
+git-stage-batch suggest-fixup main
+```
+
+**How it works:**
+
+Analyzes the current hunk to find which commits in the range `BOUNDARY..HEAD` modified the lines being changed. Uses `git log -L` to identify commits that touched those lines, then suggests the most recent one as a fixup target.
+
+**Example:**
+```bash
+❯ git-stage-batch start
+auth.py :: @@ -10,5 +10,5 @@
+[#1] - old_hash_function()
+[#2] + new_hash_function()
+      validate_user()
+
+❯ git-stage-batch suggest-fixup
+Suggested fixup target: a1b2c3d auth: Implement new hashing
+Run: git commit --fixup=a1b2c3d
+```
+
+**Use case:**
+
+Perfect for creating fixup commits during a feature branch development workflow. After making changes to fix bugs or improve code you recently committed, use this to automatically identify which commit should be fixed up, then use `git rebase -i --autosquash` to squash the fixups.
+
+---
+
+### `suggest-fixup-line IDS [BOUNDARY]` (aliases: `sfl`, `sfls`)
+
+Suggest which commit specific line IDs should be fixed up to.
+
+```bash
+git-stage-batch suggest-fixup-line 1,3,5-7
+```
+
+**Arguments:**
+- `IDS`: Line IDs to analyze (e.g., `1,3,5-7`)
+- `BOUNDARY`: Git ref to use as lower bound for commit search (default: `@{upstream}`)
+
+```bash
+git-stage-batch sfl 2-4 origin/main
+```
+
+Works like `suggest-fixup` but analyzes only the specified line IDs from the current hunk. Useful when a hunk contains changes for multiple purposes and you want to know which commit to fixup for a specific subset of lines.
+
 ## Special Behavior
 
 ### No Command (Bare Invocation)

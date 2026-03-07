@@ -1,40 +1,57 @@
-// Hide left sidebar for single-item sections (Home, Integration)
 function updateSidebarVisibility() {
-  const currentPath = window.location.pathname;
+	const primarySidebar = document.querySelector(".md-sidebar--primary");
 
-  // Check if we're on a page that should hide the sidebar
-  const isHomePage = currentPath.endsWith('/') ||
-                     currentPath.endsWith('/index.html') ||
-                     currentPath.endsWith('/git-stage-batch/') ||
-                     currentPath.endsWith('/git-stage-batch/index.html');
+	if (!primarySidebar) {
+		return;
+	}
 
-  const isIntegrationPage = currentPath.includes('ai-assistants');
+	/*
+	 * Find the active top-level nav item in the primary sidebar.
+	 *
+	 * Material marks active items with .md-nav__item--active.
+	 * We want the top-level one, not a nested child page.
+	 */
+	const activeTopLevelItem = primarySidebar.querySelector(
+		":scope .md-nav--primary > .md-nav__list > .md-nav__item--active"
+	);
 
-  const shouldHideSidebar = isHomePage || isIntegrationPage;
+	if (!activeTopLevelItem) {
+		primarySidebar.style.removeProperty("display");
+		return;
+	}
 
-  const primarySidebar = document.querySelector('.md-sidebar--primary');
-  if (primarySidebar) {
-    if (shouldHideSidebar) {
-      primarySidebar.style.setProperty('display', 'none', 'important');
-    } else {
-      primarySidebar.style.removeProperty('display');
-    }
-  }
+	/*
+	 * Count child pages for the active top-level section.
+	 *
+	 * Cases:
+	 *   - Home: no nested list at all
+	 *   - Integration: one child page
+	 *   - Getting Started / Reference: multiple child pages
+	 */
+	const childLinks = activeTopLevelItem.querySelectorAll(
+		":scope > .md-nav > .md-nav__list > .md-nav__item"
+	);
+
+	const shouldHideSidebar = childLinks.length <= 1;
+
+	if (shouldHideSidebar) {
+		primarySidebar.style.setProperty("display", "none", "important");
+	} else {
+		primarySidebar.style.removeProperty("display");
+	}
 }
 
-// Hook into MkDocs Material's navigation system
-if (typeof document$ !== 'undefined') {
-  document$.subscribe(updateSidebarVisibility);
+if (typeof document$ !== "undefined") {
+	document$.subscribe(updateSidebarVisibility);
 } else {
-  // Fallback for initial load
-  document.addEventListener('DOMContentLoaded', updateSidebarVisibility);
+	document.addEventListener("DOMContentLoaded", updateSidebarVisibility);
 
-  // Watch for navigation changes
-  let lastUrl = location.href;
-  setInterval(() => {
-    if (location.href !== lastUrl) {
-      lastUrl = location.href;
-      updateSidebarVisibility();
-    }
-  }, 100);
+	let lastUrl = location.href;
+
+	setInterval(() => {
+		if (location.href !== lastUrl) {
+			lastUrl = location.href;
+			updateSidebarVisibility();
+		}
+	}, 100);
 }

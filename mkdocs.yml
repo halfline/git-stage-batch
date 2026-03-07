@@ -8,27 +8,17 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: overrides
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
   palette:
-    # Light mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    # Dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
+    scheme: slate
+    primary: black
+    accent: cyan
 
   font:
-    text: Roboto
-    code: Roboto Mono
+    text: 'Fira Code'
+    code: 'Fira Code'
 
   features:
     - navigation.instant
@@ -81,6 +71,12 @@ nav:
 
 plugins:
   - search
+
+extra_css:
+  - assets/extra.css
+
+extra_javascript:
+  - assets/extra.js
 
 extra:
   social:

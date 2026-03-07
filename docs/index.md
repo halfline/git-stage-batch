@@ -1,6 +1,25 @@
-# git-stage-batch
+<div class="hero-wrapper" style="position: relative; padding: 2em 0;">
+<div class="hero-mark" style="font-family: monospace; color: #00ff41; text-shadow: 0 0 15px #00ff41, 0 0 25px rgba(0, 255, 65, 0.4); line-height: 1.2; margin: 0 0 0.5em; text-align: center;">
+<pre style="background: transparent; border: none; box-shadow: none; text-align: left; display: inline-block; font-size: 1.05em;">
+   ┌─────────────────┐
+   │ git-stage-batch │
+   └─────────────────┘
 
-**Writing code is messy. Git history doesn't have to be.**
+       o───o
+      /
+  o───o───o
+
+ stage patches in batches
+</pre>
+</div>
+
+<div class="hero-tagline" style="font-size: 1.5em; font-weight: 600; line-height: 1.4; margin: 1.5em 0 1.5em; text-align: center; color: var(--hacker-cyan); text-shadow: 0 0 8px rgba(0, 240, 255, 0.6), 0 0 16px rgba(0, 240, 255, 0.3);">
+Writing code is messy.<br>
+Git history doesn't have to be.
+</div>
+</div>
+
+<div class="hero-intro" style="font-size: 1.05em; line-height: 1.65; max-width: 42em; margin: 0 auto 1em;">
 
 During development we experiment, refactor, backtrack, and fix mistakes. If every step ends up as a commit, the history becomes noise.
 
@@ -8,7 +27,33 @@ A curated history turns that process into a clear sequence of logical changes. E
 
 This clarity assists contributors explore the codebase, maintainers review changes, and your future self try to understand how the system evolved.
 
-**git-stage-batch** helps you build that history incrementally by letting you stage changes hunk-by-hunk or line-by-line, shaping commits around meaning instead of the order the edits happened.
+</div>
+
+<div style="font-size: 1.1em; font-weight: 500; max-width: 42em; margin: 0 auto 2em;">
+<strong>git-stage-batch</strong> helps you build that history incrementally by letting you stage changes hunk-by-hunk or line-by-line, shaping commits around meaning instead of the order the edits happened.
+</div>
+
+<div style="text-align: center; margin: 2em 0 3em;">
+  <a href="#quick-start" class="md-button md-button--primary" style="font-size: 1.1em; padding: 0.7em 2em; box-shadow: 0 0 20px rgba(0, 240, 255, 0.4);">
+    Get Started
+  </a>
+</div>
+
+<div style="text-align: center; margin: 3em 0;">
+  <img src="assets/batch-of-patches.png" alt="Batch of patches - hacker preparing atomic commits" style="max-width: 90%; border-radius: 8px; box-shadow: 0 0 30px rgba(0, 240, 255, 0.4);" />
+</div>
+
+<div style="text-align: center; margin: 2em 0;">
+  <audio controls class="podcast-player" style="width: 100%; max-width: 600px; border-radius: 8px;">
+    <source src="https://github.com/halfline/git-stage-batch/releases/download/v0.4.0/podcast.m4a" type="audio/mp4">
+    Your browser does not support the audio element.
+  </audio>
+  <p style="margin-top: 0.5em; font-size: 0.85em; opacity: 0.7;">
+    🎧 git-stage-batch featured on the Deep Dive podcast!
+  </p>
+</div>
+
+<div class="hero-separator" style="height: 1px; background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.3) 50%, transparent); margin: 4em auto; max-width: 60%;"></div>
 
 <div class="grid cards" markdown>
 
@@ -70,20 +115,20 @@ Similar to `git add -p` but **more granular and flexible**:
 
 === "uv (recommended)"
 
-    ```bash
-    uv tool install git-stage-batch
+    ```
+    ❯ uv tool install git-stage-batch
     ```
 
 === "pipx"
 
-    ```bash
-    pipx install git-stage-batch
+    ```
+    ❯ pipx install git-stage-batch
     ```
 
 === "pip"
 
-    ```bash
-    pip install git-stage-batch
+    ```
+    ❯ pip install git-stage-batch
     ```
 
 === "meson"
@@ -101,86 +146,94 @@ Similar to `git add -p` but **more granular and flexible**:
 
 ### Basic Usage
 
-```bash
+```
 # Start reviewing hunks
-git-stage-batch start
+❯ git-stage-batch start
 
 # Include the current hunk (stage it)
-git-stage-batch include
+❯ git-stage-batch include
 # Or use the short alias:
-git-stage-batch i
+❯ git-stage-batch i
 
 # Skip it for now
-git-stage-batch skip    # or: s
+❯ git-stage-batch skip    # or: s
 
 # Discard it (remove from working tree)
-git-stage-batch discard # or: d
+❯ git-stage-batch discard # or: d
 
 # For fine-grained control, stage specific lines
-git-stage-batch include-line 1,3,5-7  # or: il 1,3,5-7
-git-stage-batch skip-line 2,4         # or: sl 2,4
+❯ git-stage-batch include-line 1,3,5-7  # or: il 1,3,5-7
+❯ git-stage-batch skip-line 2,4         # or: sl 2,4
 
 # Check status
-git-stage-batch status  # or: st
+❯ git-stage-batch status  # or: st
 
 # Start fresh after committing
-git-stage-batch again   # or: a
+❯ git-stage-batch again   # or: a
 ```
 
 ## Interactive Mode
 
 For a workflow similar to `git add -p`:
 
-```bash
-git-stage-batch --interactive
+```
+❯ git-stage-batch --interactive
 ```
 
 Interactive mode presents hunks one at a time with beginner-friendly prompts and single-letter shortcuts.
 
 [Learn more about interactive mode →](interactive.md){ .md-button }
 
+<div class="section-separator"></div>
+
 ## Example Workflow
 
-```bash
+<div class="workflow-showcase">
+
+```
 # You have changes in multiple files
-$ git status
+❯ git status
 modified:   auth.py
 modified:   config.py
 
 # Start staging process
-$ git-stage-batch start
+❯ git-stage-batch start
 auth.py :: @@ -10,5 +10,5 @@
 [#1] - old_hash_function()
 [#2] + new_hash_function()
       validate_user()
 
 # Include this for first commit
-$ git-stage-batch i
+❯ git-stage-batch i
 config.py :: @@ -20,3 +20,4 @@
 [#1] + DEBUG = True
       TIMEOUT = 30
 
 # This debug flag shouldn't be committed, skip it
-$ git-stage-batch s
+❯ git-stage-batch s
 No pending hunks.
 
 # Create first commit
-$ git commit -m "auth: Upgrade to new hash function"
+❯ git commit -m "auth: Upgrade to new hash function"
 
 # Go through skipped hunks for next commit
-$ git-stage-batch a
+❯ git-stage-batch a
 config.py :: @@ -20,3 +20,4 @@
 [#1] + DEBUG = True
       TIMEOUT = 30
 
 # Discard this debug line instead
-$ git-stage-batch d
+❯ git-stage-batch d
 No pending hunks.
 
 # Working tree is now clean
-$ git status
+❯ git status
 nothing to commit, working tree clean
 ```
+
+</div>
+
+<div class="section-separator"></div>
 
 ## Features
 
@@ -192,8 +245,8 @@ Review and stage individual hunks one at a time. Each hunk shows changed lines w
 
 Stage specific lines within a hunk:
 
-```bash
-git-stage-batch include-line 1,3,5-7
+```
+❯ git-stage-batch include-line 1,3,5-7
 ```
 
 Perfect for separating orthogonal changes that ended up in the same hunk.
@@ -214,6 +267,8 @@ Track processed/skipped hunks across multiple command invocations. Resume where 
 ### Stale State Detection
 
 Automatically detects and clears cached state when files are committed or modified externally. No more misleading status!
+
+<div class="section-separator"></div>
 
 ## FAQ
 

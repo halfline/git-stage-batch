@@ -4,24 +4,26 @@
 
 Install once, use everywhere:
 
-```bash
-uv tool install git-stage-batch
+```
+❯ uv tool install git-stage-batch
 ```
 
 This installs `git-stage-batch` as a global command-line tool.
+
+<div class="section-separator"></div>
 
 ## Alternative Methods
 
 ### pipx
 
-```bash
-pipx install git-stage-batch
+```
+❯ pipx install git-stage-batch
 ```
 
 ### pip
 
-```bash
-pip install git-stage-batch
+```
+❯ pip install git-stage-batch
 ```
 
 ### meson (system install)
@@ -57,11 +59,13 @@ This installs:
 
 ### Try Without Installing
 
-```bash
-uvx git-stage-batch start
+```
+❯ uvx git-stage-batch start
 ```
 
 This runs the tool without permanently installing it.
+
+<div class="section-separator"></div>
 
 ## Requirements
 
@@ -70,14 +74,11 @@ This runs the tool without permanently installing it.
 
 ## Verify Installation
 
-```bash
-git-stage-batch --version
+```
+❯ git-stage-batch --version
 ```
 
-You should see:
-```
-git-stage-batch 0.2.0
-```
+You should see output showing the installed version.
 
 ## Next Steps
 

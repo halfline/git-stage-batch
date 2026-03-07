@@ -4,8 +4,8 @@ Interactive mode provides a beginner-friendly workflow similar to `git add -p` w
 
 ## Starting Interactive Mode
 
-```bash
-git-stage-batch --interactive
+```
+❯ git-stage-batch --interactive
 ```
 
 ## How It Works
@@ -28,6 +28,8 @@ More options: [a]ll, [l]ines, [f]ile, [b]lock, [?]help
 
 Action:
 ```
+
+<div class="section-separator"></div>
 
 ## Available Actions
 
@@ -109,10 +111,12 @@ By default, suggests commits in the range `@{upstream}..HEAD`. You'll be prompte
 
 Perfect for polishing feature branches before submitting. When you notice a bug or improvement opportunity in recently-committed code, use suggest-fixup to quickly identify which commit to amend, keeping your commit history clean and atomic.
 
+<div class="section-separator"></div>
+
 ## Example Session
 
-```bash
-$ git-stage-batch --interactive
+```
+❯ git-stage-batch --interactive
 
 # First hunk appears
 auth.py :: @@ -10,5 +10,5 @@
@@ -147,6 +151,8 @@ No pending hunks.
 # Exit interactive mode
 ```
 
+<div class="section-separator"></div>
+
 ## Why Use Interactive Mode?
 
 ### Good For:
@@ -174,9 +180,9 @@ No pending hunks.
 
 === "Interactive Mode"
 
-    ```bash
+    ```
     # One command, multiple decisions
-    git-stage-batch --interactive
+    ❯ git-stage-batch --interactive
     # Then: i, s, i, d, etc.
     ```
 
@@ -185,13 +191,13 @@ No pending hunks.
 
 === "Command Mode"
 
-    ```bash
+    ```
     # Multiple commands, one decision each
-    git-stage-batch start
-    git-stage-batch include
-    git-stage-batch skip
-    git-stage-batch include
-    git-stage-batch discard
+    ❯ git-stage-batch start
+    ❯ git-stage-batch include
+    ❯ git-stage-batch skip
+    ❯ git-stage-batch include
+    ❯ git-stage-batch discard
     ```
 
     - **Pros:** Scriptable, automation-friendly, AI-compatible

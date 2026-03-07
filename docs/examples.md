@@ -6,31 +6,31 @@ Common workflows and use cases for git-stage-batch.
 
 Separate features into different commits:
 
-```bash
-$ git status
+```
+❯ git status
 modified:   feature1.py
 modified:   feature2.py
 
-$ git-stage-batch start
+❯ git-stage-batch start
 feature1.py :: @@ -10,5 +10,5 @@
 [#1] - old_implementation()
 [#2] + new_implementation()
 
-$ git-stage-batch include
+❯ git-stage-batch include
 
 feature2.py :: @@ -5,3 +5,4 @@
 [#1] + experimental_code()
 
-$ git-stage-batch skip
+❯ git-stage-batch skip
 No pending hunks.
 
-$ git commit -m "feature1: Implement new algorithm"
+❯ git commit -m "feature1: Implement new algorithm"
 
-$ git-stage-batch again
+❯ git-stage-batch again
 feature2.py :: @@ -5,3 +5,4 @@
 [#1] + experimental_code()
 
-$ git-stage-batch discard
+❯ git-stage-batch discard
 No pending hunks.
 ```
 
@@ -38,8 +38,8 @@ No pending hunks.
 
 You accidentally mixed two changes in one hunk:
 
-```bash
-$ git-stage-batch start
+```
+❯ git-stage-batch start
 config.py :: @@ -1,5 +1,7 @@
 [#1] + FEATURE_FLAG = True
       DATABASE_URL = "..."
@@ -49,7 +49,7 @@ config.py :: @@ -1,5 +1,7 @@
 
 # Feature flag and timeout are separate concerns
 # Stage only the timeout change
-$ git-stage-batch include-line 2,3
+❯ git-stage-batch include-line 2,3
 config.py :: @@ -1,5 +1,7 @@
 [#1] + FEATURE_FLAG = True
       DATABASE_URL = "..."
@@ -57,9 +57,9 @@ config.py :: @@ -1,5 +1,7 @@
 [#3] + TIMEOUT = 60
 [#4] + DEBUG = False
 
-$ git commit -m "config: Increase timeout to 60s"
+❯ git commit -m "config: Increase timeout to 60s"
 
-$ git-stage-batch again
+❯ git-stage-batch again
 config.py :: @@ -1,5 +1,7 @@
 [#1] + FEATURE_FLAG = True
       DATABASE_URL = "..."
@@ -72,24 +72,24 @@ config.py :: @@ -1,5 +1,7 @@
 
 You have multiple hunks in one file that all belong together:
 
-```bash
-$ git-stage-batch start
+```
+❯ git-stage-batch start
 auth.py :: @@ -10,5 +10,5 @@
 [#1] - old_hash()
 [#2] + new_hash()
 
 # This file has 5 more hunks, all part of the same refactor
-$ git-stage-batch include-file
+❯ git-stage-batch include-file
 # All hunks in auth.py are now staged
 
-$ git commit -m "auth: Migrate to new hashing algorithm"
+❯ git commit -m "auth: Migrate to new hashing algorithm"
 ```
 
 ## Machine-Readable: Script Integration
 
 Check if there's work to do before processing:
 
-```bash
+```
 #!/bin/bash
 
 # Start staging
@@ -118,41 +118,43 @@ echo "All hunks processed"
 
 Create a series of atomic commits from mixed changes:
 
-```bash
+```
 # You have changes spanning multiple concerns
-$ git diff --stat
+❯ git diff --stat
 auth.py        | 10 +++++-----
 database.py    |  5 +++--
 config.py      |  3 ++-
 logging.py     |  8 ++++----
 
 # Session 1: Authentication changes
-$ git-stage-batch start
+❯ git-stage-batch start
 # Include all auth.py hunks
-$ git-stage-batch include-file
+❯ git-stage-batch include-file
 # Skip everything else
-$ git-stage-batch skip    # database.py
-$ git-stage-batch skip    # config.py
-$ git-stage-batch skip    # logging.py
-$ git commit -m "auth: Implement OAuth2 flow"
+❯ git-stage-batch skip    # database.py
+❯ git-stage-batch skip    # config.py
+❯ git-stage-batch skip    # logging.py
+❯ git commit -m "auth: Implement OAuth2 flow"
 
 # Session 2: Database changes
-$ git-stage-batch again
-$ git-stage-batch skip    # Skip auth.py (already done)
-$ git-stage-batch include # Include database.py
-$ git-stage-batch skip    # Skip config.py
-$ git-stage-batch skip    # Skip logging.py
-$ git commit -m "database: Add connection pooling"
+❯ git-stage-batch again
+❯ git-stage-batch skip    # Skip auth.py (already done)
+❯ git-stage-batch include # Include database.py
+❯ git-stage-batch skip    # Skip config.py
+❯ git-stage-batch skip    # Skip logging.py
+❯ git commit -m "database: Add connection pooling"
 
 # Continue until all changes are committed...
 ```
+
+<div class="section-separator"></div>
 
 ## Advanced: Selective Line Staging
 
 Mix include and skip at line level:
 
-```bash
-$ git-stage-batch start
+```
+❯ git-stage-batch start
 utils.py :: @@ -10,8 +10,8 @@
 [#1] - def helper1():
 [#2] + def improved_helper1():
@@ -164,7 +166,7 @@ utils.py :: @@ -10,8 +10,8 @@
 [#8] +     return new_logic()
 
 # Stage only helper1 changes (lines 1-4)
-$ git-stage-batch include-line 1-4
+❯ git-stage-batch include-line 1-4
 utils.py :: @@ -10,8 +10,8 @@
 [#1] - def helper1():
 [#2] + def improved_helper1():
@@ -175,18 +177,18 @@ utils.py :: @@ -10,8 +10,8 @@
 [#7] -     return old_logic()
 [#8] +     return new_logic()
 
-$ git commit -m "utils: Improve helper1 implementation"
+❯ git commit -m "utils: Improve helper1 implementation"
 
 # Now handle helper2 in next commit
-$ git-stage-batch again
+❯ git-stage-batch again
 ```
 
 ## Interactive: Quick Manual Review
 
 Use interactive mode for hands-on control:
 
-```bash
-$ git-stage-batch --interactive
+```
+❯ git-stage-batch --interactive
 
 # First hunk
 feature.py :: @@ ...
@@ -210,51 +212,51 @@ Confirm discard (y/N): y
 
 Permanently exclude build artifacts or generated files:
 
-```bash
-$ git-stage-batch start
+```
+❯ git-stage-batch start
 dist/bundle.js :: @@ ...
 
 # This is generated, never want to commit it
-$ git-stage-batch block-file
+❯ git-stage-batch block-file
 # Adds to .gitignore and internal blocked list
 
 # Later, if you need to unblock:
-$ git-stage-batch unblock-file dist/bundle.js
+❯ git-stage-batch unblock-file dist/bundle.js
 ```
 
 ## Fast Workflow: Short Aliases
 
 Minimize typing with short aliases:
 
-```bash
-$ git-stage-batch start
+```
+❯ git-stage-batch start
 [hunk displayed]
 
-$ git-stage-batch        # No command = include
+❯ git-stage-batch        # No command = include
 [next hunk]
 
-$ git-stage-batch s      # skip
+❯ git-stage-batch s      # skip
 [next hunk]
 
-$ git-stage-batch        # include
+❯ git-stage-batch        # include
 [next hunk]
 
-$ git-stage-batch il 1-5 # include-line
+❯ git-stage-batch il 1-5 # include-line
 [updated hunk]
 
-$ git-stage-batch        # include remaining
+❯ git-stage-batch        # include remaining
 No pending hunks.
 
-$ git commit -m "..."
-$ git-stage-batch a      # again
+❯ git commit -m "..."
+❯ git-stage-batch a      # again
 ```
 
 ## Status Checking
 
 Monitor progress during a session:
 
-```bash
-$ git-stage-batch status
+```
+❯ git-stage-batch status
 Session: iteration 1 (in progress)
 
 Current hunk:
@@ -271,23 +273,25 @@ Skipped hunks:
   config.py:20 [#1-2]
 
 # Check from scripts
-$ git-stage-batch status --porcelain | jq '.progress.included'
+❯ git-stage-batch status --porcelain | jq '.progress.included'
 2
 
 # Count skipped hunks
-$ git-stage-batch status --porcelain | jq '.skipped_hunks | length'
+❯ git-stage-batch status --porcelain | jq '.skipped_hunks | length'
 1
 
 # Get current iteration
-$ git-stage-batch status --porcelain | jq '.session.iteration'
+❯ git-stage-batch status --porcelain | jq '.session.iteration'
 1
 ```
+
+<div class="section-separator"></div>
 
 ## Fixup Commits: Polish Feature Branches
 
 Use `suggest-fixup` to create fixup commits for polishing feature branches:
 
-```bash
+```
 # You're working on a feature branch and notice bugs in recent commits
 ❯ git log --oneline -5
 c3d4e5f feat: Add user profile page
@@ -346,6 +350,8 @@ profile.py :: @@ -12,2 +12,2 @@
 - Automatically identifies which commit each fix belongs to
 - Works seamlessly with `git rebase --autosquash`
 - Perfect for PR review feedback or self-review fixes
+
+<div class="section-separator"></div>
 
 ## Tips
 

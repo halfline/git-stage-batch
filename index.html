@@ -567,6 +567,89 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#faq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FAQ
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FAQ">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#is-this-rewriting-git-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Is this rewriting Git history?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-should-i-use-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When should I use this?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-not-just-use-git-add-p" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not just use git add -p?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#is-this-safe-for-protected-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Is this safe for protected branches?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#is-this-similar-to-git-rebase-i" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Is this similar to git rebase -i?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-curate-git-history-at-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why curate Git history at all?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#next-steps" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1088,6 +1171,89 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#faq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FAQ
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FAQ">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#is-this-rewriting-git-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Is this rewriting Git history?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-should-i-use-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When should I use this?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-not-just-use-git-add-p" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not just use git add -p?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#is-this-safe-for-protected-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Is this safe for protected branches?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#is-this-similar-to-git-rebase-i" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Is this similar to git rebase -i?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-curate-git-history-at-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why curate Git history at all?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#next-steps" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1135,7 +1301,8 @@
 <p><strong>Writing code is messy. Git history doesn't have to be.</strong></p>
 <p>During development we experiment, refactor, backtrack, and fix mistakes. If every step ends up as a commit, the history becomes noise.</p>
 <p>A curated history turns that process into a clear sequence of logical changes. Each commit captures one idea, and the message explains why it exists.</p>
-<p><strong>git-stage-batch</strong> helps you build that history incrementally by letting you stage changes hunk-by-hunk or line-by-line — shaping commits around meaning instead of the order the edits happened.</p>
+<p>This clarity assists contributors explore the codebase, maintainers review changes, and your future self try to understand how the system evolved.</p>
+<p><strong>git-stage-batch</strong> helps you build that history incrementally by letting you stage changes hunk-by-hunk or line-by-line, shaping commits around meaning instead of the order the edits happened.</p>
 <div style="text-align: center; margin: 3em 0;">
   <img src="assets/batch-of-patches.png" alt="Batch of patches - hacker preparing atomic commits" style="max-width: 90%; border-radius: 8px; box-shadow: 0 0 30px rgba(0, 240, 255, 0.4);" />
 </div>
@@ -1291,6 +1458,50 @@
 <p>Track processed/skipped hunks across multiple command invocations. Resume where you left off.</p>
 <h3 id="stale-state-detection">Stale State Detection<a class="headerlink" href="#stale-state-detection" title="Permanent link">&para;</a></h3>
 <p>Automatically detects and clears cached state when files are committed or modified externally. No more misleading status!</p>
+<h2 id="faq">FAQ<a class="headerlink" href="#faq" title="Permanent link">&para;</a></h2>
+<h3 id="is-this-rewriting-git-history">Is this rewriting Git history?<a class="headerlink" href="#is-this-rewriting-git-history" title="Permanent link">&para;</a></h3>
+<p>No.</p>
+<p>git-stage-batch is intended for organizing draft patch sets before they are committed or shared. It helps you turn a messy working tree into a clean sequence of logical commits.</p>
+<p>It does not rewrite existing commits, and it is not meant to modify the history of shared or protected branches.</p>
+<p>Think of it as helping you prepare commits before they become part of history, not changing history afterward.</p>
+<h3 id="when-should-i-use-this">When should I use this?<a class="headerlink" href="#when-should-i-use-this" title="Permanent link">&para;</a></h3>
+<p>Use it while preparing commits for a branch you are working on locally.</p>
+<p>A typical workflow looks like:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>edit code
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>edit more code
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>experiment
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>fix mistakes
+</span></code></pre></div>
+<p>Then run:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>❯ git-stage-batch start
+</span></code></pre></div>
+<p>to turn those edits into a clean set of commits.</p>
+<p>Once the commits are ready, you can push or open a pull request as usual.</p>
+<h3 id="why-not-just-use-git-add-p">Why not just use git add -p?<a class="headerlink" href="#why-not-just-use-git-add-p" title="Permanent link">&para;</a></h3>
+<p><code>git add -p</code> is great for staging individual changes, but it is designed for single-pass staging.</p>
+<p>git-stage-batch is designed for multi-pass commit curation:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>stage changes
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>make a commit
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>run again
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>stage the next logical change
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>repeat
+</span></code></pre></div>
+<p>This makes it easier to organize a large working tree into a series of clean commits.</p>
+<h3 id="is-this-safe-for-protected-branches">Is this safe for protected branches?<a class="headerlink" href="#is-this-safe-for-protected-branches" title="Permanent link">&para;</a></h3>
+<p>Yes — because you should not use it there.</p>
+<p>This tool is meant for local development branches before merging.</p>
+<p>Once commits are pushed or merged into protected branches, standard Git practices apply and history should normally remain stable.</p>
+<h3 id="is-this-similar-to-git-rebase-i">Is this similar to git rebase -i?<a class="headerlink" href="#is-this-similar-to-git-rebase-i" title="Permanent link">&para;</a></h3>
+<p>It solves a related problem but at a different stage.</p>
+<ul>
+<li><code>git rebase -i</code> reorganizes existing commits</li>
+<li><code>git-stage-batch</code> helps you create better commits in the first place</li>
+</ul>
+<p>Many developers will still use <code>rebase -i</code> occasionally, but with curated commits it becomes much less necessary.</p>
+<h3 id="why-curate-git-history-at-all">Why curate Git history at all?<a class="headerlink" href="#why-curate-git-history-at-all" title="Permanent link">&para;</a></h3>
+<p>Because Git history is read by people.</p>
+<p>A raw commit log is a transcript of development: experiments, mistakes, and partial fixes.</p>
+<p>A curated history is documentation of how the system evolved. It is far easier for contributors, reviewers, and your future self to understand.</p>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <div class="grid cards">
 <ul>

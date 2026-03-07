@@ -10,7 +10,8 @@ import subprocess
 import sys
 from typing import Any
 
-from .display import Colors, print_annotated_hunk_with_aligned_gutter
+from .i18n import _
+from .display import Colors, format_hotkey, format_option_list, print_annotated_hunk_with_aligned_gutter
 from .editor import (
     build_target_index_content_with_selected_lines,
     build_target_working_tree_content_with_discarded_lines,
@@ -172,7 +173,7 @@ def _snapshots_are_stale(file_path: str) -> bool:
 def load_current_lines_from_state() -> CurrentLines:
     """Load the current hunk from saved state."""
     if not get_current_hunk_patch_file_path().exists() or not get_current_lines_json_file_path().exists():
-        exit_with_error("No current hunk. Run 'start' first.")
+        exit_with_error(_("No current hunk. Run \'start\' first."))
     data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
     header = HunkHeader(**data["header"])
     lines = [LineEntry(id=le["id"],
@@ -209,7 +210,7 @@ def _recalculate_current_hunk_for_file(file_path: str) -> None:
 
     if not diff_text.strip():
         clear_current_hunk_state_files()
-        print("No pending hunks.", file=sys.stderr)
+        print(_("No pending hunks."), file=sys.stderr)
         return
 
     # Parse diff and find first hunk for this file
@@ -284,12 +285,12 @@ def find_and_cache_next_unblocked_hunk() -> bool:
     auto_add_untracked_files()
     diff_text = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"], check=False).stdout
     if not diff_text.strip():
-        print("No pending hunks.", file=sys.stderr)
+        print(_("No pending hunks."), file=sys.stderr)
         return False
 
     single_hunk_patches = parse_unified_diff_into_single_hunk_patches(diff_text)
     if not single_hunk_patches:
-        print("No pending hunks.", file=sys.stderr)
+        print(_("No pending hunks."), file=sys.stderr)
         return False
 
     # Get list of blocked files
@@ -317,7 +318,7 @@ def find_and_cache_next_unblocked_hunk() -> bool:
         print_annotated_hunk_with_aligned_gutter(current_lines)
         return True
 
-    print("No pending hunks.", file=sys.stderr)
+    print(_("No pending hunks."), file=sys.stderr)
     return False
 
 
@@ -472,7 +473,7 @@ def command_start(unified: int = 3) -> None:
     # Check if batch staging is already in progress
     state_dir = get_state_directory_path()
     if state_dir.exists() and any(state_dir.iterdir()):
-        print("Batch staging already in process, starting again", file=sys.stderr)
+        print(_("Batch staging already in process, starting again"), file=sys.stderr)
         command_again()
         return
 
@@ -513,7 +514,7 @@ def command_show(porcelain: bool = False) -> None:
     else:
         # Normal mode: display hunk or show error
         if not has_hunk:
-            exit_with_error("No current hunk. Run 'start' first.")
+            exit_with_error(_("No current hunk. Run \'start\' first."))
         print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
 
 
@@ -522,7 +523,7 @@ def command_include() -> None:
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_hunk_patch_file_path().exists():
-        exit_with_error("No current hunk to include. Run 'start' first.")
+        exit_with_error(_("No current hunk to include. Run \'start\' first."))
 
     # Check for stale state
     if get_current_lines_json_file_path().exists():
@@ -530,14 +531,14 @@ def command_include() -> None:
         file_path = data["path"]
         if _snapshots_are_stale(file_path):
             clear_current_hunk_state_files()
-            exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+            exit_with_error(_("Cached hunk is stale (file was changed). Run \'start\' or \'again\' to continue."))
 
     try:
         run_git_command(["apply", "--cached", "--index", str(get_current_hunk_patch_file_path())])
     except Exception as error:
         stderr = getattr(error, 'stderr', '').strip() if hasattr(error, 'stderr') else ''
         stdout = getattr(error, 'stdout', '').strip() if hasattr(error, 'stdout') else ''
-        exit_with_error(f"Failed to apply hunk: {stderr or stdout or 'git apply failed.'}")
+        exit_with_error(_("Failed to apply hunk: {}").format(stderr or stdout or _("git apply failed.")))
 
     # Record hunk as included for progress tracking
     hunk_hash = read_text_file_contents(get_current_hunk_hash_file_path()).strip()
@@ -553,7 +554,7 @@ def command_skip() -> None:
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_hunk_hash_file_path().exists():
-        exit_with_error("No current hunk to skip. Run 'start' first.")
+        exit_with_error(_("No current hunk to skip. Run \'start\' first."))
 
     # Check for stale state
     if get_current_lines_json_file_path().exists():
@@ -561,7 +562,7 @@ def command_skip() -> None:
         file_path = data["path"]
         if _snapshots_are_stale(file_path):
             clear_current_hunk_state_files()
-            exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+            exit_with_error(_("Cached hunk is stale (file was changed). Run \'start\' or \'again\' to continue."))
 
     # Record hunk as skipped for progress tracking
     current_lines = load_current_lines_from_state()
@@ -578,7 +579,7 @@ def command_discard() -> None:
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_hunk_patch_file_path().exists():
-        exit_with_error("No current hunk to discard. Run 'start' first.")
+        exit_with_error(_("No current hunk to discard. Run \'start\' first."))
 
     # Check for stale state
     if get_current_lines_json_file_path().exists():
@@ -586,7 +587,7 @@ def command_discard() -> None:
         file_path = data["path"]
         if _snapshots_are_stale(file_path):
             clear_current_hunk_state_files()
-            exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+            exit_with_error(_("Cached hunk is stale (file was changed). Run \'start\' or \'again\' to continue."))
 
         # Snapshot file if untracked before discarding
         snapshot_file_if_untracked(file_path)
@@ -596,7 +597,7 @@ def command_discard() -> None:
     except Exception as error:
         stderr = getattr(error, 'stderr', '').strip() if hasattr(error, 'stderr') else ''
         stdout = getattr(error, 'stdout', '').strip() if hasattr(error, 'stdout') else ''
-        exit_with_error(f"Failed to discard hunk: {stderr or stdout or 'git apply -R failed.'}")
+        exit_with_error(_("Failed to discard hunk: {}").format(stderr or stdout or _("git apply -R failed.")))
 
     # After reverse-applying a new file, delete it if it became empty
     # (git apply -R on new files empties them but doesn't delete them)
@@ -629,7 +630,7 @@ def command_include_line(line_id_specification: str) -> None:
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_hunk_patch_file_path().exists() or not get_current_lines_json_file_path().exists():
-        exit_with_error("No current hunk. Run 'start' first.")
+        exit_with_error(_("No current hunk. Run \'start\' first."))
 
     requested_ids = parse_line_id_specification(line_id_specification)
     already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
@@ -657,7 +658,7 @@ def command_skip_line(line_id_specification: str) -> None:
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_lines_json_file_path().exists():
-        exit_with_error("No current hunk. Run 'start' first.")
+        exit_with_error(_("No current hunk. Run \'start\' first."))
 
     requested_ids = parse_line_id_specification(line_id_specification)
     existing_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
@@ -671,7 +672,7 @@ def command_discard_line(line_id_specification: str) -> None:
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_lines_json_file_path().exists():
-        exit_with_error("No current hunk. Run 'start' first.")
+        exit_with_error(_("No current hunk. Run \'start\' first."))
 
     requested_ids = parse_line_id_specification(line_id_specification)
     discard_ids = set(requested_ids)
@@ -699,7 +700,7 @@ def command_include_file() -> None:
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_hunk_patch_file_path().exists():
-        exit_with_error("No current hunk. Run 'start' first.")
+        exit_with_error(_("No current hunk. Run \'start\' first."))
 
     # Get current file path
     current_lines = load_current_lines_from_state()
@@ -725,7 +726,7 @@ def command_skip_file() -> None:
     require_git_repository()
     ensure_state_directory_exists()
     if not get_current_hunk_patch_file_path().exists():
-        exit_with_error("No current hunk. Run 'start' first.")
+        exit_with_error(_("No current hunk. Run \'start\' first."))
 
     # Get current file path
     current_lines = load_current_lines_from_state()
@@ -791,7 +792,7 @@ def command_stop() -> None:
     state_dir = get_state_directory_path()
     if state_dir.exists():
         shutil.rmtree(state_dir)
-    print("✓ State cleared.")
+    print(_("✓ State cleared."))
 
 
 def command_abort() -> None:
@@ -800,7 +801,7 @@ def command_abort() -> None:
 
     # Check if abort state exists
     if not get_abort_head_file_path().exists():
-        exit_with_error("No session to abort. Abort state not found.")
+        exit_with_error(_("No session to abort. Abort state not found."))
 
     # Read abort state
     abort_head = read_text_file_contents(get_abort_head_file_path()).strip()
@@ -818,7 +819,7 @@ def command_abort() -> None:
     env = os.environ.copy()
     env["GIT_REFLOG_ACTION"] = "stage-batch abort"
 
-    print(f"Resetting to {abort_head[:7]}...", file=sys.stderr)
+    print(_("Resetting to {}...").format(abort_head[:7]), file=sys.stderr)
     subprocess.run(
         ["git", "reset", "--hard", abort_head],
         env=env,
@@ -840,11 +841,11 @@ def command_abort() -> None:
                 target_path = repo_root / file_path
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(snapshot_path, target_path)
-                print(f"Restored: {file_path}", file=sys.stderr)
+                print(_("Restored: {}").format(file_path), file=sys.stderr)
 
     # Apply original stash if it exists (with --index to restore staged state)
     if abort_stash:
-        print("Applying original changes...", file=sys.stderr)
+        print(_("Applying original changes..."), file=sys.stderr)
         result = subprocess.run(
             ["git", "stash", "apply", "--index", abort_stash],
             env=env,
@@ -852,14 +853,14 @@ def command_abort() -> None:
             text=True
         )
         if result.returncode != 0:
-            print(f"⚠ Warning: Could not apply stash cleanly: {result.stderr}", file=sys.stderr)
+            print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)
 
     # Clear all state
     state_dir = get_state_directory_path()
     if state_dir.exists():
         shutil.rmtree(state_dir)
 
-    print("✓ Session aborted. All changes reverted.", file=sys.stderr)
+    print(_("✓ Session aborted. All changes reverted."), file=sys.stderr)
 
 
 def estimate_remaining_hunks() -> int:
@@ -959,26 +960,26 @@ def command_status(porcelain: bool = False) -> None:
         print(json.dumps(output, indent=2))
     else:
         # Human-readable progress report
-        status = "in progress" if has_current else "complete"
-        print(f"Session: iteration {iteration} ({status})")
+        status = _("in progress") if has_current else _("complete")
+        print(_("Session: iteration {} ({})").format(iteration, status))
         print()
 
         if current_summary:
             ids_str = format_id_range(current_summary["ids"])
-            print(f"Current hunk:")
+            print(_("Current hunk:"))
             print(f"  {current_summary['file']}:{current_summary['line']}")
             print(f"  [#{ids_str}]")
             print()
 
-        print(f"Progress this iteration:")
-        print(f"  Included:  {included_count} hunks")
-        print(f"  Skipped:   {len(skipped_hunks)} hunks")
-        print(f"  Discarded: {discarded_count} hunks")
-        print(f"  Remaining: ~{remaining_estimate} hunks")
+        print(_("Progress this iteration:"))
+        print(_("  Included:  {} hunks").format(included_count))
+        print(_("  Skipped:   {} hunks").format(len(skipped_hunks)))
+        print(_("  Discarded: {} hunks").format(discarded_count))
+        print(_("  Remaining: ~{} hunks").format(remaining_estimate))
 
         if skipped_hunks:
             print()
-            print("Skipped hunks:")
+            print(_("Skipped hunks:"))
             for hunk in skipped_hunks:
                 ids_str = format_id_range(hunk["ids"])
                 print(f"  {hunk['file']}:{hunk['line']} [#{ids_str}]")
@@ -993,7 +994,7 @@ def command_block_file(file_path_arg: str) -> None:
     if not file_path_arg:
         # Try to infer from current hunk
         if not get_current_hunk_patch_file_path().exists():
-            exit_with_error("No file path provided and no current hunk to infer from.")
+            exit_with_error(_("No file path provided and no current hunk to infer from."))
         current_lines = load_current_lines_from_state()
         file_path = current_lines.path
     else:
@@ -1022,7 +1023,7 @@ def command_block_file(file_path_arg: str) -> None:
             clear_current_hunk_state_files()
             find_and_cache_next_unblocked_hunk()
 
-    print(f"Blocked file: {file_path}", file=sys.stderr)
+    print(_("Blocked file: {}").format(file_path), file=sys.stderr)
 
 
 # --------------------------- Interactive mode helpers ---------------------------
@@ -1081,7 +1082,7 @@ def print_interactive_help() -> None:
 {Colors.BOLD}?{Colors.RESET} - print help
 """)
     else:
-        print("""
+        print(_("""
 y - yes, stage this hunk
 n - no, skip this hunk for now
 d - discard this hunk from working tree
@@ -1093,7 +1094,7 @@ b - block current file (add to .gitignore)
 x - suggest which commit to fixup
 ! - run a command
 ? - print help
-""")
+"""))
 
 
 def handle_interactive_line_selection() -> None:
@@ -1103,7 +1104,7 @@ def handle_interactive_line_selection() -> None:
     changed_ids = current_lines.changed_line_ids()
 
     if not changed_ids:
-        print("No changed lines in this hunk")
+        print(_("No changed lines in this hunk"))
         return
 
     if use_color:
@@ -1115,24 +1116,32 @@ def handle_interactive_line_selection() -> None:
         # Get action
         while True:
             if use_color:
-                action = input(f"Action for lines {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude, {Colors.BOLD}[s]{Colors.RESET}kip, {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard, or {Colors.BOLD}[x]{Colors.RESET}suggest-fixup? ").strip().lower()
+                options = format_option_list([
+                    (_("include"), _("i"), Colors.GREEN),
+                    (_("skip"), _("s"), ""),
+                    (_("discard"), _("d"), Colors.RED),
+                    (_("suggest-fixup"), _("x"), ""),
+                ])
+                # TRANSLATORS: {options} is a formatted list like "[i]nclude, [s]kip, [d]iscard"
+                action = input(_("Action for lines {options}? ").format(options=options)).strip().lower()
             else:
-                action = input("Action for lines [i]nclude, [s]kip, [d]iscard, or [x]suggest-fixup? ").strip().lower()
+                action = input(_("Action for lines [i]nclude, [s]kip, [d]iscard, or [x]suggest-fixup? ")).strip().lower()
 
             if action in ('i', 's', 'd', 'x', 'suggest-fixup'):
                 break
-            print(f"Invalid action: '{action}'")
+            print(_("Invalid action: \'{}\'").format(action))
 
         # Get line IDs
         while True:
             if use_color:
-                line_spec = input(f"{Colors.BOLD}Enter line IDs{Colors.RESET} (e.g., 1,3,5-7): ").strip()
+                # TRANSLATORS: Prompt for entering line ID numbers like "1,3,5-7"
+                line_spec = input(f"{Colors.BOLD}{_('Enter line IDs (e.g., 1,3,5-7):')}{Colors.RESET} ").strip()
             else:
-                line_spec = input("Enter line IDs (e.g., 1,3,5-7): ").strip()
+                line_spec = input(_("Enter line IDs (e.g., 1,3,5-7): ")).strip()
 
             if line_spec:
                 break
-            print("Line IDs required")
+            print(_("Line IDs required"))
 
         if action == 'i':
             command_include_line(line_spec)
@@ -1159,7 +1168,7 @@ def handle_interactive_line_selection() -> None:
             if get_current_hunk_patch_file_path().exists():
                 print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
     except (EOFError, KeyboardInterrupt):
-        print("\nCancelled")
+        print("\n" + _("Cancelled"))
         print_annotated_hunk_with_aligned_gutter(current_lines)
 
 
@@ -1171,9 +1180,17 @@ def handle_interactive_file_selection() -> None:
     try:
         while True:
             if use_color:
-                action = input(f"Action for all hunks in {Colors.BOLD}{current_lines.path}{Colors.RESET} - {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude or {Colors.BOLD}[s]{Colors.RESET}kip? ").strip().lower()
+                inc = format_hotkey(_("include"), _("i"), Colors.GREEN)
+                skip = format_hotkey(_("skip"), _("s"), "")
+                # TRANSLATORS: {filename} is the file path, {include} and {skip} are formatted hotkey options
+                prompt = _("Action for all hunks in {filename} - {include} or {skip}? ").format(
+                    filename=f"{Colors.BOLD}{current_lines.path}{Colors.RESET}",
+                    include=inc,
+                    skip=skip
+                )
+                action = input(prompt).strip().lower()
             else:
-                action = input(f"Action for all hunks in {current_lines.path} - [i]nclude or [s]kip? ").strip().lower()
+                action = input(_("Action for all hunks in {} - [i]nclude or [s]kip? ").format(current_lines.path)).strip().lower()
 
             if action == 'i':
                 command_include_file()
@@ -1182,9 +1199,9 @@ def handle_interactive_file_selection() -> None:
                 command_skip_file()
                 break
             else:
-                print(f"Invalid action: '{action}'")
+                print(_("Invalid action: \'{}\'").format(action))
     except (EOFError, KeyboardInterrupt):
-        print("\nCancelled")
+        print("\n" + _("Cancelled"))
         print_annotated_hunk_with_aligned_gutter(current_lines)
 
 
@@ -1197,7 +1214,7 @@ def command_unblock_file(file_path_arg: str) -> None:
 
     # Require file path argument
     if not file_path_arg:
-        exit_with_error("File path required for unblock-file command.")
+        exit_with_error(_("File path required for unblock-file command."))
 
     # Resolve to repo-relative path
     file_path = resolve_file_path_to_repo_relative(file_path_arg)
@@ -1209,9 +1226,9 @@ def command_unblock_file(file_path_arg: str) -> None:
     remove_file_path_from_file(get_blocked_files_file_path(), file_path)
 
     if removed:
-        print(f"Unblocked file: {file_path}", file=sys.stderr)
+        print(_("Unblocked file: {}").format(file_path), file=sys.stderr)
     else:
-        print(f"Removed from blocked list: {file_path} (was not in .gitignore with our marker)", file=sys.stderr)
+        print(_("Removed from blocked list: {} (was not in .gitignore with our marker)").format(file_path), file=sys.stderr)
 
 
 def command_interactive() -> None:
@@ -1238,7 +1255,7 @@ def command_interactive() -> None:
     elif not get_current_hunk_patch_file_path().exists():
         # Session exists but no current hunk, find next
         if not find_and_cache_next_unblocked_hunk():
-            print("No pending hunks.", file=sys.stderr)
+            print(_("No pending hunks."), file=sys.stderr)
             sys.exit(2)
     else:
         # Current hunk exists, display it
@@ -1251,21 +1268,41 @@ def command_interactive() -> None:
         print()
 
         if use_color:
-            print(f"{Colors.BOLD}What do you want to do with this hunk?{Colors.RESET}")
-            print(f"  {Colors.BOLD}{Colors.GREEN}[i]{Colors.RESET}nclude  - Stage this hunk to the index")
-            print(f"  {Colors.BOLD}[s]{Colors.RESET}kip     - Skip this hunk for now")
-            print(f"  {Colors.BOLD}{Colors.RED}[d]{Colors.RESET}iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
-            print(f"  {Colors.BOLD}[q]{Colors.RESET}uit     - Exit interactive mode")
+            print(f"{Colors.BOLD}{_('What do you want to do with this hunk?')}{Colors.RESET}")
+            # TRANSLATORS: Single letter hotkey for "include" command
+            print("  " + format_hotkey(_("include  - Stage this hunk to the index"), _("i"), Colors.GREEN))
+            # TRANSLATORS: Single letter hotkey for "skip" command
+            print("  " + format_hotkey(_("skip     - Skip this hunk for now"), _("s"), ""))
+            # TRANSLATORS: Single letter hotkey for "discard" command
+            print("  " + format_hotkey(_("discard  - Remove this hunk from working tree (DESTRUCTIVE)"), _("d"), Colors.RED))
+            # TRANSLATORS: Single letter hotkey for "quit" command
+            print("  " + format_hotkey(_("quit     - Exit interactive mode"), _("q"), ""))
             print()
-            print(f"{Colors.CYAN}More options:{Colors.RESET} {Colors.BOLD}[a]{Colors.RESET}ll, {Colors.BOLD}[l]{Colors.RESET}ines, {Colors.BOLD}[f]{Colors.RESET}ile, {Colors.BOLD}[b]{Colors.RESET}lock, {Colors.BOLD}[x]{Colors.RESET}suggest-fixup, {Colors.BOLD}[!]{Colors.RESET}run, {Colors.BOLD}[?]{Colors.RESET}help")
+            more_options = format_option_list([
+                # TRANSLATORS: Single letter hotkey for "all" command
+                (_("all"), _("a"), ""),
+                # TRANSLATORS: Single letter hotkey for "lines" command
+                (_("lines"), _("l"), ""),
+                # TRANSLATORS: Single letter hotkey for "file" command
+                (_("file"), _("f"), ""),
+                # TRANSLATORS: Single letter hotkey for "block" command
+                (_("block"), _("b"), ""),
+                # TRANSLATORS: Single letter hotkey for "suggest-fixup" command
+                (_("suggest-fixup"), _("x"), ""),
+                # TRANSLATORS: Single letter hotkey for "run" command
+                (_("run"), _("!"), ""),
+                # TRANSLATORS: Single letter hotkey for "help" command
+                (_("help"), _("?"), ""),
+            ])
+            print(f"{Colors.CYAN}{_('More options:')}{Colors.RESET} {more_options}")
         else:
-            print("What do you want to do with this hunk?")
-            print("  [i]nclude  - Stage this hunk to the index")
-            print("  [s]kip     - Skip this hunk for now")
-            print("  [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)")
-            print("  [q]uit     - Exit interactive mode")
+            print(_("What do you want to do with this hunk?"))
+            print(_("  [i]nclude  - Stage this hunk to the index"))
+            print(_("  [s]kip     - Skip this hunk for now"))
+            print(_("  [d]iscard  - Remove this hunk from working tree (DESTRUCTIVE)"))
+            print(_("  [q]uit     - Exit interactive mode"))
             print()
-            print("More options: [a]ll, [l]ines, [f]ile, [b]lock, [x]suggest-fixup, [!]run, [?]help")
+            print(_("More options: [a]ll, [l]ines, [f]ile, [b]lock, [x]suggest-fixup, [!]run, [?]help"))
 
         print()
 
@@ -1273,7 +1310,7 @@ def command_interactive() -> None:
             if use_color:
                 choice = input(f"{Colors.BOLD}Action:{Colors.RESET} ").strip().lower()
             else:
-                choice = input("Action: ").strip().lower()
+                choice = input(_("Action: ")).strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()  # New line after ^C
             break
@@ -1289,7 +1326,7 @@ def command_interactive() -> None:
             if confirm_destructive_operation("discard", "This will permanently remove the changes from your working tree."):
                 command_discard()
             else:
-                print("Cancelled.")
+                print(_("Cancelled."))
                 print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice in ('q', 'quit'):
             # Quit interactive mode - check if the session made any changes
@@ -1320,7 +1357,7 @@ def command_interactive() -> None:
                 command_abort()
                 break
             else:  # cancel
-                print("Continuing interactive mode...")
+                print(_("Continuing interactive mode..."))
                 if get_current_hunk_patch_file_path().exists():
                     print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice in ('a', 'all'):
@@ -1329,7 +1366,7 @@ def command_interactive() -> None:
                 while get_current_hunk_patch_file_path().exists():
                     command_include()
             else:
-                print("Cancelled.")
+                print(_("Cancelled."))
                 print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice in ('l', 'lines'):
             # Line-level operations
@@ -1343,7 +1380,7 @@ def command_interactive() -> None:
             if confirm_destructive_operation("block", f"This will add '{current_lines.path}' to .gitignore permanently."):
                 command_block_file("")
             else:
-                print("Cancelled.")
+                print(_("Cancelled."))
                 print_annotated_hunk_with_aligned_gutter(current_lines)
         elif choice in ('x', 'suggest-fixup'):
             # Suggest which commit to fixup to
@@ -1365,7 +1402,7 @@ def command_interactive() -> None:
                 command_suggest_fixup(boundary)
             except (EOFError, KeyboardInterrupt):
                 print()
-                print("Cancelled.")
+                print(_("Cancelled."))
             if get_current_hunk_patch_file_path().exists():
                 print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice == '!':
@@ -1381,17 +1418,17 @@ def command_interactive() -> None:
                         cwd=get_git_repository_root_path(),
                     )
                     if result.returncode != 0:
-                        print(f"Command exited with status {result.returncode}")
+                        print(_("Command exited with status {}").format(result.returncode))
                 else:
-                    print("No command entered")
+                    print(_("No command entered"))
             except (EOFError, KeyboardInterrupt):
                 print()
-                print("Cancelled.")
+                print(_("Cancelled."))
             if get_current_hunk_patch_file_path().exists():
                 print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice in ('e', 'edit'):
             # Edit hunk manually (future enhancement)
-            print("Edit mode not yet implemented")
+            print(_("Edit mode not yet implemented"))
             print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         elif choice == '?':
             print_interactive_help()
@@ -1400,12 +1437,12 @@ def command_interactive() -> None:
             # Empty input, re-display hunk
             print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
         else:
-            print(f"Unknown option: '{choice}'")
+            print(_("Unknown option: \'{}\'").format(choice))
             print_interactive_help()
             print_annotated_hunk_with_aligned_gutter(load_current_lines_from_state())
 
     if not get_current_hunk_patch_file_path().exists():
-        print("No pending hunks.")
+        print(_("No pending hunks."))
 
 
 def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
@@ -1424,7 +1461,7 @@ def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
 
     # Check for current hunk
     if not get_current_hunk_patch_file_path().exists():
-        exit_with_error("No current hunk. Run 'start' first.")
+        exit_with_error(_("No current hunk. Run \'start\' first."))
 
     # Check for stale state
     if get_current_lines_json_file_path().exists():
@@ -1432,7 +1469,7 @@ def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
         file_path = data["path"]
         if _snapshots_are_stale(file_path):
             clear_current_hunk_state_files()
-            exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+            exit_with_error(_("Cached hunk is stale (file was changed). Run \'start\' or \'again\' to continue."))
 
     # Load current hunk
     current_lines = load_current_lines_from_state()
@@ -1442,7 +1479,7 @@ def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
     changed_line_indices = [i for i, entry in enumerate(current_lines.lines) if entry.kind != " "]
 
     if not changed_line_indices:
-        exit_with_error("No changes found in hunk.")
+        exit_with_error(_("No changes found in hunk."))
 
     old_line_numbers = []
     for index, entry in enumerate(current_lines.lines):
@@ -1453,7 +1490,7 @@ def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
             old_line_numbers.append(entry.old_line_number)
 
     if not old_line_numbers:
-        exit_with_error("No old line numbers found in hunk (this appears to be a new file addition).")
+        exit_with_error(_("No old line numbers found in hunk (this appears to be a new file addition)."))
 
     # Get the range of old lines
     min_line = min(old_line_numbers)
@@ -1463,7 +1500,7 @@ def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
     try:
         run_git_command(["rev-parse", "--verify", boundary], check=True)
     except subprocess.CalledProcessError:
-        exit_with_error(f"Invalid boundary ref: {boundary}")
+        exit_with_error(_("Invalid boundary ref: {}").format(boundary))
 
     # Check if there are any commits in the range
     try:
@@ -1472,10 +1509,10 @@ def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
             check=True
         )
     except subprocess.CalledProcessError:
-        exit_with_error(f"Failed to get commit range {boundary}..HEAD")
+        exit_with_error(_("Failed to get commit range {}..HEAD").format(boundary))
 
     if not rev_list_result.stdout.strip():
-        exit_with_error(f"No commits found in range {boundary}..HEAD")
+        exit_with_error(_("No commits found in range {}..HEAD").format(boundary))
 
     # Use git log -L to find commits that modified this line range
     # This directly gives us commits in boundary..HEAD that touched these lines,
@@ -1486,14 +1523,14 @@ def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
             check=True
         )
     except subprocess.CalledProcessError:
-        exit_with_error(f"Failed to run git log -L on {current_lines.path}")
+        exit_with_error(_("Failed to run git log -L on {}").format(current_lines.path))
 
     # Parse commits (already in reverse chronological order)
     commits = [line.strip() for line in log_result.stdout.splitlines() if line.strip()]
 
     if not commits:
-        print(f"No commits in range {boundary}..HEAD modified these lines.")
-        print("The changes may be fixing code from before the boundary.")
+        print(_("No commits in range {}..HEAD modified these lines.").format(boundary))
+        print(_("The changes may be fixing code from before the boundary."))
         sys.exit(1)
 
     # First commit is the most recent
@@ -1509,8 +1546,8 @@ def command_suggest_fixup(boundary: str = "@{upstream}") -> None:
     except subprocess.CalledProcessError:
         commit_info = suggested_commit[:7]
 
-    print(f"Suggested fixup target: {commit_info}")
-    print(f"Run: git commit --fixup={suggested_commit[:7]}")
+    print(_("Suggested fixup target: {}").format(commit_info))
+    print(_("Run: git commit --fixup={}").format(suggested_commit[:7]))
 
 
 def command_suggest_fixup_line(line_id_specification: str, boundary: str = "@{upstream}") -> None:
@@ -1530,7 +1567,7 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str = "@{up
 
     # Check for current hunk
     if not get_current_hunk_patch_file_path().exists():
-        exit_with_error("No current hunk. Run 'start' first.")
+        exit_with_error(_("No current hunk. Run \'start\' first."))
 
     # Check for stale state
     if get_current_lines_json_file_path().exists():
@@ -1538,7 +1575,7 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str = "@{up
         file_path = data["path"]
         if _snapshots_are_stale(file_path):
             clear_current_hunk_state_files()
-            exit_with_error("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue.")
+            exit_with_error(_("Cached hunk is stale (file was changed). Run \'start\' or \'again\' to continue."))
 
     # Load current hunk
     current_lines = load_current_lines_from_state()
@@ -1553,7 +1590,7 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str = "@{up
             old_line_numbers.append(entry.old_line_number)
 
     if not old_line_numbers:
-        exit_with_error("No old line numbers found for specified lines (they may be newly added lines).")
+        exit_with_error(_("No old line numbers found for specified lines (they may be newly added lines)."))
 
     # Get the range of old lines
     min_line = min(old_line_numbers)
@@ -1563,7 +1600,7 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str = "@{up
     try:
         run_git_command(["rev-parse", "--verify", boundary], check=True)
     except subprocess.CalledProcessError:
-        exit_with_error(f"Invalid boundary ref: {boundary}")
+        exit_with_error(_("Invalid boundary ref: {}").format(boundary))
 
     # Check if there are any commits in the range
     try:
@@ -1572,10 +1609,10 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str = "@{up
             check=True
         )
     except subprocess.CalledProcessError:
-        exit_with_error(f"Failed to get commit range {boundary}..HEAD")
+        exit_with_error(_("Failed to get commit range {}..HEAD").format(boundary))
 
     if not rev_list_result.stdout.strip():
-        exit_with_error(f"No commits found in range {boundary}..HEAD")
+        exit_with_error(_("No commits found in range {}..HEAD").format(boundary))
 
     # Use git log -L to find commits that modified this line range
     # This directly gives us commits in boundary..HEAD that touched these lines,
@@ -1586,14 +1623,14 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str = "@{up
             check=True
         )
     except subprocess.CalledProcessError:
-        exit_with_error(f"Failed to run git log -L on {current_lines.path}")
+        exit_with_error(_("Failed to run git log -L on {}").format(current_lines.path))
 
     # Parse commits (already in reverse chronological order)
     commits = [line.strip() for line in log_result.stdout.splitlines() if line.strip()]
 
     if not commits:
-        print(f"No commits in range {boundary}..HEAD modified these lines.")
-        print("The changes may be fixing code from before the boundary.")
+        print(_("No commits in range {}..HEAD modified these lines.").format(boundary))
+        print(_("The changes may be fixing code from before the boundary."))
         sys.exit(1)
 
     # First commit is the most recent
@@ -1609,5 +1646,5 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str = "@{up
     except subprocess.CalledProcessError:
         commit_info = suggested_commit[:7]
 
-    print(f"Suggested fixup target: {commit_info}")
-    print(f"Run: git commit --fixup={suggested_commit[:7]}")
+    print(_("Suggested fixup target: {}").format(commit_info))
+    print(_("Run: git commit --fixup={}").format(suggested_commit[:7]))

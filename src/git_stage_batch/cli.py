@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from . import __version__
+from .i18n import _
 from .commands import (
     command_abort,
     command_again,
@@ -302,8 +303,8 @@ def main() -> None:
             command_include()
         else:
             # No session - show helpful message
-            print("No batch staging session in progress.", file=sys.stderr)
-            print("Run 'git-stage-batch start' to begin.", file=sys.stderr)
+            print(_("No batch staging session in progress."), file=sys.stderr)
+            print(_("Run 'git-stage-batch start' to begin."), file=sys.stderr)
             sys.exit(1)
     else:
         args.func(args)

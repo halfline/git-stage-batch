@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
+from .i18n import _
+
 
 # --------------------------- Utility: git and filesystem ---------------------------
 
@@ -19,7 +21,7 @@ def require_git_repository() -> None:
     try:
         run_git_command(["rev-parse", "--git-dir"])
     except subprocess.CalledProcessError:
-        exit_with_error("Not inside a git repository.")
+        exit_with_error(_("Not inside a git repository."))
 
 def get_git_repository_root_path() -> Path:
     output = run_git_command(["rev-parse", "--show-toplevel"]).stdout.strip()

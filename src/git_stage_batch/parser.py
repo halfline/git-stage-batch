@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from .i18n import _
 from .models import CurrentLines, HunkHeader, LineEntry, SingleHunkPatch
 from .state import exit_with_error, read_text_file_contents, run_git_command, write_text_file_contents, get_index_snapshot_file_path, get_working_tree_snapshot_file_path
 
@@ -109,11 +110,11 @@ def build_current_lines_from_patch_text(patch_text: str) -> CurrentLines:
         path_value = new_path_value or old_path_value or ""
 
     if not captured_header_line:
-        exit_with_error("Failed to parse hunk header.")
+        exit_with_error(_("Failed to parse hunk header."))
 
     header_match = HUNK_HEADER_PATTERN.match(captured_header_line)
     if not header_match:
-        exit_with_error(f"Bad hunk header: {captured_header_line}")
+        exit_with_error(_("Bad hunk header: {}").format(captured_header_line))
 
     old_start = int(header_match.group(1))
     old_length = int(header_match.group(2) or "1")

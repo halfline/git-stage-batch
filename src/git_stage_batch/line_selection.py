@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Iterable
 
+from .i18n import _
 from .state import exit_with_error, read_text_file_contents, write_text_file_contents
 
 
@@ -19,7 +20,7 @@ def parse_line_id_specification(specification: str) -> list[int]:
     - "1,3,5-7" -> [1, 3, 5, 6, 7]
     """
     if not specification:
-        exit_with_error("Provide line IDs (e.g. 1,3,5-7).")
+        exit_with_error(_("Provide line IDs (e.g. 1,3,5-7)."))
 
     specification = re.sub(r"\s+", "", specification)
     result: set[int] = set()
@@ -34,7 +35,7 @@ def parse_line_id_specification(specification: str) -> list[int]:
         elif re.fullmatch(r"\d+", part):
             result.add(int(part))
         else:
-            exit_with_error(f"Bad id or range: {part}")
+            exit_with_error(_("Bad id or range: {}").format(part))
 
     return sorted(result)
 

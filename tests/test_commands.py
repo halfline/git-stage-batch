@@ -1249,13 +1249,13 @@ class TestCommandInteractive:
         # Make a change
         (temp_git_repo / "test.txt").write_text("modified\nline2\nline3\n")
 
-        # Mock user input: 'x' (unknown), 'q' to quit, 'k' to keep changes
-        with patch('builtins.input', side_effect=['x', 'q', 'y']):
+        # Mock user input: 'z' (unknown), 'q' to quit, 'y' to keep changes
+        with patch('builtins.input', side_effect=['z', 'q', 'y']):
             command_interactive()
 
         # Check that unknown option message was displayed
         captured = capsys.readouterr()
-        assert "Unknown option: 'x'" in captured.out
+        assert "Unknown option: 'z'" in captured.out
 
     def test_interactive_empty_input_redisplays_hunk(self, temp_git_repo, capsys):
         """Test interactive mode with empty input redisplays hunk."""

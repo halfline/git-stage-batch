@@ -215,6 +215,82 @@ Track processed/skipped hunks across multiple command invocations. Resume where 
 
 Automatically detects and clears cached state when files are committed or modified externally. No more misleading status!
 
+## FAQ
+
+### Is this rewriting Git history?
+
+No.
+
+git-stage-batch is intended for organizing draft patch sets before they are committed or shared. It helps you turn a messy working tree into a clean sequence of logical commits.
+
+It does not rewrite existing commits, and it is not meant to modify the history of shared or protected branches.
+
+Think of it as helping you prepare commits before they become part of history, not changing history afterward.
+
+### When should I use this?
+
+Use it while preparing commits for a branch you are working on locally.
+
+A typical workflow looks like:
+
+```
+edit code
+edit more code
+experiment
+fix mistakes
+```
+
+Then run:
+
+```
+❯ git-stage-batch start
+```
+
+to turn those edits into a clean set of commits.
+
+Once the commits are ready, you can push or open a pull request as usual.
+
+### Why not just use git add -p?
+
+`git add -p` is great for staging individual changes, but it is designed for single-pass staging.
+
+git-stage-batch is designed for multi-pass commit curation:
+
+```
+stage changes
+make a commit
+run again
+stage the next logical change
+repeat
+```
+
+This makes it easier to organize a large working tree into a series of clean commits.
+
+### Is this safe for protected branches?
+
+Yes — because you should not use it there.
+
+This tool is meant for local development branches before merging.
+
+Once commits are pushed or merged into protected branches, standard Git practices apply and history should normally remain stable.
+
+### Is this similar to git rebase -i?
+
+It solves a related problem but at a different stage.
+
+- `git rebase -i` reorganizes existing commits
+- `git-stage-batch` helps you create better commits in the first place
+
+Many developers will still use `rebase -i` occasionally, but with curated commits it becomes much less necessary.
+
+### Why curate Git history at all?
+
+Because Git history is read by people.
+
+A raw commit log is a transcript of development: experiments, mistakes, and partial fixes.
+
+A curated history is documentation of how the system evolved. It is far easier for contributors, reviewers, and your future self to understand.
+
 ## Next Steps
 
 <div class="grid cards" markdown>

@@ -283,6 +283,70 @@ $ git-stage-batch status --porcelain | jq '.session.iteration'
 1
 ```
 
+## Fixup Commits: Polish Feature Branches
+
+Use `suggest-fixup` to create fixup commits for polishing feature branches:
+
+```bash
+# You're working on a feature branch and notice bugs in recent commits
+❯ git log --oneline -5
+c3d4e5f feat: Add user profile page
+b2c3d4e feat: Implement authentication
+a1b2c3d fix: Handle edge case in login
+
+# Make fixes to code from multiple commits
+# (edit files)
+
+❯ git-stage-batch start
+auth.py :: @@ -45,3 +45,3 @@
+[#1] - if user.is_authenticated:
+[#2] + if user and user.is_authenticated:
+
+# Which commit should this fix?
+❯ git-stage-batch suggest-fixup
+Suggested fixup target: b2c3d4e feat: Implement authentication
+Run: git commit --fixup=b2c3d4e
+
+# Stage this hunk
+❯ git-stage-batch include
+
+profile.py :: @@ -12,2 +12,2 @@
+[#1] - avatar = user.avatar_url
+[#2] + avatar = user.avatar_url or "/static/default.png"
+
+# Which commit for this one?
+❯ git-stage-batch suggest-fixup
+Suggested fixup target: c3d4e5f feat: Add user profile page
+Run: git commit --fixup=c3d4e5f
+
+# Stage and commit
+❯ git-stage-batch include
+No pending hunks.
+
+❯ git commit --fixup=b2c3d4e
+[feature-branch f4e5d6f] fixup! feat: Implement authentication
+
+❯ git-stage-batch again
+profile.py :: @@ -12,2 +12,2 @@
+[#1] - avatar = user.avatar_url
+[#2] + avatar = user.avatar_url or "/static/default.png"
+
+❯ git-stage-batch include
+❯ git commit --fixup=c3d4e5f
+[feature-branch g5f6e7g] fixup! feat: Add user profile page
+
+# Now squash all fixups automatically
+❯ git rebase -i --autosquash origin/main
+
+# Your commits are now polished and atomic!
+```
+
+**Benefits:**
+- Keeps commit history clean without manual `git commit --amend` juggling
+- Automatically identifies which commit each fix belongs to
+- Works seamlessly with `git rebase --autosquash`
+- Perfect for PR review feedback or self-review fixes
+
 ## Tips
 
 1. **Use `again` frequently** - After each commit, run `git-stage-batch again` to review skipped hunks

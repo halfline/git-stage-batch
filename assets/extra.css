@@ -259,16 +259,6 @@ img[alt*="demo"] {
   box-shadow: 0 0 10px var(--hacker-green);
 }
 
-/* Hide left sidebar on specific pages - add fallback CSS */
-.md-sidebar--primary {
-  transition: none !important;
-}
-
-/* Force hide on home and integration pages */
-body[data-md-component="container"] .md-sidebar--primary[style*="display: none"] {
-  display: none !important;
-}
-
 /* Responsive: reduce effects on mobile */
 @media screen and (max-width: 768px) {
   .md-container::before {

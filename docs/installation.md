@@ -56,6 +56,7 @@ This installs:
 - Translations to `share/locale/`
 - Executable to `bin/`
 - Man page to `share/man/man1/`
+- Documentation to `share/doc/git-stage-batch/`
 
 ### Try Without Installing
 

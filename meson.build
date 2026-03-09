@@ -55,5 +55,13 @@ if not get_option('python_wheel')
   install_man(manpage)
 endif
 
+# Install documentation (skip for wheels, include for system install)
+if not get_option('python_wheel')
+  install_subdir('docs',
+    install_dir: get_option('datadir') / 'doc' / 'git-stage-batch',
+    strip_directory: true,
+  )
+endif
+
 # Process translations
 subdir('po')

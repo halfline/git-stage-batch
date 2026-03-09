@@ -875,10 +875,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#suggest-fixup-line-ids-aliases-sfl-sfls" class="md-nav__link">
+  <a href="#suggest-fixup-line-ids-boundary-aliases-sfl-sfls" class="md-nav__link">
     <span class="md-ellipsis">
       
-        suggest-fixup-line IDS (aliases: sfl, sfls)
+        suggest-fixup-line IDS [BOUNDARY] (aliases: sfl, sfls)
       
     </span>
   </a>
@@ -1395,10 +1395,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#suggest-fixup-line-ids-aliases-sfl-sfls" class="md-nav__link">
+  <a href="#suggest-fixup-line-ids-boundary-aliases-sfl-sfls" class="md-nav__link">
     <span class="md-ellipsis">
       
-        suggest-fixup-line IDS (aliases: sfl, sfls)
+        suggest-fixup-line IDS [BOUNDARY] (aliases: sfl, sfls)
       
     </span>
   </a>
@@ -1701,14 +1701,14 @@
 <h2 id="fixup-suggestions">Fixup Suggestions<a class="headerlink" href="#fixup-suggestions" title="Permanent link">&para;</a></h2>
 <h3 id="suggest-fixup-alias-x"><code>suggest-fixup</code> (alias: <code>x</code>)<a class="headerlink" href="#suggest-fixup-alias-x" title="Permanent link">&para;</a></h3>
 <p>Suggest which commit the current hunk should be fixed up to.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>git-stage-batch suggest-fixup
+<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>git-stage-batch suggest-fixup [BOUNDARY]
 </span></code></pre></div>
-<p><strong>Options:</strong>
-- <code>--boundary REF</code>: Git ref to use as lower bound for commit search (default: <code>@{upstream}</code>)</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>git-stage-batch suggest-fixup --boundary main
+<p><strong>Arguments:</strong>
+- <code>BOUNDARY</code>: Git ref to use as lower bound for commit search (default: <code>@{upstream}</code>)</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>git-stage-batch suggest-fixup main
 </span></code></pre></div>
 <p><strong>How it works:</strong></p>
-<p>Analyzes the current hunk to find which commits in the range <code>boundary..HEAD</code> modified the lines being changed. Uses <code>git log -L</code> to identify commits that touched those lines, then suggests the most recent one as a fixup target.</p>
+<p>Analyzes the current hunk to find which commits in the range <code>BOUNDARY..HEAD</code> modified the lines being changed. Uses <code>git log -L</code> to identify commits that touched those lines, then suggests the most recent one as a fixup target.</p>
 <p><strong>Example:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>❯ git-stage-batch start
 </span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>auth.py :: @@ -10,5 +10,5 @@
@@ -1723,13 +1723,14 @@
 <p><strong>Use case:</strong></p>
 <p>Perfect for creating fixup commits during a feature branch development workflow. After making changes to fix bugs or improve code you recently committed, use this to automatically identify which commit should be fixed up, then use <code>git rebase -i --autosquash</code> to squash the fixups.</p>
 <hr />
-<h3 id="suggest-fixup-line-ids-aliases-sfl-sfls"><code>suggest-fixup-line IDS</code> (aliases: <code>sfl</code>, <code>sfls</code>)<a class="headerlink" href="#suggest-fixup-line-ids-aliases-sfl-sfls" title="Permanent link">&para;</a></h3>
+<h3 id="suggest-fixup-line-ids-boundary-aliases-sfl-sfls"><code>suggest-fixup-line IDS [BOUNDARY]</code> (aliases: <code>sfl</code>, <code>sfls</code>)<a class="headerlink" href="#suggest-fixup-line-ids-boundary-aliases-sfl-sfls" title="Permanent link">&para;</a></h3>
 <p>Suggest which commit specific line IDs should be fixed up to.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>git-stage-batch suggest-fixup-line 1,3,5-7
 </span></code></pre></div>
-<p><strong>Options:</strong>
-- <code>--boundary REF</code>: Git ref to use as lower bound for commit search (default: <code>@{upstream}</code>)</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>git-stage-batch sfl 2-4 --boundary origin/main
+<p><strong>Arguments:</strong>
+- <code>IDS</code>: Line IDs to analyze (e.g., <code>1,3,5-7</code>)
+- <code>BOUNDARY</code>: Git ref to use as lower bound for commit search (default: <code>@{upstream}</code>)</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>git-stage-batch sfl 2-4 origin/main
 </span></code></pre></div>
 <p>Works like <code>suggest-fixup</code> but analyzes only the specified line IDs from the current hunk. Useful when a hunk contains changes for multiple purposes and you want to know which commit to fixup for a specific subset of lines.</p>
 <h2 id="special-behavior">Special Behavior<a class="headerlink" href="#special-behavior" title="Permanent link">&para;</a></h2>

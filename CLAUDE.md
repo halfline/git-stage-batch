@@ -75,8 +75,8 @@ uv run pytest tests/test_state.py -v
 
 3. For fine-grained control:
    ```bash
-   uv run git-stage-batch include-line 1,3,5-7  # or: il 1,3,5-7
-   uv run git-stage-batch skip-line 2,4         # or: sl 2,4
+   uv run git-stage-batch include --line 1,3,5-7  # or: il 1,3,5-7
+   uv run git-stage-batch skip --line 2,4         # or: sl 2,4
    ```
 
 4. After staging changes for one logical commit:

@@ -1480,8 +1480,8 @@ This clarity assists contributors explore the codebase, maintainers review chang
 </span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>❯ git-stage-batch discard # or: d
 </span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>
 </span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a># For fine-grained control, stage specific lines
-</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>❯ git-stage-batch include-line 1,3,5-7  # or: il 1,3,5-7
-</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>❯ git-stage-batch skip-line 2,4         # or: sl 2,4
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>❯ git-stage-batch include --line 1,3,5-7  # or: il 1,3,5-7
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>❯ git-stage-batch skip --line 2,4         # or: sl 2,4
 </span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>
 </span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a># Check status
 </span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>❯ git-stage-batch status  # or: st
@@ -1549,7 +1549,7 @@ This clarity assists contributors explore the codebase, maintainers review chang
 <p>Review and stage individual hunks one at a time. Each hunk shows changed lines with IDs for easy reference.</p>
 <h3 id="line-by-line-staging">Line-by-Line Staging<a class="headerlink" href="#line-by-line-staging" title="Permanent link">&para;</a></h3>
 <p>Stage specific lines within a hunk:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>❯ git-stage-batch include-line 1,3,5-7
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>❯ git-stage-batch include --line 1,3,5-7
 </span></code></pre></div>
 <p>Perfect for separating orthogonal changes that ended up in the same hunk.</p>
 <h3 id="colored-output">Colored Output<a class="headerlink" href="#colored-output" title="Permanent link">&para;</a></h3>

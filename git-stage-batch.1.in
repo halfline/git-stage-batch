@@ -66,21 +66,21 @@ Mark the current hunk as skipped and advance to the next hunk.
 Remove the current hunk from the working tree (reverse-apply) and advance to the next hunk.
 .SS Line-Level Operations
 .TP
-.BR include-line ", " include-lines ", " il ", " ils " \fILINE_IDS\fR"
+.BR include " " \-\-line ", " il " \fILINE_IDS\fR"
 Stage only the specified lines from the current hunk. Line IDs use the format
 \fB1,3,5-7\fR.
 .TP
-.BR skip-line ", " skip-lines ", " sl ", " sls " \fILINE_IDS\fR"
+.BR skip " " \-\-line ", " sl " \fILINE_IDS\fR"
 Mark the specified lines as skipped.
 .TP
-.BR discard-line ", " discard-lines ", " dl ", " dls " \fILINE_IDS\fR"
+.BR discard " " \-\-line ", " dl " \fILINE_IDS\fR"
 Remove the specified lines from the working tree.
 .SS File-Level Operations
 .TP
-.BR include-file ", " if
+.BR include " " \-\-file ", " if
 Stage all remaining hunks in the current file.
 .TP
-.BR skip-file ", " sf
+.BR skip " " \-\-file ", " sf
 Skip all remaining hunks in the current file.
 .TP
 .BR block-file ", " b " [\fIPATH\fR]"
@@ -96,7 +96,7 @@ Analyze the current hunk and suggest which commit it should be fixed up to.
 Uses \fBgit log -L\fR to find commits that modified the hunk's lines.
 Default boundary is \fB@{upstream}\fR.
 .TP
-.BR suggest-fixup-line ", " suggest-fixup-lines ", " sfl ", " sfls " \fILINE_IDS\fR [\fIBOUNDARY\fR]"
+.BR suggest-fixup " " \-\-line ", " sfl " \fILINE_IDS\fR [\fIBOUNDARY\fR]"
 Suggest a fixup target for specific lines only. Useful when a hunk contains
 changes from multiple commits.
 .SH OPTIONS
@@ -152,9 +152,9 @@ Stage only specific lines from a hunk:
 .RS
 $ git-stage-batch start
 # Hunk shows lines [#1] through [#10]
-$ git-stage-batch include-line 1,3,5-7
+$ git-stage-batch include --line 1,3,5-7
 # Stage just those lines
-$ git-stage-batch skip-line 2,4
+$ git-stage-batch skip --line 2,4
 # Skip others
 .RE
 .fi
@@ -180,13 +180,13 @@ For hunks with changes from multiple commits:
 .RS
 $ git-stage-batch start
 # Lines #1-3 are from one commit, #4-6 from another
-$ git-stage-batch suggest-fixup-line 1-3
+$ git-stage-batch suggest-fixup --line 1-3
 # Suggested: commit abc123
-$ git-stage-batch include-line 1-3
+$ git-stage-batch include --line 1-3
 $ git commit --fixup=abc123
-$ git-stage-batch suggest-fixup-line 4-6
+$ git-stage-batch suggest-fixup --line 4-6
 # Suggested: commit def456
-$ git-stage-batch include-line 4-6
+$ git-stage-batch include --line 4-6
 $ git commit --fixup=def456
 .RE
 .fi

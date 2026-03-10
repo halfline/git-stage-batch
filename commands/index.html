@@ -767,7 +767,7 @@
   <a href="#include-line-ids-alias-il" class="md-nav__link">
     <span class="md-ellipsis">
       
-        include-line IDS (alias: il)
+        include --line IDS (alias: il)
       
     </span>
   </a>
@@ -778,7 +778,7 @@
   <a href="#skip-line-ids-alias-sl" class="md-nav__link">
     <span class="md-ellipsis">
       
-        skip-line IDS (alias: sl)
+        skip --line IDS (alias: sl)
       
     </span>
   </a>
@@ -789,7 +789,7 @@
   <a href="#discard-line-ids-alias-dl" class="md-nav__link">
     <span class="md-ellipsis">
       
-        discard-line IDS (alias: dl)
+        discard --line IDS (alias: dl)
       
     </span>
   </a>
@@ -817,7 +817,7 @@
   <a href="#include-file-alias-if" class="md-nav__link">
     <span class="md-ellipsis">
       
-        include-file (alias: if)
+        include --file (alias: if)
       
     </span>
   </a>
@@ -828,7 +828,7 @@
   <a href="#skip-file-alias-sf" class="md-nav__link">
     <span class="md-ellipsis">
       
-        skip-file (alias: sf)
+        skip --file (alias: sf)
       
     </span>
   </a>
@@ -925,10 +925,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#suggest-fixup-line-ids-boundary-aliases-sfl-sfls" class="md-nav__link">
+  <a href="#suggest-fixup-line-ids-boundary-alias-sfl" class="md-nav__link">
     <span class="md-ellipsis">
       
-        suggest-fixup-line IDS [BOUNDARY] (aliases: sfl, sfls)
+        suggest-fixup --line IDS [BOUNDARY] (alias: sfl)
       
     </span>
   </a>
@@ -1287,7 +1287,7 @@
   <a href="#include-line-ids-alias-il" class="md-nav__link">
     <span class="md-ellipsis">
       
-        include-line IDS (alias: il)
+        include --line IDS (alias: il)
       
     </span>
   </a>
@@ -1298,7 +1298,7 @@
   <a href="#skip-line-ids-alias-sl" class="md-nav__link">
     <span class="md-ellipsis">
       
-        skip-line IDS (alias: sl)
+        skip --line IDS (alias: sl)
       
     </span>
   </a>
@@ -1309,7 +1309,7 @@
   <a href="#discard-line-ids-alias-dl" class="md-nav__link">
     <span class="md-ellipsis">
       
-        discard-line IDS (alias: dl)
+        discard --line IDS (alias: dl)
       
     </span>
   </a>
@@ -1337,7 +1337,7 @@
   <a href="#include-file-alias-if" class="md-nav__link">
     <span class="md-ellipsis">
       
-        include-file (alias: if)
+        include --file (alias: if)
       
     </span>
   </a>
@@ -1348,7 +1348,7 @@
   <a href="#skip-file-alias-sf" class="md-nav__link">
     <span class="md-ellipsis">
       
-        skip-file (alias: sf)
+        skip --file (alias: sf)
       
     </span>
   </a>
@@ -1445,10 +1445,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#suggest-fixup-line-ids-boundary-aliases-sfl-sfls" class="md-nav__link">
+  <a href="#suggest-fixup-line-ids-boundary-alias-sfl" class="md-nav__link">
     <span class="md-ellipsis">
       
-        suggest-fixup-line IDS [BOUNDARY] (aliases: sfl, sfls)
+        suggest-fixup --line IDS [BOUNDARY] (alias: sfl)
       
     </span>
   </a>
@@ -1675,9 +1675,10 @@
 <div class="section-separator"></div>
 
 <h2 id="line-level-operations">Line-Level Operations<a class="headerlink" href="#line-level-operations" title="Permanent link">&para;</a></h2>
-<h3 id="include-line-ids-alias-il"><code>include-line IDS</code> (alias: <code>il</code>)<a class="headerlink" href="#include-line-ids-alias-il" title="Permanent link">&para;</a></h3>
+<h3 id="include-line-ids-alias-il"><code>include --line IDS</code> (alias: <code>il</code>)<a class="headerlink" href="#include-line-ids-alias-il" title="Permanent link">&para;</a></h3>
 <p>Stage ONLY the listed changed line IDs (+/-) to the index.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>❯ git-stage-batch include-line 1,3,5-7
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>❯ git-stage-batch include --line 1,3,5-7
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>❯ git-stage-batch il 1,3,5-7  # Short alias
 </span></code></pre></div>
 <p>Line IDs are shown as <code>[#N]</code> in the hunk output.</p>
 <p><strong>Supports:</strong>
@@ -1685,14 +1686,16 @@
 - Ranges: <code>1-5</code>
 - Mixed: <code>1,3,5-7,10</code></p>
 <hr />
-<h3 id="skip-line-ids-alias-sl"><code>skip-line IDS</code> (alias: <code>sl</code>)<a class="headerlink" href="#skip-line-ids-alias-sl" title="Permanent link">&para;</a></h3>
+<h3 id="skip-line-ids-alias-sl"><code>skip --line IDS</code> (alias: <code>sl</code>)<a class="headerlink" href="#skip-line-ids-alias-sl" title="Permanent link">&para;</a></h3>
 <p>Mark ONLY the listed changed line IDs as skipped.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>❯ git-stage-batch skip-line 2,4
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>❯ git-stage-batch skip --line 2,4
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>❯ git-stage-batch sl 2,4  # Short alias
 </span></code></pre></div>
 <hr />
-<h3 id="discard-line-ids-alias-dl"><code>discard-line IDS</code> (alias: <code>dl</code>)<a class="headerlink" href="#discard-line-ids-alias-dl" title="Permanent link">&para;</a></h3>
+<h3 id="discard-line-ids-alias-dl"><code>discard --line IDS</code> (alias: <code>dl</code>)<a class="headerlink" href="#discard-line-ids-alias-dl" title="Permanent link">&para;</a></h3>
 <p>Remove ONLY the listed changed line IDs from working tree.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>❯ git-stage-batch discard-line 8-10
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>❯ git-stage-batch discard --line 8-10
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>❯ git-stage-batch dl 8-10  # Short alias
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Destructive Operation</p>
@@ -1701,24 +1704,26 @@
 <div class="section-separator"></div>
 
 <h2 id="file-level-operations">File-Level Operations<a class="headerlink" href="#file-level-operations" title="Permanent link">&para;</a></h2>
-<h3 id="include-file-alias-if"><code>include-file</code> (alias: <code>if</code>)<a class="headerlink" href="#include-file-alias-if" title="Permanent link">&para;</a></h3>
+<h3 id="include-file-alias-if"><code>include --file</code> (alias: <code>if</code>)<a class="headerlink" href="#include-file-alias-if" title="Permanent link">&para;</a></h3>
 <p>Stage the entire file containing the current hunk.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>❯ git-stage-batch include-file
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>❯ git-stage-batch include --file
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>❯ git-stage-batch if  # Short alias
 </span></code></pre></div>
 <p>All remaining hunks in the file are staged and marked as processed.</p>
 <hr />
-<h3 id="skip-file-alias-sf"><code>skip-file</code> (alias: <code>sf</code>)<a class="headerlink" href="#skip-file-alias-sf" title="Permanent link">&para;</a></h3>
+<h3 id="skip-file-alias-sf"><code>skip --file</code> (alias: <code>sf</code>)<a class="headerlink" href="#skip-file-alias-sf" title="Permanent link">&para;</a></h3>
 <p>Skip all hunks in the file containing the current hunk.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>❯ git-stage-batch skip-file
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>❯ git-stage-batch skip --file
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>❯ git-stage-batch sf  # Short alias
 </span></code></pre></div>
 <hr />
 <h3 id="block-file-path-alias-b"><code>block-file [PATH]</code> (alias: <code>b</code>)<a class="headerlink" href="#block-file-path-alias-b" title="Permanent link">&para;</a></h3>
 <p>Permanently exclude a file via .gitignore.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a># Block current hunk&#39;s file
-</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>git-stage-batch block-file
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>❯ git-stage-batch block-file
 </span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
 </span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a># Block specific file
-</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>git-stage-batch block-file path/to/file.txt
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>❯ git-stage-batch block-file path/to/file.txt
 </span></code></pre></div>
 <p>Adds the file to <code>.gitignore</code> with a marker comment and to the internal blocked list.</p>
 <hr />
@@ -1781,14 +1786,16 @@
 <p><strong>Use case:</strong></p>
 <p>Perfect for creating fixup commits during a feature branch development workflow. After making changes to fix bugs or improve code you recently committed, use this to automatically identify which commit should be fixed up, then use <code>git rebase -i --autosquash</code> to squash the fixups.</p>
 <hr />
-<h3 id="suggest-fixup-line-ids-boundary-aliases-sfl-sfls"><code>suggest-fixup-line IDS [BOUNDARY]</code> (aliases: <code>sfl</code>, <code>sfls</code>)<a class="headerlink" href="#suggest-fixup-line-ids-boundary-aliases-sfl-sfls" title="Permanent link">&para;</a></h3>
+<h3 id="suggest-fixup-line-ids-boundary-alias-sfl"><code>suggest-fixup --line IDS [BOUNDARY]</code> (alias: <code>sfl</code>)<a class="headerlink" href="#suggest-fixup-line-ids-boundary-alias-sfl" title="Permanent link">&para;</a></h3>
 <p>Suggest which commit specific line IDs should be fixed up to.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>❯ git-stage-batch suggest-fixup-line 1,3,5-7
+<div class="language-text highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>❯ git-stage-batch suggest-fixup --line 1,3,5-7
+</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>❯ git-stage-batch sfl 1,3,5-7  # Short alias
 </span></code></pre></div>
 <p><strong>Arguments:</strong>
 - <code>IDS</code>: Line IDs to analyze (e.g., <code>1,3,5-7</code>)
 - <code>BOUNDARY</code>: Git ref to use as lower bound for commit search (default: <code>@{upstream}</code>)</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>❯ git-stage-batch sfl 2-4 origin/main
+<div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>❯ git-stage-batch suggest-fixup --line 2-4 origin/main
+</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>❯ git-stage-batch sfl 2-4 origin/main
 </span></code></pre></div>
 <p>Works like <code>suggest-fixup</code> but analyzes only the specified line IDs from the current hunk. Useful when a hunk contains changes for multiple purposes and you want to know which commit to fixup for a specific subset of lines.</p>
 <h2 id="special-behavior">Special Behavior<a class="headerlink" href="#special-behavior" title="Permanent link">&para;</a></h2>

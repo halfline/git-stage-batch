@@ -506,8 +506,8 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
 }
 
 .md-typeset a.md-button:hover {
-  color: var(--accent-bright);
-  border-color: var(--accent-bright);
+  color: var(--hacker-green);
+  border-color: var(--hacker-green);
 }
 
 /* Active nav states with brightest accent */

@@ -90,26 +90,31 @@ File action:
 
 ## Fixup Suggestions
 
-When you press `x`, the tool analyzes which commits modified the lines in the current hunk:
+When you press `x`, the tool iteratively suggests commits that modified the lines in the current hunk:
 
 ```
-Suggested fixup target: a1b2c3d auth: Implement new hashing
+Candidate 1: a1b2c3d auth: Implement new hashing
+...diff...
 Run: git commit --fixup=a1b2c3d
 ```
 
 **Workflow:**
-1. Press `x` on a hunk to see which recent commit it should fix up
-2. Stage the hunk with `i` (or skip it with `s`)
-3. Later, create a fixup commit: `git commit --fixup=a1b2c3d`
-4. Use `git rebase -i --autosquash` to automatically squash fixups
+1. Press `x` on a hunk to see the first candidate commit
+2. Press `x` again to see the next older candidate (Candidate 2, 3, ...)
+3. When you find the right one, stage the hunk with `i` (or skip it with `s`)
+4. Later, create a fixup commit: `git commit --fixup=a1b2c3d`
+5. Use `git rebase -i --autosquash` to automatically squash fixups
 
-**Boundary:**
+**Iteration:**
 
-By default, suggests commits in the range `@{upstream}..HEAD`. You'll be prompted to specify a different boundary ref if needed.
+- Each press of `x` shows the next older commit that touched those lines
+- State continues across multiple `x` presses until you find the right commit
+- State auto-resets when you move to a different hunk
+- You'll be prompted for a boundary ref on the first call (default: `@{upstream}`)
 
 **Use case:**
 
-Perfect for polishing feature branches before submitting. When you notice a bug or improvement opportunity in recently-committed code, use suggest-fixup to quickly identify which commit to amend, keeping your commit history clean and atomic.
+Perfect for polishing feature branches before submitting. When you notice a bug or improvement opportunity in recently-committed code, use suggest-fixup to iterate through candidates until you find which commit to amend. This is especially useful when multiple commits modified the same lines - you can review each one to find the right target.
 
 <div class="section-separator"></div>
 

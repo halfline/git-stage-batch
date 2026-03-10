@@ -296,24 +296,28 @@ Removes all tracking of processed/skipped hunks. Use this to start completely fr
 
 ### `suggest-fixup` (alias: `x`)
 
-Suggest which commit the current hunk should be fixed up to.
+Iteratively suggest which commits the current hunk should be fixed up to, starting with the most recent and progressing backwards through history.
 
 ```
 ❯ git-stage-batch suggest-fixup [BOUNDARY]
+❯ git-stage-batch x  # Short alias
 ```
 
 **Arguments:**
-- `BOUNDARY`: Git ref to use as lower bound for commit search (default: `@{upstream}`)
+- `BOUNDARY`: Git ref to use as lower bound for commit search (default: `@{upstream}` on first call, or continues from previous call)
 
-```
-❯ git-stage-batch suggest-fixup main
-```
+**Flags:**
+- `--reset`: Reset iteration and start over from the most recent commit
+- `--abort`: Clear iteration state and exit (doesn't show any candidates)
+- `--last`: Re-show the last candidate without advancing
+- `--line IDS`: Analyze only specific line IDs (e.g., `1,3,5-7`)
 
 **How it works:**
 
-Analyzes the current hunk to find which commits in the range `BOUNDARY..HEAD` modified the lines being changed. Uses `git log -L` to identify commits that touched those lines, then suggests the most recent one as a fixup target.
+Uses `git log -L` to find commits in the range `BOUNDARY..HEAD` that modified the lines being changed. Each invocation shows the next older commit, allowing you to iterate through all candidates until you find the right one.
 
-**Example:**
+**Typical workflow:**
+
 ```
 ❯ git-stage-batch start
 auth.py :: @@ -10,5 +10,5 @@
@@ -321,36 +325,66 @@ auth.py :: @@ -10,5 +10,5 @@
 [#2] + new_hash_function()
       validate_user()
 
-❯ git-stage-batch suggest-fixup
-Suggested fixup target: a1b2c3d auth: Implement new hashing
+# First call - specify boundary
+❯ git-stage-batch suggest-fixup origin/main
+Candidate 1: a1b2c3d auth: Implement new hashing
+
+diff --git a/auth.py b/auth.py
+...
 Run: git commit --fixup=a1b2c3d
+
+# Not the right commit? Call again (no boundary needed)
+❯ git-stage-batch suggest-fixup
+Candidate 2: b2c3d4e auth: Add password validation
+
+diff --git a/auth.py b/auth.py
+...
+Run: git commit --fixup=b2c3d4e
+
+# That's the one! But want to review the diff again?
+❯ git-stage-batch suggest-fixup --last
+Candidate 2: b2c3d4e auth: Add password validation
+...
+
+# Continue iterating
+❯ git-stage-batch suggest-fixup
+Candidate 3: c3d4e5f auth: Initial implementation
+...
+
+# No more candidates
+❯ git-stage-batch suggest-fixup
+No more candidates found.
+```
+
+**State management:**
+
+- **First call**: Specify the boundary (e.g., `origin/main`)
+- **Subsequent calls**: Omit the boundary to continue with the same one
+- **Changing boundary**: Providing a different boundary auto-resets (like `--reset`)
+- **State auto-resets**: When you switch hunks, the iteration starts over
+
+**Advanced usage:**
+
+```
+# Line-specific analysis
+❯ git-stage-batch suggest-fixup --line 1-3
+Candidate 1: ...
+
+# Reset and start over
+❯ git-stage-batch suggest-fixup --reset
+
+# Different boundary
+❯ git-stage-batch suggest-fixup main  # Auto-resets
+
+# Clear state without showing candidates
+❯ git-stage-batch suggest-fixup --abort
 ```
 
 **Use case:**
 
-Perfect for creating fixup commits during a feature branch development workflow. After making changes to fix bugs or improve code you recently committed, use this to automatically identify which commit should be fixed up, then use `git rebase -i --autosquash` to squash the fixups.
+Perfect for creating fixup commits during feature branch development. When you notice bugs or improvements in recently-committed code, use this to find which commit to fixup. The iterative approach is especially useful when multiple commits modified the same lines - you can review each candidate until you find the right one.
 
----
-
-### `suggest-fixup --line IDS [BOUNDARY]` (alias: `sfl`)
-
-Suggest which commit specific line IDs should be fixed up to.
-
-```
-❯ git-stage-batch suggest-fixup --line 1,3,5-7
-❯ git-stage-batch sfl 1,3,5-7  # Short alias
-```
-
-**Arguments:**
-- `IDS`: Line IDs to analyze (e.g., `1,3,5-7`)
-- `BOUNDARY`: Git ref to use as lower bound for commit search (default: `@{upstream}`)
-
-```
-❯ git-stage-batch suggest-fixup --line 2-4 origin/main
-❯ git-stage-batch sfl 2-4 origin/main
-```
-
-Works like `suggest-fixup` but analyzes only the specified line IDs from the current hunk. Useful when a hunk contains changes for multiple purposes and you want to know which commit to fixup for a specific subset of lines.
+After creating fixup commits, use `git rebase -i --autosquash` to automatically squash them into the correct commits.
 
 ## Special Behavior
 

@@ -289,7 +289,7 @@ Skipped hunks:
 
 ## Fixup Commits: Polish Feature Branches
 
-Use `suggest-fixup` to create fixup commits for polishing feature branches:
+Use `suggest-fixup` to iteratively find the right commits for polishing feature branches:
 
 ```
 # You're working on a feature branch and notice bugs in recent commits
@@ -306,24 +306,32 @@ auth.py :: @@ -45,3 +45,3 @@
 [#1] - if user.is_authenticated:
 [#2] + if user and user.is_authenticated:
 
-# Which commit should this fix?
+# Which commit should this fix? Start iteration
+❯ git-stage-batch suggest-fixup origin/main
+Candidate 1: c3d4e5f feat: Add user profile page
+...
+Run: git commit --fixup=c3d4e5f
+
+# Not this one, check next candidate
 ❯ git-stage-batch suggest-fixup
-Suggested fixup target: b2c3d4e feat: Implement authentication
+Candidate 2: b2c3d4e feat: Implement authentication
+...
 Run: git commit --fixup=b2c3d4e
 
-# Stage this hunk
+# That's the one! Stage this hunk
 ❯ git-stage-batch include
 
 profile.py :: @@ -12,2 +12,2 @@
 [#1] - avatar = user.avatar_url
 [#2] + avatar = user.avatar_url or "/static/default.png"
 
-# Which commit for this one?
+# Which commit for this one? (state auto-reset on hunk change)
 ❯ git-stage-batch suggest-fixup
-Suggested fixup target: c3d4e5f feat: Add user profile page
+Candidate 1: c3d4e5f feat: Add user profile page
+...
 Run: git commit --fixup=c3d4e5f
 
-# Stage and commit
+# Perfect match! Stage and commit
 ❯ git-stage-batch include
 No pending hunks.
 
@@ -347,7 +355,7 @@ profile.py :: @@ -12,2 +12,2 @@
 
 **Benefits:**
 - Keeps commit history clean without manual `git commit --amend` juggling
-- Automatically identifies which commit each fix belongs to
+- Iteratively reviews all commits that touched the same lines
 - Works seamlessly with `git rebase --autosquash`
 - Perfect for PR review feedback or self-review fixes
 

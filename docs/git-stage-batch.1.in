@@ -91,14 +91,27 @@ provided, uses the current hunk's file.
 Remove a file from permanent exclusion.
 .SS Fixup Suggestions
 .TP
-.BR suggest-fixup " [\fIBOUNDARY\fR]"
-Analyze the current hunk and suggest which commit it should be fixed up to.
-Uses \fBgit log -L\fR to find commits that modified the hunk's lines.
-Default boundary is \fB@{upstream}\fR.
-.TP
-.BR suggest-fixup " " \-\-line ", " sfl " \fILINE_IDS\fR [\fIBOUNDARY\fR]"
-Suggest a fixup target for specific lines only. Useful when a hunk contains
-changes from multiple commits.
+.BR suggest-fixup ", " x " [\fIBOUNDARY\fR] [" \-\-reset "] [" \-\-abort "] [" \-\-last "] [" \-\-line " \fILINE_IDS\fR]"
+Iteratively suggest which commits the current hunk should be fixed up to,
+starting with the most recent and progressing backwards. Uses \fBgit log -L\fR
+to find commits that modified the hunk's lines. Each invocation shows the next
+older commit (Candidate 1, 2, 3...).
+.RS
+.PP
+Default boundary is \fB@{upstream}\fR on first call. Subsequent calls continue
+with the same boundary unless changed (which auto-resets). State auto-resets
+when switching hunks.
+.PP
+Flags:
+.IP \fB\-\-reset\fR
+Reset iteration and start over from the most recent commit.
+.IP \fB\-\-abort\fR
+Clear iteration state and exit without showing candidates.
+.IP \fB\-\-last\fR
+Re-show the last candidate without advancing.
+.IP "\fB\-\-line\fR \fILINE_IDS\fR"
+Analyze only specific line IDs (e.g., '1,3,5-7').
+.RE
 .SH OPTIONS
 .TP
 .BR \-i ", " \-\-interactive
@@ -160,17 +173,26 @@ $ git-stage-batch skip --line 2,4
 .fi
 .SS Creating Fixup Commits
 .PP
-Create fixup commits for recent changes:
+Iteratively find the right commit to fixup:
 .PP
 .nf
 .RS
 $ git-stage-batch start
 # See a bug fix
-$ git-stage-batch suggest-fixup HEAD~5
-# Suggested fixup target: abc123 Add feature X
+$ git-stage-batch suggest-fixup origin/main
+# Candidate 1: abc123 Add feature X
+# ...diff...
 # Run: git commit --fixup=abc123
+
+# Not the right one? Continue iteration
+$ git-stage-batch suggest-fixup
+# Candidate 2: def456 Implement validation
+# ...diff...
+# Run: git commit --fixup=def456
+
+# That's the one!
 $ git-stage-batch include
-$ git commit --fixup=abc123
+$ git commit --fixup=def456
 .RE
 .fi
 .PP
@@ -180,12 +202,14 @@ For hunks with changes from multiple commits:
 .RS
 $ git-stage-batch start
 # Lines #1-3 are from one commit, #4-6 from another
-$ git-stage-batch suggest-fixup --line 1-3
-# Suggested: commit abc123
+$ git-stage-batch suggest-fixup --line 1-3 origin/main
+# Candidate 1: abc123 ...
 $ git-stage-batch include --line 1-3
 $ git commit --fixup=abc123
+
 $ git-stage-batch suggest-fixup --line 4-6
-# Suggested: commit def456
+# Continues with same boundary, shows candidate for lines 4-6
+# Candidate 1: def456 ...
 $ git-stage-batch include --line 4-6
 $ git commit --fixup=def456
 .RE

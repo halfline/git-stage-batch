@@ -49,7 +49,7 @@ config.py :: @@ -1,5 +1,7 @@
 
 # Feature flag and timeout are separate concerns
 # Stage only the timeout change
-❯ git-stage-batch include-line 2,3
+❯ git-stage-batch include --line 2,3
 config.py :: @@ -1,5 +1,7 @@
 [#1] + FEATURE_FLAG = True
       DATABASE_URL = "..."
@@ -79,7 +79,7 @@ auth.py :: @@ -10,5 +10,5 @@
 [#2] + new_hash()
 
 # This file has 5 more hunks, all part of the same refactor
-❯ git-stage-batch include-file
+❯ git-stage-batch include --file
 # All hunks in auth.py are now staged
 
 ❯ git commit -m "auth: Migrate to new hashing algorithm"
@@ -129,7 +129,7 @@ logging.py     |  8 ++++----
 # Session 1: Authentication changes
 ❯ git-stage-batch start
 # Include all auth.py hunks
-❯ git-stage-batch include-file
+❯ git-stage-batch include --file
 # Skip everything else
 ❯ git-stage-batch skip    # database.py
 ❯ git-stage-batch skip    # config.py
@@ -166,7 +166,7 @@ utils.py :: @@ -10,8 +10,8 @@
 [#8] +     return new_logic()
 
 # Stage only helper1 changes (lines 1-4)
-❯ git-stage-batch include-line 1-4
+❯ git-stage-batch include --line 1-4
 utils.py :: @@ -10,8 +10,8 @@
 [#1] - def helper1():
 [#2] + def improved_helper1():
@@ -241,7 +241,7 @@ Minimize typing with short aliases:
 ❯ git-stage-batch        # include
 [next hunk]
 
-❯ git-stage-batch il 1-5 # include-line
+❯ git-stage-batch il 1-5 # include --line
 [updated hunk]
 
 ❯ git-stage-batch        # include remaining
@@ -358,7 +358,7 @@ profile.py :: @@ -12,2 +12,2 @@
 1. **Use `again` frequently** - After each commit, run `git-stage-batch again` to review skipped hunks
 2. **Combine line operations** - You can include some lines, skip others in the same hunk
 3. **Check status often** - Use `git-stage-batch status` to see what's left
-4. **File operations are fast** - Use `include-file` when all hunks belong together
+4. **File operations are fast** - Use `include --file` when all hunks belong together
 5. **Interactive mode for learning** - Start with `--interactive` to get familiar with the workflow
 
 ## Next Steps

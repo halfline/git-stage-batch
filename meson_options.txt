@@ -1,0 +1,2 @@
+option('python_wheel', type: 'boolean', value: false,
+       description: 'Build as Python wheel (install translations to package directory)')

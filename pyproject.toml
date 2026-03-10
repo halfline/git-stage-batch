@@ -1,0 +1,34 @@
+[project]
+name = "git-stage-batch"
+dynamic = ["version"]
+description = "Non-interactive hunk-by-hunk and line-by-line staging for git"
+readme = "README.md"
+authors = [
+    { name = "Ray Strode", email = "rstrode@redhat.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+git-stage-batch = "git_stage_batch.cli:main"
+
+[dependency-groups]
+dev = [
+    "meson-python>=0.17.0",
+    "meson>=1.2.0",
+    "ninja>=1.11.0",
+    "pytest>=8.0.0",
+]
+
+[build-system]
+requires = ["meson-python"]
+build-backend = "mesonpy"
+
+[tool.meson-python.args]
+setup = ["-Dpython_wheel=true"]
+
+[tool.uv]
+no-build-isolation = true
+
+[tool.uv.extra-build-dependencies]
+git-stage-batch = ["meson-python"]

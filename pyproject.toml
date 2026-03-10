@@ -1,0 +1,56 @@
+[project]
+name = "git-stage-batch"
+dynamic = ["version"]
+description = "Non-interactive hunk-by-hunk and line-by-line staging for git"
+readme = "README.md"
+authors = [
+    { name = "Ray Strode", email = "rstrode@redhat.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+license = {text = "MIT"}
+keywords = ["git", "staging", "commit", "diff", "patch"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+
+[project.urls]
+Homepage = "https://github.com/halfline/git-stage-batch"
+Repository = "https://github.com/halfline/git-stage-batch"
+"Bug Tracker" = "https://github.com/halfline/git-stage-batch/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "meson-python>=0.17.0",
+    "meson>=1.2.0",
+    "ninja>=1.11.0"
+]
+
+[build-system]
+requires = [
+    "meson-python>=0.17.0",
+    "meson>=1.2.0",
+    "ninja>=1.11.0"
+]
+build-backend = "mesonpy"
+
+[tool.meson-python.args]
+setup = ["-Dpython_wheel=true"]
+
+[tool.uv]
+no-build-isolation = true
+preview = true
+
+[tool.uv.extra-build-dependencies]
+git-stage-batch = [
+    "meson-python>=0.17.0",
+    "meson>=1.2.0",
+    "ninja>=1.11.0",
+]

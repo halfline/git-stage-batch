@@ -16,37 +16,21 @@ function updateSidebarVisibility() {
 	}
 }
 
-// Persistent audio player logic
-var persistentAudio = null;
+// Persistent audio player logic (window-level so header can access it)
+window.persistentAudio = null;
 
-function initPersistentAudio() {
-	const audioElement = document.querySelector('audio.podcast-player');
+window.togglePodcast = function() {
+	if (!window.persistentAudio) return;
 
-	if (audioElement && !persistentAudio) {
-		// First time encountering the audio element - save it globally
-		persistentAudio = audioElement;
-
-		// Mark body as having audio
-		document.body.classList.add('has-audio');
-
-		// Set up event listeners
-		persistentAudio.addEventListener('play', updateAudioButton);
-		persistentAudio.addEventListener('pause', updateAudioButton);
-		persistentAudio.addEventListener('ended', updateAudioButton);
-
-		// Initial button state
-		updateAudioButton();
-	} else if (audioElement && persistentAudio && audioElement !== persistentAudio) {
-		// Navigation happened - replace the new element with our persistent one
-		audioElement.parentNode.replaceChild(persistentAudio, audioElement);
-	} else if (!audioElement && persistentAudio) {
-		// We're on a page without the audio element, but keep it alive
-		document.body.classList.add('has-audio');
+	if (window.persistentAudio.paused) {
+		window.persistentAudio.play();
+	} else {
+		window.persistentAudio.pause();
 	}
-}
+};
 
-function updateAudioButton() {
-	if (!persistentAudio) return;
+window.updateAudioButton = function() {
+	if (!window.persistentAudio) return;
 
 	const button = document.querySelector('.md-header__button.audio-control');
 	if (!button) return;
@@ -54,7 +38,7 @@ function updateAudioButton() {
 	const playIcon = button.querySelector('.play-icon');
 	const pauseIcon = button.querySelector('.pause-icon');
 
-	if (persistentAudio.paused) {
+	if (window.persistentAudio.paused) {
 		button.classList.remove('playing');
 		playIcon.style.display = '';
 		pauseIcon.style.display = 'none';
@@ -64,6 +48,32 @@ function updateAudioButton() {
 		playIcon.style.display = 'none';
 		pauseIcon.style.display = '';
 		button.setAttribute('aria-label', 'Pause podcast');
+	}
+};
+
+function initPersistentAudio() {
+	const audioElement = document.querySelector('audio.podcast-player');
+
+	if (audioElement && !window.persistentAudio) {
+		// First time encountering the audio element - save it globally
+		window.persistentAudio = audioElement;
+
+		// Mark body as having audio
+		document.body.classList.add('has-audio');
+
+		// Set up event listeners for button state sync
+		window.persistentAudio.addEventListener('play', window.updateAudioButton);
+		window.persistentAudio.addEventListener('pause', window.updateAudioButton);
+		window.persistentAudio.addEventListener('ended', window.updateAudioButton);
+
+		// Initial button state
+		window.updateAudioButton();
+	} else if (audioElement && window.persistentAudio && audioElement !== window.persistentAudio) {
+		// Navigation happened - replace the new element with our persistent one
+		audioElement.parentNode.replaceChild(window.persistentAudio, audioElement);
+	} else if (!audioElement && window.persistentAudio) {
+		// We're on a page without the audio element, but keep it alive
+		document.body.classList.add('has-audio');
 	}
 }
 

@@ -307,15 +307,13 @@
       const button = document.querySelector('.md-header__button.audio-control');
       if (!button) return;
 
-      // Handle click
-      button.onclick = function() {
-        const audio = document.querySelector('audio.podcast-player');
-        if (!audio) return;
+      // Remove any existing click handler to avoid duplicates
+      button.onclick = null;
 
-        if (audio.paused) {
-          audio.play();
-        } else {
-          audio.pause();
+      // Handle click using the global togglePodcast function
+      button.onclick = function() {
+        if (window.togglePodcast) {
+          window.togglePodcast();
         }
       };
     }

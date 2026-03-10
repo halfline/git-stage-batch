@@ -25,11 +25,29 @@
 /* Terminal-style code blocks */
 .highlight pre,
 pre code {
-  background: var(--terminal-bg) !important;
-  border: 1px solid var(--hacker-cyan);
-  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+  background: rgba(0, 0, 0, 0.6) !important;
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  box-shadow:
+    0 0 15px rgba(0, 240, 255, 0.15),
+    inset 0 0 30px rgba(0, 0, 0, 0.5);
   font-family: 'Fira Code', 'Source Code Pro', 'Roboto Mono', monospace;
   position: relative;
+  padding: 1.2em 1em !important;
+  border-radius: 4px;
+}
+
+.md-typeset pre {
+  margin: 1.5em 0 !important;
+}
+
+/* Command examples container */
+.md-typeset h3 + pre,
+.md-typeset h2 + pre {
+  background: rgba(0, 0, 0, 0.7) !important;
+  border-color: rgba(0, 240, 255, 0.4);
+  box-shadow:
+    0 0 20px rgba(0, 240, 255, 0.2),
+    inset 0 0 40px rgba(0, 0, 0, 0.6);
 }
 
 /* Animated cursor removed - was overlapping with copy button */
@@ -119,14 +137,25 @@ img[alt*="demo"] {
   filter: drop-shadow(0 0 3px currentColor);
 }
 
-/* Search bar terminal style */
+/* Search bar terminal style - quieter until focused */
 .md-search__input {
-  background: var(--terminal-bg);
-  border: 1px solid var(--hacker-cyan);
+  background: rgba(13, 17, 23, 0.5);
+  border: 1px solid rgba(0, 240, 255, 0.2);
   color: var(--hacker-green);
+  transition: all 0.3s ease;
 }
 
 .md-search__input::placeholder {
+  color: rgba(0, 255, 65, 0.3);
+}
+
+.md-search__input:focus {
+  background: var(--terminal-bg);
+  border-color: var(--hacker-cyan);
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+}
+
+.md-search__input:focus::placeholder {
   color: rgba(0, 255, 65, 0.5);
 }
 
@@ -164,8 +193,11 @@ img[alt*="demo"] {
 
 /* Footer with terminal style */
 .md-footer {
-  border-top: 1px solid var(--hacker-cyan);
+  border-top: 2px solid rgba(0, 240, 255, 0.3);
   background: var(--terminal-bg);
+  margin-top: 4em;
+  padding-top: 2em;
+  box-shadow: 0 -10px 30px rgba(0, 240, 255, 0.05);
 }
 
 /* Syntax highlighting overrides for terminal look */
@@ -281,28 +313,40 @@ body.hide-primary-sidebar .md-sidebar--primary {
 .md-typeset .grid.cards > ol > li,
 .md-typeset .grid.cards > ul > li,
 .md-typeset .grid > .card {
-  background: rgba(13, 17, 23, 0.6) !important;
-  border: 1px solid var(--accent-dim) !important;
+  background: rgba(13, 17, 23, 0.8) !important;
+  border: 1.5px solid rgba(0, 240, 255, 0.25) !important;
   box-shadow:
-    0 0 15px rgba(0, 240, 255, 0.15),
-    inset 0 1px 0 rgba(0, 240, 255, 0.1) !important;
+    0 0 20px rgba(0, 240, 255, 0.12),
+    inset 0 1px 0 rgba(0, 240, 255, 0.15) !important;
   transition: all 0.3s ease !important;
-  padding: 1.2em !important;
+  padding: 1.8em 1.5em !important;
+  border-radius: 6px !important;
 }
 
 .md-typeset .grid.cards > ol > li:hover,
 .md-typeset .grid.cards > ul > li:hover,
 .md-typeset .grid > .card:hover {
-  background: rgba(13, 17, 23, 0.8) !important;
-  border-color: var(--accent-mid) !important;
+  background: rgba(13, 17, 23, 0.95) !important;
+  border-color: rgba(0, 240, 255, 0.5) !important;
   box-shadow:
-    0 0 25px rgba(0, 240, 255, 0.3),
-    inset 0 1px 0 rgba(0, 240, 255, 0.2) !important;
+    0 0 30px rgba(0, 240, 255, 0.25),
+    inset 0 1px 0 rgba(0, 240, 255, 0.25) !important;
   transform: translateY(-4px) !important;
 }
 
 .md-typeset .grid.cards svg {
   filter: drop-shadow(0 0 8px currentColor) !important;
+  margin-bottom: 0.5em !important;
+}
+
+.md-typeset .grid.cards hr {
+  margin: 0.8em 0 1em !important;
+  border-color: rgba(0, 240, 255, 0.15) !important;
+}
+
+.md-typeset .grid.cards p {
+  line-height: 1.6 !important;
+  opacity: 0.85 !important;
 }
 
 /* Example Workflow showcase treatment */
@@ -342,21 +386,26 @@ body.hide-primary-sidebar .md-sidebar--primary {
 
 /* Sharper typography hierarchy */
 .md-typeset h2 {
-  font-size: 1.8em;
+  font-size: 2em;
   font-weight: 700;
-  margin-top: 2.5em;
-  margin-bottom: 0.8em;
-  color: var(--hacker-cyan);
-  text-shadow: 0 0 10px var(--hacker-cyan);
+  margin-top: 3em;
+  margin-bottom: 1em;
+  color: var(--accent-bright);
+  text-shadow: 0 0 12px var(--hacker-cyan);
   letter-spacing: -0.02em;
 }
 
 .md-typeset h3 {
-  font-size: 1.3em;
+  font-size: 1.35em;
   font-weight: 600;
-  margin-top: 2em;
-  margin-bottom: 0.7em;
-  color: var(--accent-bright);
+  margin-top: 2.2em;
+  margin-bottom: 0.8em;
+  color: rgba(0, 240, 255, 0.9);
+}
+
+/* Dim body text slightly for better hierarchy */
+.md-typeset p {
+  color: rgba(255, 255, 255, 0.85);
 }
 
 /* Hide "Home" header on homepage */
@@ -366,12 +415,19 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
 
 /* Quieter TOC on homepage */
 body.hide-primary-sidebar .md-sidebar--secondary {
-  border-left: 1px solid rgba(0, 240, 255, 0.1);
+  border-left: 1px solid rgba(0, 240, 255, 0.15);
+  padding-left: 1rem;
+}
+
+body.hide-primary-sidebar .md-nav--secondary .md-nav__title {
+  color: rgba(255, 255, 255, 0.35);
+  font-weight: 500;
 }
 
 body.hide-primary-sidebar .md-nav--secondary .md-nav__link {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.3);
   transition: color 0.2s ease;
+  font-size: 0.75rem;
 }
 
 body.hide-primary-sidebar .md-nav--secondary .md-nav__link--active,
@@ -408,8 +464,17 @@ body.hide-primary-sidebar .md-nav--secondary .md-nav__link--active {
 
 /* Section breathing room */
 .md-typeset h2 + p {
-  font-size: 1.05em;
+  font-size: 1.08em;
   opacity: 0.95;
+  margin-bottom: 1.5em;
+}
+
+/* Visual separator for major sections */
+.section-separator {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.25) 50%, transparent);
+  margin: 3.5em auto;
+  max-width: 50%;
 }
 
 /* Demo section treatment */

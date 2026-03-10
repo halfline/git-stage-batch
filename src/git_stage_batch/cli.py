@@ -270,15 +270,30 @@ def main() -> None:
         help="Analyze only specific line IDs (e.g., '1,3,5-7')",
     )
     parser_suggest_fixup.add_argument(
+        "--reset",
+        action="store_true",
+        help="Reset candidate iteration and start from most recent commit",
+    )
+    parser_suggest_fixup.add_argument(
+        "--abort",
+        action="store_true",
+        help="Clear candidate iteration state and exit",
+    )
+    parser_suggest_fixup.add_argument(
+        "--last",
+        action="store_true",
+        help="Re-show the last candidate without advancing",
+    )
+    parser_suggest_fixup.add_argument(
         "boundary_or_line_ids",
         nargs="?",
-        default="@{upstream}",
-        help="Boundary ref for commit search, or line IDs if using sfl alias (default: @{upstream})",
+        default=None,
+        help="Boundary ref for commit search, or line IDs if using sfl alias (default: @{upstream} or continues from previous call)",
     )
     parser_suggest_fixup.add_argument(
         "boundary_if_line_ids",
         nargs="?",
-        default="@{upstream}",
+        default=None,
         help=argparse.SUPPRESS,  # Hidden second positional for sfl IDS BOUNDARY
     )
 
@@ -286,15 +301,15 @@ def main() -> None:
         # Determine if we're being called as 'sfl' for backward compat
         # If --line flag is used, use that
         if args.line_ids:
-            return command_suggest_fixup_line(args.line_ids, args.boundary_or_line_ids)
+            return command_suggest_fixup_line(args.line_ids, args.boundary_or_line_ids, reset=args.reset, abort=args.abort, show_last=args.last)
         # If boundary_or_line_ids looks like line IDs (contains numbers/commas), treat as line IDs
-        elif ',' in args.boundary_or_line_ids or args.boundary_or_line_ids.replace('-', '').isdigit():
+        elif args.boundary_or_line_ids and (',' in args.boundary_or_line_ids or args.boundary_or_line_ids.replace('-', '').isdigit()):
             # Likely line IDs (backward compat with sfl)
             boundary = args.boundary_if_line_ids
-            return command_suggest_fixup_line(args.boundary_or_line_ids, boundary)
+            return command_suggest_fixup_line(args.boundary_or_line_ids, boundary, reset=args.reset, abort=args.abort, show_last=args.last)
         else:
-            # It's a boundary ref
-            return command_suggest_fixup(args.boundary_or_line_ids)
+            # It's a boundary ref (or None to use previous/default)
+            return command_suggest_fixup(args.boundary_or_line_ids, reset=args.reset, abort=args.abort, show_last=args.last)
 
     parser_suggest_fixup.set_defaults(func=suggest_fixup_dispatcher)
 

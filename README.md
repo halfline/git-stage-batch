@@ -22,6 +22,14 @@ Non-interactive hunk-by-hunk and line-by-line staging for git, similar to `git a
 - **[Examples](https://halfline.github.io/git-stage-batch/examples/)** - Common workflows and use cases
 - **[AI Assistant Guide](https://halfline.github.io/git-stage-batch/ai-assistants/)** - Configure Claude, Cursor, etc.
 
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
+- Development setup instructions
+- Commit message guidelines
+- Code style conventions
+
 ## License
 
 MIT License

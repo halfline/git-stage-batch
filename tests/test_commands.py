@@ -21,6 +21,8 @@ from git_stage_batch.commands import (
     command_start,
     command_status,
     command_stop,
+    command_suggest_fixup,
+    command_suggest_fixup_line,
     command_unblock_file,
 )
 from git_stage_batch.state import (
@@ -1416,4 +1418,290 @@ class TestCommandInteractive:
 
         # Last file should still exist (we quit before processing it)
         assert (temp_git_repo / "zzz-last.txt").exists()
+
+
+class TestCommandSuggestFixup:
+    """Tests for command_suggest_fixup and iterative candidate discovery."""
+
+    def test_suggest_fixup_finds_most_recent_commit(self, temp_git_repo, capsys):
+        """Test that suggest-fixup finds the most recent commit that modified lines."""
+        # Create a series of commits modifying the same line
+        (temp_git_repo / "test.txt").write_text("line1\nchanged once\nline3\n")
+        subprocess.run(["git", "commit", "-am", "First change"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nchanged twice\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Second change"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make a working tree change
+        (temp_git_repo / "test.txt").write_text("line1\nworking tree change\nline3\n")
+
+        # Start session and suggest fixup
+        command_start()
+        capsys.readouterr()  # Clear output
+
+        # Create a fake upstream ref
+        subprocess.run(["git", "branch", "fake-upstream", "HEAD~2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+
+        # Should suggest the most recent commit (Second change)
+        assert "Candidate 1:" in captured.out
+        assert "Second change" in captured.out
+        assert "git commit --fixup=" in captured.out
+
+    def test_suggest_fixup_iterates_through_candidates(self, temp_git_repo, capsys):
+        """Test that repeated calls show progressively older commits."""
+        # Create multiple commits modifying the same line
+        (temp_git_repo / "test.txt").write_text("line1\nv1\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Commit 1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nv2\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Commit 2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nv3\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Commit 3"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make working tree change
+        (temp_git_repo / "test.txt").write_text("line1\nworking\nline3\n")
+
+        command_start()
+        capsys.readouterr()
+
+        # Create upstream ref
+        subprocess.run(["git", "branch", "fake-upstream", "HEAD~3"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # First call - should show Commit 3
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out
+        assert "Commit 3" in captured.out
+
+        # Second call - should show Commit 2
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "Candidate 2:" in captured.out
+        assert "Commit 2" in captured.out
+
+        # Third call - should show Commit 1
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "Candidate 3:" in captured.out
+        assert "Commit 1" in captured.out
+
+        # Fourth call - no more candidates
+        with pytest.raises(SystemExit):
+            command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "No more candidates found" in captured.out
+
+    def test_suggest_fixup_reset_flag(self, temp_git_repo, capsys):
+        """Test that --reset flag restarts from the most recent candidate."""
+        # Create commits
+        (temp_git_repo / "test.txt").write_text("line1\nv1\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Commit 1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nv2\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Commit 2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nworking\nline3\n")
+
+        command_start()
+        capsys.readouterr()
+
+        subprocess.run(["git", "branch", "fake-upstream", "HEAD~2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # First call
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out
+
+        # Second call
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "Candidate 2:" in captured.out
+
+        # Reset - should restart at Candidate 1
+        command_suggest_fixup(boundary="fake-upstream", reset=True)
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out
+        assert "Commit 2" in captured.out
+
+    def test_suggest_fixup_abort_flag(self, temp_git_repo, capsys):
+        """Test that --abort flag clears state without showing candidates."""
+        # Create commit
+        (temp_git_repo / "test.txt").write_text("line1\nv1\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Commit 1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nworking\nline3\n")
+
+        command_start()
+        capsys.readouterr()
+
+        subprocess.run(["git", "branch", "fake-upstream", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Start iteration
+        command_suggest_fixup(boundary="fake-upstream")
+        capsys.readouterr()
+
+        # Abort - should clear state without showing candidates
+        command_suggest_fixup(boundary="fake-upstream", abort=True)
+        captured = capsys.readouterr()
+        assert "Suggest-fixup iteration cleared" in captured.out
+        assert "Candidate" not in captured.out
+
+        # Next call should start fresh at Candidate 1
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out
+
+    def test_suggest_fixup_state_resets_on_hunk_change(self, temp_git_repo, capsys):
+        """Test that state automatically resets when switching to a different hunk."""
+        # Create two files with commits
+        (temp_git_repo / "test.txt").write_text("line1\nv1\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Change test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test2.txt").write_text("another file\n")
+        subprocess.run(["git", "add", "test2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test2.txt").write_text("another file\nv1\n")
+        subprocess.run(["git", "commit", "-am", "Change test2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make changes to both files
+        (temp_git_repo / "test.txt").write_text("line1\nworking1\nline3\n")
+        (temp_git_repo / "test2.txt").write_text("another file\nworking2\n")
+
+        subprocess.run(["git", "branch", "fake-upstream", "HEAD~3"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Start with first file
+        command_start()
+        capsys.readouterr()
+
+        # Iterate once
+        command_suggest_fixup(boundary="fake-upstream")
+        capsys.readouterr()
+
+        # Skip to next hunk (different file)
+        command_skip()
+        capsys.readouterr()
+
+        # Now suggest-fixup should reset and show Candidate 1 for the new hunk
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out
+
+    def test_suggest_fixup_line_with_specific_lines(self, temp_git_repo, capsys):
+        """Test suggest-fixup with --line flag for specific line IDs."""
+        # Create commit modifying line 2
+        (temp_git_repo / "test.txt").write_text("line1\nchanged\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Change line 2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make change to the same line
+        (temp_git_repo / "test.txt").write_text("line1\nworking\nline3\n")
+
+        command_start()
+        capsys.readouterr()
+
+        subprocess.run(["git", "branch", "fake-upstream", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Suggest fixup for line 1 (which is the changed line in the hunk)
+        command_suggest_fixup_line(line_id_specification="1", boundary="fake-upstream")
+        captured = capsys.readouterr()
+
+        assert "Candidate 1:" in captured.out
+        assert "Change line 2" in captured.out
+
+    def test_suggest_fixup_no_commits_in_range(self, temp_git_repo, capsys):
+        """Test that suggest-fixup exits gracefully when no commits are found."""
+        # Make a change without any commits in the boundary range
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+
+        command_start()
+        capsys.readouterr()
+
+        # Use HEAD as boundary (no commits between HEAD and HEAD)
+        with pytest.raises(SystemExit):
+            command_suggest_fixup(boundary="HEAD")
+
+        captured = capsys.readouterr()
+        # Error message goes to stderr
+        assert "No commits found in range HEAD..HEAD" in captured.err
+
+    def test_suggest_fixup_shows_commit_diff(self, temp_git_repo, capsys):
+        """Test that suggest-fixup shows the diff from the candidate commit."""
+        # Create commit
+        (temp_git_repo / "test.txt").write_text("line1\nchanged\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Test commit"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nworking\nline3\n")
+
+        command_start()
+        capsys.readouterr()
+
+        subprocess.run(["git", "branch", "fake-upstream", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+
+        # Should show diff from the commit
+        assert "diff --git" in captured.out or "@@" in captured.out
+
+    def test_suggest_fixup_last_flag_with_no_state(self, temp_git_repo, capsys):
+        """Test that --last flag shows error when no previous candidate exists."""
+        # Create commit
+        (temp_git_repo / "test.txt").write_text("line1\nv1\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Commit 1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nworking\nline3\n")
+
+        command_start()
+        capsys.readouterr()
+
+        subprocess.run(["git", "branch", "fake-upstream", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Try --last without having called suggest-fixup first
+        with pytest.raises(SystemExit):
+            command_suggest_fixup(boundary="fake-upstream", show_last=True)
+
+        captured = capsys.readouterr()
+        assert "No previous candidate to show" in captured.out
+
+    def test_suggest_fixup_last_flag_re_shows_candidate(self, temp_git_repo, capsys):
+        """Test that --last flag re-shows the last candidate without advancing."""
+        # Create commits
+        (temp_git_repo / "test.txt").write_text("line1\nv1\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Commit 1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nv2\nline3\n")
+        subprocess.run(["git", "commit", "-am", "Commit 2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "test.txt").write_text("line1\nworking\nline3\n")
+
+        command_start()
+        capsys.readouterr()
+
+        subprocess.run(["git", "branch", "fake-upstream", "HEAD~2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # First call
+        command_suggest_fixup(boundary="fake-upstream")
+        capsys.readouterr()
+
+        # Second call - advance to candidate 2
+        command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "Candidate 2:" in captured.out
+        assert "Commit 1" in captured.out
+
+        # Call with --last - should re-show candidate 2
+        command_suggest_fixup(boundary="fake-upstream", show_last=True)
+        captured = capsys.readouterr()
+        assert "Candidate 2:" in captured.out
+        assert "Commit 1" in captured.out
+
+        # Next call without --last should show "No more candidates"
+        with pytest.raises(SystemExit):
+            command_suggest_fixup(boundary="fake-upstream")
+        captured = capsys.readouterr()
+        assert "No more candidates found" in captured.out
 

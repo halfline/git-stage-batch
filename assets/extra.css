@@ -26,10 +26,8 @@
 .highlight pre,
 pre code {
   background: rgba(0, 0, 0, 0.6) !important;
-  border: 2px solid var(--hacker-cyan);
-  box-shadow:
-    0 0 20px rgba(0, 240, 255, 0.3),
-    inset 0 0 20px rgba(0, 240, 255, 0.1);
+  border: 2px solid var(--hacker-cyan) !important;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.3) !important;
   font-family: 'Fira Code', 'Source Code Pro', 'Roboto Mono', monospace;
   position: relative;
   padding: 1.2em 1em !important;
@@ -366,24 +364,7 @@ body.hide-primary-sidebar .md-sidebar--primary {
   background: rgba(0, 0, 0, 0.4);
   border: 2px solid var(--hacker-cyan);
   border-radius: 8px;
-  box-shadow:
-    0 0 20px rgba(0, 240, 255, 0.3),
-    inset 0 0 20px rgba(0, 240, 255, 0.1);
-}
-
-.workflow-showcase::before {
-  content: '▸ TERMINAL SESSION';
-  position: absolute;
-  top: -0.7em;
-  left: 1.5em;
-  background: var(--terminal-bg);
-  padding: 0.2em 0.8em;
-  font-size: 0.75em;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--hacker-cyan);
-  border: 1px solid var(--hacker-cyan);
-  border-radius: 3px;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
 }
 
 .workflow-showcase pre {
@@ -537,9 +518,5 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
 
   .workflow-showcase {
     padding: 1em;
-  }
-
-  .workflow-showcase::before {
-    font-size: 0.65em;
   }
 }

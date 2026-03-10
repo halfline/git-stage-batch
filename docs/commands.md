@@ -154,12 +154,13 @@ Returns JSON:
 
 ## Line-Level Operations
 
-### `include-line IDS` (alias: `il`)
+### `include --line IDS` (alias: `il`)
 
 Stage ONLY the listed changed line IDs (+/-) to the index.
 
 ```
-❯ git-stage-batch include-line 1,3,5-7
+❯ git-stage-batch include --line 1,3,5-7
+❯ git-stage-batch il 1,3,5-7  # Short alias
 ```
 
 Line IDs are shown as `[#N]` in the hunk output.
@@ -171,22 +172,24 @@ Line IDs are shown as `[#N]` in the hunk output.
 
 ---
 
-### `skip-line IDS` (alias: `sl`)
+### `skip --line IDS` (alias: `sl`)
 
 Mark ONLY the listed changed line IDs as skipped.
 
 ```
-❯ git-stage-batch skip-line 2,4
+❯ git-stage-batch skip --line 2,4
+❯ git-stage-batch sl 2,4  # Short alias
 ```
 
 ---
 
-### `discard-line IDS` (alias: `dl`)
+### `discard --line IDS` (alias: `dl`)
 
 Remove ONLY the listed changed line IDs from working tree.
 
 ```
-❯ git-stage-batch discard-line 8-10
+❯ git-stage-batch discard --line 8-10
+❯ git-stage-batch dl 8-10  # Short alias
 ```
 
 !!! warning "Destructive Operation"
@@ -196,24 +199,26 @@ Remove ONLY the listed changed line IDs from working tree.
 
 ## File-Level Operations
 
-### `include-file` (alias: `if`)
+### `include --file` (alias: `if`)
 
 Stage the entire file containing the current hunk.
 
 ```
-❯ git-stage-batch include-file
+❯ git-stage-batch include --file
+❯ git-stage-batch if  # Short alias
 ```
 
 All remaining hunks in the file are staged and marked as processed.
 
 ---
 
-### `skip-file` (alias: `sf`)
+### `skip --file` (alias: `sf`)
 
 Skip all hunks in the file containing the current hunk.
 
 ```
-❯ git-stage-batch skip-file
+❯ git-stage-batch skip --file
+❯ git-stage-batch sf  # Short alias
 ```
 
 ---
@@ -224,10 +229,10 @@ Permanently exclude a file via .gitignore.
 
 ```
 # Block current hunk's file
-git-stage-batch block-file
+❯ git-stage-batch block-file
 
 # Block specific file
-git-stage-batch block-file path/to/file.txt
+❯ git-stage-batch block-file path/to/file.txt
 ```
 
 Adds the file to `.gitignore` with a marker comment and to the internal blocked list.
@@ -327,12 +332,13 @@ Perfect for creating fixup commits during a feature branch development workflow.
 
 ---
 
-### `suggest-fixup-line IDS [BOUNDARY]` (aliases: `sfl`, `sfls`)
+### `suggest-fixup --line IDS [BOUNDARY]` (alias: `sfl`)
 
 Suggest which commit specific line IDs should be fixed up to.
 
 ```
-❯ git-stage-batch suggest-fixup-line 1,3,5-7
+❯ git-stage-batch suggest-fixup --line 1,3,5-7
+❯ git-stage-batch sfl 1,3,5-7  # Short alias
 ```
 
 **Arguments:**
@@ -340,6 +346,7 @@ Suggest which commit specific line IDs should be fixed up to.
 - `BOUNDARY`: Git ref to use as lower bound for commit search (default: `@{upstream}`)
 
 ```
+❯ git-stage-batch suggest-fixup --line 2-4 origin/main
 ❯ git-stage-batch sfl 2-4 origin/main
 ```
 

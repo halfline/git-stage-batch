@@ -1637,11 +1637,11 @@
 <h2 id="core-operations">Core Operations<a class="headerlink" href="#core-operations" title="Permanent link">&para;</a></h2>
 <h3 id="start"><code>start</code><a class="headerlink" href="#start" title="Permanent link">&para;</a></h3>
 <p>Find and display the first unprocessed hunk; cache as "current".</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git-stage-batch start
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>❯ git-stage-batch start
 </span></code></pre></div>
 <p><strong>Options:</strong>
 - <code>-U N</code> or <code>--unified N</code>: Number of context lines in diff output (default: 3)</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git-stage-batch start -U5  # Show 5 lines of context
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>❯ git-stage-batch start -U5  # Show 5 lines of context
 </span></code></pre></div>
 <p>Resets state if a session is already in progress.</p>
 <p><strong>Example output:</strong>
@@ -1653,10 +1653,10 @@
 <hr />
 <h3 id="show-alias-sh"><code>show</code> (alias: <code>sh</code>)<a class="headerlink" href="#show-alias-sh" title="Permanent link">&para;</a></h3>
 <p>Reprint the cached "current" hunk with line IDs.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git-stage-batch show
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>❯ git-stage-batch show
 </span></code></pre></div>
 <p><strong>Porcelain mode:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>git-stage-batch show --porcelain
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>❯ git-stage-batch show --porcelain
 </span></code></pre></div></p>
 <p>Exit codes:
 - <code>0</code> if hunk exists
@@ -1664,21 +1664,21 @@
 <hr />
 <h3 id="include-alias-i"><code>include</code> (alias: <code>i</code>)<a class="headerlink" href="#include-alias-i" title="Permanent link">&para;</a></h3>
 <p>Stage the cached hunk (entire hunk) to the index; advance to next.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>git-stage-batch include
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>❯ git-stage-batch include
 </span></code></pre></div>
 <p>Or use the bare command when session is active:
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>git-stage-batch
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>❯ git-stage-batch
 </span></code></pre></div></p>
 <hr />
 <h3 id="skip-alias-s"><code>skip</code> (alias: <code>s</code>)<a class="headerlink" href="#skip-alias-s" title="Permanent link">&para;</a></h3>
 <p>Mark the cached hunk as skipped; advance to next.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git-stage-batch skip
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>❯ git-stage-batch skip
 </span></code></pre></div>
 <p>Skipped hunks can be revisited with <code>again</code>.</p>
 <hr />
 <h3 id="discard-alias-d"><code>discard</code> (alias: <code>d</code>)<a class="headerlink" href="#discard-alias-d" title="Permanent link">&para;</a></h3>
 <p>Reverse-apply the cached hunk to the working tree; advance to next.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>git-stage-batch discard
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>❯ git-stage-batch discard
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Destructive Operation</p>
@@ -1687,7 +1687,7 @@
 <hr />
 <h3 id="status-alias-st"><code>status</code> (alias: <code>st</code>)<a class="headerlink" href="#status-alias-st" title="Permanent link">&para;</a></h3>
 <p>Show session progress: iteration number, current location, and progress metrics.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>git-stage-batch status
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>❯ git-stage-batch status
 </span></code></pre></div>
 <p><strong>Example output:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Session: iteration 1 (in progress)
@@ -1706,7 +1706,7 @@
 </span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>  config.py:20 [#1]
 </span></code></pre></div></p>
 <p><strong>Porcelain mode:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>git-stage-batch status --porcelain
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>❯ git-stage-batch status --porcelain
 </span></code></pre></div></p>
 <p>Returns JSON:
 <div class="language-json highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span>
@@ -1740,7 +1740,7 @@
 <h2 id="line-level-operations">Line-Level Operations<a class="headerlink" href="#line-level-operations" title="Permanent link">&para;</a></h2>
 <h3 id="include-line-ids-alias-il"><code>include-line IDS</code> (alias: <code>il</code>)<a class="headerlink" href="#include-line-ids-alias-il" title="Permanent link">&para;</a></h3>
 <p>Stage ONLY the listed changed line IDs (+/-) to the index.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>git-stage-batch include-line 1,3,5-7
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>❯ git-stage-batch include-line 1,3,5-7
 </span></code></pre></div>
 <p>Line IDs are shown as <code>[#N]</code> in the hunk output.</p>
 <p><strong>Supports:</strong>
@@ -1750,12 +1750,12 @@
 <hr />
 <h3 id="skip-line-ids-alias-sl"><code>skip-line IDS</code> (alias: <code>sl</code>)<a class="headerlink" href="#skip-line-ids-alias-sl" title="Permanent link">&para;</a></h3>
 <p>Mark ONLY the listed changed line IDs as skipped.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>git-stage-batch skip-line 2,4
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>❯ git-stage-batch skip-line 2,4
 </span></code></pre></div>
 <hr />
 <h3 id="discard-line-ids-alias-dl"><code>discard-line IDS</code> (alias: <code>dl</code>)<a class="headerlink" href="#discard-line-ids-alias-dl" title="Permanent link">&para;</a></h3>
 <p>Remove ONLY the listed changed line IDs from working tree.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>git-stage-batch discard-line 8-10
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>❯ git-stage-batch discard-line 8-10
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Destructive Operation</p>
@@ -1766,13 +1766,13 @@
 <h2 id="file-level-operations">File-Level Operations<a class="headerlink" href="#file-level-operations" title="Permanent link">&para;</a></h2>
 <h3 id="include-file-alias-if"><code>include-file</code> (alias: <code>if</code>)<a class="headerlink" href="#include-file-alias-if" title="Permanent link">&para;</a></h3>
 <p>Stage the entire file containing the current hunk.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>git-stage-batch include-file
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>❯ git-stage-batch include-file
 </span></code></pre></div>
 <p>All remaining hunks in the file are staged and marked as processed.</p>
 <hr />
 <h3 id="skip-file-alias-sf"><code>skip-file</code> (alias: <code>sf</code>)<a class="headerlink" href="#skip-file-alias-sf" title="Permanent link">&para;</a></h3>
 <p>Skip all hunks in the file containing the current hunk.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>git-stage-batch skip-file
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>❯ git-stage-batch skip-file
 </span></code></pre></div>
 <hr />
 <h3 id="block-file-path-alias-b"><code>block-file [PATH]</code> (alias: <code>b</code>)<a class="headerlink" href="#block-file-path-alias-b" title="Permanent link">&para;</a></h3>
@@ -1787,7 +1787,7 @@
 <hr />
 <h3 id="unblock-file-path-alias-ub"><code>unblock-file PATH</code> (alias: <code>ub</code>)<a class="headerlink" href="#unblock-file-path-alias-ub" title="Permanent link">&para;</a></h3>
 <p>Remove a file from permanent exclusion.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>git-stage-batch unblock-file path/to/file.txt
+<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>❯ git-stage-batch unblock-file path/to/file.txt
 </span></code></pre></div>
 <p>Removes the file from <code>.gitignore</code> (if marked by git-stage-batch) and from the blocked list.</p>
 <div class="section-separator"></div>
@@ -1795,7 +1795,7 @@
 <h2 id="session-management">Session Management<a class="headerlink" href="#session-management" title="Permanent link">&para;</a></h2>
 <h3 id="again-alias-a"><code>again</code> (alias: <code>a</code>)<a class="headerlink" href="#again-alias-a" title="Permanent link">&para;</a></h3>
 <p>Clear state and immediately start a fresh pass through all hunks.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>git-stage-batch again
+<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>❯ git-stage-batch again
 </span></code></pre></div>
 <p>Reviews all previously skipped and unprocessed hunks.</p>
 <p><strong>Typical workflow:</strong>
@@ -1806,7 +1806,7 @@
 </span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>git-stage-batch i
 </span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
 </span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a># Commit first batch
-</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>git commit -m &quot;First feature&quot;
+</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>❯ git commit -m &quot;First feature&quot;
 </span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>
 </span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a># Second pass - review skipped hunks
 </span><span id="__span-21-11"><a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a>git-stage-batch again
@@ -1814,7 +1814,7 @@
 <hr />
 <h3 id="stop"><code>stop</code><a class="headerlink" href="#stop" title="Permanent link">&para;</a></h3>
 <p>Clear all state (blocklist and cached hunk).</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git-stage-batch stop
+<div class="language-text highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>❯ git-stage-batch stop
 </span></code></pre></div>
 <p>Removes all tracking of processed/skipped hunks. Use this to start completely fresh or when abandoning a staging session.</p>
 <div class="section-separator"></div>
@@ -1822,11 +1822,11 @@
 <h2 id="fixup-suggestions">Fixup Suggestions<a class="headerlink" href="#fixup-suggestions" title="Permanent link">&para;</a></h2>
 <h3 id="suggest-fixup-alias-x"><code>suggest-fixup</code> (alias: <code>x</code>)<a class="headerlink" href="#suggest-fixup-alias-x" title="Permanent link">&para;</a></h3>
 <p>Suggest which commit the current hunk should be fixed up to.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>git-stage-batch suggest-fixup [BOUNDARY]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>❯ git-stage-batch suggest-fixup [BOUNDARY]
 </span></code></pre></div>
 <p><strong>Arguments:</strong>
 - <code>BOUNDARY</code>: Git ref to use as lower bound for commit search (default: <code>@{upstream}</code>)</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>git-stage-batch suggest-fixup main
+<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>❯ git-stage-batch suggest-fixup main
 </span></code></pre></div>
 <p><strong>How it works:</strong></p>
 <p>Analyzes the current hunk to find which commits in the range <code>BOUNDARY..HEAD</code> modified the lines being changed. Uses <code>git log -L</code> to identify commits that touched those lines, then suggests the most recent one as a fixup target.</p>
@@ -1846,12 +1846,12 @@
 <hr />
 <h3 id="suggest-fixup-line-ids-boundary-aliases-sfl-sfls"><code>suggest-fixup-line IDS [BOUNDARY]</code> (aliases: <code>sfl</code>, <code>sfls</code>)<a class="headerlink" href="#suggest-fixup-line-ids-boundary-aliases-sfl-sfls" title="Permanent link">&para;</a></h3>
 <p>Suggest which commit specific line IDs should be fixed up to.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>git-stage-batch suggest-fixup-line 1,3,5-7
+<div class="language-text highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>❯ git-stage-batch suggest-fixup-line 1,3,5-7
 </span></code></pre></div>
 <p><strong>Arguments:</strong>
 - <code>IDS</code>: Line IDs to analyze (e.g., <code>1,3,5-7</code>)
 - <code>BOUNDARY</code>: Git ref to use as lower bound for commit search (default: <code>@{upstream}</code>)</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>git-stage-batch sfl 2-4 origin/main
+<div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>❯ git-stage-batch sfl 2-4 origin/main
 </span></code></pre></div>
 <p>Works like <code>suggest-fixup</code> but analyzes only the specified line IDs from the current hunk. Useful when a hunk contains changes for multiple purposes and you want to know which commit to fixup for a specific subset of lines.</p>
 <h2 id="special-behavior">Special Behavior<a class="headerlink" href="#special-behavior" title="Permanent link">&para;</a></h2>
@@ -1868,11 +1868,11 @@
 <h2 id="global-options">Global Options<a class="headerlink" href="#global-options" title="Permanent link">&para;</a></h2>
 <h3 id="-version"><code>--version</code><a class="headerlink" href="#-version" title="Permanent link">&para;</a></h3>
 <p>Show version information.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>git-stage-batch --version
+<div class="language-text highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>❯ git-stage-batch --version
 </span></code></pre></div>
 <h3 id="-interactive"><code>--interactive</code><a class="headerlink" href="#-interactive" title="Permanent link">&para;</a></h3>
 <p>Enter interactive mode (process hunks one by one with prompts).</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>git-stage-batch --interactive
+<div class="language-text highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>❯ git-stage-batch --interactive
 </span></code></pre></div>
 <p><a href="../interactive/">Learn more about interactive mode →</a></p>
 <h2 id="exit-codes">Exit Codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h2>

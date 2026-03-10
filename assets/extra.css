@@ -503,11 +503,13 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
 .md-typeset a.md-button {
   color: var(--accent-mid);
   border-color: var(--accent-mid);
+  background: transparent;
 }
 
 .md-typeset a.md-button:hover {
   color: var(--hacker-green);
   border-color: var(--hacker-green);
+  background: transparent;
 }
 
 /* Active nav states with brightest accent */

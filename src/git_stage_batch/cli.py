@@ -8,6 +8,7 @@ import sys
 
 from . import __version__
 from .i18n import _
+from .state import CommandError
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -92,4 +93,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except CommandError as e:
+        if e.message:
+            print(e.message, file=sys.stderr)
+        sys.exit(e.exit_code)

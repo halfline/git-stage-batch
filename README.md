@@ -65,9 +65,9 @@ git-stage-batch skip    # or: git-stage-batch s
 git-stage-batch discard # or: git-stage-batch d
 
 # For fine-grained control, include/skip/discard specific lines
-git-stage-batch include-line 1,3,5-7  # or: git-stage-batch il 1,3,5-7
-git-stage-batch skip-line 2,4         # or: git-stage-batch sl 2,4
-git-stage-batch discard-line 8-10     # or: git-stage-batch dl 8-10
+git-stage-batch include --line 1,3,5-7  # or: git-stage-batch il 1,3,5-7
+git-stage-batch skip --line 2,4         # or: git-stage-batch sl 2,4
+git-stage-batch discard --line 8-10     # or: git-stage-batch dl 8-10
 
 # Check status
 git-stage-batch status  # or: git-stage-batch st
@@ -134,13 +134,13 @@ Use interactive mode for manual staging and the command-based workflow for autom
 - **`status`** (alias: `st`) - Show session progress (iteration, current location, metrics, skipped hunks)
 
 ### Line-Level Operations
-- **`include-line IDS`** (alias: `il`) - Stage ONLY the listed changed line IDs (+/-) to the index
-- **`skip-line IDS`** (alias: `sl`) - Mark ONLY the listed changed line IDs as skipped
-- **`discard-line IDS`** (alias: `dl`) - Remove ONLY the listed changed line IDs from working tree
+- **`include --line IDS`** (alias: `il`) - Stage ONLY the listed changed line IDs (+/-) to the index
+- **`skip --line IDS`** (alias: `sl`) - Mark ONLY the listed changed line IDs as skipped
+- **`discard --line IDS`** (alias: `dl`) - Remove ONLY the listed changed line IDs from working tree
 
 ### File-Level Operations
-- **`include-file`** (alias: `if`) - Stage the entire file containing the current hunk
-- **`skip-file`** (alias: `sf`) - Skip all hunks in the file containing the current hunk
+- **`include --file`** (alias: `if`) - Stage the entire file containing the current hunk
+- **`skip --file`** (alias: `sf`) - Skip all hunks in the file containing the current hunk
 - **`block-file [PATH]`** (alias: `b`) - Permanently exclude a file via .gitignore
 - **`unblock-file PATH`** (alias: `ub`) - Remove a file from permanent exclusion
 
@@ -255,8 +255,8 @@ automation.
 
 If a hunk is too coarse and contains multiple orthogonal changes, individual lines
 may be included or skipped using:
-- `git-stage-batch include-line 1,3,5-7` (stage specific lines)
-- `git-stage-batch skip-line 2,4` (skip specific lines)
+- `git-stage-batch include --line 1,3,5-7` (stage specific lines)
+- `git-stage-batch skip --line 2,4` (skip specific lines)
 
 Line IDs are shown in the hunk output as `[#N]` markers.
 

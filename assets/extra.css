@@ -268,6 +268,16 @@ body.hide-primary-sidebar .md-sidebar--primary {
   display: none !important;
 }
 
+/* Prevent GitHub repo name from being ellipsized */
+.md-header__source {
+  max-width: 14rem;
+}
+
+.md-source__repository {
+  max-width: 100%;
+  white-space: nowrap;
+}
+
 /* Responsive: reduce effects on mobile */
 @media screen and (max-width: 768px) {
   .md-container::before {

@@ -204,7 +204,7 @@ def compute_remaining_changed_line_ids() -> list[int]:
 def _recalculate_current_hunk_for_file(file_path: str) -> None:
     """Recalculate the current hunk for a specific file after modifications.
 
-    After discard-line or include-line changes the working tree or index,
+    After discard --line or include --line changes the working tree or index,
     the cached hunk is stale. This recalculates it for the same file.
     """
     # Clear processed IDs since old line numbers don't apply to fresh hunk

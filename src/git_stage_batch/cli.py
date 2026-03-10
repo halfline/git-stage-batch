@@ -104,89 +104,89 @@ def main() -> None:
     )
     parser_show.set_defaults(func=lambda args: command_show(porcelain=args.porcelain))
 
-    # include - Stage the current hunk
+    # include - Stage the current hunk, specific lines, or entire file
     parser_include = subparsers.add_parser(
         "include",
-        aliases=["i"],
+        aliases=["i", "il", "if"],
         help="Stage the current hunk to the index",
         description="Stage the cached hunk (entire hunk) to the index; advance to next",
     )
-    parser_include.set_defaults(func=lambda _: command_include())
+    parser_include.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help="Stage only specific line IDs (e.g., '1,3,5-7')",
+    )
+    parser_include.add_argument(
+        "--file",
+        action="store_true",
+        help="Stage the entire file containing the current hunk",
+    )
+    parser_include.add_argument(
+        "line_ids_positional",
+        nargs="?",
+        help=argparse.SUPPRESS,  # Hidden positional for 'il IDS' alias support
+    )
+    parser_include.set_defaults(func=lambda args: (
+        command_include_file() if args.file
+        else command_include_line(args.line_ids or args.line_ids_positional) if (args.line_ids or args.line_ids_positional)
+        else command_include()
+    ))
 
-    # skip - Skip the current hunk
+    # skip - Skip the current hunk, specific lines, or entire file
     parser_skip = subparsers.add_parser(
         "skip",
-        aliases=["s"],
+        aliases=["s", "sl", "sf"],
         help="Mark the current hunk as skipped",
         description="Mark the cached hunk as skipped; advance to next",
     )
-    parser_skip.set_defaults(func=lambda _: command_skip())
+    parser_skip.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help="Skip only specific line IDs (e.g., '1,3,5-7')",
+    )
+    parser_skip.add_argument(
+        "--file",
+        action="store_true",
+        help="Skip all hunks in the file containing the current hunk",
+    )
+    parser_skip.add_argument(
+        "line_ids_positional",
+        nargs="?",
+        help=argparse.SUPPRESS,  # Hidden positional for 'sl IDS' alias support
+    )
+    parser_skip.set_defaults(func=lambda args: (
+        command_skip_file() if args.file
+        else command_skip_line(args.line_ids or args.line_ids_positional) if (args.line_ids or args.line_ids_positional)
+        else command_skip()
+    ))
 
-    # discard - Remove the current hunk from working tree
+    # discard - Remove the current hunk, specific lines from working tree
     parser_discard = subparsers.add_parser(
         "discard",
-        aliases=["d"],
+        aliases=["d", "dl"],
         help="Remove the current hunk from working tree",
         description="Reverse-apply the cached hunk to the working tree; advance to next",
     )
-    parser_discard.set_defaults(func=lambda _: command_discard())
-
-    # include-line - Stage specific lines
-    parser_include_line = subparsers.add_parser(
-        "include-line",
-        aliases=["il", "include-lines", "ils"],
-        help="Stage specific lines from the current hunk",
-        description="Stage ONLY the listed changed line IDs (+/-) to the index",
+    parser_discard.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help="Discard only specific line IDs (e.g., '1,3,5-7')",
     )
-    parser_include_line.add_argument(
-        "line_ids",
-        help="Line IDs to include (e.g., '1,3,5-7')",
+    parser_discard.add_argument(
+        "line_ids_positional",
+        nargs="?",
+        help=argparse.SUPPRESS,  # Hidden positional for 'dl IDS' alias support
     )
-    parser_include_line.set_defaults(func=lambda args: command_include_line(args.line_ids))
-
-    # skip-line - Skip specific lines
-    parser_skip_line = subparsers.add_parser(
-        "skip-line",
-        aliases=["sl", "skip-lines", "sls"],
-        help="Mark specific lines as skipped",
-        description="Mark ONLY the listed changed line IDs as skipped",
-    )
-    parser_skip_line.add_argument(
-        "line_ids",
-        help="Line IDs to skip (e.g., '1,3,5-7')",
-    )
-    parser_skip_line.set_defaults(func=lambda args: command_skip_line(args.line_ids))
-
-    # discard-line - Remove specific lines from working tree
-    parser_discard_line = subparsers.add_parser(
-        "discard-line",
-        aliases=["dl", "discard-lines", "dls"],
-        help="Remove specific lines from working tree",
-        description="Remove ONLY the listed changed line IDs from working tree",
-    )
-    parser_discard_line.add_argument(
-        "line_ids",
-        help="Line IDs to discard (e.g., '1,3,5-7')",
-    )
-    parser_discard_line.set_defaults(func=lambda args: command_discard_line(args.line_ids))
-
-    # include-file - Stage the entire file
-    parser_include_file = subparsers.add_parser(
-        "include-file",
-        aliases=["if"],
-        help="Stage the entire file containing the current hunk",
-        description="Stage the entire file containing the current hunk to the index",
-    )
-    parser_include_file.set_defaults(func=lambda _: command_include_file())
-
-    # skip-file - Skip the entire file
-    parser_skip_file = subparsers.add_parser(
-        "skip-file",
-        aliases=["sf"],
-        help="Skip all hunks in the current file",
-        description="Skip all hunks in the file containing the current hunk",
-    )
-    parser_skip_file.set_defaults(func=lambda _: command_skip_file())
+    parser_discard.set_defaults(func=lambda args: (
+        command_discard_line(args.line_ids or args.line_ids_positional) if (args.line_ids or args.line_ids_positional)
+        else command_discard()
+    ))
 
     # block-file - Permanently exclude a file
     parser_block_file = subparsers.add_parser(
@@ -258,35 +258,46 @@ def main() -> None:
     # suggest-fixup - Suggest which commit to fixup
     parser_suggest_fixup = subparsers.add_parser(
         "suggest-fixup",
+        aliases=["x", "sfl"],
         help="Suggest which commit the current hunk should be fixed up to",
         description="Analyze the current hunk and suggest an appropriate commit for --fixup",
     )
     parser_suggest_fixup.add_argument(
-        "boundary",
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help="Analyze only specific line IDs (e.g., '1,3,5-7')",
+    )
+    parser_suggest_fixup.add_argument(
+        "boundary_or_line_ids",
         nargs="?",
         default="@{upstream}",
-        help="Boundary ref for commit search (default: @{upstream})",
+        help="Boundary ref for commit search, or line IDs if using sfl alias (default: @{upstream})",
     )
-    parser_suggest_fixup.set_defaults(func=lambda args: command_suggest_fixup(args.boundary))
+    parser_suggest_fixup.add_argument(
+        "boundary_if_line_ids",
+        nargs="?",
+        default="@{upstream}",
+        help=argparse.SUPPRESS,  # Hidden second positional for sfl IDS BOUNDARY
+    )
 
-    # suggest-fixup-line - Suggest which commit specific lines should be fixed up to
-    parser_suggest_fixup_line = subparsers.add_parser(
-        "suggest-fixup-line",
-        aliases=["sfl", "suggest-fixup-lines", "sfls"],
-        help="Suggest which commit specific lines should be fixed up to",
-        description="Analyze specific lines from the current hunk and suggest an appropriate commit for --fixup",
-    )
-    parser_suggest_fixup_line.add_argument(
-        "line_ids",
-        help="Line IDs to analyze (e.g., '1,3,5-7')",
-    )
-    parser_suggest_fixup_line.add_argument(
-        "boundary",
-        nargs="?",
-        default="@{upstream}",
-        help="Boundary ref for commit search (default: @{upstream})",
-    )
-    parser_suggest_fixup_line.set_defaults(func=lambda args: command_suggest_fixup_line(args.line_ids, args.boundary))
+    def suggest_fixup_dispatcher(args):
+        # Determine if we're being called as 'sfl' for backward compat
+        # If --line flag is used, use that
+        if args.line_ids:
+            return command_suggest_fixup_line(args.line_ids, args.boundary_or_line_ids)
+        # If boundary_or_line_ids looks like line IDs (contains numbers/commas), treat as line IDs
+        elif ',' in args.boundary_or_line_ids or args.boundary_or_line_ids.replace('-', '').isdigit():
+            # Likely line IDs (backward compat with sfl)
+            boundary = args.boundary_if_line_ids
+            return command_suggest_fixup_line(args.boundary_or_line_ids, boundary)
+        else:
+            # It's a boundary ref
+            return command_suggest_fixup(args.boundary_or_line_ids)
+
+    parser_suggest_fixup.set_defaults(func=suggest_fixup_dispatcher)
+
 
     args = parser.parse_args()
 

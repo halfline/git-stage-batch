@@ -404,11 +404,11 @@ class TestIntegrationWorkflow:
         command_start()
         command_include_line("1,4")  # First change: delete line1, add mod1
 
-        # After include-line, hunk recalculates with fresh line IDs
+        # After include --line, hunk recalculates with fresh line IDs
         # Now IDs are: 1,2 deletions (line2,line3), 3,4 additions (mod2,mod3)
         command_include_line("1,3")  # Second change: delete line2, add mod2
 
-        # After include-line again, fresh IDs: 1 deletion (line3), 2 addition (mod3)
+        # After include --line again, fresh IDs: 1 deletion (line3), 2 addition (mod3)
         # Skip remaining lines (completes the hunk)
         command_skip_line("1,2")
 
@@ -434,7 +434,7 @@ class TestIntegrationWorkflow:
         # Include first change (delete line1, add keep)
         command_include_line("1,3")
 
-        # After include-line, hunk recalculates: 1 deletion (line2), 2 addition (discard)
+        # After include --line, hunk recalculates: 1 deletion (line2), 2 addition (discard)
         # Discard second change (the addition of "discard")
         command_discard_line("2")
 
@@ -904,10 +904,10 @@ class TestCleanupAutoAddedFiles:
 
 
 class TestIncludeFileCommand:
-    """Tests for include-file command."""
+    """Tests for include --file command."""
 
     def test_include_file_stages_all_hunks_in_file(self, temp_git_repo):
-        """Test that include-file stages all changes in the current file."""
+        """Test that include --file stages all changes in the current file."""
         # Create a file with multiple separate changes (multiple hunks)
         (temp_git_repo / "multi.txt").write_text("line1\nline2\nline3\nline4\nline5\n")
         subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
@@ -934,7 +934,7 @@ class TestIncludeFileCommand:
         assert "mod5" in result.stdout
 
     def test_include_file_advances_to_next_file(self, temp_git_repo, capsys):
-        """Test that include-file advances to the next file."""
+        """Test that include --file advances to the next file."""
         # Create two files with changes
         (temp_git_repo / "file1.txt").write_text("change1\n")
         (temp_git_repo / "file2.txt").write_text("change2\n")
@@ -955,7 +955,7 @@ class TestIncludeFileCommand:
         assert second_file in captured.out
 
     def test_include_file_with_single_hunk(self, temp_git_repo):
-        """Test include-file works with a file that has only one hunk."""
+        """Test include --file works with a file that has only one hunk."""
         # Create file with single change
         (temp_git_repo / "single.txt").write_text("line1\nline2\n")
         subprocess.run(["git", "add", "single.txt"], check=True, cwd=temp_git_repo, capture_output=True)
@@ -977,7 +977,7 @@ class TestIncludeFileCommand:
         assert "modified" in result.stdout
 
     def test_include_file_error_without_current_hunk(self, temp_git_repo):
-        """Test that include-file errors when no current hunk."""
+        """Test that include --file errors when no current hunk."""
         import pytest
 
         with pytest.raises(SystemExit):
@@ -985,10 +985,10 @@ class TestIncludeFileCommand:
 
 
 class TestSkipFileCommand:
-    """Tests for skip-file command."""
+    """Tests for skip --file command."""
 
     def test_skip_file_skips_all_hunks_in_file(self, temp_git_repo):
-        """Test that skip-file skips all changes in the current file."""
+        """Test that skip --file skips all changes in the current file."""
         # Create a file with multiple hunks
         (temp_git_repo / "multi.txt").write_text("line1\nline2\nline3\nline4\nline5\n")
         subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
@@ -1010,7 +1010,7 @@ class TestSkipFileCommand:
         assert "multi.txt" not in result.stdout
 
     def test_skip_file_advances_to_next_file(self, temp_git_repo, capsys):
-        """Test that skip-file advances to the next file."""
+        """Test that skip --file advances to the next file."""
         # Create two files
         (temp_git_repo / "file1.txt").write_text("change1\n")
         (temp_git_repo / "file2.txt").write_text("change2\n")
@@ -1029,7 +1029,7 @@ class TestSkipFileCommand:
         assert second_file in captured.out
 
     def test_skip_file_error_without_current_hunk(self, temp_git_repo):
-        """Test that skip-file errors when no current hunk."""
+        """Test that skip --file errors when no current hunk."""
         import pytest
 
         with pytest.raises(SystemExit):

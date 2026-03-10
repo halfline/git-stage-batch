@@ -271,6 +271,7 @@ body.hide-primary-sidebar .md-sidebar--primary {
 /* Prevent GitHub repo name from being ellipsized */
 .md-header__source {
   max-width: 14rem;
+  margin-right: 0.4rem;
 }
 
 .md-source__repository {

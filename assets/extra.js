@@ -43,11 +43,13 @@ window.updateAudioButton = function() {
 		playIcon.style.display = '';
 		pauseIcon.style.display = 'none';
 		button.setAttribute('aria-label', 'Play podcast');
+		button.setAttribute('title', 'Play Deep Dive podcast');
 	} else {
 		button.classList.add('playing');
 		playIcon.style.display = 'none';
 		pauseIcon.style.display = '';
 		button.setAttribute('aria-label', 'Pause podcast');
+		button.setAttribute('title', 'Pause Deep Dive podcast');
 	}
 };
 

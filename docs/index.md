@@ -162,8 +162,8 @@ Similar to `git add -p` but **more granular and flexible**:
 ❯ git-stage-batch discard # or: d
 
 # For fine-grained control, stage specific lines
-❯ git-stage-batch include-line 1,3,5-7  # or: il 1,3,5-7
-❯ git-stage-batch skip-line 2,4         # or: sl 2,4
+❯ git-stage-batch include --line 1,3,5-7  # or: il 1,3,5-7
+❯ git-stage-batch skip --line 2,4         # or: sl 2,4
 
 # Check status
 ❯ git-stage-batch status  # or: st
@@ -246,7 +246,7 @@ Review and stage individual hunks one at a time. Each hunk shows changed lines w
 Stage specific lines within a hunk:
 
 ```
-❯ git-stage-batch include-line 1,3,5-7
+❯ git-stage-batch include --line 1,3,5-7
 ```
 
 Perfect for separating orthogonal changes that ended up in the same hunk.

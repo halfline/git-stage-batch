@@ -1737,6 +1737,8 @@
 </span><span id="__span-12-24"><a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a><span class="w">  </span><span class="p">]</span>
 </span><span id="__span-12-25"><a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a><span class="p">}</span>
 </span></code></pre></div></p>
+<div class="section-separator"></div>
+
 <h2 id="line-level-operations">Line-Level Operations<a class="headerlink" href="#line-level-operations" title="Permanent link">&para;</a></h2>
 <h3 id="include-line-ids-alias-il"><code>include-line IDS</code> (alias: <code>il</code>)<a class="headerlink" href="#include-line-ids-alias-il" title="Permanent link">&para;</a></h3>
 <p>Stage ONLY the listed changed line IDs (+/-) to the index.</p>
@@ -1761,6 +1763,8 @@
 <p class="admonition-title">Destructive Operation</p>
 <p>This permanently removes specific lines from your working tree.</p>
 </div>
+<div class="section-separator"></div>
+
 <h2 id="file-level-operations">File-Level Operations<a class="headerlink" href="#file-level-operations" title="Permanent link">&para;</a></h2>
 <h3 id="include-file-alias-if"><code>include-file</code> (alias: <code>if</code>)<a class="headerlink" href="#include-file-alias-if" title="Permanent link">&para;</a></h3>
 <p>Stage the entire file containing the current hunk.</p>
@@ -1788,6 +1792,8 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>git-stage-batch unblock-file path/to/file.txt
 </span></code></pre></div>
 <p>Removes the file from <code>.gitignore</code> (if marked by git-stage-batch) and from the blocked list.</p>
+<div class="section-separator"></div>
+
 <h2 id="session-management">Session Management<a class="headerlink" href="#session-management" title="Permanent link">&para;</a></h2>
 <h3 id="again-alias-a"><code>again</code> (alias: <code>a</code>)<a class="headerlink" href="#again-alias-a" title="Permanent link">&para;</a></h3>
 <p>Clear state and immediately start a fresh pass through all hunks.</p>
@@ -1813,6 +1819,8 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git-stage-batch stop
 </span></code></pre></div>
 <p>Removes all tracking of processed/skipped hunks. Use this to start completely fresh or when abandoning a staging session.</p>
+<div class="section-separator"></div>
+
 <h2 id="fixup-suggestions">Fixup Suggestions<a class="headerlink" href="#fixup-suggestions" title="Permanent link">&para;</a></h2>
 <h3 id="suggest-fixup-alias-x"><code>suggest-fixup</code> (alias: <code>x</code>)<a class="headerlink" href="#suggest-fixup-alias-x" title="Permanent link">&para;</a></h3>
 <p>Suggest which commit the current hunk should be fixed up to.</p>

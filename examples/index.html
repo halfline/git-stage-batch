@@ -1325,6 +1325,8 @@
 </span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>
 </span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a># Continue until all changes are committed...
 </span></code></pre></div>
+<div class="section-separator"></div>
+
 <h2 id="advanced-selective-line-staging">Advanced: Selective Line Staging<a class="headerlink" href="#advanced-selective-line-staging" title="Permanent link">&para;</a></h2>
 <p>Mix include and skip at line level:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>❯ git-stage-batch start
@@ -1441,6 +1443,8 @@
 </span><span id="__span-9-26"><a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a>❯ git-stage-batch status --porcelain | jq &#39;.session.iteration&#39;
 </span><span id="__span-9-27"><a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a>1
 </span></code></pre></div>
+<div class="section-separator"></div>
+
 <h2 id="fixup-commits-polish-feature-branches">Fixup Commits: Polish Feature Branches<a class="headerlink" href="#fixup-commits-polish-feature-branches" title="Permanent link">&para;</a></h2>
 <p>Use <code>suggest-fixup</code> to create fixup commits for polishing feature branches:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a># You&#39;re working on a feature branch and notice bugs in recent commits
@@ -1500,6 +1504,8 @@
 - Automatically identifies which commit each fix belongs to
 - Works seamlessly with <code>git rebase --autosquash</code>
 - Perfect for PR review feedback or self-review fixes</p>
+<div class="section-separator"></div>
+
 <h2 id="tips">Tips<a class="headerlink" href="#tips" title="Permanent link">&para;</a></h2>
 <ol>
 <li><strong>Use <code>again</code> frequently</strong> - After each commit, run <code>git-stage-batch again</code> to review skipped hunks</li>

@@ -95,28 +95,6 @@ staging:
     Line IDs shown as [#N] in output.
 ```
 
-## Aider
-
-Add to `.aider.conf.yml`:
-
-```yaml
-# Use git-stage-batch for staging
-edit-format: whole
-auto-commits: false
-
-# Instructions for commit workflow
-instructions: |
-  Use git-stage-batch for creating atomic commits:
-
-  - Start with: git-stage-batch start
-  - Include hunks: git-stage-batch include
-  - Skip hunks: git-stage-batch skip
-  - Line-level: git-stage-batch include-line 1,3,5-7
-  - After commit: git-stage-batch again
-
-  Create separate commits for separate concerns.
-```
-
 ## Example AI Workflow
 
 Here's what an AI assistant would do:

@@ -48,8 +48,8 @@ automation.
 
 If a hunk is too coarse and contains multiple orthogonal changes, individual lines
 may be included or skipped using:
-- `git-stage-batch include-line 1,3,5-7` (stage specific lines)
-- `git-stage-batch skip-line 2,4` (skip specific lines)
+- `git-stage-batch include --line 1,3,5-7` (stage specific lines)
+- `git-stage-batch skip --line 2,4` (skip specific lines)
 
 Line IDs are shown in the hunk output as `[#N]` markers.
 
@@ -87,7 +87,7 @@ staging:
     2. Process hunks:
        - git-stage-batch include (stage)
        - git-stage-batch skip (skip for now)
-       - git-stage-batch include-line 1,3,5-7 (specific lines)
+       - git-stage-batch include --line 1,3,5-7 (specific lines)
     3. Commit when done: git commit -m "..."
     4. Review skipped: git-stage-batch again
     5. Repeat
@@ -190,7 +190,7 @@ echo "$status" | jq '.blocked_hunks'
 1. **Be explicit** - Tell the AI to use git-stage-batch in your instructions
 2. **Show examples** - Include example workflows in your config
 3. **Emphasize atomic commits** - Make it clear commits should be focused
-4. **Line-level control** - Remind the AI about `include-line` for mixed hunks
+4. **Line-level control** - Remind the AI about `include --line` for mixed hunks
 5. **`again` command** - Ensure the AI knows to run `again` after commits
 
 ## Benefits for AI-Assisted Development
@@ -238,7 +238,7 @@ git-stage-batch start
 
 # Separate rename from logic changes using line-level
 # Hunk shows both rename and logic change
-git-stage-batch include-line 1-5    # rename only
+git-stage-batch include --line 1-5    # rename only
 git commit -m "refactor: Rename helper_function to process_data"
 
 git-stage-batch again

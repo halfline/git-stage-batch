@@ -359,6 +359,11 @@ body.hide-primary-sidebar .md-sidebar--primary {
   color: var(--accent-bright);
 }
 
+/* Hide "Home" header on homepage */
+body.hide-primary-sidebar .md-content h1:first-of-type {
+  display: none;
+}
+
 /* Quieter TOC on homepage */
 body.hide-primary-sidebar .md-sidebar--secondary {
   border-left: 1px solid rgba(0, 240, 255, 0.1);

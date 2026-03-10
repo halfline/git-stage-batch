@@ -22,6 +22,7 @@ py.install_sources(
   'src/git_stage_batch/__init__.py',
   'src/git_stage_batch/i18n.py',
   'src/git_stage_batch/cli.py',
+  'src/git_stage_batch/state.py',
   subdir: 'git_stage_batch',
   install_tag: 'python-runtime',
 )

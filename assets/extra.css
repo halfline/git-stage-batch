@@ -85,21 +85,24 @@ pre code {
   opacity: 0.3;
 }
 
-/* Subtle glitch effect on title - very occasional */
+/* Glitch effect on title */
 .md-header__title {
   position: relative;
-  animation: glitch 8s infinite;
+  animation: glitch 5s infinite;
 }
 
 @keyframes glitch {
-  0%, 96%, 100% {
+  0%, 92%, 100% {
     text-shadow: none;
   }
-  97% {
-    text-shadow: 1px 0 var(--hacker-cyan), -1px 0 var(--hacker-pink);
+  93% {
+    text-shadow: 2px 0 var(--hacker-cyan), -2px 0 var(--hacker-pink);
   }
-  98% {
-    text-shadow: -1px 0 var(--hacker-cyan), 1px 0 var(--hacker-pink);
+  94% {
+    text-shadow: -2px 0 var(--hacker-cyan), 2px 0 var(--hacker-pink);
+  }
+  95% {
+    text-shadow: 1px 0 var(--hacker-cyan), -1px 0 var(--hacker-pink);
   }
 }
 

@@ -31,14 +31,14 @@ Sleep 2.5s
 Type "# Discard debug trash (line 3)"
 Sleep 500ms
 Enter
-Type "git-stage-batch discard-line 3"
+Type "git-stage-batch discard --line 3"
 Enter
 Sleep 2.5s
 
 Type "# Include bug fix (lines 1-3)"
 Sleep 500ms
 Enter
-Type "git-stage-batch include-line 1-3"
+Type "git-stage-batch include --line 1-3"
 Enter
 Sleep 2.5s
 

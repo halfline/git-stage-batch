@@ -7,6 +7,9 @@
   --hacker-pink: #ff006e;
   --terminal-bg: #0d1117;
   --terminal-fg: #00ff41;
+  --accent-bright: #00f0ff;
+  --accent-mid: rgba(0, 240, 255, 0.7);
+  --accent-dim: rgba(0, 240, 255, 0.3);
 }
 
 /* Dark mode enhancements */
@@ -64,21 +67,21 @@ pre code {
   opacity: 0.3;
 }
 
-/* Glitch effect on title */
+/* Subtle glitch effect on title - very occasional */
 .md-header__title {
   position: relative;
-  animation: glitch 3s infinite;
+  animation: glitch 8s infinite;
 }
 
 @keyframes glitch {
-  0%, 90%, 100% {
+  0%, 96%, 100% {
     text-shadow: none;
   }
-  92% {
-    text-shadow: 2px 0 var(--hacker-cyan), -2px 0 var(--hacker-pink);
+  97% {
+    text-shadow: 1px 0 var(--hacker-cyan), -1px 0 var(--hacker-pink);
   }
-  94% {
-    text-shadow: -2px 0 var(--hacker-cyan), 2px 0 var(--hacker-pink);
+  98% {
+    text-shadow: -1px 0 var(--hacker-cyan), 1px 0 var(--hacker-pink);
   }
 }
 
@@ -90,22 +93,7 @@ pre code {
   background-size: 30px 30px;
 }
 
-/* Neon border on cards */
-.md-typeset .grid.cards > ol > li,
-.md-typeset .grid.cards > ul > li,
-.md-typeset .grid > .card {
-  border: 1px solid var(--hacker-cyan);
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
-  transition: all 0.3s ease;
-}
-
-.md-typeset .grid.cards > ol > li:hover,
-.md-typeset .grid.cards > ul > li:hover,
-.md-typeset .grid > .card:hover {
-  box-shadow: 0 0 25px rgba(0, 240, 255, 0.4);
-  transform: translateY(-3px);
-  border-color: var(--hacker-green);
-}
+/* Neon border on cards - refined in hero section below */
 
 /* Terminal window style for demo image */
 img[alt*="demo"] {
@@ -221,22 +209,7 @@ img[alt*="demo"] {
   box-shadow: 0 0 10px var(--hacker-cyan);
 }
 
-/* Feature icons with pulse effect */
-.md-typeset .grid.cards svg {
-  filter: drop-shadow(0 0 5px currentColor);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.8;
-    transform: scale(1.05);
-  }
-}
+/* Feature icons - subtle, no animation */
 
 /* Custom scrollbar (for webkit browsers) */
 ::-webkit-scrollbar {
@@ -279,9 +252,212 @@ body.hide-primary-sidebar .md-sidebar--primary {
   white-space: nowrap;
 }
 
+/* Hero composition refinements */
+.hero-tagline {
+  font-weight: 600 !important;
+  letter-spacing: -0.02em;
+}
+
+.hero-intro {
+  opacity: 0.9;
+}
+
+/* Primary CTA emphasis */
+.md-button--primary {
+  background: linear-gradient(135deg, var(--hacker-cyan), var(--hacker-green)) !important;
+  border: none !important;
+  color: #000 !important;
+  font-weight: 600 !important;
+  text-shadow: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.md-button--primary:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.6) !important;
+}
+
+/* Feature cards as designed objects */
+.md-typeset .grid.cards > ol > li,
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid > .card {
+  background: rgba(13, 17, 23, 0.6) !important;
+  border: 1px solid var(--accent-dim) !important;
+  box-shadow:
+    0 0 15px rgba(0, 240, 255, 0.15),
+    inset 0 1px 0 rgba(0, 240, 255, 0.1) !important;
+  transition: all 0.3s ease !important;
+  padding: 1.2em !important;
+}
+
+.md-typeset .grid.cards > ol > li:hover,
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid > .card:hover {
+  background: rgba(13, 17, 23, 0.8) !important;
+  border-color: var(--accent-mid) !important;
+  box-shadow:
+    0 0 25px rgba(0, 240, 255, 0.3),
+    inset 0 1px 0 rgba(0, 240, 255, 0.2) !important;
+  transform: translateY(-4px) !important;
+}
+
+.md-typeset .grid.cards svg {
+  filter: drop-shadow(0 0 8px currentColor) !important;
+}
+
+/* Example Workflow showcase treatment */
+.workflow-showcase {
+  position: relative;
+  margin: 2em 0;
+  padding: 2em;
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid var(--hacker-cyan);
+  border-radius: 8px;
+  box-shadow:
+    0 0 30px rgba(0, 240, 255, 0.25),
+    inset 0 0 50px rgba(0, 240, 255, 0.05);
+}
+
+.workflow-showcase::before {
+  content: '▸ TERMINAL SESSION';
+  position: absolute;
+  top: -0.7em;
+  left: 1.5em;
+  background: var(--terminal-bg);
+  padding: 0.2em 0.8em;
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--hacker-cyan);
+  border: 1px solid var(--hacker-cyan);
+  border-radius: 3px;
+}
+
+.workflow-showcase pre {
+  margin: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Sharper typography hierarchy */
+.md-typeset h2 {
+  font-size: 1.8em;
+  font-weight: 700;
+  margin-top: 2.5em;
+  margin-bottom: 0.8em;
+  color: var(--hacker-cyan);
+  text-shadow: 0 0 10px var(--hacker-cyan);
+  letter-spacing: -0.02em;
+}
+
+.md-typeset h3 {
+  font-size: 1.3em;
+  font-weight: 600;
+  margin-top: 2em;
+  margin-bottom: 0.7em;
+  color: var(--accent-bright);
+}
+
+/* Quieter TOC on homepage */
+body.hide-primary-sidebar .md-sidebar--secondary {
+  border-left: 1px solid rgba(0, 240, 255, 0.1);
+}
+
+body.hide-primary-sidebar .md-nav--secondary .md-nav__link {
+  color: rgba(255, 255, 255, 0.4);
+  transition: color 0.2s ease;
+}
+
+body.hide-primary-sidebar .md-nav--secondary .md-nav__link--active,
+body.hide-primary-sidebar .md-nav--secondary .md-nav__link:hover {
+  color: var(--hacker-cyan);
+  text-shadow: 0 0 5px var(--hacker-cyan);
+}
+
+body.hide-primary-sidebar .md-nav--secondary .md-nav__link--active {
+  border-left: 2px solid var(--hacker-cyan);
+  padding-left: calc(0.6rem - 2px);
+}
+
+/* Terminal-style command blocks with hierarchical accent */
+.md-typeset pre code {
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+/* Prominent terminal prompts */
+.md-typeset pre code::before {
+  color: var(--accent-bright);
+}
+
+/* Better content density rhythm */
+.md-typeset > p {
+  margin-bottom: 1em;
+  line-height: 1.7;
+}
+
+.md-typeset > p + p {
+  margin-top: 0.8em;
+}
+
+/* Section breathing room */
+.md-typeset h2 + p {
+  font-size: 1.05em;
+  opacity: 0.95;
+}
+
+/* Demo section treatment */
+.md-typeset h2:has(+ p img[alt*="demo"]) {
+  margin-bottom: 1.5em;
+}
+
+/* Minimal and airy sections */
+.md-typeset .admonition {
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 3px solid var(--hacker-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.1);
+}
+
+/* Command snippets as product moments */
+.md-typeset code {
+  background: rgba(13, 17, 23, 0.8) !important;
+  border: 1px solid rgba(0, 255, 65, 0.2);
+  box-shadow: 0 0 3px rgba(0, 255, 65, 0.1);
+}
+
+/* Hierarchical accent brightness - reserve brightest for key moments */
+.md-typeset a.md-button {
+  color: var(--accent-mid);
+  border-color: var(--accent-mid);
+}
+
+.md-typeset a.md-button:hover {
+  color: var(--accent-bright);
+  border-color: var(--accent-bright);
+}
+
+/* Active nav states with brightest accent */
+.md-tabs__link--active {
+  color: var(--accent-bright) !important;
+  text-shadow: 0 0 10px var(--accent-bright) !important;
+}
+
 /* Responsive: reduce effects on mobile */
 @media screen and (max-width: 768px) {
   .md-container::before {
     opacity: 0.1;
+  }
+
+  .hero-tagline {
+    font-size: 1.3em !important;
+  }
+
+  .workflow-showcase {
+    padding: 1em;
+  }
+
+  .workflow-showcase::before {
+    font-size: 0.65em;
   }
 }

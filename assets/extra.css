@@ -23,8 +23,7 @@
 }
 
 /* Terminal-style code blocks */
-.highlight pre,
-pre code {
+.md-typeset .highlight pre {
   background: rgba(0, 0, 0, 0.6) !important;
   border: 2px solid var(--hacker-cyan) !important;
   box-shadow: 0 0 20px rgba(0, 240, 255, 0.3) !important;
@@ -32,15 +31,18 @@ pre code {
   position: relative;
   padding: 1.2em 1em !important;
   border-radius: 8px;
-}
-
-.md-typeset pre {
   margin: 1.5em 0 !important;
 }
 
+.md-typeset pre > code {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 /* Command examples container - same border treatment */
-.md-typeset h3 + pre,
-.md-typeset h2 + pre {
+.md-typeset h3 + .highlight pre,
+.md-typeset h2 + .highlight pre {
   background: rgba(0, 0, 0, 0.7) !important;
 }
 

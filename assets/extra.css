@@ -369,10 +369,18 @@ body.hide-primary-sidebar .md-sidebar--primary {
   box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
 }
 
+.workflow-showcase .highlight pre,
 .workflow-showcase pre {
   margin: 0 !important;
   background: transparent !important;
   border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.workflow-showcase pre > code {
+  border: none !important;
+  background: transparent !important;
   box-shadow: none !important;
 }
 

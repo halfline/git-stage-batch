@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands import command_again, command_include, command_show, command_skip, command_start, command_stop
+from git_stage_batch.commands import command_again, command_discard, command_include, command_show, command_skip, command_start, command_stop
 from git_stage_batch.state import (
     get_context_lines,
     get_context_lines_file_path,
@@ -414,8 +414,6 @@ class TestCommandSkip:
 
     def test_skip_all_hunks_processed(self, temp_git_repo, capsys):
         """Test skip when all hunks have been processed."""
-        command_start()
-
         # Modify README
         readme = temp_git_repo / "README.md"
         readme.write_text("# Test\nNew content\n")
@@ -428,3 +426,94 @@ class TestCommandSkip:
         command_skip()
         captured = capsys.readouterr()
         assert "No more hunks to process" in captured.out
+
+
+class TestCommandDiscard:
+    """Tests for discard command."""
+
+    def test_discard_removes_hunk_from_working_tree(self, temp_git_repo, capsys):
+        """Test that discard removes a hunk from the working tree."""
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        original_content = readme.read_text()
+        readme.write_text("# Test\nNew content\n")
+
+        command_discard()
+
+        # Changes should be removed from working tree
+        assert readme.read_text() == original_content
+
+        # Nothing should be staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == ""
+
+        captured = capsys.readouterr()
+        assert "Hunk discarded" in captured.out
+
+    def test_discard_no_changes(self, temp_git_repo, capsys):
+        """Test discard when no changes exist."""
+        command_discard()
+
+        captured = capsys.readouterr()
+        assert "No changes to discard" in captured.out
+
+    def test_discard_then_include_next(self, temp_git_repo, capsys):
+        """Test discarding one hunk then including the next."""
+        # Create and commit two files
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both files
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        # Discard first hunk
+        command_discard()
+        captured = capsys.readouterr()
+        assert "file1.txt" in captured.out
+
+        # Verify file1 is restored
+        assert file1.read_text() == "original 1\n"
+
+        # Include second hunk
+        command_include()
+        captured = capsys.readouterr()
+        assert "file2.txt" in captured.out
+
+        # Verify only file2 is staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "file2.txt" in result.stdout
+        assert "file1.txt" not in result.stdout
+
+    def test_discard_all_hunks_processed(self, temp_git_repo, capsys):
+        """Test discard when all hunks have been processed."""
+        command_start()
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Discard the only hunk
+        command_discard()
+        capsys.readouterr()  # Clear output
+
+        # Try to discard again
+        command_discard()
+        captured = capsys.readouterr()
+        assert "No changes to discard" in captured.out

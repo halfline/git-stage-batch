@@ -21,9 +21,21 @@ version_py = configure_file(
 py.install_sources(
   'src/git_stage_batch/__init__.py',
   'src/git_stage_batch/i18n.py',
+  'src/git_stage_batch/cli.py',
   subdir: 'git_stage_batch',
   install_tag: 'python-runtime',
 )
 
 # Build translations
 subdir('po')
+
+# Install entry point script
+configure_file(
+  input: 'scripts/git-stage-batch.in',
+  output: 'git-stage-batch',
+  configuration: {'PYTHON': py.full_path()},
+  install: true,
+  install_dir: get_option('bindir'),
+  install_mode: 'rwxr-xr-x',
+  install_tag: 'runtime',
+)

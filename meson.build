@@ -9,3 +9,13 @@ i18n = import('i18n')
 
 subdir('src/git_stage_batch')
 subdir('po')
+
+configure_file(
+  input: 'scripts/git-stage-batch.in',
+  output: 'git-stage-batch',
+  configuration: {'PYTHON': python.full_path()},
+  install: true,
+  install_dir: get_option('bindir'),
+  install_mode: 'rwxr-xr-x',
+  install_tag: 'runtime',
+)

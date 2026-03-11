@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from .display import print_colored_patch
@@ -14,10 +16,12 @@ from .state import (
     append_file_path_to_file,
     append_lines_to_file,
     ensure_state_directory_exists,
+    exit_with_error,
     get_abort_head_file_path,
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
+    get_auto_added_files_file_path,
     get_block_list_file_path,
     get_context_lines,
     get_context_lines_file_path,
@@ -336,3 +340,71 @@ def command_status() -> None:
         print(_("No changes in working tree"))
     else:
         print(_("All hunks processed"))
+
+
+def command_abort() -> None:
+    """Abort the session and undo all changes including commits and discards."""
+    require_git_repository()
+
+    # Check if abort state exists
+    if not get_abort_head_file_path().exists():
+        exit_with_error(_("No session to abort. Abort state not found."))
+
+    # Read abort state
+    abort_head = read_text_file_contents(get_abort_head_file_path()).strip()
+    abort_stash_path = get_abort_stash_file_path()
+    abort_stash = read_text_file_contents(abort_stash_path).strip() if abort_stash_path.exists() else None
+
+    # Reset auto-added files first
+    if get_auto_added_files_file_path().exists():
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        for file_path in auto_added:
+            run_git_command(["reset", "--", file_path], check=False)
+
+    # Reset to start HEAD (undoes commits, resets index and tracked files)
+    # Set GIT_REFLOG_ACTION for clear reflog entries
+    env = os.environ.copy()
+    env["GIT_REFLOG_ACTION"] = "stage-batch abort"
+
+    print(_("Resetting to {}...").format(abort_head[:7]), file=sys.stderr)
+    subprocess.run(
+        ["git", "reset", "--hard", abort_head],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True
+    )
+
+    # Restore snapshotted untracked files
+    snapshot_list_path = get_abort_snapshot_list_file_path()
+    if snapshot_list_path.exists():
+        snapshotted_files = read_file_paths_file(snapshot_list_path)
+        repo_root = get_git_repository_root_path()
+        snapshots_dir = get_abort_snapshots_directory_path()
+
+        for file_path in snapshotted_files:
+            snapshot_path = snapshots_dir / file_path
+            if snapshot_path.exists():
+                target_path = repo_root / file_path
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(snapshot_path, target_path)
+                print(_("Restored: {}").format(file_path), file=sys.stderr)
+
+    # Apply original stash if it exists (with --index to restore staged state)
+    if abort_stash:
+        print(_("Applying original changes..."), file=sys.stderr)
+        result = subprocess.run(
+            ["git", "stash", "apply", "--index", abort_stash],
+            env=env,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)
+
+    # Clear all state
+    state_dir = get_state_directory_path()
+    if state_dir.exists():
+        shutil.rmtree(state_dir)
+
+    print(_("✓ Session aborted. All changes reverted."), file=sys.stderr)

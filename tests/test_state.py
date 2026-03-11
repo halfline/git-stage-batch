@@ -6,10 +6,13 @@ import pytest
 
 from git_stage_batch.state import (
     CommandError,
+    append_lines_to_file,
     exit_with_error,
     get_git_repository_root_path,
+    read_text_file_contents,
     require_git_repository,
     run_git_command,
+    write_text_file_contents,
 )
 
 
@@ -92,3 +95,57 @@ class TestGitUtilities:
 
         root = get_git_repository_root_path()
         assert root == temp_git_repo
+
+
+class TestFileUtilities:
+    """Tests for file I/O utilities."""
+
+    def test_read_text_file_contents_existing(self, tmp_path):
+        """Test reading an existing file."""
+        file_path = tmp_path / "test.txt"
+        file_path.write_text("Hello, world!", encoding="utf-8")
+
+        content = read_text_file_contents(file_path)
+        assert content == "Hello, world!"
+
+    def test_read_text_file_contents_nonexistent(self, tmp_path):
+        """Test reading a nonexistent file returns empty string."""
+        file_path = tmp_path / "nonexistent.txt"
+        content = read_text_file_contents(file_path)
+        assert content == ""
+
+    def test_write_text_file_contents(self, tmp_path):
+        """Test writing file contents."""
+        file_path = tmp_path / "output.txt"
+        write_text_file_contents(file_path, "Test content\n")
+
+        assert file_path.exists()
+        assert file_path.read_text(encoding="utf-8") == "Test content\n"
+
+    def test_write_text_file_contents_creates_parent(self, tmp_path):
+        """Test writing file contents creates parent directories."""
+        file_path = tmp_path / "nested" / "dir" / "file.txt"
+        write_text_file_contents(file_path, "Nested content\n")
+
+        assert file_path.exists()
+        assert file_path.read_text(encoding="utf-8") == "Nested content\n"
+
+    def test_append_lines_to_file(self, tmp_path):
+        """Test appending lines to a file."""
+        file_path = tmp_path / "append.txt"
+
+        append_lines_to_file(file_path, ["line1", "line2", "line3"])
+        content = file_path.read_text(encoding="utf-8")
+        assert content == "line1\nline2\nline3\n"
+
+        # Append more lines
+        append_lines_to_file(file_path, ["line4"])
+        content = file_path.read_text(encoding="utf-8")
+        assert content == "line1\nline2\nline3\nline4\n"
+
+    def test_append_lines_strips_trailing_whitespace(self, tmp_path):
+        """Test that append_lines_to_file strips trailing whitespace."""
+        file_path = tmp_path / "append.txt"
+        append_lines_to_file(file_path, ["line1  \t", "line2\n\n"])
+        content = file_path.read_text(encoding="utf-8")
+        assert content == "line1\nline2\n"

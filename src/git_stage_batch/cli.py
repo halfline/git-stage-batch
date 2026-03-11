@@ -62,6 +62,14 @@ def main() -> None:
     )
     parser_stop.set_defaults(func=lambda _: commands.command_stop())
 
+    # again - Clear state and start a fresh pass
+    parser_again = subparsers.add_parser(
+        "again",
+        aliases=["a"],
+        help="Clear state and start a fresh pass",
+    )
+    parser_again.set_defaults(func=lambda _: commands.command_again())
+
     args = parser.parse_args()
 
     if args.command is None:

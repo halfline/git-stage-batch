@@ -9,6 +9,7 @@ from git_stage_batch.commands import (
     command_again,
     command_discard,
     command_include,
+    command_include_file,
     command_show,
     command_skip,
     command_start,
@@ -775,6 +776,9 @@ class TestCommandAbort:
         )
         assert "new.txt" in result.stdout
 
+        # Make changes to allow start to work
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+
         # Start session
         command_start()
 
@@ -825,6 +829,7 @@ class TestCommandAbort:
             capture_output=True,
             text=True,
         )
+
         assert "untracked.txt" in result.stdout
 
         # Abort should reset it
@@ -869,3 +874,82 @@ class TestCommandAbort:
         # File should be restored with original content
         assert untracked_file.exists()
         assert untracked_file.read_text() == original_content
+
+class TestCommandIncludeFile:
+    """Tests for include-file command."""
+
+    def test_include_file_stages_all_hunks_from_file(self, temp_git_repo, capsys):
+        """Test that include-file stages all hunks from the current file."""
+        # Create and commit a file with multiple hunks
+        test_file = temp_git_repo / "multi.txt"
+        test_file.write_text("line 1\nline 2\nline 3\nline 4\nline 5\n")
+        subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add multi"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify multiple parts to create multiple hunks
+        test_file.write_text("line 1 modified\nline 2\nline 3\nline 4\nline 5 modified\n")
+
+        command_include_file()
+
+        # Check that all changes are staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "+line 1 modified" in result.stdout
+        assert "+line 5 modified" in result.stdout
+
+        # Verify command produced output (either summary or per-hunk messages)
+        captured = capsys.readouterr()
+        assert "staged" in captured.out.lower()
+        assert "multi.txt" in captured.out
+
+    def test_include_file_no_changes(self, temp_git_repo, capsys):
+        """Test include-file when no changes exist."""
+        command_include_file()
+
+        captured = capsys.readouterr()
+        assert "No changes to stage" in captured.out
+
+    def test_include_file_only_current_file(self, temp_git_repo, capsys):
+        """Test that include-file only stages hunks from current file, not others."""
+
+        # Create and commit two files
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both files
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        # Include-file should only stage file1
+        command_include_file()
+        capsys.readouterr()  # Clear output
+
+        # Verify only file1 is staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "file1.txt" in result.stdout
+        assert "file2.txt" not in result.stdout
+
+        # file2 should still be in working tree
+        result = subprocess.run(
+            ["git", "diff"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "file2.txt" in result.stdout

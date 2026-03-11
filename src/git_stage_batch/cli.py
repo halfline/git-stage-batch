@@ -117,6 +117,13 @@ def main() -> None:
     )
     parser_status.set_defaults(func=lambda _: commands.command_status())
 
+    # abort - Abort session and restore repository state
+    parser_abort = subparsers.add_parser(
+        "abort",
+        help=_("Abort session and undo all changes"),
+    )
+    parser_abort.set_defaults(func=lambda _: commands.command_abort())
+
     args = parser.parse_args()
 
     if args.command is None:

@@ -8,8 +8,25 @@ import sys
 
 from . import __version__
 from . import commands
+from .display import print_colored_patch
 from .i18n import _
-from .state import CommandError, exit_with_error
+from .state import (
+    CommandError,
+    exit_with_error,
+    get_current_hunk_patch_file_path,
+    get_state_directory_path,
+    read_text_file_contents,
+    require_git_repository,
+)
+
+
+def display_cached_hunk() -> None:
+    """Display the currently cached hunk."""
+    patch_file = get_current_hunk_patch_file_path()
+    if patch_file.exists():
+        patch_text = read_text_file_contents(patch_file)
+        if patch_text.strip():
+            print_colored_patch(patch_text)
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -82,7 +99,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         type=int,
         default=3,
         metavar="N",
-        help="Number of context lines in diff output (default: 3)",
+        help=_("Number of context lines in diff output (default: 3)"),
     )
     def start_cli(args):
         commands.command_start(unified=args.unified)
@@ -104,14 +121,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_again = subparsers.add_parser(
         "again",
         aliases=["a"],
-        help="Clear state and start a fresh pass",
+        help=_("Clear state and start a fresh pass"),
     )
     parser_again.set_defaults(func=lambda _: commands.command_again())
 
     # show - Show the current hunk
     parser_show = subparsers.add_parser(
         "show",
-        help="Show the current hunk",
+        help=_("Show the current hunk"),
     )
     parser_show.set_defaults(func=lambda _: commands.command_show())
 
@@ -119,13 +136,21 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_include = subparsers.add_parser(
         "include",
         aliases=["i"],
-        help="Include (stage) the current hunk",
+        help=_("Include (stage) the current hunk"),
     )
     def include_cli(args):
         commands.command_include()
         display_cached_hunk()
 
     parser_include.set_defaults(func=include_cli)
+
+    # skip - Skip the current hunk without staging
+    parser_skip = subparsers.add_parser(
+        "skip",
+        aliases=["s"],
+        help=_("Skip the current hunk without staging"),
+    )
+    parser_skip.set_defaults(func=lambda _: commands.command_skip())
 
     # Parse arguments, return None on failure
     try:
@@ -143,11 +168,19 @@ def dispatch_args(args: argparse.Namespace) -> None:
         args: Parsed arguments from ArgumentParser
     """
     if args.command is None:
-        # No command provided - show helpful message
-        exit_with_error(
-            _("No batch staging session in progress.") + "\n" +
-            _("Run 'git-stage-batch start' to begin.")
-        )
+        # No command provided - check if session is active
+        require_git_repository()  # This will print error and exit if not in a git repo
+
+        if get_state_directory_path().exists():
+            # Default to include when session is active
+            commands.command_include()
+            display_cached_hunk()
+        else:
+            # No session - show helpful message
+            exit_with_error(
+                _("No batch staging session in progress.") + "\n" +
+                _("Run 'git-stage-batch start' to begin.")
+            )
     else:
         args.func(args)
 

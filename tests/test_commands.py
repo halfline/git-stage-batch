@@ -10,6 +10,7 @@ from git_stage_batch.commands import (
     command_discard,
     command_include,
     command_include_file,
+    command_include_line,
     command_show,
     command_skip,
     command_skip_file,
@@ -1054,8 +1055,6 @@ class TestCommandSkipFile:
         assert "file1.txt" not in result.stdout
 
 
-
-
 class TestHunkCachingInfrastructure:
     """Tests for hunk caching and staleness detection."""
 
@@ -1068,15 +1067,15 @@ class TestHunkCachingInfrastructure:
             get_current_lines_json_file_path,
             write_text_file_contents,
         )
-        
+
         # Create some state files
         write_text_file_contents(get_current_hunk_patch_file_path(), "patch")
         write_text_file_contents(get_current_hunk_hash_file_path(), "hash")
         write_text_file_contents(get_current_lines_json_file_path(), "{}")
-        
+
         # Clear them
         clear_current_hunk_state_files()
-        
+
         # Verify they're gone
         assert not get_current_hunk_patch_file_path().exists()
         assert not get_current_hunk_hash_file_path().exists()
@@ -1092,18 +1091,18 @@ class TestHunkCachingInfrastructure:
             get_current_hunk_patch_file_path,
             get_current_hunk_hash_file_path,
         )
-        
+
         # Modify README to create a hunk
         readme = temp_git_repo / "README.md"
         readme.write_text("# Test\nModified\n")
-        
+
         # Initialize session
         from git_stage_batch.state import ensure_state_directory_exists
         ensure_state_directory_exists()
-        
+
         # Find and cache hunk
         result = find_and_cache_next_unblocked_hunk()
-        
+
         assert result is True
         assert get_current_hunk_patch_file_path().exists()
         assert get_current_hunk_hash_file_path().exists()
@@ -1112,12 +1111,12 @@ class TestHunkCachingInfrastructure:
         """Test finding hunk when none exist."""
         from git_stage_batch.commands import find_and_cache_next_unblocked_hunk
         from git_stage_batch.state import ensure_state_directory_exists
-        
+
         ensure_state_directory_exists()
-        
+
         # No changes, should return False
         result = find_and_cache_next_unblocked_hunk()
-        
+
         assert result is False
 
     def test_show_caches_hunk_state(self, temp_git_repo):
@@ -1127,14 +1126,175 @@ class TestHunkCachingInfrastructure:
             get_current_hunk_hash_file_path,
             get_current_lines_json_file_path,
         )
-        
+
         # Modify README
         readme = temp_git_repo / "README.md"
         readme.write_text("# Test\nNew line\n")
-        
+
         command_start()
-        
+
         # Verify state files were created by show
         assert get_current_hunk_patch_file_path().exists()
         assert get_current_hunk_hash_file_path().exists()
         assert get_current_lines_json_file_path().exists()
+
+
+class TestCommandIncludeLine:
+    """Tests for command_include_line."""
+
+    def test_include_line_requires_current_hunk(self, temp_git_repo):
+        """Test that include --line requires an active hunk."""
+        with pytest.raises(SystemExit):
+            command_include_line("1")
+
+    def test_include_line_stages_single_addition(self, temp_git_repo):
+        """Test including a single added line."""
+        # Create a file with content
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nline2\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify the file - add new lines
+        test_file.write_text("line1\nnew line\nline2\n")
+
+        command_start()
+        command_show()  # Load the hunk
+
+        # Include only the added line (ID 1)
+        command_include_line("1")
+
+        # Check staged content
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "new line" in result.stdout
+        assert "line1" in result.stdout
+        assert "line2" in result.stdout
+
+    def test_include_line_stages_single_deletion(self, temp_git_repo):
+        """Test including a single deleted line."""
+        # Create a file with content
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\ndelete me\nline2\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Delete a line
+        test_file.write_text("line1\nline2\n")
+
+        command_start()
+        command_show()  # Load the hunk
+
+        # Include the deletion (ID 1)
+        command_include_line("1")
+
+        # Check staged content - deleted line should be gone
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "delete me" not in result.stdout
+        assert "line1" in result.stdout
+        assert "line2" in result.stdout
+
+    def test_include_line_with_range(self, temp_git_repo):
+        """Test including a range of lines."""
+        # Create a file with content
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nline2\nline3\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Add multiple new lines
+        test_file.write_text("line1\nnew1\nnew2\nnew3\nline2\nline3\n")
+
+        command_start()
+        command_show()  # Load the hunk
+
+        # Include lines 1-3 (all three additions)
+        command_include_line("1-3")
+
+        # Check staged content
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "new1" in result.stdout
+        assert "new2" in result.stdout
+        assert "new3" in result.stdout
+
+    def test_include_line_partial_selection(self, temp_git_repo):
+        """Test including only some lines from a hunk."""
+        # Create a file
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nline2\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Add multiple lines
+        test_file.write_text("line1\nadd1\nadd2\nline2\n")
+
+        command_start()
+        command_show()  # Load the hunk
+
+        # Include only first addition (ID 1), skip second (ID 2)
+        command_include_line("1")
+
+        # Check staged content
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "add1" in result.stdout
+        # Second addition should not be staged yet
+        assert "add2" not in result.stdout
+
+    def test_include_line_recalculates_hunk(self, temp_git_repo):
+        """Test that include --line recalculates the hunk with fresh line IDs."""
+        # Create a file
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Add multiple lines
+        test_file.write_text("line1\nadd1\nadd2\nadd3\n")
+
+        command_start()
+        command_show()  # Load the hunk
+
+        # Initial hunk has IDs 1, 2, 3 for the three additions
+        # Include first line (add1)
+        command_include_line("1")
+
+        # After include --line, hunk recalculates with fresh line IDs
+        # Now IDs are 1, 2 for the remaining additions (add2, add3)
+        # Include next line (add2)
+        command_include_line("1")
+
+        # Check staged content has both add1 and add2
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "add1" in result.stdout
+        assert "add2" in result.stdout
+        assert "add3" not in result.stdout
+

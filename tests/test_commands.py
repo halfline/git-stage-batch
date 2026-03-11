@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands import command_again, command_include, command_show, command_start, command_stop
+from git_stage_batch.commands import command_again, command_include, command_show, command_skip, command_start, command_stop
 from git_stage_batch.state import (
     get_context_lines,
     get_context_lines_file_path,
@@ -322,8 +322,6 @@ class TestCommandInclude:
 
     def test_include_all_hunks_processed(self, temp_git_repo, capsys):
         """Test include when all hunks have been processed."""
-        command_start()
-
         # Modify README
         readme = temp_git_repo / "README.md"
         readme.write_text("# Test\nNew content\n")
@@ -336,3 +334,97 @@ class TestCommandInclude:
         command_include()
         captured = capsys.readouterr()
         assert "No changes to stage" in captured.out
+
+
+class TestCommandSkip:
+    """Tests for skip command."""
+
+    def test_skip_marks_hunk_as_processed(self, temp_git_repo, capsys):
+        """Test that skip marks a hunk as processed without staging."""
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        command_skip()
+
+        # Check that changes are NOT staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == ""
+
+        # But changes still exist in working tree
+        result = subprocess.run(
+            ["git", "diff"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "+New content" in result.stdout
+
+        captured = capsys.readouterr()
+        assert "Hunk skipped" in captured.out
+
+    def test_skip_no_changes(self, temp_git_repo, capsys):
+        """Test skip when no changes exist."""
+        command_skip()
+
+        captured = capsys.readouterr()
+        assert "No changes to process" in captured.out
+
+    def test_skip_then_include_next(self, temp_git_repo, capsys):
+        """Test skipping one hunk then including the next."""
+        # Create and commit two files
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both files
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        # Skip first hunk
+        command_skip()
+        captured = capsys.readouterr()
+        assert "file1.txt" in captured.out
+
+        # Include second hunk
+        command_include()
+        captured = capsys.readouterr()
+        assert "file2.txt" in captured.out
+
+        # Verify only file2 is staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "file2.txt" in result.stdout
+        assert "file1.txt" not in result.stdout
+
+    def test_skip_all_hunks_processed(self, temp_git_repo, capsys):
+        """Test skip when all hunks have been processed."""
+        command_start()
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Skip the only hunk
+        command_skip()
+        capsys.readouterr()  # Clear output
+
+        # Try to skip again - hunk is still in working tree but was already skipped
+        command_skip()
+        captured = capsys.readouterr()
+        assert "No more hunks to process" in captured.out

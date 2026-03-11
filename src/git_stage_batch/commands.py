@@ -152,7 +152,7 @@ def command_skip() -> None:
     ensure_state_directory_exists()
 
     # Get the current diff
-    result = run_git_command(["diff", "--no-color"])
+    result = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])
     diff_text = result.stdout
 
     # Parse into hunks

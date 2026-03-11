@@ -83,3 +83,19 @@ def get_current_hunk_patch_file_path() -> Path:
 
 def get_current_hunk_hash_file_path() -> Path:
     return get_state_directory_path() / "current-hunk-hash"
+
+
+def get_abort_head_file_path() -> Path:
+    return get_state_directory_path() / "abort-head"
+
+
+def get_abort_stash_file_path() -> Path:
+    return get_state_directory_path() / "abort-stash"
+
+
+def get_abort_snapshots_directory_path() -> Path:
+    return get_state_directory_path() / "snapshots"
+
+
+def get_abort_snapshot_list_file_path() -> Path:
+    return get_state_directory_path() / "snapshot-list"

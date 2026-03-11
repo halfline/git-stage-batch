@@ -24,6 +24,7 @@ py.install_sources(
   'src/git_stage_batch/cli.py',
   'src/git_stage_batch/commands.py',
   'src/git_stage_batch/display.py',
+  'src/git_stage_batch/editor.py',
   'src/git_stage_batch/hashing.py',
   'src/git_stage_batch/line_selection.py',
   'src/git_stage_batch/models.py',

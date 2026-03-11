@@ -142,6 +142,18 @@ def get_context_lines() -> int:
     return 3
 
 
+def get_block_list_file_path() -> Path:
+    return get_state_directory_path() / "blocklist"
+
+
+def get_current_hunk_patch_file_path() -> Path:
+    return get_state_directory_path() / "current-hunk-patch"
+
+
+def get_current_hunk_hash_file_path() -> Path:
+    return get_state_directory_path() / "current-hunk-hash"
+
+
 # --------------------------- Diff streaming helpers ---------------------------
 
 def get_next_hunk_from_git(

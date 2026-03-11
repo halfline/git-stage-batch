@@ -109,13 +109,29 @@ def main() -> None:
     )
     parser_include_file.set_defaults(func=lambda _: commands.command_include_file())
 
-    # skip - Skip the current hunk without staging
+    # skip - Skip the current hunk or entire file
     parser_skip = subparsers.add_parser(
         "skip",
         aliases=["s"],
         help=_("Skip the current hunk without staging"),
     )
-    parser_skip.set_defaults(func=lambda _: commands.command_skip())
+    parser_skip.add_argument(
+        "--file",
+        action="store_true",
+        help=_("Skip the entire file containing the current hunk"),
+    )
+    parser_skip.set_defaults(func=lambda args: (
+        commands.command_skip_file() if args.file
+        else commands.command_skip()
+    ))
+
+    # skip-file - Skip all hunks from current file
+    parser_skip_file = subparsers.add_parser(
+        "skip-file",
+        aliases=["sf"],
+        help=argparse.SUPPRESS,  # Hidden, exists only for 'sf' alias
+    )
+    parser_skip_file.set_defaults(func=lambda _: commands.command_skip_file())
 
     # discard - Discard the current hunk from working tree
     parser_discard = subparsers.add_parser(

@@ -1092,3 +1092,30 @@ def command_skip_line(line_id_specification: str) -> None:
     write_line_ids_file(get_processed_skip_ids_file_path(), combined_skip_ids)
 
     print(f"✓ Skipped line(s): {line_id_specification}")
+
+
+def command_discard_line(line_id_specification: str) -> None:
+    """Discard only the specified lines from the working tree."""
+    require_git_repository()
+    ensure_state_directory_exists()
+    require_current_hunk_and_check_stale()
+
+    requested_ids = parse_line_selection(line_id_specification)
+    current_lines = load_current_lines_from_state()
+
+    # Get current working tree content
+    working_file_path = get_git_repository_root_path() / current_lines.path
+    if working_file_path.exists():
+        working_text = working_file_path.read_text(encoding="utf-8", errors="surrogateescape")
+    else:
+        exit_with_error(f"File not found in working tree: {current_lines.path}")
+
+    # Build new working tree content with selected lines discarded
+    target_working_content = build_target_working_tree_content_with_discarded_lines(
+        current_lines, set(requested_ids), working_text)
+
+    # Write back to working tree
+    working_file_path.write_text(target_working_content, encoding="utf-8", errors="surrogateescape")
+
+    # After modifying working tree, recalculate hunk for the SAME file
+    _recalculate_current_hunk_for_file(current_lines.path)

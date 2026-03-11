@@ -207,21 +207,46 @@ def main() -> None:
     )
     parser_unblock_file.set_defaults(func=lambda args: commands.command_unblock_file(args.file_path))
 
-    # discard - Discard the current hunk from working tree
+    # discard - Discard the current hunk, specific lines, or entire file from working tree
     parser_discard = subparsers.add_parser(
         "discard",
         aliases=["d"],
         help=_("Discard the current hunk from working tree"),
     )
     parser_discard.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Discard only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_discard.add_argument(
         "--file",
         action="store_true",
         help=_("Discard the entire file containing the current hunk"),
     )
+    parser_discard.add_argument(
+        "line_ids_positional",
+        nargs="?",
+        help=argparse.SUPPRESS,  # Hidden positional for 'dl IDS' alias support
+    )
     parser_discard.set_defaults(func=lambda args: (
         commands.command_discard_file() if args.file
+        else commands.command_discard_line(args.line_ids or args.line_ids_positional) if (args.line_ids or args.line_ids_positional)
         else commands.command_discard()
     ))
+
+    # discard-line - Discard specific lines (hidden, exists only for 'dl' alias)
+    parser_discard_line = subparsers.add_parser(
+        "discard-line",
+        aliases=["dl"],
+        help=argparse.SUPPRESS,  # Hidden, exists only for 'dl' alias
+    )
+    parser_discard_line.add_argument(
+        "line_ids",
+        help=_("Line IDs to discard (e.g., '1,3,5-7')"),
+    )
+    parser_discard_line.set_defaults(func=lambda args: commands.command_discard_line(args.line_ids))
 
     # discard-file - Discard all hunks from current file
     parser_discard_file = subparsers.add_parser(

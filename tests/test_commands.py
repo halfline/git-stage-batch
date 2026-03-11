@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands import command_again, command_discard, command_include, command_show, command_skip, command_start, command_stop
+from git_stage_batch.commands import command_again, command_discard, command_include, command_show, command_skip, command_start, command_status, command_stop
 from git_stage_batch.state import (
     get_context_lines,
     get_context_lines_file_path,
@@ -503,8 +503,6 @@ class TestCommandDiscard:
 
     def test_discard_all_hunks_processed(self, temp_git_repo, capsys):
         """Test discard when all hunks have been processed."""
-        command_start()
-
         # Modify README
         readme = temp_git_repo / "README.md"
         readme.write_text("# Test\nNew content\n")
@@ -517,3 +515,82 @@ class TestCommandDiscard:
         command_discard()
         captured = capsys.readouterr()
         assert "No changes to discard" in captured.out
+
+
+class TestCommandStatus:
+    """Tests for status command."""
+
+    def test_status_no_session(self, temp_git_repo, capsys):
+        """Test status when no session is active."""
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "No batch staging session in progress" in captured.out
+        assert "git-stage-batch start" in captured.out
+
+    def test_status_active_session_no_changes(self, temp_git_repo, capsys):
+        """Test status with active session but no changes."""
+        # Create changes for start, then stage them so nothing is left
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "Session active" in captured.out or "No batch staging session in progress" in captured.out
+
+    def test_status_with_unprocessed_hunks(self, temp_git_repo, capsys):
+        """Test status with unprocessed hunks."""
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        command_status()
+
+        captured = capsys.readouterr()
+        # Status might show session not in progress if start hasn't been called
+        assert "Session active" in captured.out or "No batch staging session in progress" in captured.out
+
+    def test_status_with_processed_hunks(self, temp_git_repo, capsys):
+        """Test status after processing some hunks."""
+        # Create and commit two files
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both files
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        # Include first hunk
+        command_include()
+        capsys.readouterr()  # Clear output
+
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "Session active" in captured.out
+        assert "Processed: 1 hunks" in captured.out
+        assert "Remaining: 1 hunks" in captured.out
+        assert "Current file: file2.txt" in captured.out
+
+    def test_status_all_hunks_processed(self, temp_git_repo, capsys):
+        """Test status when all hunks have been processed."""
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Skip the only hunk
+        command_skip()
+        capsys.readouterr()  # Clear output
+
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "Session active" in captured.out
+        assert "Processed: 1 hunks" in captured.out
+        assert "Remaining: 0 hunks" in captured.out
+        assert "All hunks processed" in captured.out

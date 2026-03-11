@@ -183,6 +183,18 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_block_file.set_defaults(func=lambda args: commands.command_block_file(args.file_path))
 
+    # unblock-file - Remove a file from .gitignore and blocked list
+    parser_unblock_file = subparsers.add_parser(
+        "unblock-file",
+        aliases=["ub"],
+        help=_("Remove a file from .gitignore and blocked list"),
+    )
+    parser_unblock_file.add_argument(
+        "file_path",
+        help=_("Path to the file to unblock"),
+    )
+    parser_unblock_file.set_defaults(func=lambda args: commands.command_unblock_file(args.file_path))
+
     # discard - Discard the current hunk or entire file from working tree
     parser_discard = subparsers.add_parser(
         "discard",

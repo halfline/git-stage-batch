@@ -7,8 +7,9 @@ import subprocess
 import sys
 
 from . import __version__
+from . import commands
 from .i18n import _
-from .state import CommandError
+from .state import CommandError, exit_with_error
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -66,6 +67,25 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         version=f"git-stage-batch {__version__}",
     )
 
+    subparsers = parser.add_subparsers(
+        dest="command",
+        help=_("Available commands"),
+    )
+
+    # start - Start a new batch staging session
+    parser_start = subparsers.add_parser(
+        "start",
+        help=_("Start a new batch staging session"),
+    )
+    parser_start.set_defaults(func=lambda _: commands.command_start())
+
+    # stop - Stop the current session and clear state
+    parser_stop = subparsers.add_parser(
+        "stop",
+        help=_("Stop the current session and clear state"),
+    )
+    parser_stop.set_defaults(func=lambda _: commands.command_stop())
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)
@@ -81,8 +101,14 @@ def dispatch_args(args: argparse.Namespace) -> None:
     Args:
         args: Parsed arguments from ArgumentParser
     """
-    # Currently no subcommands, just version
-    pass
+    if args.command is None:
+        # No command provided - show helpful message
+        exit_with_error(
+            _("No batch staging session in progress.") + "\n" +
+            _("Run 'git-stage-batch start' to begin.")
+        )
+    else:
+        args.func(args)
 
 
 def main() -> None:

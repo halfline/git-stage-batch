@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+import sys
 
 from . import __version__
+from . import commands
 from .i18n import _
 
 
@@ -41,7 +43,34 @@ def main() -> None:
         version=f"git-stage-batch {__version__}",
     )
 
+    subparsers = parser.add_subparsers(
+        dest="command",
+        help=_("Available commands"),
+    )
+
+    # start - Start a new batch staging session
+    parser_start = subparsers.add_parser(
+        "start",
+        help=_("Start a new batch staging session"),
+    )
+    parser_start.set_defaults(func=lambda _: commands.command_start())
+
+    # stop - Stop the current session and clear state
+    parser_stop = subparsers.add_parser(
+        "stop",
+        help=_("Stop the current session and clear state"),
+    )
+    parser_stop.set_defaults(func=lambda _: commands.command_stop())
+
     args = parser.parse_args()
+
+    if args.command is None:
+        # No command provided - show helpful message
+        print(_("No batch staging session in progress."), file=sys.stderr)
+        print(_("Run 'git-stage-batch start' to begin."), file=sys.stderr)
+        sys.exit(1)
+    else:
+        args.func(args)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,11 @@
 
 import pytest
 
-from git_stage_batch.line_selection import parse_line_selection
+from git_stage_batch.line_selection import (
+    parse_line_selection,
+    read_line_ids_file,
+    write_line_ids_file,
+)
 
 
 class TestParseLineSelection:
@@ -113,3 +117,103 @@ class TestParseLineSelection:
         """Test that trailing comma doesn't cause issues."""
         result = parse_line_selection("1,2,3,")
         assert result == [1, 2, 3]
+
+
+class TestReadLineIdsFile:
+    """Tests for read_line_ids_file function."""
+
+    def test_read_empty_file(self, tmp_path):
+        """Test reading an empty file."""
+        file_path = tmp_path / "ids.txt"
+        file_path.write_text("")
+        result = read_line_ids_file(file_path)
+        assert result == []
+
+    def test_read_nonexistent_file(self, tmp_path):
+        """Test reading a file that doesn't exist."""
+        file_path = tmp_path / "nonexistent.txt"
+        result = read_line_ids_file(file_path)
+        assert result == []
+
+    def test_read_single_id(self, tmp_path):
+        """Test reading a file with a single ID."""
+        file_path = tmp_path / "ids.txt"
+        file_path.write_text("42\n")
+        result = read_line_ids_file(file_path)
+        assert result == [42]
+
+    def test_read_multiple_ids(self, tmp_path):
+        """Test reading a file with multiple IDs."""
+        file_path = tmp_path / "ids.txt"
+        file_path.write_text("1\n3\n5\n7\n")
+        result = read_line_ids_file(file_path)
+        assert result == [1, 3, 5, 7]
+
+    def test_read_ids_with_blank_lines(self, tmp_path):
+        """Test that blank lines are ignored."""
+        file_path = tmp_path / "ids.txt"
+        file_path.write_text("1\n\n3\n\n5\n")
+        result = read_line_ids_file(file_path)
+        assert result == [1, 3, 5]
+
+    def test_read_ids_with_whitespace(self, tmp_path):
+        """Test that whitespace is trimmed."""
+        file_path = tmp_path / "ids.txt"
+        file_path.write_text("  1  \n  3  \n  5  \n")
+        result = read_line_ids_file(file_path)
+        assert result == [1, 3, 5]
+
+    def test_read_ids_ignores_non_numeric_lines(self, tmp_path):
+        """Test that non-numeric lines are ignored."""
+        file_path = tmp_path / "ids.txt"
+        file_path.write_text("1\nabc\n3\n# comment\n5\n")
+        result = read_line_ids_file(file_path)
+        assert result == [1, 3, 5]
+
+
+class TestWriteLineIdsFile:
+    """Tests for write_line_ids_file function."""
+
+    def test_write_empty_list(self, tmp_path):
+        """Test writing an empty list."""
+        file_path = tmp_path / "ids.txt"
+        write_line_ids_file(file_path, [])
+        assert file_path.read_text() == ""
+
+    def test_write_single_id(self, tmp_path):
+        """Test writing a single ID."""
+        file_path = tmp_path / "ids.txt"
+        write_line_ids_file(file_path, [42])
+        assert file_path.read_text() == "42\n"
+
+    def test_write_multiple_ids(self, tmp_path):
+        """Test writing multiple IDs."""
+        file_path = tmp_path / "ids.txt"
+        write_line_ids_file(file_path, [1, 3, 5, 7])
+        assert file_path.read_text() == "1\n3\n5\n7\n"
+
+    def test_write_sorts_ids(self, tmp_path):
+        """Test that IDs are sorted when written."""
+        file_path = tmp_path / "ids.txt"
+        write_line_ids_file(file_path, [7, 3, 1, 5])
+        assert file_path.read_text() == "1\n3\n5\n7\n"
+
+    def test_write_deduplicates_ids(self, tmp_path):
+        """Test that duplicate IDs are removed."""
+        file_path = tmp_path / "ids.txt"
+        write_line_ids_file(file_path, [1, 3, 1, 5, 3, 7])
+        assert file_path.read_text() == "1\n3\n5\n7\n"
+
+    def test_write_creates_parent_directory(self, tmp_path):
+        """Test that parent directories are created if needed."""
+        file_path = tmp_path / "subdir" / "ids.txt"
+        write_line_ids_file(file_path, [1, 2, 3])
+        assert file_path.exists()
+        assert file_path.read_text() == "1\n2\n3\n"
+
+    def test_write_overwrites_existing_file(self, tmp_path):
+        """Test that existing file is overwritten."""
+        file_path = tmp_path / "ids.txt"
+        file_path.write_text("old content\n")
+        write_line_ids_file(file_path, [1, 2, 3])
+        assert file_path.read_text() == "1\n2\n3\n"

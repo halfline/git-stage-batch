@@ -23,6 +23,8 @@ from git_stage_batch.state import (
     get_current_hunk_patch_file_path,
     get_git_repository_root_path,
     get_gitignore_path,
+    get_processed_include_ids_file_path,
+    get_processed_skip_ids_file_path,
     get_state_directory_path,
     read_file_paths_file,
     read_gitignore_lines,
@@ -262,6 +264,18 @@ class TestStateDirectory:
         """Test getting the .gitignore path."""
         gitignore_path = get_gitignore_path()
         assert gitignore_path == temp_git_repo / ".gitignore"
+
+    def test_get_processed_include_ids_file_path(self, temp_git_repo):
+        """Test getting the processed include IDs file path."""
+        include_ids_path = get_processed_include_ids_file_path()
+        state_dir = get_state_directory_path()
+        assert include_ids_path == state_dir / "processed.include"
+
+    def test_get_processed_skip_ids_file_path(self, temp_git_repo):
+        """Test getting the processed skip IDs file path."""
+        skip_ids_path = get_processed_skip_ids_file_path()
+        state_dir = get_state_directory_path()
+        assert skip_ids_path == state_dir / "processed.skip"
 
 
 class TestContextLines:

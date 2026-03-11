@@ -24,7 +24,7 @@ def require_git_repository() -> None:
         # Print git's actual error message which contains helpful context
         if error.stderr:
             print(error.stderr.rstrip(), file=sys.stderr)
-        exit_with_error(_("Not inside a git repository."))
+        exit_with_error(_("Not inside a git repository."), exit_code=error.returncode)
 
 def get_git_repository_root_path() -> Path:
     output = run_git_command(["rev-parse", "--show-toplevel"]).stdout.strip()

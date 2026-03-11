@@ -9,6 +9,7 @@ import sys
 from . import __version__
 from . import commands
 from .i18n import _
+from .state import get_state_directory_path, require_git_repository
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -58,7 +59,7 @@ def main() -> None:
         type=int,
         default=3,
         metavar="N",
-        help="Number of context lines in diff output (default: 3)",
+        help=_("Number of context lines in diff output (default: 3)"),
     )
     parser_start.set_defaults(func=lambda args: commands.command_start(unified=args.unified))
 
@@ -73,14 +74,14 @@ def main() -> None:
     parser_again = subparsers.add_parser(
         "again",
         aliases=["a"],
-        help="Clear state and start a fresh pass",
+        help=_("Clear state and start a fresh pass"),
     )
     parser_again.set_defaults(func=lambda _: commands.command_again())
 
     # show - Show the current hunk
     parser_show = subparsers.add_parser(
         "show",
-        help="Show the current hunk",
+        help=_("Show the current hunk"),
     )
     parser_show.set_defaults(func=lambda _: commands.command_show())
 
@@ -88,17 +89,24 @@ def main() -> None:
     parser_include = subparsers.add_parser(
         "include",
         aliases=["i"],
-        help="Include (stage) the current hunk",
+        help=_("Include (stage) the current hunk"),
     )
     parser_include.set_defaults(func=lambda _: commands.command_include())
 
     args = parser.parse_args()
 
     if args.command is None:
-        # No command provided - show helpful message
-        print(_("No batch staging session in progress."), file=sys.stderr)
-        print(_("Run 'git-stage-batch start' to begin."), file=sys.stderr)
-        sys.exit(1)
+        # No command provided - check if session is active
+        require_git_repository()  # This will print error and exit if not in a git repo
+
+        if get_state_directory_path().exists():
+            # Default to include when session is active
+            commands.command_include()
+        else:
+            # No session - show helpful message
+            print(_("No batch staging session in progress."), file=sys.stderr)
+            print(_("Run 'git-stage-batch start' to begin."), file=sys.stderr)
+            sys.exit(1)
     else:
         args.func(args)
 

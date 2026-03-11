@@ -1030,3 +1030,5 @@ class TestCommandSkipFile:
         )
         assert "file2.txt" in result.stdout
         assert "file1.txt" not in result.stdout
+
+

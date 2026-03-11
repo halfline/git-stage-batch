@@ -85,21 +85,46 @@ def main() -> None:
     )
     parser_show.set_defaults(func=lambda _: commands.command_show())
 
-    # include - Include (stage) the current hunk or entire file
+    # include - Include (stage) the current hunk, specific lines, or entire file
     parser_include = subparsers.add_parser(
         "include",
         aliases=["i"],
         help=_("Include (stage) the current hunk"),
     )
     parser_include.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Stage only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_include.add_argument(
         "--file",
         action="store_true",
         help=_("Stage the entire file containing the current hunk"),
     )
+    parser_include.add_argument(
+        "line_ids_positional",
+        nargs="?",
+        help=argparse.SUPPRESS,  # Hidden positional for 'il IDS' alias support
+    )
     parser_include.set_defaults(func=lambda args: (
         commands.command_include_file() if args.file
+        else commands.command_include_line(args.line_ids or args.line_ids_positional) if (args.line_ids or args.line_ids_positional)
         else commands.command_include()
     ))
+
+    # include-line - Include (stage) specific lines (hidden, exists only for 'il' alias)
+    parser_include_line = subparsers.add_parser(
+        "include-line",
+        aliases=["il"],
+        help=argparse.SUPPRESS,  # Hidden, exists only for 'il' alias
+    )
+    parser_include_line.add_argument(
+        "line_ids",
+        help=_("Line IDs to include (e.g., '1,3,5-7')"),
+    )
+    parser_include_line.set_defaults(func=lambda args: commands.command_include_line(args.line_ids))
 
     # include-file - Include (stage) all hunks from current file
     parser_include_file = subparsers.add_parser(

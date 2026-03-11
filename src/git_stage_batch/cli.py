@@ -63,6 +63,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         'df': ['discard', '--file'],
         'il': ['include', '--line'],
         'sl': ['skip', '--line'],
+        'dl': ['discard', '--line'],
     }
 
     # Expand quick actions
@@ -212,21 +213,34 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_unblock_file.set_defaults(func=lambda args: commands.command_unblock_file(args.file_path))
 
-    # discard - Discard the current hunk or entire file from working tree
+    # discard - Discard the current hunk, specific lines, or entire file from working tree
     parser_discard = subparsers.add_parser(
         "discard",
         aliases=["d"],
         help=_("Discard the current hunk from working tree"),
     )
     parser_discard.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Discard only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_discard.add_argument(
         "--file",
         action="store_true",
         help=_("Discard the entire file containing the current hunk"),
     )
-    parser_discard.set_defaults(func=lambda args: (
-        commands.command_discard_file() if args.file
-        else commands.command_discard()
-    ))
+    def discard_cli(args):
+        if args.file:
+            commands.command_discard_file()
+        elif args.line_ids:
+            commands.command_discard_line(args.line_ids)
+        else:
+            commands.command_discard()
+        display_cached_hunk()
+
+    parser_discard.set_defaults(func=discard_cli)
 
     # status - Show current session status
     parser_status = subparsers.add_parser(

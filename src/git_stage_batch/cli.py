@@ -85,13 +85,29 @@ def main() -> None:
     )
     parser_show.set_defaults(func=lambda _: commands.command_show())
 
-    # include - Include (stage) the current hunk
+    # include - Include (stage) the current hunk or entire file
     parser_include = subparsers.add_parser(
         "include",
         aliases=["i"],
         help=_("Include (stage) the current hunk"),
     )
-    parser_include.set_defaults(func=lambda _: commands.command_include())
+    parser_include.add_argument(
+        "--file",
+        action="store_true",
+        help=_("Stage the entire file containing the current hunk"),
+    )
+    parser_include.set_defaults(func=lambda args: (
+        commands.command_include_file() if args.file
+        else commands.command_include()
+    ))
+
+    # include-file - Include (stage) all hunks from current file
+    parser_include_file = subparsers.add_parser(
+        "include-file",
+        aliases=["if"],
+        help=argparse.SUPPRESS,  # Hidden, exists only for 'if' alias
+    )
+    parser_include_file.set_defaults(func=lambda _: commands.command_include_file())
 
     # skip - Skip the current hunk without staging
     parser_skip = subparsers.add_parser(

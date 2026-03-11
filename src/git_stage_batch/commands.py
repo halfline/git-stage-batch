@@ -216,6 +216,74 @@ def command_include() -> None:
     print(_("✓ Hunk staged from {}").format(current_patch.new_path))
 
 
+def command_include_file() -> None:
+    """Include (stage) all hunks from the current file."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Get the current diff to determine target file
+    result = run_git_command(["diff", "--no-color"])
+    diff_text = result.stdout
+
+    # Parse into hunks
+    patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+
+    if not patches:
+        print(_("No changes to stage."))
+        return
+
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
+
+    # Find first non-blocked hunk to get the target file
+    target_file = None
+    for patch in patches:
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+        if patch_hash not in blocked_hashes:
+            target_file = patch.new_path
+            break
+
+    if target_file is None:
+        print(_("No more hunks to process."))
+        return
+
+    # Repeatedly include hunks while we're still on the same file
+    # Each call to command_include() stages one hunk and adds it to blocklist,
+    # so subsequent calls automatically find the next unprocessed hunk
+    while True:
+        # Get fresh diff (index may have changed after previous include)
+        result = run_git_command(["diff", "--no-color"])
+        diff_text = result.stdout
+
+        patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+        if not patches:
+            break
+
+        # Reload blocklist (updated by command_include)
+        blocklist_text = read_text_file_contents(blocklist_path)
+        blocked_hashes = set(blocklist_text.splitlines())
+
+        # Find next unprocessed hunk
+        found_target_file_hunk = False
+        for patch in patches:
+            patch_text = patch.to_patch_text()
+            patch_hash = compute_stable_hunk_hash(patch_text)
+            if patch_hash not in blocked_hashes:
+                if patch.new_path == target_file:
+                    found_target_file_hunk = True
+                break
+
+        if not found_target_file_hunk:
+            # No more hunks from target file
+            break
+
+        # Include this hunk
+        command_include()
+
+
 def command_skip() -> None:
     """Skip the current hunk without staging it."""
     require_git_repository()

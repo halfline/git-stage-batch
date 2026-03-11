@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Iterable
+
+from .state import read_text_file_contents, write_text_file_contents
+
 
 def parse_line_selection(selection: str) -> list[int]:
     """Parse a line selection string into a list of line IDs.
@@ -66,3 +71,22 @@ def parse_line_selection(selection: str) -> list[int]:
             line_ids.add(line_id)
 
     return sorted(line_ids)
+
+
+def read_line_ids_file(path: Path) -> list[int]:
+    """Read a file containing line IDs (one per line) and return as a list."""
+    if not path.exists():
+        return []
+
+    ids: list[int] = []
+    for line in read_text_file_contents(path).splitlines():
+        value = line.strip()
+        if value.isdigit():
+            ids.append(int(value))
+    return ids
+
+
+def write_line_ids_file(path: Path, ids: Iterable[int]) -> None:
+    """Write line IDs to a file (one per line), sorted and deduplicated."""
+    unique_sorted_ids = sorted(set(ids))
+    write_text_file_contents(path, "\n".join(str(i) for i in unique_sorted_ids) + ("\n" if unique_sorted_ids else ""))

@@ -191,7 +191,7 @@ class TestCommandShow:
         command_show()
 
         captured = capsys.readouterr()
-        assert "No changes to stage" in captured.out
+        assert "No changes to show" in captured.out
 
     def test_show_only_first_hunk(self, temp_git_repo, capsys):
         """Test that show only displays the first hunk when multiple exist."""

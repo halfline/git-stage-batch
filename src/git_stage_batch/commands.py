@@ -51,15 +51,26 @@ def command_again() -> None:
 
 
 def command_show() -> None:
-    """Show the first available hunk."""
+    """Show the first unprocessed hunk."""
     require_git_repository()
+    ensure_state_directory_exists()
 
-    # Stream diff and show first hunk
-    for first_patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-        print_colored_patch(first_patch.to_patch_text())
-        return
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
 
-    print(_("No changes to stage."))
+    # Stream diff and show first unblocked hunk
+    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+        if patch_hash not in blocked_hashes:
+            # Display this unprocessed hunk
+            print_colored_patch(patch_text)
+            return
+
+    # Either no changes or all hunks are blocked
+    print(_("No more hunks to process."))
 
 
 def command_include(*, quiet: bool = False) -> None:

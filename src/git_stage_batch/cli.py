@@ -62,6 +62,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         'sf': ['skip', '--file'],
         'df': ['discard', '--file'],
         'il': ['include', '--line'],
+        'sl': ['skip', '--line'],
     }
 
     # Expand quick actions
@@ -158,11 +159,18 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     parser_include.set_defaults(func=include_cli)
 
-    # skip - Skip the current hunk or entire file
+    # skip - Skip the current hunk, specific lines, or entire file
     parser_skip = subparsers.add_parser(
         "skip",
         aliases=["s"],
         help=_("Skip the current hunk without staging"),
+    )
+    parser_skip.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Skip only specific line IDs (e.g., '1,3,5-7')"),
     )
     parser_skip.add_argument(
         "--file",
@@ -172,6 +180,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     def skip_cli(args):
         if args.file:
             commands.command_skip_file()
+        elif args.line_ids:
+            commands.command_skip_line(args.line_ids)
         else:
             commands.command_skip()
         display_cached_hunk()

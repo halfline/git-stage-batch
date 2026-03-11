@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands import command_again, command_show, command_start, command_stop
+from git_stage_batch.commands import command_again, command_include, command_show, command_start, command_stop
 from git_stage_batch.state import (
     get_context_lines,
     get_context_lines_file_path,
@@ -213,3 +213,87 @@ class TestCommandShow:
         # Should show file1 but not file2
         assert "file1.txt" in captured.out
         assert "file2.txt" not in captured.out
+
+
+class TestCommandInclude:
+    """Tests for include command."""
+
+    def test_include_stages_hunk(self, temp_git_repo, capsys):
+        """Test that include stages a hunk."""
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        command_include()
+
+        # Check that changes are staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "+New content" in result.stdout
+
+        captured = capsys.readouterr()
+        assert "Hunk staged" in captured.out
+
+    def test_include_no_changes(self, temp_git_repo, capsys):
+        """Test include when no changes exist."""
+        command_include()
+
+        captured = capsys.readouterr()
+        assert "No more hunks to process" in captured.out
+
+    def test_include_multiple_hunks(self, temp_git_repo, capsys):
+        """Test including multiple hunks sequentially."""
+        # Create and commit two files
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both files
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        # Include first hunk
+        command_include()
+        captured = capsys.readouterr()
+        assert "file1.txt" in captured.out
+
+        # Include second hunk
+        command_include()
+        captured = capsys.readouterr()
+        assert "file2.txt" in captured.out
+
+        # Verify both are staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "file1.txt" in result.stdout
+        assert "file2.txt" in result.stdout
+
+    def test_include_all_hunks_processed(self, temp_git_repo, capsys):
+        """Test include when all hunks have been processed."""
+        command_start()
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Include the only hunk
+        command_include()
+        capsys.readouterr()  # Clear output
+
+        # Try to include again - should say no more hunks because hunk was staged
+        command_include()
+        captured = capsys.readouterr()
+        assert "No more hunks to process" in captured.out

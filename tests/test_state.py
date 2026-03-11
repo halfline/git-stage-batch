@@ -8,8 +8,11 @@ from git_stage_batch.state import (
     append_lines_to_file,
     ensure_state_directory_exists,
     exit_with_error,
+    get_block_list_file_path,
     get_context_lines,
     get_context_lines_file_path,
+    get_current_hunk_hash_file_path,
+    get_current_hunk_patch_file_path,
     get_git_repository_root_path,
     get_state_directory_path,
     read_text_file_contents,
@@ -180,15 +183,33 @@ class TestStateDirectory:
         state_dir = get_state_directory_path()
         assert state_dir.exists()
 
-
-class TestContextLines:
-    """Tests for context lines state management."""
-
     def test_get_context_lines_file_path(self, temp_git_repo):
         """Test getting the context lines file path."""
         context_path = get_context_lines_file_path()
         state_dir = get_state_directory_path()
         assert context_path == state_dir / "context-lines"
+
+    def test_get_block_list_file_path(self, temp_git_repo):
+        """Test getting the blocklist file path."""
+        blocklist_path = get_block_list_file_path()
+        state_dir = get_state_directory_path()
+        assert blocklist_path == state_dir / "blocklist"
+
+    def test_get_current_hunk_patch_file_path(self, temp_git_repo):
+        """Test getting the current hunk patch file path."""
+        patch_path = get_current_hunk_patch_file_path()
+        state_dir = get_state_directory_path()
+        assert patch_path == state_dir / "current-hunk-patch"
+
+    def test_get_current_hunk_hash_file_path(self, temp_git_repo):
+        """Test getting the current hunk hash file path."""
+        hash_path = get_current_hunk_hash_file_path()
+        state_dir = get_state_directory_path()
+        assert hash_path == state_dir / "current-hunk-hash"
+
+
+class TestContextLines:
+    """Tests for context lines state management."""
 
     def test_get_context_lines_default(self, temp_git_repo):
         """Test that get_context_lines defaults to 3 when file doesn't exist."""

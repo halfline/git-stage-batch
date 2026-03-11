@@ -109,6 +109,14 @@ def main() -> None:
     )
     parser_discard.set_defaults(func=lambda _: commands.command_discard())
 
+    # status - Show current session status
+    parser_status = subparsers.add_parser(
+        "status",
+        aliases=["st"],
+        help=_("Show current session status"),
+    )
+    parser_status.set_defaults(func=lambda _: commands.command_status())
+
     args = parser.parse_args()
 
     if args.command is None:

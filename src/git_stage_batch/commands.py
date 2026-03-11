@@ -262,3 +262,52 @@ def command_discard() -> None:
     append_lines_to_file(blocklist_path, [current_hash])
 
     print(_("✓ Hunk discarded from {}").format(current_patch.new_path))
+
+
+def command_status() -> None:
+    """Show current session status."""
+    require_git_repository()
+
+    # Check if session is active
+    state_dir = get_state_directory_path()
+    if not state_dir.exists():
+        print(_("No batch staging session in progress."))
+        print(_("Run 'git-stage-batch start' to begin."))
+        return
+
+    # Get the current diff
+    result = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])
+    diff_text = result.stdout
+
+    # Parse into hunks
+    patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+    total_hunks = len(patches)
+
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines()) if blocklist_text else set()
+    processed_count = len(blocked_hashes)
+
+    # Count remaining hunks
+    remaining_hunks = 0
+    current_file = None
+    for patch in patches:
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+        if patch_hash not in blocked_hashes:
+            if current_file is None:
+                current_file = patch.new_path
+            remaining_hunks += 1
+
+    # Display status
+    print(_("Session active"))
+    print(_("Processed: {} hunks").format(processed_count))
+    print(_("Remaining: {} hunks").format(remaining_hunks))
+
+    if current_file:
+        print(_("Current file: {}").format(current_file))
+    elif total_hunks == 0:
+        print(_("No changes in working tree"))
+    else:
+        print(_("All hunks processed"))

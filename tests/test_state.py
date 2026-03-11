@@ -7,8 +7,10 @@ import pytest
 from git_stage_batch.state import (
     CommandError,
     append_lines_to_file,
+    ensure_state_directory_exists,
     exit_with_error,
     get_git_repository_root_path,
+    get_state_directory_path,
     read_text_file_contents,
     require_git_repository,
     run_git_command,
@@ -149,3 +151,30 @@ class TestFileUtilities:
         append_lines_to_file(file_path, ["line1  \t", "line2\n\n"])
         content = file_path.read_text(encoding="utf-8")
         assert content == "line1\nline2\n"
+
+
+class TestStateDirectory:
+    """Tests for state directory management."""
+
+    def test_get_state_directory_path(self, temp_git_repo):
+        """Test getting the state directory path."""
+        state_dir = get_state_directory_path()
+        assert state_dir == temp_git_repo / ".git" / "git-stage-batch"
+
+    def test_ensure_state_directory_exists_creates_directory(self, temp_git_repo):
+        """Test that ensure_state_directory_exists creates the directory."""
+        state_dir = get_state_directory_path()
+        assert not state_dir.exists()
+
+        ensure_state_directory_exists()
+
+        assert state_dir.exists()
+        assert state_dir.is_dir()
+
+    def test_ensure_state_directory_exists_idempotent(self, temp_git_repo):
+        """Test that ensure_state_directory_exists is idempotent."""
+        ensure_state_directory_exists()
+        ensure_state_directory_exists()  # Should not raise
+
+        state_dir = get_state_directory_path()
+        assert state_dir.exists()

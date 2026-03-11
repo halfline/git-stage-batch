@@ -84,6 +84,14 @@ def main() -> None:
     )
     parser_show.set_defaults(func=lambda _: commands.command_show())
 
+    # include - Include (stage) the current hunk
+    parser_include = subparsers.add_parser(
+        "include",
+        aliases=["i"],
+        help="Include (stage) the current hunk",
+    )
+    parser_include.set_defaults(func=lambda _: commands.command_include())
+
     args = parser.parse_args()
 
     if args.command is None:

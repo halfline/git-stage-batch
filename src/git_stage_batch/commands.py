@@ -10,6 +10,11 @@ import sys
 from typing import Any
 
 from .display import print_annotated_hunk_with_aligned_gutter, print_colored_patch
+from .editor import (
+    build_target_index_content_with_selected_lines,
+    build_target_working_tree_content_with_discarded_lines,
+    update_index_with_blob_content,
+)
 from .hashing import compute_stable_hunk_hash
 from .i18n import _
 from .line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
@@ -399,8 +404,19 @@ def command_show() -> None:
         patch_text = patch.to_patch_text()
         patch_hash = compute_stable_hunk_hash(patch_text)
         if patch_hash not in blocked_hashes:
-            # Display this unprocessed hunk
-            print_colored_patch(patch_text)
+            # Cache this hunk as current
+            write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
+            write_text_file_contents(get_current_hunk_hash_file_path(), patch_hash)
+
+            current_lines = build_current_lines_from_patch_text(patch_text)
+            write_text_file_contents(get_current_lines_json_file_path(),
+                                    json.dumps(convert_current_lines_to_serializable_dict(current_lines),
+                                              ensure_ascii=False, indent=0))
+
+            # Save snapshots of file state for staleness detection
+            write_snapshots_for_current_file_path(current_lines.path)
+
+            print_annotated_hunk_with_aligned_gutter(current_lines)
             return
 
     # All hunks are blocked

@@ -46,3 +46,13 @@ def append_lines_to_file(path: Path, lines: Iterable[str]) -> None:
     with path.open("a", encoding="utf-8", errors="surrogateescape") as file_handle:
         for line in lines:
             file_handle.write(str(line).rstrip() + "\n")
+
+
+# --------------------------- State paths ---------------------------
+
+def get_state_directory_path() -> Path:
+    return get_git_repository_root_path() / ".git" / "git-stage-batch"
+
+
+def ensure_state_directory_exists() -> None:
+    get_state_directory_path().mkdir(parents=True, exist_ok=True)

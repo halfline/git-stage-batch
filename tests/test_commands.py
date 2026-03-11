@@ -214,6 +214,45 @@ class TestCommandShow:
         assert "file1.txt" in captured.out
         assert "file2.txt" not in captured.out
 
+    def test_show_skips_processed_hunks(self, temp_git_repo, capsys):
+        """Test that show skips hunks that have been processed."""
+        # Create and commit two files
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both files
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        # Include the first hunk
+        command_include()
+        capsys.readouterr()  # Clear output
+
+        # Show should now display the second hunk
+        command_show()
+        captured = capsys.readouterr()
+        assert "file2.txt" in captured.out
+        assert "file1.txt" not in captured.out
+
+    def test_show_all_hunks_processed(self, temp_git_repo, capsys):
+        """Test show when all hunks have been processed."""
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Include the only hunk to process it
+        command_include()
+        capsys.readouterr()  # Clear output
+
+        # Show should indicate no more hunks
+        command_show()
+        captured = capsys.readouterr()
+        assert "No changes to show" in captured.out
+
 
 class TestCommandInclude:
     """Tests for include command."""

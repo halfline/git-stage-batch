@@ -191,3 +191,74 @@ def command_skip() -> None:
     append_lines_to_file(blocklist_path, [current_hash])
 
     print(_("✓ Hunk skipped from {}").format(current_patch.new_path))
+
+
+def command_discard() -> None:
+    """Discard the current hunk from the working tree."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Get the current diff
+    result = run_git_command(["diff", "--no-color"])
+    diff_text = result.stdout
+
+    # Parse into hunks
+    patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+
+    if not patches:
+        print(_("No changes to discard."))
+        return
+
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
+
+    # Find first non-blocked hunk
+    current_patch = None
+    current_hash = None
+    for patch in patches:
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+        if patch_hash not in blocked_hashes:
+            current_patch = patch
+            current_hash = patch_hash
+            break
+
+    if current_patch is None:
+        print(_("No more hunks to process."))
+        return
+
+    # Save current hunk info
+    patch_text = current_patch.to_patch_text()
+    write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
+    write_text_file_contents(get_current_hunk_hash_file_path(), current_hash)
+
+    # Apply the hunk in reverse to discard from working tree
+    try:
+        subprocess.run(
+            ["git", "apply", "--reverse"],
+            input=patch_text,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(_("Failed to discard hunk: {}").format(e.stderr))
+        return
+
+    # After reverse-applying a new file, delete it if it became empty
+    # (git apply -R on new files empties them but doesn't delete them)
+    is_new_file = "--- /dev/null" in patch_text
+    if is_new_file:
+        file_path = current_patch.new_path
+        absolute_path = get_git_repository_root_path() / file_path
+        if absolute_path.exists():
+            content = read_text_file_contents(absolute_path)
+            if not content.strip():  # File is empty
+                absolute_path.unlink()
+
+    # Add hash to blocklist
+    append_lines_to_file(blocklist_path, [current_hash])
+
+    print(_("✓ Hunk discarded from {}").format(current_patch.new_path))

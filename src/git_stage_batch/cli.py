@@ -101,6 +101,14 @@ def main() -> None:
     )
     parser_skip.set_defaults(func=lambda _: commands.command_skip())
 
+    # discard - Discard the current hunk from working tree
+    parser_discard = subparsers.add_parser(
+        "discard",
+        aliases=["d"],
+        help=_("Discard the current hunk from working tree"),
+    )
+    parser_discard.set_defaults(func=lambda _: commands.command_discard())
+
     args = parser.parse_args()
 
     if args.command is None:

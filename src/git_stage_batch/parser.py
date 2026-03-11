@@ -1,0 +1,167 @@
+"""Parse unified diff format into structured models."""
+
+from __future__ import annotations
+
+from typing import Iterator, Iterable
+
+from .models import SingleHunkPatch
+
+
+def parse_unified_diff_streaming(lines: Iterable[str]) -> Iterator[SingleHunkPatch]:
+    """Parse a unified diff from a line iterator, yielding patches one at a time.
+
+    This is the core streaming parser that accepts any iterable of lines
+    (file, subprocess pipe, list, etc.) and yields SingleHunkPatch objects
+    as they are parsed. Callers can stop iterating early to avoid parsing
+    the entire diff.
+
+    Args:
+        lines: Iterable of diff lines (e.g., file.readlines(), proc.stdout, list)
+
+    Yields:
+        SingleHunkPatch objects, one per hunk
+    """
+    line_iter = iter(lines)
+    lookahead = None  # One-line lookahead buffer
+
+    def next_line():
+        """Get next line, using lookahead if available."""
+        nonlocal lookahead
+        if lookahead is not None:
+            line = lookahead
+            lookahead = None
+            return line
+        try:
+            return next(line_iter)
+        except StopIteration:
+            return None
+
+    def peek_line():
+        """Peek at next line without consuming it."""
+        nonlocal lookahead
+        if lookahead is None:
+            try:
+                lookahead = next(line_iter)
+            except StopIteration:
+                lookahead = None
+        return lookahead
+
+    while True:
+        line = next_line()
+        if line is None:
+            break
+
+        # Strip trailing newlines for consistency
+        line = line.rstrip('\n\r')
+
+        # Look for start of a file diff
+        if line.startswith("diff --git "):
+            # Extract file paths from the diff --git line
+            # Format: diff --git a/path b/path
+            # Need to handle paths with spaces, so can't just split()
+            rest = line[len("diff --git "):]
+
+            # Find a/ and b/ markers
+            a_start = rest.find("a/")
+            b_start = rest.find(" b/")
+
+            if a_start == -1 or b_start == -1:
+                continue
+
+            old_path = rest[a_start + 2:b_start]
+            new_path = rest[b_start + 3:]  # Skip " b/"
+
+            # Collect lines until we hit the --- line (start of unified diff)
+            while True:
+                next_l = next_line()
+                if next_l is None:
+                    return
+                next_l = next_l.rstrip('\n\r')
+                if next_l.startswith("---"):
+                    old_file_line = next_l
+                    break
+
+            # Get +++ line
+            plus_line = next_line()
+            if plus_line is None:
+                return
+            plus_line = plus_line.rstrip('\n\r')
+            if not plus_line.startswith("+++"):
+                continue
+            new_file_line = plus_line
+
+            # Process all hunks for this file
+            while True:
+                # Check if next line is a hunk header
+                hunk_header = peek_line()
+                if hunk_header is None:
+                    return
+                hunk_header = hunk_header.rstrip('\n\r')
+                if not hunk_header.startswith("@@"):
+                    # No more hunks for this file
+                    break
+
+                # Consume the hunk header
+                next_line()
+
+                hunk_lines = [old_file_line, new_file_line, hunk_header]
+
+                # Collect hunk body (lines starting with space, +, or -)
+                while True:
+                    body_line = peek_line()
+                    if body_line is None:
+                        # End of input
+                        break
+
+                    body_line_stripped = body_line.rstrip('\n\r')
+
+                    if body_line_stripped.startswith("diff --git "):
+                        # Next file starting
+                        break
+                    if body_line_stripped.startswith("@@"):
+                        # Next hunk for same file
+                        break
+                    # Check for start of new file diff (---/+++)
+                    if body_line_stripped.startswith("---"):
+                        # Peek ahead one more line to see if it's followed by +++
+                        next_line()  # consume ---
+                        peek_plus = peek_line()
+                        if peek_plus and peek_plus.rstrip('\n\r').startswith("+++"):
+                            # This is a new file diff, put --- back in lookahead
+                            lookahead = body_line
+                            break
+                        else:
+                            # False alarm, this --- is part of the hunk body
+                            hunk_lines.append(body_line_stripped)
+                            continue
+
+                    # Include lines that are part of the hunk
+                    if body_line_stripped.startswith((" ", "+", "-", "\\")):
+                        next_line()  # consume
+                        hunk_lines.append(body_line_stripped)
+                    else:
+                        # Unknown line, stop collecting this hunk
+                        break
+
+                # Yield this hunk immediately
+                yield SingleHunkPatch(
+                    old_path=old_path,
+                    new_path=new_path,
+                    lines=hunk_lines
+                )
+
+
+def parse_unified_diff_into_single_hunk_patches(diff_text: str) -> list[SingleHunkPatch]:
+    """Parse a unified diff into separate single-hunk patches.
+
+    This is a convenience wrapper around parse_unified_diff_streaming that
+    takes a string and returns a list. For large diffs or early termination,
+    use parse_unified_diff_streaming directly.
+
+    Args:
+        diff_text: Output from `git diff` in unified format
+
+    Returns:
+        List of SingleHunkPatch objects, one per hunk
+    """
+    return list(parse_unified_diff_streaming(diff_text.splitlines()))

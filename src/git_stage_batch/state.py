@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable, Iterator, Optional
 
 from .i18n import _
 
@@ -25,6 +25,63 @@ def run_git_command(arguments: list[str],
                     check: bool = True,
                     text_output: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *arguments], check=check, text=text_output, capture_output=True)
+
+def stream_git_command(arguments: list[str]) -> Iterator[str]:
+    """Stream git command output line-by-line.
+
+    If the caller stops consuming early, the git process is terminated
+    and no error is raised for that intentional cancellation.
+
+    Args:
+        arguments: Git command arguments (e.g., ["diff", "--no-color"])
+
+    Yields:
+        Lines from git's stdout
+
+    Raises:
+        subprocess.CalledProcessError: If git command fails
+    """
+    process = subprocess.Popen(
+        ["git", *arguments],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    cancelled = False
+
+    assert process.stdout is not None
+    assert process.stderr is not None
+
+    try:
+        for line in process.stdout:
+            yield line
+    except GeneratorExit:
+        cancelled = True
+
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        raise
+    finally:
+        process.stdout.close()
+
+        if process.poll() is None:
+            process.wait()
+
+        if not cancelled and process.returncode != 0:
+            stderr = process.stderr.read()
+            raise subprocess.CalledProcessError(
+                process.returncode,
+                ["git", *arguments],
+                stderr=stderr,
+            )
+
+        process.stderr.close()
 
 def require_git_repository() -> None:
     try:
@@ -68,3 +125,60 @@ def get_state_directory_path() -> Path:
 
 def ensure_state_directory_exists() -> None:
     get_state_directory_path().mkdir(parents=True, exist_ok=True)
+
+
+# --------------------------- Diff streaming helpers ---------------------------
+
+def get_next_hunk_from_git(
+    context_lines: int,
+    predicate: Optional[Callable[[str], bool]] = None
+) -> Optional['SingleHunkPatch']:
+    """Stream git diff and find the first hunk matching the predicate.
+
+    Args:
+        context_lines: Number of context lines for diff (-U parameter)
+        predicate: Optional function that takes patch text and returns True if
+                   the hunk should be returned. If None, returns first hunk.
+
+    Returns:
+        SingleHunkPatch if a matching hunk is found, None otherwise
+    """
+    from .parser import parse_unified_diff_streaming
+    from .models import SingleHunkPatch
+
+    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{context_lines}", "--no-color"])):
+        if predicate is None:
+            return patch
+
+        patch_text = patch.to_patch_text()
+        if predicate(patch_text):
+            return patch
+
+    return None
+
+
+def get_next_file_from_git(
+    context_lines: int,
+    predicate: Optional[Callable[[str], bool]] = None
+) -> Optional[str]:
+    """Stream git diff and find the first file with a hunk matching the predicate.
+
+    Args:
+        context_lines: Number of context lines for diff (-U parameter)
+        predicate: Optional function that takes patch text and returns True if
+                   the hunk counts as a match. If None, returns first file.
+
+    Returns:
+        File path if a matching file is found, None otherwise
+    """
+    from .parser import parse_unified_diff_streaming
+
+    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{context_lines}", "--no-color"])):
+        if predicate is None:
+            return patch.new_path
+
+        patch_text = patch.to_patch_text()
+        if predicate(patch_text):
+            return patch.new_path
+
+    return None

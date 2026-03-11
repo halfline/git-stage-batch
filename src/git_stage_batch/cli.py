@@ -93,6 +93,14 @@ def main() -> None:
     )
     parser_include.set_defaults(func=lambda _: commands.command_include())
 
+    # skip - Skip the current hunk without staging
+    parser_skip = subparsers.add_parser(
+        "skip",
+        aliases=["s"],
+        help=_("Skip the current hunk without staging"),
+    )
+    parser_skip.set_defaults(func=lambda _: commands.command_skip())
+
     args = parser.parse_args()
 
     if args.command is None:

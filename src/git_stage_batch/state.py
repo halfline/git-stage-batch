@@ -229,6 +229,14 @@ def get_blocked_files_file_path() -> Path:
     return get_state_directory_path() / "blocked-files"
 
 
+def get_processed_include_ids_file_path() -> Path:
+    return get_state_directory_path() / "processed.include"
+
+
+def get_processed_skip_ids_file_path() -> Path:
+    return get_state_directory_path() / "processed.skip"
+
+
 def get_gitignore_path() -> Path:
     return get_git_repository_root_path() / ".gitignore"
 

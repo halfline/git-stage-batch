@@ -41,3 +41,19 @@ def get_git_repository_root_path() -> Path:
 def exit_with_error(message: str, exit_code: int = 1) -> None:
     """Raise a CommandError instead of exiting directly."""
     raise CommandError(message, exit_code)
+
+
+def read_text_file_contents(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="surrogateescape") if path.exists() else ""
+
+
+def write_text_file_contents(path: Path, data: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(data, encoding="utf-8", errors="surrogateescape")
+
+
+def append_lines_to_file(path: Path, lines: Iterable[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", errors="surrogateescape") as file_handle:
+        for line in lines:
+            file_handle.write(str(line).rstrip() + "\n")

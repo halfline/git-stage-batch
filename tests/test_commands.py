@@ -199,9 +199,11 @@ class TestCommandShow:
         command_show()
 
         captured = capsys.readouterr()
-        assert "--- a/README.md" in captured.out
-        assert "+++ b/README.md" in captured.out
-        assert "+New line added" in captured.out
+        # New format shows file path, hunk header, and line with ID
+        assert "README.md" in captured.out
+        assert "@@" in captured.out
+        assert "[#1]" in captured.out
+        assert "New line added" in captured.out
 
     def test_show_no_changes(self, temp_git_repo, capsys):
         """Test that show displays message when no changes exist."""

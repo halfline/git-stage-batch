@@ -1002,3 +1002,32 @@ def compute_remaining_changed_line_ids() -> list[int]:
     processed_ids = included_ids | skipped_ids
     remaining_ids = all_changed_ids - processed_ids
     return sorted(remaining_ids)
+
+
+# --------------------------- Line-level commands ---------------------------
+
+def command_include_line(line_id_specification: str) -> None:
+    """Stage only the specified lines to the index."""
+    require_git_repository()
+    ensure_state_directory_exists()
+    require_current_hunk_and_check_stale()
+
+    requested_ids = parse_line_selection(line_id_specification)
+    already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
+    combined_include_ids = already_included_ids | set(requested_ids)
+
+    current_lines = load_current_lines_from_state()
+
+    # Get base content from index snapshot (captured when hunk was loaded)
+    base_text = read_text_file_contents(get_index_snapshot_file_path())
+
+    target_index_content = build_target_index_content_with_selected_lines(current_lines, combined_include_ids, base_text)
+    update_index_with_blob_content(current_lines.path, target_index_content)
+
+    # Update processed include IDs
+    write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
+
+    # After modifying index, recalculate hunk for the SAME file
+    _recalculate_current_hunk_for_file(current_lines.path)
+
+    print(_("✓ Included line(s): {lines}").format(lines=line_id_specification))

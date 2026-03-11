@@ -61,6 +61,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         'if': ['include', '--file'],
         'sf': ['skip', '--file'],
         'df': ['discard', '--file'],
+        'il': ['include', '--line'],
     }
 
     # Expand quick actions
@@ -128,11 +129,18 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_show.set_defaults(func=lambda _: commands.command_show())
 
-    # include - Include (stage) the current hunk or entire file
+    # include - Include (stage) the current hunk, specific lines, or entire file
     parser_include = subparsers.add_parser(
         "include",
         aliases=["i"],
         help=_("Include (stage) the current hunk"),
+    )
+    parser_include.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Stage only specific line IDs (e.g., '1,3,5-7')"),
     )
     parser_include.add_argument(
         "--file",
@@ -142,6 +150,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     def include_cli(args):
         if args.file:
             commands.command_include_file()
+        elif args.line_ids:
+            commands.command_include_line(args.line_ids)
         else:
             commands.command_include()
         display_cached_hunk()
@@ -159,10 +169,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Skip the entire file containing the current hunk"),
     )
-    parser_skip.set_defaults(func=lambda args: (
-        commands.command_skip_file() if args.file
-        else commands.command_skip()
-    ))
+    def skip_cli(args):
+        if args.file:
+            commands.command_skip_file()
+        else:
+            commands.command_skip()
+        display_cached_hunk()
+
+    parser_skip.set_defaults(func=skip_cli)
 
     # block-file - Permanently exclude a file
     parser_block_file = subparsers.add_parser(

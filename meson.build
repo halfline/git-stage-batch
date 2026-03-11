@@ -24,6 +24,7 @@ py.install_sources(
   'src/git_stage_batch/cli.py',
   'src/git_stage_batch/commands.py',
   'src/git_stage_batch/models.py',
+  'src/git_stage_batch/parser.py',
   'src/git_stage_batch/state.py',
   subdir: 'git_stage_batch',
   install_tag: 'python-runtime',

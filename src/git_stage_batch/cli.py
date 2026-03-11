@@ -134,21 +134,46 @@ def main() -> None:
     )
     parser_include_file.set_defaults(func=lambda _: commands.command_include_file())
 
-    # skip - Skip the current hunk or entire file
+    # skip - Skip the current hunk, specific lines, or entire file
     parser_skip = subparsers.add_parser(
         "skip",
         aliases=["s"],
         help=_("Skip the current hunk without staging"),
     )
     parser_skip.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Skip only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_skip.add_argument(
         "--file",
         action="store_true",
         help=_("Skip the entire file containing the current hunk"),
     )
+    parser_skip.add_argument(
+        "line_ids_positional",
+        nargs="?",
+        help=argparse.SUPPRESS,  # Hidden positional for 'sl IDS' alias support
+    )
     parser_skip.set_defaults(func=lambda args: (
         commands.command_skip_file() if args.file
+        else commands.command_skip_line(args.line_ids or args.line_ids_positional) if (args.line_ids or args.line_ids_positional)
         else commands.command_skip()
     ))
+
+    # skip-line - Skip specific lines (hidden, exists only for 'sl' alias)
+    parser_skip_line = subparsers.add_parser(
+        "skip-line",
+        aliases=["sl"],
+        help=argparse.SUPPRESS,  # Hidden, exists only for 'sl' alias
+    )
+    parser_skip_line.add_argument(
+        "line_ids",
+        help=_("Line IDs to skip (e.g., '1,3,5-7')"),
+    )
+    parser_skip_line.set_defaults(func=lambda args: commands.command_skip_line(args.line_ids))
 
     # skip-file - Skip all hunks from current file
     parser_skip_file = subparsers.add_parser(

@@ -1076,3 +1076,19 @@ def command_include_line(line_id_specification: str) -> None:
     _recalculate_current_hunk_for_file(current_lines.path)
 
     print(f"✓ Included line(s): {line_id_specification}")
+
+
+def command_skip_line(line_id_specification: str) -> None:
+    """Mark only the specified lines as skipped."""
+    require_git_repository()
+    ensure_state_directory_exists()
+    require_current_hunk_and_check_stale()
+
+    requested_ids = parse_line_selection(line_id_specification)
+    already_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
+    combined_skip_ids = already_skipped_ids | set(requested_ids)
+
+    # Update processed skip IDs
+    write_line_ids_file(get_processed_skip_ids_file_path(), combined_skip_ids)
+
+    print(f"✓ Skipped line(s): {line_id_specification}")

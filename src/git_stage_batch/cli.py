@@ -115,6 +115,18 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_show.set_defaults(func=lambda _: commands.command_show())
 
+    # include - Include (stage) the current hunk
+    parser_include = subparsers.add_parser(
+        "include",
+        aliases=["i"],
+        help="Include (stage) the current hunk",
+    )
+    def include_cli(args):
+        commands.command_include()
+        display_cached_hunk()
+
+    parser_include.set_defaults(func=include_cli)
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

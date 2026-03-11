@@ -1097,7 +1097,7 @@ def _show_commit_diff_for_file(commit_hash: str, file_path: str) -> None:
         pass
 
 
-def command_suggest_fixup(boundary: str | None, reset: bool = False, abort: bool = False, show_last: bool = False) -> None:
+def command_suggest_fixup(boundary: str | None = None, reset: bool = False, abort: bool = False, show_last: bool = False) -> None:
     """Suggest which commit the current hunk should be fixed up to.
 
     Iteratively suggests commits that modified the lines in the current hunk,

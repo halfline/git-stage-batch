@@ -21,3 +21,12 @@ def command_stop() -> None:
     if state_dir.exists():
         shutil.rmtree(state_dir)
     print(_("✓ State cleared."))
+
+
+def command_again() -> None:
+    """Clear state and start a fresh pass through all hunks."""
+    require_git_repository()
+    state_dir = get_state_directory_path()
+    if state_dir.exists():
+        shutil.rmtree(state_dir)
+    ensure_state_directory_exists()

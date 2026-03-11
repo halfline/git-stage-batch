@@ -86,6 +86,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_stop.set_defaults(func=lambda _: commands.command_stop())
 
+    # again - Clear state and start a fresh pass
+    parser_again = subparsers.add_parser(
+        "again",
+        aliases=["a"],
+        help="Clear state and start a fresh pass",
+    )
+    parser_again.set_defaults(func=lambda _: commands.command_again())
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

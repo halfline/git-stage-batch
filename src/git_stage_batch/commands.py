@@ -10,8 +10,8 @@ from pathlib import Path
 
 from .display import print_colored_patch
 from .hashing import compute_stable_hunk_hash
-from .i18n import _
-from .parser import parse_unified_diff_streaming
+from .i18n import _, ngettext
+from .parser import parse_unified_diff_into_single_hunk_patches, parse_unified_diff_streaming
 from .state import (
     append_file_path_to_file,
     append_lines_to_file,
@@ -26,6 +26,7 @@ from .state import (
     get_context_lines,
     get_context_lines_file_path,
     get_git_repository_root_path,
+    get_next_file_from_git,
     get_state_directory_path,
     read_file_paths_file,
     read_text_file_contents,
@@ -191,6 +192,72 @@ def command_include(*, quiet: bool = False) -> None:
 
     if not quiet:
         print(_("No more hunks to process."))
+
+
+def command_include_file() -> None:
+    """Include (stage) all hunks from the current file."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
+
+    # Find first non-blocked hunk to get the target file
+    def is_unblocked(patch_text: str) -> bool:
+        return compute_stable_hunk_hash(patch_text) not in blocked_hashes
+
+    target_file = get_next_file_from_git(
+        context_lines=get_context_lines(),
+        predicate=is_unblocked
+    )
+
+    if target_file is None:
+        print(_("No changes to stage."))
+        return
+
+    # Stream through hunks and stage all from target file
+    hunks_staged = 0
+    for patch in parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])):
+        if patch.new_path != target_file:
+            continue
+
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+
+        # Skip if already blocked
+        if patch_hash in blocked_hashes:
+            continue
+
+        # Apply the hunk to the index
+        try:
+            subprocess.run(
+                ["git", "apply", "--cached"],
+                input=patch_text,
+                text=True,
+                check=True,
+                capture_output=True,
+            )
+            # Add to blocklist so we don't try to stage it again
+            append_lines_to_file(blocklist_path, [patch_hash])
+            blocked_hashes.add(patch_hash)
+            hunks_staged += 1
+        except subprocess.CalledProcessError as e:
+            print(_("Failed to apply hunk: {error}").format(error=e.stderr))
+            break
+
+    if hunks_staged == 0:
+        print(_("No hunks staged from {file}").format(file=target_file))
+        return
+
+    # Print summary message
+    msg = ngettext(
+        "✓ Staged {count} hunk from {file}",
+        "✓ Staged {count} hunks from {file}",
+        hunks_staged
+    ).format(count=hunks_staged, file=target_file)
+    print(msg)
 
 
 def command_skip(*, quiet: bool = False) -> None:

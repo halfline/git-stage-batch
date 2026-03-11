@@ -295,6 +295,55 @@ def command_skip(*, quiet: bool = False) -> None:
         print(_("No more hunks to process."))
 
 
+def command_skip_file() -> None:
+    """Skip all remaining hunks from the current file."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
+
+    # Find first non-blocked hunk to get the target file
+    def is_unblocked(patch_text: str) -> bool:
+        return compute_stable_hunk_hash(patch_text) not in blocked_hashes
+
+    target_file = get_next_file_from_git(
+        context_lines=get_context_lines(),
+        predicate=is_unblocked
+    )
+
+    if target_file is None:
+        print(_("No changes to process."))
+        return
+
+    # Stream through hunks and skip all from target file
+    hunks_skipped = 0
+    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        if patch.new_path != target_file:
+            continue
+
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+
+        # Skip if already blocked
+        if patch_hash in blocked_hashes:
+            continue
+
+        # Add to blocklist without staging
+        append_lines_to_file(blocklist_path, [patch_hash])
+        blocked_hashes.add(patch_hash)
+        hunks_skipped += 1
+
+    msg = ngettext(
+        "✓ Skipped {count} hunk from {file}",
+        "✓ Skipped {count} hunks from {file}",
+        hunks_skipped
+    ).format(count=hunks_skipped, file=target_file)
+    print(msg)
+
+
 def command_discard(*, quiet: bool = False) -> None:
     """Discard the current hunk from the working tree."""
     require_git_repository()

@@ -8,25 +8,21 @@ import sys
 
 from . import __version__
 from . import commands
-from .display import print_colored_patch
+from .display import print_annotated_hunk_with_aligned_gutter
 from .i18n import _
 from .state import (
     CommandError,
     exit_with_error,
-    get_current_hunk_patch_file_path,
     get_state_directory_path,
-    read_text_file_contents,
     require_git_repository,
 )
 
 
 def display_cached_hunk() -> None:
     """Display the currently cached hunk."""
-    patch_file = get_current_hunk_patch_file_path()
-    if patch_file.exists():
-        patch_text = read_text_file_contents(patch_file)
-        if patch_text.strip():
-            print_colored_patch(patch_text)
+    current_lines = commands.load_current_lines_from_state()
+    if current_lines:
+        print_annotated_hunk_with_aligned_gutter(current_lines)
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -106,10 +102,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     def start_cli(args):
         commands.command_start(unified=args.unified)
-        # Display the cached hunk
-        current_lines = commands.load_current_lines_from_state()
-        if current_lines:
-            commands.print_annotated_hunk_with_aligned_gutter(current_lines)
+        display_cached_hunk()
 
     parser_start.set_defaults(func=start_cli)
 

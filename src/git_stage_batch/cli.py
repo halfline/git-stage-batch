@@ -70,6 +70,13 @@ def main() -> None:
     )
     parser_again.set_defaults(func=lambda _: commands.command_again())
 
+    # show - Show the current hunk
+    parser_show = subparsers.add_parser(
+        "show",
+        help="Show the current hunk",
+    )
+    parser_show.set_defaults(func=lambda _: commands.command_show())
+
     args = parser.parse_args()
 
     if args.command is None:

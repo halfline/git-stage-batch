@@ -23,6 +23,7 @@ py.install_sources(
   'src/git_stage_batch/i18n.py',
   'src/git_stage_batch/cli.py',
   'src/git_stage_batch/commands.py',
+  'src/git_stage_batch/display.py',
   'src/git_stage_batch/models.py',
   'src/git_stage_batch/parser.py',
   'src/git_stage_batch/state.py',

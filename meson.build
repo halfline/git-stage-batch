@@ -5,6 +5,7 @@ project('git-stage-batch',
 )
 
 py = import('python').find_installation('python3', pure: false)
+i18n = import('i18n')
 
 # Generate version file from template
 version_py = configure_file(
@@ -19,6 +20,10 @@ version_py = configure_file(
 # Install Python package (tagged for wheel inclusion)
 py.install_sources(
   'src/git_stage_batch/__init__.py',
+  'src/git_stage_batch/i18n.py',
   subdir: 'git_stage_batch',
   install_tag: 'python-runtime',
 )
+
+# Build translations
+subdir('po')

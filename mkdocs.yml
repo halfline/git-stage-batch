@@ -1,0 +1,95 @@
+site_name: git-stage-batch
+site_description: Hunk-by-hunk and line-by-line staging for git
+site_author: Ray Strode
+site_url: https://halfline.github.io/git-stage-batch/
+repo_url: https://github.com/halfline/git-stage-batch
+repo_name: halfline/git-stage-batch
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  custom_dir: overrides
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  palette:
+    scheme: slate
+    primary: black
+    accent: cyan
+
+  font:
+    text: 'Fira Code'
+    code: 'Fira Code'
+
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+
+plugins:
+  - search
+
+extra_css:
+  - assets/extra.css
+
+extra_javascript:
+  - assets/extra.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/halfline/git-stage-batch
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/git-stage-batch/
+
+  analytics:
+    feedback:
+      title: Was this page helpful?
+      ratings:
+        - icon: material/thumb-up-outline
+          name: This page was helpful
+          data: 1
+          note: Thanks for your feedback!
+        - icon: material/thumb-down-outline
+          name: This page could be improved
+          data: 0
+          note: Thanks for your feedback!
+
+copyright: Copyright &copy; 2025-2026 Ray Strode

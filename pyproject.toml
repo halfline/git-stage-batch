@@ -32,6 +32,9 @@ dev = [
     "meson>=1.2.0",
     "ninja>=1.11.0"
 ]
+docs = [
+    "mkdocs-material>=9.7.4",
+]
 
 [build-system]
 requires = [

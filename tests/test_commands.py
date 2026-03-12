@@ -1,6 +1,8 @@
 """Tests for command implementations."""
 
+import json
 import subprocess
+import sys
 
 import pytest
 
@@ -771,6 +773,82 @@ class TestCommandStatus:
         snapshot_file = snapshot_dir / "untracked.txt"
         assert snapshot_file.exists()
         assert snapshot_file.read_text() == original_content
+
+    def test_status_porcelain_output(self, temp_git_repo):
+        """Test status with --porcelain flag outputs JSON."""
+        # Create and commit a file
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original\n")
+        subprocess.run(["git", "add", "file1.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify file
+        file1.write_text("modified\n")
+
+        # Start session
+        subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "start"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True
+        )
+
+        # Run status with --porcelain
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        assert result.returncode == 0
+
+        # Parse JSON output
+        status_data = json.loads(result.stdout)
+
+        # Verify structure
+        assert "session" in status_data
+        assert "current" in status_data
+        assert "progress" in status_data
+        assert "skipped_hunks" in status_data
+
+        # Verify session data
+        assert status_data["session"]["iteration"] == 1
+        assert status_data["session"]["in_progress"] is True
+
+        # Verify current hunk data
+        assert status_data["current"] is not None
+        assert "file" in status_data["current"]
+        assert "line" in status_data["current"]
+        assert "ids" in status_data["current"]
+        assert "file1.txt" in status_data["current"]["file"]
+
+        # Verify progress data
+        assert status_data["progress"]["included"] == 0
+        assert status_data["progress"]["skipped"] == 0
+        assert status_data["progress"]["discarded"] == 0
+        assert status_data["progress"]["remaining"] >= 0
+
+        # Verify skipped_hunks is empty array
+        assert status_data["skipped_hunks"] == []
+
+    def test_status_porcelain_no_session(self, temp_git_repo):
+        """Test status --porcelain with no active session."""
+        # Run status with --porcelain when no session exists
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        assert result.returncode == 0
+
+        # Parse JSON output
+        status_data = json.loads(result.stdout)
+
+        # Should have session: null
+        assert status_data == {"session": None}
 
 
 class TestCommandAbort:

@@ -8,6 +8,8 @@ from git_stage_batch.state import (
     append_lines_to_file,
     ensure_state_directory_exists,
     exit_with_error,
+    get_context_lines,
+    get_context_lines_file_path,
     get_git_repository_root_path,
     get_state_directory_path,
     read_text_file_contents,
@@ -177,3 +179,34 @@ class TestStateDirectory:
 
         state_dir = get_state_directory_path()
         assert state_dir.exists()
+
+
+class TestContextLines:
+    """Tests for context lines state management."""
+
+    def test_get_context_lines_file_path(self, temp_git_repo):
+        """Test getting the context lines file path."""
+        context_path = get_context_lines_file_path()
+        state_dir = get_state_directory_path()
+        assert context_path == state_dir / "context-lines"
+
+    def test_get_context_lines_default(self, temp_git_repo):
+        """Test that get_context_lines defaults to 3 when file doesn't exist."""
+        ensure_state_directory_exists()
+        assert get_context_lines() == 3
+
+    def test_get_context_lines_reads_value(self, temp_git_repo):
+        """Test that get_context_lines reads the stored value."""
+        ensure_state_directory_exists()
+        context_file = get_context_lines_file_path()
+        write_text_file_contents(context_file, "5")
+
+        assert get_context_lines() == 5
+
+    def test_get_context_lines_invalid_value(self, temp_git_repo):
+        """Test that get_context_lines defaults to 3 on invalid value."""
+        ensure_state_directory_exists()
+        context_file = get_context_lines_file_path()
+        write_text_file_contents(context_file, "not-a-number")
+
+        assert get_context_lines() == 3

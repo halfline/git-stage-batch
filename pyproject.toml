@@ -16,6 +16,7 @@ git-stage-batch = "git_stage_batch.cli:main"
 dev = [
     "meson-python>=0.17.0",
     "meson>=1.2.0",
+    "mkdocs-material>=9.7.4",
     "ninja>=1.11.0",
     "pytest>=8.0.0",
 ]

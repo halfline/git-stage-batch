@@ -41,14 +41,18 @@ from .state import (
     get_blocked_files_file_path,
     get_context_lines,
     get_context_lines_file_path,
+    get_discarded_hunks_file_path,
     get_current_hunk_hash_file_path,
     get_current_hunk_patch_file_path,
     get_current_lines_json_file_path,
     get_git_repository_root_path,
+    get_included_hunks_file_path,
     get_index_snapshot_file_path,
+    get_iteration_count_file_path,
     get_next_file_from_git,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
+    get_skipped_hunks_jsonl_file_path,
     get_state_directory_path,
     get_working_tree_snapshot_file_path,
     get_suggest_fixup_state_file_path,
@@ -145,6 +149,90 @@ def auto_add_untracked_files() -> None:
             if result.returncode == 0:
                 append_file_path_to_file(auto_added_path, file_path)
 
+
+
+
+def get_iteration_count() -> int:
+    """Get current iteration count, defaulting to 1."""
+    count_path = get_iteration_count_file_path()
+    if not count_path.exists():
+        return 1
+    return int(read_text_file_contents(count_path).strip())
+
+
+def increment_iteration_count() -> None:
+    """Increment the iteration counter."""
+    current = get_iteration_count()
+    write_text_file_contents(get_iteration_count_file_path(), str(current + 1))
+
+
+def record_hunk_included(hunk_hash: str) -> None:
+    """Record that a hunk was included (staged)."""
+    included_path = get_included_hunks_file_path()
+    content = read_text_file_contents(included_path)
+    existing = set(content.splitlines()) if content else set()
+    existing.add(hunk_hash)
+    write_text_file_contents(included_path, "\n".join(sorted(existing)) + "\n" if existing else "")
+
+
+def record_hunk_discarded(hunk_hash: str) -> None:
+    """Record that a hunk was discarded (removed from working tree)."""
+    discarded_path = get_discarded_hunks_file_path()
+    content = read_text_file_contents(discarded_path)
+    existing = set(content.splitlines()) if content else set()
+    existing.add(hunk_hash)
+    write_text_file_contents(discarded_path, "\n".join(sorted(existing)) + "\n" if existing else "")
+
+
+def format_id_range(ids: list[int]) -> str:
+    """Format list of IDs as compact range string (e.g., '1-5,7,9-11')."""
+    if not ids:
+        return ""
+
+    ids = sorted(ids)
+    ranges = []
+    start = ids[0]
+    end = ids[0]
+
+    for i in range(1, len(ids)):
+        if ids[i] == end + 1:
+            end = ids[i]
+        else:
+            if start == end:
+                ranges.append(str(start))
+            else:
+                ranges.append(f"{start}-{end}")
+            start = end = ids[i]
+
+    # Add final range
+    if start == end:
+        ranges.append(str(start))
+    else:
+        ranges.append(f"{start}-{end}")
+
+    return ",".join(ranges)
+
+def record_hunk_skipped(current_lines: CurrentLines, hunk_hash: str) -> None:
+    """Record that a hunk was skipped with metadata for display."""
+    # Extract first changed line number for display
+    first_changed_line = None
+    for entry in current_lines.lines:
+        if entry.kind != " ":  # Not context
+            first_changed_line = entry.old_line_number or entry.new_line_number
+            break
+
+    # Build metadata object
+    metadata = {
+        "hash": hunk_hash,
+        "file": current_lines.path,
+        "line": first_changed_line or 0,
+        "ids": current_lines.changed_line_ids()
+    }
+
+    # Append to JSONL file
+    jsonl_path = get_skipped_hunks_jsonl_file_path()
+    with jsonl_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(metadata) + "\n")
 
 def command_start(unified: int = 3) -> None:
     """Start a new batch staging session."""

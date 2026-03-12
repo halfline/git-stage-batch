@@ -577,7 +577,8 @@ class TestCommandStatus:
         command_status()
 
         captured = capsys.readouterr()
-        assert "Session active" in captured.out or "No batch staging session in progress" in captured.out
+        assert ("Session: iteration 1" in captured.out or
+                "No batch staging session in progress" in captured.out)
 
     def test_status_with_unprocessed_hunks(self, temp_git_repo, capsys):
         """Test status with unprocessed hunks."""
@@ -589,7 +590,8 @@ class TestCommandStatus:
 
         captured = capsys.readouterr()
         # Status might show session not in progress if start hasn't been called
-        assert "Session active" in captured.out or "No batch staging session in progress" in captured.out
+        assert ("Session: iteration 1" in captured.out or
+                "No batch staging session in progress" in captured.out)
 
     def test_status_with_processed_hunks(self, temp_git_repo, capsys):
         """Test status after processing some hunks."""
@@ -612,10 +614,10 @@ class TestCommandStatus:
         command_status()
 
         captured = capsys.readouterr()
-        assert "Session active" in captured.out
-        assert "Processed: 1 hunks" in captured.out
-        assert "Remaining: 1 hunks" in captured.out
-        assert "Current file: file2.txt" in captured.out
+        assert "Session: iteration 1" in captured.out
+        assert "Progress this iteration:" in captured.out
+        assert "Included:  1 hunks" in captured.out
+        assert "Remaining: ~1 hunks" in captured.out
 
     def test_status_all_hunks_processed(self, temp_git_repo, capsys):
         """Test status when all hunks have been processed."""
@@ -623,17 +625,17 @@ class TestCommandStatus:
         readme = temp_git_repo / "README.md"
         readme.write_text("# Test\nNew content\n")
 
-        # Skip the only hunk
+        # Start session and skip the only hunk
+        command_start()
         command_skip()
         capsys.readouterr()  # Clear output
 
         command_status()
 
         captured = capsys.readouterr()
-        assert "Session active" in captured.out
-        assert "Processed: 1 hunks" in captured.out
-        assert "Remaining: 0 hunks" in captured.out
-        assert "All hunks processed" in captured.out
+        assert "Session: iteration 1" in captured.out
+        assert "Skipped:   1 hunks" in captured.out
+        assert "Remaining: ~0 hunks" in captured.out
 
     def test_start_initializes_abort_state(self, temp_git_repo):
         """Test that start initializes abort state files."""

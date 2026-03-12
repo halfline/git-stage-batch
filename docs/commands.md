@@ -137,6 +137,85 @@ This:
 
 ---
 
+## File-Level Operations
+
+### `include --file`
+
+Stage all hunks from the selected file.
+
+```
+❯ git-stage-batch include --file
+```
+
+Advances to the next file after staging all hunks.
+
+---
+
+### `skip --file`
+
+Skip all hunks from the selected file.
+
+```
+❯ git-stage-batch skip --file
+```
+
+All hunks from the file are marked as skipped and can be revisited with `again`.
+
+---
+
+### `discard --file`
+
+Discard the entire selected file from the working tree.
+
+```
+❯ git-stage-batch discard --file
+```
+
+!!! warning "Destructive Operation"
+    This permanently removes the entire file from your working tree.
+
+---
+
+## Permanent File Exclusion
+
+### `block-file`
+
+Permanently exclude a file from all future sessions.
+
+```
+❯ git-stage-batch block-file
+```
+
+This:
+- Adds the selected file to `.gitignore`
+- Marks it as blocked in session state
+- Skips all its hunks automatically
+
+When run without a selected hunk, you can specify the file path:
+
+```
+❯ git-stage-batch block-file path/to/file.txt
+```
+
+Useful for build artifacts, IDE files, or other generated content.
+
+---
+
+### `unblock-file`
+
+Remove a file from the blocked list.
+
+```
+❯ git-stage-batch unblock-file path/to/file.txt
+```
+
+This:
+- Removes the file from `.gitignore`
+- Removes it from the blocked files list
+- Allows its hunks to be processed again
+
+---
+
 ## Workflow Example
 
 ```bash

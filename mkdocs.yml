@@ -64,6 +64,7 @@ nav:
     - Installation: installation.md
   - Reference:
     - Commands: commands.md
+    - Examples: examples.md
 
 plugins:
   - search

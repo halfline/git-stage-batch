@@ -119,6 +119,25 @@ class TestWheelInstallation:
         assert result.returncode == 0
         assert "OK" in result.stdout
 
+    def test_cli_executable_works_after_install(self, build_wheel, clean_venv):
+        """Test that git-stage-batch CLI works after installation."""
+        pip_path = clean_venv / "bin" / "pip"
+        cli_path = clean_venv / "bin" / "git-stage-batch"
+
+        # Install
+        subprocess.run([str(pip_path), "install", str(build_wheel)], check=True)
+
+        # Verify CLI executable exists and can be invoked
+        result = subprocess.run(
+            [str(cli_path), "--version"],
+            capture_output=True,
+            text=True
+        )
+
+        # Should succeed and show version
+        assert result.returncode == 0
+        assert "git-stage-batch" in result.stdout
+
 
 class TestMesonInstallation:
     """Test that meson install works correctly."""

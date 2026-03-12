@@ -9,12 +9,16 @@ import subprocess
 import sys
 from typing import Any
 
-from .display import print_colored_patch
+from .display import print_annotated_hunk_with_aligned_gutter, print_colored_patch
 from .hashing import compute_stable_hunk_hash
 from .i18n import _
-from .line_selection import read_line_ids_file
+from .line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
 from .models import CurrentLines, HunkHeader, LineEntry
-from .parser import parse_unified_diff_into_single_hunk_patches
+from .parser import (
+    build_current_lines_from_patch_text,
+    parse_unified_diff_into_single_hunk_patches,
+    write_snapshots_for_current_file_path,
+)
 from .state import (
     add_file_to_gitignore,
     append_file_path_to_file,
@@ -34,9 +38,11 @@ from .state import (
     get_current_hunk_patch_file_path,
     get_current_lines_json_file_path,
     get_git_repository_root_path,
+    get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
     get_state_directory_path,
+    get_working_tree_snapshot_file_path,
     read_file_paths_file,
     read_text_file_contents,
     remove_file_from_gitignore,
@@ -131,7 +137,7 @@ def auto_add_untracked_files() -> None:
 
 
 def command_start(unified: int = 3) -> None:
-    """Start a new batch staging session."""
+    """Start a new batch staging session and display first hunk."""
     require_git_repository()
     ensure_state_directory_exists()
 
@@ -140,6 +146,10 @@ def command_start(unified: int = 3) -> None:
 
     # Initialize abort state for new session
     initialize_abort_state()
+
+    clear_current_hunk_state_files()
+    if not find_and_cache_next_unblocked_hunk():
+        sys.exit(2)
 
 
 def command_stop() -> None:
@@ -170,6 +180,194 @@ def command_again() -> None:
     if state_dir.exists():
         shutil.rmtree(state_dir)
     ensure_state_directory_exists()
+
+
+def clear_current_hunk_state_files() -> None:
+    """Clear all cached current hunk state files."""
+    get_current_hunk_patch_file_path().unlink(missing_ok=True)
+    get_current_hunk_hash_file_path().unlink(missing_ok=True)
+    get_current_lines_json_file_path().unlink(missing_ok=True)
+    get_index_snapshot_file_path().unlink(missing_ok=True)
+    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+    get_processed_include_ids_file_path().unlink(missing_ok=True)
+
+
+def _snapshots_are_stale(file_path: str) -> bool:
+    """Check if cached snapshots are stale (file changed since snapshots taken).
+
+    Returns True if the file has been committed or otherwise changed such that
+    the cached hunk no longer applies.
+    """
+    snapshot_base_path = get_index_snapshot_file_path()
+    snapshot_new_path = get_working_tree_snapshot_file_path()
+
+    # Missing snapshots means state is incomplete/stale
+    if not snapshot_base_path.exists() or not snapshot_new_path.exists():
+        return True
+
+    # Read cached snapshots
+    cached_index_content = read_text_file_contents(snapshot_base_path)
+    cached_worktree_content = read_text_file_contents(snapshot_new_path)
+
+    # Get current file content from index
+    try:
+        result = run_git_command(["show", f":{file_path}"], check=False)
+        if result.returncode != 0:
+            # File not in index (was deleted, or never added)
+            current_index_content = ""
+        else:
+            current_index_content = result.stdout
+    except Exception:
+        return True  # Error reading means state is stale
+
+    # Get current file content from working tree
+    repo_root = get_git_repository_root_path()
+    file_full_path = repo_root / file_path
+    try:
+        current_worktree_content = read_text_file_contents(file_full_path)
+    except Exception:
+        return True  # Error reading means state is stale
+
+    # Compare snapshots with current state
+    return (cached_index_content != current_index_content or
+            cached_worktree_content != current_worktree_content)
+
+
+def require_current_hunk_and_check_stale() -> None:
+    """Ensure current hunk exists and is not stale, exit with error otherwise."""
+    if not get_current_hunk_patch_file_path().exists():
+        exit_with_error(_("No current hunk. Run 'start' first."))
+
+    if get_current_lines_json_file_path().exists():
+        data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+        file_path = data["path"]
+        if _snapshots_are_stale(file_path):
+            clear_current_hunk_state_files()
+            exit_with_error(_("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."))
+
+
+def convert_current_lines_to_serializable_dict(current_lines: CurrentLines) -> dict[str, Any]:
+    """Convert CurrentLines to a JSON-serializable dictionary."""
+    return {
+        "path": current_lines.path,
+        "header": {
+            "old_start": current_lines.header.old_start,
+            "old_len": current_lines.header.old_len,
+            "new_start": current_lines.header.new_start,
+            "new_len": current_lines.header.new_len,
+        },
+        "lines": [
+            {
+                "id": line_entry.id,
+                "kind": line_entry.kind,
+                "old_lineno": line_entry.old_line_number,
+                "new_lineno": line_entry.new_line_number,
+                "text": line_entry.text,
+            }
+            for line_entry in current_lines.lines
+        ],
+    }
+
+
+def find_and_cache_next_unblocked_hunk() -> bool:
+    """Find the next hunk that isn't blocked and cache it as current.
+
+    Returns True if a hunk was found and cached, False otherwise.
+    """
+    diff_text = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"], check=False).stdout
+    if not diff_text.strip():
+        print(_("No pending hunks."), file=sys.stderr)
+        return False
+
+    single_hunk_patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+    if not single_hunk_patches:
+        print(_("No pending hunks."), file=sys.stderr)
+        return False
+
+    # Get list of blocked files
+    blocked_files = set(read_file_paths_file(get_blocked_files_file_path()))
+
+    # Load blocklist
+    blocklist_content = read_text_file_contents(get_block_list_file_path())
+    blocked_hashes = set(blocklist_content.splitlines())
+
+    for single_hunk in single_hunk_patches:
+        patch_text = single_hunk.to_patch_text()
+        hunk_hash = compute_stable_hunk_hash(patch_text)
+        if hunk_hash in blocked_hashes:
+            continue
+
+        # Skip hunks from blocked files
+        current_lines = build_current_lines_from_patch_text(patch_text)
+        if current_lines.path in blocked_files:
+            continue
+
+        write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
+        write_text_file_contents(get_current_hunk_hash_file_path(), hunk_hash)
+
+        write_text_file_contents(get_current_lines_json_file_path(),
+                                 json.dumps(convert_current_lines_to_serializable_dict(current_lines),
+                                            ensure_ascii=False, indent=0))
+        write_snapshots_for_current_file_path(current_lines.path)
+
+        print_annotated_hunk_with_aligned_gutter(current_lines)
+        return True
+
+    print(_("No pending hunks."), file=sys.stderr)
+    return False
+
+
+def _recalculate_current_hunk_for_file(file_path: str) -> None:
+    """Recalculate the current hunk for a specific file after modifications.
+
+    After discard --line or include --line changes the working tree or index,
+    the cached hunk is stale. This recalculates it for the same file.
+    """
+    # Clear processed IDs since old line numbers don't apply to fresh hunk
+    write_line_ids_file(get_processed_include_ids_file_path(), set())
+
+    # Get fresh diff
+    result = run_git_command(["diff", "--no-color"], check=False)
+    diff_text = result.stdout
+
+    if not diff_text.strip():
+        clear_current_hunk_state_files()
+        print(_("No pending hunks."), file=sys.stderr)
+        return
+
+    # Parse diff and find first hunk for this file
+    single_hunk_patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+
+    # Load blocklist
+    blocklist_content = read_text_file_contents(get_block_list_file_path())
+    blocked_hashes = set(blocklist_content.splitlines())
+
+    for single_hunk in single_hunk_patches:
+        if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
+            continue
+
+        patch_text = single_hunk.to_patch_text()
+        hunk_hash = compute_stable_hunk_hash(patch_text)
+
+        if hunk_hash in blocked_hashes:
+            continue
+
+        # Cache this hunk as current
+        write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
+        write_text_file_contents(get_current_hunk_hash_file_path(), hunk_hash)
+
+        current_lines = build_current_lines_from_patch_text(patch_text)
+        write_text_file_contents(get_current_lines_json_file_path(),
+                                json.dumps(convert_current_lines_to_serializable_dict(current_lines),
+                                          ensure_ascii=False, indent=0))
+        write_snapshots_for_current_file_path(current_lines.path)
+
+        print_annotated_hunk_with_aligned_gutter(current_lines)
+        return
+
+    # No more hunks for this file, advance to next file
+    clear_current_hunk_state_files()
+    command_show()
 
 
 def command_show() -> None:
@@ -490,7 +688,7 @@ def command_unblock_file(file_path_arg: str) -> None:
     ensure_state_directory_exists()
 
     if not file_path_arg:
-        exit_with_error("File path required for unblock-file command.")
+        exit_with_error(_("File path required for unblock-file command."))
 
     # Resolve to repo-relative path
     file_path = resolve_file_path_to_repo_relative(file_path_arg)
@@ -502,9 +700,9 @@ def command_unblock_file(file_path_arg: str) -> None:
     remove_file_path_from_file(get_blocked_files_file_path(), file_path)
 
     if removed_from_gitignore:
-        print(f"Unblocked file: {file_path}")
+        print(_("Unblocked file: {}").format(file_path))
     else:
-        print(f"Removed from blocked list: {file_path} (was not in .gitignore)")
+        print(_("Removed from blocked list: {} (was not in .gitignore)").format(file_path))
 
 
 def command_discard() -> None:

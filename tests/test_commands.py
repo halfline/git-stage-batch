@@ -5,7 +5,12 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands import command_again, command_show, command_start, command_stop
-from git_stage_batch.state import get_state_directory_path
+from git_stage_batch.state import (
+    get_context_lines,
+    get_context_lines_file_path,
+    get_state_directory_path,
+    read_text_file_contents,
+)
 
 
 @pytest.fixture
@@ -53,6 +58,55 @@ class TestCommandStart:
 
         state_dir = get_state_directory_path()
         assert state_dir.exists()
+
+    def test_start_stores_default_context_lines(self, temp_git_repo):
+        """Test that start stores default context lines value."""
+        # Create changes for start to process
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+
+        command_start()
+
+        context_file = get_context_lines_file_path()
+        assert context_file.exists()
+        assert read_text_file_contents(context_file).strip() == "3"
+
+    def test_start_stores_custom_context_lines(self, temp_git_repo):
+        """Test that start stores custom context lines value."""
+        # Create changes for start to process
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+
+        command_start(unified=5)
+
+        assert get_context_lines() == 5
+
+    def test_start_uses_context_lines_in_diff(self, temp_git_repo, capsys):
+        """Test that context lines affects the diff output."""
+        # Create a file with multiple lines
+        (temp_git_repo / "test.txt").write_text("line1\nline2\nline3\nline4\nline5\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify middle line
+        (temp_git_repo / "test.txt").write_text("line1\nline2\nMODIFIED\nline4\nline5\n")
+
+        # Start with custom context lines
+        command_start(unified=1)
+
+        # Show should use the stored context lines
+        command_show()
+        captured = capsys.readouterr()
+
+        # With -U1, we should see 1 line of context before and after
+        assert "line2" in captured.out  # 1 line before
+        assert "MODIFIED" in captured.out
+        assert "line4" in captured.out  # 1 line after
+        # line1 and line5 should not appear as diff lines
+        # They may appear in hunk headers (e.g., "@@ ... @@ line1"), so we check
+        # that they don't appear as actual context/changed lines in the diff body
+        lines = captured.out.split('\n')
+        diff_lines = [l for l in lines if l.startswith(' ') or l.startswith('+') or l.startswith('-')]
+        assert not any('line1' in l for l in diff_lines)
+        assert not any('line5' in l for l in diff_lines)
 
 
 class TestCommandStop:

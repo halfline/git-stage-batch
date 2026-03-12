@@ -77,6 +77,23 @@ All hunks from the file are marked as skipped and can be revisited with
 Discard the entire current file from the working tree.
 .B WARNING:
 This permanently removes the entire file from your working tree.
+.SS Line-Level Operations
+.TP
+.B include \-\-line \fILINE_IDS\fR
+Stage only specific lines from the current hunk.
+Lines are displayed with IDs in brackets (e.g., [#1], [#2]).
+LINE_IDS syntax: single (1), multiple (1,3,5), range (5-7), or combined (1,3,5-7).
+After processing, the hunk is recalculated to show remaining changes.
+.TP
+.B skip \-\-line \fILINE_IDS\fR
+Mark specific lines as skipped without staging them.
+Useful when you want to defer certain changes to a later commit.
+.TP
+.B discard \-\-line \fILINE_IDS\fR
+Remove specific lines from the working tree.
+.B WARNING:
+This permanently removes the specified lines from your working tree.
+Allows surgical removal of debug code or unwanted modifications.
 .SS Permanent File Exclusion
 .TP
 .B block-file \fR[\fIPATH\fR]

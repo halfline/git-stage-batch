@@ -62,6 +62,33 @@ This resets HEAD to where you started, restores your original working tree,
 and removes session state.
 .B WARNING:
 This will undo any commits made during the session.
+.SS File-Level Operations
+.TP
+.B include \-\-file
+Stage all hunks from the current file.
+Advances to the next file after staging all hunks.
+.TP
+.B skip \-\-file
+Skip all hunks from the current file.
+All hunks from the file are marked as skipped and can be revisited with
+.BR again .
+.TP
+.B discard \-\-file
+Discard the entire current file from the working tree.
+.B WARNING:
+This permanently removes the entire file from your working tree.
+.SS Permanent File Exclusion
+.TP
+.B block-file \fR[\fIPATH\fR]
+Permanently exclude a file from all future sessions.
+Adds the file to .gitignore, marks it as blocked in session state,
+and skips all its hunks automatically.
+When run without a current hunk, you can specify the file path.
+.TP
+.B unblock-file \fIPATH\fR
+Remove a file from the blocked list.
+Removes the file from .gitignore and the blocked files list,
+allowing its hunks to be processed again.
 .SH AUTHOR
 Written by Ray Strode.
 .SH REPORTING BUGS

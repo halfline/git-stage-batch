@@ -56,3 +56,18 @@ def get_state_directory_path() -> Path:
 
 def ensure_state_directory_exists() -> None:
     get_state_directory_path().mkdir(parents=True, exist_ok=True)
+
+
+def get_context_lines_file_path() -> Path:
+    return get_state_directory_path() / "context-lines"
+
+
+def get_context_lines() -> int:
+    """Get stored context lines value, defaulting to 3."""
+    context_file = get_context_lines_file_path()
+    if context_file.exists():
+        try:
+            return int(read_text_file_contents(context_file).strip())
+        except ValueError:
+            return 3
+    return 3

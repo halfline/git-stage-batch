@@ -53,7 +53,14 @@ def main() -> None:
         "start",
         help=_("Start a new batch staging session"),
     )
-    parser_start.set_defaults(func=lambda _: commands.command_start())
+    parser_start.add_argument(
+        "-U", "--unified",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Number of context lines in diff output (default: 3)",
+    )
+    parser_start.set_defaults(func=lambda args: commands.command_start(unified=args.unified))
 
     # stop - Stop the current session and clear state
     parser_stop = subparsers.add_parser(

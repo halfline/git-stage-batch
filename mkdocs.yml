@@ -62,6 +62,8 @@ nav:
   - Home: index.md
   - Getting Started:
     - Installation: installation.md
+  - Reference:
+    - Commands: commands.md
 
 plugins:
   - search

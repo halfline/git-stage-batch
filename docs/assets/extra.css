@@ -1,0 +1,534 @@
+/* Hacker/Cyberpunk Theme Overrides */
+
+:root {
+  --hacker-green: #00ff41;
+  --hacker-cyan: #00f0ff;
+  --hacker-purple: #bd00ff;
+  --hacker-pink: #ff006e;
+  --terminal-bg: #0d1117;
+  --terminal-fg: #00ff41;
+  --accent-bright: #00f0ff;
+  --accent-mid: rgba(0, 240, 255, 0.7);
+  --accent-dim: rgba(0, 240, 255, 0.3);
+}
+
+/* Dark mode enhancements */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0d1117;
+  --md-primary-fg-color--light: #1a1f2e;
+  --md-primary-fg-color--dark: #000000;
+  --md-accent-fg-color: var(--hacker-cyan);
+  --md-typeset-a-color: var(--hacker-cyan);
+  --md-typeset-code-color: var(--hacker-green);
+}
+
+/* Terminal-style code blocks */
+.md-typeset .highlight pre {
+  background: rgba(0, 0, 0, 0.6) !important;
+  border: 2px solid var(--hacker-cyan) !important;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.3) !important;
+  font-family: 'Fira Code', 'Source Code Pro', 'Roboto Mono', monospace;
+  position: relative;
+  padding: 1.2em 1em !important;
+  border-radius: 8px;
+  margin: 1.5em 0 !important;
+}
+
+.md-typeset pre > code {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Command examples container - same border treatment */
+.md-typeset h3 + .highlight pre,
+.md-typeset h2 + .highlight pre {
+  background: rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Animated cursor removed - was overlapping with copy button */
+
+/* Glowing effect on links and buttons */
+.md-button,
+.md-typeset a {
+  text-shadow: 0 0 5px currentColor;
+  transition: all 0.3s ease;
+}
+
+.md-button:hover,
+.md-typeset a:hover {
+  text-shadow: 0 0 10px currentColor;
+  transform: translateY(-1px);
+}
+
+/* Scanlines effect (subtle) */
+.md-container::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.05),
+    rgba(0, 0, 0, 0.05) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0.3;
+}
+
+/* Glitch effect on title */
+.md-header__title {
+  position: relative;
+  animation: glitch 5s infinite;
+}
+
+@keyframes glitch {
+  0%, 92%, 100% {
+    text-shadow: none;
+  }
+  93% {
+    text-shadow: 2px 0 var(--hacker-cyan), -2px 0 var(--hacker-pink);
+  }
+  94% {
+    text-shadow: -2px 0 var(--hacker-cyan), 2px 0 var(--hacker-pink);
+  }
+  95% {
+    text-shadow: 1px 0 var(--hacker-cyan), -1px 0 var(--hacker-pink);
+  }
+}
+
+/* Matrix-style grid background */
+.md-main {
+  background-image:
+    linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+
+/* Neon border on cards - refined in hero section below */
+
+/* Terminal window style for demo image */
+img[alt*="demo"] {
+  border: 2px solid var(--hacker-cyan);
+  border-radius: 8px;
+  box-shadow:
+    0 0 20px rgba(0, 240, 255, 0.3),
+    inset 0 0 20px rgba(0, 240, 255, 0.1);
+}
+
+/* Code inline elements */
+.md-typeset code {
+  background: var(--terminal-bg);
+  color: var(--hacker-green);
+  border: 1px solid rgba(0, 255, 65, 0.3);
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  font-family: 'Fira Code', 'Source Code Pro', 'Roboto Mono', monospace;
+}
+
+/* Emoji with glow */
+.twemoji {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+/* Search bar terminal style - quieter until focused */
+.md-search__input {
+  background: rgba(13, 17, 23, 0.5);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  color: var(--hacker-green);
+  transition: all 0.3s ease;
+}
+
+.md-search__input::placeholder {
+  color: rgba(0, 255, 65, 0.3);
+}
+
+.md-search__input:focus {
+  background: var(--terminal-bg);
+  border-color: var(--hacker-cyan);
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+}
+
+.md-search__input:focus::placeholder {
+  color: rgba(0, 255, 65, 0.5);
+}
+
+/* Table styling */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--hacker-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--terminal-bg);
+  color: var(--hacker-cyan);
+  border-bottom: 2px solid var(--hacker-cyan);
+}
+
+/* Admonitions with neon styling */
+.md-typeset .admonition {
+  border-left: 3px solid var(--hacker-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+}
+
+/* Navigation tabs with glow */
+.md-tabs {
+  background: var(--terminal-bg);
+  border-bottom: 1px solid var(--hacker-cyan);
+}
+
+.md-tabs__link {
+  transition: all 0.3s ease;
+}
+
+.md-tabs__link:hover {
+  text-shadow: 0 0 10px var(--hacker-cyan);
+}
+
+/* Footer with terminal style */
+.md-footer {
+  border-top: 2px solid rgba(0, 240, 255, 0.3);
+  background: var(--terminal-bg);
+  margin-top: 4em;
+  padding-top: 2em;
+  box-shadow: 0 -10px 30px rgba(0, 240, 255, 0.05);
+}
+
+/* Syntax highlighting overrides for terminal look */
+.highlight .c1,
+.highlight .c,
+.highlight .cm {
+  color: #6a9955 !important; /* Comments in greenish */
+}
+
+.highlight .k,
+.highlight .kd,
+.highlight .kn {
+  color: var(--hacker-cyan) !important; /* Keywords in cyan */
+}
+
+.highlight .s,
+.highlight .s1,
+.highlight .s2 {
+  color: var(--hacker-pink) !important; /* Strings in pink */
+}
+
+.highlight .nf,
+.highlight .nb {
+  color: var(--hacker-green) !important; /* Functions in green */
+}
+
+/* Header with subtle glow */
+.md-header {
+  background: var(--terminal-bg);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+}
+
+/* Scroll progress indicator */
+.md-progress {
+  background: linear-gradient(
+    90deg,
+    var(--hacker-green) 0%,
+    var(--hacker-cyan) 50%,
+    var(--hacker-purple) 100%
+  );
+  box-shadow: 0 0 10px var(--hacker-cyan);
+}
+
+/* Feature icons - subtle, no animation */
+
+/* Custom scrollbar (for webkit browsers) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--terminal-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--hacker-cyan);
+  border-radius: 5px;
+  box-shadow: 0 0 5px var(--hacker-cyan);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--hacker-green);
+  box-shadow: 0 0 10px var(--hacker-green);
+}
+
+/* Disable sidebar transitions for instant hide/show */
+.md-sidebar--primary {
+  transition: none !important;
+}
+
+body.hide-primary-sidebar .md-sidebar--primary {
+  display: none !important;
+}
+
+/* Prevent GitHub repo name from being ellipsized */
+.md-header__source {
+  max-width: 14rem;
+  margin-right: 0.4rem;
+}
+
+.md-source__repository {
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+/* Hero composition refinements */
+.hero-wrapper {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.2) 40%,
+    rgba(0, 0, 0, 0) 70%
+  );
+}
+
+.hero-tagline {
+  font-weight: 600 !important;
+  letter-spacing: -0.02em;
+}
+
+.hero-intro {
+  opacity: 0.9;
+}
+
+/* Primary CTA emphasis */
+.md-button--primary {
+  background: var(--hacker-cyan) !important;
+  border: none !important;
+  color: #000 !important;
+  font-weight: 600 !important;
+  text-shadow: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.md-button--primary:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.6) !important;
+  background: var(--hacker-green) !important;
+}
+
+/* Feature cards as designed objects */
+.md-typeset .grid.cards > ol > li,
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid > .card {
+  background: rgba(13, 17, 23, 0.8) !important;
+  border: 1.5px solid rgba(0, 240, 255, 0.25) !important;
+  box-shadow:
+    0 0 20px rgba(0, 240, 255, 0.12),
+    inset 0 1px 0 rgba(0, 240, 255, 0.15) !important;
+  transition: all 0.3s ease !important;
+  padding: 1.8em 1.5em !important;
+  border-radius: 6px !important;
+}
+
+.md-typeset .grid.cards > ol > li:hover,
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid > .card:hover {
+  background: rgba(13, 17, 23, 0.95) !important;
+  border-color: rgba(0, 240, 255, 0.5) !important;
+  box-shadow:
+    0 0 30px rgba(0, 240, 255, 0.25),
+    inset 0 1px 0 rgba(0, 240, 255, 0.25) !important;
+  transform: translateY(-4px) !important;
+}
+
+.md-typeset .grid.cards svg {
+  filter: drop-shadow(0 0 8px currentColor) !important;
+  margin-bottom: 0.5em !important;
+}
+
+.md-typeset .grid.cards hr {
+  margin: 0.8em 0 1em !important;
+  border-color: rgba(0, 240, 255, 0.15) !important;
+}
+
+.md-typeset .grid.cards p {
+  line-height: 1.6 !important;
+  opacity: 0.85 !important;
+}
+
+/* Example Workflow showcase treatment */
+.workflow-showcase {
+  position: relative;
+  margin: 2em 0;
+  padding: 2em;
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid var(--hacker-cyan);
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+}
+
+.workflow-showcase .highlight pre,
+.workflow-showcase pre {
+  margin: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.workflow-showcase pre > code {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Sharper typography hierarchy */
+.md-typeset h2 {
+  font-size: 2em;
+  font-weight: 700;
+  margin-top: 3em;
+  margin-bottom: 1em;
+  color: var(--accent-bright);
+  text-shadow: 0 0 12px var(--hacker-cyan);
+  letter-spacing: -0.02em;
+}
+
+.md-typeset h3 {
+  font-size: 1.35em;
+  font-weight: 600;
+  margin-top: 2.2em;
+  margin-bottom: 0.8em;
+  color: rgba(0, 240, 255, 0.9);
+}
+
+/* Dim body text slightly for better hierarchy */
+.md-typeset p {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Hide "Home" header on homepage */
+body.hide-primary-sidebar .md-content h1:first-of-type {
+  display: none;
+}
+
+/* Quieter TOC on all pages */
+.md-sidebar--secondary {
+  border-left: 1px solid rgba(0, 240, 255, 0.15);
+  padding-left: 1rem;
+}
+
+.md-nav--secondary .md-nav__title {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.md-nav--secondary .md-nav__link {
+  color: rgba(255, 255, 255, 0.35);
+  transition: color 0.2s ease;
+  font-size: 0.75rem;
+}
+
+.md-nav--secondary .md-nav__link--active,
+.md-nav--secondary .md-nav__link:hover {
+  color: var(--hacker-cyan);
+  text-shadow: 0 0 5px var(--hacker-cyan);
+}
+
+.md-nav--secondary .md-nav__link--active {
+  border-left: 2px solid var(--hacker-cyan);
+  padding-left: calc(0.6rem - 2px);
+}
+
+/* Terminal-style command blocks with hierarchical accent */
+.md-typeset pre code {
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+/* Prominent terminal prompts */
+.md-typeset pre code::before {
+  color: var(--accent-bright);
+}
+
+/* Better content density rhythm */
+.md-typeset > p {
+  margin-bottom: 1em;
+  line-height: 1.7;
+}
+
+.md-typeset > p + p {
+  margin-top: 0.8em;
+}
+
+/* Section breathing room */
+.md-typeset h2 + p {
+  font-size: 1.08em;
+  opacity: 0.95;
+  margin-bottom: 1.5em;
+}
+
+/* Visual separator for major sections */
+.section-separator {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.25) 50%, transparent);
+  margin: 3.5em auto;
+  max-width: 50%;
+}
+
+/* Demo section treatment */
+.md-typeset h2:has(+ p img[alt*="demo"]) {
+  margin-bottom: 1.5em;
+}
+
+/* Minimal and airy sections */
+.md-typeset .admonition {
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 3px solid var(--hacker-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.1);
+}
+
+/* Command snippets as product moments */
+.md-typeset code {
+  background: rgba(13, 17, 23, 0.8) !important;
+  border: 1px solid rgba(0, 255, 65, 0.2);
+  box-shadow: 0 0 3px rgba(0, 255, 65, 0.1);
+}
+
+/* Hierarchical accent brightness - reserve brightest for key moments */
+.md-typeset a.md-button {
+  color: var(--accent-mid);
+  border-color: var(--accent-mid);
+  background: transparent;
+}
+
+.md-typeset a.md-button:hover {
+  color: var(--hacker-green);
+  border-color: var(--hacker-green);
+  background: transparent;
+}
+
+/* Active nav states with brightest accent */
+.md-tabs__link--active {
+  color: var(--accent-bright) !important;
+  text-shadow: 0 0 10px var(--accent-bright) !important;
+}
+
+/* Responsive: reduce effects on mobile */
+@media screen and (max-width: 768px) {
+  .md-container::before {
+    opacity: 0.1;
+  }
+
+  .hero-tagline {
+    font-size: 1.3em !important;
+  }
+
+  .workflow-showcase {
+    padding: 1em;
+  }
+}

@@ -13,7 +13,55 @@ and letting you include (stage), skip, or discard each hunk.
 State is maintained in \fB.git/git-stage-batch/\fR so you can stop and continue
 later, or run git commands between operations.
 .SH COMMANDS
-Documentation for individual commands will be added as features are implemented.
+.SS Core Operations
+.TP
+.B start
+Find and display the first unprocessed hunk; cache as "selected".
+Resets state if a session is already in progress.
+.RS
+.TP
+.B \-U \fIN\fR, \-\-unified=\fIN\fR
+Number of context lines in diff output (default: 3).
+.RE
+.TP
+.B show
+Reprint the cached "selected" hunk.
+Exit codes: 0 if hunk exists, 1 if no hunk.
+.TP
+.B include
+Stage the cached hunk (entire hunk) to the index; advance to next.
+When a session is active, running
+.B git-stage-batch
+with no command defaults to
+.BR include .
+.TP
+.B skip
+Mark the cached hunk as skipped; advance to next.
+Skipped hunks can be revisited with
+.BR again .
+.TP
+.B discard
+Reverse-apply the cached hunk to the working tree; advance to next.
+.B WARNING:
+This permanently removes changes from your working tree.
+.TP
+.B status
+Show session progress and remaining hunks.
+.SS Session Management
+.TP
+.B again
+Clear the blocklist and restart iteration through all hunks.
+Useful for making another pass after committing some changes.
+.TP
+.B stop
+End the selected session and remove all state.
+.TP
+.B abort
+Undo all changes made during the session, including commits and discards.
+This resets HEAD to where you started, restores your original working tree,
+and removes session state.
+.B WARNING:
+This will undo any commits made during the session.
 .SH AUTHOR
 Written by Ray Strode.
 .SH REPORTING BUGS

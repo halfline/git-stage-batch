@@ -250,6 +250,19 @@ def command_start(unified: int = 3) -> None:
     # Initialize abort state for new session
     initialize_abort_state()
 
+    # Initialize iteration counter
+    write_text_file_contents(get_iteration_count_file_path(), "1")
+
+    # Save current HEAD for abort functionality
+    head_result = run_git_command(["rev-parse", "HEAD"])
+    write_text_file_contents(get_abort_head_file_path(), head_result.stdout.strip())
+
+    # Create stash of tracked file changes for abort functionality
+    # Note: git stash create (without -u) only captures changes to tracked files
+    stash_result = run_git_command(["stash", "create"], check=False)
+    if stash_result.returncode == 0 and stash_result.stdout.strip():
+        write_text_file_contents(get_abort_stash_file_path(), stash_result.stdout.strip())
+
     clear_current_hunk_state_files()
     if not find_and_cache_next_unblocked_hunk():
         sys.exit(2)
@@ -273,16 +286,48 @@ def command_stop() -> None:
 def command_again() -> None:
     """Clear state and start a fresh pass through all hunks."""
     require_git_repository()
+
     # Reset auto-added files before clearing state
     auto_added_path = get_auto_added_files_file_path()
     if auto_added_path.exists():
         auto_added = read_file_paths_file(auto_added_path)
         for file_path in auto_added:
             run_git_command(["reset", "--", file_path], check=False)
+
+    # Save persistent state before clearing
+    context_lines = get_context_lines()
+    next_iteration = get_iteration_count() + 1
+
+    blocked_files = []
+    if get_blocked_files_file_path().exists():
+        blocked_files = read_file_paths_file(get_blocked_files_file_path())
+
+    abort_head = ""
+    if get_abort_head_file_path().exists():
+        abort_head = read_text_file_contents(get_abort_head_file_path())
+
+    abort_stash = ""
+    if get_abort_stash_file_path().exists():
+        abort_stash = read_text_file_contents(get_abort_stash_file_path())
+
+    # Clear all state
     state_dir = get_state_directory_path()
     if state_dir.exists():
         shutil.rmtree(state_dir)
     ensure_state_directory_exists()
+
+    # Restore persistent state
+    write_text_file_contents(get_context_lines_file_path(), str(context_lines))
+    write_text_file_contents(get_iteration_count_file_path(), str(next_iteration))
+
+    if blocked_files:
+        write_file_paths_file(get_blocked_files_file_path(), blocked_files)
+
+    if abort_head:
+        write_text_file_contents(get_abort_head_file_path(), abort_head)
+
+    if abort_stash:
+        write_text_file_contents(get_abort_stash_file_path(), abort_stash)
 
 
 def clear_current_hunk_state_files() -> None:
@@ -581,6 +626,10 @@ def command_include() -> None:
     # Add hash to blocklist
     append_lines_to_file(blocklist_path, [current_hash])
 
+    # Record hunk as included for progress tracking
+    hunk_hash = read_text_file_contents(get_current_hunk_hash_file_path()).strip()
+    record_hunk_included(hunk_hash)
+
     print(_("✓ Hunk staged from {}").format(current_patch.new_path))
 
 
@@ -694,13 +743,25 @@ def command_skip() -> None:
         print(_("No more hunks to process."))
         return
 
-    # Save current hunk info
+    # Cache this hunk as current
     patch_text = current_patch.to_patch_text()
     write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
     write_text_file_contents(get_current_hunk_hash_file_path(), current_hash)
 
+    # Cache CurrentLines state for progress tracking
+    current_lines = build_current_lines_from_patch_text(patch_text)
+    write_text_file_contents(get_current_lines_json_file_path(),
+                            json.dumps(convert_current_lines_to_serializable_dict(current_lines),
+                                      ensure_ascii=False, indent=0))
+
+    # Save snapshots for staleness detection
+    write_snapshots_for_current_file_path(current_lines.path)
+
     # Add hash to blocklist (without staging)
     append_lines_to_file(blocklist_path, [current_hash])
+
+    # Record hunk as skipped for progress tracking
+    record_hunk_skipped(current_lines, current_hash)
 
     print(_("✓ Hunk skipped from {}").format(current_patch.new_path))
 
@@ -893,6 +954,10 @@ def command_discard() -> None:
 
     # Add hash to blocklist
     append_lines_to_file(blocklist_path, [current_hash])
+
+    # Record hunk as discarded for progress tracking
+    hunk_hash = read_text_file_contents(get_current_hunk_hash_file_path()).strip()
+    record_hunk_discarded(hunk_hash)
 
     print(_("✓ Hunk discarded from {}").format(current_patch.new_path))
 

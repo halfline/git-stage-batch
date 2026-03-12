@@ -280,6 +280,57 @@ Line-level discard allows surgical removal of debug code, experimental changes, 
 
 ---
 
+## Fixup Suggestions
+
+### `suggest-fixup`
+
+Suggest which commit the current hunk should be fixed up to.
+
+```
+❯ git-stage-batch suggest-fixup
+```
+
+Finds commits that previously modified the lines in the current hunk and suggests them as fixup targets. Iteratively shows candidates starting from most recent, progressing backwards with each invocation.
+
+**Options:**
+- `--boundary REF`: Lower bound for commit search (default: `@{upstream}`)
+- `--reset`: Start over from the most recent candidate
+- `--abort`: Clear state and exit
+- `--last`: Re-show the last candidate without advancing
+
+**Example workflow:**
+```bash
+# Make changes to existing code
+❯ git-stage-batch start
+
+# Find which commit to fixup
+❯ git-stage-batch suggest-fixup
+Candidate 1: a1b2c3d Fix authentication logic
+
+# Not the right commit, try next
+❯ git-stage-batch suggest-fixup
+Candidate 2: e4f5g6h Add user validation
+
+# This is the one! Create fixup commit
+❯ git commit --fixup=e4f5g6h
+```
+
+The command uses `git log -L` to find commits that touched the affected lines, making it easy to create fixup commits for amendment during interactive rebase.
+
+---
+
+### `suggest-fixup --line LINE_IDS`
+
+Suggest fixup target for specific lines only.
+
+```
+❯ git-stage-batch suggest-fixup --line 1,3
+```
+
+Useful when a hunk contains changes to multiple unrelated areas. You can get separate fixup suggestions for different line ranges within the same hunk.
+
+---
+
 ## Workflow Example
 
 ```bash

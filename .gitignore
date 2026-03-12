@@ -47,3 +47,9 @@ htmlcov/
 .pytype/
 .pyre/
 .claude
+
+# Translation files
+*.mo
+*.pot
+locale/
+po/POTFILES.in

@@ -53,3 +53,6 @@ htmlcov/
 *.pot
 locale/
 po/POTFILES.in
+
+# Generated documentation assets
+docs/assets/demo.gif

@@ -857,7 +857,21 @@ def command_status() -> None:
     print(_("Processed: {} hunks").format(processed_count))
     print(_("Remaining: {} hunks").format(remaining_hunks))
 
-    if current_file:
+    # Check for cached current hunk with line details
+    if get_current_hunk_patch_file_path().exists() and get_current_lines_json_file_path().exists():
+        try:
+            current_lines = load_current_lines_from_state()
+            changed_ids = current_lines.changed_line_ids()
+            if changed_ids:
+                ids_str = ",".join(str(id) for id in changed_ids)
+                print(_("Current hunk: {}:{} [#{}]").format(current_lines.path, current_lines.header.old_start, ids_str))
+            else:
+                print(_("Current hunk: {}:{}").format(current_lines.path, current_lines.header.old_start))
+        except (json.JSONDecodeError, KeyError):
+            # Fall back to basic file display if state is corrupted
+            if current_file:
+                print(_("Current file: {}").format(current_file))
+    elif current_file:
         print(_("Current file: {}").format(current_file))
     elif total_hunks == 0:
         print(_("No changes in working tree"))

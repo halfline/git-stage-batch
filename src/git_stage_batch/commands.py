@@ -953,8 +953,32 @@ def command_discard_file() -> None:
     advance_to_next_hunk()
 
 
+def estimate_remaining_hunks() -> int:
+    """Estimate number of remaining unprocessed hunks."""
+    # Filter out blocked hunks
+    blocklist_content = read_text_file_contents(get_block_list_file_path())
+    blocked_hashes = set(blocklist_content.splitlines()) if blocklist_content else set()
+
+    # Filter out hunks from blocked files
+    blocked_files = read_file_paths_file(get_blocked_files_file_path())
+
+    remaining = 0
+    try:
+        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+            hunk_hash = compute_stable_hunk_hash(patch.to_patch_text())
+            file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
+            file_path = file_path.removeprefix("a/").removeprefix("b/")
+
+            if hunk_hash not in blocked_hashes and file_path not in blocked_files:
+                remaining += 1
+    except subprocess.CalledProcessError:
+        return 0
+
+    return remaining
+
+
 def command_status() -> None:
-    """Show current session status."""
+    """Show session progress and current state."""
     require_git_repository()
 
     # Check if session is active
@@ -967,50 +991,72 @@ def command_status() -> None:
     # Auto-add untracked files
     auto_add_untracked_files()
 
-    # Load blocklist
-    blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines()) if blocklist_text else set()
-    processed_count = len(blocked_hashes)
+    # Gather metrics
+    iteration = get_iteration_count()
 
-    # Count remaining hunks and find current file
-    remaining_hunks = 0
-    current_file = None
-    total_hunks = 0
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-        total_hunks += 1
-        patch_text = patch.to_patch_text()
-        patch_hash = compute_stable_hunk_hash(patch_text)
-        if patch_hash not in blocked_hashes:
-            if current_file is None:
-                current_file = patch.new_path
-            remaining_hunks += 1
+    # Count processed hunks this iteration
+    included_content = read_text_file_contents(get_included_hunks_file_path())
+    included_count = len([h for h in included_content.splitlines() if h.strip()])
 
-    # Display status
-    print(_("Session active"))
-    print(_("Processed: {} hunks").format(processed_count))
-    print(_("Remaining: {} hunks").format(remaining_hunks))
+    discarded_content = read_text_file_contents(get_discarded_hunks_file_path())
+    discarded_count = len([h for h in discarded_content.splitlines() if h.strip()])
 
-    # Check for cached current hunk with line details
-    if get_current_hunk_patch_file_path().exists() and get_current_lines_json_file_path().exists():
-        try:
-            current_lines = load_current_lines_from_state()
-            changed_ids = current_lines.changed_line_ids()
-            if changed_ids:
-                ids_str = ",".join(str(id) for id in changed_ids)
-                print(_("Current hunk: {}:{} [#{}]").format(current_lines.path, current_lines.header.old_start, ids_str))
+    # Parse skipped hunks JSONL
+    skipped_hunks = []
+    jsonl_path = get_skipped_hunks_jsonl_file_path()
+    if jsonl_path.exists():
+        for line in read_text_file_contents(jsonl_path).splitlines():
+            if line.strip():
+                try:
+                    skipped_hunks.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass  # Skip malformed lines
+
+    # Check for current hunk
+    has_current = get_current_hunk_patch_file_path().exists()
+    current_summary = None
+    if has_current:
+        if get_current_lines_json_file_path().exists():
+            data = json.loads(read_text_file_contents(get_current_lines_json_file_path()))
+            file_path = data["path"]
+            if _snapshots_are_stale(file_path):
+                clear_current_hunk_state_files()
+                has_current = False
             else:
-                print(_("Current hunk: {}:{}").format(current_lines.path, current_lines.header.old_start))
-        except (json.JSONDecodeError, KeyError):
-            # Fall back to basic file display if state is corrupted
-            if current_file:
-                print(_("Current file: {}").format(current_file))
-    elif current_file:
-        print(_("Current file: {}").format(current_file))
-    elif total_hunks == 0:
-        print(_("No changes in working tree"))
-    else:
-        print(_("All hunks processed"))
+                current_lines = load_current_lines_from_state()
+                current_summary = {
+                    "file": current_lines.path,
+                    "line": current_lines.header.old_start,
+                    "ids": current_lines.changed_line_ids()
+                }
+
+    # Estimate remaining hunks
+    remaining_estimate = estimate_remaining_hunks()
+
+    # Human-readable progress report
+    status = _("in progress") if has_current else _("complete")
+    print(_("Session: iteration {} ({})").format(iteration, status))
+    print()
+
+    if current_summary:
+        ids_str = format_id_range(current_summary["ids"])
+        print(_("Current hunk:"))
+        print(_("  {}:{}").format(current_summary['file'], current_summary['line']))
+        print(_("  [#{}]").format(ids_str))
+        print()
+
+    print(_("Progress this iteration:"))
+    print(_("  Included:  {} hunks").format(included_count))
+    print(_("  Skipped:   {} hunks").format(len(skipped_hunks)))
+    print(_("  Discarded: {} hunks").format(discarded_count))
+    print(_("  Remaining: ~{} hunks").format(remaining_estimate))
+
+    if skipped_hunks:
+        print()
+        print(_("Skipped hunks:"))
+        for hunk in skipped_hunks:
+            ids_str = format_id_range(hunk["ids"])
+            print(_("  {}:{} [#{}]").format(hunk['file'], hunk['line'], ids_str))
 
 
 def command_abort() -> None:

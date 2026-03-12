@@ -248,7 +248,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["st"],
         help=_("Show current session status"),
     )
-    parser_status.set_defaults(func=lambda _: commands.command_status())
+    parser_status.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Output in machine-readable JSON format"),
+    )
+    parser_status.set_defaults(func=lambda args: commands.command_status(porcelain=args.porcelain))
 
     # suggest-fixup - Suggest commits to fixup based on current hunk or specific lines
     parser_suggest_fixup = subparsers.add_parser(

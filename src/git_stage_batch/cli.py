@@ -77,7 +77,21 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "start",
         help=_("Start a new batch staging session"),
     )
-    parser_start.set_defaults(func=lambda _: commands.command_start())
+    parser_start.add_argument(
+        "-U", "--unified",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Number of context lines in diff output (default: 3)",
+    )
+    def start_cli(args):
+        commands.command_start(unified=args.unified)
+        # Display the cached hunk
+        current_lines = commands.load_current_lines_from_state()
+        if current_lines:
+            commands.print_annotated_hunk_with_aligned_gutter(current_lines)
+
+    parser_start.set_defaults(func=start_cli)
 
     # stop - Stop the current session and clear state
     parser_stop = subparsers.add_parser(

@@ -106,6 +106,29 @@ When run without a current hunk, you can specify the file path.
 Remove a file from the blocked list.
 Removes the file from .gitignore and the blocked files list,
 allowing its hunks to be processed again.
+.SS Fixup Suggestions
+.TP
+.B suggest-fixup \fR[\fIOPTIONS\fR] [\fIBOUNDARY\fR]
+Suggest which commit the current hunk should be fixed up to.
+Finds commits that previously modified the lines in the current hunk
+and suggests them as fixup targets. Iteratively shows candidates starting
+from most recent, progressing backwards with each invocation.
+Uses git log -L to find commits that touched the affected lines.
+.RS
+.TP
+.B \-\-line \fILINE_IDS\fR
+Suggest fixup target for specific lines only.
+Useful when a hunk contains changes to multiple unrelated areas.
+.TP
+.B \-\-reset
+Start over from the most recent candidate.
+.TP
+.B \-\-abort
+Clear state and exit without showing candidates.
+.TP
+.B \-\-last
+Re-show the last candidate without advancing.
+.RE
 .SH AUTHOR
 Written by Ray Strode.
 .SH REPORTING BUGS

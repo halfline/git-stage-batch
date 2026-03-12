@@ -168,6 +168,18 @@ def get_processed_skip_ids_file_path() -> Path:
     return get_state_directory_path() / "processed.skip"
 
 
+def get_current_lines_json_file_path() -> Path:
+    return get_state_directory_path() / "current-lines.json"
+
+
+def get_index_snapshot_file_path() -> Path:
+    return get_state_directory_path() / "index-snapshot"
+
+
+def get_working_tree_snapshot_file_path() -> Path:
+    return get_state_directory_path() / "working-tree-snapshot"
+
+
 def get_gitignore_path() -> Path:
     return get_git_repository_root_path() / ".gitignore"
 

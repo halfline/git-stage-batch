@@ -26,3 +26,13 @@ configure_file(
   install_mode: 'rwxr-xr-x',
   install_tag: 'runtime',
 )
+
+# Generate and install man page (skip for wheels, include for system install)
+manpage = configure_file(
+  input: 'docs/git-stage-batch.1.in',
+  output: 'git-stage-batch.1',
+  configuration: {'VERSION': meson.project_version()},
+)
+if not get_option('python_wheel')
+  install_man(manpage)
+endif

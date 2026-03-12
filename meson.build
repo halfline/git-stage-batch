@@ -5,5 +5,7 @@ project('git-stage-batch',
 )
 
 python = import('python').find_installation('python3', pure: false)
+i18n = import('i18n')
 
 subdir('src/git_stage_batch')
+subdir('po')

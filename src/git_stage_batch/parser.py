@@ -7,7 +7,15 @@ from typing import Iterator, Iterable
 
 from .i18n import _
 from .models import CurrentLines, HunkHeader, LineEntry, SingleHunkPatch
-from .state import exit_with_error
+from .state import (
+    exit_with_error,
+    get_git_repository_root_path,
+    get_index_snapshot_file_path,
+    get_working_tree_snapshot_file_path,
+    read_text_file_contents,
+    run_git_command,
+    write_text_file_contents,
+)
 
 
 HUNK_HEADER_PATTERN = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
@@ -266,3 +274,20 @@ def build_current_lines_from_patch_text(patch_text: str) -> CurrentLines:
             new_line_number += 1
 
     return CurrentLines(path=path_value, header=hunk_header, lines=line_entries)
+
+
+def write_snapshots_for_current_file_path(file_path: str) -> None:
+    """Write snapshots of the file from both the index and working tree."""
+    try:
+        index_version = run_git_command(["show", f":{file_path}"], check=True).stdout
+    except Exception:
+        index_version = ""
+    write_text_file_contents(get_index_snapshot_file_path(), index_version)
+
+    repo_root = get_git_repository_root_path()
+    file_full_path = repo_root / file_path
+    if file_full_path.exists():
+        working_tree_version = read_text_file_contents(file_full_path)
+    else:
+        working_tree_version = ""
+    write_text_file_contents(get_working_tree_snapshot_file_path(), working_tree_version)

@@ -1,0 +1,27 @@
+.TH GIT-STAGE-BATCH 1 "March 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch \- hunk-by-hunk and line-by-line staging for git
+.SH SYNOPSIS
+.B git-stage-batch
+[\fICOMMAND\fR [\fIARGS\fR...]]
+.SH DESCRIPTION
+.B git-stage-batch
+provides a workflow for staging changes to git in a structured, reviewable way.
+The tool works by finding hunks in your diff, presenting them one at a time,
+and letting you include (stage), skip, or discard each hunk.
+.PP
+State is maintained in \fB.git/git-stage-batch/\fR so you can stop and continue
+later, or run git commands between operations.
+.SH COMMANDS
+Documentation for individual commands will be added as features are implemented.
+.SH AUTHOR
+Written by Ray Strode.
+.SH REPORTING BUGS
+Report bugs at: https://github.com/halfline/git-stage-batch/issues
+.SH COPYRIGHT
+Copyright \(co 2025-2026 Ray Strode.
+.br
+License: MIT
+.SH SEE ALSO
+.BR git (1),
+.BR git-add (1)

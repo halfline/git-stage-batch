@@ -209,7 +209,7 @@ class TestCommandShow:
         command_show()
 
         captured = capsys.readouterr()
-        assert "No more hunks to process" in captured.out
+        assert "No changes to show" in captured.out
 
     def test_show_only_first_hunk(self, temp_git_repo, capsys):
         """Test that show only displays the first hunk when multiple exist."""
@@ -269,7 +269,7 @@ class TestCommandShow:
         # Show should indicate no more hunks
         command_show()
         captured = capsys.readouterr()
-        assert "No more hunks to process" in captured.out
+        assert "No changes to show" in captured.out
 
 
 class TestCommandInclude:
@@ -301,7 +301,7 @@ class TestCommandInclude:
         command_include()
 
         captured = capsys.readouterr()
-        assert "No more hunks to process" in captured.out
+        assert "No changes to stage" in captured.out
 
     def test_include_multiple_hunks(self, temp_git_repo, capsys):
         """Test including multiple hunks sequentially."""
@@ -351,7 +351,7 @@ class TestCommandInclude:
         # Try to include again - should say no more hunks because hunk was staged
         command_include()
         captured = capsys.readouterr()
-        assert "No more hunks to process" in captured.out
+        assert "No changes to stage" in captured.out
 
 
 class TestCommandSkip:
@@ -393,7 +393,7 @@ class TestCommandSkip:
         command_skip()
 
         captured = capsys.readouterr()
-        assert "No more hunks to process" in captured.out
+        assert "No changes to process." in captured.out
 
     def test_skip_then_include_next(self, temp_git_repo, capsys):
         """Test skipping one hunk then including the next."""

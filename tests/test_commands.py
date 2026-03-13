@@ -1032,3 +1032,68 @@ class TestCommandSkipFile:
         assert "file1.txt" not in result.stdout
 
 
+
+
+class TestHunkCachingInfrastructure:
+    """Tests for hunk caching and staleness detection."""
+
+    def test_clear_current_hunk_state_files(self, temp_git_repo):
+        """Test clearing hunk state files."""
+        from git_stage_batch.commands import clear_current_hunk_state_files
+        from git_stage_batch.state import (
+            get_current_hunk_patch_file_path,
+            get_current_hunk_hash_file_path,
+            get_current_lines_json_file_path,
+            write_text_file_contents,
+        )
+        
+        # Create some state files
+        write_text_file_contents(get_current_hunk_patch_file_path(), "patch")
+        write_text_file_contents(get_current_hunk_hash_file_path(), "hash")
+        write_text_file_contents(get_current_lines_json_file_path(), "{}")
+        
+        # Clear them
+        clear_current_hunk_state_files()
+        
+        # Verify they're gone
+        assert not get_current_hunk_patch_file_path().exists()
+        assert not get_current_hunk_hash_file_path().exists()
+        assert not get_current_lines_json_file_path().exists()
+
+    def test_find_and_cache_next_unblocked_hunk(self, temp_git_repo):
+        """Test finding and caching the next unblocked hunk."""
+        from git_stage_batch.commands import (
+            command_start,
+            find_and_cache_next_unblocked_hunk,
+        )
+        from git_stage_batch.state import (
+            get_current_hunk_patch_file_path,
+            get_current_hunk_hash_file_path,
+        )
+        
+        # Modify README to create a hunk
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+        
+        # Initialize session
+        from git_stage_batch.state import ensure_state_directory_exists
+        ensure_state_directory_exists()
+        
+        # Find and cache hunk
+        result = find_and_cache_next_unblocked_hunk()
+        
+        assert result is True
+        assert get_current_hunk_patch_file_path().exists()
+        assert get_current_hunk_hash_file_path().exists()
+
+    def test_find_and_cache_next_unblocked_hunk_no_hunks(self, temp_git_repo):
+        """Test finding hunk when none exist."""
+        from git_stage_batch.commands import find_and_cache_next_unblocked_hunk
+        from git_stage_batch.state import ensure_state_directory_exists
+        
+        ensure_state_directory_exists()
+        
+        # No changes, should return False
+        result = find_and_cache_next_unblocked_hunk()
+        
+        assert result is False

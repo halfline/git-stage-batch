@@ -92,6 +92,29 @@ def snapshot_file_if_untracked(file_path: str) -> None:
     append_file_path_to_file(get_abort_snapshot_list_file_path(), file_path)
 
 
+def auto_add_untracked_files() -> None:
+    """Automatically run git add -N on untracked files (except blocked ones)."""
+    # Get list of untracked files
+    result = run_git_command(["ls-files", "--others", "--exclude-standard"], check=False)
+    if result.returncode != 0:
+        return
+
+    untracked_files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not untracked_files:
+        return
+
+    # Get already auto-added files to avoid redundant git add -N
+    auto_added_path = get_auto_added_files_file_path()
+    auto_added_files = set(read_file_paths_file(auto_added_path))
+
+    # Add untracked files that haven't been auto-added yet
+    for file_path in untracked_files:
+        if file_path not in auto_added_files:
+            result = run_git_command(["add", "-N", file_path], check=False)
+            if result.returncode == 0:
+                append_file_path_to_file(auto_added_path, file_path)
+
+
 def command_start(unified: int = 3) -> None:
     """Start a new batch staging session."""
     require_git_repository()
@@ -107,6 +130,12 @@ def command_start(unified: int = 3) -> None:
 def command_stop() -> None:
     """Stop the current batch staging session."""
     require_git_repository()
+    # Reset auto-added files before clearing state
+    auto_added_path = get_auto_added_files_file_path()
+    if auto_added_path.exists():
+        auto_added = read_file_paths_file(auto_added_path)
+        for file_path in auto_added:
+            run_git_command(["reset", "--", file_path], check=False)
     state_dir = get_state_directory_path()
     if state_dir.exists():
         shutil.rmtree(state_dir)
@@ -116,6 +145,12 @@ def command_stop() -> None:
 def command_again() -> None:
     """Clear state and start a fresh pass through all hunks."""
     require_git_repository()
+    # Reset auto-added files before clearing state
+    auto_added_path = get_auto_added_files_file_path()
+    if auto_added_path.exists():
+        auto_added = read_file_paths_file(auto_added_path)
+        for file_path in auto_added:
+            run_git_command(["reset", "--", file_path], check=False)
     state_dir = get_state_directory_path()
     if state_dir.exists():
         shutil.rmtree(state_dir)
@@ -126,6 +161,9 @@ def command_show() -> None:
     """Show the first unprocessed hunk."""
     require_git_repository()
     ensure_state_directory_exists()
+
+    # Auto-add untracked files
+    auto_add_untracked_files()
 
     # Get the current diff
     result = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])
@@ -160,6 +198,9 @@ def command_include() -> None:
     """Include (stage) the current hunk."""
     require_git_repository()
     ensure_state_directory_exists()
+
+    # Auto-add untracked files
+    auto_add_untracked_files()
 
     # Get the current diff
     result = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])
@@ -220,6 +261,9 @@ def command_include_file() -> None:
     """Include (stage) all hunks from the current file."""
     require_git_repository()
     ensure_state_directory_exists()
+
+    # Auto-add untracked files
+    auto_add_untracked_files()
 
     # Get the current diff to determine target file
     result = run_git_command(["diff", "--no-color"])
@@ -289,6 +333,9 @@ def command_skip() -> None:
     require_git_repository()
     ensure_state_directory_exists()
 
+    # Auto-add untracked files
+    auto_add_untracked_files()
+
     # Get the current diff
     result = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])
     diff_text = result.stdout
@@ -335,6 +382,9 @@ def command_skip_file() -> None:
     """Skip all hunks from the current file."""
     require_git_repository()
     ensure_state_directory_exists()
+
+    # Auto-add untracked files
+    auto_add_untracked_files()
 
     # Get the current diff to determine target file
     result = run_git_command(["diff", "--no-color"])
@@ -403,6 +453,9 @@ def command_discard() -> None:
     """Discard the current hunk from the working tree."""
     require_git_repository()
     ensure_state_directory_exists()
+
+    # Auto-add untracked files
+    auto_add_untracked_files()
 
     # Get the current diff
     result = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])
@@ -479,6 +532,9 @@ def command_discard_file() -> None:
     require_git_repository()
     ensure_state_directory_exists()
 
+    # Auto-add untracked files
+    auto_add_untracked_files()
+
     # Get the current diff
     result = run_git_command(["diff", "--no-color"])
     diff_text = result.stdout
@@ -546,6 +602,9 @@ def command_status() -> None:
         print(_("No batch staging session in progress."))
         print(_("Run 'git-stage-batch start' to begin."))
         return
+
+    # Auto-add untracked files
+    auto_add_untracked_files()
 
     # Get the current diff
     result = run_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])

@@ -1032,3 +1032,176 @@ class TestCommandSkipFile:
         assert "file1.txt" not in result.stdout
 
 
+
+
+class TestHunkCachingInfrastructure:
+    """Tests for hunk caching and staleness detection."""
+
+    def test_clear_current_hunk_state_files(self, temp_git_repo):
+        """Test clearing hunk state files."""
+        from git_stage_batch.commands import clear_current_hunk_state_files
+        from git_stage_batch.state import (
+            get_current_hunk_patch_file_path,
+            get_current_hunk_hash_file_path,
+            get_current_lines_json_file_path,
+            write_text_file_contents,
+        )
+        
+        # Create some state files
+        write_text_file_contents(get_current_hunk_patch_file_path(), "patch")
+        write_text_file_contents(get_current_hunk_hash_file_path(), "hash")
+        write_text_file_contents(get_current_lines_json_file_path(), "{}")
+        
+        # Clear them
+        clear_current_hunk_state_files()
+        
+        # Verify they're gone
+        assert not get_current_hunk_patch_file_path().exists()
+        assert not get_current_hunk_hash_file_path().exists()
+        assert not get_current_lines_json_file_path().exists()
+
+    def test_find_and_cache_next_unblocked_hunk(self, temp_git_repo):
+        """Test finding and caching the next unblocked hunk."""
+        from git_stage_batch.commands import (
+            command_start,
+            find_and_cache_next_unblocked_hunk,
+        )
+        from git_stage_batch.state import (
+            get_current_hunk_patch_file_path,
+            get_current_hunk_hash_file_path,
+        )
+        
+        # Modify README to create a hunk
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+        
+        # Initialize session
+        from git_stage_batch.state import ensure_state_directory_exists
+        ensure_state_directory_exists()
+        
+        # Find and cache hunk
+        result = find_and_cache_next_unblocked_hunk()
+
+        assert result is not None
+        assert get_current_hunk_patch_file_path().exists()
+        assert get_current_hunk_hash_file_path().exists()
+
+    def test_find_and_cache_next_unblocked_hunk_no_hunks(self, temp_git_repo):
+        """Test finding hunk when none exist."""
+        from git_stage_batch.commands import find_and_cache_next_unblocked_hunk
+        from git_stage_batch.state import ensure_state_directory_exists
+        
+        ensure_state_directory_exists()
+
+        # No changes, should return None
+        result = find_and_cache_next_unblocked_hunk()
+
+        assert result is None
+
+    def test_require_current_hunk_and_check_stale_no_hunk(self, temp_git_repo):
+        """Test require_current_hunk_and_check_stale when no hunk is cached."""
+        from git_stage_batch.commands import require_current_hunk_and_check_stale
+        from git_stage_batch.state import CommandError, ensure_state_directory_exists
+
+        ensure_state_directory_exists()
+
+        # Should raise error when no hunk is cached
+        with pytest.raises(CommandError, match="No current hunk"):
+            require_current_hunk_and_check_stale()
+
+    def test_require_current_hunk_and_check_stale_valid_hunk(self, temp_git_repo):
+        """Test require_current_hunk_and_check_stale with valid cached hunk."""
+        from git_stage_batch.commands import (
+            find_and_cache_next_unblocked_hunk,
+            require_current_hunk_and_check_stale,
+        )
+        from git_stage_batch.state import ensure_state_directory_exists
+
+        # Modify README to create a hunk
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+
+        ensure_state_directory_exists()
+        find_and_cache_next_unblocked_hunk()
+
+        # Should not raise when hunk is valid
+        require_current_hunk_and_check_stale()
+
+    def test_require_current_hunk_and_check_stale_stale_hunk(self, temp_git_repo):
+        """Test require_current_hunk_and_check_stale with stale hunk."""
+        from git_stage_batch.commands import (
+            find_and_cache_next_unblocked_hunk,
+            require_current_hunk_and_check_stale,
+        )
+        from git_stage_batch.state import CommandError, ensure_state_directory_exists
+
+        # Modify README to create a hunk
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+
+        ensure_state_directory_exists()
+        find_and_cache_next_unblocked_hunk()
+
+        # Modify file to make cached hunk stale
+        readme.write_text("# Test\nDifferent modification\n")
+
+        # Should raise error about stale hunk
+        with pytest.raises(CommandError, match="stale"):
+            require_current_hunk_and_check_stale()
+
+    def test_recalculate_current_hunk_for_file(self, temp_git_repo):
+        """Test recalculating current hunk for a file."""
+        from git_stage_batch.commands import (
+            _recalculate_current_hunk_for_file,
+            find_and_cache_next_unblocked_hunk,
+        )
+        from git_stage_batch.state import (
+            ensure_state_directory_exists,
+            get_current_hunk_patch_file_path,
+            read_text_file_contents,
+        )
+
+        # Create initial change
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine1\nLine2\n")
+
+        ensure_state_directory_exists()
+        find_and_cache_next_unblocked_hunk()
+
+        # Modify the file (simulating a line-level operation)
+        readme.write_text("# Test\nLine1 modified\nLine2\n")
+
+        # Recalculate hunk for this file
+        _recalculate_current_hunk_for_file("README.md")
+
+        # Should have cached new hunk
+        assert get_current_hunk_patch_file_path().exists()
+        patch_content = read_text_file_contents(get_current_hunk_patch_file_path())
+        assert "modified" in patch_content
+
+    def test_recalculate_current_hunk_for_file_no_more_hunks(self, temp_git_repo):
+        """Test recalculating when no more hunks exist for file."""
+        from git_stage_batch.commands import (
+            _recalculate_current_hunk_for_file,
+            find_and_cache_next_unblocked_hunk,
+        )
+        from git_stage_batch.state import (
+            ensure_state_directory_exists,
+            get_current_hunk_patch_file_path,
+        )
+
+        # Create initial change
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+
+        ensure_state_directory_exists()
+        find_and_cache_next_unblocked_hunk()
+
+        # Revert the file (no more changes)
+        readme.write_text("# Test\n")
+
+        # Recalculate - should clear state
+        _recalculate_current_hunk_for_file("README.md")
+
+        # Should have cleared the cached hunk
+        assert not get_current_hunk_patch_file_path().exists()

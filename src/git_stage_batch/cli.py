@@ -133,13 +133,29 @@ def main() -> None:
     )
     parser_skip_file.set_defaults(func=lambda _: commands.command_skip_file())
 
-    # discard - Discard the current hunk from working tree
+    # discard - Discard the current hunk or entire file from working tree
     parser_discard = subparsers.add_parser(
         "discard",
         aliases=["d"],
         help=_("Discard the current hunk from working tree"),
     )
-    parser_discard.set_defaults(func=lambda _: commands.command_discard())
+    parser_discard.add_argument(
+        "--file",
+        action="store_true",
+        help=_("Discard the entire file containing the current hunk"),
+    )
+    parser_discard.set_defaults(func=lambda args: (
+        commands.command_discard_file() if args.file
+        else commands.command_discard()
+    ))
+
+    # discard-file - Discard all hunks from current file
+    parser_discard_file = subparsers.add_parser(
+        "discard-file",
+        aliases=["df"],
+        help=argparse.SUPPRESS,  # Hidden, exists only for 'df' alias
+    )
+    parser_discard_file.set_defaults(func=lambda _: commands.command_discard_file())
 
     # status - Show current session status
     parser_status = subparsers.add_parser(

@@ -474,6 +474,68 @@ def command_discard() -> None:
     print(_("✓ Hunk discarded from {}").format(current_patch.new_path))
 
 
+def command_discard_file() -> None:
+    """Discard the entire current file from the working tree."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Get the current diff
+    result = run_git_command(["diff", "--no-color"])
+    diff_text = result.stdout
+
+    # Parse into hunks
+    patches = parse_unified_diff_into_single_hunk_patches(diff_text)
+
+    if not patches:
+        print(_("No changes to discard."))
+        return
+
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
+
+    # Find first non-blocked hunk to get the file
+    target_file = None
+    for patch in patches:
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+        if patch_hash not in blocked_hashes:
+            target_file = patch.new_path
+            break
+
+    if target_file is None:
+        print(_("No more hunks to process."))
+        return
+
+    # Snapshot the file if it's untracked (for abort functionality)
+    snapshot_file_if_untracked(target_file)
+
+    # Remove the file from working tree
+    try:
+        subprocess.run(
+            ["git", "rm", "-f", target_file],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(_("Failed to discard file: {}").format(e.stderr.decode()))
+        return
+
+    # Mark all hunks from this file as processed in blocklist
+    for patch in patches:
+        if patch.new_path != target_file:
+            continue
+
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+
+        if patch_hash not in blocked_hashes:
+            append_lines_to_file(blocklist_path, [patch_hash])
+
+    print(_("✓ File discarded: {}").format(target_file))
+
+
 def command_status() -> None:
     """Show current session status."""
     require_git_repository()

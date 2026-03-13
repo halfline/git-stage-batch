@@ -271,6 +271,26 @@ class TestCommandShow:
         assert "No changes to show" in captured.out
 
 
+
+    def test_show_caches_hunk_state(self, temp_git_repo):
+        """Test that show caches the current hunk state."""
+        from git_stage_batch.state import (
+            get_current_hunk_patch_file_path,
+            get_current_hunk_hash_file_path,
+            get_current_lines_json_file_path,
+        )
+        
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew line\n")
+        
+        command_start()
+        
+        # Verify state files were created by show
+        assert get_current_hunk_patch_file_path().exists()
+        assert get_current_hunk_hash_file_path().exists()
+        assert get_current_lines_json_file_path().exists()
+
 class TestCommandInclude:
     """Tests for include command."""
 
@@ -1097,3 +1117,22 @@ class TestHunkCachingInfrastructure:
         result = find_and_cache_next_unblocked_hunk()
         
         assert result is False
+
+    def test_show_caches_hunk_state(self, temp_git_repo):
+        """Test that show caches the current hunk state."""
+        from git_stage_batch.state import (
+            get_current_hunk_patch_file_path,
+            get_current_hunk_hash_file_path,
+            get_current_lines_json_file_path,
+        )
+        
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew line\n")
+        
+        command_start()
+        
+        # Verify state files were created by show
+        assert get_current_hunk_patch_file_path().exists()
+        assert get_current_hunk_hash_file_path().exists()
+        assert get_current_lines_json_file_path().exists()

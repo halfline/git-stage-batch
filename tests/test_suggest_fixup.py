@@ -1,6 +1,8 @@
 """Tests for suggest-fixup commands."""
 
+import json
 import subprocess
+import sys
 
 import pytest
 
@@ -201,6 +203,87 @@ class TestCommandSuggestFixup:
         captured = capsys.readouterr()
         assert "No current hunk" in captured.err
 
+    def test_suggest_fixup_porcelain_output(self, temp_git_repo):
+        """Test suggest-fixup with --porcelain flag outputs JSON."""
+        # Create commit modifying line 2
+        (temp_git_repo / "test.txt").write_text("line1\nchanged\nline3\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Change line 2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify line 2 again
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nline3\n")
+
+        # Start session
+        subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "start"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True
+        )
+
+        # Run suggest-fixup with --porcelain
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "suggest-fixup", "--porcelain", "HEAD~1"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        assert result.returncode == 0
+
+        # Parse JSON output
+        fixup_data = json.loads(result.stdout)
+
+        # Verify structure
+        assert "candidate" in fixup_data
+        assert "iteration" in fixup_data
+        assert "boundary" in fixup_data
+
+        # Verify candidate data
+        assert "hash" in fixup_data["candidate"]
+        assert "full_hash" in fixup_data["candidate"]
+        assert "subject" in fixup_data["candidate"]
+        assert "author" in fixup_data["candidate"]
+        assert "date" in fixup_data["candidate"]
+        assert "relative_date" in fixup_data["candidate"]
+
+        # Verify values
+        assert fixup_data["iteration"] == 1
+        assert "Change line 2" in fixup_data["candidate"]["subject"]
+
+    def test_suggest_fixup_porcelain_no_candidates(self, temp_git_repo):
+        """Test suggest-fixup --porcelain exits 1 when no candidates."""
+        # Create untracked file (no prior commits to fixup to)
+        (temp_git_repo / "test.txt").write_text("line1\nchanged\nline3\n")
+
+        # Add file with -N to make it visible to diff
+        subprocess.run(
+            ["git", "add", "-N", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True
+        )
+
+        # Start session
+        subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "start"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True
+        )
+
+        # Run suggest-fixup with --porcelain (use HEAD~1 which doesn't include test.txt changes)
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "suggest-fixup", "--porcelain", "HEAD~1"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        # Should exit with code 1 and no output
+        assert result.returncode == 1
+        assert result.stdout == ""
+
 
 class TestCommandSuggestFixupLine:
     """Tests for command_suggest_fixup_line."""
@@ -277,3 +360,48 @@ class TestCommandSuggestFixupLine:
             command_suggest_fixup_line("1", "fake-upstream")
         captured = capsys.readouterr()
         assert "No old line numbers found" in captured.err
+
+    def test_suggest_fixup_line_porcelain_output(self, temp_git_repo):
+        """Test suggest-fixup --line with --porcelain flag outputs JSON."""
+        # Create commit modifying line 2
+        (temp_git_repo / "test.txt").write_text("line1\nchanged\nline3\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Change line 2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify lines 2 and 3
+        (temp_git_repo / "test.txt").write_text("line1\nmodified\nmodified3\n")
+
+        # Start session
+        subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "start"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True
+        )
+
+        # Run suggest-fixup with --line and --porcelain
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "suggest-fixup", "--line", "1", "--porcelain", "HEAD~1"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        assert result.returncode == 0
+
+        # Parse JSON output
+        fixup_data = json.loads(result.stdout)
+
+        # Verify structure
+        assert "candidate" in fixup_data
+        assert "iteration" in fixup_data
+        assert "boundary" in fixup_data
+
+        # Verify candidate data
+        assert "hash" in fixup_data["candidate"]
+        assert "full_hash" in fixup_data["candidate"]
+        assert "subject" in fixup_data["candidate"]
+
+        # Verify values
+        assert fixup_data["iteration"] == 1
+        assert "Change line 2" in fixup_data["candidate"]["subject"]

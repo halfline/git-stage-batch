@@ -129,7 +129,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "show",
         help=_("Show the current hunk"),
     )
-    parser_show.set_defaults(func=lambda _: commands.command_show())
+    parser_show.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Exit with status code only (0=hunk exists, 1=no hunk)"),
+    )
+    parser_show.set_defaults(func=lambda args: commands.command_show(porcelain=args.porcelain))
 
     # include - Include (stage) the current hunk, specific lines, or entire file
     parser_include = subparsers.add_parser(

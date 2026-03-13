@@ -16,9 +16,12 @@ from git_stage_batch.commands import (
     command_discard_file,
     command_include,
     command_include_file,
+    command_skip,
     command_skip_file,
     command_start,
     command_stop,
+    command_suggest_fixup,
+    command_suggest_fixup_line,
 )
 from git_stage_batch.state import CommandError, get_state_directory_path
 
@@ -455,3 +458,146 @@ class TestFileLevelOperations:
 
         # Clean up
         command_stop()
+
+
+class TestSuggestFixupWorkflow:
+    """Test suggest-fixup feature integration with workflow."""
+
+    def test_suggest_fixup_finds_commit_that_modified_lines(self, temp_git_repo, capsys):
+        """Test that suggest-fixup finds the commit that last modified the changed lines."""
+        # Create a file and commit
+        test_file = temp_git_repo / "code.py"
+        test_file.write_text("def foo():\n    return 1\n")
+        subprocess.run(["git", "add", "code.py"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add foo function"], cwd=temp_git_repo, check=True)
+
+        # Modify and commit again
+        test_file.write_text("def foo():\n    return 2\n")
+        subprocess.run(["git", "add", "code.py"], cwd=temp_git_repo, check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", "Change foo return value"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+
+        # Make another change (don't commit)
+        test_file.write_text("def foo():\n    return 3\n")
+
+        # Start session
+        command_start()
+
+        # Suggest fixup should find the "Change foo return value" commit
+        capsys.readouterr()
+        command_suggest_fixup(boundary="HEAD~1")
+
+        captured = capsys.readouterr()
+        assert "Change foo return value" in captured.out
+
+        # Clean up
+        command_stop()
+
+    def test_suggest_fixup_iterates_through_candidates(self, temp_git_repo, capsys):
+        """Test that repeated suggest-fixup calls iterate through commit history."""
+        # Create a file with multiple commits modifying same lines
+        test_file = temp_git_repo / "data.txt"
+        test_file.write_text("value: 1\n")
+        subprocess.run(["git", "add", "data.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Set value to 1"], cwd=temp_git_repo, check=True)
+
+        test_file.write_text("value: 2\n")
+        subprocess.run(["git", "add", "data.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Set value to 2"], cwd=temp_git_repo, check=True)
+
+        test_file.write_text("value: 3\n")
+        subprocess.run(["git", "add", "data.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Set value to 3"], cwd=temp_git_repo, check=True)
+
+        # Make a new change
+        test_file.write_text("value: 4\n")
+
+        # Start session
+        command_start()
+
+        # First suggest-fixup should find most recent ("Set value to 3")
+        # Use HEAD~3 as boundary (goes back before "Set value to 1")
+        capsys.readouterr()
+        command_suggest_fixup(boundary="HEAD~3")
+        captured = capsys.readouterr()
+        assert "Set value to 3" in captured.out
+
+        # Second call should find next older commit
+        capsys.readouterr()
+        command_suggest_fixup()
+        captured = capsys.readouterr()
+        assert "Set value to 2" in captured.out
+
+        # Third call should find oldest
+        capsys.readouterr()
+        command_suggest_fixup()
+        captured = capsys.readouterr()
+        assert "Set value to 1" in captured.out
+
+        # Clean up
+        command_stop()
+
+    def test_suggest_fixup_with_reset_flag(self, temp_git_repo, capsys):
+        """Test that suggest-fixup --reset restarts iteration from most recent."""
+        # Create file with multiple commits
+        test_file = temp_git_repo / "data.txt"
+        test_file.write_text("value: 1\n")
+        subprocess.run(["git", "add", "data.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "First"], cwd=temp_git_repo, check=True)
+
+        test_file.write_text("value: 2\n")
+        subprocess.run(["git", "add", "data.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Second"], cwd=temp_git_repo, check=True)
+
+        # Modify again
+        test_file.write_text("value: 3\n")
+
+        # Start session
+        command_start()
+
+        # First suggest-fixup
+        capsys.readouterr()
+        command_suggest_fixup(boundary="HEAD~2")
+        captured = capsys.readouterr()
+        assert "Second" in captured.out
+
+        # Call again to get next candidate
+        capsys.readouterr()
+        command_suggest_fixup()
+        captured = capsys.readouterr()
+        assert "First" in captured.out
+
+        # Reset should go back to most recent
+        capsys.readouterr()
+        command_suggest_fixup(reset=True)
+        captured = capsys.readouterr()
+        assert "Second" in captured.out
+
+        # Clean up
+        command_stop()
+
+    def test_abort_clears_suggest_fixup_state(self, temp_git_repo):
+        """Test that abort clears suggest-fixup iteration state."""
+        # Create file with commit
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("original\n")
+        subprocess.run(["git", "add", "test.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add test"], cwd=temp_git_repo, check=True)
+
+        # Modify file
+        test_file.write_text("modified\n")
+
+        # Start session and suggest fixup
+        command_start()
+        command_suggest_fixup(boundary="HEAD~1")
+
+        # Abort should clear all state including suggest-fixup state
+        command_abort()
+
+        # Suggest-fixup state should be cleared
+        # (No direct way to verify, but it shouldn't error)

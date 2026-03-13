@@ -64,6 +64,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         '?': ['--help'],
         'if': ['include', '--file'],
         'sf': ['skip', '--file'],
+        'df': ['discard', '--file'],
     }
 
     # Expand quick actions
@@ -170,13 +171,21 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         else commands.command_skip()
     ))
 
-    # discard - Discard the current hunk from working tree
+    # discard - Discard the current hunk or entire file from working tree
     parser_discard = subparsers.add_parser(
         "discard",
         aliases=["d"],
         help=_("Discard the current hunk from working tree"),
     )
-    parser_discard.set_defaults(func=lambda _: commands.command_discard())
+    parser_discard.add_argument(
+        "--file",
+        action="store_true",
+        help=_("Discard the entire file containing the current hunk"),
+    )
+    parser_discard.set_defaults(func=lambda args: (
+        commands.command_discard_file() if args.file
+        else commands.command_discard()
+    ))
 
     # status - Show current session status
     parser_status = subparsers.add_parser(

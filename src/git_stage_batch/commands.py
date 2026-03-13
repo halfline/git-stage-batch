@@ -1336,7 +1336,7 @@ def _show_commit_diff_for_file(commit_hash: str, file_path: str) -> None:
         pass
 
 
-def command_suggest_fixup(boundary: str | None = None, reset: bool = False, abort: bool = False, show_last: bool = False) -> None:
+def command_suggest_fixup(boundary: str | None = None, reset: bool = False, abort: bool = False, show_last: bool = False, porcelain: bool = False) -> None:
     """Suggest which commit the current hunk should be fixed up to.
 
     Iteratively suggests commits that modified the lines in the current hunk,
@@ -1350,6 +1350,7 @@ def command_suggest_fixup(boundary: str | None = None, reset: bool = False, abor
         reset: If True, reset state and start search over from most recent
         abort: If True, clear state and exit without showing candidates
         show_last: If True, re-show the last candidate without advancing
+        porcelain: If True, output JSON instead of human-readable format
     """
     require_git_repository()
     ensure_state_directory_exists()
@@ -1357,7 +1358,8 @@ def command_suggest_fixup(boundary: str | None = None, reset: bool = False, abor
     # Handle abort flag
     if abort:
         _reset_suggest_fixup_state()
-        print("Suggest-fixup iteration cleared.")
+        if not porcelain:
+            print("Suggest-fixup iteration cleared.")
         return
 
     # Load current state early to determine effective boundary
@@ -1434,27 +1436,62 @@ def command_suggest_fixup(boundary: str | None = None, reset: bool = False, abor
     # Handle show_last flag - re-show the last candidate without advancing
     if show_last:
         if not state or not state.get("last_shown_commit"):
-            print("No previous candidate to show.")
-            print("Run suggest-fixup without --last to find a candidate.")
-            sys.exit(1)
+            if porcelain:
+                sys.exit(1)
+            else:
+                print("No previous candidate to show.")
+                print("Run suggest-fixup without --last to find a candidate.")
+                sys.exit(1)
 
         # Re-display the last candidate
         candidate_commit = state["last_shown_commit"]
         iteration = state["iteration"]
 
-        # Display the candidate
-        try:
-            show_result = run_git_command(
-                ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                check=True
-            )
-            commit_info = show_result.stdout.strip()
-        except subprocess.CalledProcessError:
-            commit_info = candidate_commit[:7]
+        if porcelain:
+            # Get full commit details for JSON output
+            try:
+                show_result = run_git_command(
+                    ["show", "--no-patch", "--format=%H%n%h%n%s%n%an%n%aI%n%ar", candidate_commit],
+                    check=True
+                )
+                lines = show_result.stdout.strip().split('\n')
+                output = {
+                    "candidate": {
+                        "hash": lines[1] if len(lines) > 1 else candidate_commit[:7],
+                        "full_hash": lines[0] if len(lines) > 0 else candidate_commit,
+                        "subject": lines[2] if len(lines) > 2 else "",
+                        "author": lines[3] if len(lines) > 3 else "",
+                        "date": lines[4] if len(lines) > 4 else "",
+                        "relative_date": lines[5] if len(lines) > 5 else ""
+                    },
+                    "iteration": iteration,
+                    "boundary": state.get("boundary", effective_boundary)
+                }
+                print(json.dumps(output, indent=2))
+            except subprocess.CalledProcessError:
+                output = {
+                    "candidate": {
+                        "hash": candidate_commit[:7],
+                        "full_hash": candidate_commit
+                    },
+                    "iteration": iteration,
+                    "boundary": state.get("boundary", effective_boundary)
+                }
+                print(json.dumps(output, indent=2))
+        else:
+            # Display the candidate
+            try:
+                show_result = run_git_command(
+                    ["show", "--no-patch", "--format=%h %s", candidate_commit],
+                    check=True
+                )
+                commit_info = show_result.stdout.strip()
+            except subprocess.CalledProcessError:
+                commit_info = candidate_commit[:7]
 
-        print(f"Candidate {iteration}: {commit_info}")
-        _show_commit_diff_for_file(candidate_commit, current_lines.path)
-        print(f"Run: git commit --fixup={candidate_commit[:7]}")
+            print(f"Candidate {iteration}: {commit_info}")
+            _show_commit_diff_for_file(candidate_commit, current_lines.path)
+            print(f"Run: git commit --fixup={candidate_commit[:7]}")
         return
 
     # Determine last shown commit and iteration
@@ -1471,13 +1508,16 @@ def command_suggest_fixup(boundary: str | None = None, reset: bool = False, abor
     )
 
     if not candidate_commit:
-        if iteration == 1:
-            print(f"No commits in range {effective_boundary}..HEAD modified these lines.")
-            print("The changes may be fixing code from before the boundary.")
+        if porcelain:
+            sys.exit(1)
         else:
-            print("No more candidates found.")
-            _reset_suggest_fixup_state()
-        sys.exit(1)
+            if iteration == 1:
+                print(f"No commits in range {effective_boundary}..HEAD modified these lines.")
+                print("The changes may be fixing code from before the boundary.")
+            else:
+                print("No more candidates found.")
+                _reset_suggest_fixup_state()
+            sys.exit(1)
 
     # Save state for next invocation
     _save_suggest_fixup_state({
@@ -1491,22 +1531,54 @@ def command_suggest_fixup(boundary: str | None = None, reset: bool = False, abor
         "iteration": iteration
     })
 
-    # Display the candidate
-    try:
-        show_result = run_git_command(
-            ["show", "--no-patch", "--format=%h %s", candidate_commit],
-            check=True
-        )
-        commit_info = show_result.stdout.strip()
-    except subprocess.CalledProcessError:
-        commit_info = candidate_commit[:7]
+    if porcelain:
+        # Get full commit details for JSON output
+        try:
+            show_result = run_git_command(
+                ["show", "--no-patch", "--format=%H%n%h%n%s%n%an%n%aI%n%ar", candidate_commit],
+                check=True
+            )
+            lines = show_result.stdout.strip().split('\n')
+            output = {
+                "candidate": {
+                    "hash": lines[1] if len(lines) > 1 else candidate_commit[:7],
+                    "full_hash": lines[0] if len(lines) > 0 else candidate_commit,
+                    "subject": lines[2] if len(lines) > 2 else "",
+                    "author": lines[3] if len(lines) > 3 else "",
+                    "date": lines[4] if len(lines) > 4 else "",
+                    "relative_date": lines[5] if len(lines) > 5 else ""
+                },
+                "iteration": iteration,
+                "boundary": effective_boundary
+            }
+            print(json.dumps(output, indent=2))
+        except subprocess.CalledProcessError:
+            output = {
+                "candidate": {
+                    "hash": candidate_commit[:7],
+                    "full_hash": candidate_commit
+                },
+                "iteration": iteration,
+                "boundary": effective_boundary
+            }
+            print(json.dumps(output, indent=2))
+    else:
+        # Display the candidate
+        try:
+            show_result = run_git_command(
+                ["show", "--no-patch", "--format=%h %s", candidate_commit],
+                check=True
+            )
+            commit_info = show_result.stdout.strip()
+        except subprocess.CalledProcessError:
+            commit_info = candidate_commit[:7]
 
-    print(f"Candidate {iteration}: {commit_info}")
-    _show_commit_diff_for_file(candidate_commit, current_lines.path)
-    print(f"Run: git commit --fixup={candidate_commit[:7]}")
+        print(f"Candidate {iteration}: {commit_info}")
+        _show_commit_diff_for_file(candidate_commit, current_lines.path)
+        print(f"Run: git commit --fixup={candidate_commit[:7]}")
 
 
-def command_suggest_fixup_line(line_id_specification: str, boundary: str | None, reset: bool = False, abort: bool = False, show_last: bool = False) -> None:
+def command_suggest_fixup_line(line_id_specification: str, boundary: str | None, reset: bool = False, abort: bool = False, show_last: bool = False, porcelain: bool = False) -> None:
     """Suggest which commit specific lines should be fixed up to.
 
     Iteratively suggests commits that modified the specified lines from the
@@ -1521,6 +1593,7 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str | None,
         reset: If True, reset state and start search over from most recent
         abort: If True, clear state and exit without showing candidates
         show_last: If True, re-show the last candidate without advancing
+        porcelain: If True, output JSON instead of human-readable format
     """
     require_git_repository()
     ensure_state_directory_exists()
@@ -1528,7 +1601,8 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str | None,
     # Handle abort flag
     if abort:
         _reset_suggest_fixup_state()
-        print("Suggest-fixup iteration cleared.")
+        if not porcelain:
+            print("Suggest-fixup iteration cleared.")
         return
 
     # Load current state early to determine effective boundary
@@ -1600,27 +1674,62 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str | None,
     # Handle show_last flag - re-show the last candidate without advancing
     if show_last:
         if not state or not state.get("last_shown_commit"):
-            print("No previous candidate to show.")
-            print("Run suggest-fixup without --last to find a candidate.")
-            sys.exit(1)
+            if porcelain:
+                sys.exit(1)
+            else:
+                print("No previous candidate to show.")
+                print("Run suggest-fixup without --last to find a candidate.")
+                sys.exit(1)
 
         # Re-display the last candidate
         candidate_commit = state["last_shown_commit"]
         iteration = state["iteration"]
 
-        # Display the candidate
-        try:
-            show_result = run_git_command(
-                ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                check=True
-            )
-            commit_info = show_result.stdout.strip()
-        except subprocess.CalledProcessError:
-            commit_info = candidate_commit[:7]
+        if porcelain:
+            # Get full commit details for JSON output
+            try:
+                show_result = run_git_command(
+                    ["show", "--no-patch", "--format=%H%n%h%n%s%n%an%n%aI%n%ar", candidate_commit],
+                    check=True
+                )
+                lines = show_result.stdout.strip().split('\n')
+                output = {
+                    "candidate": {
+                        "hash": lines[1] if len(lines) > 1 else candidate_commit[:7],
+                        "full_hash": lines[0] if len(lines) > 0 else candidate_commit,
+                        "subject": lines[2] if len(lines) > 2 else "",
+                        "author": lines[3] if len(lines) > 3 else "",
+                        "date": lines[4] if len(lines) > 4 else "",
+                        "relative_date": lines[5] if len(lines) > 5 else ""
+                    },
+                    "iteration": iteration,
+                    "boundary": state.get("boundary", effective_boundary)
+                }
+                print(json.dumps(output, indent=2))
+            except subprocess.CalledProcessError:
+                output = {
+                    "candidate": {
+                        "hash": candidate_commit[:7],
+                        "full_hash": candidate_commit
+                    },
+                    "iteration": iteration,
+                    "boundary": state.get("boundary", effective_boundary)
+                }
+                print(json.dumps(output, indent=2))
+        else:
+            # Display the candidate
+            try:
+                show_result = run_git_command(
+                    ["show", "--no-patch", "--format=%h %s", candidate_commit],
+                    check=True
+                )
+                commit_info = show_result.stdout.strip()
+            except subprocess.CalledProcessError:
+                commit_info = candidate_commit[:7]
 
-        print(f"Candidate {iteration}: {commit_info}")
-        _show_commit_diff_for_file(candidate_commit, current_lines.path)
-        print(f"Run: git commit --fixup={candidate_commit[:7]}")
+            print(f"Candidate {iteration}: {commit_info}")
+            _show_commit_diff_for_file(candidate_commit, current_lines.path)
+            print(f"Run: git commit --fixup={candidate_commit[:7]}")
         return
 
     # Determine last shown commit and iteration
@@ -1637,13 +1746,16 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str | None,
     )
 
     if not candidate_commit:
-        if iteration == 1:
-            print(f"No commits in range {effective_boundary}..HEAD modified these lines.")
-            print("The changes may be fixing code from before the boundary.")
+        if porcelain:
+            sys.exit(1)
         else:
-            print("No more candidates found.")
-            _reset_suggest_fixup_state()
-        sys.exit(1)
+            if iteration == 1:
+                print(f"No commits in range {effective_boundary}..HEAD modified these lines.")
+                print("The changes may be fixing code from before the boundary.")
+            else:
+                print("No more candidates found.")
+                _reset_suggest_fixup_state()
+            sys.exit(1)
 
     # Save state for next invocation
     _save_suggest_fixup_state({
@@ -1657,19 +1769,51 @@ def command_suggest_fixup_line(line_id_specification: str, boundary: str | None,
         "iteration": iteration
     })
 
-    # Display the candidate
-    try:
-        show_result = run_git_command(
-            ["show", "--no-patch", "--format=%h %s", candidate_commit],
-            check=True
-        )
-        commit_info = show_result.stdout.strip()
-    except subprocess.CalledProcessError:
-        commit_info = candidate_commit[:7]
+    if porcelain:
+        # Get full commit details for JSON output
+        try:
+            show_result = run_git_command(
+                ["show", "--no-patch", "--format=%H%n%h%n%s%n%an%n%aI%n%ar", candidate_commit],
+                check=True
+            )
+            lines = show_result.stdout.strip().split('\n')
+            output = {
+                "candidate": {
+                    "hash": lines[1] if len(lines) > 1 else candidate_commit[:7],
+                    "full_hash": lines[0] if len(lines) > 0 else candidate_commit,
+                    "subject": lines[2] if len(lines) > 2 else "",
+                    "author": lines[3] if len(lines) > 3 else "",
+                    "date": lines[4] if len(lines) > 4 else "",
+                    "relative_date": lines[5] if len(lines) > 5 else ""
+                },
+                "iteration": iteration,
+                "boundary": effective_boundary
+            }
+            print(json.dumps(output, indent=2))
+        except subprocess.CalledProcessError:
+            output = {
+                "candidate": {
+                    "hash": candidate_commit[:7],
+                    "full_hash": candidate_commit
+                },
+                "iteration": iteration,
+                "boundary": effective_boundary
+            }
+            print(json.dumps(output, indent=2))
+    else:
+        # Display the candidate
+        try:
+            show_result = run_git_command(
+                ["show", "--no-patch", "--format=%h %s", candidate_commit],
+                check=True
+            )
+            commit_info = show_result.stdout.strip()
+        except subprocess.CalledProcessError:
+            commit_info = candidate_commit[:7]
 
-    print(f"Candidate {iteration}: {commit_info}")
-    _show_commit_diff_for_file(candidate_commit, current_lines.path)
-    print(f"Run: git commit --fixup={candidate_commit[:7]}")
+        print(f"Candidate {iteration}: {commit_info}")
+        _show_commit_diff_for_file(candidate_commit, current_lines.path)
+        print(f"Run: git commit --fixup={candidate_commit[:7]}")
 
 
 # --------------------------- Line-level helpers ---------------------------

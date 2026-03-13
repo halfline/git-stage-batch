@@ -24,9 +24,14 @@ Resets state if a session is already in progress.
 Number of context lines in diff output (default: 3).
 .RE
 .TP
-.B show
+.B show \fR[\fB\-\-porcelain\fR]
 Reprint the cached "current" hunk.
-Exit codes: 0 if hunk exists, 1 if no hunk.
+.RS
+.TP
+.B \-\-porcelain
+Exit silently with status code only (0 if hunk exists, 1 if no hunk).
+Useful for scripts checking hunk availability without output.
+.RE
 .TP
 .B include
 Stage the cached hunk (entire hunk) to the index; advance to next.

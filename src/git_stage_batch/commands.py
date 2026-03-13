@@ -300,6 +300,10 @@ def command_discard() -> None:
     write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
     write_text_file_contents(get_current_hunk_hash_file_path(), current_hash)
 
+    # Snapshot file if untracked before discarding
+    file_path = current_patch.new_path if current_patch.new_path != "/dev/null" else current_patch.old_path
+    snapshot_file_if_untracked(file_path)
+
     # Apply the hunk in reverse to discard from working tree
     try:
         subprocess.run(

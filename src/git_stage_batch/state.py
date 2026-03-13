@@ -249,6 +249,10 @@ def get_working_tree_snapshot_file_path() -> Path:
     return get_state_directory_path() / "working-tree-snapshot"
 
 
+def get_suggest_fixup_state_file_path() -> Path:
+    return get_state_directory_path() / "suggest-fixup-state.json"
+
+
 def get_gitignore_path() -> Path:
     return get_git_repository_root_path() / ".gitignore"
 

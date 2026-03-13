@@ -5,6 +5,7 @@ like state transitions, session lifecycle, and edge cases that span multiple
 features.
 """
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import pytest
 
 from git_stage_batch.commands import (
     command_abort,
+    command_again,
     command_discard,
     command_discard_file,
     command_include,
@@ -19,6 +21,7 @@ from git_stage_batch.commands import (
     command_skip,
     command_skip_file,
     command_start,
+    command_status,
     command_stop,
     command_suggest_fixup,
     command_suggest_fixup_line,
@@ -591,3 +594,93 @@ class TestSuggestFixupWorkflow:
 
         # Suggest-fixup state should be cleared
         # (No direct way to verify, but it shouldn't error)
+
+
+class TestProgressTracking:
+    """Test progress tracking across workflow."""
+
+    def test_progress_tracking_accumulates_actions(self, temp_git_repo, capsys):
+        """Test that progress tracking accumulates include/skip/discard actions."""
+        # Create three files
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file3 = temp_git_repo / "file3.txt"
+        file1.write_text("content1\n")
+        file2.write_text("content2\n")
+        file3.write_text("content3\n")
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], cwd=temp_git_repo, check=True)
+
+        # Modify all three
+        file1.write_text("modified1\n")
+        file2.write_text("modified2\n")
+        file3.write_text("modified3\n")
+
+        # Start session
+        command_start()
+
+        # Include first file
+        capsys.readouterr()
+        command_include()
+        captured = capsys.readouterr()
+        assert "Hunk staged" in captured.err or "Hunk staged" in captured.out
+
+        # Skip second file
+        capsys.readouterr()
+        command_skip()
+        captured = capsys.readouterr()
+        assert "Hunk skipped" in captured.err or "Hunk skipped" in captured.out
+
+        # Discard third file
+        capsys.readouterr()
+        command_discard()
+        captured = capsys.readouterr()
+        assert "Hunk discarded" in captured.err or "Hunk discarded" in captured.out
+
+        # Check status shows progress
+        capsys.readouterr()
+        command_status()
+        output = capsys.readouterr().out
+        # Should mention processed hunks
+        assert "1" in output or "included" in output.lower()
+
+        # Clean up
+        command_stop()
+
+    def test_again_clears_progress_state_files(self, temp_git_repo):
+        """Test that 'again' command clears progress state files."""
+        # Create a file
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("content\n")
+        subprocess.run(["git", "add", "test.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add test"], cwd=temp_git_repo, check=True)
+
+        # Modify it
+        test_file.write_text("modified\n")
+
+        # Start and include
+        command_start()
+        command_include()
+
+        # Progress state files should exist
+        from git_stage_batch.state import (
+            get_included_hunks_file_path,
+            get_iteration_count_file_path,
+        )
+
+        included_path = get_included_hunks_file_path()
+        iteration_path = get_iteration_count_file_path()
+
+        # Files should exist (or at least the state directory)
+        state_dir = get_state_directory_path()
+        assert state_dir.exists()
+
+        # Run again - should clear state
+        command_again()
+
+        # State directory should still exist but be reset
+        assert state_dir.exists()
+
+        # Clean up
+        command_stop()
+

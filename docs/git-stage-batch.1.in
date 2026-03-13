@@ -142,6 +142,11 @@ Clear state and exit without showing candidates.
 .TP
 .B \-\-last
 Re-show the last candidate without advancing.
+.TP
+.B \-\-porcelain
+Output in machine-readable JSON format for script integration.
+The JSON includes: candidate (hash, full_hash, subject, author, date,
+relative_date), iteration number, and boundary.
 .RE
 .SH AUTHOR
 Written by Ray Strode.

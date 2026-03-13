@@ -275,6 +275,75 @@ class TestCommandShow:
         captured = capsys.readouterr()
         assert "No changes to show" in captured.out
 
+    def test_show_porcelain_with_hunk(self, temp_git_repo):
+        """Test show --porcelain exits 0 when hunk exists."""
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Run show with --porcelain
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "show", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        # Should exit with code 0 and no output
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert result.stderr == ""
+
+    def test_show_porcelain_no_hunk(self, temp_git_repo):
+        """Test show --porcelain exits 1 when no hunk exists."""
+        # No changes, so no hunk
+
+        # Run show with --porcelain
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "show", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        # Should exit with code 1 and no output
+        assert result.returncode == 1
+        assert result.stdout == ""
+        assert result.stderr == ""
+
+    def test_show_porcelain_all_hunks_processed(self, temp_git_repo):
+        """Test show --porcelain exits 1 when all hunks are processed."""
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Skip the only hunk
+        subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "start"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True
+        )
+        subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "skip"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True
+        )
+
+        # Run show with --porcelain
+        result = subprocess.run(
+            [sys.executable, "-m", "git_stage_batch.cli", "show", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo
+        )
+
+        # Should exit with code 1 (no hunks left)
+        assert result.returncode == 1
+        assert result.stdout == ""
+        assert result.stderr == ""
+
 
 
     def test_show_caches_hunk_state(self, temp_git_repo):

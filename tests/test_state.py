@@ -5,6 +5,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.state import (
+    append_file_path_to_file,
     append_lines_to_file,
     ensure_state_directory_exists,
     exit_with_error,
@@ -12,6 +13,7 @@ from git_stage_batch.state import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
+    get_auto_added_files_file_path,
     get_block_list_file_path,
     get_context_lines,
     get_context_lines_file_path,
@@ -19,9 +21,12 @@ from git_stage_batch.state import (
     get_current_hunk_patch_file_path,
     get_git_repository_root_path,
     get_state_directory_path,
+    read_file_paths_file,
     read_text_file_contents,
+    remove_file_path_from_file,
     require_git_repository,
     run_git_command,
+    write_file_paths_file,
     write_text_file_contents,
 )
 
@@ -259,3 +264,89 @@ class TestContextLines:
         write_text_file_contents(context_file, "not-a-number")
 
         assert get_context_lines() == 3
+
+
+class TestFilePathListManagement:
+    """Tests for file path list management functions."""
+
+    def test_read_file_paths_file_empty(self, temp_git_repo):
+        """Test reading an empty file paths file."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+        result = read_file_paths_file(path)
+        assert result == []
+
+    def test_read_file_paths_file_nonexistent(self, tmp_path):
+        """Test reading a nonexistent file paths file."""
+        path = tmp_path / "nonexistent.txt"
+        result = read_file_paths_file(path)
+        assert result == []
+
+    def test_write_file_paths_file(self, temp_git_repo):
+        """Test writing file paths to a file."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+
+        file_paths = ["path/to/file1.txt", "path/to/file2.txt", "another/file.py"]
+        write_file_paths_file(path, file_paths)
+
+        # Read back and verify sorted and deduplicated
+        result = read_file_paths_file(path)
+        assert result == sorted(file_paths)
+
+    def test_write_file_paths_file_deduplicates(self, temp_git_repo):
+        """Test that write_file_paths_file deduplicates entries."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+
+        file_paths = ["file1.txt", "file2.txt", "file1.txt", "file3.txt", "file2.txt"]
+        write_file_paths_file(path, file_paths)
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt", "file3.txt"]
+
+    def test_append_file_path_to_file(self, temp_git_repo):
+        """Test appending a file path to a list."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+
+        append_file_path_to_file(path, "file1.txt")
+        append_file_path_to_file(path, "file2.txt")
+        append_file_path_to_file(path, "file3.txt")
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt", "file3.txt"]
+
+    def test_append_file_path_to_file_no_duplicates(self, temp_git_repo):
+        """Test that appending doesn't create duplicates."""
+        ensure_state_directory_exists()
+        path = get_auto_added_files_file_path()
+
+        append_file_path_to_file(path, "file1.txt")
+        append_file_path_to_file(path, "file2.txt")
+        append_file_path_to_file(path, "file1.txt")  # Duplicate
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt"]
+
+    def test_remove_file_path_from_file(self, temp_git_repo):
+        """Test removing a file path from a list."""
+        ensure_state_directory_exists()
+        path = get_state_directory_path() / "test-file-list"
+
+        write_file_paths_file(path, ["file1.txt", "file2.txt", "file3.txt"])
+        remove_file_path_from_file(path, "file2.txt")
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file3.txt"]
+
+    def test_remove_file_path_from_file_nonexistent(self, temp_git_repo):
+        """Test removing a nonexistent file path doesn't error."""
+        ensure_state_directory_exists()
+        path = get_state_directory_path() / "test-file-list"
+
+        write_file_paths_file(path, ["file1.txt", "file2.txt"])
+        remove_file_path_from_file(path, "nonexistent.txt")
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt"]

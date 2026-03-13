@@ -65,6 +65,8 @@ nav:
   - Reference:
     - Commands: commands.md
     - Examples: examples.md
+  - Integration:
+    - AI Assistants: ai-assistants.md
 
 plugins:
   - search

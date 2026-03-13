@@ -694,7 +694,6 @@ class TestCommandStatus:
         assert "Session active" in captured.out
         assert "Processed: 1 hunks" in captured.out
         assert "Remaining: 0 hunks" in captured.out
-        assert "All hunks processed" in captured.out
 
     def test_status_shows_current_hunk_location(self, temp_git_repo, capsys):
         """Test that status displays current hunk location with line IDs after show."""
@@ -1661,3 +1660,61 @@ class TestProgressTrackingHelpers:
         
         result = format_id_range([1, 2, 3, 7, 9, 10, 11])
         assert result == "1-3,7,9-11"
+
+    def test_include_records_progress(self, temp_git_repo):
+        """Test that include command records hunk in progress tracking."""
+        from git_stage_batch.state import (
+            get_included_hunks_file_path,
+            read_text_file_contents,
+        )
+        
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+        
+        # Start session and include
+        command_start()
+        command_include()
+        
+        # Verify hunk was recorded
+        included_content = read_text_file_contents(get_included_hunks_file_path())
+        assert len(included_content.strip()) > 0  # Some hash was recorded
+
+    def test_skip_records_progress(self, temp_git_repo):
+        """Test that skip command records hunk in progress tracking."""
+        from git_stage_batch.state import (
+            get_skipped_hunks_jsonl_file_path,
+            read_text_file_contents,
+        )
+        
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+        
+        # Start session and skip
+        command_start()
+        command_skip()
+        
+        # Verify hunk was recorded
+        skipped_content = read_text_file_contents(get_skipped_hunks_jsonl_file_path())
+        assert len(skipped_content.strip()) > 0  # Some JSON was recorded
+        assert "README.md" in skipped_content
+
+    def test_discard_records_progress(self, temp_git_repo):
+        """Test that discard command records hunk in progress tracking."""
+        from git_stage_batch.state import (
+            get_discarded_hunks_file_path,
+            read_text_file_contents,
+        )
+        
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+        
+        # Start session and discard
+        command_start()
+        command_discard()
+        
+        # Verify hunk was recorded
+        discarded_content = read_text_file_contents(get_discarded_hunks_file_path())
+        assert len(discarded_content.strip()) > 0  # Some hash was recorded

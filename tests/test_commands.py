@@ -1298,3 +1298,99 @@ class TestCommandIncludeLine:
         assert "add2" in result.stdout
         assert "add3" not in result.stdout
 
+
+
+class TestProgressTrackingHelpers:
+    """Tests for progress tracking helper functions."""
+
+    def test_get_iteration_count_default(self, temp_git_repo):
+        """Test getting iteration count when file doesn't exist."""
+        from git_stage_batch.commands import get_iteration_count
+        from git_stage_batch.state import ensure_state_directory_exists
+        
+        ensure_state_directory_exists()
+        count = get_iteration_count()
+        assert count == 1
+
+    def test_get_iteration_count_reads_value(self, temp_git_repo):
+        """Test getting iteration count when file exists."""
+        from git_stage_batch.commands import get_iteration_count
+        from git_stage_batch.state import (
+            ensure_state_directory_exists,
+            get_iteration_count_file_path,
+            write_text_file_contents,
+        )
+        
+        ensure_state_directory_exists()
+        write_text_file_contents(get_iteration_count_file_path(), "3")
+        
+        count = get_iteration_count()
+        assert count == 3
+
+    def test_increment_iteration_count(self, temp_git_repo):
+        """Test incrementing iteration count."""
+        from git_stage_batch.commands import get_iteration_count, increment_iteration_count
+        from git_stage_batch.state import ensure_state_directory_exists
+        
+        ensure_state_directory_exists()
+        
+        initial = get_iteration_count()
+        increment_iteration_count()
+        new_count = get_iteration_count()
+        
+        assert new_count == initial + 1
+
+    def test_record_hunk_included(self, temp_git_repo):
+        """Test recording an included hunk."""
+        from git_stage_batch.commands import record_hunk_included
+        from git_stage_batch.state import (
+            ensure_state_directory_exists,
+            get_included_hunks_file_path,
+            read_text_file_contents,
+        )
+        
+        ensure_state_directory_exists()
+        
+        record_hunk_included("abc123")
+        record_hunk_included("def456")
+        
+        content = read_text_file_contents(get_included_hunks_file_path())
+        assert "abc123" in content
+        assert "def456" in content
+
+    def test_record_hunk_discarded(self, temp_git_repo):
+        """Test recording a discarded hunk."""
+        from git_stage_batch.commands import record_hunk_discarded
+        from git_stage_batch.state import (
+            ensure_state_directory_exists,
+            get_discarded_hunks_file_path,
+            read_text_file_contents,
+        )
+        
+        ensure_state_directory_exists()
+        
+        record_hunk_discarded("xyz789")
+        
+        content = read_text_file_contents(get_discarded_hunks_file_path())
+        assert "xyz789" in content
+
+    def test_format_id_range_single(self, temp_git_repo):
+        """Test formatting a single ID."""
+        from git_stage_batch.commands import format_id_range
+        
+        result = format_id_range([5])
+        assert result == "5"
+
+    def test_format_id_range_consecutive(self, temp_git_repo):
+        """Test formatting consecutive IDs."""
+        from git_stage_batch.commands import format_id_range
+        
+        result = format_id_range([1, 2, 3, 4, 5])
+        assert result == "1-5"
+
+    def test_format_id_range_mixed(self, temp_git_repo):
+        """Test formatting mixed IDs."""
+        from git_stage_batch.commands import format_id_range
+        
+        result = format_id_range([1, 2, 3, 7, 9, 10, 11])
+        assert result == "1-3,7,9-11"

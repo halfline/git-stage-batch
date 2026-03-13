@@ -13,7 +13,10 @@ import pytest
 from git_stage_batch.commands import (
     command_abort,
     command_discard,
+    command_discard_file,
     command_include,
+    command_include_file,
+    command_skip_file,
     command_start,
     command_stop,
 )
@@ -248,3 +251,197 @@ class TestAbortWorkflow:
         # Abort should remove state
         command_abort()
         assert not get_state_directory_path().exists()
+
+
+class TestFileLevelOperations:
+    """Test file-level operations: include-file, skip-file, discard-file."""
+
+    def test_include_file_with_multiple_files(self, temp_git_repo):
+        """Test that include-file stages entire file and advances to next file."""
+        # Create multiple files with changes
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("content1\n")
+        file2.write_text("content2\n")
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], cwd=temp_git_repo, check=True)
+
+        # Modify both files
+        file1.write_text("modified1\n")
+        file2.write_text("modified2\n")
+
+        # Start session
+        command_start()
+
+        # Include entire first file
+        command_include_file()
+
+        # First file should be fully staged
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified1" in diff_result.stdout
+
+        # Second file should still be in working tree
+        diff_result = subprocess.run(
+            ["git", "diff"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified2" in diff_result.stdout
+
+        # Clean up
+        command_stop()
+
+    def test_skip_file_advances_to_next(self, temp_git_repo):
+        """Test that skip-file moves past all hunks in current file."""
+        # Create two files
+        file1 = temp_git_repo / "aaa_first.txt"
+        file2 = temp_git_repo / "zzz_second.txt"
+        file1.write_text("line1\nline2\n")
+        file2.write_text("lineA\nlineB\n")
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], cwd=temp_git_repo, check=True)
+
+        # Modify both
+        file1.write_text("mod1\nmod2\n")
+        file2.write_text("modA\nmodB\n")
+
+        # Start session
+        command_start()
+
+        # Skip entire first file
+        command_skip_file()
+
+        # Include next file
+        command_include()
+
+        # Only second file should be staged
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modA" in diff_result.stdout or "modB" in diff_result.stdout
+        assert "mod1" not in diff_result.stdout and "mod2" not in diff_result.stdout
+
+        # First file should still be in working tree
+        diff_result = subprocess.run(
+            ["git", "diff"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "mod1" in diff_result.stdout or "mod2" in diff_result.stdout
+
+        # Clean up
+        command_stop()
+
+    def test_discard_file_removes_entire_file(self, temp_git_repo):
+        """Test that discard-file stages deletion of modified tracked files."""
+        # Create and commit a file
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("original\n")
+        subprocess.run(["git", "add", "test.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], cwd=temp_git_repo, check=True)
+
+        # Modify the file
+        test_file.write_text("modified\n")
+
+        # Start and discard entire file
+        command_start()
+        command_discard_file()
+
+        # File should be staged for deletion (removed from working tree)
+        assert not test_file.exists()
+
+        # Verify it's staged for deletion
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached", "--name-status"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "D\ttest.txt" in diff_result.stdout
+
+        # Clean up
+        command_stop()
+
+    def test_abort_restores_file_discarded_with_discard_file(self, temp_git_repo):
+        """Test that abort restores files that were discarded with discard-file."""
+        # Create and commit a file
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("original\n")
+        subprocess.run(["git", "add", "test.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], cwd=temp_git_repo, check=True)
+
+        # Modify the file
+        test_file.write_text("modified\n")
+
+        # Start, discard file, then abort
+        command_start()
+        command_discard_file()
+
+        # File should be staged for deletion (removed from working tree)
+        assert not test_file.exists()
+
+        # Abort should restore the modification
+        command_abort()
+        assert test_file.exists()
+        assert test_file.read_text() == "modified\n"
+
+    def test_mixing_file_and_hunk_operations(self, temp_git_repo):
+        """Test using both file-level and hunk-level operations in same session."""
+        # Create three files
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file3 = temp_git_repo / "file3.txt"
+        file1.write_text("content1\n")
+        file2.write_text("content2\n")
+        file3.write_text("content3\n")
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], cwd=temp_git_repo, check=True)
+
+        # Modify all three
+        file1.write_text("modified1\n")
+        file2.write_text("modified2\n")
+        file3.write_text("modified3\n")
+
+        # Start session
+        command_start()
+
+        # Include file1 (file-level)
+        command_include_file()
+
+        # Include file2 (hunk-level)
+        command_include()
+
+        # Skip file3 (file-level)
+        command_skip_file()
+
+        # Check results: file1 and file2 should be staged
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified1" in diff_result.stdout
+        assert "modified2" in diff_result.stdout
+
+        # file3 should still be in working tree only
+        diff_result = subprocess.run(
+            ["git", "diff"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified3" in diff_result.stdout
+
+        # Clean up
+        command_stop()

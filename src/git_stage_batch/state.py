@@ -150,6 +150,24 @@ def remove_file_path_from_file(state_file_path: Path, file_path: str) -> None:
         existing.remove(file_path)
         write_file_paths_file(state_file_path, existing)
 
+
+def resolve_file_path_to_repo_relative(file_path: str) -> str:
+    """Convert a file path to repository-relative format."""
+    repo_root = get_git_repository_root_path()
+    path = Path(file_path)
+
+    # If it's already relative, use it as-is
+    if not path.is_absolute():
+        return file_path
+
+    # If it's absolute, make it relative to repo root
+    try:
+        return str(path.relative_to(repo_root))
+    except ValueError:
+        # Path is outside repo, return as-is
+        return file_path
+
+
 # --------------------------- State paths ---------------------------
 
 def get_state_directory_path() -> Path:
@@ -207,6 +225,14 @@ def get_auto_added_files_file_path() -> Path:
     return get_state_directory_path() / "auto-added-files"
 
 
+def get_blocked_files_file_path() -> Path:
+    return get_state_directory_path() / "blocked-files"
+
+
+def get_gitignore_path() -> Path:
+    return get_git_repository_root_path() / ".gitignore"
+
+
 # --------------------------- Diff streaming helpers ---------------------------
 
 def get_next_hunk_from_git(
@@ -262,3 +288,63 @@ def get_next_file_from_git(
             return patch.new_path
 
     return None
+
+
+# --------------------------- .gitignore manipulation ---------------------------
+
+
+def read_gitignore_lines() -> list[str]:
+    """Read .gitignore file, returning lines preserving original formatting."""
+    gitignore_path = get_gitignore_path()
+    if not gitignore_path.exists():
+        return []
+    content = read_text_file_contents(gitignore_path)
+    # Preserve exact formatting including trailing newline
+    return content.splitlines(keepends=True)
+
+
+def write_gitignore_lines(lines: list[str]) -> None:
+    """Write lines to .gitignore, preserving formatting."""
+    gitignore_path = get_gitignore_path()
+    content = "".join(lines)
+    write_text_file_contents(gitignore_path, content)
+
+
+def add_file_to_gitignore(file_path: str) -> None:
+    """Add a file path to .gitignore."""
+    lines = read_gitignore_lines()
+
+    # Check if already present
+    file_path_normalized = file_path.rstrip("\n")
+    for line in lines:
+        if line.rstrip("\n") == file_path_normalized:
+            return  # Already present
+
+    # Add to end
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+
+    lines.append(f"{file_path}\n")
+
+    write_gitignore_lines(lines)
+
+
+def remove_file_from_gitignore(file_path: str) -> bool:
+    """Remove a file path from .gitignore. Returns True if removed."""
+    lines = read_gitignore_lines()
+    file_path_normalized = file_path.rstrip("\n")
+
+    i = 0
+    removed = False
+    while i < len(lines):
+        if lines[i].rstrip("\n") == file_path_normalized:
+            # Remove the path
+            del lines[i]
+            removed = True
+            continue  # Don't increment i, check same position again
+        i += 1
+
+    if removed:
+        write_gitignore_lines(lines)
+
+    return removed

@@ -356,6 +356,7 @@ Finds commits that previously modified the lines in the current hunk and suggest
 - `--reset`: Start over from the most recent candidate
 - `--abort`: Clear state and exit
 - `--last`: Re-show the last candidate without advancing
+- `--porcelain`: Output in machine-readable JSON format
 
 **Example workflow:**
 ```bash
@@ -375,6 +376,38 @@ Candidate 2: e4f5g6h Add user validation
 ```
 
 The command uses `git log -L` to find commits that touched the affected lines, making it easy to create fixup commits for amendment during interactive rebase.
+
+**Porcelain output:**
+```bash
+❯ git-stage-batch suggest-fixup --porcelain
+```
+
+Outputs JSON with stable fields for script integration:
+```json
+{
+  "candidate": {
+    "hash": "a1b2c3d",
+    "full_hash": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
+    "subject": "Fix authentication logic",
+    "author": "John Doe",
+    "date": "2026-03-01T10:30:00-05:00",
+    "relative_date": "2 weeks ago"
+  },
+  "iteration": 1,
+  "boundary": "@{upstream}"
+}
+```
+
+**Automated fixup example:**
+```bash
+# Get fixup candidate programmatically
+CANDIDATE=$(git-stage-batch suggest-fixup --porcelain | jq -r '.candidate.hash')
+
+# Create fixup commit automatically
+if [ -n "$CANDIDATE" ]; then
+  git commit --fixup=$CANDIDATE
+fi
+```
 
 ---
 

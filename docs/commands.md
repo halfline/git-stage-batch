@@ -87,10 +87,56 @@ Show session progress and remaining hunks.
 
 **Example output:**
 ```
-Session active
-Processed: 3 hunks
-Remaining: 2 hunks
-Current file: auth.py
+Session: iteration 1 (in progress)
+
+Current hunk:
+  auth.py:42
+  [#1-3]
+
+Progress this iteration:
+  Included:  2 hunks
+  Skipped:   1 hunks
+  Discarded: 0 hunks
+  Remaining: ~3 hunks
+
+Skipped hunks:
+  config.py:15 [#1,3-5]
+```
+
+**Options:**
+- `--porcelain`: Output in machine-readable JSON format
+
+**Porcelain output:**
+```bash
+❯ git-stage-batch status --porcelain
+```
+
+Outputs JSON with stable fields for script integration:
+```json
+{
+  "session": {
+    "iteration": 1,
+    "in_progress": true
+  },
+  "selected": {
+    "file": "auth.py",
+    "line": 42,
+    "ids": [1, 2, 3]
+  },
+  "progress": {
+    "included": 2,
+    "skipped": 1,
+    "discarded": 0,
+    "remaining": 3
+  },
+  "skipped_hunks": [
+    {
+      "file": "config.py",
+      "line": 15,
+      "ids": [1, 3, 4, 5]
+    }
+  ]
+}
 ```
 
 ---

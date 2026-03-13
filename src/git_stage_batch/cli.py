@@ -289,6 +289,11 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Re-show the last candidate without advancing"),
     )
     parser_suggest_fixup.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Output in machine-readable JSON format"),
+    )
+    parser_suggest_fixup.add_argument(
         "boundary",
         nargs="?",
         default=None,
@@ -300,13 +305,15 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             args.boundary,
             reset=args.reset,
             abort=args.abort,
-            show_last=args.last
+            show_last=args.last,
+            porcelain=args.porcelain
         ) if args.line_ids else
         commands.command_suggest_fixup(
             args.boundary,
             reset=args.reset,
             abort=args.abort,
-            show_last=args.last
+            show_last=args.last,
+            porcelain=args.porcelain
         )
     ))
 

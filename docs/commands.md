@@ -31,9 +31,22 @@ Reprint the cached "current" hunk.
 ❯ git-stage-batch show
 ```
 
-Exit codes:
+**Options:**
+- `--porcelain`: Exit silently with status code only (no output)
+
+**Exit codes:**
 - `0` if hunk exists
 - `1` if no hunk
+
+**Usage in scripts:**
+```bash
+# Check if hunk exists before processing
+if git-stage-batch show --porcelain; then
+    echo "Hunk available for processing"
+else
+    echo "No hunks remaining"
+fi
+```
 
 ---
 

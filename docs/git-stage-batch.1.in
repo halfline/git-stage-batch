@@ -45,8 +45,17 @@ Reverse-apply the cached hunk to the working tree; advance to next.
 .B WARNING:
 This permanently removes changes from your working tree.
 .TP
-.B status
+.B status \fR[\fB\-\-porcelain\fR]
 Show session progress and remaining hunks.
+Displays iteration number, current hunk location, progress metrics
+(included/skipped/discarded/remaining counts), and a list of skipped hunks.
+.RS
+.TP
+.B \-\-porcelain
+Output in machine-readable JSON format for script integration.
+The JSON includes: session (iteration and in_progress flag), current
+(current hunk location or null), progress (counts), and skipped_hunks (array).
+.RE
 .SS Session Management
 .TP
 .B again

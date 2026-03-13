@@ -10,8 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from git_stage_batch.commands import command_start, command_stop
-from git_stage_batch.state import get_state_directory_path
+from git_stage_batch.commands import (
+    command_abort,
+    command_discard,
+    command_include,
+    command_start,
+    command_stop,
+)
+from git_stage_batch.state import CommandError, get_state_directory_path
 
 
 @pytest.fixture
@@ -102,3 +108,141 @@ class TestSessionLifecycle:
         # Only stop should remove it
         command_stop()
         assert not state_dir.exists()
+
+
+class TestAbortWorkflow:
+    """Test abort functionality in various workflow scenarios."""
+
+    def test_abort_restores_working_tree_after_discard(self, temp_git_repo):
+        """Test that abort restores changes that were discarded."""
+        # Create a file and commit it
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("original content\n")
+        subprocess.run(["git", "add", "test.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add test file"], cwd=temp_git_repo, check=True)
+
+        # Modify the file
+        test_file.write_text("modified content\n")
+        original_modified_content = test_file.read_text()
+
+        # Start session and discard the change
+        command_start()
+        command_discard()
+
+        # File should be reverted
+        assert test_file.read_text() == "original content\n"
+
+        # Abort should restore the modified content
+        command_abort()
+        assert test_file.read_text() == original_modified_content
+
+        # Session state should be cleared
+        assert not get_state_directory_path().exists()
+
+    def test_abort_undoes_staged_changes(self, temp_git_repo):
+        """Test that abort removes changes from the index."""
+        # Create changes
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nmodified\nline3\n")
+
+        # Start and include (stage) the change
+        command_start()
+        command_include()
+
+        # Change should be staged
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified" in diff_result.stdout
+
+        # Abort should unstage it
+        command_abort()
+
+        # Index should be clean
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert diff_result.stdout.strip() == ""
+
+        # But working tree should still have the change
+        assert "modified" in test_file.read_text()
+
+    def test_abort_with_both_staged_and_discarded_changes(self, temp_git_repo):
+        """Test abort with complex state: some changes staged, some discarded."""
+        # Create two files
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("content1\n")
+        file2.write_text("content2\n")
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], cwd=temp_git_repo, check=True)
+
+        # Modify both files
+        file1.write_text("modified1\n")
+        file2.write_text("modified2\n")
+
+        # Start session
+        command_start()
+
+        # Include first file (stages it)
+        command_include()
+
+        # Discard second file (reverts it)
+        command_discard()
+
+        # Verify state: file1 staged, file2 reverted
+        assert file2.read_text() == "content2\n"
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified1" in diff_result.stdout
+
+        # Abort should restore everything
+        command_abort()
+
+        # Index should be clean
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert diff_result.stdout.strip() == ""
+
+        # Both files should have modifications back
+        assert file1.read_text() == "modified1\n"
+        assert file2.read_text() == "modified2\n"
+
+    def test_abort_without_session_fails_gracefully(self, temp_git_repo):
+        """Test that abort gives a clear error when no session exists."""
+        # No session active
+        assert not get_state_directory_path().exists()
+
+        # Abort should error
+        with pytest.raises(CommandError) as exc_info:
+            command_abort()
+
+        assert "No session to abort" in exc_info.value.message or "not found" in exc_info.value.message
+
+    def test_abort_clears_session_state(self, temp_git_repo):
+        """Test that abort removes the session state directory."""
+        # Create changes and start session
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nmodified\nline3\n")
+        command_start()
+
+        # State should exist
+        assert get_state_directory_path().exists()
+
+        # Abort should remove state
+        command_abort()
+        assert not get_state_directory_path().exists()

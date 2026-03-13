@@ -42,6 +42,10 @@ from git_stage_batch.state import (
     write_file_paths_file,
     write_gitignore_lines,
     write_text_file_contents,
+    get_discarded_hunks_file_path,
+    get_included_hunks_file_path,
+    get_iteration_count_file_path,
+    get_skipped_hunks_jsonl_file_path,
 )
 
 @pytest.fixture
@@ -596,3 +600,31 @@ class TestGitignoreManipulation:
 
         # Original content unchanged
         assert gitignore.read_text() == "*.pyc\n"
+
+
+class TestProgressTrackingStatePaths:
+    """Tests for progress tracking state file path functions."""
+
+    def test_get_iteration_count_file_path(self, temp_git_repo):
+        """Test getting the iteration count file path."""
+        iteration_count_path = get_iteration_count_file_path()
+        state_dir = get_state_directory_path()
+        assert iteration_count_path == state_dir / "iteration-count"
+
+    def test_get_included_hunks_file_path(self, temp_git_repo):
+        """Test getting the included hunks file path."""
+        included_path = get_included_hunks_file_path()
+        state_dir = get_state_directory_path()
+        assert included_path == state_dir / "included-hunks"
+
+    def test_get_skipped_hunks_jsonl_file_path(self, temp_git_repo):
+        """Test getting the skipped hunks JSONL file path."""
+        skipped_path = get_skipped_hunks_jsonl_file_path()
+        state_dir = get_state_directory_path()
+        assert skipped_path == state_dir / "skipped-hunks.jsonl"
+
+    def test_get_discarded_hunks_file_path(self, temp_git_repo):
+        """Test getting the discarded hunks file path."""
+        discarded_path = get_discarded_hunks_file_path()
+        state_dir = get_state_directory_path()
+        assert discarded_path == state_dir / "discarded-hunks"

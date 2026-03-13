@@ -2,6 +2,26 @@
 
 import pytest
 
+@pytest.fixture
+def temp_git_repo(tmp_path, monkeypatch):
+    """Create a temporary git repository for testing."""
+    repo = tmp_path / "test_repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+
+    subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+
+    # Create initial commit
+    (repo / "README.md").write_text("# Test\n")
+    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
+
+    return repo
+
+import subprocess
+
 from git_stage_batch.parser import parse_unified_diff_into_single_hunk_patches
 
 
@@ -248,3 +268,68 @@ class TestBuildCurrentLinesFromPatchText:
         changed_ids = current_lines.changed_line_ids()
         # Should have 4 changed lines (2 deletions + 2 additions)
         assert len(changed_ids) == 4
+
+
+class TestWriteSnapshotsForCurrentFilePath:
+    """Tests for write_snapshots_for_current_file_path function."""
+
+    def test_write_snapshots_creates_snapshot_files(self, temp_git_repo):
+        """Test that snapshots are created for a file."""
+        from git_stage_batch.parser import write_snapshots_for_current_file_path
+        from git_stage_batch.state import (
+            get_index_snapshot_file_path,
+            get_working_tree_snapshot_file_path,
+            read_text_file_contents,
+        )
+        import subprocess
+        
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        original_content = readme.read_text()
+        modified_content = "# Modified\nNew content\n"
+        readme.write_text(modified_content)
+        
+        # Stage some content
+        staging_content = "# Staged\nStaged content\n"
+        readme.write_text(staging_content)
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        
+        # Modify again in working tree
+        readme.write_text(modified_content)
+        
+        # Write snapshots
+        write_snapshots_for_current_file_path("README.md")
+        
+        # Verify snapshots were created
+        index_snapshot = get_index_snapshot_file_path()
+        working_tree_snapshot = get_working_tree_snapshot_file_path()
+        
+        assert index_snapshot.exists()
+        assert working_tree_snapshot.exists()
+        
+        # Verify contents
+        index_content = read_text_file_contents(index_snapshot)
+        working_tree_content = read_text_file_contents(working_tree_snapshot)
+        
+        assert index_content == staging_content
+        assert working_tree_content == modified_content
+
+    def test_write_snapshots_for_new_file(self, temp_git_repo):
+        """Test writing snapshots for a new unstaged file."""
+        from git_stage_batch.parser import write_snapshots_for_current_file_path
+        from git_stage_batch.state import get_working_tree_snapshot_file_path
+        import subprocess
+        
+        # Create new file
+        new_file = temp_git_repo / "new.txt"
+        new_file.write_text("new content\n")
+        
+        # Auto-add with -N
+        subprocess.run(["git", "add", "-N", "new.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        
+        # Write snapshots
+        write_snapshots_for_current_file_path("new.txt")
+        
+        # Verify working tree snapshot exists
+        working_tree_snapshot = get_working_tree_snapshot_file_path()
+        assert working_tree_snapshot.exists()

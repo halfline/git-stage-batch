@@ -247,8 +247,15 @@ def command_discard(*, quiet: bool = False) -> None:
         if patch_hash in blocked_hashes:
             continue
 
-        # Extract filename for user feedback
+        # Extract filename for user feedback and snapshotting
         filename = patch.new_path if patch.new_path else "unknown"
+        old_path = patch.old_path if patch.old_path else None
+
+        # Snapshot file if untracked before discarding
+        # Use new path unless it's a deletion (where new path is /dev/null)
+        file_path = filename if filename != "/dev/null" else old_path
+        if file_path and file_path != "/dev/null":
+            snapshot_file_if_untracked(file_path)
 
         # Apply the hunk in reverse to discard from working tree
         try:

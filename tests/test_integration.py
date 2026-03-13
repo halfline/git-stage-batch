@@ -53,6 +53,10 @@ class TestSessionLifecycle:
 
     def test_start_creates_state_directory(self, temp_git_repo):
         """Test that start creates the state directory."""
+        # Create some changes
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nmodified\nline3\n")
+
         # State shouldn't exist initially
         assert not get_state_directory_path().exists()
 
@@ -65,6 +69,10 @@ class TestSessionLifecycle:
 
     def test_stop_removes_state_directory(self, temp_git_repo):
         """Test that stop removes the state directory."""
+        # Create changes
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nmodified\nline3\n")
+
         # Start session
         command_start()
         assert get_state_directory_path().exists()
@@ -87,10 +95,17 @@ class TestSessionLifecycle:
 
     def test_multiple_starts_are_idempotent(self, temp_git_repo):
         """Test that calling start multiple times is safe."""
+        # Create changes
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nmodified\nline3\n")
+
         # First start
         command_start()
         state_dir = get_state_directory_path()
         assert state_dir.exists()
+
+        # Modify again to have changes for second start
+        test_file.write_text("line1\nmodified again\nline3\n")
 
         # Second start should not error
         command_start()
@@ -101,22 +116,24 @@ class TestSessionLifecycle:
 
     def test_session_state_directory_persists_until_stop(self, temp_git_repo):
         """Test that the state directory persists across commands until stop is called."""
+        # Create changes
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nmodified\nline3\n")
+
         # Start session
         command_start()
         state_dir = get_state_directory_path()
         assert state_dir.exists()
 
-        # Simulate doing other git operations
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("line1\nmodified\nline3\n")
-        subprocess.run(["git", "add", "test.txt"], cwd=temp_git_repo, check=True)
+        # Include the hunk (simulating doing operations)
+        command_include()
 
-        # State should still exist
+        # State should still exist after operations
         assert state_dir.exists()
 
         # Only stop should remove it
         command_stop()
-        assert not state_dir.exists()
+        assert not get_state_directory_path().exists()
 
 
 class TestAbortWorkflow:

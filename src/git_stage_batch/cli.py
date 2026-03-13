@@ -133,7 +133,19 @@ def main() -> None:
     )
     parser_skip_file.set_defaults(func=lambda _: commands.command_skip_file())
 
-    # discard - Discard the current hunk or entire file from working tree
+    # block-file - Permanently exclude a file
+    parser_block_file = subparsers.add_parser(
+        "block-file",
+        aliases=["bf"],
+        help=_("Permanently exclude a file (adds to .gitignore)"),
+    )
+    parser_block_file.add_argument(
+        "file_path",
+        help=_("Path to the file to block"),
+    )
+    parser_block_file.set_defaults(func=lambda args: commands.command_block_file(args.file_path))
+
+    # discard - Discard the current hunk from working tree
     parser_discard = subparsers.add_parser(
         "discard",
         aliases=["d"],

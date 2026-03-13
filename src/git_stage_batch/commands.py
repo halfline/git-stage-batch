@@ -13,6 +13,7 @@ from .hashing import compute_stable_hunk_hash
 from .i18n import _, ngettext
 from .parser import parse_unified_diff_into_single_hunk_patches, parse_unified_diff_streaming
 from .state import (
+    add_file_to_gitignore,
     append_file_path_to_file,
     append_lines_to_file,
     ensure_state_directory_exists,
@@ -23,6 +24,7 @@ from .state import (
     get_abort_stash_file_path,
     get_auto_added_files_file_path,
     get_block_list_file_path,
+    get_blocked_files_file_path,
     get_context_lines,
     get_context_lines_file_path,
     get_git_repository_root_path,
@@ -31,6 +33,7 @@ from .state import (
     read_file_paths_file,
     read_text_file_contents,
     require_git_repository,
+    resolve_file_path_to_repo_relative,
     run_git_command,
     stream_git_command,
     write_text_file_contents,
@@ -104,13 +107,16 @@ def auto_add_untracked_files() -> None:
     if not untracked_files:
         return
 
+    # Get blocked files list
+    blocked_files = set(read_file_paths_file(get_blocked_files_file_path()))
+
     # Get already auto-added files to avoid redundant git add -N
     auto_added_path = get_auto_added_files_file_path()
     auto_added_files = set(read_file_paths_file(auto_added_path))
 
-    # Add untracked files that haven't been auto-added yet
+    # Add untracked files that aren't blocked and haven't been auto-added yet
     for file_path in untracked_files:
-        if file_path not in auto_added_files:
+        if file_path not in blocked_files and file_path not in auto_added_files:
             result = run_git_command(["add", "-N", file_path], check=False)
             if result.returncode == 0:
                 append_file_path_to_file(auto_added_path, file_path)
@@ -386,6 +392,26 @@ def command_skip_file() -> None:
         hunks_skipped
     ).format(count=hunks_skipped, file=target_file)
     print(msg)
+
+
+def command_block_file(file_path_arg: str) -> None:
+    """Permanently exclude a file by adding it to .gitignore and blocked list."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    if not file_path_arg:
+        exit_with_error(_("File path required for block-file command."))
+
+    # Resolve to repo-relative path
+    file_path = resolve_file_path_to_repo_relative(file_path_arg)
+
+    # Add to .gitignore
+    add_file_to_gitignore(file_path)
+
+    # Add to blocked-files state
+    append_file_path_to_file(get_blocked_files_file_path(), file_path)
+
+    print(_("Blocked file: {}").format(file_path))
 
 
 def command_discard(*, quiet: bool = False) -> None:

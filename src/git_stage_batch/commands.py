@@ -518,7 +518,7 @@ def _recalculate_current_hunk_for_file(file_path: str) -> None:
     command_show()
 
 
-def command_show() -> None:
+def command_show(porcelain: bool = False) -> None:
     """Show the first unprocessed hunk."""
     require_git_repository()
     ensure_state_directory_exists()
@@ -534,7 +534,10 @@ def command_show() -> None:
     patches = parse_unified_diff_into_single_hunk_patches(diff_text)
 
     if not patches:
-        print(_("No changes to show."))
+        if porcelain:
+            sys.exit(1)  # No hunk available
+        else:
+            print(_("No changes to show."))
         return
 
     # Load blocklist
@@ -559,11 +562,17 @@ def command_show() -> None:
             # Save snapshots of file state for staleness detection
             write_snapshots_for_current_file_path(current_lines.path)
 
-            print_annotated_hunk_with_aligned_gutter(current_lines)
+            if porcelain:
+                sys.exit(0)  # Hunk available
+            else:
+                print_annotated_hunk_with_aligned_gutter(current_lines)
             return
 
     # All hunks are blocked
-    print(_("No more hunks to process."))
+    if porcelain:
+        sys.exit(1)  # No hunk available
+    else:
+        print(_("No more hunks to process."))
 
 
 def command_include() -> None:

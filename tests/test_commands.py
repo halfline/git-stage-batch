@@ -594,3 +594,32 @@ class TestCommandStatus:
         assert "Processed: 1 hunks" in captured.out
         assert "Remaining: 0 hunks" in captured.out
         assert "All hunks processed" in captured.out
+
+    def test_start_initializes_abort_state(self, temp_git_repo):
+        """Test that start initializes abort state files."""
+        from git_stage_batch.state import (
+            get_abort_head_file_path,
+            get_abort_stash_file_path,
+            read_text_file_contents,
+        )
+
+        # Create a change to make start succeed
+        (temp_git_repo / "README.md").write_text("# Test\nModified\n")
+
+        command_start()
+        
+        # Verify abort-head file was created with current HEAD
+        abort_head_path = get_abort_head_file_path()
+        assert abort_head_path.exists()
+        saved_head = read_text_file_contents(abort_head_path).strip()
+        current_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True
+        ).stdout.strip()
+        assert saved_head == current_head
+        
+        # Verify abort-stash file was created (may be empty if no tracked changes)
+        abort_stash_path = get_abort_stash_file_path()
+        assert abort_stash_path.exists()

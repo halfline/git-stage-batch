@@ -22,11 +22,14 @@ from git_stage_batch.state import (
     get_blocked_files_file_path,
     get_current_hunk_hash_file_path,
     get_current_hunk_patch_file_path,
+    get_current_lines_json_file_path,
     get_git_repository_root_path,
     get_gitignore_path,
+    get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
     get_state_directory_path,
+    get_working_tree_snapshot_file_path,
     read_file_paths_file,
     read_gitignore_lines,
     read_text_file_contents,
@@ -317,10 +320,28 @@ class TestStateDirectory:
         state_dir = get_state_directory_path()
         assert blocked_path == state_dir / "blocked-files"
 
+    def test_get_current_lines_json_file_path(self, temp_git_repo):
+        """Test getting the current lines JSON file path."""
+        lines_json_path = get_current_lines_json_file_path()
+        state_dir = get_state_directory_path()
+        assert lines_json_path == state_dir / "current-lines.json"
+
     def test_get_gitignore_path(self, temp_git_repo):
         """Test getting the .gitignore path."""
         gitignore_path = get_gitignore_path()
         assert gitignore_path == temp_git_repo / ".gitignore"
+
+    def test_get_index_snapshot_file_path(self, temp_git_repo):
+        """Test getting the index snapshot file path."""
+        index_snapshot_path = get_index_snapshot_file_path()
+        state_dir = get_state_directory_path()
+        assert index_snapshot_path == state_dir / "index-snapshot"
+
+    def test_get_working_tree_snapshot_file_path(self, temp_git_repo):
+        """Test getting the working tree snapshot file path."""
+        working_tree_snapshot_path = get_working_tree_snapshot_file_path()
+        state_dir = get_state_directory_path()
+        assert working_tree_snapshot_path == state_dir / "working-tree-snapshot"
 
     def test_get_processed_include_ids_file_path(self, temp_git_repo):
         """Test getting the processed include IDs file path."""

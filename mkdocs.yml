@@ -67,6 +67,8 @@ nav:
     - Examples: examples.md
   - Integration:
     - AI Assistants: ai-assistants.md
+  - Advanced Features:
+    - Batch Operations: batches.md
 
 plugins:
   - search

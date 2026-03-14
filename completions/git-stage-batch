@@ -55,7 +55,7 @@ _git_stage_batch()
                 __gitcomp_nl "$(__git_refs)"
                 return
             fi
-            COMPREPLY=($(compgen -W "--reset --abort --last --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--reset --abort --last --line --porcelain" -- "$cur"))
             ;;
         *)
             ;;

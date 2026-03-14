@@ -239,15 +239,15 @@ Apply batch changes to the working tree for the current file only. Use this duri
 
 ---
 
-## `skip --to BATCH`
+## `include --to BATCH`
 
-Save the current hunk to a batch instead of just skipping it.
+Include the current hunk in a batch for later staging.
 
 ```
-❯ git-stage-batch skip --to batch-name
+❯ git-stage-batch include --to batch-name
 ```
 
-This saves the current working tree state of the file to the batch, then marks the hunk as skipped so you can continue processing other hunks.
+This saves the current working tree state of the file to the batch and marks the hunk as processed, allowing you to continue with other hunks. The changes remain in your working tree and can be staged later using `include --from BATCH`.
 
 **Save specific lines only:**
 ```
@@ -266,14 +266,14 @@ If the batch doesn't exist, it will be automatically created with the note "Auto
 
 **Line-level saving:**
 ```
-❯ git-stage-batch skip --to batch-name --line 1,3
+❯ git-stage-batch include --to batch-name --line 1,3
 ```
 
 Save only specific lines to the batch, allowing fine-grained accumulation of changes.
 
 **File-level saving:**
 ```
-❯ git-stage-batch skip --to batch-name --file
+❯ git-stage-batch include --to batch-name --file
 ```
 
 Save the entire current file to the batch instead of just the current hunk. Useful when you want to defer an entire file's changes as a unit.
@@ -334,3 +334,293 @@ Save the entire current file to the batch, then discard the entire file from the
 # Later, if you need the debug code back:
 ❯ git-stage-batch include --from debug-logging
 ```
+
+---
+
+## Advanced Workflow: Decomposing and Recomposing History
+
+When you have a messy working tree with multiple logical changes intertwined, you can use batches to decompose the changes into layers, create clean checkpoints, then recompose them as a series of well-organized commits.
+
+**Strategy:**
+1. Use `discard --to` to peel off the topmost logical layer
+2. Edit the tree to fix dependencies (remove calls to code you just discarded)
+3. Repeat for each layer, working from outside to inside
+4. Apply batches back in reverse order with clear commit messages
+
+**Example workflow:**
+
+```bash
+# Starting state: messy working tree with authentication refactor,
+# new API endpoint, and database migration all mixed together
+
+❯ git-stage-batch start
+
+# Layer 1: Peel off the API endpoint (topmost layer, depends on auth changes)
+❯ git-stage-batch discard --to api-endpoint --note "Layer 3: API endpoint (depends on layer 2: auth)"
+# Tree now has auth + database changes
+
+# Fix dependencies: remove the API route registration that depended on the endpoint
+❯ $EDITOR main.py  # Remove route registration
+
+# Layer 2: Peel off authentication refactor (depends on database schema)
+❯ git-stage-batch again  # Restart to see remaining hunks
+❯ git-stage-batch discard --to auth-refactor --note "Layer 2: auth refactor (depends on layer 1: database)"
+# Tree now has only database changes
+
+# Fix dependencies: remove auth code that depended on new DB columns
+❯ $EDITOR auth.py  # Remove references to new columns
+
+# Layer 3: What remains is the foundation (database migration)
+❯ git-stage-batch again
+❯ git-stage-batch discard --to database-migration --note "Layer 1: database foundation (no dependencies)"
+# Tree is now clean (or back to original state)
+
+# Review the decomposition
+❯ git-stage-batch list
+Batches:
+  database-migration: Layer 1: database foundation (no dependencies) (created 2 minutes ago)
+  auth-refactor: Layer 2: auth refactor (depends on layer 1: database) (created 1 minute ago)
+  api-endpoint: Layer 3: API endpoint (depends on layer 2: auth) (created 30 seconds ago)
+
+# Now recompose in dependency order (reverse of discard order)
+
+# Step 1: Apply foundation layer
+❯ git-stage-batch include --from database-migration
+❯ git commit -m "database: Add user preferences table
+
+The application stores all configuration in code, preventing users from
+customizing their experience across sessions.
+
+Users need persistent storage for individual preferences like theme choice,
+language selection, and timezone settings that survive across logins.
+
+This commit adds a preferences table with columns for theme, language, and
+timezone. Includes migration script and updated schema documentation."
+
+# Step 2: Apply authentication layer
+❯ git-stage-batch include --from auth-refactor
+❯ git commit -m "auth: Load user preferences during session initialization
+
+The authentication module creates sessions but doesn't populate user preferences,
+requiring separate queries throughout the application to access settings.
+
+Users experience slower page loads as each component independently queries for
+preference data instead of loading it once at authentication time.
+
+This commit updates the auth module to read user preferences from the new table
+during session creation. Preferences are cached in the session object, eliminating
+redundant database queries."
+
+# Step 3: Apply API layer
+❯ git-stage-batch include --from api-endpoint
+❯ git commit -m "api: Add endpoint for updating user preferences
+
+Users can view their preferences but have no way to modify them without direct
+database access, forcing administrators to handle routine preference changes.
+
+A self-service interface is needed for users to customize their experience without
+administrative intervention.
+
+This commit adds a /api/preferences endpoint accepting PUT requests with theme,
+language, and timezone fields. Integrates with the authentication system to
+validate sessions and update preferences atomically."
+
+# Clean up batches
+❯ git-stage-batch drop database-migration
+❯ git-stage-batch drop auth-refactor
+❯ git-stage-batch drop api-endpoint
+
+# Result: clean, logical commit history instead of one messy commit
+```
+
+**Key insights:**
+
+- Use `--note` to document layer dependencies when creating batches
+- Update notes with `annotate` if you discover dependencies later
+- The batches themselves are your backup - no need for checkpoint commits
+- The decomposition order is outside-in (what depends on what)
+- The recomposition order is inside-out (foundations first, dependents later)
+- Edit the tree between `discard --to` operations to fix broken dependencies
+- This pattern is powerful for untangling complex changesets into reviewable commits
+
+---
+
+## Frequently Asked Questions
+
+### How are batches different from Git stashes?
+
+A stash saves the entire state of your working tree so you can return to it later. A batch saves a **logical change** so you can organize it into a clean commit later.
+
+Stashes are for temporarily setting work aside. Batches are for structuring and organizing work before committing it.
+
+With a stash, you capture everything:
+
+```bash
+git stash
+```
+
+With a batch, you capture only the parts you choose:
+
+```bash
+git-stage-batch include --to parser
+git-stage-batch include --to cli
+git-stage-batch include --to docs
+```
+
+Later, you can turn each batch into a commit.
+
+---
+
+### Why not just use `git stash`?
+
+Stashes are snapshots of your workspace. They are not designed to organize code changes into meaningful commits.
+
+If your working tree contains multiple logical changes, a stash will bundle them all together. Batches let you separate them as you go.
+
+For example:
+
+```
+working tree:
+  parser work
+  CLI changes
+  documentation updates
+```
+
+With stashes, those changes are stored together.
+
+With batches, they can be separated:
+
+```
+parser
+cli
+docs
+```
+
+Each batch can later become its own commit.
+
+---
+
+### Can I replace stashes with batches?
+
+No. They solve different problems.
+
+Use stashes when you need to quickly save your working state:
+
+```bash
+git stash
+git pull
+git stash pop
+```
+
+Use batches when you're organizing a messy working tree into clean commits.
+
+---
+
+### How are batches different from commits?
+
+A commit is permanent project history. A batch is a temporary container for changes you are still organizing.
+
+You should think of a batch as a **draft commit**.
+
+Example workflow:
+
+```bash
+git-stage-batch include --to parser
+git-stage-batch include --to parser
+git-stage-batch include --to parser
+
+git-stage-batch include --from parser
+git commit -m "Add parser implementation"
+```
+
+The batch helps assemble the commit, but it is not part of the repository history itself.
+
+---
+
+### Why not just commit earlier?
+
+Sometimes your working tree contains changes that belong to different commits but are mixed together.
+
+For example:
+
+```
+working tree:
+  parser feature
+  CLI integration
+  documentation
+  refactor
+```
+
+You could commit everything at once, but that produces messy history.
+
+Batches let you reorganize changes into logical commits before publishing them.
+
+---
+
+### Are batches like temporary branches?
+
+Not really.
+
+Branches organize commits. Batches organize **uncommitted changes**.
+
+A branch looks like this:
+
+```
+commit → commit → commit
+```
+
+A batch looks more like this:
+
+```
+selected hunks → staged later → commit
+```
+
+They operate at different levels of the workflow.
+
+---
+
+### Do batches modify my Git history?
+
+No.
+
+Batches exist outside of your commit history. They only affect how you prepare commits.
+
+Once a batch is included and committed, the batch itself can be dropped.
+
+---
+
+### When should I use batches?
+
+Batches are useful when your working tree contains multiple logical changes and you want to turn them into clean commits.
+
+Typical cases include:
+
+* splitting a large diff into logical commits
+* organizing refactors before submitting a pull request
+* reconstructing history for a patch series
+* preparing changes before rebasing or squashing
+
+---
+
+### Are batches meant to be long-lived?
+
+No. Batches are usually short-lived.
+
+They exist while you are organizing a set of commits and are typically dropped once the commits have been created.
+
+---
+
+### Do batches replace `git add -p`?
+
+No. Batches build on the same idea.
+
+`git add -p` lets you stage parts of a change.
+Batches let you **defer and group those parts** so they can become separate commits later.
+
+---
+
+### Why use batches instead of staging everything immediately?
+
+Because sometimes you do not yet know which commit a change belongs in.
+
+Batches let you postpone that decision while still organizing the changes.

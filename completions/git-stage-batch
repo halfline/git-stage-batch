@@ -5,7 +5,7 @@ _git_stage_batch()
     local cur prev words cword
     _init_completion || return
 
-    local commands="start show include skip discard status again stop abort block-file unblock-file"
+    local commands="start show include skip discard status again stop abort block-file unblock-file suggest-fixup"
 
     # Handle subcommands
     if [[ $cword -eq 1 ]]; then
@@ -42,6 +42,20 @@ _git_stage_batch()
             ;;
         block-file|unblock-file)
             _filedir
+            ;;
+        suggest-fixup)
+            case "$prev" in
+                --line)
+                    # Line IDs - no completion
+                    return
+                    ;;
+            esac
+            if [[ $cword -eq 2 ]]; then
+                # Boundary argument (positional)
+                __gitcomp_nl "$(__git_refs)"
+                return
+            fi
+            COMPREPLY=($(compgen -W "--reset --abort --last --line" -- "$cur"))
             ;;
         *)
             ;;

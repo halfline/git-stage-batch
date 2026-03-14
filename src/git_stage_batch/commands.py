@@ -13,6 +13,8 @@ from typing import Any, Optional
 from .batch import (
     create_batch,
     delete_batch,
+    get_batch_baseline_commit,
+    get_batch_diff,
     list_batch_names,
     read_batch_metadata,
     update_batch_note,
@@ -1928,3 +1930,200 @@ def command_annotate_batch(batch_name: str, note: str) -> None:
     require_git_repository()
     update_batch_note(batch_name, note)
     print(_("✓ Updated note for batch '{name}'").format(name=batch_name))
+
+
+def command_show_from_batch(batch_name: str, line_ids: Optional[str] = None, _file_only: bool = False) -> None:
+    """Show changes from a batch."""
+    require_git_repository()
+
+    # Get batch diff
+    context_lines = get_context_lines()
+    diff = get_batch_diff(batch_name, context_lines)
+
+    if not diff:
+        exit_with_error(_("Batch '{name}' is empty or does not exist").format(name=batch_name))
+
+    # For now, just print the entire diff
+    # TODO: Add filtering by line_ids and _file_only
+    print_colored_patch(diff)
+
+
+def command_include_from_batch(batch_name: str, line_ids: Optional[str] = None, _file_only: bool = False) -> None:
+    """Stage changes from a batch to the index."""
+    require_git_repository()
+
+    # Refresh index to ensure git's cached stat info is up-to-date
+    # This prevents "does not match index" errors when files have been manually modified
+    run_git_command(["update-index", "--refresh"], check=False)
+
+    # Get batch diff
+    context_lines = get_context_lines()
+    diff = get_batch_diff(batch_name, context_lines)
+
+    if not diff:
+        exit_with_error(_("Batch '{name}' is empty or does not exist").format(name=batch_name))
+
+    # Parse diff into patches
+    patches = parse_unified_diff_into_single_hunk_patches(diff)
+
+    if not patches:
+        exit_with_error(_("No patches found in batch '{name}'").format(name=batch_name))
+
+    # Apply each patch to index only
+    # For now, fail if any patch cannot be applied (strict mode)
+    failed_files = []
+    for patch in patches:
+        file_path = patch.new_path
+
+        # Try to apply the patch
+        # For strict mode, we need to verify each patch can apply cleanly
+        # Apply to index only using --cached
+        import subprocess
+        result = subprocess.run(
+            ["git", "apply", "--cached", "--unidiff-zero"],
+            input=patch.to_patch_text(),
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        if result.returncode != 0:
+            failed_files.append(file_path)
+
+    if failed_files:
+        exit_with_error(
+            f"Failed to apply patches for files: {', '.join(failed_files)}\n" +
+            f"Run 'git-stage-batch show --from {batch_name}' to review changes\n" +
+            "Use --file or --line to apply compatible parts"
+        )
+
+    print(_("✓ Staged changes from batch '{name}'").format(name=batch_name))
+
+
+def command_discard_from_batch(batch_name: str, line_ids: Optional[str] = None, _file_only: bool = False) -> None:
+    """Remove batch changes from working tree."""
+    require_git_repository()
+
+    # Get batch diff
+    context_lines = get_context_lines()
+    diff = get_batch_diff(batch_name, context_lines)
+
+    if not diff:
+        exit_with_error(_("Batch '{name}' is empty or does not exist").format(name=batch_name))
+
+    # Parse diff into patches
+    patches = parse_unified_diff_into_single_hunk_patches(diff)
+
+    if not patches:
+        exit_with_error(_("No patches found in batch '{name}'").format(name=batch_name))
+
+    # Apply each patch in reverse to the working tree
+    failed_files = []
+    for patch in patches:
+        file_path = patch.new_path
+
+        # Try to apply the patch in reverse
+        import subprocess
+        result = subprocess.run(
+            ["git", "apply", "--reverse", "--unidiff-zero"],
+            input=patch.to_patch_text(),
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        if result.returncode != 0:
+            failed_files.append(file_path)
+
+    if failed_files:
+        exit_with_error(
+            f"Failed to discard patches for files: {', '.join(failed_files)}\n" +
+            f"Run 'git-stage-batch show --from {batch_name}' to review changes\n" +
+            "Use --file or --line to discard compatible parts"
+        )
+
+    print(_("✓ Discarded changes from batch '{name}' from working tree").format(name=batch_name))
+    print(_("Note: Batch '{name}' still exists (use 'drop' to delete it)").format(name=batch_name))
+
+
+def command_apply_from_batch(batch_name: str, line_ids: Optional[str] = None) -> None:
+    """Apply batch changes to working tree (without staging)."""
+    require_git_repository()
+
+    # Get batch diff
+    context_lines = get_context_lines()
+    diff = get_batch_diff(batch_name, context_lines)
+
+    if not diff:
+        exit_with_error(_("Batch '{name}' is empty or does not exist").format(name=batch_name))
+
+    # Parse diff into patches
+    patches = parse_unified_diff_into_single_hunk_patches(diff)
+
+    if not patches:
+        exit_with_error(_("No patches found in batch '{name}'").format(name=batch_name))
+
+    # If line_ids specified, use line-level application
+    if line_ids:
+        selected_ids = parse_line_selection(line_ids)
+
+        for patch in patches:
+            patch_text = patch.to_patch_text()
+            current_lines = build_current_lines_from_patch_text(patch_text)
+            file_path = current_lines.path
+
+            # Filter to selected lines
+            filtered_lines = [line for line in current_lines.lines if line.id in selected_ids]
+            if not filtered_lines:
+                continue
+
+            # Snapshot file before modifying
+            snapshot_file_if_untracked(file_path)
+
+            # Get base content from batch baseline
+            baseline_commit = get_batch_baseline_commit(batch_name)
+            base_result = run_git_command(["show", f"{baseline_commit}:{file_path}"], check=False)
+            base_text = base_result.stdout if base_result.returncode == 0 else ""
+
+            # Build target content with selected lines
+            target_content = build_target_index_content_with_selected_lines(
+                current_lines, selected_ids, base_text
+            )
+
+            # Write to working tree
+            repo_root = get_git_repository_root_path()
+            full_path = repo_root / file_path
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            write_text_file_contents(full_path, target_content)
+
+        print(_("✓ Applied selected lines from batch '{name}' to working tree").format(name=batch_name))
+    else:
+        # Apply entire patches to the working tree (strict mode)
+        failed_files = []
+        for patch in patches:
+            file_path = patch.new_path
+
+            # Snapshot file before modifying
+            snapshot_file_if_untracked(file_path)
+
+            # Try to apply the patch
+            import subprocess
+            result = subprocess.run(
+                ["git", "apply", "--unidiff-zero"],
+                input=patch.to_patch_text(),
+                capture_output=True,
+                text=True,
+                check=False
+            )
+
+            if result.returncode != 0:
+                failed_files.append(file_path)
+
+        if failed_files:
+            exit_with_error(
+                f"Failed to apply patches for files: {', '.join(failed_files)}\n" +
+                f"Run 'git-stage-batch show --from {batch_name}' to review changes\n" +
+                "Use --line to apply compatible parts"
+            )
+
+        print(_("✓ Applied changes from batch '{name}' to working tree").format(name=batch_name))

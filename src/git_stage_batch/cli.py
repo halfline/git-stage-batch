@@ -134,7 +134,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Exit with status code only (0=hunk exists, 1=no hunk)"),
     )
-    parser_show.set_defaults(func=lambda args: commands.command_show(porcelain=args.porcelain))
+    parser_show.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        help=_("Show changes from batch"),
+    )
+    parser_show.set_defaults(func=lambda args: (
+        commands.command_show_from_batch(args.from_batch) if args.from_batch
+        else commands.command_show(porcelain=args.porcelain)
+    ))
 
     # include - Include (stage) the current hunk, specific lines, or entire file
     parser_include = subparsers.add_parser(
@@ -154,8 +163,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Stage the entire file containing the current hunk"),
     )
+    parser_include.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        help=_("Stage changes from batch"),
+    )
     def include_cli(args):
-        if args.file:
+        if args.from_batch:
+            commands.command_include_from_batch(args.from_batch, args.line_ids, args.file)
+        elif args.file:
             commands.command_include_file()
         elif args.line_ids:
             commands.command_include_line(args.line_ids)
@@ -236,8 +253,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Discard the entire file containing the current hunk"),
     )
+    parser_discard.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        help=_("Discard batch changes from working tree"),
+    )
     def discard_cli(args):
-        if args.file:
+        if args.from_batch:
+            commands.command_discard_from_batch(args.from_batch, args.line_ids, args.file)
+        elif args.file:
             commands.command_discard_file()
         elif args.line_ids:
             commands.command_discard_line(args.line_ids)
@@ -246,6 +271,27 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         display_cached_hunk()
 
     parser_discard.set_defaults(func=discard_cli)
+
+    # apply - Apply batch changes to working tree
+    parser_apply = subparsers.add_parser(
+        "apply",
+        help=_("Apply batch changes to working tree"),
+    )
+    parser_apply.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        required=True,
+        help=_("Apply changes from batch to working tree"),
+    )
+    parser_apply.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Apply only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_apply.set_defaults(func=lambda args: commands.command_apply_from_batch(args.from_batch, args.line_ids))
 
     # status - Show current session status
     parser_status = subparsers.add_parser(

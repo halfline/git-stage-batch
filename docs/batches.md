@@ -156,6 +156,28 @@ Include the current hunk in a batch for later staging.
 
 This saves the current working tree state of the file to the batch and marks the hunk as processed, allowing you to continue with other hunks. The changes remain in your working tree and can be staged later using `include --from BATCH`.
 
+**Auto-creation:**
+If the batch doesn't exist, it will be automatically created with the note "Auto-created".
+
+**Use cases:**
+- Defer changes to a separate batch for later commit
+- Group related hunks together for thematic commits
+- Save experimental changes without committing them
+
+---
+
+## `apply --from BATCH`
+
+Apply batch changes to the working tree without staging them.
+
+Save the current hunk to a batch instead of just skipping it.
+
+```
+❯ git-stage-batch include --to batch-name
+```
+
+This saves the current working tree state of the file to the batch, then marks the hunk as skipped so you can continue processing other hunks.
+
 **Save specific lines only:**
 ```
 ❯ git-stage-batch include --to batch-name --line 1,3,5-7

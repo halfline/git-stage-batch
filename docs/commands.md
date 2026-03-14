@@ -189,6 +189,7 @@ Undo all changes made during the session, including commits and discards.
 This:
 - Resets HEAD to where you started
 - Restores your original working tree
+- Restores batch state (drops created batches, restores dropped/mutated batches)
 - Removes session state
 
 !!! warning "Undo Commits"
@@ -461,6 +462,3 @@ echo "debug code" >> file1.txt
 ❯ git-stage-batch status
 ```
 
----
-
-*More features and operations documented as they are implemented.*

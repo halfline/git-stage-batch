@@ -29,7 +29,13 @@ _git_stage_batch()
             COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
             ;;
         include|skip|discard)
-            COMPREPLY=($(compgen -W "--file" -- "$cur"))
+            case "$prev" in
+                --line)
+                    # Line IDs - no completion
+                    return
+                    ;;
+            esac
+            COMPREPLY=($(compgen -W "--file --line" -- "$cur"))
             ;;
         status)
             COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))

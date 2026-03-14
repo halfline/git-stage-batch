@@ -195,6 +195,12 @@ Use \fB\-\-line\fR to stage only specific lines from the batch.
 Remove batch changes from the working tree. Fails if the batch's changes
 cannot be reversed cleanly. Does not delete the batch.
 Use \fB\-\-line\fR to discard only specific lines from the batch.
+.TP
+.B apply \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
+Apply batch changes to the working tree without staging them.
+This adds the batch's changes to your working tree while keeping the index clean.
+Fails if the batch's changes cannot be applied cleanly.
+Use \fB\-\-line\fR to apply only specific lines from the batch.
 .PP
 The following commands accept \fB\-\-to\fR flags to save changes to batches:
 .TP

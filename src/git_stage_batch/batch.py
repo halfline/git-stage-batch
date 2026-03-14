@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from .state import (
     exit_with_error,
     get_batch_directory_path,
     get_batch_metadata_file_path,
+    get_state_directory_path,
     read_text_file_contents,
     run_git_command,
     validate_batch_name,
@@ -161,3 +163,124 @@ def list_batch_names() -> list[str]:
             batch_names.append(batch_name)
 
     return sorted(batch_names)
+
+
+def add_file_to_batch(batch_name: str, file_path: str, content: str, file_mode: str = "100644") -> None:
+    """
+    Add or update a file in a batch using git plumbing.
+
+    This creates a new commit with the file's content, using the existing
+    batch commit as parent (or HEAD for new batches). The batch commit
+    chain allows us to track history and compute diffs.
+
+    Args:
+        batch_name: Name of the batch
+        file_path: Repository-relative path to the file
+        content: File content to store
+        file_mode: Git file mode (default: 100644)
+    """
+    validate_batch_name(batch_name)
+
+    # Auto-create batch if it doesn't exist (with metadata)
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
+
+    # Create temporary index file
+    temp_index_path = get_state_directory_path() / f".batch_index_{batch_name}"
+
+    # Set up environment with temporary index
+    env = os.environ.copy()
+    env["GIT_INDEX_FILE"] = str(temp_index_path)
+
+    try:
+        # Load existing tree if batch exists
+        existing_commit = get_batch_commit_sha(batch_name)
+        if existing_commit:
+            # Use subprocess directly to ensure GIT_INDEX_FILE is respected
+            import subprocess
+            subprocess.run(
+                ["git", "read-tree", existing_commit],
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+
+        # Write file content as blob
+        temp_blob_path = get_state_directory_path() / f".batch_blob_{batch_name}"
+        write_text_file_contents(temp_blob_path, content)
+        blob_result = run_git_command(["hash-object", "-w", str(temp_blob_path)])
+        blob_sha = blob_result.stdout.strip()
+        temp_blob_path.unlink(missing_ok=True)
+
+        # Detect file mode from existing index if available
+        detected_mode = file_mode
+        try:
+            # Use subprocess directly to read from temporary index
+            import subprocess
+            ls_result = subprocess.run(
+                ["git", "ls-files", "-s", "--", file_path],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if ls_result.returncode == 0 and ls_result.stdout.strip():
+                detected_mode = ls_result.stdout.strip().split()[0]
+        except Exception:
+            pass
+
+        # Update temporary index with blob
+        # Use subprocess with env to ensure GIT_INDEX_FILE is used
+        import subprocess
+        subprocess.run(
+            ["git", "update-index", "--add", "--cacheinfo", f"{detected_mode},{blob_sha},{file_path}"],
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+
+        # Write tree from temporary index
+        tree_result = subprocess.run(
+            ["git", "write-tree"],
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        tree_sha = tree_result.stdout.strip()
+
+        # Determine parent commit
+        parent_commit = None
+        if existing_commit:
+            # Use existing batch commit as parent (preserves history)
+            parent_commit = existing_commit
+        else:
+            # Use HEAD as parent (establishes baseline)
+            head_result = run_git_command(["rev-parse", "HEAD"], check=False)
+            if head_result.returncode == 0:
+                parent_commit = head_result.stdout.strip()
+
+        # Create commit
+        if parent_commit:
+            commit_result = run_git_command([
+                "commit-tree", tree_sha, "-p", parent_commit,
+                "-m", f"Batch: {batch_name}"
+            ])
+        else:
+            # No parent (initial commit in empty repo)
+            commit_result = run_git_command([
+                "commit-tree", tree_sha,
+                "-m", f"Batch: {batch_name}"
+            ])
+
+        commit_sha = commit_result.stdout.strip()
+
+        # Update batch ref
+        run_git_command(["update-ref", f"refs/batches/{batch_name}", commit_sha])
+
+    finally:
+        # Clean up temporary files
+        if temp_index_path.exists():
+            temp_index_path.unlink(missing_ok=True)

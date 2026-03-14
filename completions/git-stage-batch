@@ -45,12 +45,16 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --to)
+                    COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
+                    return
+                    ;;
                 --line)
                     # Line IDs - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --from --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --from --to --line" -- "$cur"))
             ;;
         skip)
             case "$prev" in
@@ -67,12 +71,16 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --to)
+                    COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
+                    return
+                    ;;
                 --line)
                     # Line IDs - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --from --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --from --to --line" -- "$cur"))
             ;;
         apply)
             case "$prev" in

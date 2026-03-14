@@ -1164,6 +1164,9 @@ def command_abort() -> None:
         if result.returncode != 0:
             print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)
 
+    # Restore batch refs to their state at session start
+    restore_batch_refs()
+
     # Clear all state
     state_dir = get_state_directory_path()
     if state_dir.exists():

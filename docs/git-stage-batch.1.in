@@ -182,27 +182,32 @@ Add or update the description for a batch.
 .PP
 The following commands accept \fB\-\-from\fR flags to work with batches:
 .TP
-.B show \-\-from \fIBATCH\fR
+.B show \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
 Show the accumulated changes stored in a batch.
+Use \fB\-\-line\fR to filter display to specific line IDs.
 .TP
-.B include \-\-from \fIBATCH\fR
+.B include \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
 Stage the changes from a batch to the index. Fails if the batch's changes
 cannot be applied cleanly to the current state.
+Use \fB\-\-line\fR to stage only specific lines from the batch.
 .TP
-.B discard \-\-from \fIBATCH\fR
+.B discard \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
 Remove batch changes from the working tree. Fails if the batch's changes
 cannot be reversed cleanly. Does not delete the batch.
+Use \fB\-\-line\fR to discard only specific lines from the batch.
 .PP
 The following commands accept \fB\-\-to\fR flags to save changes to batches:
 .TP
-.B skip \-\-to \fIBATCH\fR
+.B include \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
 Save the current hunk to a batch instead of just skipping it.
 Auto-creates the batch if it doesn't exist.
+Use \fB\-\-line\fR to save only specific lines to the batch.
 .TP
-.B discard \-\-to \fIBATCH\fR
+.B discard \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
 Save the current hunk to a batch, then discard it from the working tree.
 Auto-creates the batch if it doesn't exist.
 Useful for saving changes before removing them, allowing later recovery.
+Use \fB\-\-line\fR to save and discard only specific lines.
 .SH AUTHOR
 Written by Ray Strode.
 .SH REPORTING BUGS

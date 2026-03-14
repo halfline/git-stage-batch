@@ -61,15 +61,17 @@ from .state import (
     get_processed_skip_ids_file_path,
     get_skipped_hunks_jsonl_file_path,
     get_state_directory_path,
-    get_working_tree_snapshot_file_path,
     get_suggest_fixup_state_file_path,
+    get_working_tree_snapshot_file_path,
     read_file_paths_file,
     read_text_file_contents,
     remove_file_from_gitignore,
     remove_file_path_from_file,
     require_git_repository,
     resolve_file_path_to_repo_relative,
+    restore_batch_refs,
     run_git_command,
+    snapshot_batch_refs,
     stream_git_command,
     write_text_file_contents,
 )
@@ -251,6 +253,9 @@ def command_start(unified: int = 3) -> None:
 
     # Initialize abort state for new session
     initialize_abort_state()
+
+    # Snapshot batch refs for abort support
+    snapshot_batch_refs()
 
     # Initialize iteration counter
     write_text_file_contents(get_iteration_count_file_path(), "1")

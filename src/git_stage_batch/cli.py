@@ -319,7 +319,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Apply only specific line IDs (e.g., '1,3,5-7')"),
     )
-    parser_apply.set_defaults(func=lambda args: commands.command_apply_from_batch(args.from_batch, args.line_ids))
+    parser_apply.add_argument(
+        "--file",
+        action="store_true",
+        help=_("Apply entire files (wholesale mode)"),
+    )
+    parser_apply.set_defaults(func=lambda args: commands.command_apply_from_batch(args.from_batch, args.line_ids, args.file))
 
     # status - Show current session status
     parser_status = subparsers.add_parser(

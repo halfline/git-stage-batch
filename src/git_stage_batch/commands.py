@@ -16,8 +16,10 @@ from .batch import (
     delete_batch,
     get_batch_baseline_commit,
     get_batch_diff,
+    list_batch_files,
     list_batch_names,
     read_batch_metadata,
+    read_file_from_batch,
     update_batch_note,
 )
 from .display import print_annotated_hunk_with_aligned_gutter, print_colored_patch
@@ -1987,6 +1989,29 @@ def command_include_from_batch(batch_name: str, line_ids: Optional[str] = None, 
     # This prevents "does not match index" errors when files have been manually modified
     run_git_command(["update-index", "--refresh"], check=False)
 
+    # If file_only, use wholesale file application
+    if _file_only:
+        files = list_batch_files(batch_name)
+        if not files:
+            exit_with_error(_("Batch '{name}' is empty or does not exist").format(name=batch_name))
+
+        for file_path in files:
+            content = read_file_from_batch(batch_name, file_path)
+            if content is None:
+                exit_with_error(_("Failed to read {file} from batch '{name}'").format(file=file_path, name=batch_name))
+
+            # Update index and working tree
+            update_index_with_blob_content(file_path, content)
+
+            # Write to working tree
+            repo_root = get_git_repository_root_path()
+            full_path = repo_root / file_path
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            write_text_file_contents(full_path, content)
+
+        print(_("✓ Staged all files from batch '{name}' (wholesale)").format(name=batch_name))
+        return
+
     # Get batch diff
     context_lines = get_context_lines()
     diff = get_batch_diff(batch_name, context_lines)
@@ -2069,6 +2094,32 @@ def command_discard_from_batch(batch_name: str, line_ids: Optional[str] = None, 
     """Remove batch changes from working tree."""
     require_git_repository()
 
+    # If file_only, restore files to baseline state (wholesale)
+    if _file_only:
+        baseline = get_batch_baseline_commit(batch_name)
+        if not baseline:
+            exit_with_error(_("Cannot determine baseline for batch '{name}'").format(name=batch_name))
+
+        files = list_batch_files(batch_name)
+        if not files:
+            exit_with_error(_("Batch '{name}' is empty or does not exist").format(name=batch_name))
+
+        # Snapshot files before modifying
+        for file_path in files:
+            snapshot_file_if_untracked(file_path)
+
+        # Checkout files from baseline
+        result = run_git_command(
+            ["checkout", baseline, "--"] + files,
+            check=False
+        )
+        if result.returncode != 0:
+            exit_with_error(_("Failed to restore files from baseline: {error}").format(error=result.stderr))
+
+        print(_("✓ Discarded all files from batch '{name}' from working tree (wholesale)").format(name=batch_name))
+        print(_("Note: Batch '{name}' still exists (use 'drop' to delete it)").format(name=batch_name))
+        return
+
     # Get batch diff
     context_lines = get_context_lines()
     diff = get_batch_diff(batch_name, context_lines)
@@ -2149,9 +2200,32 @@ def command_discard_from_batch(batch_name: str, line_ids: Optional[str] = None, 
         print(_("Note: Batch '{name}' still exists (use 'drop' to delete it)").format(name=batch_name))
 
 
-def command_apply_from_batch(batch_name: str, line_ids: Optional[str] = None) -> None:
+def command_apply_from_batch(batch_name: str, line_ids: Optional[str] = None, file_only: bool = False) -> None:
     """Apply batch changes to working tree (without staging)."""
     require_git_repository()
+
+    # If file_only, use wholesale file application (working tree only)
+    if file_only:
+        files = list_batch_files(batch_name)
+        if not files:
+            exit_with_error(_("Batch '{name}' is empty or does not exist").format(name=batch_name))
+
+        for file_path in files:
+            # Snapshot file before modifying
+            snapshot_file_if_untracked(file_path)
+
+            content = read_file_from_batch(batch_name, file_path)
+            if content is None:
+                exit_with_error(_("Failed to read {file} from batch '{name}'").format(file=file_path, name=batch_name))
+
+            # Write to working tree only (not index)
+            repo_root = get_git_repository_root_path()
+            full_path = repo_root / file_path
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            write_text_file_contents(full_path, content)
+
+        print(_("✓ Applied all files from batch '{name}' to working tree (wholesale)").format(name=batch_name))
+        return
 
     # Get batch diff
     context_lines = get_context_lines()
@@ -2280,6 +2354,42 @@ def command_skip_to_batch(batch_name: str, line_ids: Optional[str] = None, _file
 
     file_path = current_patch.new_path
 
+    # Determine what content to save
+    if _file_only:
+        # Save entire file from working tree
+        repo_root = get_git_repository_root_path()
+        full_path = repo_root / file_path
+
+        if not full_path.exists():
+            exit_with_error(_("File {file} does not exist in working tree").format(file=file_path))
+
+        content = full_path.read_text(encoding="utf-8", errors="surrogateescape")
+
+        # Get file mode
+        ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+        file_mode = "100644"  # default
+        if ls_result.returncode == 0 and ls_result.stdout.strip():
+            parts = ls_result.stdout.strip().split()
+            if parts:
+                file_mode = parts[0]
+
+        # Save to batch
+        add_file_to_batch(batch_name, file_path, content, file_mode)
+
+        # Mark entire file as skipped (skip all hunks from this file)
+        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+            if patch.new_path == file_path:
+                patch_text = patch.to_patch_text()
+                patch_hash = compute_stable_hunk_hash(patch_text)
+                if patch_hash not in blocked_hashes:
+                    append_lines_to_file(blocklist_path, [patch_hash])
+
+        print(_("✓ Saved entire file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name))
+
+        # Find and display next hunk
+        command_show()
+        return
+
     # If line_ids specified, save only those lines to batch
     if line_ids:
         selected_ids = parse_line_selection(line_ids)
@@ -2373,6 +2483,52 @@ def command_discard_to_batch(batch_name: str, line_ids: Optional[str] = None, _f
 
     file_path = current_patch.new_path
 
+    # Determine what content to save and discard
+    if _file_only:
+        # Save entire file to batch, then discard entire file from working tree
+        repo_root = get_git_repository_root_path()
+        full_path = repo_root / file_path
+
+        if not full_path.exists():
+            exit_with_error(_("File {file} does not exist in working tree").format(file=file_path))
+
+        content = full_path.read_text(encoding="utf-8", errors="surrogateescape")
+
+        # Get file mode
+        ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+        file_mode = "100644"  # default
+        if ls_result.returncode == 0 and ls_result.stdout.strip():
+            parts = ls_result.stdout.strip().split()
+            if parts:
+                file_mode = parts[0]
+
+        # Save to batch
+        add_file_to_batch(batch_name, file_path, content, file_mode)
+
+        # Snapshot file before modifying
+        snapshot_file_if_untracked(file_path)
+
+        # Discard entire file from working tree
+        result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+        if result.returncode != 0:
+            exit_with_error(_("Failed to discard {file} from working tree").format(file=file_path))
+
+        # Mark all hunks from this file as processed
+        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+            if patch.new_path == file_path:
+                patch_text = patch.to_patch_text()
+                patch_hash = compute_stable_hunk_hash(patch_text)
+                if patch_hash not in blocked_hashes:
+                    append_lines_to_file(blocklist_path, [patch_hash])
+                    # Record as discarded
+                    append_lines_to_file(get_discarded_hunks_file_path(), [patch_hash])
+
+        print(_("✓ Saved entire file '{file}' to batch '{batch}' and discarded from working tree").format(file=file_path, batch=batch_name))
+
+        # Find and display next hunk
+        command_show()
+        return
+
     # If line_ids specified, save and discard only those lines
     if line_ids:
         selected_ids = parse_line_selection(line_ids)
@@ -2407,7 +2563,7 @@ def command_discard_to_batch(batch_name: str, line_ids: Optional[str] = None, _f
 
         # Discard selected lines from working tree
         discarded_content = build_target_working_tree_content_with_discarded_lines(
-            current_lines, selected_ids
+            current_lines, selected_ids, working_text
         )
 
         # Write to working tree

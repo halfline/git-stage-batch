@@ -333,7 +333,7 @@ def snapshot_batch_refs() -> None:
     This includes metadata so dropped batches can be fully restored.
     """
     # Get all batch refs
-    result = run_git_command(["show-ref", "refs/batches/"], check=False)
+    result = run_git_command(["for-each-ref", "--format=%(objectname) %(refname)", "refs/batches/"], check=False)
     if result.returncode != 0:
         # No batches exist, save empty snapshot
         snapshot_data: dict[str, Any] = {}
@@ -392,7 +392,7 @@ def restore_batch_refs() -> None:
 
     # Get current batch refs
     current_batches: dict[str, str] = {}
-    result = run_git_command(["show-ref", "refs/batches/"], check=False)
+    result = run_git_command(["for-each-ref", "--format=%(objectname) %(refname)", "refs/batches/"], check=False)
     if result.returncode == 0:
         for line in result.stdout.strip().splitlines():
             if not line:

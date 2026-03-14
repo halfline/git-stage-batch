@@ -186,34 +186,46 @@ The following commands accept \fB\-\-from\fR flags to work with batches:
 Show the accumulated changes stored in a batch.
 Use \fB\-\-line\fR to filter display to specific line IDs.
 .TP
-.B include \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
+.B include \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
 Stage the changes from a batch to the index. Fails if the batch's changes
 cannot be applied cleanly to the selected state.
 Use \fB\-\-line\fR to stage only specific lines from the batch.
+Use \fB\-\-file\fR to apply all hunks from the batch that affect the selected file.
 .TP
-.B discard \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
+.B discard \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
 Remove batch changes from the working tree. Fails if the batch's changes
 cannot be reversed cleanly. Does not delete the batch.
 Use \fB\-\-line\fR to discard only specific lines from the batch.
+Use \fB\-\-file\fR to reverse all hunks from the batch that affect the selected file.
 .TP
-.B apply \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
+.B apply \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
 Apply batch changes to the working tree without staging them.
 This adds the batch's changes to your working tree while keeping the index clean.
 Fails if the batch's changes cannot be applied cleanly.
 Use \fB\-\-line\fR to apply only specific lines from the batch.
+Use \fB\-\-file\fR to apply all hunks from the batch that affect the selected file.
+.TP
+.B reset \-\-from \fIBATCH\fR [\fB\-\-to\fR \fIDEST_BATCH\fR] [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR]]
+Remove claims from a batch without changing the working tree.
+Use \fB\-\-file\fR with a path to reset only that file from the batch.
+Use \fB\-\-line\fR with \fB\-\-file\fR to reset specific line claims from a file.
+Use \fB\-\-to\fR to move the reset claims into another batch before removing
+them from the source batch.
 .PP
 The following commands accept \fB\-\-to\fR flags to save changes to batches:
 .TP
-.B include \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
+.B include \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
 Save the selected hunk to a batch instead of just skipping it.
 Auto-creates the batch if it doesn't exist.
 Use \fB\-\-line\fR to save only specific lines to the batch.
+Use \fB\-\-file\fR to save the entire selected file to the batch.
 .TP
-.B discard \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
+.B discard \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
 Save the selected hunk to a batch, then discard it from the working tree.
 Auto-creates the batch if it doesn't exist.
 Useful for saving changes before removing them, allowing later recovery.
 Use \fB\-\-line\fR to save and discard only specific lines.
+Use \fB\-\-file\fR to save and discard the entire selected file.
 .SH AUTHOR
 Written by Ray Strode.
 .SH REPORTING BUGS

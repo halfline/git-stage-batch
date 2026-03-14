@@ -13,7 +13,7 @@ Each batch captures not just the changes themselves, but also the working tree s
 - Deferring changes without losing them while working on other commits
 - Grouping changes by type (e.g., debugging, refactoring) for separate handling
 
-**When NOT to use batches:**
+**When to avoid batches:**
 - Simple linear workflows (just use skip and again for another pass)
 - One-off staging decisions (include/skip/discard are simpler)
 
@@ -352,6 +352,40 @@ Apply batch changes for `src/debug.py` only to the working tree, without needing
 ❯ git restore auth.py
 ❯ git-stage-batch apply --from refactor --file config.py
 ```
+
+---
+
+## `reset --from BATCH`
+
+Remove claims from a batch without changing the working tree.
+
+**Reset entire batch:**
+```
+❯ git-stage-batch reset --from batch-name
+```
+
+Clears all files from the batch.
+
+**Reset selected file:**
+```
+❯ git-stage-batch reset --from batch-name --file src/debug.py
+```
+
+Removes only `src/debug.py` from the batch. If `--file` is used without a path, the selected hunk's file is used.
+
+**Reset selected lines from a file:**
+```
+❯ git-stage-batch reset --from batch-name --file src/debug.py --line 1,3-5
+```
+
+Removes only those line claims from the batch. Line reset is resolved from the batch's stored source commit, not from the current working tree contents.
+
+**Split selected claims into another batch:**
+```
+❯ git-stage-batch reset --from batch-name --to other-batch --file src/debug.py --line 1,3-5
+```
+
+Moves the selected claims into `other-batch` and removes them from `batch-name`. If `other-batch` does not exist, it is created with the source batch's baseline so the split is independent of the current working tree or current `HEAD`.
 
 ---
 
@@ -701,7 +735,7 @@ They operate at different levels of the workflow.
 
 No.
 
-Batches exist outside of your commit history. They only affect how you prepare commits.
+Batches are stored separately from your commit history. They only affect how you prepare commits.
 
 Once a batch is included and committed, the batch itself can be dropped.
 

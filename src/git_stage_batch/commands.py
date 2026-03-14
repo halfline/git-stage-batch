@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .batch import (
+    add_file_to_batch,
     create_batch,
     delete_batch,
     get_batch_baseline_commit,
@@ -39,6 +40,7 @@ from .state import (
     add_file_to_gitignore,
     append_file_path_to_file,
     append_lines_to_file,
+    batch_exists,
     ensure_state_directory_exists,
     exit_with_error,
     get_abort_head_file_path,
@@ -2127,3 +2129,178 @@ def command_apply_from_batch(batch_name: str, line_ids: Optional[str] = None) ->
             )
 
         print(_("✓ Applied changes from batch '{name}' to working tree").format(name=batch_name))
+
+
+def command_skip_to_batch(batch_name: str, line_ids: Optional[str] = None, _file_only: bool = False) -> None:
+    """Save current changes to batch instead of just skipping."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Auto-create batch if it doesn't exist
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
+
+    # Auto-add untracked files
+    auto_add_untracked_files()
+
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
+
+    # Stream diff to find first non-blocked hunk
+    current_patch = None
+    current_hash = None
+    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+        if patch_hash not in blocked_hashes:
+            current_patch = patch
+            current_hash = patch_hash
+            break
+
+    if current_patch is None:
+        print(_("No changes to process."))
+        return
+
+    # Cache this hunk as current
+    patch_text = current_patch.to_patch_text()
+    write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
+    write_text_file_contents(get_current_hunk_hash_file_path(), current_hash)
+
+    # Cache CurrentLines state for progress tracking
+    current_lines = build_current_lines_from_patch_text(patch_text)
+    write_text_file_contents(get_current_lines_json_file_path(),
+                            json.dumps(convert_current_lines_to_serializable_dict(current_lines),
+                                      ensure_ascii=False, indent=0))
+
+    # Save snapshots for staleness detection
+    write_snapshots_for_current_file_path(current_lines.path)
+
+    # Get the file path and read its current content from working tree
+    file_path = current_patch.new_path
+    repo_root = get_git_repository_root_path()
+    full_path = repo_root / file_path
+
+    # Read current file content
+    if full_path.exists():
+        content = full_path.read_text(encoding="utf-8", errors="surrogateescape")
+    else:
+        # File deleted - save empty content
+        content = ""
+
+    # Detect file mode
+    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+    file_mode = "100644"  # default
+    if ls_result.returncode == 0 and ls_result.stdout.strip():
+        # Format: <mode> <hash> <stage>\t<path>
+        parts = ls_result.stdout.strip().split()
+        if parts:
+            file_mode = parts[0]
+
+    # Save to batch
+    add_file_to_batch(batch_name, file_path, content, file_mode)
+
+    # Add hash to blocklist (mark as processed)
+    append_lines_to_file(blocklist_path, [current_hash])
+
+    # Record hunk as skipped for progress tracking
+    record_hunk_skipped(current_lines, current_hash)
+
+    print(_("✓ Hunk saved to batch '{name}' and skipped").format(name=batch_name))
+
+
+def command_discard_to_batch(batch_name: str, line_ids: Optional[str] = None, _file_only: bool = False) -> None:
+    """Save to batch then discard from working tree."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Auto-create batch if it doesn't exist
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
+
+    # First, save current changes to batch (same as skip_to_batch)
+    # Auto-add untracked files
+    auto_add_untracked_files()
+
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
+
+    # Stream diff to find first non-blocked hunk
+    current_patch = None
+    current_hash = None
+    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+        if patch_hash not in blocked_hashes:
+            current_patch = patch
+            current_hash = patch_hash
+            break
+
+    if current_patch is None:
+        print(_("No changes to process."))
+        return
+
+    # Cache this hunk as current
+    patch_text = current_patch.to_patch_text()
+    write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
+    write_text_file_contents(get_current_hunk_hash_file_path(), current_hash)
+
+    # Cache CurrentLines state for progress tracking
+    current_lines = build_current_lines_from_patch_text(patch_text)
+    write_text_file_contents(get_current_lines_json_file_path(),
+                            json.dumps(convert_current_lines_to_serializable_dict(current_lines),
+                                      ensure_ascii=False, indent=0))
+
+    # Save snapshots for staleness detection
+    write_snapshots_for_current_file_path(current_lines.path)
+
+    # Get the file path and read its current content from working tree
+    file_path = current_patch.new_path
+    repo_root = get_git_repository_root_path()
+    full_path = repo_root / file_path
+
+    # Read current file content
+    if full_path.exists():
+        content = full_path.read_text(encoding="utf-8", errors="surrogateescape")
+    else:
+        # File deleted - save empty content
+        content = ""
+
+    # Detect file mode
+    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+    file_mode = "100644"  # default
+    if ls_result.returncode == 0 and ls_result.stdout.strip():
+        # Format: <mode> <hash> <stage>\t<path>
+        parts = ls_result.stdout.strip().split()
+        if parts:
+            file_mode = parts[0]
+
+    # Save to batch
+    add_file_to_batch(batch_name, file_path, content, file_mode)
+
+    # Now discard from working tree (same as command_discard)
+    # Snapshot file before modifying
+    snapshot_file_if_untracked(file_path)
+
+    # Apply reverse patch to working tree
+    reverse_result = subprocess.run(
+        ["git", "apply", "--reverse", "--unidiff-zero"],
+        input=patch_text,
+        capture_output=True,
+        text=True,
+        check=False
+    )
+
+    if reverse_result.returncode != 0:
+        exit_with_error(_("Failed to apply reverse patch: {error}").format(error=reverse_result.stderr))
+
+    # Add hash to blocklist (mark as processed)
+    append_lines_to_file(blocklist_path, [current_hash])
+
+    # Record hunk as discarded for progress tracking
+    record_hunk_discarded(current_hash)
+
+    print(_("✓ Hunk saved to batch '{name}' and discarded from working tree").format(name=batch_name))

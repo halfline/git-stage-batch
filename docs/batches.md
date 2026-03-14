@@ -146,12 +146,12 @@ Show the accumulated changes stored in a batch.
 
 Displays the diff representing all changes accumulated in the batch, showing what would be staged or discarded if you operate on the batch.
 
-**Filter to specific lines:**
+**Line-level filtering:**
 ```
 ❯ git-stage-batch show --from batch-name --line 1,3,5-7
 ```
 
-Use `--line` to display only specific line IDs from the batch.
+Filter the display to show only specific line IDs from the batch.
 
 ---
 
@@ -159,25 +159,62 @@ Use `--line` to display only specific line IDs from the batch.
 
 Stage the changes from a batch to the index.
 
+**Stage entire batch:**
 ```
 ❯ git-stage-batch include --from batch-name
 ```
 
 Applies the batch's accumulated changes to the index, staging them for commit.
 
-**Stage specific lines only:**
+**Line-level staging:**
 ```
-❯ git-stage-batch include --from batch-name --line 1,3,5-7
+❯ git-stage-batch include --from batch-name --line 1-5
 ```
 
-Use `--line` to stage only selected line IDs from the batch, leaving others untouched.
+Stage only specific lines from the batch, allowing partial application of batch changes.
 
-!!! warning "Strict Application"
-    `include --from BATCH` fails if the batch's changes cannot be applied cleanly
-    to the selected repository state. This happens when the code has diverged from the
-    baseline when the batch was created.
+**File-level staging (selected file):**
+```
+❯ git-stage-batch include --from batch-name --file
+```
 
-    On failure, run `show --from BATCH` to review the changes.
+Stage changes from the batch for the selected hunk's file only. Use this during a staging session when you want to pull in batch changes for the file you're reviewing, without affecting other files in the batch.
+
+**File-level staging (specific file):**
+```
+❯ git-stage-batch include --from batch-name --file src/config.py
+```
+
+Stage changes from the batch for `src/config.py` only, without needing a selected hunk. Useful for applying specific files from multi-file batches outside of an active staging session.
+
+**Example - Selective file application:**
+```bash
+# Create batch with changes from multiple files
+❯ git-stage-batch new refactor
+❯ git-stage-batch discard --to refactor --file auth.py
+❯ git-stage-batch discard --to refactor --file config.py
+❯ git-stage-batch discard --to refactor --file utils.py
+
+# Later, apply only config.py changes
+❯ git-stage-batch include --from refactor --file config.py
+# Only config.py is staged, auth.py and utils.py remain in batch
+```
+
+!!! warning "Merge-Based Application"
+    `include --from BATCH` uses structural merge to intelligently apply batch changes
+    to your current working tree, even if the code has evolved since the batch was created.
+
+    The merge succeeds when:
+    - Batch-claimed lines can be unambiguously located in the current file structure
+    - Changes have context (surrounding unchanged lines) for alignment
+
+    Failures occur when:
+    - The file structure has changed so drastically that batch lines cannot be located
+    - Claimed lines lack sufficient context for structural alignment
+    - The batch attempts to delete content that no longer exists at expected positions
+
+    On failure, run `show --from BATCH` to review the changes, or use `--line` or
+    `--file` to apply only compatible parts.
 
 ---
 
@@ -185,25 +222,136 @@ Use `--line` to stage only selected line IDs from the batch, leaving others unto
 
 Remove batch changes from the working tree.
 
+**Discard entire batch:**
 ```
 ❯ git-stage-batch discard --from batch-name
 ```
 
 Removes the batch's changes from your working tree by applying the reverse of the batch's diff.
 
-**Discard specific lines only:**
+**Line-level discarding:**
 ```
-❯ git-stage-batch discard --from batch-name --line 1,3,5-7
+❯ git-stage-batch discard --from batch-name --line 2,4
 ```
 
-Use `--line` to discard only selected line IDs from the batch, leaving others in the working tree.
+Discard only specific lines from the batch, allowing surgical removal of batch changes.
+
+**File-level discarding (selected file):**
+```
+❯ git-stage-batch discard --from batch-name --file
+```
+
+Remove batch changes from the working tree for the selected hunk's file only. Use this during a staging session when you want to discard batch changes for the file you're reviewing, without affecting other files in the batch.
+
+**File-level discarding (specific file):**
+```
+❯ git-stage-batch discard --from batch-name --file src/experimental.py
+```
+
+Remove batch changes for `src/experimental.py` only, without needing a selected hunk. Useful for discarding specific files from multi-file batches.
 
 !!! warning "Destructive Operation"
     This permanently removes changes from your working tree.
 
-!!! warning "Strict Reversal"
-    `discard --from BATCH` fails if the batch's changes cannot be reversed cleanly.
-    The batch itself persists - only the working tree is modified.
+!!! warning "Constraint-Based Reversal"
+    `discard --from BATCH` uses structural analysis to reverse batch changes by:
+    - Removing batch-added content (insertions)
+    - Restoring batch-modified lines to their baseline state
+    - Re-inserting batch-deleted sequences at their original boundaries
+
+    The operation succeeds when:
+    - Batch-owned content can be unambiguously identified in the current file
+    - Modified regions have clear line-by-line correspondence with baseline, OR
+    - Modified regions are fully batch-owned (allowing atomic restoration)
+
+    Failures occur when:
+    - Partial ownership of regions that cannot be restored line-by-line
+    - File structure has changed so drastically that batch content cannot be located
+    - Deleted sequences cannot be re-inserted at original anchored boundaries
+
+    The batch itself persists - only the working tree is modified. Use `--file` to
+    filter to a specific file, or `--line` to discard only specific lines.
+
+---
+
+## `apply --from BATCH`
+
+Apply batch changes to the working tree without staging them.
+
+**Apply entire batch:**
+```
+❯ git-stage-batch apply --from batch-name
+```
+
+Applies the batch's accumulated changes to your working tree, leaving the index untouched. This is different from `include --from` which stages changes to the index.
+
+**Use cases:**
+- Temporarily applying batched changes to test them before committing
+- Restoring changes that were saved with `discard --to`
+- Previewing batch changes in your working tree before staging
+
+**Line-level application:**
+```
+❯ git-stage-batch apply --from batch-name --line 1-3
+```
+
+Apply only specific lines from the batch to the working tree.
+
+**File-level application (selected file):**
+```
+❯ git-stage-batch apply --from batch-name --file
+```
+
+Apply batch changes to the working tree for the selected hunk's file only. Use this during a staging session when you want to preview batch changes for the file you're reviewing, without affecting other files in the batch.
+
+**File-level application (specific file):**
+```
+❯ git-stage-batch apply --from batch-name --file src/debug.py
+```
+
+Apply batch changes for `src/debug.py` only to the working tree, without needing a selected hunk. Useful for testing specific files from multi-file batches.
+
+!!! warning "Merge-Based Application"
+    `apply --from BATCH` uses the same structural merge as `include --from BATCH`,
+    intelligently applying batch changes even if the working tree has evolved.
+
+    See the warning under `include --from BATCH` for details on when merge succeeds
+    or fails.
+
+    On failure, run `show --from BATCH` to review the changes, or use `--file` to
+    filter to a specific file, or `--line` to apply only specific lines.
+
+!!! info "Working Tree Only"
+    Unlike `include --from`, this command modifies only the working tree and leaves
+    the index (staging area) untouched. Use this when you want to preview or test
+    changes before staging them.
+
+**Example workflow:**
+```bash
+# Save debugging changes to a batch
+❯ git-stage-batch discard --to debug
+
+# Later, temporarily restore them to test
+❯ git-stage-batch apply --from debug
+
+# Test the code with debug output...
+
+# Remove them again when done
+❯ git restore .
+```
+
+**Example - Selective file preview:**
+```bash
+# Batch has changes to auth.py, config.py, utils.py
+❯ git-stage-batch apply --from refactor --file auth.py
+# Only auth.py changes are in working tree, others remain in batch
+
+# Test auth.py changes...
+
+# Restore and try a different file
+❯ git restore auth.py
+❯ git-stage-batch apply --from refactor --file config.py
+```
 
 ---
 
@@ -215,29 +363,9 @@ Include the selected hunk in a batch for later staging.
 ❯ git-stage-batch include --to batch-name
 ```
 
-This saves the selected working tree state of the file to the batch and marks the hunk as processed, allowing you to continue with other hunks. The changes remain in your working tree and can be staged later using `include --from BATCH`.
+This captures a snapshot of the current working tree state (the **batch source**) along with ownership information for the selected lines, then marks the hunk as processed. The changes remain in your working tree and can be staged later using `include --from BATCH`.
 
-**Auto-creation:**
-If the batch doesn't exist, it will be automatically created with the note "Auto-created".
-
-**Use cases:**
-- Defer changes to a separate batch for later commit
-- Group related hunks together for thematic commits
-- Save experimental changes without committing them
-
----
-
-## `apply --from BATCH`
-
-Apply batch changes to the working tree without staging them.
-
-Save the selected hunk to a batch instead of just skipping it.
-
-```
-❯ git-stage-batch include --to batch-name
-```
-
-This saves the selected working tree state of the file to the batch, then marks the hunk as skipped so you can continue processing other hunks.
+The batch source allows later operations to intelligently merge or discard changes even if your code has evolved since the batch was created.
 
 **Save specific lines only:**
 ```
@@ -254,6 +382,20 @@ If the batch doesn't exist, it will be automatically created with the note "Auto
 - Grouping related changes across multiple files for a separate commit
 - Temporarily setting aside changes you're uncertain about
 
+**Line-level saving:**
+```
+❯ git-stage-batch include --to batch-name --line 1,3
+```
+
+Save only specific lines to the batch, allowing fine-grained accumulation of changes.
+
+**File-level saving:**
+```
+❯ git-stage-batch include --to batch-name --file
+```
+
+Save the entire selected file to the batch instead of just the selected hunk. Useful when you want to defer an entire file's changes as a unit.
+
 ---
 
 ## `discard --to BATCH`
@@ -264,7 +406,7 @@ Save the selected hunk to a batch, then discard it from the working tree.
 ❯ git-stage-batch discard --to batch-name
 ```
 
-This first saves the working tree state to the batch, then removes the changes from your working tree. The batch acts as a backup allowing later recovery.
+This captures a snapshot of the current working tree state (the **batch source**) along with ownership information for the selected lines, then removes the changes from your working tree. The batch acts as a backup allowing later recovery via `apply --from BATCH` or `include --from BATCH`.
 
 **Save and discard specific lines only:**
 ```
@@ -284,12 +426,319 @@ If the batch doesn't exist, it will be automatically created.
 - Discarding experimental changes but preserving them for potential reuse
 - Cleaning up your working tree while maintaining a safety net
 
+**Line-level saving and discarding:**
+```
+❯ git-stage-batch discard --to batch-name --line 2,4-6
+```
+
+Save and discard only specific lines, preserving other changes in your working tree.
+
+**File-level saving and discarding:**
+```
+❯ git-stage-batch discard --to batch-name --file
+```
+
+Save the entire selected file to the batch, then discard the entire file from the working tree. Useful when you want to completely remove a file while preserving it for potential recovery.
+
 **Example workflow:**
 ```bash
 # Accidentally included debug logging in your changes
 ❯ git-stage-batch start
 ❯ git-stage-batch discard --to debug-logging
 
+# Or save only the debug print statements (lines 5-7)
+❯ git-stage-batch discard --to debug-logging --line 5-7
+
 # Later, if you need the debug code back:
 ❯ git-stage-batch include --from debug-logging
 ```
+
+---
+
+## Advanced Workflow: Decomposing and Recomposing History
+
+When you have a messy working tree with multiple logical changes intertwined, you can use batches to decompose the changes into layers, create clean checkpoints, then recompose them as a series of well-organized commits.
+
+**Strategy:**
+1. Use `discard --to` to peel off the topmost logical layer
+2. Edit the tree to fix dependencies (remove calls to code you just discarded)
+3. Repeat for each layer, working from outside to inside
+4. Apply batches back in reverse order with clear commit messages
+
+**Example workflow:**
+
+```bash
+# Starting state: messy working tree with authentication refactor,
+# new API endpoint, and database migration all mixed together
+
+❯ git-stage-batch start
+
+# Layer 1: Peel off the API endpoint (topmost layer, depends on auth changes)
+❯ git-stage-batch discard --to api-endpoint --note "Layer 3: API endpoint (depends on layer 2: auth)"
+# Tree now has auth + database changes
+
+# Fix dependencies: remove the API route registration that depended on the endpoint
+❯ $EDITOR main.py  # Remove route registration
+
+# Layer 2: Peel off authentication refactor (depends on database schema)
+❯ git-stage-batch again  # Restart to see remaining hunks
+❯ git-stage-batch discard --to auth-refactor --note "Layer 2: auth refactor (depends on layer 1: database)"
+# Tree now has only database changes
+
+# Fix dependencies: remove auth code that depended on new DB columns
+❯ $EDITOR auth.py  # Remove references to new columns
+
+# Layer 3: What remains is the foundation (database migration)
+❯ git-stage-batch again
+❯ git-stage-batch discard --to database-migration --note "Layer 1: database foundation (no dependencies)"
+# Tree is now clean (or back to original state)
+
+# Review the decomposition
+❯ git-stage-batch list
+Batches:
+  database-migration: Layer 1: database foundation (no dependencies) (created 2 minutes ago)
+  auth-refactor: Layer 2: auth refactor (depends on layer 1: database) (created 1 minute ago)
+  api-endpoint: Layer 3: API endpoint (depends on layer 2: auth) (created 30 seconds ago)
+
+# Now recompose in dependency order (reverse of discard order)
+
+# Step 1: Apply foundation layer
+❯ git-stage-batch include --from database-migration
+❯ git commit -m "database: Add user preferences table
+
+The application stores all configuration in code, preventing users from
+customizing their experience across sessions.
+
+Users need persistent storage for individual preferences like theme choice,
+language selection, and timezone settings that survive across logins.
+
+This commit adds a preferences table with columns for theme, language, and
+timezone. Includes migration script and updated schema documentation."
+
+# Step 2: Apply authentication layer
+❯ git-stage-batch include --from auth-refactor
+❯ git commit -m "auth: Load user preferences during session initialization
+
+The authentication module creates sessions but doesn't populate user preferences,
+requiring separate queries throughout the application to access settings.
+
+Users experience slower page loads as each component independently queries for
+preference data instead of loading it once at authentication time.
+
+This commit updates the auth module to read user preferences from the new table
+during session creation. Preferences are cached in the session object, eliminating
+redundant database queries."
+
+# Step 3: Apply API layer
+❯ git-stage-batch include --from api-endpoint
+❯ git commit -m "api: Add endpoint for updating user preferences
+
+Users can view their preferences but have no way to modify them without direct
+database access, forcing administrators to handle routine preference changes.
+
+A self-service interface is needed for users to customize their experience without
+administrative intervention.
+
+This commit adds a /api/preferences endpoint accepting PUT requests with theme,
+language, and timezone fields. Integrates with the authentication system to
+validate sessions and update preferences atomically."
+
+# Clean up batches
+❯ git-stage-batch drop database-migration
+❯ git-stage-batch drop auth-refactor
+❯ git-stage-batch drop api-endpoint
+
+# Result: clean, logical commit history instead of one messy commit
+```
+
+**Key insights:**
+
+- Use `--note` to document layer dependencies when creating batches
+- Update notes with `annotate` if you discover dependencies later
+- The batches themselves are your backup - no need for checkpoint commits
+- The decomposition order is outside-in (what depends on what)
+- The recomposition order is inside-out (foundations first, dependents later)
+- Edit the tree between `discard --to` operations to fix broken dependencies
+- This pattern is powerful for untangling complex changesets into reviewable commits
+
+---
+
+## Frequently Asked Questions
+
+### How are batches different from Git stashes?
+
+A stash saves the entire state of your working tree so you can return to it later. A batch saves a **logical change** so you can organize it into a clean commit later.
+
+Stashes are for temporarily setting work aside. Batches are for structuring and organizing work before committing it.
+
+With a stash, you capture everything:
+
+```bash
+git stash
+```
+
+With a batch, you capture only the parts you choose:
+
+```bash
+git-stage-batch include --to parser
+git-stage-batch include --to cli
+git-stage-batch include --to docs
+```
+
+Later, you can turn each batch into a commit.
+
+---
+
+### Why not just use `git stash`?
+
+Stashes are snapshots of your workspace. They are not designed to organize code changes into meaningful commits.
+
+If your working tree contains multiple logical changes, a stash will bundle them all together. Batches let you separate them as you go.
+
+For example:
+
+```
+working tree:
+  parser work
+  CLI changes
+  documentation updates
+```
+
+With stashes, those changes are stored together.
+
+With batches, they can be separated:
+
+```
+parser
+cli
+docs
+```
+
+Each batch can later become its own commit.
+
+---
+
+### Can I replace stashes with batches?
+
+No. They solve different problems.
+
+Use stashes when you need to quickly save your working state:
+
+```bash
+git stash
+git pull
+git stash pop
+```
+
+Use batches when you're organizing a messy working tree into clean commits.
+
+---
+
+### How are batches different from commits?
+
+A commit is permanent project history. A batch is a temporary container for changes you are still organizing.
+
+You should think of a batch as a **draft commit**.
+
+Example workflow:
+
+```bash
+git-stage-batch include --to parser
+git-stage-batch include --to parser
+git-stage-batch include --to parser
+
+git-stage-batch include --from parser
+git commit -m "Add parser implementation"
+```
+
+The batch helps assemble the commit, but it is not part of the repository history itself.
+
+---
+
+### Why not just commit earlier?
+
+Sometimes your working tree contains changes that belong to different commits but are mixed together.
+
+For example:
+
+```
+working tree:
+  parser feature
+  CLI integration
+  documentation
+  refactor
+```
+
+You could commit everything at once, but that produces messy history.
+
+Batches let you reorganize changes into logical commits before publishing them.
+
+---
+
+### Are batches like temporary branches?
+
+Not really.
+
+Branches organize commits. Batches organize **uncommitted changes**.
+
+A branch looks like this:
+
+```
+commit → commit → commit
+```
+
+A batch looks more like this:
+
+```
+selected hunks → staged later → commit
+```
+
+They operate at different levels of the workflow.
+
+---
+
+### Do batches modify my Git history?
+
+No.
+
+Batches exist outside of your commit history. They only affect how you prepare commits.
+
+Once a batch is included and committed, the batch itself can be dropped.
+
+---
+
+### When should I use batches?
+
+Batches are useful when your working tree contains multiple logical changes and you want to turn them into clean commits.
+
+Typical cases include:
+
+* splitting a large diff into logical commits
+* organizing refactors before submitting a pull request
+* reconstructing history for a patch series
+* preparing changes before rebasing or squashing
+
+---
+
+### Are batches meant to be long-lived?
+
+No. Batches are usually short-lived.
+
+They exist while you are organizing a set of commits and are typically dropped once the commits have been created.
+
+---
+
+### Do batches replace `git add -p`?
+
+No. Batches build on the same idea.
+
+`git add -p` lets you stage parts of a change.
+Batches let you **defer and group those parts** so they can become separate commits later.
+
+---
+
+### Why use batches instead of staging everything immediately?
+
+Because sometimes you do not yet know which commit a change belongs in.
+
+Batches let you postpone that decision while still organizing the changes.

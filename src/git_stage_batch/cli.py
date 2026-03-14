@@ -169,8 +169,18 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="BATCH",
         help=_("Stage changes from batch"),
     )
+    parser_include.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        help=argparse.SUPPRESS,  # Hidden - include --to is invalid
+    )
     def include_cli(args):
-        if args.from_batch:
+        if args.to_batch:
+            exit_with_error(_("Cannot use --to with include command"))
+        elif args.from_batch and args.to_batch:
+            exit_with_error(_("--from and --to are mutually exclusive"))
+        elif args.from_batch:
             commands.command_include_from_batch(args.from_batch, args.line_ids, args.file)
         elif args.file:
             commands.command_include_file()
@@ -200,8 +210,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Skip the entire file containing the current hunk"),
     )
+    parser_skip.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        help=_("Save to batch instead of just skipping"),
+    )
     def skip_cli(args):
-        if args.file:
+        if args.to_batch:
+            commands.command_skip_to_batch(args.to_batch, args.line_ids, args.file)
+        elif args.file:
             commands.command_skip_file()
         elif args.line_ids:
             commands.command_skip_line(args.line_ids)
@@ -259,9 +277,19 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="BATCH",
         help=_("Discard batch changes from working tree"),
     )
+    parser_discard.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        help=_("Save to batch then discard from working tree"),
+    )
     def discard_cli(args):
-        if args.from_batch:
+        if args.from_batch and args.to_batch:
+            exit_with_error(_("--from and --to are mutually exclusive"))
+        elif args.from_batch:
             commands.command_discard_from_batch(args.from_batch, args.line_ids, args.file)
+        elif args.to_batch:
+            commands.command_discard_to_batch(args.to_batch, args.line_ids, args.file)
         elif args.file:
             commands.command_discard_file()
         elif args.line_ids:

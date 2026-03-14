@@ -10,6 +10,13 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
+from .batch import (
+    create_batch,
+    delete_batch,
+    list_batch_names,
+    read_batch_metadata,
+    update_batch_note,
+)
 from .display import print_annotated_hunk_with_aligned_gutter, print_colored_patch
 from .editor import (
     build_target_index_content_with_selected_lines,
@@ -1869,3 +1876,47 @@ def command_discard_line(line_id_specification: str) -> None:
 
     # After modifying working tree, recalculate hunk for the SAME file
     _recalculate_current_hunk_for_file(current_lines.path)
+
+    print(_("✓ Discarded line(s): {lines}").format(lines=line_id_specification))
+
+
+# --------------------------- Batch commands ---------------------------
+
+def command_new_batch(batch_name: str, note: str = "") -> None:
+    """Create a new batch."""
+    require_git_repository()
+    create_batch(batch_name, note)
+    print(_("✓ Created batch '{name}'").format(name=batch_name))
+
+
+def command_list_batches() -> None:
+    """List all batches with their descriptions."""
+    require_git_repository()
+
+    batch_names = list_batch_names()
+    if not batch_names:
+        print(_("No batches exist."))
+        return
+
+    print(_("Batches:"))
+    for name in batch_names:
+        metadata = read_batch_metadata(name)
+        note = metadata.get("note", "")
+        if note:
+            print(_("  {name}: {note}").format(name=name, note=note))
+        else:
+            print(_("  {name}").format(name=name))
+
+
+def command_drop_batch(batch_name: str) -> None:
+    """Delete a batch."""
+    require_git_repository()
+    delete_batch(batch_name)
+    print(_("✓ Dropped batch '{name}'").format(name=batch_name))
+
+
+def command_annotate_batch(batch_name: str, note: str) -> None:
+    """Update batch description."""
+    require_git_repository()
+    update_batch_note(batch_name, note)
+    print(_("✓ Updated note for batch '{name}'").format(name=batch_name))

@@ -1,11 +1,16 @@
 # bash completion for git-stage-batch                     -*- shell-script -*-
 
+__git_stage_batch_list_batches()
+{
+    git for-each-ref --format='%(refname:short)' refs/batches/ 2>/dev/null | sed 's|^batches/||'
+}
+
 _git_stage_batch()
 {
     local cur prev words cword
     _init_completion || return
 
-    local commands="start show include skip discard status again stop abort block-file unblock-file suggest-fixup"
+    local commands="start show include skip discard status again stop abort block-file unblock-file suggest-fixup new list drop annotate"
 
     # Handle subcommands
     if [[ $cword -eq 1 ]]; then
@@ -56,6 +61,27 @@ _git_stage_batch()
                 return
             fi
             COMPREPLY=($(compgen -W "--reset --abort --last --line --porcelain" -- "$cur"))
+            ;;
+        new)
+            case "$prev" in
+                --note)
+                    return
+                    ;;
+            esac
+            if [[ $cword -eq 2 ]]; then
+                # Batch name argument
+                return
+            fi
+            COMPREPLY=($(compgen -W "--note" -- "$cur"))
+            ;;
+        drop|annotate)
+            if [[ $cword -eq 2 ]]; then
+                # Complete batch names
+                COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
+            fi
+            ;;
+        list)
+            # No arguments
             ;;
         *)
             ;;

@@ -73,6 +73,7 @@ End the current session and remove all state.
 .B abort
 Undo all changes made during the session, including commits and discards.
 This resets HEAD to where you started, restores your original working tree,
+restores batch state (drops created batches, restores dropped/mutated batches),
 and removes session state.
 .B WARNING:
 This will undo any commits made during the session.
@@ -148,6 +149,36 @@ Output in machine-readable JSON format for script integration.
 The JSON includes: candidate (hash, full_hash, subject, author, date,
 relative_date), iteration number, and boundary.
 .RE
+.SH ADVANCED FEATURES
+.SS Batch Operations
+Batches are named collections of accumulated changes that can be staged or
+discarded later as a unit. This is a power-user feature for complex workflows
+involving deferred decisions across multiple files or staging passes.
+.PP
+Most users will not need batches. They are useful when you want to:
+.RS
+.IP \(bu 2
+Accumulate related changes across multiple hunks for review together
+.IP \(bu 2
+Defer changes without losing them while you work on other commits
+.IP \(bu 2
+Group changes by type (e.g., debugging, refactoring) for separate handling
+.RE
+.PP
+Batches are stored as git commits under refs/batches/<name> and persist
+across sessions until explicitly dropped.
+.TP
+.B new \fIBATCH_NAME\fR [\fB\-\-note\fR \fINOTE\fR]
+Create a new named batch for accumulating changes.
+.TP
+.B list
+List all existing batches with their descriptions.
+.TP
+.B drop \fIBATCH_NAME\fR
+Delete a batch and remove its git ref.
+.TP
+.B annotate \fIBATCH_NAME\fR \fINOTE\fR
+Add or update the description for a batch.
 .SH AUTHOR
 Written by Ray Strode.
 .SH REPORTING BUGS

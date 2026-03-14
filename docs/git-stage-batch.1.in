@@ -179,6 +179,19 @@ Delete a batch and remove its git ref.
 .TP
 .B annotate \fIBATCH_NAME\fR \fINOTE\fR
 Add or update the description for a batch.
+.PP
+The following commands accept \fB\-\-from\fR flags to work with batches:
+.TP
+.B show \-\-from \fIBATCH\fR
+Show the accumulated changes stored in a batch.
+.TP
+.B include \-\-from \fIBATCH\fR
+Stage the changes from a batch to the index. Fails if the batch's changes
+cannot be applied cleanly to the current state.
+.TP
+.B discard \-\-from \fIBATCH\fR
+Remove batch changes from the working tree. Fails if the batch's changes
+cannot be reversed cleanly. Does not delete the batch.
 .SH AUTHOR
 Written by Ray Strode.
 .SH REPORTING BUGS

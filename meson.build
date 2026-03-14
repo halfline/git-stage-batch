@@ -29,3 +29,17 @@ manpage = configure_file(
 if not get_option('python_wheel')
   install_man(manpage)
 endif
+
+# Install bash completion (skip for wheels, include for system install)
+if not get_option('python_wheel')
+  install_data(
+    'completions/git-stage-batch',
+    install_dir: get_option('datadir') / 'bash-completion' / 'completions',
+    install_tag: 'runtime',
+  )
+  install_data(
+    'completions/git-stage-batch-prompt.sh',
+    install_dir: get_option('datadir') / 'git-stage-batch',
+    install_tag: 'runtime',
+  )
+endif

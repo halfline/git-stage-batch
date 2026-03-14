@@ -10,7 +10,7 @@ _git_stage_batch()
     local cur prev words cword
     _init_completion || return
 
-    local commands="start show include skip discard status again stop abort block-file unblock-file suggest-fixup new list drop annotate apply"
+    local commands="start show include skip discard status again stop abort block-file unblock-file suggest-fixup new list drop annotate apply reset"
 
     # Handle subcommands
     if [[ $cword -eq 1 ]]; then
@@ -36,12 +36,20 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --line)
+                    # Line IDs - no completion
+                    return
+                    ;;
             esac
-            COMPREPLY=($(compgen -W "--porcelain --from" -- "$cur"))
+            COMPREPLY=($(compgen -W "--porcelain --from --line" -- "$cur"))
             ;;
         include)
             case "$prev" in
                 --from)
+                    COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
+                    return
+                    ;;
+                --to)
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
@@ -50,7 +58,7 @@ _git_stage_batch()
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --from --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --from --to --line" -- "$cur"))
             ;;
         skip)
             case "$prev" in
@@ -67,12 +75,16 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --to)
+                    COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
+                    return
+                    ;;
                 --line)
                     # Line IDs - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --from --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --from --to --line" -- "$cur"))
             ;;
         apply)
             case "$prev" in
@@ -80,8 +92,25 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --line)
+                    # Line IDs - no completion
+                    return
+                    ;;
             esac
-            COMPREPLY=($(compgen -W "--from" -- "$cur"))
+            COMPREPLY=($(compgen -W "--from --line --file" -- "$cur"))
+            ;;
+        reset)
+            case "$prev" in
+                --from|--to)
+                    COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
+                    return
+                    ;;
+                --line)
+                    # Line IDs - no completion
+                    return
+                    ;;
+            esac
+            COMPREPLY=($(compgen -W "--from --to --line --file" -- "$cur"))
             ;;
         status)
             COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))

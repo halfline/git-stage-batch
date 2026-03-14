@@ -146,6 +146,56 @@ Use `--line` to discard only selected line IDs from the batch, leaving others in
 
 ---
 
+## `apply --from BATCH`
+
+Apply batch changes to the working tree without staging them.
+
+```
+❯ git-stage-batch apply --from batch-name
+```
+
+Applies the batch's accumulated changes to your working tree, leaving the index untouched. This is different from `include --from` which stages changes to the index.
+
+**Use cases:**
+- Temporarily applying batched changes to test them before committing
+- Restoring changes that were saved with `discard --to`
+- Previewing batch changes in your working tree before staging
+
+**Line-level application:**
+```
+❯ git-stage-batch apply --from batch-name --line 1-3
+```
+
+Apply only specific lines from the batch to the working tree.
+
+!!! warning "Strict Application"
+    `apply --from BATCH` fails if the batch's changes cannot be applied cleanly
+    to the current working tree state.
+
+    On failure, run `show --from BATCH` to review the changes, or use `--line` to
+    apply only compatible parts.
+
+!!! info "Working Tree Only"
+    Unlike `include --from`, this command modifies only the working tree and leaves
+    the index (staging area) untouched. Use this when you want to preview or test
+    changes before staging them.
+
+**Example workflow:**
+```bash
+# Save debugging changes to a batch
+❯ git-stage-batch discard --to debug
+
+# Later, temporarily restore them to test
+❯ git-stage-batch apply --from debug
+
+# Test the code with debug output...
+
+# Remove them again when done
+❯ git restore .
+```
+
+---
+
 ## `skip --to BATCH`
 
 Save the current hunk to a batch instead of just skipping it.

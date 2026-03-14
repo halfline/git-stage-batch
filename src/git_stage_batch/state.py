@@ -273,6 +273,55 @@ def get_gitignore_path() -> Path:
     return get_git_repository_root_path() / ".gitignore"
 
 
+# --------------------------- Batch paths ---------------------------
+
+def get_batches_directory_path() -> Path:
+    """Get the directory containing batch metadata."""
+    return get_state_directory_path() / "batches"
+
+
+def get_batch_directory_path(batch_name: str) -> Path:
+    """Get the directory for a specific batch's metadata."""
+    return get_batches_directory_path() / batch_name
+
+
+def get_batch_metadata_file_path(batch_name: str) -> Path:
+    """Get the metadata file path for a specific batch."""
+    return get_batch_directory_path(batch_name) / "metadata.json"
+
+
+def get_batch_refs_snapshot_file_path() -> Path:
+    """Get the batch refs snapshot file path (for abort functionality)."""
+    return get_state_directory_path() / "batch-refs-snapshot.json"
+
+
+# --------------------------- Batch helpers ---------------------------
+
+def validate_batch_name(name: str) -> None:
+    """Validate that a batch name is safe for use in git refs."""
+    if not name:
+        exit_with_error(_("Batch name cannot be empty"))
+
+    # Check for invalid characters
+    invalid_chars = ['/', '\\', '..', ' ', '\t', '\n', '\r']
+    for char in invalid_chars:
+        if char in name:
+            exit_with_error(_("Batch name cannot contain: {char}").format(char=repr(char)))
+
+    # Check for leading dot
+    if name.startswith('.'):
+        exit_with_error(_("Batch name cannot start with '.'"))
+
+
+def batch_exists(batch_name: str) -> bool:
+    """Check if a batch exists by checking for its git ref."""
+    result = run_git_command(
+        ["show-ref", "--verify", "--quiet", f"refs/batches/{batch_name}"],
+        check=False
+    )
+    return result.returncode == 0
+
+
 # --------------------------- Diff streaming helpers ---------------------------
 
 def get_next_hunk_from_git(

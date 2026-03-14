@@ -461,4 +461,3 @@ echo "debug code" >> file1.txt
 # Check if anything remains
 ❯ git-stage-batch status
 ```
-

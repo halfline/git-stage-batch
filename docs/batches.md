@@ -72,3 +72,53 @@ Add or update the description for a batch.
 ```
 
 Useful for updating batch metadata as you accumulate changes.
+
+---
+
+## `show --from BATCH`
+
+Show the accumulated changes stored in a batch.
+
+```
+❯ git-stage-batch show --from batch-name
+```
+
+Displays the diff representing all changes accumulated in the batch, showing what would be staged or discarded if you operate on the batch.
+
+---
+
+## `include --from BATCH`
+
+Stage the changes from a batch to the index.
+
+```
+❯ git-stage-batch include --from batch-name
+```
+
+Applies the batch's accumulated changes to the index, staging them for commit.
+
+!!! warning "Strict Application"
+    `include --from BATCH` fails if the batch's changes cannot be applied cleanly
+    to the selected repository state. This happens when the code has diverged from the
+    baseline when the batch was created.
+
+    On failure, run `show --from BATCH` to review the changes.
+
+---
+
+## `discard --from BATCH`
+
+Remove batch changes from the working tree.
+
+```
+❯ git-stage-batch discard --from batch-name
+```
+
+Removes the batch's changes from your working tree by applying the reverse of the batch's diff.
+
+!!! warning "Destructive Operation"
+    This permanently removes changes from your working tree.
+
+!!! warning "Strict Reversal"
+    `discard --from BATCH` fails if the batch's changes cannot be reversed cleanly.
+    The batch itself persists - only the working tree is modified.

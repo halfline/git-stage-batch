@@ -122,3 +122,56 @@ Removes the batch's changes from your working tree by applying the reverse of th
 !!! warning "Strict Reversal"
     `discard --from BATCH` fails if the batch's changes cannot be reversed cleanly.
     The batch itself persists - only the working tree is modified.
+
+---
+
+## `include --to BATCH`
+
+Include the selected hunk in a batch for later staging.
+
+```
+❯ git-stage-batch include --to batch-name
+```
+
+This saves the selected working tree state of the file to the batch and marks the hunk as processed, allowing you to continue with other hunks. The changes remain in your working tree and can be staged later using `include --from BATCH`.
+
+**Auto-creation:**
+If the batch doesn't exist, it will be automatically created with the note "Auto-created".
+
+**Use cases:**
+- Deferring changes for later review while continuing to process other hunks
+- Grouping related changes across multiple files for a separate commit
+- Temporarily setting aside changes you're uncertain about
+
+---
+
+## `discard --to BATCH`
+
+Save the selected hunk to a batch, then discard it from the working tree.
+
+```
+❯ git-stage-batch discard --to batch-name
+```
+
+This first saves the working tree state to the batch, then removes the changes from your working tree. The batch acts as a backup allowing later recovery.
+
+!!! warning "Destructive Operation"
+    This removes changes from your working tree after saving them to the batch.
+
+**Auto-creation:**
+If the batch doesn't exist, it will be automatically created.
+
+**Use cases:**
+- Removing debug code while keeping it available for later
+- Discarding experimental changes but preserving them for potential reuse
+- Cleaning up your working tree while maintaining a safety net
+
+**Example workflow:**
+```bash
+# Accidentally included debug logging in your changes
+❯ git-stage-batch start
+❯ git-stage-batch discard --to debug-logging
+
+# Later, if you need the debug code back:
+❯ git-stage-batch include --from debug-logging
+```

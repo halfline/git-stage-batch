@@ -192,6 +192,17 @@ cannot be applied cleanly to the current state.
 .B discard \-\-from \fIBATCH\fR
 Remove batch changes from the working tree. Fails if the batch's changes
 cannot be reversed cleanly. Does not delete the batch.
+.PP
+The following commands accept \fB\-\-to\fR flags to save changes to batches:
+.TP
+.B skip \-\-to \fIBATCH\fR
+Save the current hunk to a batch instead of just skipping it.
+Auto-creates the batch if it doesn't exist.
+.TP
+.B discard \-\-to \fIBATCH\fR
+Save the current hunk to a batch, then discard it from the working tree.
+Auto-creates the batch if it doesn't exist.
+Useful for saving changes before removing them, allowing later recovery.
 .SH AUTHOR
 Written by Ray Strode.
 .SH REPORTING BUGS

@@ -1,0 +1,40 @@
+# bash completion for git-stage-batch                     -*- shell-script -*-
+
+_git_stage_batch()
+{
+    local cur prev words cword
+    _init_completion || return
+
+    local commands="start show include skip discard status again stop abort"
+
+    # Handle subcommands
+    if [[ $cword -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+        return
+    fi
+
+    local command="${words[1]}"
+
+    case "$command" in
+        start)
+            case "$prev" in
+                -U|--unified)
+                    COMPREPLY=($(compgen -W "1 2 3 4 5 6 7 8 9 10" -- "$cur"))
+                    return
+                    ;;
+            esac
+            COMPREPLY=($(compgen -W "-U --unified" -- "$cur"))
+            ;;
+        show)
+            COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
+            ;;
+        status)
+            COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
+            ;;
+        *)
+            ;;
+    esac
+} &&
+complete -F _git_stage_batch git-stage-batch
+
+# ex: filetype=sh

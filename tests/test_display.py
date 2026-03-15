@@ -3,7 +3,12 @@
 from io import StringIO
 from unittest.mock import patch
 
-from git_stage_batch.display import print_annotated_hunk_with_aligned_gutter
+from git_stage_batch.display import (
+    Colors,
+    format_hotkey,
+    format_option_list,
+    print_annotated_hunk_with_aligned_gutter,
+)
 from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
 
 
@@ -168,3 +173,117 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
             output = fake_out.getvalue()
 
         assert "[#1] + test" in output
+
+
+class TestColors:
+    """Tests for Colors class."""
+
+    def test_enabled_with_tty(self):
+        """Test that colors are enabled when stdout is a TTY."""
+        with patch("sys.stdout.isatty", return_value=True):
+            assert Colors.enabled() is True
+
+    def test_disabled_without_tty(self):
+        """Test that colors are disabled when stdout is not a TTY."""
+        with patch("sys.stdout.isatty", return_value=False):
+            assert Colors.enabled() is False
+
+
+class TestFormatHotkey:
+    """Tests for format_hotkey function."""
+
+    def test_hotkey_found_in_text(self):
+        """Test hotkey is wrapped in brackets when found in text."""
+        assert format_hotkey("include", "i") == "[i]nclude"
+        assert format_hotkey("skip", "s") == "[s]kip"
+        assert format_hotkey("quit", "q") == "[q]uit"
+
+    def test_hotkey_not_found_prepended(self):
+        """Test hotkey is prepended when not found in text."""
+        assert format_hotkey("run", "!") == "[!] run"
+        assert format_hotkey("help", "?") == "[?] help"
+
+    def test_case_insensitive_matching(self):
+        """Test hotkey matching is case-insensitive."""
+        assert format_hotkey("Include", "i") == "[I]nclude"
+        assert format_hotkey("SKIP", "s") == "[S]KIP"
+
+    def test_with_color_no_tty(self):
+        """Test color is not applied when not a TTY."""
+        with patch("sys.stdout.isatty", return_value=False):
+            result = format_hotkey("include", "i", Colors.GREEN)
+            assert result == "[i]nclude"
+            assert Colors.GREEN not in result
+
+    def test_with_color_and_tty(self):
+        """Test color is applied when TTY is available."""
+        with patch("sys.stdout.isatty", return_value=True):
+            result = format_hotkey("include", "i", Colors.GREEN)
+            assert Colors.GREEN in result
+            assert Colors.RESET in result
+            assert "[i]" in result
+
+    def test_with_color_prepended(self):
+        """Test color is applied to prepended hotkey."""
+        with patch("sys.stdout.isatty", return_value=True):
+            result = format_hotkey("run", "!", Colors.CYAN)
+            assert Colors.CYAN in result
+            assert Colors.RESET in result
+            assert "[!]" in result
+
+    def test_empty_color_string(self):
+        """Test that empty color string results in no coloring."""
+        result = format_hotkey("include", "i", "")
+        assert result == "[i]nclude"
+
+
+class TestFormatOptionList:
+    """Tests for format_option_list function."""
+
+    def test_single_option(self):
+        """Test formatting a single option."""
+        options = [("all", "a", "")]
+        assert format_option_list(options) == "[a]ll"
+
+    def test_multiple_options(self):
+        """Test formatting multiple options."""
+        options = [
+            ("all", "a", ""),
+            ("lines", "l", ""),
+            ("file", "f", ""),
+        ]
+        result = format_option_list(options)
+        assert result == "[a]ll, [l]ines, [f]ile"
+
+    def test_with_prepended_hotkeys(self):
+        """Test formatting options with prepended hotkeys."""
+        options = [
+            ("run", "!", ""),
+            ("help", "?", ""),
+        ]
+        result = format_option_list(options)
+        assert result == "[!] run, [?] help"
+
+    def test_with_colors_and_tty(self):
+        """Test formatting with colors when TTY is available."""
+        with patch("sys.stdout.isatty", return_value=True):
+            options = [
+                ("include", "i", Colors.GREEN),
+                ("discard", "d", Colors.RED),
+            ]
+            result = format_option_list(options)
+            assert Colors.GREEN in result
+            assert Colors.RED in result
+            assert Colors.RESET in result
+
+    def test_with_colors_no_tty(self):
+        """Test colors are not applied without TTY."""
+        with patch("sys.stdout.isatty", return_value=False):
+            options = [
+                ("include", "i", Colors.GREEN),
+                ("discard", "d", Colors.RED),
+            ]
+            result = format_option_list(options)
+            assert Colors.GREEN not in result
+            assert Colors.RED not in result
+            assert result == "[i]nclude, [d]iscard"

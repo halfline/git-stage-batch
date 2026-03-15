@@ -695,6 +695,25 @@ class TestCommandStatus:
         assert "Remaining: 0 hunks" in captured.out
         assert "All hunks processed" in captured.out
 
+    def test_status_shows_current_hunk_location(self, temp_git_repo, capsys):
+        """Test that status displays current hunk location with line IDs after show."""
+        # Create changes
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Show the hunk to cache current state
+        command_show()
+        capsys.readouterr()  # Clear output
+
+        # Call status
+        command_status()
+
+        captured = capsys.readouterr()
+        # Should show "Current hunk:" with file path, line number, and line IDs
+        assert "Current hunk:" in captured.out
+        assert "README.md" in captured.out
+        assert "[#" in captured.out  # Line IDs are shown in brackets
+
     def test_start_initializes_abort_state(self, temp_git_repo):
         """Test that start initializes abort state files."""
         from git_stage_batch.state import (

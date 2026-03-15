@@ -10,6 +10,9 @@ from .commands import (
     command_start,
     command_stop,
     command_abort,
+    command_include,
+    command_skip,
+    command_discard,
     find_and_cache_next_unblocked_hunk,
     load_current_lines_from_state,
 )
@@ -24,7 +27,7 @@ from .state import (
     write_text_file_contents,
     read_text_file_contents,
 )
-from .tui_display import print_status_bar, print_action_summary
+from .tui_display import print_status_bar
 from .tui_prompts import prompt_action, prompt_quit_session
 
 
@@ -85,29 +88,31 @@ def start_interactive_mode() -> None:
 
             # Handle action
             if action == "i":
-                # TODO: Call command_include()
-                print(_("Include not yet implemented"))
-                print_action_summary(_("Staged hunk"))
-                # Advance to next hunk
-                if find_and_cache_next_unblocked_hunk() is None:
+                command_include()
+                # Commands advance themselves, just check if there are more hunks
+                current_lines = load_current_lines_from_state()
+                if current_lines is None:
                     raise NoMoreHunks()
                 should_refresh = True
             elif action == "s":
-                # TODO: Call command_skip()
-                print(_("Skip not yet implemented"))
-                print_action_summary(_("Skipped hunk"))
-                # Advance to next hunk
-                if find_and_cache_next_unblocked_hunk() is None:
+                command_skip()
+                # Commands advance themselves, just check if there are more hunks
+                current_lines = load_current_lines_from_state()
+                if current_lines is None:
                     raise NoMoreHunks()
                 should_refresh = True
             elif action == "d":
-                # TODO: Call command_discard() with confirmation
-                print(_("Discard not yet implemented"))
-                print_action_summary(_("Discarded hunk"))
-                # Advance to next hunk
-                if find_and_cache_next_unblocked_hunk() is None:
-                    raise NoMoreHunks()
-                should_refresh = True
+                from .tui_prompts import confirm_destructive_operation
+                if confirm_destructive_operation("discard", _("This will remove the hunk from your working tree.")):
+                    command_discard()
+                    # Commands advance themselves, just check if there are more hunks
+                    current_lines = load_current_lines_from_state()
+                    if current_lines is None:
+                        raise NoMoreHunks()
+                    should_refresh = True
+                else:
+                    # Canceled, redisplay
+                    should_refresh = True
             elif action == "q":
                 handle_quit()
                 break

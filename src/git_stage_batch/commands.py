@@ -2616,3 +2616,9 @@ def command_discard_to_batch(batch_name: str, line_ids: Optional[str] = None, _f
 
     # Record hunk as discarded for progress tracking
     record_hunk_discarded(current_hash)
+
+
+def command_interactive() -> None:
+    """Start interactive mode for hunk-by-hunk staging."""
+    from .tui import start_interactive_mode
+    start_interactive_mode()

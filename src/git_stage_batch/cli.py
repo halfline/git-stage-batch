@@ -85,6 +85,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="version",
         version=f"git-stage-batch {__version__}",
     )
+    parser.add_argument(
+        "-i",
+        action="store_true",
+        dest="interactive_mode",
+        help=_("Start interactive mode for hunk-by-hunk staging"),
+    )
 
     subparsers = parser.add_subparsers(
         dest="command",
@@ -108,6 +114,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         display_cached_hunk()
 
     parser_start.set_defaults(func=start_cli)
+
+    # interactive - Start interactive mode
+    parser_interactive = subparsers.add_parser(
+        "interactive",
+        help=_("Start interactive mode for hunk-by-hunk staging"),
+    )
+    parser_interactive.set_defaults(func=lambda _: commands.command_interactive())
 
     # stop - Stop the current session and clear state
     parser_stop = subparsers.add_parser(
@@ -467,6 +480,11 @@ def dispatch_args(args: argparse.Namespace) -> None:
     Args:
         args: Parsed arguments from ArgumentParser
     """
+    # Handle -i flag
+    if args.interactive_mode:
+        commands.command_interactive()
+        return
+
     if args.command is None:
         # No command provided - check if session is active
         require_git_repository()  # This will print error and exit if not in a git repo

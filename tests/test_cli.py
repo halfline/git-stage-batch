@@ -71,3 +71,66 @@ def test_cli_question_mark_shows_help():
     assert "git-stage-batch" in result.stdout
     # Either shows man page (NAME/SYNOPSIS) or argparse help (usage:)
     assert ("NAME" in result.stdout and "SYNOPSIS" in result.stdout) or "usage:" in result.stdout
+
+
+def test_cli_no_args_defaults_to_include_during_session(tmp_path, monkeypatch):
+    """Test that running with no args defaults to include when session is active."""
+    import subprocess
+
+    # Create a temp git repo
+    repo = tmp_path / "test_repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+
+    # Create initial commit
+    (repo / "README.md").write_text("# Test\n")
+    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=repo, capture_output=True)
+
+    # Change to the repo directory
+    monkeypatch.chdir(repo)
+
+    # Modify a file before starting session
+    (repo / "README.md").write_text("# Test\nNew content\n")
+
+    # Start a session
+    result = subprocess.run(
+        [sys.executable, "-m", "git_stage_batch.cli", "start"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+
+    # Run with no args - should default to include
+    result = subprocess.run(
+        [sys.executable, "-m", "git_stage_batch.cli"],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Hunk staged" in result.stdout
+
+    # Verify the hunk was staged
+    result = subprocess.run(
+        ["git", "diff", "--cached"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    )
+    assert "+New content" in result.stdout
+
+
+def test_cli_interactive_command():
+    """Test that interactive command is recognized."""
+    result = subprocess.run(
+        [sys.executable, "-m", "git_stage_batch.cli", "interactive"],
+        capture_output=True,
+        text=True,
+    )
+
+    # Command should exit cleanly (0) or with no-hunks (2), not with error (1, 128, etc.)
+    assert result.returncode in (0, 2)

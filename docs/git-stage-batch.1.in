@@ -47,6 +47,11 @@ You will be prompted to confirm.
 Stage all remaining hunks at once.
 You will be prompted to confirm.
 .TP
+.B l, lines
+Enter line selection submenu to include, skip, or discard specific lines
+within the current hunk. Displays changed line IDs, prompts for action, then
+prompts for line IDs (e.g., 1,3,5-7).
+.TP
 .B q, quit
 Exit interactive mode. If changes were made during the session, prompts
 whether to keep them or undo all changes (abort).

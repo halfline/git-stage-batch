@@ -52,6 +52,10 @@ Enter line selection submenu to include, skip, or discard specific lines
 within the current hunk. Displays changed line IDs, prompts for action, then
 prompts for line IDs (e.g., 1,3,5-7).
 .TP
+.B f, file
+Enter file operations submenu to include or skip all hunks from the current
+file. Advances to the next file after the operation.
+.TP
 .B q, quit
 Exit interactive mode. If changes were made during the session, prompts
 whether to keep them or undo all changes (abort).

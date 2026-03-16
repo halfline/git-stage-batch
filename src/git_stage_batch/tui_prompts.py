@@ -17,7 +17,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True) -> str:
         show_question: Whether to display the "What do you want to do" question
 
     Returns:
-        Normalized choice (e.g., 'i', 's', 'd', 'q', 'a', 'l', etc.)
+        Normalized choice (e.g., 'i', 's', 'd', 'q', 'l', 'f', '?', etc.)
     """
     # Primary actions
     primary_options = [
@@ -29,7 +29,6 @@ def prompt_action(use_color: bool = True, show_question: bool = True) -> str:
 
     # Secondary actions (More options)
     secondary_options = [
-        ("all", "a", ""),
         ("lines", "l", ""),
         ("file", "f", ""),
         ("help", "?", ""),
@@ -65,7 +64,6 @@ def prompt_action(use_color: bool = True, show_question: bool = True) -> str:
         "skip": "s",
         "discard": "d",
         "quit": "q",
-        "all": "a",
         "lines": "l",
         "file": "f",
         "help": "?",

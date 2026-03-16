@@ -12,6 +12,51 @@ and letting you include (stage), skip, or discard each hunk.
 .PP
 State is maintained in \fB.git/git-stage-batch/\fR so you can stop and continue
 later, or run git commands between operations.
+.SH INTERACTIVE MODE
+.B git-stage-batch
+can be run in interactive mode for a continuous hunk-by-hunk workflow
+similar to
+.BR "git add -p" .
+.PP
+To start interactive mode:
+.RS
+.B git-stage-batch interactive
+.br
+.B git-stage-batch -i
+.RE
+.PP
+Interactive mode automatically starts a session, displays the first hunk with
+progress information, and presents a menu of actions. After each action,
+the next hunk is automatically displayed.
+.SS Actions
+.TP
+.B i, include
+Stage the current hunk and advance to the next.
+.TP
+.B s, skip
+Mark the current hunk as skipped and advance to the next.
+Skipped hunks can be revisited later.
+.TP
+.B d, discard
+Remove the current hunk from the working tree and advance to the next.
+.B WARNING:
+This permanently removes changes.
+You will be prompted to confirm.
+.TP
+.B a, all
+Stage all remaining hunks at once.
+You will be prompted to confirm.
+.TP
+.B q, quit
+Exit interactive mode. If changes were made during the session, prompts
+whether to keep them or undo all changes (abort).
+.TP
+.B ?, help
+Display help text showing all available commands.
+.PP
+At any prompt, press
+.B Ctrl-C
+to cancel the current operation and return to the main menu.
 .SH COMMANDS
 .SS Core Operations
 .TP

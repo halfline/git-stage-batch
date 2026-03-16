@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from git_stage_batch.tui import handle_quit, print_help, start_interactive_mode
+from git_stage_batch.tui import handle_line_selection, handle_quit, print_help, start_interactive_mode
 
 
 @pytest.fixture
@@ -181,6 +181,110 @@ class TestHandleQuit:
                     # Neither should be called on cancel
                     mock_stop.assert_not_called()
                     mock_abort.assert_not_called()
+
+
+class TestHandleLineSelection:
+    """Tests for handle_line_selection function."""
+
+    def test_handle_line_selection_include(self, temp_git_repo, capsys):
+        """Test line selection with include action."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=3, new_start=1, new_len=3)
+        lines = [
+            LineEntry(1, "+", None, 1, "line 1"),
+            LineEntry(2, "+", None, 2, "line 2"),
+            LineEntry(None, " ", 3, 3, "context"),
+        ]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", side_effect=["i", "1,2"]):
+                with patch("git_stage_batch.tui.command_include_line") as mock_include:
+                    handle_line_selection()
+                    mock_include.assert_called_once_with("1,2")
+
+    def test_handle_line_selection_skip(self, temp_git_repo, capsys):
+        """Test line selection with skip action."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=2, new_start=1, new_len=2)
+        lines = [LineEntry(1, "+", None, 1, "line 1")]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", side_effect=["s", "1"]):
+                with patch("git_stage_batch.tui.command_skip_line") as mock_skip:
+                    handle_line_selection()
+                    mock_skip.assert_called_once_with("1")
+
+    def test_handle_line_selection_discard_with_confirmation(self, temp_git_repo):
+        """Test line selection with discard action and confirmation."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=2, new_start=1, new_len=2)
+        lines = [LineEntry(1, "-", 1, None, "line 1")]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", side_effect=["d", "1", "yes"]):
+                with patch("git_stage_batch.tui.command_discard_line") as mock_discard:
+                    handle_line_selection()
+                    mock_discard.assert_called_once_with("1")
+
+    def test_handle_line_selection_discard_canceled(self, temp_git_repo):
+        """Test line selection with discard action but canceled confirmation."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=2, new_start=1, new_len=2)
+        lines = [LineEntry(1, "-", 1, None, "line 1")]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", side_effect=["d", "1", "no"]):
+                with patch("git_stage_batch.tui.command_discard_line") as mock_discard:
+                    handle_line_selection()
+                    mock_discard.assert_not_called()
+
+    def test_handle_line_selection_ctrl_c_on_action(self, temp_git_repo):
+        """Test Ctrl-C on action prompt returns to main loop."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=2, new_start=1, new_len=2)
+        lines = [LineEntry(1, "+", None, 1, "line 1")]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                with patch("git_stage_batch.tui.command_include_line") as mock_include:
+                    handle_line_selection()
+                    mock_include.assert_not_called()
+
+    def test_handle_line_selection_no_current_lines(self, temp_git_repo):
+        """Test line selection when no current lines."""
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=None):
+            with patch("git_stage_batch.tui.command_include_line") as mock_include:
+                handle_line_selection()
+                mock_include.assert_not_called()
+
+    def test_handle_line_selection_shows_changed_ids(self, temp_git_repo, capsys):
+        """Test that changed line IDs are displayed."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=3, new_start=1, new_len=3)
+        lines = [
+            LineEntry(1, "+", None, 1, "line 1"),
+            LineEntry(2, "+", None, 2, "line 2"),
+            LineEntry(None, " ", 3, 3, "context"),
+        ]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                handle_line_selection()
+                captured = capsys.readouterr()
+
+        assert "Changed line IDs: 1, 2" in captured.out
 
 
 class TestStartInteractiveMode:

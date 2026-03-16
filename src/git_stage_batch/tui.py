@@ -16,6 +16,8 @@ from .commands import (
     command_include_line,
     command_skip_line,
     command_discard_line,
+    command_include_file,
+    command_skip_file,
     find_and_cache_next_unblocked_hunk,
     load_current_lines_from_state,
 )
@@ -122,6 +124,13 @@ def start_interactive_mode() -> None:
                 handle_line_selection()
                 # Redisplay current hunk after line operations
                 should_refresh = True
+            elif action == "f":
+                # File operations submenu
+                handle_file_selection()
+                # Advance to next hunk after file operation
+                if find_and_cache_next_unblocked_hunk() is None:
+                    raise NoMoreHunks()
+                should_refresh = True
             elif action == "q":
                 handle_quit()
                 break
@@ -152,6 +161,50 @@ def start_interactive_mode() -> None:
     except NoMoreHunks:
         # All hunks processed, go through smart quit
         handle_quit()
+
+
+def handle_file_selection() -> None:
+    """
+    Handle file operations submenu.
+
+    Prompts user to include or skip all hunks in the current file.
+    Returns after operation or on cancel (Ctrl-C).
+    """
+    use_color = Colors.enabled()
+
+    # Get current file from state
+    current_lines = load_current_lines_from_state()
+    if current_lines is None:
+        return
+
+    filename = current_lines.path
+
+    # Prompt for action
+    print()
+    try:
+        if use_color:
+            action_input = input(f"{_('Action for all hunks in')} {DisplayColors.BOLD}{filename}{DisplayColors.RESET} - "
+                                f"{format_hotkey('include', 'i', DisplayColors.GREEN)} {_('or')} "
+                                f"{format_hotkey('skip', 's', '')}? ").strip().lower()
+        else:
+            action_input = input(_("Action for all hunks in {filename} - [i]nclude or [s]kip? ").format(filename=filename)).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        # Canceled, return to main loop
+        return
+
+    # Normalize action
+    if action_input in ("i", "include"):
+        command_include_file()
+        # Advance to next hunk
+        if find_and_cache_next_unblocked_hunk() is None:
+            raise NoMoreHunks()
+    elif action_input in ("s", "skip"):
+        command_skip_file()
+        # Advance to next hunk
+        if find_and_cache_next_unblocked_hunk() is None:
+            raise NoMoreHunks()
+    else:
+        print(_("\nUnknown action: '{action}'").format(action=action_input))
 
 
 def handle_line_selection() -> None:

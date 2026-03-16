@@ -5,7 +5,14 @@ from unittest.mock import patch
 
 import pytest
 
-from git_stage_batch.tui import handle_line_selection, handle_quit, print_help, start_interactive_mode
+from git_stage_batch.tui import (
+    NoMoreHunks,
+    handle_file_selection,
+    handle_line_selection,
+    handle_quit,
+    print_help,
+    start_interactive_mode,
+)
 
 
 @pytest.fixture
@@ -181,6 +188,79 @@ class TestHandleQuit:
                     # Neither should be called on cancel
                     mock_stop.assert_not_called()
                     mock_abort.assert_not_called()
+
+
+class TestHandleFileSelection:
+    """Tests for handle_file_selection function."""
+
+    def test_handle_file_selection_include(self, temp_git_repo):
+        """Test file selection with include action."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
+        lines = [LineEntry(1, "+", None, 1, "test")]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", return_value="i"):
+                with patch("git_stage_batch.tui.command_include_file") as mock_include:
+                    with patch("git_stage_batch.tui.find_and_cache_next_unblocked_hunk", return_value=None):
+                        with pytest.raises(NoMoreHunks):
+                            handle_file_selection()
+                        mock_include.assert_called_once()
+
+    def test_handle_file_selection_skip(self, temp_git_repo):
+        """Test file selection with skip action."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
+        lines = [LineEntry(1, "+", None, 1, "test")]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", return_value="s"):
+                with patch("git_stage_batch.tui.command_skip_file") as mock_skip:
+                    with patch("git_stage_batch.tui.find_and_cache_next_unblocked_hunk", return_value=None):
+                        with pytest.raises(NoMoreHunks):
+                            handle_file_selection()
+                        mock_skip.assert_called_once()
+
+    def test_handle_file_selection_ctrl_c(self, temp_git_repo):
+        """Test Ctrl-C cancels file selection."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
+        lines = [LineEntry(1, "+", None, 1, "test")]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                with patch("git_stage_batch.tui.command_include_file") as mock_include:
+                    handle_file_selection()
+                    mock_include.assert_not_called()
+
+    def test_handle_file_selection_no_current_lines(self, temp_git_repo):
+        """Test file selection when no current lines."""
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=None):
+            with patch("git_stage_batch.tui.command_include_file") as mock_include:
+                handle_file_selection()
+                mock_include.assert_not_called()
+
+    def test_handle_file_selection_with_full_word(self, temp_git_repo):
+        """Test file selection accepts full words."""
+        from git_stage_batch.models import CurrentLines, HunkHeader, LineEntry
+
+        header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
+        lines = [LineEntry(1, "+", None, 1, "test")]
+        current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
+
+        with patch("git_stage_batch.tui.load_current_lines_from_state", return_value=current_lines):
+            with patch("builtins.input", return_value="include"):
+                with patch("git_stage_batch.tui.command_include_file") as mock_include:
+                    with patch("git_stage_batch.tui.find_and_cache_next_unblocked_hunk", return_value=None):
+                        with pytest.raises(NoMoreHunks):
+                            handle_file_selection()
+                        mock_include.assert_called_once()
 
 
 class TestHandleLineSelection:

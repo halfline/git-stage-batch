@@ -85,6 +85,13 @@ Show the accumulated changes stored in a batch.
 
 Displays the diff representing all changes accumulated in the batch, showing what would be staged or discarded if you operate on the batch.
 
+**Filter to specific lines:**
+```
+❯ git-stage-batch show --from batch-name --line 1,3,5-7
+```
+
+Use `--line` to display only specific line IDs from the batch.
+
 ---
 
 ## `include --from BATCH`
@@ -96,6 +103,13 @@ Stage the changes from a batch to the index.
 ```
 
 Applies the batch's accumulated changes to the index, staging them for commit.
+
+**Stage specific lines only:**
+```
+❯ git-stage-batch include --from batch-name --line 1,3,5-7
+```
+
+Use `--line` to stage only selected line IDs from the batch, leaving others untouched.
 
 !!! warning "Strict Application"
     `include --from BATCH` fails if the batch's changes cannot be applied cleanly
@@ -116,6 +130,13 @@ Remove batch changes from the working tree.
 
 Removes the batch's changes from your working tree by applying the reverse of the batch's diff.
 
+**Discard specific lines only:**
+```
+❯ git-stage-batch discard --from batch-name --line 1,3,5-7
+```
+
+Use `--line` to discard only selected line IDs from the batch, leaving others in the working tree.
+
 !!! warning "Destructive Operation"
     This permanently removes changes from your working tree.
 
@@ -134,6 +155,13 @@ Include the selected hunk in a batch for later staging.
 ```
 
 This saves the selected working tree state of the file to the batch and marks the hunk as processed, allowing you to continue with other hunks. The changes remain in your working tree and can be staged later using `include --from BATCH`.
+
+**Save specific lines only:**
+```
+❯ git-stage-batch include --to batch-name --line 1,3,5-7
+```
+
+Use `--line` to save only selected line IDs to the batch, leaving the rest for the selected session.
 
 **Auto-creation:**
 If the batch doesn't exist, it will be automatically created with the note "Auto-created".
@@ -154,6 +182,13 @@ Save the selected hunk to a batch, then discard it from the working tree.
 ```
 
 This first saves the working tree state to the batch, then removes the changes from your working tree. The batch acts as a backup allowing later recovery.
+
+**Save and discard specific lines only:**
+```
+❯ git-stage-batch discard --to batch-name --line 1,3,5-7
+```
+
+Use `--line` to save and discard only selected line IDs, leaving other changes in the working tree.
 
 !!! warning "Destructive Operation"
     This removes changes from your working tree after saving them to the batch.

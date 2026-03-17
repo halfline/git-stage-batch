@@ -216,6 +216,70 @@ This:
 
 ---
 
+## Line-Level Operations
+
+Work with individual lines within a hunk for maximum granularity.
+
+### `include --line LINE_IDS`
+
+Stage only specific lines from the selected hunk.
+
+```
+❯ git-stage-batch include --line 1,3,5-7
+```
+
+**Line ID syntax:**
+- Single: `1`
+- Multiple: `1,3,5`
+- Range: `5-7`
+- Combined: `1,3,5-7`
+
+Lines are displayed with IDs in brackets when you run `show` or `start`:
+
+```
+auth.py :: @@ -10,5 +10,5 @@
+[#1] - old_function()
+[#2] + new_function()
+[#3] + another_change()
+      context_line()
+```
+
+To stage lines 1 and 3:
+```
+❯ git-stage-batch include --line 1,3
+```
+
+After processing, the hunk is recalculated to show remaining changes.
+
+---
+
+### `skip --line LINE_IDS`
+
+Mark specific lines as skipped without staging them.
+
+```
+❯ git-stage-batch skip --line 2
+```
+
+Useful when you want to defer certain changes to a later commit.
+
+---
+
+### `discard --line LINE_IDS`
+
+Remove specific lines from the working tree.
+
+```
+❯ git-stage-batch discard --line 3
+```
+
+!!! warning "Destructive Operation"
+    This permanently removes the specified lines from your working tree.
+
+Line-level discard allows surgical removal of debug code, experimental changes, or unwanted modifications while keeping the rest of the hunk.
+
+---
+
 ## Workflow Example
 
 ```bash

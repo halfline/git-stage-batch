@@ -55,8 +55,8 @@ def test_cli_no_args_shows_error(tmp_path, monkeypatch):
         text=True,
     )
 
-    assert result.returncode == 1
-    assert "No batch staging session in progress" in result.stderr
+    assert result.returncode == 128
+    assert "fatal: not a git repository" in result.stderr
 
 
 def test_cli_question_mark_shows_help():

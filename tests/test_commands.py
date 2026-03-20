@@ -1038,6 +1038,86 @@ class TestCommandIncludeFile:
         assert "file2.txt" in result.stdout
 
 
+
+    def test_include_file_caches_state_before_each_include(self, temp_git_repo):
+        """Test that include-file caches hunk state before each include operation."""
+        from git_stage_batch.state import (
+            get_current_hunk_hash_file_path,
+            get_current_lines_json_file_path,
+        )
+
+        # Create file with two separate hunks
+        test_file = temp_git_repo / "multi.txt"
+        test_file.write_text("line 1\n" + "\n" * 10 + "line 12\n")
+        subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both ends to create two hunks
+        test_file.write_text("modified 1\n" + "\n" * 10 + "modified 12\n")
+
+        # Create another file so there's a next hunk after include-file completes
+        other_file = temp_git_repo / "other.txt"
+        other_file.write_text("other\n")
+        subprocess.run(["git", "add", "other.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add other"], check=True, cwd=temp_git_repo, capture_output=True)
+        other_file.write_text("other modified\n")
+
+        # include-file should work even without starting a session first
+        command_include_file()
+
+        # Verify cache files exist (from processing hunks)
+        assert get_current_hunk_hash_file_path().exists()
+        assert get_current_lines_json_file_path().exists()
+
+        # Verify all hunks from multi.txt were staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "modified 1" in result.stdout
+        assert "modified 12" in result.stdout
+
+    def test_include_file_advances_to_next_file_hunk(self, temp_git_repo):
+        """Test that include-file advances to next file's hunk after processing."""
+        from git_stage_batch.commands import load_current_lines_from_state
+
+        # Create two files with hunks
+        test_file1 = temp_git_repo / "multi.txt"
+        test_file1.write_text("line 1\n" + "\n" * 10 + "line 12\n")
+        subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file2 = temp_git_repo / "other.txt"
+        test_file2.write_text("other content\n")
+        subprocess.run(["git", "add", "other.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both files to create hunks
+        test_file1.write_text("modified 1\n" + "\n" * 10 + "modified 12\n")
+        test_file2.write_text("other modified\n")
+
+        # include-file should process all hunks from multi.txt
+        command_include_file()
+
+        # After include-file, cache should show next file's hunk (other.txt)
+        current_lines = load_current_lines_from_state()
+        assert current_lines is not None
+        assert current_lines.path == "other.txt"
+
+        # Verify all hunks from multi.txt were staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "modified 1" in result.stdout
+        assert "modified 12" in result.stdout
+
 class TestCommandSkipFile:
     """Tests for skip-file command."""
 

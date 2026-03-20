@@ -14,6 +14,7 @@ from git_stage_batch.state import (
     read_text_file_contents,
     require_git_repository,
     run_git_command,
+    stream_git_command,
     write_text_file_contents,
 )
 
@@ -97,6 +98,61 @@ class TestGitUtilities:
 
         root = get_git_repository_root_path()
         assert root == temp_git_repo
+
+    def test_stream_git_command_success(self, temp_git_repo):
+        """Test streaming git command output line by line."""
+        lines = list(stream_git_command(["status", "--short"]))
+        assert isinstance(lines, list)
+        # Should complete without error
+
+    def test_stream_git_command_early_termination(self, temp_git_repo):
+        """Test stopping early doesn't cause pipe deadlock or errors.
+
+        This is a regression test for a bug where breaking out of the
+        iteration early would cause the git subprocess to block on write()
+        when its stdout pipe filled up, leading to a deadlock when the
+        generator's cleanup code called wait().
+        """
+        # Create a file with many lines to ensure git diff produces
+        # enough output to fill the pipe buffer (64KB on Linux)
+        large_file = temp_git_repo / "large.txt"
+        large_file.write_text("\n".join([f"Line {i}" for i in range(10000)]))
+        subprocess.run(["git", "add", "large.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(["git", "commit", "-m", "Add large file"], check=True, cwd=temp_git_repo)
+
+        # Make changes to generate a large diff
+        large_file.write_text("\n".join([f"Modified line {i}" for i in range(10000)]))
+
+        # Read only the first few lines then stop
+        line_count = 0
+        for line in stream_git_command(["diff", "HEAD"]):
+            line_count += 1
+            if line_count >= 10:
+                break
+
+        assert line_count == 10
+        # If we got here without hanging, the test passed
+
+    def test_stream_git_command_failure(self, temp_git_repo):
+        """Test streaming git command that fails raises CalledProcessError."""
+        with pytest.raises(subprocess.CalledProcessError):
+            # Consume all output to trigger error check in finally block
+            list(stream_git_command(["invalid-command"]))
+
+    def test_stream_git_command_early_termination_no_error_on_cancelled(self, temp_git_repo):
+        """Test early termination doesn't raise error even if git was killed."""
+        # Create large output
+        large_file = temp_git_repo / "large2.txt"
+        large_file.write_text("\n".join([f"Line {i}" for i in range(10000)]))
+        subprocess.run(["git", "add", "large2.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(["git", "commit", "-m", "Add large file 2"], check=True, cwd=temp_git_repo)
+        large_file.write_text("\n".join([f"Modified line {i}" for i in range(10000)]))
+
+        # Should not raise even though we terminate git process early
+        gen = stream_git_command(["diff", "HEAD"])
+        next(gen)  # Read one line
+        gen.close()  # Explicitly close, triggering GeneratorExit
+        # No exception should be raised
 
 
 class TestFileUtilities:

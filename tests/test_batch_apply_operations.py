@@ -176,3 +176,49 @@ class TestApplyIntegration:
 
         # Change should be restored
         assert test_file.read_text() == "important_change\nline2\nline3\n"
+
+    def test_apply_vs_include_difference(self, temp_git_repo):
+        """Test that apply modifies working tree only while include modifies both."""
+        # Create a batch
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("modified\nline2\nline3\n")
+
+        command_start()
+        command_skip_to_batch("test-batch")
+        command_stop()
+
+        # Reset
+        test_file.write_text("line1\nline2\nline3\n")
+
+        # Apply to working tree only
+        command_apply_from_batch("test-batch")
+
+        # Working tree should have changes
+        assert test_file.read_text() == "modified\nline2\nline3\n"
+
+        # Index should be clean (apply doesn't stage)
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert diff_result.stdout.strip() == ""
+
+        # Now reset and try include instead
+        test_file.write_text("line1\nline2\nline3\n")
+
+        from git_stage_batch.commands import command_include_from_batch
+        command_include_from_batch("test-batch")
+
+        # Index should have changes (include stages)
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert "modified" in diff_result.stdout
+
+        # Working tree should ALSO have changes (include updates both)
+        assert test_file.read_text() == "modified\nline2\nline3\n"

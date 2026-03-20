@@ -44,15 +44,19 @@ def test_cli_help_short():
     assert ("NAME" in result.stdout and "SYNOPSIS" in result.stdout) or "usage:" in result.stdout
 
 
-def test_cli_no_args_succeeds():
-    """Test that running with no arguments succeeds."""
+def test_cli_no_args_shows_error(tmp_path, monkeypatch):
+    """Test that running with no arguments shows helpful error."""
+    # Change to a non-git directory
+    monkeypatch.chdir(tmp_path)
+
     result = subprocess.run(
         [sys.executable, "-m", "git_stage_batch.cli"],
         capture_output=True,
         text=True,
     )
 
-    assert result.returncode == 0
+    assert result.returncode == 1
+    assert "No batch staging session in progress" in result.stderr
 
 
 def test_cli_question_mark_shows_help():

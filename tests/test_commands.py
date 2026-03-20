@@ -200,9 +200,11 @@ class TestCommandShow:
         command_show()
 
         captured = capsys.readouterr()
-        assert "--- a/README.md" in captured.out
-        assert "+++ b/README.md" in captured.out
-        assert "+New line added" in captured.out
+        # New format shows file path, hunk header, and line with ID
+        assert "README.md" in captured.out
+        assert "@@" in captured.out
+        assert "[#1]" in captured.out
+        assert "New line added" in captured.out
 
     def test_show_no_changes(self, temp_git_repo, capsys):
         """Test that show displays message when no changes exist."""
@@ -271,6 +273,26 @@ class TestCommandShow:
         captured = capsys.readouterr()
         assert "No changes to show" in captured.out
 
+
+
+    def test_show_caches_hunk_state(self, temp_git_repo):
+        """Test that show caches the current hunk state."""
+        from git_stage_batch.state import (
+            get_current_hunk_patch_file_path,
+            get_current_hunk_hash_file_path,
+            get_current_lines_json_file_path,
+        )
+        
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew line\n")
+        
+        command_start()
+        
+        # Verify state files were created by show
+        assert get_current_hunk_patch_file_path().exists()
+        assert get_current_hunk_hash_file_path().exists()
+        assert get_current_lines_json_file_path().exists()
 
 class TestCommandInclude:
     """Tests for include command."""
@@ -1265,3 +1287,22 @@ class TestHunkCachingInfrastructure:
 
         # Should have cleared the cached hunk
         assert not get_current_hunk_patch_file_path().exists()
+
+    def test_show_caches_hunk_state(self, temp_git_repo):
+        """Test that show caches the current hunk state."""
+        from git_stage_batch.state import (
+            get_current_hunk_patch_file_path,
+            get_current_hunk_hash_file_path,
+            get_current_lines_json_file_path,
+        )
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew line\n")
+
+        command_start()
+        
+        # Verify state files were created by show
+        assert get_current_hunk_patch_file_path().exists()
+        assert get_current_hunk_hash_file_path().exists()
+        assert get_current_lines_json_file_path().exists()

@@ -6,8 +6,10 @@ import pytest
 
 from git_stage_batch.commands import auto_add_untracked_files
 from git_stage_batch.state import (
+    append_file_path_to_file,
     ensure_state_directory_exists,
     get_auto_added_files_file_path,
+    get_blocked_files_file_path,
     read_file_paths_file,
 )
 
@@ -189,3 +191,54 @@ class TestAutoAddUntrackedFiles:
         # Check it was auto-added
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
         assert "my file.txt" in auto_added
+
+    def test_auto_add_skips_blocked_files(self, temp_git_repo):
+        """Test that blocked files are not auto-added."""
+        ensure_state_directory_exists()
+
+        # Create untracked files
+        (temp_git_repo / "normal.txt").write_text("content\n")
+        (temp_git_repo / "blocked.txt").write_text("blocked content\n")
+
+        # Block one file
+        append_file_path_to_file(get_blocked_files_file_path(), "blocked.txt")
+
+        auto_add_untracked_files()
+
+        # Check only normal file was auto-added
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        assert "normal.txt" in auto_added
+        assert "blocked.txt" not in auto_added
+
+        # Verify blocked file is not in git ls-files
+        result = subprocess.run(
+            ["git", "ls-files", "--", "blocked.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout.strip() == ""
+
+    def test_auto_add_mixed_blocked_and_normal(self, temp_git_repo):
+        """Test auto_add with a mix of blocked and normal files."""
+        ensure_state_directory_exists()
+
+        # Create multiple files
+        (temp_git_repo / "file1.txt").write_text("1\n")
+        (temp_git_repo / "file2.txt").write_text("2\n")
+        (temp_git_repo / "file3.txt").write_text("3\n")
+        (temp_git_repo / "file4.txt").write_text("4\n")
+
+        # Block some files
+        append_file_path_to_file(get_blocked_files_file_path(), "file2.txt")
+        append_file_path_to_file(get_blocked_files_file_path(), "file4.txt")
+
+        auto_add_untracked_files()
+
+        # Check only non-blocked files were auto-added
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        assert "file1.txt" in auto_added
+        assert "file2.txt" not in auto_added
+        assert "file3.txt" in auto_added
+        assert "file4.txt" not in auto_added

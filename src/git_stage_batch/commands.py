@@ -322,6 +322,12 @@ def find_and_cache_next_unblocked_hunk(*, quiet: bool = False) -> CurrentLines |
     return None
 
 
+def advance_to_next_hunk(*, quiet: bool = False) -> None:
+    """Clear current hunk state and advance to the next unblocked hunk."""
+    clear_current_hunk_state_files()
+    find_and_cache_next_unblocked_hunk(quiet=quiet)
+
+
 def _recalculate_current_hunk_for_file(file_path: str) -> None:
     """Recalculate the current hunk for a specific file after modifications.
 
@@ -464,6 +470,8 @@ def command_include(*, quiet: bool = False) -> None:
         else:
             print(_("No more hunks to process."))
 
+    advance_to_next_hunk(quiet=quiet)
+
 
 def command_include_file() -> None:
     """Include (stage) all hunks from the current file."""
@@ -533,6 +541,9 @@ def command_include_file() -> None:
     ).format(count=hunks_staged, file=target_file)
     print(msg)
 
+    # Advance to next file's hunk
+    advance_to_next_hunk(quiet=True)
+
 
 def command_skip(*, quiet: bool = False) -> None:
     """Skip the current hunk without staging it."""
@@ -572,6 +583,8 @@ def command_skip(*, quiet: bool = False) -> None:
             print(_("No changes to process."))
         else:
             print(_("No more hunks to process."))
+
+    advance_to_next_hunk(quiet=quiet)
 
 
 def command_skip_file() -> None:
@@ -624,6 +637,8 @@ def command_skip_file() -> None:
         hunks_skipped
     ).format(count=hunks_skipped, file=target_file)
     print(msg)
+
+    advance_to_next_hunk()
 
 
 def command_block_file(file_path_arg: str) -> None:
@@ -739,6 +754,8 @@ def command_discard(*, quiet: bool = False) -> None:
         else:
             print(_("No more hunks to process."))
 
+    advance_to_next_hunk(quiet=quiet)
+
 
 def command_discard_file() -> None:
     """Discard the entire current file from the working tree."""
@@ -798,6 +815,8 @@ def command_discard_file() -> None:
         append_lines_to_file(blocklist_path, [patch_hash])
 
     print(_("✓ File discarded: {}").format(target_file))
+
+    advance_to_next_hunk()
 
 
 def command_status() -> None:

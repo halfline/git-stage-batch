@@ -53,3 +53,17 @@ def test_cli_no_args_succeeds():
     )
 
     assert result.returncode == 0
+
+
+def test_cli_question_mark_shows_help():
+    """Test that ? shortcut shows help via parse_command_line."""
+    result = subprocess.run(
+        [sys.executable, "-m", "git_stage_batch.cli", "?"],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "git-stage-batch" in result.stdout
+    # Either shows man page (NAME/SYNOPSIS) or argparse help (usage:)
+    assert ("NAME" in result.stdout and "SYNOPSIS" in result.stdout) or "usage:" in result.stdout

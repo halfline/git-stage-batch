@@ -519,6 +519,66 @@ class TestCommandDiscard:
         assert "file2.txt" in result.stdout
         assert "file1.txt" not in result.stdout
 
+    def test_discard_operates_on_cached_hunk_not_first_unblocked(self, temp_git_repo, capsys):
+        """Test that discard operates on the cached current hunk, not the first unblocked hunk.
+
+        This is a regression test for a bug where command_discard() would re-scan
+        the diff and discard the first unblocked hunk instead of the cached current
+        hunk that the user is looking at.
+        """
+        from git_stage_batch.state import (
+            get_current_hunk_patch_file_path,
+            get_current_hunk_hash_file_path,
+            read_text_file_contents,
+        )
+
+        # Create two files with changes (two separate hunks)
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both files to create two hunks
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        # Start session - this caches file1.txt as current hunk
+        command_start()
+        capsys.readouterr()
+
+        # Skip file1.txt - this should cache file2.txt as current hunk
+        command_skip()
+        capsys.readouterr()
+
+        # Check what's currently cached before discarding
+        cached_patch = read_text_file_contents(get_current_hunk_patch_file_path())
+        print(f"\n=== CACHED HUNK BEFORE DISCARD ===")
+        print(cached_patch)
+        print(f"=== END CACHED HUNK ===\n")
+
+        # Now discard - this should discard file2.txt (the cached hunk)
+        # BUG: it actually discards file1.txt (first unblocked) instead
+        command_discard()
+        captured = capsys.readouterr()
+
+        # Check which file was actually modified
+        file1_content = file1.read_text()
+        file2_content = file2.read_text()
+
+        print(f"\nAfter discard:")
+        print(f"  file1.txt: {repr(file1_content)} (expected: 'modified 1\\n')")
+        print(f"  file2.txt: {repr(file2_content)} (expected: 'original 2\\n')")
+        print(f"  Command output: {captured.out}")
+
+        # Expected: file2.txt should be discarded (restored to original)
+        # and file1.txt should still be modified
+        assert "file2.txt" in cached_patch, "Cached hunk should be file2.txt"
+        assert file2_content == "original 2\n", "file2.txt should be discarded (cached hunk)"
+        assert file1_content == "modified 1\n", "file1.txt should still be modified (not the cached hunk)"
+        assert "file2.txt" in captured.out, f"Should report discarding file2.txt, got: {captured.out}"
+
     def test_discard_all_hunks_processed(self, temp_git_repo, capsys):
         """Test discard when all hunks have been processed."""
         # Modify README

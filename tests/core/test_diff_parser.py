@@ -182,3 +182,93 @@ diff --git a/file2.py b/file2.py
         assert patches[0].old_path == "file1.py"
         assert patches[1].old_path == "file1.py"
         assert patches[2].old_path == "file2.py"
+
+
+class TestGetFirstMatchingFileFromDiff:
+    """Tests for get_first_matching_file_from_diff function."""
+
+    @pytest.fixture
+    def temp_git_repo(self, tmp_path, monkeypatch):
+        """Create a temporary git repository for testing."""
+        import subprocess
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, cwd=repo, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+
+        # Create initial commit
+        (repo / "README.md").write_text("# Test\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=repo, capture_output=True)
+
+        return repo
+
+    def test_returns_first_file_when_no_predicate(self, temp_git_repo):
+        """Test that without predicate, returns first file with changes."""
+        from git_stage_batch.core.diff_parser import get_first_matching_file_from_diff
+        import subprocess
+
+        # Create and commit two files
+        (temp_git_repo / "file1.txt").write_text("original 1\n")
+        (temp_git_repo / "file2.txt").write_text("original 2\n")
+        subprocess.run(["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both files
+        (temp_git_repo / "file1.txt").write_text("modified 1\n")
+        (temp_git_repo / "file2.txt").write_text("modified 2\n")
+
+        result = get_first_matching_file_from_diff(context_lines=3)
+
+        # Should return first file (alphabetically by git)
+        assert result in ["file1.txt", "file2.txt"]
+        assert result is not None
+
+    def test_returns_file_matching_predicate(self, temp_git_repo):
+        """Test that returns first file where predicate matches."""
+        from git_stage_batch.core.diff_parser import get_first_matching_file_from_diff
+
+        # Create and commit two files
+        (temp_git_repo / "file1.txt").write_text("original 1\n")
+        (temp_git_repo / "file2.txt").write_text("original 2\n")
+        import subprocess
+        subprocess.run(["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both
+        (temp_git_repo / "file1.txt").write_text("modified 1\n")
+        (temp_git_repo / "file2.txt").write_text("contains keyword\n")
+
+        # Predicate that matches only file2
+        def matches_keyword(patch_text: str) -> bool:
+            return "keyword" in patch_text
+
+        result = get_first_matching_file_from_diff(context_lines=3, predicate=matches_keyword)
+
+        assert result == "file2.txt"
+
+    def test_returns_none_when_no_changes(self, temp_git_repo):
+        """Test that returns None when there are no changes."""
+        from git_stage_batch.core.diff_parser import get_first_matching_file_from_diff
+
+        result = get_first_matching_file_from_diff(context_lines=3)
+
+        assert result is None
+
+    def test_returns_none_when_no_match(self, temp_git_repo):
+        """Test that returns None when predicate never matches."""
+        from git_stage_batch.core.diff_parser import get_first_matching_file_from_diff
+
+        # Create a change
+        (temp_git_repo / "file.txt").write_text("modified\n")
+
+        # Predicate that never matches
+        def never_matches(patch_text: str) -> bool:
+            return False
+
+        result = get_first_matching_file_from_diff(context_lines=3, predicate=never_matches)
+
+        assert result is None

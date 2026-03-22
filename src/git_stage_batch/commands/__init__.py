@@ -5,7 +5,7 @@ from __future__ import annotations
 from .abort import command_abort
 from .again import command_again
 from .discard import command_discard
-from .include import command_include
+from .include import command_include, command_include_file
 from .show import command_show
 from .skip import command_skip
 from .start import command_start
@@ -17,6 +17,7 @@ __all__ = [
     "command_again",
     "command_discard",
     "command_include",
+    "command_include_file",
     "command_show",
     "command_skip",
     "command_start",

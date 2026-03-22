@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .abort import command_abort
 from .again import command_again
 from .discard import command_discard
 from .include import command_include
@@ -12,6 +13,7 @@ from .status import command_status
 from .stop import command_stop
 
 __all__ = [
+    "command_abort",
     "command_again",
     "command_discard",
     "command_include",

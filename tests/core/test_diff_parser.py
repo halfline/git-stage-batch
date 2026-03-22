@@ -2,7 +2,10 @@
 
 import pytest
 
-from git_stage_batch.core.diff_parser import parse_unified_diff_into_single_hunk_patches
+from git_stage_batch.core.diff_parser import (
+    build_current_lines_from_patch_text,
+    parse_unified_diff_into_single_hunk_patches,
+)
 
 
 class TestParseUnifiedDiff:
@@ -272,3 +275,63 @@ class TestGetFirstMatchingFileFromDiff:
         result = get_first_matching_file_from_diff(context_lines=3, predicate=never_matches)
 
         assert result is None
+
+
+class TestBuildCurrentLinesFromPatchText:
+    """Tests for build_current_lines_from_patch_text function."""
+
+    def test_build_current_lines_simple_addition(self):
+        """Test building CurrentLines from a simple addition patch."""
+        patch_text = """--- a/test.txt
++++ b/test.txt
+@@ -1,2 +1,3 @@
+ line1
++added line
+ line2
+"""
+        current_lines = build_current_lines_from_patch_text(patch_text)
+
+        assert current_lines.path == "test.txt"
+        assert current_lines.header.old_start == 1
+        assert current_lines.header.old_len == 2
+        assert current_lines.header.new_start == 1
+        assert current_lines.header.new_len == 3
+        assert len(current_lines.lines) == 3
+
+        # Check line IDs are assigned to changed lines
+        changed_ids = current_lines.changed_line_ids()
+        assert changed_ids == [1]
+
+    def test_build_current_lines_deletion(self):
+        """Test building CurrentLines from a deletion patch."""
+        patch_text = """--- a/file.py
++++ b/file.py
+@@ -1,3 +1,2 @@
+ keep1
+-removed line
+ keep2
+"""
+        current_lines = build_current_lines_from_patch_text(patch_text)
+
+        assert current_lines.path == "file.py"
+        changed_ids = current_lines.changed_line_ids()
+        assert changed_ids == [1]
+
+    def test_build_current_lines_multiple_changes(self):
+        """Test building CurrentLines from patch with multiple changes."""
+        patch_text = """--- a/code.js
++++ b/code.js
+@@ -1,4 +1,4 @@
+ context1
+-old line1
++new line1
+ context2
+-old line2
++new line2
+"""
+        current_lines = build_current_lines_from_patch_text(patch_text)
+
+        assert current_lines.path == "code.js"
+        changed_ids = current_lines.changed_line_ids()
+        # Should have 4 changed lines (2 deletions + 2 additions)
+        assert len(changed_ids) == 4

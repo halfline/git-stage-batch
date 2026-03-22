@@ -19,3 +19,48 @@ def get_state_directory_path() -> Path:
 def ensure_state_directory_exists() -> None:
     """Create the state directory if it doesn't exist."""
     get_state_directory_path().mkdir(parents=True, exist_ok=True)
+
+
+def get_processed_include_ids_file_path() -> Path:
+    """Get the path to the processed include IDs file.
+
+    Returns:
+        Path to processed include IDs file
+    """
+    return get_state_directory_path() / "processed.include"
+
+
+def get_processed_skip_ids_file_path() -> Path:
+    """Get the path to the processed skip IDs file.
+
+    Returns:
+        Path to processed skip IDs file
+    """
+    return get_state_directory_path() / "processed.skip"
+
+
+def get_line_changes_json_file_path() -> Path:
+    """Get the path to the selected lines JSON file.
+
+    Returns:
+        Path to selected lines JSON file
+    """
+    return get_state_directory_path() / "selected-lines.json"
+
+
+def get_index_snapshot_file_path() -> Path:
+    """Get the path to the index snapshot file.
+
+    Returns:
+        Path to index snapshot file
+    """
+    return get_state_directory_path() / "index-snapshot"
+
+
+def get_working_tree_snapshot_file_path() -> Path:
+    """Get the path to the working tree snapshot file.
+
+    Returns:
+        Path to working tree snapshot file
+    """
+    return get_state_directory_path() / "working-tree-snapshot"

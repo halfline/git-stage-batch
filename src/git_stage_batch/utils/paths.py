@@ -85,6 +85,15 @@ def get_abort_snapshot_list_file_path() -> Path:
     return get_state_directory_path() / "snapshot-list"
 
 
+def get_auto_added_files_file_path() -> Path:
+    """Get the path to the auto-added files list file.
+
+    Returns:
+        Path to auto-added files list file
+    """
+    return get_state_directory_path() / "auto-added-files"
+
+
 def get_context_lines_file_path() -> Path:
     """Get the path to the context lines configuration file.
 

@@ -8,6 +8,7 @@ from .include import command_include
 from .show import command_show
 from .skip import command_skip
 from .start import command_start
+from .status import command_status
 from .stop import command_stop
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "command_show",
     "command_skip",
     "command_start",
+    "command_status",
     "command_stop",
 ]

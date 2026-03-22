@@ -7,6 +7,7 @@ import sys
 
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.diff_parser import parse_unified_diff_streaming
+from ..data.session import require_session_started
 from ..i18n import _
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
@@ -20,6 +21,7 @@ from ..utils.paths import (
 def command_include(*, quiet: bool = False) -> None:
     """Include (stage) the selected hunk."""
     require_git_repository()
+    require_session_started()
     ensure_state_directory_exists()
 
     # Load blocklist to skip already-processed hunks

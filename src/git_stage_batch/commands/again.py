@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 
 from ..data.file_tracking import auto_add_untracked_files
+from ..data.session import require_session_started
 from ..utils.git import require_git_repository
 from ..utils.paths import ensure_state_directory_exists, get_state_directory_path
 
@@ -12,6 +13,7 @@ from ..utils.paths import ensure_state_directory_exists, get_state_directory_pat
 def command_again() -> None:
     """Clear state and start a fresh pass through all hunks."""
     require_git_repository()
+    require_session_started()
     state_dir = get_state_directory_path()
 
     if state_dir.exists():

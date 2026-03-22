@@ -196,3 +196,75 @@ class TestBlockedFilesPath:
         blocked_files_path = get_blocked_files_file_path()
         state_dir = get_state_directory_path()
         assert blocked_files_path == state_dir / "blocked-files"
+
+
+class TestLineLevelOperationPaths:
+    """Tests for line-level operation path functions."""
+
+    def test_get_processed_include_ids_file_path(self, temp_git_repo):
+        """Test getting the processed include IDs file path."""
+        from git_stage_batch.utils.paths import get_processed_include_ids_file_path
+
+        include_ids_path = get_processed_include_ids_file_path()
+        state_dir = get_state_directory_path()
+        assert include_ids_path == state_dir / "processed.include"
+
+    def test_get_processed_skip_ids_file_path(self, temp_git_repo):
+        """Test getting the processed skip IDs file path."""
+        from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
+
+        skip_ids_path = get_processed_skip_ids_file_path()
+        state_dir = get_state_directory_path()
+        assert skip_ids_path == state_dir / "processed.skip"
+
+    def test_get_current_lines_json_file_path(self, temp_git_repo):
+        """Test getting the current lines JSON file path."""
+        from git_stage_batch.utils.paths import get_current_lines_json_file_path
+
+        current_lines_path = get_current_lines_json_file_path()
+        state_dir = get_state_directory_path()
+        assert current_lines_path == state_dir / "current-lines.json"
+
+    def test_get_index_snapshot_file_path(self, temp_git_repo):
+        """Test getting the index snapshot file path."""
+        from git_stage_batch.utils.paths import get_index_snapshot_file_path
+
+        index_snapshot_path = get_index_snapshot_file_path()
+        state_dir = get_state_directory_path()
+        assert index_snapshot_path == state_dir / "index-snapshot"
+
+    def test_get_working_tree_snapshot_file_path(self, temp_git_repo):
+        """Test getting the working tree snapshot file path."""
+        from git_stage_batch.utils.paths import get_working_tree_snapshot_file_path
+
+        working_tree_path = get_working_tree_snapshot_file_path()
+        state_dir = get_state_directory_path()
+        assert working_tree_path == state_dir / "working-tree-snapshot"
+
+
+class TestSessionTrackingPaths:
+    """Tests for session tracking path functions."""
+
+    def test_get_iteration_count_file_path(self, temp_git_repo):
+        """Test getting the iteration count file path."""
+        from git_stage_batch.utils.paths import get_iteration_count_file_path
+
+        iteration_count_path = get_iteration_count_file_path()
+        state_dir = get_state_directory_path()
+        assert iteration_count_path == state_dir / "iteration-count"
+
+    def test_get_start_head_file_path(self, temp_git_repo):
+        """Test getting the start HEAD file path."""
+        from git_stage_batch.utils.paths import get_start_head_file_path
+
+        start_head_path = get_start_head_file_path()
+        state_dir = get_state_directory_path()
+        assert start_head_path == state_dir / "start-head"
+
+    def test_get_start_index_tree_file_path(self, temp_git_repo):
+        """Test getting the start index tree file path."""
+        from git_stage_batch.utils.paths import get_start_index_tree_file_path
+
+        start_index_tree_path = get_start_index_tree_file_path()
+        state_dir = get_state_directory_path()
+        assert start_index_tree_path == state_dir / "start-index-tree"

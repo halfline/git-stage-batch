@@ -94,6 +94,15 @@ def get_selected_hunk_hash_file_path() -> Path:
     return get_state_directory_path() / "selected-hunk-hash"
 
 
+def get_auto_added_files_file_path() -> Path:
+    """Get the path to the auto-added files list file.
+
+    Returns:
+        Path to auto-added files list file
+    """
+    return get_state_directory_path() / "auto-added-files"
+
+
 def get_context_lines_file_path() -> Path:
     """Get the path to the context lines configuration file.
 

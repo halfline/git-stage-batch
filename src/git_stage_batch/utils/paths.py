@@ -49,6 +49,42 @@ def get_current_hunk_hash_file_path() -> Path:
     return get_state_directory_path() / "current-hunk-hash"
 
 
+def get_abort_head_file_path() -> Path:
+    """Get the path to the abort HEAD file for session restoration.
+
+    Returns:
+        Path to abort HEAD file
+    """
+    return get_state_directory_path() / "abort-head"
+
+
+def get_abort_stash_file_path() -> Path:
+    """Get the path to the abort stash file for session restoration.
+
+    Returns:
+        Path to abort stash file
+    """
+    return get_state_directory_path() / "abort-stash"
+
+
+def get_abort_snapshots_directory_path() -> Path:
+    """Get the path to the abort snapshots directory.
+
+    Returns:
+        Path to snapshots directory
+    """
+    return get_state_directory_path() / "snapshots"
+
+
+def get_abort_snapshot_list_file_path() -> Path:
+    """Get the path to the abort snapshot list file.
+
+    Returns:
+        Path to snapshot list file
+    """
+    return get_state_directory_path() / "snapshot-list"
+
+
 def get_context_lines_file_path() -> Path:
     """Get the path to the context lines configuration file.
 

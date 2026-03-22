@@ -148,6 +148,33 @@ def get_working_tree_snapshot_file_path() -> Path:
     return get_state_directory_path() / "working-tree-snapshot"
 
 
+def get_iteration_count_file_path() -> Path:
+    """Get the path to the iteration count file.
+
+    Returns:
+        Path to iteration count file
+    """
+    return get_state_directory_path() / "iteration-count"
+
+
+def get_start_head_file_path() -> Path:
+    """Get the path to file storing HEAD SHA at session start.
+
+    Returns:
+        Path to start HEAD file
+    """
+    return get_state_directory_path() / "start-head"
+
+
+def get_start_index_tree_file_path() -> Path:
+    """Get the path to file storing index tree SHA at session start.
+
+    Returns:
+        Path to start index tree file
+    """
+    return get_state_directory_path() / "start-index-tree"
+
+
 def get_context_lines_file_path() -> Path:
     """Get the path to the context lines configuration file.
 

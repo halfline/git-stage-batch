@@ -7,6 +7,7 @@ import pytest
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
     get_context_lines,
+    get_context_lines_file_path,
     get_state_directory_path,
 )
 
@@ -82,3 +83,12 @@ class TestGetContextLines:
         context_file = get_state_directory_path() / "context-lines"
         context_file.write_text("not-a-number\n")
         assert get_context_lines() == 3
+
+
+class TestGetContextLinesFilePath:
+    """Tests for get_context_lines_file_path function."""
+
+    def test_get_context_lines_file_path(self, temp_git_repo):
+        """Test getting the context lines file path."""
+        context_file = get_context_lines_file_path()
+        assert context_file == temp_git_repo / ".git" / "git-stage-batch" / "context-lines"

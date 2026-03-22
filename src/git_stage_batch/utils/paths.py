@@ -206,3 +206,30 @@ def get_suggest_fixup_state_file_path() -> Path:
         Path to suggest-fixup state JSON file
     """
     return get_state_directory_path() / "suggest-fixup-state.json"
+
+
+def get_included_hunks_file_path() -> Path:
+    """Get the path to the included hunks file.
+
+    Returns:
+        Path to included hunks file
+    """
+    return get_state_directory_path() / "included-hunks"
+
+
+def get_skipped_hunks_jsonl_file_path() -> Path:
+    """Get the path to the skipped hunks JSONL file.
+
+    Returns:
+        Path to skipped hunks JSONL file
+    """
+    return get_state_directory_path() / "skipped-hunks.jsonl"
+
+
+def get_discarded_hunks_file_path() -> Path:
+    """Get the path to the discarded hunks file.
+
+    Returns:
+        Path to discarded hunks file
+    """
+    return get_state_directory_path() / "discarded-hunks"

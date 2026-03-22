@@ -67,6 +67,53 @@ class TestRunGitCommand:
         assert ".git" in result.stdout
 
 
+class TestStreamGitCommand:
+    """Tests for stream_git_command function."""
+
+    def test_stream_git_command_success(self, temp_git_repo):
+        """Test streaming a successful git command."""
+        from git_stage_batch.utils.git import stream_git_command
+
+        # Create a file with multiple lines
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Stream the diff
+        lines = list(stream_git_command(["diff", "--cached"]))
+        assert len(lines) > 0
+        # Should have lines from the diff
+        assert any("line 1" in line for line in lines)
+
+    def test_stream_git_command_early_termination(self, temp_git_repo):
+        """Test that stream can be terminated early without error."""
+        from git_stage_batch.utils.git import stream_git_command
+
+        # Create a large file
+        large_content = "\n".join([f"line {i}" for i in range(1000)])
+        test_file = temp_git_repo / "large.txt"
+        test_file.write_text(large_content)
+        subprocess.run(["git", "add", "large.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Take only first few lines
+        stream = stream_git_command(["diff", "--cached"])
+        first_lines = []
+        for i, line in enumerate(stream):
+            first_lines.append(line)
+            if i >= 5:
+                break
+
+        assert len(first_lines) == 6
+
+    def test_stream_git_command_failure(self, temp_git_repo):
+        """Test that streaming a failing command raises error."""
+        from git_stage_batch.utils.git import stream_git_command
+
+        with pytest.raises(subprocess.CalledProcessError):
+            # Consume the entire stream to trigger error check
+            list(stream_git_command(["invalid-command"]))
+
+
 class TestRequireGitRepository:
     """Tests for require_git_repository function."""
 

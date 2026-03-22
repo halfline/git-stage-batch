@@ -4,12 +4,40 @@ from __future__ import annotations
 
 import shutil
 
-from ..utils.file_io import append_file_path_to_file, read_file_paths_file
+from ..exceptions import CommandError
+from ..i18n import _
+from ..utils.file_io import append_file_path_to_file, read_file_paths_file, write_text_file_contents
 from ..utils.git import get_git_repository_root_path, run_git_command
 from ..utils.paths import (
+    get_abort_head_file_path,
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
+    get_abort_stash_file_path,
 )
+
+
+def initialize_abort_state() -> None:
+    """Save current HEAD and stash for abort functionality."""
+    # Save current HEAD
+    head_result = run_git_command(["rev-parse", "HEAD"])
+    write_text_file_contents(get_abort_head_file_path(), head_result.stdout.strip())
+
+    # Create stash of tracked file changes
+    # Note: git stash create (without -u) only captures changes to tracked files
+    # Untracked files that we modify will be handled by lazy snapshots
+    stash_result = run_git_command(["stash", "create"], check=False)
+    if stash_result.returncode == 0 and stash_result.stdout.strip():
+        write_text_file_contents(get_abort_stash_file_path(), stash_result.stdout.strip())
+
+
+def require_session_started() -> None:
+    """Validate that a batch staging session is in progress.
+
+    Raises:
+        CommandError: If no session is active
+    """
+    if not get_abort_head_file_path().exists():
+        raise CommandError(_("No session in progress. Run 'git-stage-batch start' first."))
 
 
 def snapshot_file_if_untracked(file_path: str) -> None:

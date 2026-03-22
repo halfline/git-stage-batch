@@ -7,6 +7,7 @@ import sys
 
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.diff_parser import get_first_matching_file_from_diff, parse_unified_diff_streaming
+from ..data.hunk_tracking import advance_to_and_show_next_hunk, advance_to_next_hunk
 from ..data.session import require_session_started
 from ..i18n import _, ngettext
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
@@ -65,6 +66,11 @@ def command_include(*, quiet: bool = False) -> None:
 
     if not quiet:
         print(_("No more hunks to process."), file=sys.stderr)
+
+    if quiet:
+        advance_to_next_hunk()
+    else:
+        advance_to_and_show_next_hunk()
 
 
 def command_include_file() -> None:
@@ -132,3 +138,6 @@ def command_include_file() -> None:
         hunks_staged
     ).format(count=hunks_staged, file=target_file)
     print(msg, file=sys.stderr)
+
+    # Advance to next file's hunk
+    advance_to_and_show_next_hunk()

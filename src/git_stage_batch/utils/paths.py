@@ -233,3 +233,45 @@ def get_discarded_hunks_file_path() -> Path:
         Path to discarded hunks file
     """
     return get_state_directory_path() / "discarded-hunks"
+
+
+def get_batches_directory_path() -> Path:
+    """Get the directory containing batch metadata.
+
+    Returns:
+        Path to batches directory
+    """
+    return get_state_directory_path() / "batches"
+
+
+def get_batch_directory_path(batch_name: str) -> Path:
+    """Get the directory for a specific batch's metadata.
+
+    Args:
+        batch_name: Name of the batch
+
+    Returns:
+        Path to batch directory
+    """
+    return get_batches_directory_path() / batch_name
+
+
+def get_batch_metadata_file_path(batch_name: str) -> Path:
+    """Get the metadata file path for a specific batch.
+
+    Args:
+        batch_name: Name of the batch
+
+    Returns:
+        Path to batch metadata JSON file
+    """
+    return get_batch_directory_path(batch_name) / "metadata.json"
+
+
+def get_batch_refs_snapshot_file_path() -> Path:
+    """Get the batch refs snapshot file path (for abort functionality).
+
+    Returns:
+        Path to batch refs snapshot JSON file
+    """
+    return get_state_directory_path() / "batch-refs-snapshot.json"

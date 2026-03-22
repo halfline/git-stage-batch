@@ -117,3 +117,27 @@ class TestCommandDiscard:
         command_discard()
         captured = capsys.readouterr()
         assert "No more hunks to process" in captured.out
+
+    def test_discard_snapshots_untracked_file(self, temp_git_repo):
+        """Test that discard snapshots content of untracked files."""
+        from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
+
+        # Create an untracked file
+        untracked_file = temp_git_repo / "untracked.txt"
+        original_content = "untracked content\n"
+        untracked_file.write_text(original_content)
+
+        # Auto-add with -N to make it visible to diff
+        subprocess.run(["git", "add", "-N", "untracked.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Start session (initializes abort state)
+        command_start()
+
+        # Discard the file (should create snapshot before discarding)
+        command_discard()
+
+        # Verify snapshot was created
+        snapshot_dir = get_abort_snapshots_directory_path()
+        snapshot_file = snapshot_dir / "untracked.txt"
+        assert snapshot_file.exists()
+        assert snapshot_file.read_text() == original_content

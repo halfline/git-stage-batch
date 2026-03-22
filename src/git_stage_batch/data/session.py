@@ -9,6 +9,7 @@ from ..i18n import _
 from ..utils.file_io import (
     append_file_path_to_file,
     read_file_paths_file,
+    read_text_file_contents,
     write_file_paths_file,
     write_text_file_contents,
 )
@@ -19,6 +20,7 @@ from ..utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
+    get_iteration_count_file_path,
     get_state_directory_path,
 )
 
@@ -262,3 +264,24 @@ def clear_session_state() -> None:
     except OSError:
         # Directory doesn't exist or can't be removed, that's fine
         pass
+
+
+def get_iteration_count() -> int:
+    """Get selected iteration count, defaulting to 1.
+
+    Returns:
+        Current iteration number (1-based)
+    """
+    count_path = get_iteration_count_file_path()
+    if not count_path.exists():
+        return 1
+    return int(read_text_file_contents(count_path).strip())
+
+
+def increment_iteration_count() -> None:
+    """Increment the iteration counter.
+
+    Called when the user runs 'again' to restart from the beginning.
+    """
+    selected = get_iteration_count()
+    write_text_file_contents(get_iteration_count_file_path(), str(selected + 1))

@@ -7,7 +7,7 @@ from .again import command_again
 from .discard import command_discard
 from .include import command_include, command_include_file
 from .show import command_show
-from .skip import command_skip
+from .skip import command_skip, command_skip_file
 from .start import command_start
 from .status import command_status
 from .stop import command_stop
@@ -20,6 +20,7 @@ __all__ = [
     "command_include_file",
     "command_show",
     "command_skip",
+    "command_skip_file",
     "command_start",
     "command_status",
     "command_stop",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 
+from .batch_refs import snapshot_batch_refs
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import (
@@ -23,6 +24,7 @@ from ..utils.paths import (
     get_iteration_count_file_path,
     get_state_directory_path,
 )
+
 
 # Permanent state that must NEVER be deleted
 PERMANENT_DIRS = frozenset({"batches", "batch-sources"})
@@ -78,8 +80,6 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
         - all_intent_to_add_files: All files with intent-to-add
         - new_intent_to_add_files: Only files absent from HEAD
     """
-    from ..utils.paths import get_state_directory_path
-
     # Find all intent-to-add files (files in index with empty blob)
     EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
     ls_result = run_git_command(["ls-files", "--stage"], check=True)
@@ -135,6 +135,7 @@ def initialize_abort_state() -> None:
 
     # Create stash of tracked file changes
     # git stash create (without -u) only captures changes to tracked files
+    # Untracked files that we modify will be handled by lazy snapshots
     log_journal("session_creating_stash")
     stash_result = run_git_command(["stash", "create"], check=False)
     if stash_result.returncode == 0 and stash_result.stdout.strip():
@@ -151,6 +152,8 @@ def initialize_abort_state() -> None:
             run_git_command(["add", "-N", "--", file_path], check=False)
             ls_after = run_git_command(["ls-files", "--stage", "--", file_path], check=False).stdout.strip()
             log_journal("session_re_add_intent_to_add", file_path=file_path, index_before=ls_before, index_after=ls_after)
+
+    snapshot_batch_refs()
 
 
 def require_session_started() -> None:
@@ -209,6 +212,27 @@ def snapshot_file_if_untracked(file_path: str) -> None:
     append_file_path_to_file(get_abort_snapshot_list_file_path(), file_path)
 
 
+def get_iteration_count() -> int:
+    """Get selected iteration count, defaulting to 1.
+
+    Returns:
+        Current iteration number (1-based)
+    """
+    count_path = get_iteration_count_file_path()
+    if not count_path.exists():
+        return 1
+    return int(read_text_file_contents(count_path).strip())
+
+
+def increment_iteration_count() -> None:
+    """Increment the iteration counter.
+
+    Called when the user runs 'again' to restart from the beginning.
+    """
+    selected = get_iteration_count()
+    write_text_file_contents(get_iteration_count_file_path(), str(selected + 1))
+
+
 def clear_iteration_state() -> None:
     """Clear iteration-specific state while preserving batches and session state.
 
@@ -264,24 +288,3 @@ def clear_session_state() -> None:
     except OSError:
         # Directory doesn't exist or can't be removed, that's fine
         pass
-
-
-def get_iteration_count() -> int:
-    """Get selected iteration count, defaulting to 1.
-
-    Returns:
-        Current iteration number (1-based)
-    """
-    count_path = get_iteration_count_file_path()
-    if not count_path.exists():
-        return 1
-    return int(read_text_file_contents(count_path).strip())
-
-
-def increment_iteration_count() -> None:
-    """Increment the iteration counter.
-
-    Called when the user runs 'again' to restart from the beginning.
-    """
-    selected = get_iteration_count()
-    write_text_file_contents(get_iteration_count_file_path(), str(selected + 1))

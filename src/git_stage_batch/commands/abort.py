@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 
+from ..data.batch_refs import restore_batch_refs
+from ..data.session import clear_session_state
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
@@ -89,8 +91,12 @@ def command_abort() -> None:
             # Re-add with intent-to-add flag
             run_git_command(["add", "-N", file_path], check=False)
 
+    # Restore batch refs to their original state
+    # This recreates both git refs and metadata files from the snapshot
+    restore_batch_refs()
+
     # Clear all session state (preserves batches and batch-sources)
-    from ..data.session import clear_session_state
+    # Do this AFTER restore_batch_refs so snapshot file is available
     clear_session_state()
 
     print(_("✓ Session aborted. All changes reverted."), file=sys.stderr)

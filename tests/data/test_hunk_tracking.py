@@ -1,4 +1,4 @@
-"""Tests for hunk navigation and state management."""
+"""Tests for hunk navigation, state management, staleness detection, and progress tracking."""
 
 import subprocess
 
@@ -9,6 +9,8 @@ from git_stage_batch.data.hunk_tracking import (
     clear_selected_change_state_files,
     fetch_next_change,
     recalculate_selected_hunk_for_file,
+    record_hunk_discarded,
+    record_hunk_included,
     require_selected_hunk,
     snapshots_are_stale,
 )
@@ -19,8 +21,11 @@ from git_stage_batch.utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
+    get_discarded_hunks_file_path,
+    get_included_hunks_file_path,
     get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
+    get_state_directory_path,
     get_working_tree_snapshot_file_path,
 )
 
@@ -462,3 +467,23 @@ class TestRecalculateCurrentHunkForFile:
 
         output = captured.getvalue()
         assert "No pending hunks" in output or not get_selected_hunk_patch_file_path().exists()
+
+
+class TestRecordHunkFunctions:
+    """Tests for hunk recording functions."""
+
+    def test_record_hunk_included(self, temp_git_repo):
+        """Test recording included hunk."""
+        record_hunk_included("abc123")
+
+        included_file = get_included_hunks_file_path()
+        assert included_file.exists()
+        assert "abc123" in included_file.read_text()
+
+    def test_record_hunk_discarded(self, temp_git_repo):
+        """Test recording discarded hunk."""
+        record_hunk_discarded("xyz789")
+
+        discarded_file = get_discarded_hunks_file_path()
+        assert discarded_file.exists()
+        assert "xyz789" in discarded_file.read_text()

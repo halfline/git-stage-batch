@@ -1,8 +1,11 @@
 """Tests for file I/O utilities."""
 
-from pathlib import Path
 
-import pytest
+
+from git_stage_batch.utils.file_io import read_file_paths_file
+from git_stage_batch.utils.file_io import read_file_paths_file, write_file_paths_file
+from git_stage_batch.utils.file_io import append_file_path_to_file, read_file_paths_file
+from git_stage_batch.utils.file_io import read_file_paths_file, remove_file_path_from_file, write_file_paths_file
 
 from git_stage_batch.utils.file_io import (
     append_lines_to_file,
@@ -139,3 +142,85 @@ class TestAppendLinesToFile:
 
         content = test_file.read_text(encoding="utf-8")
         assert content == "Existing\n"
+
+
+class TestFilePathListManagement:
+    """Tests for file path list management functions."""
+
+    def test_read_file_paths_file_empty(self, tmp_path):
+        """Test reading an empty file paths file."""
+
+        path = tmp_path / "empty.txt"
+        path.write_text("", encoding="utf-8")
+        result = read_file_paths_file(path)
+        assert result == []
+
+    def test_read_file_paths_file_nonexistent(self, tmp_path):
+        """Test reading a nonexistent file paths file."""
+
+        path = tmp_path / "nonexistent.txt"
+        result = read_file_paths_file(path)
+        assert result == []
+
+    def test_write_file_paths_file(self, tmp_path):
+        """Test writing file paths to a file."""
+
+        path = tmp_path / "paths.txt"
+        file_paths = ["path/to/file1.txt", "path/to/file2.txt", "another/file.py"]
+        write_file_paths_file(path, file_paths)
+
+        # Read back and verify sorted and deduplicated
+        result = read_file_paths_file(path)
+        assert result == sorted(file_paths)
+
+    def test_write_file_paths_file_deduplicates(self, tmp_path):
+        """Test that write_file_paths_file deduplicates entries."""
+
+        path = tmp_path / "paths.txt"
+        file_paths = ["file1.txt", "file2.txt", "file1.txt", "file3.txt", "file2.txt"]
+        write_file_paths_file(path, file_paths)
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt", "file3.txt"]
+
+    def test_append_file_path_to_file(self, tmp_path):
+        """Test appending a file path to a list."""
+
+        path = tmp_path / "paths.txt"
+        append_file_path_to_file(path, "file1.txt")
+        append_file_path_to_file(path, "file2.txt")
+        append_file_path_to_file(path, "file3.txt")
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt", "file3.txt"]
+
+    def test_append_file_path_to_file_no_duplicates(self, tmp_path):
+        """Test that appending doesn't create duplicates."""
+
+        path = tmp_path / "paths.txt"
+        append_file_path_to_file(path, "file1.txt")
+        append_file_path_to_file(path, "file2.txt")
+        append_file_path_to_file(path, "file1.txt")  # Duplicate
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt"]
+
+    def test_remove_file_path_from_file(self, tmp_path):
+        """Test removing a file path from a list."""
+
+        path = tmp_path / "paths.txt"
+        write_file_paths_file(path, ["file1.txt", "file2.txt", "file3.txt"])
+        remove_file_path_from_file(path, "file2.txt")
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file3.txt"]
+
+    def test_remove_file_path_from_file_nonexistent(self, tmp_path):
+        """Test removing a nonexistent file path doesn't error."""
+
+        path = tmp_path / "paths.txt"
+        write_file_paths_file(path, ["file1.txt", "file2.txt"])
+        remove_file_path_from_file(path, "nonexistent.txt")
+
+        result = read_file_paths_file(path)
+        assert result == ["file1.txt", "file2.txt"]

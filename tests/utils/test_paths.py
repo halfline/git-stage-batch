@@ -92,3 +92,39 @@ class TestGetContextLinesFilePath:
         """Test getting the context lines file path."""
         context_file = get_context_lines_file_path()
         assert context_file == temp_git_repo / ".git" / "git-stage-batch" / "context-lines"
+
+
+class TestAbortStatePaths:
+    """Tests for abort state file path functions."""
+
+    def test_get_abort_head_file_path(self, temp_git_repo):
+        """Test getting the abort head file path."""
+        from git_stage_batch.utils.paths import get_abort_head_file_path
+
+        abort_head_path = get_abort_head_file_path()
+        state_dir = get_state_directory_path()
+        assert abort_head_path == state_dir / "abort-head"
+
+    def test_get_abort_stash_file_path(self, temp_git_repo):
+        """Test getting the abort stash file path."""
+        from git_stage_batch.utils.paths import get_abort_stash_file_path
+
+        abort_stash_path = get_abort_stash_file_path()
+        state_dir = get_state_directory_path()
+        assert abort_stash_path == state_dir / "abort-stash"
+
+    def test_get_abort_snapshots_directory_path(self, temp_git_repo):
+        """Test getting the abort snapshots directory path."""
+        from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
+
+        snapshots_dir = get_abort_snapshots_directory_path()
+        state_dir = get_state_directory_path()
+        assert snapshots_dir == state_dir / "snapshots"
+
+    def test_get_abort_snapshot_list_file_path(self, temp_git_repo):
+        """Test getting the abort snapshot list file path."""
+        from git_stage_batch.utils.paths import get_abort_snapshot_list_file_path
+
+        snapshot_list_path = get_abort_snapshot_list_file_path()
+        state_dir = get_state_directory_path()
+        assert snapshot_list_path == state_dir / "snapshot-list"

@@ -67,6 +67,33 @@ def get_working_tree_snapshot_file_path() -> Path:
     return get_state_directory_path() / "working-tree-snapshot"
 
 
+def get_block_list_file_path() -> Path:
+    """Get the path to the blocklist file for tracking processed hunks.
+
+    Returns:
+        Path to blocklist file
+    """
+    return get_state_directory_path() / "blocklist"
+
+
+def get_selected_hunk_patch_file_path() -> Path:
+    """Get the path to the selected hunk patch file.
+
+    Returns:
+        Path to selected hunk patch file
+    """
+    return get_state_directory_path() / "selected-hunk-patch"
+
+
+def get_selected_hunk_hash_file_path() -> Path:
+    """Get the path to the selected hunk hash file.
+
+    Returns:
+        Path to selected hunk hash file
+    """
+    return get_state_directory_path() / "selected-hunk-hash"
+
+
 def get_context_lines_file_path() -> Path:
     """Get the path to the context lines configuration file.
 

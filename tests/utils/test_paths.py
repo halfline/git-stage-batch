@@ -140,3 +140,15 @@ class TestAutoAddedFilesPath:
         auto_added_path = get_auto_added_files_file_path()
         state_dir = get_state_directory_path()
         assert auto_added_path == state_dir / "auto-added-files"
+
+
+class TestBlockedFilesPath:
+    """Tests for blocked files path function."""
+
+    def test_get_blocked_files_file_path(self, temp_git_repo):
+        """Test getting the blocked files file path."""
+        from git_stage_batch.utils.paths import get_blocked_files_file_path
+
+        blocked_files_path = get_blocked_files_file_path()
+        state_dir = get_state_directory_path()
+        assert blocked_files_path == state_dir / "blocked-files"

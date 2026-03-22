@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterator, Iterable
+from typing import Callable, Iterable, Iterator, Optional
 
 from .models import SingleHunkPatch
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
@@ -185,3 +185,30 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
     else:
         working_tree_version = ""
     write_text_file_contents(get_working_tree_snapshot_file_path(), working_tree_version)
+
+
+def get_first_matching_file_from_diff(
+    context_lines: int,
+    predicate: Optional[Callable[[str], bool]] = None
+) -> Optional[str]:
+    """Stream git diff and find the first file with a hunk matching the predicate.
+
+    Args:
+        context_lines: Number of context lines for diff (-U parameter)
+        predicate: Optional function that takes patch text and returns True if
+                   the hunk counts as a match. If None, returns first file.
+
+    Returns:
+        File path if a matching file is found, None otherwise
+    """
+    from ..utils.git import stream_git_command
+
+    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{context_lines}", "--no-color"])):
+        if predicate is None:
+            return patch.new_path
+
+        patch_text = patch.to_patch_text()
+        if predicate(patch_text):
+            return patch.new_path
+
+    return None

@@ -64,3 +64,12 @@ def get_working_tree_snapshot_file_path() -> Path:
         Path to working tree snapshot file
     """
     return get_state_directory_path() / "working-tree-snapshot"
+
+
+def get_context_lines_file_path() -> Path:
+    """Get the path to the context lines configuration file.
+
+    Returns:
+        Path to context lines file
+    """
+    return get_state_directory_path() / "context-lines"

@@ -5,7 +5,12 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.utils.paths import get_state_directory_path
+from git_stage_batch.utils.file_io import read_text_file_contents
+from git_stage_batch.utils.paths import (
+    get_abort_head_file_path,
+    get_abort_stash_file_path,
+    get_state_directory_path,
+)
 
 
 @pytest.fixture
@@ -53,3 +58,26 @@ class TestCommandStart:
 
         state_dir = get_state_directory_path()
         assert state_dir.exists()
+
+    def test_start_initializes_abort_state(self, temp_git_repo):
+        """Test that start initializes abort state files."""
+        # Create a change to make start succeed
+        (temp_git_repo / "README.md").write_text("# Test\nModified\n")
+
+        command_start()
+
+        # Verify abort-head file was created with selected HEAD
+        abort_head_path = get_abort_head_file_path()
+        assert abort_head_path.exists()
+        saved_head = read_text_file_contents(abort_head_path).strip()
+        selected_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert saved_head == selected_head
+
+        # Verify abort-stash file was created (may be empty if no tracked changes)
+        abort_stash_path = get_abort_stash_file_path()
+        assert abort_stash_path.exists()

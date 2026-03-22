@@ -197,3 +197,30 @@ def get_context_lines() -> int:
         except ValueError:
             return 3
     return 3
+
+
+def get_included_hunks_file_path() -> Path:
+    """Get the path to the included hunks file.
+
+    Returns:
+        Path to included hunks file
+    """
+    return get_state_directory_path() / "included-hunks"
+
+
+def get_skipped_hunks_jsonl_file_path() -> Path:
+    """Get the path to the skipped hunks JSONL file.
+
+    Returns:
+        Path to skipped hunks JSONL file
+    """
+    return get_state_directory_path() / "skipped-hunks.jsonl"
+
+
+def get_discarded_hunks_file_path() -> Path:
+    """Get the path to the discarded hunks file.
+
+    Returns:
+        Path to discarded hunks file
+    """
+    return get_state_directory_path() / "discarded-hunks"

@@ -1,4 +1,4 @@
-"""Hunk navigation and state management."""
+"""Hunk navigation, state management, staleness detection, and progress tracking."""
 
 from __future__ import annotations
 
@@ -23,8 +23,11 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
+    get_discarded_hunks_file_path,
+    get_included_hunks_file_path,
     get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
+    get_skipped_hunks_jsonl_file_path,
     get_working_tree_snapshot_file_path,
 )
 from .line_state import convert_line_changes_to_serializable_dict
@@ -229,3 +232,85 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
     # Import here to avoid circular dependency
     from ..commands.show import command_show
     command_show()
+
+
+def record_hunk_included(hunk_hash: str) -> None:
+    """Record that a hunk was included (staged)."""
+    included_path = get_included_hunks_file_path()
+    content = read_text_file_contents(included_path)
+    existing = set(content.splitlines()) if content else set()
+    existing.add(hunk_hash)
+    write_text_file_contents(included_path, "\n".join(sorted(existing)) + "\n" if existing else "")
+
+
+def record_hunk_discarded(hunk_hash: str) -> None:
+    """Record that a hunk was discarded (removed from working tree)."""
+    discarded_path = get_discarded_hunks_file_path()
+    content = read_text_file_contents(discarded_path)
+    existing = set(content.splitlines()) if content else set()
+    existing.add(hunk_hash)
+    write_text_file_contents(discarded_path, "\n".join(sorted(existing)) + "\n" if existing else "")
+
+
+def record_hunk_skipped(line_changes: LineLevelChange, hunk_hash: str) -> None:
+    """Record that a hunk was skipped with metadata for display.
+
+    Args:
+        line_changes: Current hunk's lines
+        hunk_hash: SHA-1 hash of the hunk
+    """
+    # Extract first changed line number for display
+    first_changed_line = None
+    for entry in line_changes.lines:
+        if entry.kind != " ":  # Not context
+            first_changed_line = entry.old_line_number or entry.new_line_number
+            break
+
+    # Build metadata object
+    metadata = {
+        "hash": hunk_hash,
+        "file": line_changes.path,
+        "line": first_changed_line or 0,
+        "ids": line_changes.changed_line_ids()
+    }
+
+    # Append to JSONL file
+    jsonl_path = get_skipped_hunks_jsonl_file_path()
+    with jsonl_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(metadata) + "\n")
+
+
+def format_id_range(ids: list[int]) -> str:
+    """Format list of IDs as compact range string (e.g., '1-5,7,9-11').
+
+    Args:
+        ids: List of integer IDs
+
+    Returns:
+        Compact range string
+    """
+    if not ids:
+        return ""
+
+    ids = sorted(ids)
+    ranges = []
+    start = ids[0]
+    end = ids[0]
+
+    for i in range(1, len(ids)):
+        if ids[i] == end + 1:
+            end = ids[i]
+        else:
+            if start == end:
+                ranges.append(str(start))
+            else:
+                ranges.append(f"{start}-{end}")
+            start = end = ids[i]
+
+    # Add final range
+    if start == end:
+        ranges.append(str(start))
+    else:
+        ranges.append(f"{start}-{end}")
+
+    return ",".join(ranges)

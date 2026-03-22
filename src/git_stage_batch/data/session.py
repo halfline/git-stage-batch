@@ -1,4 +1,4 @@
-"""Session state management and abort support."""
+"""Session state management for iteration tracking and abort support."""
 
 from __future__ import annotations
 
@@ -6,13 +6,19 @@ import shutil
 
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.file_io import append_file_path_to_file, read_file_paths_file, write_text_file_contents
+from ..utils.file_io import (
+    append_file_path_to_file,
+    read_file_paths_file,
+    read_text_file_contents,
+    write_text_file_contents,
+)
 from ..utils.git import get_git_repository_root_path, run_git_command
 from ..utils.paths import (
     get_abort_head_file_path,
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
+    get_iteration_count_file_path,
 )
 
 
@@ -84,3 +90,24 @@ def snapshot_file_if_untracked(file_path: str) -> None:
 
     # Record snapshot in list
     append_file_path_to_file(get_abort_snapshot_list_file_path(), file_path)
+
+
+def get_iteration_count() -> int:
+    """Get selected iteration count, defaulting to 1.
+
+    Returns:
+        Current iteration number (1-based)
+    """
+    count_path = get_iteration_count_file_path()
+    if not count_path.exists():
+        return 1
+    return int(read_text_file_contents(count_path).strip())
+
+
+def increment_iteration_count() -> None:
+    """Increment the iteration counter.
+
+    Called when the user runs 'again' to restart from the beginning.
+    """
+    selected = get_iteration_count()
+    write_text_file_contents(get_iteration_count_file_path(), str(selected + 1))

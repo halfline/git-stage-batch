@@ -6,6 +6,7 @@ import pytest
 
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
+    get_context_lines,
     get_state_directory_path,
 )
 
@@ -102,3 +103,26 @@ class TestLineLevelOperationPaths:
         working_tree_path = get_working_tree_snapshot_file_path()
         state_dir = get_state_directory_path()
         assert working_tree_path == state_dir / "working-tree-snapshot"
+
+
+class TestGetContextLines:
+    """Tests for get_context_lines function."""
+
+    def test_get_context_lines_default(self, temp_git_repo):
+        """Test that get_context_lines returns 3 when file doesn't exist."""
+        ensure_state_directory_exists()
+        assert get_context_lines() == 3
+
+    def test_get_context_lines_reads_file(self, temp_git_repo):
+        """Test that get_context_lines reads value from file."""
+        ensure_state_directory_exists()
+        context_file = get_state_directory_path() / "context-lines"
+        context_file.write_text("5\n")
+        assert get_context_lines() == 5
+
+    def test_get_context_lines_invalid_content(self, temp_git_repo):
+        """Test that get_context_lines returns 3 for invalid content."""
+        ensure_state_directory_exists()
+        context_file = get_state_directory_path() / "context-lines"
+        context_file.write_text("not-a-number\n")
+        assert get_context_lines() == 3

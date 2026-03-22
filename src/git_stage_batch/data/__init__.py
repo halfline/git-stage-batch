@@ -10,10 +10,13 @@ from .hunk_tracking import (
     record_hunk_included,
     record_hunk_skipped,
 )
+from .progress import get_file_progress, get_hunk_counts
 
 __all__ = [
     "auto_add_untracked_files",
     "format_id_range",
+    "get_file_progress",
+    "get_hunk_counts",
     "record_hunk_discarded",
     "record_hunk_included",
     "record_hunk_skipped",

@@ -248,3 +248,31 @@ class TestLineLevelOperationPaths:
         suggest_fixup_path = get_suggest_fixup_state_file_path()
         state_dir = get_state_directory_path()
         assert suggest_fixup_path == state_dir / "suggest-fixup-state.json"
+
+
+class TestSessionTrackingPaths:
+    """Tests for session tracking path functions."""
+
+    def test_get_iteration_count_file_path(self, temp_git_repo):
+        """Test getting the iteration count file path."""
+        from git_stage_batch.utils.paths import get_iteration_count_file_path
+
+        iteration_count_path = get_iteration_count_file_path()
+        state_dir = get_state_directory_path()
+        assert iteration_count_path == state_dir / "iteration-count"
+
+    def test_get_start_head_file_path(self, temp_git_repo):
+        """Test getting the start HEAD file path."""
+        from git_stage_batch.utils.paths import get_start_head_file_path
+
+        start_head_path = get_start_head_file_path()
+        state_dir = get_state_directory_path()
+        assert start_head_path == state_dir / "start-head"
+
+    def test_get_start_index_tree_file_path(self, temp_git_repo):
+        """Test getting the start index tree file path."""
+        from git_stage_batch.utils.paths import get_start_index_tree_file_path
+
+        start_index_tree_path = get_start_index_tree_file_path()
+        state_dir = get_state_directory_path()
+        assert start_index_tree_path == state_dir / "start-index-tree"

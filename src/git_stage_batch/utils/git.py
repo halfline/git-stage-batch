@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 from ..exceptions import exit_with_error
@@ -34,6 +35,64 @@ def run_git_command(
         text=text_output,
         capture_output=True
     )
+
+
+def stream_git_command(arguments: list[str]) -> Iterator[str]:
+    """Stream git command output line-by-line.
+
+    If the caller stops consuming early, the git process is terminated
+    and no error is raised for that intentional cancellation.
+
+    Args:
+        arguments: Git command arguments (e.g., ["diff", "--no-color"])
+
+    Yields:
+        Lines from git's stdout
+
+    Raises:
+        subprocess.CalledProcessError: If git command fails
+    """
+    process = subprocess.Popen(
+        ["git", *arguments],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    cancelled = False
+
+    assert process.stdout is not None
+    assert process.stderr is not None
+
+    try:
+        for line in process.stdout:
+            yield line
+    except GeneratorExit:
+        cancelled = True
+
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        raise
+    finally:
+        process.stdout.close()
+
+        if process.poll() is None:
+            process.wait()
+
+        if not cancelled and process.returncode != 0:
+            stderr = process.stderr.read()
+            raise subprocess.CalledProcessError(
+                process.returncode,
+                ["git", *arguments],
+                stderr=stderr,
+            )
+
+        process.stderr.close()
 
 
 def require_git_repository() -> None:

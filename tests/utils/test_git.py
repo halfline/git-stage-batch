@@ -152,3 +152,166 @@ class TestGetGitRepositoryRootPath:
         root = get_git_repository_root_path()
 
         assert root == temp_git_repo
+
+
+class TestResolveFilePathToRepoRelative:
+    """Tests for resolve_file_path_to_repo_relative function."""
+
+    def test_resolve_file_path_to_repo_relative_relative(self, temp_git_repo):
+        """Test that relative paths are returned as-is."""
+        from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
+
+        result = resolve_file_path_to_repo_relative("src/file.py")
+        assert result == "src/file.py"
+
+    def test_resolve_file_path_to_repo_relative_absolute(self, temp_git_repo):
+        """Test that absolute paths inside repo are made relative."""
+        from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
+
+        absolute_path = str(temp_git_repo / "src" / "file.py")
+        result = resolve_file_path_to_repo_relative(absolute_path)
+        assert result == "src/file.py"
+
+    def test_resolve_file_path_to_repo_relative_outside_repo(self, temp_git_repo, tmp_path):
+        """Test that paths outside repo are returned as-is."""
+        from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
+
+        outside_path = str(tmp_path / "outside.txt")
+        result = resolve_file_path_to_repo_relative(outside_path)
+        assert result == outside_path
+
+
+class TestGitignoreManipulation:
+    """Tests for .gitignore manipulation functions."""
+
+    def test_read_gitignore_lines_nonexistent(self, temp_git_repo):
+        """Test reading .gitignore when it doesn't exist."""
+        from git_stage_batch.utils.git import read_gitignore_lines
+
+        lines = read_gitignore_lines()
+        assert lines == []
+
+    def test_read_gitignore_lines_existing(self, temp_git_repo):
+        """Test reading existing .gitignore."""
+        from git_stage_batch.utils.git import get_gitignore_path, read_gitignore_lines
+
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc\n__pycache__/\n.env\n")
+
+        lines = read_gitignore_lines()
+        assert lines == ["*.pyc\n", "__pycache__/\n", ".env\n"]
+
+    def test_write_gitignore_lines(self, temp_git_repo):
+        """Test writing .gitignore lines."""
+        from git_stage_batch.utils.git import get_gitignore_path, write_gitignore_lines
+
+        lines = ["*.pyc\n", "__pycache__/\n", ".env\n"]
+        write_gitignore_lines(lines)
+
+        gitignore = get_gitignore_path()
+        content = gitignore.read_text()
+        assert content == "*.pyc\n__pycache__/\n.env\n"
+
+    def test_add_file_to_gitignore_new(self, temp_git_repo):
+        """Test adding a file to .gitignore when .gitignore doesn't exist."""
+        from git_stage_batch.utils.git import add_file_to_gitignore, read_gitignore_lines
+
+        add_file_to_gitignore("test.txt")
+
+        lines = read_gitignore_lines()
+        assert "test.txt\n" in lines
+
+    def test_add_file_to_gitignore_existing(self, temp_git_repo):
+        """Test adding a file to existing .gitignore."""
+        from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path, read_gitignore_lines
+
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc\n__pycache__/\n")
+
+        add_file_to_gitignore("test.txt")
+
+        lines = read_gitignore_lines()
+        assert "*.pyc\n" in lines
+        assert "__pycache__/\n" in lines
+        assert "test.txt\n" in lines
+
+    def test_add_file_to_gitignore_no_duplicates(self, temp_git_repo):
+        """Test adding a file twice doesn't create duplicates."""
+        from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path
+
+        add_file_to_gitignore("test.txt")
+        add_file_to_gitignore("test.txt")
+
+        content = get_gitignore_path().read_text()
+        # Should only appear once
+        assert content.count("test.txt") == 1
+
+    def test_add_file_to_gitignore_preserves_no_trailing_newline(self, temp_git_repo):
+        """Test adding to .gitignore when existing file has no trailing newline."""
+        from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path
+
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc")  # No trailing newline
+
+        add_file_to_gitignore("test.txt")
+
+        content = gitignore.read_text()
+        assert content == "*.pyc\ntest.txt\n"
+
+    def test_remove_file_from_gitignore_with_marker(self, temp_git_repo):
+        """Test removing a file from .gitignore."""
+        from git_stage_batch.utils.git import add_file_to_gitignore, read_gitignore_lines, remove_file_from_gitignore
+
+        add_file_to_gitignore("test.txt")
+
+        removed = remove_file_from_gitignore("test.txt")
+        assert removed is True
+
+        lines = read_gitignore_lines()
+        assert "test.txt\n" not in lines
+
+    def test_remove_file_from_gitignore_without_marker(self, temp_git_repo):
+        """Test that we can remove any entry from .gitignore."""
+        from git_stage_batch.utils.git import get_gitignore_path, read_gitignore_lines, remove_file_from_gitignore
+
+        gitignore = get_gitignore_path()
+        gitignore.write_text("test.txt\n*.pyc\n")
+
+        removed = remove_file_from_gitignore("test.txt")
+        assert removed is True
+
+        # Entry should be removed
+        lines = read_gitignore_lines()
+        assert "test.txt\n" not in lines
+        # Other entries should remain
+        assert "*.pyc\n" in lines
+
+    def test_remove_file_from_gitignore_preserves_other_entries(self, temp_git_repo):
+        """Test that removing one entry preserves others."""
+        from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path, read_gitignore_lines, remove_file_from_gitignore
+
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc\n")
+
+        add_file_to_gitignore("test1.txt")
+        add_file_to_gitignore("test2.txt")
+
+        remove_file_from_gitignore("test1.txt")
+
+        lines = read_gitignore_lines()
+        assert "*.pyc\n" in lines
+        assert "test1.txt\n" not in lines
+        assert "test2.txt\n" in lines
+
+    def test_remove_file_from_gitignore_nonexistent(self, temp_git_repo):
+        """Test removing a file that doesn't exist in .gitignore."""
+        from git_stage_batch.utils.git import get_gitignore_path, remove_file_from_gitignore
+
+        gitignore = get_gitignore_path()
+        gitignore.write_text("*.pyc\n")
+
+        removed = remove_file_from_gitignore("nonexistent.txt")
+        assert removed is False
+
+        # Original content unchanged
+        assert gitignore.read_text() == "*.pyc\n"

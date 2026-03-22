@@ -94,6 +94,15 @@ def get_auto_added_files_file_path() -> Path:
     return get_state_directory_path() / "auto-added-files"
 
 
+def get_blocked_files_file_path() -> Path:
+    """Get the path to the blocked files list file.
+
+    Returns:
+        Path to blocked files list file
+    """
+    return get_state_directory_path() / "blocked-files"
+
+
 def get_context_lines_file_path() -> Path:
     """Get the path to the context lines configuration file.
 

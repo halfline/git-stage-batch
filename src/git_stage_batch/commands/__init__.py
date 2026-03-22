@@ -12,6 +12,7 @@ from .skip import command_skip, command_skip_file
 from .start import command_start
 from .status import command_status
 from .stop import command_stop
+from .unblock_file import command_unblock_file
 
 __all__ = [
     "command_abort",
@@ -27,4 +28,5 @@ __all__ = [
     "command_start",
     "command_status",
     "command_stop",
+    "command_unblock_file",
 ]

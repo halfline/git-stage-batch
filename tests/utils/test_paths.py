@@ -136,3 +136,15 @@ class TestGetContextLinesFilePath:
         """Test getting the context lines file path."""
         context_file = get_context_lines_file_path()
         assert context_file == temp_git_repo / ".git" / "git-stage-batch" / "context-lines"
+
+
+class TestAutoAddedFilesPath:
+    """Tests for auto-added files path function."""
+
+    def test_get_auto_added_files_file_path(self, temp_git_repo):
+        """Test getting the auto-added files file path."""
+        from git_stage_batch.utils.paths import get_auto_added_files_file_path
+
+        auto_added_path = get_auto_added_files_file_path()
+        state_dir = get_state_directory_path()
+        assert auto_added_path == state_dir / "auto-added-files"

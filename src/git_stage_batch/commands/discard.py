@@ -7,6 +7,7 @@ import sys
 
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.diff_parser import get_first_matching_file_from_diff, parse_unified_diff_streaming
+from ..data.hunk_tracking import advance_to_next_hunk
 from ..data.session import snapshot_file_if_untracked
 from ..i18n import _
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
@@ -82,6 +83,8 @@ def command_discard(*, quiet: bool = False) -> None:
     if not quiet:
         print(_("No more hunks to process."), file=sys.stderr)
 
+    advance_to_next_hunk(quiet=quiet)
+
 
 def command_discard_file() -> None:
     """Discard the entire current file from the working tree."""
@@ -138,3 +141,5 @@ def command_discard_file() -> None:
         append_lines_to_file(blocklist_path, [patch_hash])
 
     print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
+
+    advance_to_next_hunk()

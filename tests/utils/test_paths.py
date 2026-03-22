@@ -276,3 +276,35 @@ class TestSessionTrackingPaths:
         start_index_tree_path = get_start_index_tree_file_path()
         state_dir = get_state_directory_path()
         assert start_index_tree_path == state_dir / "start-index-tree"
+
+
+class TestBatchMetadataPaths:
+    """Tests for batch metadata path functions."""
+
+    def test_get_batches_directory_path(self, temp_git_repo):
+        """Test getting the batches directory path."""
+        from git_stage_batch.utils.paths import get_batches_directory_path
+
+        batches_dir = get_batches_directory_path()
+        assert batches_dir == temp_git_repo / ".git" / "git-stage-batch" / "batches"
+
+    def test_get_batch_directory_path(self, temp_git_repo):
+        """Test getting a specific batch directory path."""
+        from git_stage_batch.utils.paths import get_batch_directory_path
+
+        batch_dir = get_batch_directory_path("my-batch")
+        assert batch_dir == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch"
+
+    def test_get_batch_metadata_file_path(self, temp_git_repo):
+        """Test getting a batch metadata file path."""
+        from git_stage_batch.utils.paths import get_batch_metadata_file_path
+
+        metadata_file = get_batch_metadata_file_path("my-batch")
+        assert metadata_file == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch" / "metadata.json"
+
+    def test_get_batch_refs_snapshot_file_path(self, temp_git_repo):
+        """Test getting the batch refs snapshot file path."""
+        from git_stage_batch.utils.paths import get_batch_refs_snapshot_file_path
+
+        snapshot_file = get_batch_refs_snapshot_file_path()
+        assert snapshot_file == temp_git_repo / ".git" / "git-stage-batch" / "batch-refs-snapshot.json"

@@ -42,3 +42,59 @@ def append_lines_to_file(path: Path, lines: Iterable[str]) -> None:
     with path.open("a", encoding="utf-8", errors="surrogateescape") as file_handle:
         for line in lines:
             file_handle.write(str(line).rstrip() + "\n")
+
+
+def read_file_paths_file(path: Path) -> list[str]:
+    """Read a file containing one path per line, returning a deduplicated sorted list.
+
+    Args:
+        path: Path to file containing paths
+
+    Returns:
+        Sorted list of unique paths
+    """
+    content = read_text_file_contents(path)
+    if not content:
+        return []
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    return sorted(set(lines))
+
+
+def write_file_paths_file(path: Path, file_paths: Iterable[str]) -> None:
+    """Write file paths to a file, one per line, sorted and deduplicated.
+
+    Args:
+        path: Path to file to write
+        file_paths: Paths to write
+    """
+    unique_paths = sorted(set(file_paths))
+    content = "\n".join(unique_paths)
+    if unique_paths:
+        content += "\n"
+    write_text_file_contents(path, content)
+
+
+def append_file_path_to_file(path: Path, file_path: str) -> None:
+    """Append a file path to a list file, preventing duplicates.
+
+    Args:
+        path: Path to list file
+        file_path: File path to append
+    """
+    existing_paths = read_file_paths_file(path)
+    if file_path not in existing_paths:
+        existing_paths.append(file_path)
+        write_file_paths_file(path, existing_paths)
+
+
+def remove_file_path_from_file(state_file_path: Path, file_path: str) -> None:
+    """Remove a file path from a list file.
+
+    Args:
+        state_file_path: Path to list file
+        file_path: File path to remove
+    """
+    existing_paths = read_file_paths_file(state_file_path)
+    if file_path in existing_paths:
+        existing_paths.remove(file_path)
+        write_file_paths_file(state_file_path, existing_paths)

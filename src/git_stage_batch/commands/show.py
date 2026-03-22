@@ -6,6 +6,7 @@ import sys
 
 from ..core.diff_parser import parse_unified_diff_streaming
 from ..core.hashing import compute_stable_hunk_hash
+from ..data.session import require_session_started
 from ..i18n import _
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
@@ -15,6 +16,7 @@ from ..utils.paths import ensure_state_directory_exists, get_block_list_file_pat
 def command_show() -> None:
     """Show the first unprocessed hunk."""
     require_git_repository()
+    require_session_started()
     ensure_state_directory_exists()
 
     # Load blocklist

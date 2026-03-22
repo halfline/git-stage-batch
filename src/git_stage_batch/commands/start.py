@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from ..data.file_tracking import auto_add_untracked_files
+from ..data.session import initialize_abort_state
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents
@@ -20,6 +21,9 @@ def command_start(*, context_lines: Optional[int] = None) -> None:
     """
     require_git_repository()
     ensure_state_directory_exists()
+
+    # Initialize abort state for new session
+    initialize_abort_state()
 
     # Save context lines setting if provided
     if context_lines is not None:

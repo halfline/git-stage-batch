@@ -144,6 +144,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_skip.set_defaults(func=lambda _: commands.command_skip())
 
+    # discard - Remove the selected hunk from working tree
+    parser_discard = subparsers.add_parser(
+        "discard",
+        aliases=["d"],
+        help=_("Remove the selected hunk from working tree"),
+    )
+    parser_discard.set_defaults(func=lambda _: commands.command_discard())
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

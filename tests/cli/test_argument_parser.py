@@ -70,3 +70,12 @@ def test_parse_command_line_again_alias():
     assert args.command == "a"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_show():
+    """Test parsing show command."""
+    args = parse_command_line(["show"], quiet=True)
+    assert args is not None
+    assert args.command == "show"
+    assert hasattr(args, "func")
+    assert callable(args.func)

@@ -22,3 +22,7 @@ def main() -> None:
         if e.message:
             print(e.message, file=sys.stderr)
         sys.exit(e.exit_code)
+
+
+if __name__ == "__main__":
+    main()

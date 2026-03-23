@@ -6,14 +6,23 @@ import subprocess
 
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.diff_parser import get_first_matching_file_from_diff, parse_unified_diff_streaming
-from ..data.hunk_tracking import advance_to_next_hunk
+from ..data.hunk_tracking import (
+    advance_to_next_hunk,
+    recalculate_current_hunk_for_file,
+    require_current_hunk_and_check_stale,
+)
+from ..data.line_state import load_current_lines_from_state
 from ..i18n import _, ngettext
+from ..core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
+from ..staging.operations import build_target_index_content_with_selected_lines, update_index_with_blob_content
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_context_lines,
+    get_index_snapshot_file_path,
+    get_processed_include_ids_file_path,
 )
 
 
@@ -134,3 +143,34 @@ def command_include_file() -> None:
 
     # Advance to next file's hunk
     advance_to_next_hunk(quiet=True)
+
+
+def command_include_line(line_id_specification: str) -> None:
+    """Stage only the specified lines to the index.
+
+    Args:
+        line_id_specification: Line ID specification (e.g., "1,3,5-7")
+    """
+    require_git_repository()
+    ensure_state_directory_exists()
+    require_current_hunk_and_check_stale()
+
+    requested_ids = parse_line_selection(line_id_specification)
+    already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
+    combined_include_ids = already_included_ids | set(requested_ids)
+
+    current_lines = load_current_lines_from_state()
+
+    # Get base content from index snapshot (captured when hunk was loaded)
+    base_text = read_text_file_contents(get_index_snapshot_file_path())
+
+    target_index_content = build_target_index_content_with_selected_lines(current_lines, combined_include_ids, base_text)
+    update_index_with_blob_content(current_lines.path, target_index_content)
+
+    # Update processed include IDs
+    write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
+
+    # After modifying index, recalculate hunk for the SAME file
+    recalculate_current_hunk_for_file(current_lines.path)
+
+    print(_("✓ Included line(s): {lines}").format(lines=line_id_specification))

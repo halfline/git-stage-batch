@@ -268,3 +268,11 @@ class TestSessionTrackingPaths:
         start_index_tree_path = get_start_index_tree_file_path()
         state_dir = get_state_directory_path()
         assert start_index_tree_path == state_dir / "start-index-tree"
+
+    def test_get_suggest_fixup_state_file_path(self, temp_git_repo):
+        """Test getting the suggest-fixup state file path."""
+        from git_stage_batch.utils.paths import get_suggest_fixup_state_file_path
+
+        suggest_fixup_path = get_suggest_fixup_state_file_path()
+        state_dir = get_state_directory_path()
+        assert suggest_fixup_path == state_dir / "suggest-fixup-state.json"

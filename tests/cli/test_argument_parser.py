@@ -234,3 +234,23 @@ def test_parse_command_line_block_file_alias():
     assert args.file_path == "test.txt"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_unblock_file():
+    """Test parsing unblock-file command."""
+    args = parse_command_line(["unblock-file", "test.txt"], quiet=True)
+    assert args is not None
+    assert args.command == "unblock-file"
+    assert args.file_path == "test.txt"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_unblock_file_alias():
+    """Test parsing unblock-file command alias 'ubf'."""
+    args = parse_command_line(["ubf", "test.txt"], quiet=True)
+    assert args is not None
+    assert args.command == "ubf"
+    assert args.file_path == "test.txt"
+    assert hasattr(args, "func")
+    assert callable(args.func)

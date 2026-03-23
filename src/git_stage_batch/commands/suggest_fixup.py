@@ -45,6 +45,46 @@ def _reset_suggest_fixup_state() -> None:
     get_suggest_fixup_state_file_path().unlink(missing_ok=True)
 
 
+def _get_commit_details(commit_hash: str) -> dict[str, str]:
+    """Get detailed information about a commit for JSON output.
+
+    Args:
+        commit_hash: Full or short commit hash
+
+    Returns:
+        Dictionary with hash, full_hash, subject, author, date, relative_date
+    """
+    try:
+        # Get commit details in a structured format
+        show_result = run_git_command([
+            "show", "--no-patch",
+            "--format=%h%n%H%n%s%n%an%n%ai%n%ar",
+            commit_hash
+        ], check=True)
+        lines = show_result.stdout.strip().split('\n')
+        if len(lines) >= 6:
+            return {
+                "hash": lines[0],
+                "full_hash": lines[1],
+                "subject": lines[2],
+                "author": lines[3],
+                "date": lines[4],
+                "relative_date": lines[5]
+            }
+    except subprocess.CalledProcessError:
+        pass
+
+    # Fallback for errors
+    return {
+        "hash": commit_hash[:7] if len(commit_hash) > 7 else commit_hash,
+        "full_hash": commit_hash,
+        "subject": "",
+        "author": "",
+        "date": "",
+        "relative_date": ""
+    }
+
+
 def _should_reset_suggest_fixup_state(
     current_hunk_hash: str,
     line_ids: list[int] | None,
@@ -121,7 +161,9 @@ def command_suggest_fixup(
     boundary: str | None = None,
     reset: bool = False,
     abort: bool = False,
-    show_last: bool = False
+    show_last: bool = False,
+    *,
+    porcelain: bool = False
 ) -> None:
     """Suggest which commit the current hunk should be fixed up to.
 
@@ -137,6 +179,7 @@ def command_suggest_fixup(
         reset: If True, reset state and start search over from most recent
         abort: If True, clear state and exit without showing candidates
         show_last: If True, re-show the last candidate without advancing
+        porcelain: If True, output JSON for scripting instead of human-readable text
     """
     require_git_repository()
     ensure_state_directory_exists()
@@ -144,7 +187,8 @@ def command_suggest_fixup(
     # Handle abort flag
     if abort:
         _reset_suggest_fixup_state()
-        print(_("Suggest-fixup iteration cleared."))
+        if not porcelain:
+            print(_("Suggest-fixup iteration cleared."), file=sys.stderr)
         return
 
     # Load current state early to determine effective boundary
@@ -180,6 +224,8 @@ def command_suggest_fixup(
             old_line_numbers.append(entry.old_line_number)
 
     if not old_line_numbers:
+        if porcelain:
+            sys.exit(1)
         exit_with_error(_("No old line numbers found in hunk (all lines may be additions)."))
 
     # Get the range of old lines
@@ -223,19 +269,29 @@ def command_suggest_fixup(
         candidate_commit = state["last_shown_commit"]
         iteration = state["iteration"]
 
-        # Display the candidate
-        try:
-            show_result = run_git_command(
-                ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                check=True
-            )
-            commit_info = show_result.stdout.strip()
-        except subprocess.CalledProcessError:
-            commit_info = candidate_commit[:7]
+        if porcelain:
+            # JSON output
+            commit_details = _get_commit_details(candidate_commit)
+            output = {
+                "candidate": commit_details,
+                "iteration": iteration,
+                "boundary": state.get("boundary", effective_boundary)
+            }
+            print(json.dumps(output, indent=2))
+        else:
+            # Display the candidate
+            try:
+                show_result = run_git_command(
+                    ["show", "--no-patch", "--format=%h %s", candidate_commit],
+                    check=True
+                )
+                commit_info = show_result.stdout.strip()
+            except subprocess.CalledProcessError:
+                commit_info = candidate_commit[:7]
 
-        print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-        _show_commit_diff_for_file(candidate_commit, current_lines.path)
-        print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
+            print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
+            _show_commit_diff_for_file(candidate_commit, current_lines.path)
+            print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
         return
 
     # Determine last shown commit and iteration
@@ -274,18 +330,28 @@ def command_suggest_fixup(
     })
 
     # Display the candidate
-    try:
-        show_result = run_git_command(
-            ["show", "--no-patch", "--format=%h %s", candidate_commit],
-            check=True
-        )
-        commit_info = show_result.stdout.strip()
-    except subprocess.CalledProcessError:
-        commit_info = candidate_commit[:7]
+    if porcelain:
+        # JSON output
+        commit_details = _get_commit_details(candidate_commit)
+        output = {
+            "candidate": commit_details,
+            "iteration": iteration,
+            "boundary": effective_boundary
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        try:
+            show_result = run_git_command(
+                ["show", "--no-patch", "--format=%h %s", candidate_commit],
+                check=True
+            )
+            commit_info = show_result.stdout.strip()
+        except subprocess.CalledProcessError:
+            commit_info = candidate_commit[:7]
 
-    print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-    _show_commit_diff_for_file(candidate_commit, current_lines.path)
-    print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
+        print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
+        _show_commit_diff_for_file(candidate_commit, current_lines.path)
+        print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
 
 
 def command_suggest_fixup_line(
@@ -293,7 +359,9 @@ def command_suggest_fixup_line(
     boundary: str | None = None,
     reset: bool = False,
     abort: bool = False,
-    show_last: bool = False
+    show_last: bool = False,
+    *,
+    porcelain: bool = False
 ) -> None:
     """Suggest which commit specific lines should be fixed up to.
 
@@ -311,6 +379,7 @@ def command_suggest_fixup_line(
         reset: If True, reset state and start search over from most recent
         abort: If True, clear state and exit without showing candidates
         show_last: If True, re-show the last candidate without advancing
+        porcelain: If True, output JSON for scripting instead of human-readable text
     """
     require_git_repository()
     ensure_state_directory_exists()
@@ -318,7 +387,8 @@ def command_suggest_fixup_line(
     # Handle abort flag
     if abort:
         _reset_suggest_fixup_state()
-        print(_("Suggest-fixup iteration cleared."))
+        if not porcelain:
+            print(_("Suggest-fixup iteration cleared."), file=sys.stderr)
         return
 
     # Load current state early to determine effective boundary
@@ -401,19 +471,29 @@ def command_suggest_fixup_line(
         candidate_commit = state["last_shown_commit"]
         iteration = state["iteration"]
 
-        # Display the candidate
-        try:
-            show_result = run_git_command(
-                ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                check=True
-            )
-            commit_info = show_result.stdout.strip()
-        except subprocess.CalledProcessError:
-            commit_info = candidate_commit[:7]
+        if porcelain:
+            # JSON output
+            commit_details = _get_commit_details(candidate_commit)
+            output = {
+                "candidate": commit_details,
+                "iteration": iteration,
+                "boundary": state.get("boundary", effective_boundary)
+            }
+            print(json.dumps(output, indent=2))
+        else:
+            # Display the candidate
+            try:
+                show_result = run_git_command(
+                    ["show", "--no-patch", "--format=%h %s", candidate_commit],
+                    check=True
+                )
+                commit_info = show_result.stdout.strip()
+            except subprocess.CalledProcessError:
+                commit_info = candidate_commit[:7]
 
-        print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-        _show_commit_diff_for_file(candidate_commit, current_lines.path)
-        print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
+            print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
+            _show_commit_diff_for_file(candidate_commit, current_lines.path)
+            print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
         return
 
     # Determine last shown commit and iteration
@@ -452,15 +532,25 @@ def command_suggest_fixup_line(
     })
 
     # Display the candidate
-    try:
-        show_result = run_git_command(
-            ["show", "--no-patch", "--format=%h %s", candidate_commit],
-            check=True
-        )
-        commit_info = show_result.stdout.strip()
-    except subprocess.CalledProcessError:
-        commit_info = candidate_commit[:7]
+    if porcelain:
+        # JSON output
+        commit_details = _get_commit_details(candidate_commit)
+        output = {
+            "candidate": commit_details,
+            "iteration": iteration,
+            "boundary": effective_boundary
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        try:
+            show_result = run_git_command(
+                ["show", "--no-patch", "--format=%h %s", candidate_commit],
+                check=True
+            )
+            commit_info = show_result.stdout.strip()
+        except subprocess.CalledProcessError:
+            commit_info = candidate_commit[:7]
 
-    print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-    _show_commit_diff_for_file(candidate_commit, current_lines.path)
-    print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
+        print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
+        _show_commit_diff_for_file(candidate_commit, current_lines.path)
+        print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))

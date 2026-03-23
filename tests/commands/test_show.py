@@ -127,3 +127,45 @@ class TestCommandShow:
 
         captured = capsys.readouterr()
         assert "No more hunks to process" in captured.err
+
+    def test_show_caches_current_hunk_state(self, temp_git_repo, capsys):
+        """Test that show caches the current hunk state files."""
+        from git_stage_batch.core.hashing import compute_stable_hunk_hash
+        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+        from git_stage_batch.utils.git import stream_git_command
+        from git_stage_batch.utils.paths import (
+            ensure_state_directory_exists,
+            get_context_lines,
+            get_current_hunk_hash_file_path,
+            get_current_hunk_patch_file_path,
+            get_current_lines_json_file_path,
+            get_index_snapshot_file_path,
+            get_working_tree_snapshot_file_path,
+        )
+
+        # Modify the README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Get expected patch and hash
+        ensure_state_directory_exists()
+        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
+        expected_patch = patches[0].to_patch_text()
+        expected_hash = compute_stable_hunk_hash(expected_patch)
+
+        command_show()
+
+        # Verify state files were written
+        assert get_current_hunk_patch_file_path().exists()
+        assert get_current_hunk_hash_file_path().exists()
+        assert get_current_lines_json_file_path().exists()
+        assert get_index_snapshot_file_path().exists()
+        assert get_working_tree_snapshot_file_path().exists()
+
+        # Verify patch content
+        cached_patch = get_current_hunk_patch_file_path().read_text()
+        assert cached_patch == expected_patch
+
+        # Verify hash content
+        cached_hash = get_current_hunk_hash_file_path().read_text()
+        assert cached_hash == expected_hash

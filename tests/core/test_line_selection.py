@@ -2,7 +2,7 @@
 
 import pytest
 
-from git_stage_batch.core.line_selection import parse_line_selection
+from git_stage_batch.core.line_selection import format_line_ids, parse_line_selection
 
 
 class TestParseLineSelection:
@@ -113,3 +113,47 @@ class TestParseLineSelection:
         """Test that trailing comma doesn't cause issues."""
         result = parse_line_selection("1,2,3,")
         assert result == [1, 2, 3]
+
+
+class TestFormatLineIds:
+    """Tests for format_line_ids function."""
+
+    def test_single_id(self):
+        """Test formatting a single line ID."""
+        assert format_line_ids([1]) == "1"
+
+    def test_consecutive_ids_as_range(self):
+        """Test that consecutive IDs are formatted as a range."""
+        assert format_line_ids([1, 2, 3]) == "1-3"
+
+    def test_non_consecutive_ids(self):
+        """Test that non-consecutive IDs are comma-separated."""
+        assert format_line_ids([1, 3, 5]) == "1,3,5"
+
+    def test_mixed_ranges_and_singles(self):
+        """Test mixed consecutive and non-consecutive IDs."""
+        assert format_line_ids([1, 2, 3, 5, 7, 8, 9]) == "1-3,5,7-9"
+
+    def test_empty_list(self):
+        """Test formatting an empty list."""
+        assert format_line_ids([]) == ""
+
+    def test_accepts_strings(self):
+        """Test that function accepts string IDs."""
+        assert format_line_ids(["1", "2", "3"]) == "1-3"
+
+    def test_sorts_unordered_ids(self):
+        """Test that unordered IDs are sorted before formatting."""
+        assert format_line_ids([3, 1, 2]) == "1-3"
+
+    def test_handles_duplicates(self):
+        """Test that duplicate IDs are handled correctly."""
+        assert format_line_ids([1, 2, 2, 3]) == "1-3"
+
+    def test_large_range(self):
+        """Test formatting a large consecutive range."""
+        assert format_line_ids(list(range(1, 101))) == "1-100"
+
+    def test_complex_mixed(self):
+        """Test complex mixed ranges and singles."""
+        assert format_line_ids([1, 2, 5, 6, 7, 10, 15, 16]) == "1-2,5-7,10,15-16"

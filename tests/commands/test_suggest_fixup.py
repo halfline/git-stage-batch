@@ -1,5 +1,9 @@
 """Tests for suggest-fixup command infrastructure."""
 
+from git_stage_batch.commands.stop import command_stop
+from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
+from git_stage_batch.commands.suggest_fixup import command_suggest_fixup_line
+
 import json
 import subprocess
 
@@ -346,8 +350,10 @@ class TestCommandSuggestFixupLine:
         assert "Candidate 1:" in captured.out
         assert "Modify line 1" in captured.out
 
-    def test_suggest_fixup_line_errors_on_new_lines(self, temp_git_repo):
+    def test_suggest_fixup_line_errors_on_new_lines(self, temp_git_repo, capsys):
         """Test error when all specified lines are new."""
+
+
         # Create empty file
         test_file = temp_git_repo / "test.py"
         test_file.write_text("")
@@ -358,10 +364,85 @@ class TestCommandSuggestFixupLine:
         test_file.write_text("new line 1\nnew line 2\n")
 
         command_start()
-        fetch_next_change()
 
         # Should error because all lines are additions
         with pytest.raises(CommandError) as exc_info:
             command_suggest_fixup_line("1,2", boundary="HEAD~1")
 
         assert "No old line numbers" in str(exc_info.value.message)
+
+        command_stop()
+
+        # Modify in second commit
+        test_file.write_text("modified line 1\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Modify test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Create a working tree change
+        test_file.write_text("final change\n")
+
+        command_start()
+
+        captured = capsys.readouterr()
+
+        # Run suggest-fixup with --porcelain
+        command_suggest_fixup(boundary="HEAD~2", porcelain=True)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Verify JSON structure
+        assert "candidate" in output
+        assert "iteration" in output
+        assert "boundary" in output
+
+        assert "hash" in output["candidate"]
+        assert "full_hash" in output["candidate"]
+        assert "subject" in output["candidate"]
+        assert "author" in output["candidate"]
+        assert "date" in output["candidate"]
+        assert "relative_date" in output["candidate"]
+
+        assert output["iteration"] == 1
+        assert output["boundary"] == "HEAD~2"
+
+    def test_suggest_fixup_porcelain_abort_silent(self, temp_git_repo, capsys):
+        """Test that suggest-fixup --porcelain --abort produces no output."""
+
+        command_suggest_fixup(abort=True, porcelain=True)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_suggest_fixup_line_porcelain_outputs_json(self, temp_git_repo, capsys):
+        """Test that suggest-fixup-line --porcelain outputs JSON."""
+
+        # Create base commit
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify in second commit
+        test_file.write_text("modified 1\nmodified 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Modify test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Create working tree change
+        test_file.write_text("final 1\nfinal 2\n")
+
+        command_start()
+        capsys.readouterr()
+
+        # Run suggest-fixup-line with --porcelain
+        command_suggest_fixup_line("1", boundary="HEAD~2", porcelain=True)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Verify JSON structure (same as suggest-fixup)
+        assert "candidate" in output
+        assert "iteration" in output
+        assert "boundary" in output
+        assert output["iteration"] == 1

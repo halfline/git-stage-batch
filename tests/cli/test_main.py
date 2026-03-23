@@ -3,6 +3,8 @@
 import sys
 from unittest.mock import patch
 
+import pytest
+
 from git_stage_batch.cli.main import main
 
 
@@ -13,11 +15,8 @@ def test_main_callable():
 
 
 def test_main_with_no_args():
-    """Test main with no arguments."""
+    """Test main with no arguments exits with error."""
     with patch.object(sys, 'argv', ['git-stage-batch']):
-        # Should not raise an error
-        try:
+        with pytest.raises(SystemExit) as exc_info:
             main()
-        except SystemExit:
-            # May exit on certain arg parsing scenarios
-            pass
+        assert exc_info.value.code == 1

@@ -133,3 +133,21 @@ def test_parse_command_line_skip_alias():
     assert args.command == "s"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_discard():
+    """Test parsing discard command."""
+    args = parse_command_line(["discard"], quiet=True)
+    assert args is not None
+    assert args.command == "discard"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_discard_alias():
+    """Test parsing discard command alias 'd'."""
+    args = parse_command_line(["d"], quiet=True)
+    assert args is not None
+    assert args.command == "d"
+    assert hasattr(args, "func")
+    assert callable(args.func)

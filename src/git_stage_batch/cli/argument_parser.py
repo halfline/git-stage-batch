@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from .. import __version__
+from .. import commands
 from ..i18n import _
 
 
@@ -64,6 +65,25 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="version",
         version=f"git-stage-batch {__version__}",
     )
+
+    subparsers = parser.add_subparsers(
+        dest="command",
+        help=_("Available commands"),
+    )
+
+    # start - Start a new batch staging session
+    parser_start = subparsers.add_parser(
+        "start",
+        help=_("Start a new batch staging session"),
+    )
+    parser_start.set_defaults(func=lambda _: commands.command_start())
+
+    # stop - Stop the current session and clear state
+    parser_stop = subparsers.add_parser(
+        "stop",
+        help=_("Stop the current session and clear state"),
+    )
+    parser_stop.set_defaults(func=lambda _: commands.command_stop())
 
     # Parse arguments, return None on failure
     try:

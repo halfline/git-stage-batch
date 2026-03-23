@@ -136,6 +136,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_include.set_defaults(func=lambda _: commands.command_include())
 
+    # skip - Skip the selected hunk without staging
+    parser_skip = subparsers.add_parser(
+        "skip",
+        aliases=["s"],
+        help=_("Skip the selected hunk without staging"),
+    )
+    parser_skip.set_defaults(func=lambda _: commands.command_skip())
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

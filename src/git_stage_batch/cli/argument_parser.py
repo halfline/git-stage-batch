@@ -239,6 +239,18 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_block_file.set_defaults(func=lambda args: commands.command_block_file(args.file_path))
 
+    # unblock-file - Remove a file from blocked list
+    parser_unblock_file = subparsers.add_parser(
+        "unblock-file",
+        aliases=["ubf"],
+        help=_("Remove a file from the blocked list"),
+    )
+    parser_unblock_file.add_argument(
+        "file_path",
+        help=_("Path to the file to unblock"),
+    )
+    parser_unblock_file.set_defaults(func=lambda args: commands.command_unblock_file(args.file_path))
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

@@ -169,3 +169,23 @@ def test_parse_command_line_abort():
     assert args.command == "abort"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_block_file():
+    """Test parsing block-file command."""
+    args = parse_command_line(["block-file", "test.txt"], quiet=True)
+    assert args is not None
+    assert args.command == "block-file"
+    assert args.file_path == "test.txt"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_block_file_alias():
+    """Test parsing block-file command alias 'bf'."""
+    args = parse_command_line(["bf", "test.txt"], quiet=True)
+    assert args is not None
+    assert args.command == "bf"
+    assert args.file_path == "test.txt"
+    assert hasattr(args, "func")
+    assert callable(args.func)

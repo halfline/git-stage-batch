@@ -97,3 +97,21 @@ def test_parse_command_line_status_alias():
     assert args.command == "st"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_include():
+    """Test parsing include command."""
+    args = parse_command_line(["include"], quiet=True)
+    assert args is not None
+    assert args.command == "include"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_include_alias():
+    """Test parsing include command alias 'i'."""
+    args = parse_command_line(["i"], quiet=True)
+    assert args is not None
+    assert args.command == "i"
+    assert hasattr(args, "func")
+    assert callable(args.func)

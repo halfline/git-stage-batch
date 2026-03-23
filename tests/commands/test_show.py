@@ -86,6 +86,7 @@ class TestCommandShow:
         """Test that show skips hunks in the blocklist."""
         from git_stage_batch.core.hashing import compute_stable_hunk_hash
         from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+        from git_stage_batch.data.session import initialize_abort_state
         from git_stage_batch.utils.git import stream_git_command
         from git_stage_batch.utils.paths import ensure_state_directory_exists, get_block_list_file_path, get_context_lines
 
@@ -103,6 +104,7 @@ class TestCommandShow:
 
         # Initialize session without caching a hunk
         ensure_state_directory_exists()
+        initialize_abort_state()
 
         # Get the hash of the first hunk and block it
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
@@ -123,6 +125,7 @@ class TestCommandShow:
         """Test that show displays message when all hunks are blocked."""
         from git_stage_batch.core.hashing import compute_stable_hunk_hash
         from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+        from git_stage_batch.data.session import initialize_abort_state
         from git_stage_batch.utils.git import stream_git_command
         from git_stage_batch.utils.paths import ensure_state_directory_exists, get_block_list_file_path, get_context_lines
 
@@ -132,6 +135,7 @@ class TestCommandShow:
 
         # Initialize session without caching a hunk
         ensure_state_directory_exists()
+        initialize_abort_state()
 
         command_start()
 
@@ -146,3 +150,43 @@ class TestCommandShow:
 
         captured = capsys.readouterr()
         assert "No more hunks to process" in captured.err
+
+    def test_show_caches_selected_hunk_state(self, temp_git_repo, capsys):
+        """Test that show caches the selected hunk patch and hash."""
+        from git_stage_batch.core.hashing import compute_stable_hunk_hash
+        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+        from git_stage_batch.data.session import initialize_abort_state
+        from git_stage_batch.utils.git import stream_git_command
+        from git_stage_batch.utils.paths import (
+            ensure_state_directory_exists,
+            get_context_lines,
+            get_selected_hunk_hash_file_path,
+            get_selected_hunk_patch_file_path,
+        )
+
+        # Modify the README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Initialize session
+        ensure_state_directory_exists()
+        initialize_abort_state()
+
+        # Get expected patch and hash
+        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
+        expected_patch = patches[0].to_patch_text()
+        expected_hash = compute_stable_hunk_hash(expected_patch)
+
+        command_show()
+
+        # Verify state files were written
+        assert get_selected_hunk_patch_file_path().exists()
+        assert get_selected_hunk_hash_file_path().exists()
+
+        # Verify patch content
+        cached_patch = get_selected_hunk_patch_file_path().read_text()
+        assert cached_patch == expected_patch
+
+        # Verify hash content
+        cached_hash = get_selected_hunk_hash_file_path().read_text()
+        assert cached_hash == expected_hash

@@ -151,3 +151,12 @@ def test_parse_command_line_discard_alias():
     assert args.command == "d"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_abort():
+    """Test parsing abort command."""
+    args = parse_command_line(["abort"], quiet=True)
+    assert args is not None
+    assert args.command == "abort"
+    assert hasattr(args, "func")
+    assert callable(args.func)

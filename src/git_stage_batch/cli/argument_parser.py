@@ -100,6 +100,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_show.set_defaults(func=lambda _: commands.command_show())
 
+    # status - Show selected session status
+    parser_status = subparsers.add_parser(
+        "status",
+        aliases=["st"],
+        help=_("Show selected session status"),
+    )
+    parser_status.set_defaults(func=lambda _: commands.command_status())
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

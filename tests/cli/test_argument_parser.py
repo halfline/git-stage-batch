@@ -254,3 +254,53 @@ def test_parse_command_line_unblock_file_alias():
     assert args.file_path == "test.txt"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_suggest_fixup():
+    """Test parsing suggest-fixup command."""
+    args = parse_command_line(["suggest-fixup"], quiet=True)
+    assert args is not None
+    assert args.command == "suggest-fixup"
+    assert args.line_ids is None
+    assert args.boundary is None
+    assert args.reset is False
+    assert args.abort is False
+    assert args.last is False
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_suggest_fixup_alias():
+    """Test parsing suggest-fixup command alias 'x'."""
+    args = parse_command_line(["x"], quiet=True)
+    assert args is not None
+    assert args.command == "x"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_suggest_fixup_with_line():
+    """Test parsing suggest-fixup with --line flag."""
+    args = parse_command_line(["suggest-fixup", "--line", "1,3,5-7"], quiet=True)
+    assert args is not None
+    assert args.line_ids == "1,3,5-7"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_suggest_fixup_with_boundary():
+    """Test parsing suggest-fixup with boundary argument."""
+    args = parse_command_line(["suggest-fixup", "main"], quiet=True)
+    assert args is not None
+    assert args.boundary == "main"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_suggest_fixup_with_flags():
+    """Test parsing suggest-fixup with flags."""
+    args = parse_command_line(["suggest-fixup", "--reset"], quiet=True)
+    assert args is not None
+    assert args.reset is True
+    assert hasattr(args, "func")
+    assert callable(args.func)

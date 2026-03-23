@@ -6,7 +6,8 @@ import sys
 
 from ..core.diff_parser import build_current_lines_from_patch_text, get_first_matching_file_from_diff, parse_unified_diff_streaming
 from ..core.hashing import compute_stable_hunk_hash
-from ..data.hunk_tracking import advance_to_next_hunk
+from ..core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
+from ..data.hunk_tracking import advance_to_next_hunk, require_current_hunk_and_check_stale
 from ..i18n import _, ngettext
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
@@ -16,6 +17,7 @@ from ..utils.paths import (
     get_context_lines,
     get_current_hunk_hash_file_path,
     get_current_hunk_patch_file_path,
+    get_processed_skip_ids_file_path,
 )
 
 
@@ -97,3 +99,23 @@ def command_skip_file() -> None:
     print(msg, file=sys.stderr)
 
     advance_to_next_hunk()
+
+
+def command_skip_line(line_id_specification: str) -> None:
+    """Mark only the specified lines as skipped.
+
+    Args:
+        line_id_specification: Line ID specification (e.g., "1,3,5-7")
+    """
+    require_git_repository()
+    ensure_state_directory_exists()
+    require_current_hunk_and_check_stale()
+
+    requested_ids = parse_line_selection(line_id_specification)
+    already_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
+    combined_skip_ids = already_skipped_ids | set(requested_ids)
+
+    # Update processed skip IDs
+    write_line_ids_file(get_processed_skip_ids_file_path(), combined_skip_ids)
+
+    print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)

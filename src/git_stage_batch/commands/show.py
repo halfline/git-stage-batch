@@ -19,8 +19,12 @@ from ..utils.paths import (
 )
 
 
-def command_show() -> None:
-    """Show the first unprocessed hunk."""
+def command_show(*, porcelain: bool = False) -> None:
+    """Show the first unprocessed hunk.
+
+    Args:
+        porcelain: If True, produce no output and exit with code 0 if hunk found, 1 if none
+    """
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
@@ -39,9 +43,14 @@ def command_show() -> None:
             write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
             write_text_file_contents(get_current_hunk_hash_file_path(), patch_hash)
 
-            # Display this unprocessed hunk
-            print(patch_text)
+            # Display this unprocessed hunk (unless porcelain mode)
+            if not porcelain:
+                print(patch_text)
             return
 
     # Either no changes or all hunks are blocked
-    print(_("No more hunks to process."), file=sys.stderr)
+    if porcelain:
+        # Exit with code 1 for scripts
+        sys.exit(1)
+    else:
+        print(_("No more hunks to process."), file=sys.stderr)

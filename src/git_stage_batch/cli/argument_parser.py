@@ -100,6 +100,19 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_again.set_defaults(func=lambda _: commands.command_again())
 
+    # status - Show selected session status
+    parser_status = subparsers.add_parser(
+        "status",
+        aliases=["st"],
+        help=_("Show selected session status"),
+    )
+    parser_status.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Output JSON for scripting instead of human-readable text"),
+    )
+    parser_status.set_defaults(func=lambda args: commands.command_status(porcelain=args.porcelain))
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

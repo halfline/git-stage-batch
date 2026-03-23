@@ -9,9 +9,15 @@ from ..core.hashing import compute_stable_hunk_hash
 from ..data.session import require_session_started
 from ..i18n import _
 from ..output import print_line_level_changes
-from ..utils.file_io import read_text_file_contents
+from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
-from ..utils.paths import ensure_state_directory_exists, get_block_list_file_path, get_context_lines
+from ..utils.paths import (
+    ensure_state_directory_exists,
+    get_block_list_file_path,
+    get_context_lines,
+    get_selected_hunk_hash_file_path,
+    get_selected_hunk_patch_file_path,
+)
 
 
 def command_show() -> None:
@@ -30,6 +36,10 @@ def command_show() -> None:
         patch_text = patch.to_patch_text()
         patch_hash = compute_stable_hunk_hash(patch_text)
         if patch_hash not in blocked_hashes:
+            # Cache selected hunk state for status and other commands
+            write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
+            write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
+
             # Display this unprocessed hunk
             line_changes = build_line_changes_from_patch_text(patch_text)
             print_line_level_changes(line_changes)

@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import sys
 
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.diff_parser import parse_unified_diff_streaming
+from ..data.line_state import load_line_changes_from_state
 from ..i18n import _
+from ..core.line_selection import format_line_ids
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.paths import (
     get_block_list_file_path,
     get_context_lines,
+    get_line_changes_json_file_path,
     get_state_directory_path,
 )
 
@@ -53,6 +57,26 @@ def command_status() -> None:
 
     if selected_file:
         print(_("Current file: {}").format(selected_file))
+
+        # Try to load cached hunk location if available
+        line_changes_path = get_line_changes_json_file_path()
+        if line_changes_path.exists():
+            try:
+                line_changes = load_line_changes_from_state()
+                if line_changes and line_changes.path == selected_file:
+                    # Extract line IDs from line_changes
+                    line_ids = []
+                    for entry in line_changes.lines:
+                        if entry.old_line_number is not None:
+                            line_ids.append(str(entry.old_line_number))
+
+                    if line_ids:
+                        # Format as line range
+                        line_range = format_line_ids(line_ids)
+                        print(_("  Lines: {line_range}").format(line_range=line_range))
+            except (json.JSONDecodeError, KeyError):
+                # Cached state is corrupted, skip
+                pass
     elif total_hunks == 0:
         print(_("No changes in working tree"))
     else:

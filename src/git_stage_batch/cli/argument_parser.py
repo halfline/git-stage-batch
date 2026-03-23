@@ -132,6 +132,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_discard.set_defaults(func=lambda _: commands.command_discard())
 
+    # abort - Restore repository to pre-session state
+    parser_abort = subparsers.add_parser(
+        "abort",
+        help=_("Restore repository to pre-session state"),
+    )
+    parser_abort.set_defaults(func=lambda _: commands.command_abort())
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

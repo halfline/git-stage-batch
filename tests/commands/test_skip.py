@@ -4,8 +4,12 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands.skip import command_skip
+from git_stage_batch.commands.skip import command_skip, command_skip_line
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.data.hunk_tracking import find_and_cache_next_unblocked_hunk
+from git_stage_batch.exceptions import CommandError
+from git_stage_batch.utils.file_io import read_text_file_contents
+from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
 
 
 @pytest.fixture
@@ -103,3 +107,100 @@ class TestCommandSkip:
 
         # Second hunk should now be available
         # (Would normally use command_include here but we're just testing skip)
+
+
+class TestCommandSkipLine:
+    """Tests for skip --line command."""
+
+    def test_skip_line_requires_current_hunk(self, temp_git_repo):
+        """Test that skip --line requires an active hunk."""
+        with pytest.raises(CommandError):
+            command_skip_line("1")
+
+    def test_skip_line_marks_single_addition(self, temp_git_repo):
+        """Test skipping a single added line."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew line\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Skip line 1
+        command_skip_line("1")
+
+        # Check that skip IDs were recorded
+        skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
+        skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
+        assert skip_ids == ["1"]
+
+    def test_skip_line_marks_single_deletion(self, temp_git_repo):
+        """Test skipping a single deleted line."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Skip line 1
+        command_skip_line("1")
+
+        # Check that skip IDs were recorded
+        skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
+        skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
+        assert skip_ids == ["1"]
+
+    def test_skip_line_with_range(self, temp_git_repo):
+        """Test skipping a range of lines."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Skip lines 1-3
+        command_skip_line("1-3")
+
+        # Check that all IDs were recorded
+        skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
+        skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
+        assert skip_ids == ["1", "2", "3"]
+
+    def test_skip_line_partial_selection(self, temp_git_repo):
+        """Test skipping only some lines from a hunk."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Skip only line 1
+        command_skip_line("1")
+
+        # Check that only line 1 was recorded
+        skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
+        skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
+        assert skip_ids == ["1"]
+
+    def test_skip_line_accumulates_ids(self, temp_git_repo):
+        """Test that multiple skip --line calls accumulate."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Skip line 1
+        command_skip_line("1")
+
+        # Skip line 3
+        command_skip_line("3")
+
+        # Check that both IDs were recorded
+        skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
+        skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
+        assert set(skip_ids) == {"1", "3"}

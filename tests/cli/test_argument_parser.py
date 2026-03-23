@@ -79,3 +79,21 @@ def test_parse_command_line_show():
     assert args.command == "show"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_status():
+    """Test parsing status command."""
+    args = parse_command_line(["status"], quiet=True)
+    assert args is not None
+    assert args.command == "status"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_status_alias():
+    """Test parsing status command alias 'st'."""
+    args = parse_command_line(["st"], quiet=True)
+    assert args is not None
+    assert args.command == "st"
+    assert hasattr(args, "func")
+    assert callable(args.func)

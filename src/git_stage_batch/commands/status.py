@@ -11,7 +11,6 @@ from ..data.hunk_tracking import format_id_range, snapshots_are_stale
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import get_iteration_count
 from ..i18n import _
-from ..core.line_selection import format_line_ids
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.paths import (
@@ -43,7 +42,7 @@ def estimate_remaining_hunks() -> int:
     remaining = 0
     try:
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-            hunk_hash = compute_stable_hunk_hash(patch.to_patch_text())
+            hunk_hash = compute_stable_hunk_hash(patch.to_patch_bytes())
             file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
             file_path = file_path.removeprefix("a/").removeprefix("b/")
 
@@ -55,15 +54,22 @@ def estimate_remaining_hunks() -> int:
     return remaining
 
 
-def command_status() -> None:
-    """Show session progress and selected state."""
+def command_status(*, porcelain: bool = False) -> None:
+    """Show session progress and selected state.
+
+    Args:
+        porcelain: If True, output JSON for scripting instead of human-readable text
+    """
     require_git_repository()
 
     # Check if session is active
     state_dir = get_state_directory_path()
     if not state_dir.exists():
-        print(_("No batch staging session in progress."), file=sys.stderr)
-        print(_("Run 'git-stage-batch start' to begin."), file=sys.stderr)
+        if porcelain:
+            print(json.dumps({"session_active": False}))
+        else:
+            print(_("No batch staging session in progress."), file=sys.stderr)
+            print(_("Run 'git-stage-batch start' to begin."), file=sys.stderr)
         return
 
     # Gather metrics
@@ -111,27 +117,44 @@ def command_status() -> None:
     # Estimate remaining hunks
     remaining_estimate = estimate_remaining_hunks()
 
-    # Human-readable progress report
-    status = _("in progress") if has_selected else _("complete")
-    print(_("Session: iteration {} ({})").format(iteration, status))
-    print()
-
-    if selected_summary:
-        ids_str = format_id_range(selected_summary["ids"])
-        print(_("Current hunk:"))
-        print(_("  {}:{}").format(selected_summary['file'], selected_summary['line']))
-        print(_("  [#{}]").format(ids_str))
+    if porcelain:
+        # Machine-readable JSON output
+        output = {
+            "session_active": True,
+            "iteration": iteration,
+            "status": "in_progress" if has_selected else "complete",
+            "selected_hunk": selected_summary,
+            "progress": {
+                "included": included_count,
+                "skipped": len(skipped_hunks),
+                "discarded": discarded_count,
+                "remaining": remaining_estimate
+            },
+            "skipped_hunks": skipped_hunks
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        # Human-readable progress report
+        status = _("in progress") if has_selected else _("complete")
+        print(_("Session: iteration {} ({})").format(iteration, status))
         print()
 
-    print(_("Progress this iteration:"))
-    print(_("  Included:  {} hunks").format(included_count))
-    print(_("  Skipped:   {} hunks").format(len(skipped_hunks)))
-    print(_("  Discarded: {} hunks").format(discarded_count))
-    print(_("  Remaining: ~{} hunks").format(remaining_estimate))
+        if selected_summary:
+            ids_str = format_id_range(selected_summary["ids"])
+            print(_("Current hunk:"))
+            print(_("  {}:{}").format(selected_summary['file'], selected_summary['line']))
+            print(_("  [#{}]").format(ids_str))
+            print()
 
-    if skipped_hunks:
-        print()
-        print(_("Skipped hunks:"))
-        for hunk in skipped_hunks:
-            ids_str = format_id_range(hunk["ids"])
-            print(_("  {}:{} [#{}]").format(hunk['file'], hunk['line'], ids_str))
+        print(_("Progress this iteration:"))
+        print(_("  Included:  {} hunks").format(included_count))
+        print(_("  Skipped:   {} hunks").format(len(skipped_hunks)))
+        print(_("  Discarded: {} hunks").format(discarded_count))
+        print(_("  Remaining: ~{} hunks").format(remaining_estimate))
+
+        if skipped_hunks:
+            print()
+            print(_("Skipped hunks:"))
+            for hunk in skipped_hunks:
+                ids_str = format_id_range(hunk["ids"])
+                print(_("  {}:{} [#{}]").format(hunk['file'], hunk['line'], ids_str))

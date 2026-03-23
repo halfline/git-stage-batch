@@ -25,6 +25,9 @@ Homepage = "https://github.com/halfline/git-stage-batch"
 Repository = "https://github.com/halfline/git-stage-batch"
 "Bug Tracker" = "https://github.com/halfline/git-stage-batch/issues"
 
+[project.scripts]
+git-stage-batch = "git_stage_batch.cli.main:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",

@@ -159,6 +159,20 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_abort.set_defaults(func=lambda _: commands.command_abort())
 
+    # block-file - Permanently exclude a file
+    parser_block_file = subparsers.add_parser(
+        "block-file",
+        aliases=["bf"],
+        help=_("Permanently exclude a file (adds to .gitignore)"),
+    )
+    parser_block_file.add_argument(
+        "file_path",
+        nargs="?",
+        default="",
+        help=_("Path to the file to block (defaults to selected hunk's file)"),
+    )
+    parser_block_file.set_defaults(func=lambda args: commands.command_block_file(args.file_path))
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

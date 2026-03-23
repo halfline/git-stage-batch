@@ -128,6 +128,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_status.set_defaults(func=lambda args: commands.command_status(porcelain=args.porcelain))
 
+    # include - Stage the selected hunk
+    parser_include = subparsers.add_parser(
+        "include",
+        aliases=["i"],
+        help=_("Stage the selected hunk"),
+    )
+    parser_include.set_defaults(func=lambda _: commands.command_include())
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

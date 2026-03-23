@@ -4,9 +4,11 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands.discard import command_discard
+from git_stage_batch.commands.discard import command_discard, command_discard_line
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.exceptions import CommandError
 
 
 @pytest.fixture
@@ -155,3 +157,118 @@ class TestCommandDiscard:
         snapshot_file = snapshot_dir / "untracked.txt"
         assert snapshot_file.exists()
         assert snapshot_file.read_text() == original_content
+
+
+class TestCommandDiscardLine:
+    """Tests for discard --line command."""
+
+    def test_discard_line_requires_selected_hunk(self, temp_git_repo):
+        """Test that discard --line requires an active hunk."""
+        with pytest.raises(CommandError):
+            command_discard_line("1")
+
+    def test_discard_line_removes_single_addition(self, temp_git_repo):
+        """Test discarding a single added line."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew line\n")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Discard line 1
+        command_discard_line("1")
+
+        # Check that the line was removed from working tree
+        content = readme.read_text()
+        assert content == "# Test\n"
+        assert "New line" not in content
+
+    def test_discard_line_restores_single_deletion(self, temp_git_repo):
+        """Test discarding a single deleted line (restores it)."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Discard line 1 (the deletion)
+        command_discard_line("1")
+
+        # Check that the line was restored in working tree
+        content = readme.read_text()
+        assert content == "# Test\n"
+
+    def test_discard_line_with_range(self, temp_git_repo):
+        """Test discarding a range of lines."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Discard lines 1-2
+        command_discard_line("1-2")
+
+        # Check that lines 1-2 were removed but line 3 remains
+        content = readme.read_text()
+        assert content == "# Test\nLine 3\n"
+
+    def test_discard_line_partial_selection(self, temp_git_repo):
+        """Test discarding only some lines from a hunk."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Discard only line 2
+        command_discard_line("2")
+
+        # Check that only line 2 was removed
+        content = readme.read_text()
+        assert content == "# Test\nLine 1\nLine 3\n"
+
+    def test_discard_line_mixed_changes(self, temp_git_repo):
+        """Test discarding from a hunk with both additions and deletions."""
+        readme = temp_git_repo / "README.md"
+        # Start with some content
+        readme.write_text("# Test\nOld line 1\nOld line 2\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add content"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make changes: delete old lines, add new lines
+        readme.write_text("# Test\nNew line 1\nNew line 2\n")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Discard the first change (deletion of "Old line 1")
+        command_discard_line("1")
+
+        # Check that the deletion was undone (old line restored)
+        content = readme.read_text()
+        assert "Old line 1" in content
+
+    def test_discard_line_invalid_file_path(self, temp_git_repo):
+        """Test discarding from a file that doesn't exist in working tree."""
+        # Create a file and commit it
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("content\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Delete the file (shows as deletions in diff)
+        test_file.unlink()
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Try to discard - should fail because file doesn't exist
+        with pytest.raises(CommandError):
+            command_discard_line("1")

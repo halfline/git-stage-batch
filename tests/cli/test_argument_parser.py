@@ -34,3 +34,21 @@ def test_parse_command_line_invalid_arg():
     # (depends on argparse behavior, may return None or valid Namespace)
     # Just verify function is callable
     assert parse_command_line is not None
+
+
+def test_parse_command_line_start():
+    """Test parsing start command."""
+    args = parse_command_line(["start"], quiet=True)
+    assert args is not None
+    assert args.command == "start"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_stop():
+    """Test parsing stop command."""
+    args = parse_command_line(["stop"], quiet=True)
+    assert args is not None
+    assert args.command == "stop"
+    assert hasattr(args, "func")
+    assert callable(args.func)

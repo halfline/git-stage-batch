@@ -11,7 +11,12 @@ from git_stage_batch.commands.suggest_fixup import (
     _reset_suggest_fixup_state,
     _save_suggest_fixup_state,
     _should_reset_suggest_fixup_state,
+    command_suggest_fixup,
+    command_suggest_fixup_line,
 )
+from git_stage_batch.commands.start import command_start
+from git_stage_batch.data.hunk_tracking import find_and_cache_next_unblocked_hunk
+from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_suggest_fixup_state_file_path
 
 
@@ -227,3 +232,136 @@ class TestFindNextFixupCandidate:
         # Find fourth candidate (should be None - exhausted)
         candidate4 = _find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate3)
         assert candidate4 is None
+
+
+class TestCommandSuggestFixup:
+    """Tests for suggest-fixup command."""
+
+    def test_suggest_fixup_requires_current_hunk(self, temp_git_repo):
+        """Test that suggest-fixup requires an active hunk."""
+        with pytest.raises(CommandError):
+            command_suggest_fixup()
+
+    def test_suggest_fixup_finds_commit(self, temp_git_repo, capsys):
+        """Test finding a commit that modified current hunk."""
+        # Create a file
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify and commit
+        test_file.write_text("line 1 modified\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Modify line 1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Create changes in working tree
+        test_file.write_text("line 1 modified again\n")
+
+        # Start session and cache hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Suggest fixup with boundary that includes the modification
+        command_suggest_fixup(boundary="HEAD~2")
+
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out
+        assert "Modify line 1" in captured.out
+        assert "git commit --fixup=" in captured.out
+
+    def test_suggest_fixup_abort_clears_state(self, temp_git_repo):
+        """Test that abort flag clears state."""
+        # Create state
+        _save_suggest_fixup_state({"hunk_hash": "test"})
+        assert get_suggest_fixup_state_file_path().exists()
+
+        command_suggest_fixup(abort=True)
+
+        assert not get_suggest_fixup_state_file_path().exists()
+
+    def test_suggest_fixup_reset_restarts_iteration(self, temp_git_repo, capsys):
+        """Test that reset flag restarts iteration."""
+        # Create file with modifications
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 v2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Modify v2"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 v3\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Modify v3"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 v4\n")
+
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # First call
+        command_suggest_fixup(boundary="HEAD~3")
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out
+
+        # Second call with reset
+        command_suggest_fixup(boundary="HEAD~3", reset=True)
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out  # Should restart at 1
+
+
+class TestCommandSuggestFixupLine:
+    """Tests for suggest-fixup --line command."""
+
+    def test_suggest_fixup_line_requires_current_hunk(self, temp_git_repo):
+        """Test that suggest-fixup --line requires an active hunk."""
+        with pytest.raises(CommandError):
+            command_suggest_fixup_line("1")
+
+    def test_suggest_fixup_line_finds_commit_for_specific_lines(self, temp_git_repo, capsys):
+        """Test finding commit for specific lines."""
+        # Create a file with multiple lines
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify only line 1
+        test_file.write_text("line 1 modified\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Modify line 1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify both lines in working tree
+        test_file.write_text("line 1 modified again\nline 2 modified\nline 3\n")
+
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Suggest fixup for line 1 only
+        command_suggest_fixup_line("1", boundary="HEAD~2")
+
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out
+        assert "Modify line 1" in captured.out
+
+    def test_suggest_fixup_line_errors_on_new_lines(self, temp_git_repo):
+        """Test error when all specified lines are new."""
+        # Create empty file
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add empty file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Add new lines (all additions, no old line numbers)
+        test_file.write_text("new line 1\nnew line 2\n")
+
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Should error because all lines are additions
+        with pytest.raises(CommandError) as exc_info:
+            command_suggest_fixup_line("1,2", boundary="HEAD~1")
+
+        assert "No old line numbers" in str(exc_info.value.message)

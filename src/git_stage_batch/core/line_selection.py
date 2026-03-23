@@ -90,3 +90,51 @@ def write_line_ids_file(path: Path, ids: Iterable[int]) -> None:
     """Write line IDs to a file (one per line), sorted and deduplicated."""
     unique_sorted_ids = sorted(set(ids))
     write_text_file_contents(path, "\n".join(str(i) for i in unique_sorted_ids) + ("\n" if unique_sorted_ids else ""))
+
+
+def format_line_ids(line_ids: list[str | int]) -> str:
+    """Format a list of line IDs into a compact range representation.
+
+    Converts consecutive line IDs into ranges for compact display.
+    Examples:
+    - [1, 2, 3] → "1-3"
+    - [1, 3, 5] → "1,3,5"
+    - [1, 2, 3, 5, 7, 8, 9] → "1-3,5,7-9"
+
+    Args:
+        line_ids: List of line IDs (as strings or integers)
+
+    Returns:
+        Formatted string representation
+    """
+    if not line_ids:
+        return ""
+
+    # Convert to integers, deduplicate, and sort
+    ids = sorted(set(int(lid) for lid in line_ids))
+
+    # Group consecutive IDs into ranges
+    ranges = []
+    start = ids[0]
+    end = ids[0]
+
+    for i in range(1, len(ids)):
+        if ids[i] == end + 1:
+            # Consecutive, extend current range
+            end = ids[i]
+        else:
+            # Non-consecutive, save current range and start new one
+            if start == end:
+                ranges.append(str(start))
+            else:
+                ranges.append(f"{start}-{end}")
+            start = ids[i]
+            end = ids[i]
+
+    # Don't forget the last range
+    if start == end:
+        ranges.append(str(start))
+    else:
+        ranges.append(f"{start}-{end}")
+
+    return ",".join(ranges)

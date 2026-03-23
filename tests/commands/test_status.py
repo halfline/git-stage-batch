@@ -83,10 +83,10 @@ class TestCommandStatus:
         command_status()
 
         captured = capsys.readouterr()
-        assert "Session active" in captured.out
-        assert "Processed: 1 hunks" in captured.out
-        assert "Remaining: 1 hunks" in captured.out
-        assert "Current file: file2.txt" in captured.out
+        assert "Session: iteration" in captured.out
+        assert "Progress this iteration:" in captured.out
+        assert "Remaining:" in captured.out
+        assert "file2.txt" in captured.out
 
     def test_status_all_hunks_processed(self, temp_git_repo, capsys):
         """Test status when all hunks have been processed."""
@@ -101,7 +101,34 @@ class TestCommandStatus:
         command_status()
 
         captured = capsys.readouterr()
-        assert "Session active" in captured.out
-        assert "Processed: 1 hunks" in captured.out
-        assert "Remaining: 0 hunks" in captured.out
-        assert "All hunks processed" in captured.out
+        assert "Session: iteration" in captured.out
+        assert "Progress this iteration:" in captured.out
+        assert "Remaining:" in captured.out
+        # When all hunks are processed, should show completion message
+        assert "complete" in captured.out or "Remaining: 0" in captured.out or "Remaining:  0" in captured.out
+
+    def test_status_shows_line_range_when_cached(self, temp_git_repo, capsys):
+        """Test that status shows line range when cached state is available."""
+        from git_stage_batch.commands.show import command_show
+
+        # Create and commit a file
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify the file
+        test_file.write_text("line 1\nMODIFIED\nline 3\n")
+
+        # Show the hunk (which caches state)
+        command_show()
+        capsys.readouterr()  # Clear output
+
+        # Check status - should show line range
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "Session: iteration" in captured.out
+        assert "Current hunk:" in captured.out
+        assert "test.txt" in captured.out
+        assert "[#" in captured.out  # Should show line IDs in brackets

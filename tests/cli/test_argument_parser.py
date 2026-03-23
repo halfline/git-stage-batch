@@ -52,3 +52,21 @@ def test_parse_command_line_stop():
     assert args.command == "stop"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_again():
+    """Test parsing again command."""
+    args = parse_command_line(["again"], quiet=True)
+    assert args is not None
+    assert args.command == "again"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_again_alias():
+    """Test parsing again command alias 'a'."""
+    args = parse_command_line(["a"], quiet=True)
+    assert args is not None
+    assert args.command == "a"
+    assert hasattr(args, "func")
+    assert callable(args.func)

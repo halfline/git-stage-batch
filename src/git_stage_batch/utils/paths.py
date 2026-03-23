@@ -170,3 +170,12 @@ def get_context_lines() -> int:
         except ValueError:
             return 3
     return 3
+
+
+def get_suggest_fixup_state_file_path() -> Path:
+    """Get the path to the suggest-fixup state file.
+
+    Returns:
+        Path to suggest-fixup state JSON file
+    """
+    return get_state_directory_path() / "suggest-fixup-state.json"

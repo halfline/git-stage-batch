@@ -115,3 +115,21 @@ def test_parse_command_line_include_alias():
     assert args.command == "i"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_skip():
+    """Test parsing skip command."""
+    args = parse_command_line(["skip"], quiet=True)
+    assert args is not None
+    assert args.command == "skip"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_skip_alias():
+    """Test parsing skip command alias 's'."""
+    args = parse_command_line(["s"], quiet=True)
+    assert args is not None
+    assert args.command == "s"
+    assert hasattr(args, "func")
+    assert callable(args.func)

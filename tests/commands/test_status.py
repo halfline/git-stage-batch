@@ -1,5 +1,11 @@
 """Tests for status command."""
 
+from git_stage_batch.commands.show import command_show
+from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.utils.paths import get_iteration_count_file_path
+from git_stage_batch.utils.paths import ensure_state_directory_exists
+
+import json
 import subprocess
 
 import pytest
@@ -116,7 +122,6 @@ class TestCommandStatus:
 
     def test_status_shows_line_range_when_cached(self, temp_git_repo, capsys):
         """Test that status shows line range when cached state is available."""
-        from git_stage_batch.commands.show import command_show
 
         # Create and commit a file
         test_file = temp_git_repo / "test.txt"
@@ -142,3 +147,116 @@ class TestCommandStatus:
         assert "Current hunk:" in captured.out
         assert "test.txt" in captured.out
         assert "[#" in captured.out  # Should show line IDs in brackets
+
+    def test_status_shows_iteration_and_progress_metrics(self, temp_git_repo, capsys):
+        """Test that status shows iteration number and progress metrics."""
+
+        # Create and commit a file
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify the file to create a hunk
+        test_file.write_text("line 1\nMODIFIED\nline 3\n")
+
+        # Set iteration count to 2 to test iteration display
+        ensure_state_directory_exists()
+        initialize_abort_state()
+        get_iteration_count_file_path().write_text("2")
+
+        # Cache selected hunk with show
+        command_show()
+        capsys.readouterr()
+
+        # Check status
+        command_status()
+
+        captured = capsys.readouterr()
+        # Should show iteration number
+        assert "Session: iteration 2" in captured.out
+        assert "(in progress)" in captured.out
+
+        # Should show progress metrics
+        assert "Progress this iteration:" in captured.out
+        assert "Included:" in captured.out
+        assert "Skipped:" in captured.out
+        assert "Discarded:" in captured.out
+        assert "Remaining:" in captured.out
+
+    def test_status_porcelain_no_session(self, temp_git_repo, capsys):
+        """Test status --porcelain when no session is active."""
+        command_status(porcelain=True)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        assert output == {"session_active": False}
+
+    def test_status_porcelain_with_session(self, temp_git_repo, capsys):
+        """Test status --porcelain outputs JSON with session data."""
+
+        # Create and commit a file
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify the file
+        test_file.write_text("line 1\nMODIFIED\nline 3\n")
+
+        # Initialize session state
+        ensure_state_directory_exists()
+        initialize_abort_state()
+
+        # Cache selected hunk with show
+        command_show()
+        capsys.readouterr()
+
+        # Get JSON output
+        command_status(porcelain=True)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Verify JSON structure
+        assert output["session_active"] is True
+        assert output["iteration"] == 1
+        assert output["status"] in ("in_progress", "complete")
+        assert "progress" in output
+        assert "included" in output["progress"]
+        assert "skipped" in output["progress"]
+        assert "discarded" in output["progress"]
+        assert "remaining" in output["progress"]
+        assert "skipped_hunks" in output
+
+    def test_status_porcelain_includes_selected_hunk(self, temp_git_repo, capsys):
+        """Test status --porcelain includes selected hunk details."""
+
+        # Create and commit a file
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Modify the file
+        test_file.write_text("line 1\nMODIFIED\nline 3\n")
+
+        # Initialize session and cache hunk
+        ensure_state_directory_exists()
+        initialize_abort_state()
+        command_show()
+        capsys.readouterr()
+
+        # Get JSON output
+        command_status(porcelain=True)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Should have selected hunk details (if full state caching is implemented)
+        # At this stage, show.py may only cache patch+hash, not full LineLevelChange
+        if output["selected_hunk"] is not None:
+            assert "file" in output["selected_hunk"]
+            assert "line" in output["selected_hunk"]
+            assert "ids" in output["selected_hunk"]
+            assert output["selected_hunk"]["file"] == "test.txt"

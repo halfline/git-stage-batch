@@ -186,3 +186,67 @@ class TestCommandShow:
         # Verify hash content
         cached_hash = get_current_hunk_hash_file_path().read_text()
         assert cached_hash == expected_hash
+
+    def test_show_porcelain_with_hunk(self, temp_git_repo, capsys):
+        """Test that show --porcelain exits 0 with no output when hunk exists."""
+        from git_stage_batch.data.session import initialize_abort_state
+        from git_stage_batch.utils.paths import ensure_state_directory_exists
+
+        # Modify the README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+
+        # Initialize session without displaying anything
+        ensure_state_directory_exists()
+        initialize_abort_state()
+
+        # Should exit normally (no exception) with no output
+        command_show(porcelain=True)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_show_porcelain_no_hunks(self, temp_git_repo):
+        """Test that show --porcelain exits 1 when no hunks remain."""
+        from git_stage_batch.data.session import initialize_abort_state
+        from git_stage_batch.utils.paths import ensure_state_directory_exists
+
+        # Initialize session without changes
+        ensure_state_directory_exists()
+        initialize_abort_state()
+
+        # No changes, should exit with code 1
+        with pytest.raises(SystemExit) as exc_info:
+            command_show(porcelain=True)
+
+        assert exc_info.value.code == 1
+
+    def test_show_porcelain_all_blocked(self, temp_git_repo):
+        """Test that show --porcelain exits 1 when all hunks are blocked."""
+        from git_stage_batch.core.hashing import compute_stable_hunk_hash
+        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+        from git_stage_batch.data.session import initialize_abort_state
+        from git_stage_batch.utils.git import stream_git_command
+        from git_stage_batch.utils.paths import ensure_state_directory_exists, get_block_list_file_path, get_context_lines
+
+        # Modify the README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+
+        # Initialize session
+        ensure_state_directory_exists()
+        initialize_abort_state()
+
+        # Block the hunk
+        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
+        patch_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+
+        blocklist_path = get_block_list_file_path()
+        blocklist_path.write_text(f"{patch_hash}\n")
+
+        # Should exit with code 1
+        with pytest.raises(SystemExit) as exc_info:
+            command_show(porcelain=True)
+
+        assert exc_info.value.code == 1

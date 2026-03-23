@@ -9,6 +9,9 @@ authors = [
 requires-python = ">=3.13"
 dependencies = []
 
+[project.scripts]
+git-stage-batch = "git_stage_batch.cli.main:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",

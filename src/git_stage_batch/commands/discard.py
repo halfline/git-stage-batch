@@ -7,9 +7,18 @@ import sys
 
 from ..core.diff_parser import build_line_changes_from_patch_text, get_first_matching_file_from_diff, parse_unified_diff_streaming
 from ..core.hashing import compute_stable_hunk_hash
-from ..data.hunk_tracking import advance_to_and_show_next_change, advance_to_next_change
+from ..core.line_selection import parse_line_selection
+from ..data.hunk_tracking import (
+    advance_to_and_show_next_change,
+    advance_to_next_change,
+    recalculate_selected_hunk_for_file,
+    require_selected_hunk,
+)
+from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started, snapshot_file_if_untracked
+from ..exceptions import exit_with_error
 from ..i18n import _
+from ..staging.operations import build_target_working_tree_content_with_discarded_lines
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
 from ..utils.git import get_git_repository_root_path, require_git_repository, stream_git_command
 from ..utils.paths import (
@@ -141,3 +150,37 @@ def command_discard_file() -> None:
     print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
 
     advance_to_and_show_next_change()
+
+
+def command_discard_line(line_id_specification: str) -> None:
+    """Discard only the specified lines from the working tree.
+
+    Args:
+        line_id_specification: Line ID specification (e.g., "1,3,5-7")
+    """
+    require_git_repository()
+    require_session_started()
+    ensure_state_directory_exists()
+    require_selected_hunk()
+
+    requested_ids = parse_line_selection(line_id_specification)
+    line_changes = load_line_changes_from_state()
+
+    # Get selected working tree content
+    working_file_path = get_git_repository_root_path() / line_changes.path
+    if working_file_path.exists():
+        working_text = working_file_path.read_text(encoding="utf-8", errors="surrogateescape")
+    else:
+        exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
+
+    # Build new working tree content with selected lines discarded
+    target_working_content = build_target_working_tree_content_with_discarded_lines(
+        line_changes, set(requested_ids), working_text)
+
+    # Write back to working tree
+    working_file_path.write_text(target_working_content, encoding="utf-8", errors="surrogateescape")
+
+    # After modifying working tree, recalculate hunk for the SAME file
+    recalculate_selected_hunk_for_file(line_changes.path)
+
+    print(_("✓ Discarded line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)

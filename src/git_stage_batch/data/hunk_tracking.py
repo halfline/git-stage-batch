@@ -115,3 +115,19 @@ def advance_to_and_show_next_change() -> None:
         print_line_level_changes(line_changes)
     else:
         print(_("No more hunks to process."), file=sys.stderr)
+
+
+def get_selected_change_file_path() -> Optional[str]:
+    """Get the file path of the currently cached hunk.
+
+    Returns:
+        Repository-relative path if a hunk is selected, None otherwise
+    """
+    json_path = get_line_changes_json_file_path()
+    if not json_path.exists():
+        return None
+    try:
+        data = json.loads(read_text_file_contents(json_path))
+        return data.get("path")
+    except Exception:
+        return None

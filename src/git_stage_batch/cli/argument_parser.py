@@ -46,6 +46,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         '?': ['--help'],
         'if': ['include', '--file'],
         'il': ['include', '--line'],
+        'sf': ['skip', '--file'],
     }
 
     # Expand quick actions
@@ -140,7 +141,15 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["s"],
         help=_("Skip the current hunk without staging"),
     )
-    parser_skip.set_defaults(func=lambda _: commands.command_skip())
+    parser_skip.add_argument(
+        "--file",
+        action="store_true",
+        help=_("Skip all hunks from the current file"),
+    )
+    parser_skip.set_defaults(func=lambda args: (
+        commands.command_skip_file() if args.file
+        else commands.command_skip()
+    ))
 
     # discard - Remove the current hunk from working tree
     parser_discard = subparsers.add_parser(

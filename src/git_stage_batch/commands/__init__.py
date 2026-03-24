@@ -7,6 +7,7 @@ from .again import command_again
 from .block_file import command_block_file
 from .discard import command_discard
 from .include import command_include
+from .new import command_new_batch
 from .show import command_show
 from .skip import command_skip
 from .start import command_start
@@ -21,6 +22,7 @@ __all__ = [
     "command_block_file",
     "command_discard",
     "command_include",
+    "command_new_batch",
     "command_show",
     "command_skip",
     "command_start",

@@ -275,6 +275,55 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         )
     ))
 
+    # new - Create a new batch
+    parser_new = subparsers.add_parser(
+        "new",
+        help=_("Create a new batch"),
+    )
+    parser_new.add_argument(
+        "batch_name",
+        help=_("Name of the batch to create"),
+    )
+    parser_new.add_argument(
+        "--note",
+        default="",
+        help=_("Optional description for the batch"),
+    )
+    parser_new.set_defaults(func=lambda args: commands.command_new_batch(args.batch_name, args.note))
+
+    # list - List all batches
+    parser_list = subparsers.add_parser(
+        "list",
+        help=_("List all batches"),
+    )
+    parser_list.set_defaults(func=lambda _: commands.command_list_batches())
+
+    # drop - Delete a batch
+    parser_drop = subparsers.add_parser(
+        "drop",
+        help=_("Delete a batch"),
+    )
+    parser_drop.add_argument(
+        "batch_name",
+        help=_("Name of the batch to delete"),
+    )
+    parser_drop.set_defaults(func=lambda args: commands.command_drop_batch(args.batch_name))
+
+    # annotate - Add/update batch description
+    parser_annotate = subparsers.add_parser(
+        "annotate",
+        help=_("Add or update batch description"),
+    )
+    parser_annotate.add_argument(
+        "batch_name",
+        help=_("Name of the batch"),
+    )
+    parser_annotate.add_argument(
+        "note",
+        help=_("Description text"),
+    )
+    parser_annotate.set_defaults(func=lambda args: commands.command_annotate_batch(args.batch_name, args.note))
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

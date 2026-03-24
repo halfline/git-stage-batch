@@ -44,6 +44,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     # Mapping from shortcuts to their expanded forms
     quick_actions = {
         '?': ['--help'],
+        'if': ['include', '--file'],
     }
 
     # Expand quick actions
@@ -134,7 +135,21 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["i"],
         help=_("Stage the selected hunk"),
     )
-    parser_include.set_defaults(func=lambda _: commands.command_include())
+    parser_include.add_argument(
+        "--file",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=_("Operate on entire file (live working tree state). "
+               "If PATH omitted, uses selected hunk's file. "
+               "Without --line, stages entire file. "
+               "With --line, operates on line IDs from entire file."),
+    )
+    parser_include.set_defaults(func=lambda args: (
+        commands.command_include_file(args.file) if args.file is not None
+        else commands.command_include()
+    ))
 
     # skip - Skip the selected hunk without staging
     parser_skip = subparsers.add_parser(

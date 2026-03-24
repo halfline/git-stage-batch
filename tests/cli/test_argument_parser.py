@@ -304,3 +304,54 @@ def test_parse_command_line_suggest_fixup_with_flags():
     assert args.reset is True
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_new():
+    """Test parsing new command."""
+    args = parse_command_line(["new", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.command == "new"
+    assert args.batch_name == "my-batch"
+    assert args.note == ""
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_new_with_note():
+    """Test parsing new command with --note flag."""
+    args = parse_command_line(["new", "my-batch", "--note", "test note"], quiet=True)
+    assert args is not None
+    assert args.batch_name == "my-batch"
+    assert args.note == "test note"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_list():
+    """Test parsing list command."""
+    args = parse_command_line(["list"], quiet=True)
+    assert args is not None
+    assert args.command == "list"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_drop():
+    """Test parsing drop command."""
+    args = parse_command_line(["drop", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.command == "drop"
+    assert args.batch_name == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_annotate():
+    """Test parsing annotate command."""
+    args = parse_command_line(["annotate", "my-batch", "new note"], quiet=True)
+    assert args is not None
+    assert args.command == "annotate"
+    assert args.batch_name == "my-batch"
+    assert args.note == "new note"
+    assert hasattr(args, "func")
+    assert callable(args.func)

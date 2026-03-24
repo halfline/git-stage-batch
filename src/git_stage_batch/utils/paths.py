@@ -40,6 +40,15 @@ def get_processed_skip_ids_file_path() -> Path:
     return get_state_directory_path() / "processed.skip"
 
 
+def get_processed_batch_ids_file_path() -> Path:
+    """Get the path to the processed batch IDs file.
+
+    Returns:
+        Path to processed batch IDs file
+    """
+    return get_state_directory_path() / "processed.batch"
+
+
 def get_current_lines_json_file_path() -> Path:
     """Get the path to the current lines JSON file.
 
@@ -175,6 +184,15 @@ def get_start_index_tree_file_path() -> Path:
     return get_state_directory_path() / "start-index-tree"
 
 
+def get_start_batch_refs_file_path() -> Path:
+    """Get the path to file storing batch refs at session start.
+
+    Returns:
+        Path to start batch refs file (JSON format: {batch_name: commit_sha})
+    """
+    return get_state_directory_path() / "start-batch-refs.json"
+
+
 def get_context_lines_file_path() -> Path:
     """Get the path to the context lines configuration file.
 
@@ -235,6 +253,15 @@ def get_discarded_hunks_file_path() -> Path:
     return get_state_directory_path() / "discarded-hunks"
 
 
+def get_batched_hunks_file_path() -> Path:
+    """Get the path to the batched hunks file.
+
+    Returns:
+        Path to batched hunks file
+    """
+    return get_state_directory_path() / "batched-hunks"
+
+
 def get_batches_directory_path() -> Path:
     """Get the directory containing batch metadata.
 
@@ -266,6 +293,30 @@ def get_batch_metadata_file_path(batch_name: str) -> Path:
         Path to batch metadata JSON file
     """
     return get_batch_directory_path(batch_name) / "metadata.json"
+
+
+def get_batch_claimed_hunks_file_path(batch_name: str) -> Path:
+    """Get the claimed hunks file path for a specific batch.
+
+    Args:
+        batch_name: Name of the batch
+
+    Returns:
+        Path to batch's claimed hunks file
+    """
+    return get_batch_directory_path(batch_name) / "claimed_hunks"
+
+
+def get_batch_claimed_line_ids_file_path(batch_name: str) -> Path:
+    """Get the claimed line IDs file path for a specific batch.
+
+    Args:
+        batch_name: Name of the batch
+
+    Returns:
+        Path to batch's claimed line IDs file
+    """
+    return get_batch_directory_path(batch_name) / "claimed_line_ids"
 
 
 def get_batch_refs_snapshot_file_path() -> Path:

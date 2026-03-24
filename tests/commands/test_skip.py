@@ -190,3 +190,53 @@ class TestCommandSkipLine:
         skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
         skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
         assert set(skip_ids) == {"1", "3"}
+
+
+class TestCommandSkipToBatch:
+    """Tests for skip to batch command."""
+
+    def test_skip_to_batch_saves_and_skips(self, temp_git_repo):
+        """Test that skip to batch saves changes to batch and skips."""
+        from git_stage_batch.batch import list_batch_files, read_file_from_batch
+        from git_stage_batch.commands.skip import command_skip_to_batch
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified content\n")
+
+        command_skip_to_batch("test-batch")
+
+        # Verify batch was created and contains the file
+        files = list_batch_files("test-batch")
+        assert "README.md" in files
+
+        # Verify file content was saved to batch
+        content = read_file_from_batch("test-batch", "README.md")
+        assert content == "# Test\nModified content\n"
+
+        # Verify changes are NOT staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert result.stdout == ""
+
+    def test_skip_to_batch_auto_creates_batch(self, temp_git_repo):
+        """Test that skip to batch auto-creates batch if it doesn't exist."""
+        from git_stage_batch.batch.validation import batch_exists
+        from git_stage_batch.commands.skip import command_skip_to_batch
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Batch doesn't exist yet
+        assert not batch_exists("auto-batch")
+
+        command_skip_to_batch("auto-batch")
+
+        # Batch should now exist
+        assert batch_exists("auto-batch")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .abort import command_abort
 from .again import command_again
+from .annotate import command_annotate_batch
 from .block_file import command_block_file
 from .discard import command_discard, command_discard_file, command_discard_line
 from .drop import command_drop_batch
@@ -21,6 +22,7 @@ from .unblock_file import command_unblock_file
 __all__ = [
     "command_abort",
     "command_again",
+    "command_annotate_batch",
     "command_block_file",
     "command_discard",
     "command_discard_file",

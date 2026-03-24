@@ -45,6 +45,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     quick_actions = {
         '?': ['--help'],
         'if': ['include', '--file'],
+        'il': ['include', '--line'],
     }
 
     # Expand quick actions
@@ -136,6 +137,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Stage the selected hunk"),
     )
     parser_include.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Stage only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_include.add_argument(
         "--file",
         nargs="?",
         const="",
@@ -147,7 +155,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                "With --line, operates on line IDs from entire file."),
     )
     parser_include.set_defaults(func=lambda args: (
-        commands.command_include_file(args.file) if args.file is not None
+        commands.command_include_line(args.line_ids) if args.line_ids
+        else commands.command_include_file(args.file) if args.file is not None
         else commands.command_include()
     ))
 

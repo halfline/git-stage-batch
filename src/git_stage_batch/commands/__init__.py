@@ -9,6 +9,7 @@ from .block_file import command_block_file
 from .discard import command_discard
 from .drop import command_drop_batch
 from .include import command_include
+from .include_from import command_include_from_batch
 from .list import command_list_batches
 from .new import command_new_batch
 from .show import command_show
@@ -28,6 +29,7 @@ __all__ = [
     "command_discard",
     "command_drop_batch",
     "command_include",
+    "command_include_from_batch",
     "command_list_batches",
     "command_new_batch",
     "command_show",

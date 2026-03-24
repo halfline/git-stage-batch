@@ -48,6 +48,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         'il': ['include', '--line'],
         'sf': ['skip', '--file'],
         'sl': ['skip', '--line'],
+        'df': ['discard', '--file'],
     }
 
     # Expand quick actions
@@ -174,7 +175,15 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["d"],
         help=_("Remove the current hunk from working tree"),
     )
-    parser_discard.set_defaults(func=lambda _: commands.command_discard())
+    parser_discard.add_argument(
+        "--file",
+        action="store_true",
+        help=_("Discard the entire file containing the current hunk"),
+    )
+    parser_discard.set_defaults(func=lambda args: (
+        commands.command_discard_file() if args.file
+        else commands.command_discard()
+    ))
 
     # abort - Restore repository to pre-session state
     parser_abort = subparsers.add_parser(

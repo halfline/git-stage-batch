@@ -49,6 +49,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         'sf': ['skip', '--file'],
         'sl': ['skip', '--line'],
         'df': ['discard', '--file'],
+        'dl': ['discard', '--line'],
     }
 
     # Expand quick actions
@@ -176,12 +177,20 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Remove the selected hunk from working tree"),
     )
     parser_discard.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Discard only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_discard.add_argument(
         "--file",
         action="store_true",
         help=_("Discard the entire file containing the selected hunk"),
     )
     parser_discard.set_defaults(func=lambda args: (
-        commands.command_discard_file() if args.file
+        commands.command_discard_line(args.line_ids) if args.line_ids
+        else commands.command_discard_file() if args.file
         else commands.command_discard()
     ))
 

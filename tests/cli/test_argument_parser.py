@@ -29,7 +29,7 @@ def test_parse_command_line_quick_action_help():
 
 def test_parse_command_line_invalid_arg():
     """Test parsing invalid argument returns None."""
-    args = parse_command_line(["--invalid-arg"], quiet=True)
+    parse_command_line(["--invalid-arg"], quiet=True)
     # Should return None for invalid arguments
     # (depends on argparse behavior, may return None or valid Namespace)
     # Just verify function is callable
@@ -121,7 +121,7 @@ def test_parse_command_line_include_with_file():
     """Test parsing include command with --file flag."""
     args = parse_command_line(["include", "--file"], quiet=True)
     assert args is not None
-    assert args.file is True
+    assert args.file == ""
     assert hasattr(args, "func")
     assert callable(args.func)
 
@@ -193,7 +193,7 @@ def test_parse_command_line_discard_with_file():
     """Test parsing discard command with --file flag."""
     args = parse_command_line(["discard", "--file"], quiet=True)
     assert args is not None
-    assert args.file is True
+    assert args.file == ""
     assert hasattr(args, "func")
     assert callable(args.func)
 
@@ -353,5 +353,82 @@ def test_parse_command_line_annotate():
     assert args.command == "annotate"
     assert args.batch_name == "my-batch"
     assert args.note == "new note"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_show_with_from():
+    """Test parsing show command with --from flag."""
+    args = parse_command_line(["show", "--from", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.from_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_include_with_from():
+    """Test parsing include command with --from flag."""
+    args = parse_command_line(["include", "--from", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.from_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_discard_with_from():
+    """Test parsing discard command with --from flag."""
+    args = parse_command_line(["discard", "--from", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.from_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_apply():
+    """Test parsing apply command with required --from flag."""
+    args = parse_command_line(["apply", "--from", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.command == "apply"
+    assert args.from_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_reset_with_file():
+    """Test parsing reset command with --file flag."""
+    args = parse_command_line(["reset", "--from", "my-batch", "--file", "file.txt"], quiet=True)
+    assert args is not None
+    assert args.command == "reset"
+    assert args.from_batch == "my-batch"
+    assert args.file == "file.txt"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_reset_with_to():
+    """Test parsing reset command with --to flag."""
+    args = parse_command_line(["reset", "--from", "my-batch", "--to", "other-batch"], quiet=True)
+    assert args is not None
+    assert args.command == "reset"
+    assert args.from_batch == "my-batch"
+    assert args.to_batch == "other-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_include_with_to():
+    """Test parsing include command with --to flag."""
+    args = parse_command_line(["include", "--to", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.to_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_discard_with_to():
+    """Test parsing discard command with --to flag."""
+    args = parse_command_line(["discard", "--to", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.to_batch == "my-batch"
     assert hasattr(args, "func")
     assert callable(args.func)

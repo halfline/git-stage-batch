@@ -392,3 +392,21 @@ def test_parse_command_line_apply():
     assert args.from_batch == "my-batch"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_skip_with_to():
+    """Test parsing skip command with --to flag."""
+    args = parse_command_line(["skip", "--to", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.to_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_discard_with_to():
+    """Test parsing discard command with --to flag."""
+    args = parse_command_line(["discard", "--to", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.to_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)

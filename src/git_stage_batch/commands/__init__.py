@@ -12,6 +12,7 @@ from .include import command_include, command_include_file, command_include_line
 from .list import command_list_batches
 from .new import command_new_batch
 from .show import command_show
+from .show_from import command_show_from_batch
 from .skip import command_skip, command_skip_file, command_skip_line
 from .start import command_start
 from .status import command_status
@@ -34,6 +35,7 @@ __all__ = [
     "command_list_batches",
     "command_new_batch",
     "command_show",
+    "command_show_from_batch",
     "command_skip",
     "command_skip_file",
     "command_skip_line",

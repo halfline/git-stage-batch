@@ -311,7 +311,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Name of the batch to create"),
     )
     parser_new.add_argument(
-        "--note",
+        "-m", "--note",
         default="",
         help=_("Optional description for the batch"),
     )

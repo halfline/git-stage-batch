@@ -48,6 +48,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         'il': ['include', '--line'],
         'sf': ['skip', '--file'],
         'sl': ['skip', '--line'],
+        'df': ['discard', '--file'],
     }
 
     # Expand quick actions
@@ -192,7 +193,21 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["d"],
         help=_("Remove the selected hunk from working tree"),
     )
-    parser_discard.set_defaults(func=lambda _: commands.command_discard())
+    parser_discard.add_argument(
+        "--file",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=_("Operate on entire file (live working tree state). "
+               "If PATH omitted, uses selected hunk's file. "
+               "Without --line, discards entire file. "
+               "With --line, operates on line IDs from entire file."),
+    )
+    parser_discard.set_defaults(func=lambda args: (
+        commands.command_discard_file(args.file) if args.file is not None
+        else commands.command_discard()
+    ))
 
     # abort - Restore repository to pre-session state
     parser_abort = subparsers.add_parser(

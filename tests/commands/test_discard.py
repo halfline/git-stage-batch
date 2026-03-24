@@ -258,3 +258,49 @@ class TestCommandDiscardLine:
         # Try to discard - should fail because file doesn't exist
         with pytest.raises(CommandError):
             command_discard_line("1")
+
+
+class TestCommandDiscardToBatch:
+    """Tests for discard to batch command."""
+
+    def test_discard_to_batch_saves_and_discards(self, temp_git_repo):
+        """Test that discard to batch saves changes to batch and discards from working tree."""
+        from git_stage_batch.batch import list_batch_files, read_file_from_batch
+        from git_stage_batch.commands.discard import command_discard_to_batch
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified content\n")
+
+        command_discard_to_batch("test-batch")
+
+        # Verify batch was created and contains the file
+        files = list_batch_files("test-batch")
+        assert "README.md" in files
+
+        # Verify file content was saved to batch
+        content = read_file_from_batch("test-batch", "README.md")
+        assert content == "# Test\nModified content\n"
+
+        # Verify changes were discarded from working tree
+        assert readme.read_text() == "# Test\n"
+
+    def test_discard_to_batch_auto_creates_batch(self, temp_git_repo):
+        """Test that discard to batch auto-creates batch if it doesn't exist."""
+        from git_stage_batch.batch.validation import batch_exists
+        from git_stage_batch.commands.discard import command_discard_to_batch
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Batch doesn't exist yet
+        assert not batch_exists("auto-batch")
+
+        command_discard_to_batch("auto-batch")
+
+        # Batch should now exist
+        assert batch_exists("auto-batch")
+
+        # Changes should be discarded
+        assert readme.read_text() == "# Test\n"

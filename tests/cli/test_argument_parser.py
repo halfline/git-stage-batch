@@ -355,3 +355,58 @@ def test_parse_command_line_annotate():
     assert args.note == "new note"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_show_with_from():
+    """Test parsing show command with --from flag."""
+    args = parse_command_line(["show", "--from", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.from_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_include_with_from():
+    """Test parsing include command with --from flag."""
+    args = parse_command_line(["include", "--from", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.from_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_discard_with_from():
+    """Test parsing discard command with --from flag."""
+    args = parse_command_line(["discard", "--from", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.from_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_apply():
+    """Test parsing apply command with required --from flag."""
+    args = parse_command_line(["apply", "--from", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.command == "apply"
+    assert args.from_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_include_with_to():
+    """Test parsing include command with --to flag."""
+    args = parse_command_line(["include", "--to", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.to_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_discard_with_to():
+    """Test parsing discard command with --to flag."""
+    args = parse_command_line(["discard", "--to", "my-batch"], quiet=True)
+    assert args is not None
+    assert args.to_batch == "my-batch"
+    assert hasattr(args, "func")
+    assert callable(args.func)

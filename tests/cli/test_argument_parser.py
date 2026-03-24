@@ -198,6 +198,15 @@ def test_parse_command_line_discard_with_file():
     assert callable(args.func)
 
 
+def test_parse_command_line_discard_with_line():
+    """Test parsing discard command with --line flag."""
+    args = parse_command_line(["discard", "--line", "1,3,5-7"], quiet=True)
+    assert args is not None
+    assert args.line_ids == "1,3,5-7"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
 def test_parse_command_line_abort():
     """Test parsing abort command."""
     args = parse_command_line(["abort"], quiet=True)

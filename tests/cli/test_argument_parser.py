@@ -162,6 +162,15 @@ def test_parse_command_line_skip_with_file():
     assert callable(args.func)
 
 
+def test_parse_command_line_skip_with_line():
+    """Test parsing skip command with --line flag."""
+    args = parse_command_line(["skip", "--line", "1,3,5-7"], quiet=True)
+    assert args is not None
+    assert args.line_ids == "1,3,5-7"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
 def test_parse_command_line_discard():
     """Test parsing discard command."""
     args = parse_command_line(["discard"], quiet=True)

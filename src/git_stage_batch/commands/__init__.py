@@ -16,7 +16,7 @@ from .list import command_list_batches
 from .new import command_new_batch
 from .show import command_show
 from .show_from import command_show_from_batch
-from .skip import command_skip, command_skip_file, command_skip_line
+from .skip import command_skip, command_skip_file, command_skip_line, command_skip_to_batch
 from .start import command_start
 from .status import command_status
 from .stop import command_stop
@@ -45,6 +45,7 @@ __all__ = [
     "command_skip",
     "command_skip_file",
     "command_skip_line",
+    "command_skip_to_batch",
     "command_start",
     "command_status",
     "command_stop",

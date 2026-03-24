@@ -272,3 +272,163 @@ class TestCommandDiscardLine:
         # Try to discard - should fail because file doesn't exist
         with pytest.raises(CommandError):
             command_discard_line("1")
+
+
+class TestCommandDiscardToBatch:
+    """Tests for discard to batch command."""
+
+    def test_discard_to_batch_saves_and_discards(self, temp_git_repo):
+        """Test that discard to batch saves changes to batch and discards from working tree."""
+        from git_stage_batch.batch import list_batch_files, read_file_from_batch
+        from git_stage_batch.commands.discard import command_discard_to_batch
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified content\n")
+
+        command_discard_to_batch("test-batch")
+
+        # Verify batch was created and contains the file
+        files = list_batch_files("test-batch")
+        assert "README.md" in files
+
+        # Verify file content was saved to batch
+        content = read_file_from_batch("test-batch", "README.md")
+        assert content == "# Test\nModified content\n"
+
+        # Verify changes were discarded from working tree
+        assert readme.read_text() == "# Test\n"
+
+    def test_discard_to_batch_auto_creates_batch(self, temp_git_repo):
+        """Test that discard to batch auto-creates batch if it doesn't exist."""
+        from git_stage_batch.batch.validation import batch_exists
+        from git_stage_batch.commands.discard import command_discard_to_batch
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Batch doesn't exist yet
+        assert not batch_exists("auto-batch")
+
+        command_discard_to_batch("auto-batch")
+
+        # Batch should now exist
+        assert batch_exists("auto-batch")
+
+        # Changes should be discarded
+        assert readme.read_text() == "# Test\n"
+
+    def test_discard_lines_to_batch_saves_partial_content(self, temp_git_repo):
+        """Test that line-level discard to batch synthesizes correct partial content."""
+        from git_stage_batch.batch import read_file_from_batch
+        from git_stage_batch.commands.discard import command_discard_to_batch
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.data.hunk_tracking import find_and_cache_next_unblocked_hunk
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Discard only lines 1-2 to batch
+        command_discard_to_batch("partial-batch", line_ids="1-2")
+
+        # Verify batch contains partial content (original + lines 1-2)
+        content = read_file_from_batch("partial-batch", "README.md")
+        assert content is not None
+        assert "Line 1" in content
+        assert "Line 2" in content
+        assert "# Test" in content
+
+        # Verify only those lines were discarded from working tree
+        working_content = readme.read_text()
+        assert "Line 1" not in working_content
+        assert "Line 2" not in working_content
+        assert "Line 3" in working_content  # Not discarded
+        assert "# Test" in working_content
+
+    def test_discard_lines_to_batch_removes_from_working_tree(self, temp_git_repo):
+        """Test that discarding lines removes them from working tree."""
+        from git_stage_batch.commands.discard import command_discard_to_batch
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.data.hunk_tracking import find_and_cache_next_unblocked_hunk
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Discard only line 1 to batch
+        command_discard_to_batch("discard-batch", line_ids="1")
+
+        # Verify line 1 was removed from working tree
+        working_content = readme.read_text()
+        assert "Line 1" not in working_content
+        assert "Line 2" in working_content
+        assert "Line 3" in working_content
+
+    def test_discard_lines_to_batch_accumulates(self, temp_git_repo):
+        """Test that multiple line discard operations accumulate in batch."""
+        from git_stage_batch.batch import read_file_from_batch
+        from git_stage_batch.commands.discard import command_discard_to_batch
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.data.hunk_tracking import find_and_cache_next_unblocked_hunk, recalculate_current_hunk_for_file
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Discard line 1
+        command_discard_to_batch("accum-batch", line_ids="1")
+
+        # Recalculate hunk after first discard
+        recalculate_current_hunk_for_file("README.md")
+
+        # Discard line 2 (now line 1 in the renumbered hunk)
+        command_discard_to_batch("accum-batch", line_ids="1")
+
+        # Verify batch contains both lines
+        content = read_file_from_batch("accum-batch", "README.md")
+        assert content is not None
+        assert "Line 1" in content
+        assert "Line 2" in content
+
+        # Verify both lines removed from working tree
+        working_content = readme.read_text()
+        assert "Line 1" not in working_content
+        assert "Line 2" not in working_content
+        assert "Line 3" in working_content
+
+    def test_discard_lines_to_batch_tracks_in_processed_batch(self, temp_git_repo):
+        """Test that line IDs are tracked in processed.batch file."""
+        from git_stage_batch.commands.discard import command_discard_to_batch
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.core.line_selection import read_line_ids_file
+        from git_stage_batch.data.hunk_tracking import find_and_cache_next_unblocked_hunk
+        from git_stage_batch.utils.paths import get_processed_batch_ids_file_path
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Discard line 1 to batch
+        command_discard_to_batch("track-batch", line_ids="1")
+
+        # Verify line ID is tracked
+        tracked_ids = set(read_line_ids_file(get_processed_batch_ids_file_path()))
+        assert 1 in tracked_ids

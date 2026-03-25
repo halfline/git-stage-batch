@@ -14,7 +14,11 @@ def dispatch_args(args: argparse.Namespace) -> None:
     Args:
         args: Parsed arguments from ArgumentParser
     """
-    if args.command is None:
+    # Check for -i flag first
+    if hasattr(args, 'interactive_flag') and args.interactive_flag:
+        from ..commands import command_interactive
+        command_interactive()
+    elif args.command is None:
         # No command provided - show helpful message
         exit_with_error(
             _("No batch staging session in progress.") + "\n" +

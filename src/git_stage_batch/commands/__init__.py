@@ -12,6 +12,7 @@ from .discard_from import command_discard_from_batch
 from .drop import command_drop_batch
 from .include import command_include, command_include_file, command_include_line, command_include_to_batch
 from .include_from import command_include_from_batch
+from .interactive import command_interactive
 from .list import command_list_batches
 from .new import command_new_batch
 from .reset import command_reset_from_batch
@@ -42,6 +43,7 @@ __all__ = [
     "command_include_line",
     "command_include_from_batch",
     "command_include_to_batch",
+    "command_interactive",
     "command_list_batches",
     "command_new_batch",
     "command_reset_from_batch",

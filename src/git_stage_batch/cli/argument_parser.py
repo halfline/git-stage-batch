@@ -78,6 +78,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         default=None,
         help=_("Run as if started in path"),
     )
+    parser.add_argument(
+        "-i",
+        dest="interactive_flag",
+        action="store_true",
+        help=_("Start interactive mode"),
+    )
 
     subparsers = parser.add_subparsers(
         dest="command",
@@ -98,6 +104,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Number of context lines in diff output (default: 3)"),
     )
     parser_start.set_defaults(func=lambda args: commands.command_start(context_lines=args.context_lines))
+
+    # interactive - Start interactive hunk-by-hunk mode
+    parser_interactive = subparsers.add_parser(
+        "interactive",
+        help=_("Start interactive hunk-by-hunk mode"),
+    )
+    parser_interactive.set_defaults(func=lambda _: commands.command_interactive())
 
     # stop - Stop the selected session and clear state
     parser_stop = subparsers.add_parser(

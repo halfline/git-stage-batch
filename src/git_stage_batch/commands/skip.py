@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import sys
 
+from ..core.diff_parser import build_current_lines_from_patch_text, get_first_matching_file_from_diff, parse_unified_diff_streaming
 from ..core.hashing import compute_stable_hunk_hash
-from ..core.diff_parser import get_first_matching_file_from_diff, parse_unified_diff_streaming
 from ..data.hunk_tracking import advance_to_and_show_next_hunk, advance_to_next_hunk
 from ..data.session import require_session_started
 from ..i18n import _, ngettext
@@ -15,43 +15,39 @@ from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_context_lines,
+    get_current_hunk_hash_file_path,
+    get_current_hunk_patch_file_path,
 )
 
 
 def command_skip(*, quiet: bool = False) -> None:
     """Skip the current hunk without staging it."""
+    from ..data.hunk_tracking import find_and_cache_next_unblocked_hunk
+
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
 
-    # Load blocklist to skip already-processed hunks
-    blocklist_path = get_block_list_file_path()
-    if blocklist_path.exists():
-        blocklist_text = read_text_file_contents(blocklist_path)
-        blocked_hashes = set(blocklist_text.splitlines())
-    else:
-        blocked_hashes = set()
-
-    # Stream diff and find first unblocked hunk
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-        patch_text = patch.to_patch_text()
-        patch_hash = compute_stable_hunk_hash(patch_text)
-
-        if patch_hash in blocked_hashes:
-            continue
-
-        # Extract filename for user feedback
-        filename = patch.new_path if patch.new_path else "unknown"
-
-        # Add hash to blocklist (without staging)
-        append_lines_to_file(blocklist_path, [patch_hash])
-
+    # Ensure cached hunk is fresh (handles case where file was modified externally)
+    if find_and_cache_next_unblocked_hunk() is None:
         if not quiet:
-            print(_("✓ Hunk skipped from {}").format(filename), file=sys.stderr)
-        break
+            print(_("No more hunks to process."), file=sys.stderr)
+        return
+
+    # Read cached hunk
+    patch_hash = read_text_file_contents(get_current_hunk_hash_file_path()).strip()
+    patch_text = read_text_file_contents(get_current_hunk_patch_file_path())
+
+    # Extract filename for user feedback
+    current_lines = build_current_lines_from_patch_text(patch_text)
+    filename = current_lines.path
+
+    # Add hash to blocklist (without staging)
+    blocklist_path = get_block_list_file_path()
+    append_lines_to_file(blocklist_path, [patch_hash])
 
     if not quiet:
-        print(_("No more hunks to process."), file=sys.stderr)
+        print(_("✓ Hunk skipped from {file}").format(file=filename), file=sys.stderr)
 
     if quiet:
         advance_to_next_hunk()

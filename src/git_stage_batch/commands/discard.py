@@ -5,8 +5,8 @@ from __future__ import annotations
 import subprocess
 import sys
 
+from ..core.diff_parser import build_current_lines_from_patch_text, get_first_matching_file_from_diff, parse_unified_diff_streaming
 from ..core.hashing import compute_stable_hunk_hash
-from ..core.diff_parser import get_first_matching_file_from_diff, parse_unified_diff_streaming
 from ..data.hunk_tracking import advance_to_and_show_next_hunk, advance_to_next_hunk
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..i18n import _
@@ -16,73 +16,66 @@ from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_context_lines,
+    get_current_hunk_hash_file_path,
+    get_current_hunk_patch_file_path,
 )
 
 
 def command_discard(*, quiet: bool = False) -> None:
     """Discard the current hunk from the working tree."""
+    from ..data.hunk_tracking import find_and_cache_next_unblocked_hunk
+
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
 
-    # Load blocklist to skip already-processed hunks
-    blocklist_path = get_block_list_file_path()
-    if blocklist_path.exists():
-        blocklist_text = read_text_file_contents(blocklist_path)
-        blocked_hashes = set(blocklist_text.splitlines())
-    else:
-        blocked_hashes = set()
-
-    # Stream diff and find first unblocked hunk
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-        patch_text = patch.to_patch_text()
-        patch_hash = compute_stable_hunk_hash(patch_text)
-
-        if patch_hash in blocked_hashes:
-            continue
-
-        # Extract filename for user feedback and snapshotting
-        filename = patch.new_path if patch.new_path else "unknown"
-        old_path = patch.old_path if patch.old_path else None
-
-        # Snapshot file if untracked before discarding
-        # Use new path unless it's a deletion (where new path is /dev/null)
-        file_path = filename if filename != "/dev/null" else old_path
-        if file_path and file_path != "/dev/null":
-            snapshot_file_if_untracked(file_path)
-
-        # Apply the hunk in reverse to discard from working tree
-        try:
-            subprocess.run(
-                ["git", "apply", "--reverse"],
-                input=patch_text,
-                text=True,
-                check=True,
-                capture_output=True,
-            )
-        except subprocess.CalledProcessError as e:
-            print(_("Failed to discard hunk: {}").format(e.stderr), file=sys.stderr)
-            return
-
-        # After reverse-applying a new file, delete it if it became empty
-        # (git apply -R on new files empties them but doesn't delete them)
-        is_new_file = "--- /dev/null" in patch_text
-        if is_new_file:
-            absolute_path = get_git_repository_root_path() / filename
-            if absolute_path.exists():
-                content = read_text_file_contents(absolute_path)
-                if not content.strip():  # File is empty
-                    absolute_path.unlink()
-
-        # Add hash to blocklist
-        append_lines_to_file(blocklist_path, [patch_hash])
-
+    # Ensure cached hunk is fresh (handles case where file was modified externally)
+    if find_and_cache_next_unblocked_hunk() is None:
         if not quiet:
-            print(_("✓ Hunk discarded from {}").format(filename), file=sys.stderr)
-        break
+            print(_("No more hunks to process."), file=sys.stderr)
+        return
+
+    # Read cached hunk
+    patch_hash = read_text_file_contents(get_current_hunk_hash_file_path()).strip()
+    patch_text = read_text_file_contents(get_current_hunk_patch_file_path())
+
+    # Extract filename for user feedback and snapshotting
+    current_lines = build_current_lines_from_patch_text(patch_text)
+    filename = current_lines.path
+
+    # Snapshot file if untracked before discarding
+    if filename != "/dev/null":
+        snapshot_file_if_untracked(filename)
+
+    # Apply the hunk in reverse to discard from working tree
+    try:
+        subprocess.run(
+            ["git", "apply", "--reverse"],
+            input=patch_text,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(_("Failed to discard hunk: {}").format(e.stderr), file=sys.stderr)
+        return
+
+    # After reverse-applying a new file, delete it if it became empty
+    # (git apply -R on new files empties them but doesn't delete them)
+    is_new_file = "--- /dev/null" in patch_text
+    if is_new_file:
+        absolute_path = get_git_repository_root_path() / filename
+        if absolute_path.exists():
+            content = read_text_file_contents(absolute_path)
+            if not content.strip():  # File is empty
+                absolute_path.unlink()
+
+    # Add hash to blocklist
+    blocklist_path = get_block_list_file_path()
+    append_lines_to_file(blocklist_path, [patch_hash])
 
     if not quiet:
-        print(_("No more hunks to process."), file=sys.stderr)
+        print(_("✓ Hunk discarded from {file}").format(file=filename), file=sys.stderr)
 
     if quiet:
         advance_to_next_hunk()

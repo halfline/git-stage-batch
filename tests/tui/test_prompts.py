@@ -7,6 +7,7 @@ from git_stage_batch.output.colors import Colors
 from git_stage_batch.tui.prompts import (
     confirm_destructive_operation,
     prompt_action,
+    prompt_fixup_action,
     prompt_line_ids,
     prompt_quit_session,
     prompt_shell_command,
@@ -266,3 +267,54 @@ class TestPromptShellCommand:
             with patch("git_stage_batch.tui.prompts.HAS_READLINE", False):
                 result = prompt_shell_command()
                 assert result == "git status"
+
+
+class TestPromptFixupAction:
+    """Tests for prompt_fixup_action function."""
+
+    def test_prompt_fixup_action_yes(self):
+        """Test selecting yes."""
+        with patch("builtins.input", return_value="y"):
+            assert prompt_fixup_action(use_color=False) == "y"
+
+        with patch("builtins.input", return_value="yes"):
+            assert prompt_fixup_action(use_color=False) == "y"
+
+    def test_prompt_fixup_action_next(self):
+        """Test selecting next."""
+        with patch("builtins.input", return_value="n"):
+            assert prompt_fixup_action(use_color=False) == "n"
+
+        with patch("builtins.input", return_value="next"):
+            assert prompt_fixup_action(use_color=False) == "n"
+
+    def test_prompt_fixup_action_reset(self):
+        """Test selecting reset."""
+        with patch("builtins.input", return_value="r"):
+            assert prompt_fixup_action(use_color=False) == "r"
+
+        with patch("builtins.input", return_value="reset"):
+            assert prompt_fixup_action(use_color=False) == "r"
+
+    def test_prompt_fixup_action_ctrl_c(self):
+        """Test Ctrl-C returns cancel."""
+        with patch("builtins.input", side_effect=KeyboardInterrupt):
+            assert prompt_fixup_action(use_color=False) == "q"
+
+    def test_prompt_fixup_action_ctrl_d(self):
+        """Test Ctrl-D returns cancel."""
+        with patch("builtins.input", side_effect=EOFError):
+            assert prompt_fixup_action(use_color=False) == "q"
+
+    def test_prompt_fixup_action_unknown_returns_as_is(self):
+        """Test unknown input is returned as-is."""
+        with patch("builtins.input", return_value="xyz"):
+            assert prompt_fixup_action(use_color=False) == "xyz"
+
+    def test_prompt_fixup_action_case_insensitive(self):
+        """Test that input is case-insensitive."""
+        with patch("builtins.input", return_value="Y"):
+            assert prompt_fixup_action(use_color=False) == "y"
+
+        with patch("builtins.input", return_value="NEXT"):
+            assert prompt_fixup_action(use_color=False) == "n"

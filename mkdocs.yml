@@ -64,6 +64,7 @@ nav:
     - Installation: installation.md
   - Reference:
     - Commands: commands.md
+    - Interactive Mode: interactive.md
     - Examples: examples.md
   - Integration:
     - AI Assistants: ai-assistants.md

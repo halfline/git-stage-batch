@@ -71,6 +71,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="version",
         version=f"git-stage-batch {__version__}",
     )
+    parser.add_argument(
+        "-i",
+        dest="interactive_flag",
+        action="store_true",
+        help=_("Start interactive mode"),
+    )
 
     subparsers = parser.add_subparsers(
         dest="command",
@@ -83,6 +89,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Start a new batch staging session"),
     )
     parser_start.set_defaults(func=lambda _: commands.command_start())
+
+    # interactive - Start interactive hunk-by-hunk mode
+    parser_interactive = subparsers.add_parser(
+        "interactive",
+        help=_("Start interactive hunk-by-hunk mode"),
+    )
+    parser_interactive.set_defaults(func=lambda _: commands.command_interactive())
 
     # stop - Stop the current session and clear state
     parser_stop = subparsers.add_parser(

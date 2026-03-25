@@ -15,3 +15,13 @@ class CommandError(Exception):
 def exit_with_error(message: str, exit_code: int = 1) -> None:
     """Raise a CommandError instead of exiting directly."""
     raise CommandError(message, exit_code)
+
+
+class QuitInteractive(Exception):
+    """Raised to exit the interactive mode main loop."""
+    pass
+
+
+class BypassRefresh(Exception):
+    """Raised when an action should not refresh the display."""
+    pass

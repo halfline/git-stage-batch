@@ -81,6 +81,14 @@ This clarity assists contributors explore the codebase, maintainers review chang
 
     [:octicons-arrow-right-24: See Examples](examples.md)
 
+-   :material-keyboard:{ .lg .middle } __Interactive Mode__
+
+    ---
+
+    Menu-driven hunk-by-hunk workflow inspired by git add -p. Review and stage changes in a continuous session.
+
+    [:octicons-arrow-right-24: Commands Reference](commands.md)
+
 -   :material-package-variant:{ .lg .middle } __Named Batches__
 
     ---
@@ -101,6 +109,7 @@ This clarity assists contributors explore the codebase, maintainers review chang
 
 Similar to `git add -p` but **more granular and flexible**:
 
+- ✅ **Interactive mode** - Continuous hunk-by-hunk workflow with menus
 - ✅ **Command-based mode** - Perfect for automation and AI assistants
 - ✅ **Line-by-line staging** - Stage specific lines within a hunk
 - ✅ **State persistence** - Resume staging across multiple invocations

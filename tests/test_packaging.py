@@ -65,6 +65,22 @@ class TestWheelContents:
         for expected in expected_files:
             assert any(expected in f for f in files), f"Missing {expected}"
 
+    def test_wheel_contains_entry_point_script(self, build_wheel):
+        """Test that wheel contains the executable entry point."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+            # Check for entry_points.txt
+            assert any('entry_points.txt' in f for f in files), \
+                "Missing entry_points.txt"
+
+            # Find the entry_points.txt file dynamically
+            entry_points_file = next(f for f in files if 'entry_points.txt' in f)
+
+            # Verify entry_points.txt contains git-stage-batch
+            entry_points_content = whl.read(entry_points_file).decode('utf-8')
+            assert 'git-stage-batch' in entry_points_content, \
+                "Missing git-stage-batch entry point in entry_points.txt"
+
 
 class TestWheelInstallation:
     """Test that the wheel can be installed and works correctly."""

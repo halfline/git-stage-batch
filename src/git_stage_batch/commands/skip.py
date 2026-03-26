@@ -7,7 +7,7 @@ import sys
 from ..core.diff_parser import build_current_lines_from_patch_text, get_first_matching_file_from_diff, parse_unified_diff_streaming
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
-from ..data.hunk_tracking import advance_to_and_show_next_hunk, advance_to_next_hunk, require_current_hunk_and_check_stale
+from ..data.hunk_tracking import advance_to_and_show_next_hunk, advance_to_next_hunk, record_hunk_skipped, require_current_hunk_and_check_stale
 from ..data.session import require_session_started
 from ..i18n import _, ngettext
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
@@ -27,6 +27,7 @@ def command_skip(*, quiet: bool = False) -> None:
     from ..data.hunk_tracking import find_and_cache_next_unblocked_hunk
 
     require_git_repository()
+    require_session_started()
     ensure_state_directory_exists()
 
     # Ensure cached hunk is fresh (handles case where file was modified externally)
@@ -47,6 +48,9 @@ def command_skip(*, quiet: bool = False) -> None:
     blocklist_path = get_block_list_file_path()
     append_lines_to_file(blocklist_path, [patch_hash])
 
+    # Record for progress tracking
+    record_hunk_skipped(current_lines, patch_hash)
+
     if not quiet:
         print(_("✓ Hunk skipped from {file}").format(file=filename), file=sys.stderr)
 
@@ -59,6 +63,7 @@ def command_skip(*, quiet: bool = False) -> None:
 def command_skip_file() -> None:
     """Skip all remaining hunks from the current file."""
     require_git_repository()
+    require_session_started()
     ensure_state_directory_exists()
 
     # Load blocklist
@@ -114,6 +119,7 @@ def command_skip_line(line_id_specification: str) -> None:
         line_id_specification: Line ID specification (e.g., "1,3,5-7")
     """
     require_git_repository()
+    require_session_started()
     ensure_state_directory_exists()
     require_current_hunk_and_check_stale()
 

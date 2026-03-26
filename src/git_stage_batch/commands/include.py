@@ -12,6 +12,7 @@ from ..data.hunk_tracking import (
     advance_to_and_show_next_change,
     advance_to_next_change,
     recalculate_selected_hunk_for_file,
+    record_hunk_included,
     require_selected_hunk,
 )
 from ..data.line_state import load_line_changes_from_state
@@ -69,6 +70,9 @@ def command_include(*, quiet: bool = False) -> None:
     # Add hash to blocklist
     blocklist_path = get_block_list_file_path()
     append_lines_to_file(blocklist_path, [patch_hash])
+
+    # Record for progress tracking
+    record_hunk_included(patch_hash)
 
     if not quiet:
         print(_("✓ Hunk staged from {file}").format(file=filename), file=sys.stderr)

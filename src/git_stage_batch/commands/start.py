@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from ..data.hunk_tracking import fetch_next_change, show_selected_change
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.session import initialize_abort_state
 from ..exceptions import CommandError
@@ -13,11 +14,12 @@ from ..utils.git import require_git_repository
 from ..utils.paths import ensure_state_directory_exists, get_context_lines_file_path
 
 
-def command_start(*, context_lines: Optional[int] = None) -> None:
+def command_start(*, context_lines: Optional[int] = None, quiet: bool = False) -> None:
     """Start a new batch staging session.
 
     Args:
         context_lines: Number of context lines to use in diffs (default: 3)
+        quiet: If True, suppress "No more hunks" message when no changes exist
     """
     require_git_repository()
     ensure_state_directory_exists()
@@ -31,3 +33,11 @@ def command_start(*, context_lines: Optional[int] = None) -> None:
 
     # Make untracked files visible to git diff so they can be staged, blocked by .gitignore, or deleted
     auto_add_untracked_files()
+
+    # Find and cache first hunk
+    if fetch_next_change() is None:
+        raise CommandError(_("No changes to process."), exit_code=2)
+
+    # Display the first hunk
+    if not quiet:
+        show_selected_change()

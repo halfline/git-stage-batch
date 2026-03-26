@@ -7,7 +7,7 @@ import sys
 from ..core.diff_parser import build_current_lines_from_patch_text, get_first_matching_file_from_diff, parse_unified_diff_streaming
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
-from ..data.hunk_tracking import advance_to_next_hunk, require_current_hunk_and_check_stale
+from ..data.hunk_tracking import advance_to_next_hunk, record_hunk_skipped, require_current_hunk_and_check_stale
 from ..i18n import _, ngettext
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
@@ -43,6 +43,9 @@ def command_skip(*, quiet: bool = False) -> None:
     # Add hash to blocklist (without staging)
     blocklist_path = get_block_list_file_path()
     append_lines_to_file(blocklist_path, [patch_hash])
+
+    # Record for progress tracking
+    record_hunk_skipped(current_lines, patch_hash)
 
     if not quiet:
         print(_("✓ Hunk skipped from {file}").format(file=filename), file=sys.stderr)

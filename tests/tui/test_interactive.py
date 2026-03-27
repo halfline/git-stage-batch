@@ -452,3 +452,20 @@ class TestBatchSubmenu:
                     start_interactive_mode()
                     captured = capsys.readouterr()
                     assert "Unknown action" in captured.out
+
+
+class TestFlowState:
+    """Tests for source/target flow state tracking."""
+
+    def test_default_flow_state(self, temp_git_repo, capsys):
+        """Test that flow state defaults to working tree -> staging."""
+        # Create a change to enter normal mode
+        (temp_git_repo / "test.txt").write_text("change")
+
+        with patch("git_stage_batch.tui.interactive.prompt_action", return_value="q"):
+            with patch("git_stage_batch.tui.interactive.handle_quit"):
+                start_interactive_mode()
+
+        captured = capsys.readouterr()
+        assert "Source: working tree" in captured.out
+        assert "Target: staging" in captured.out

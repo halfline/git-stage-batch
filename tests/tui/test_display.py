@@ -63,6 +63,39 @@ class TestPrintStatusBar:
         assert "Skipped: 0" in output
         assert "Discarded: 0" in output
 
+    def test_status_bar_shows_default_flow(self):
+        """Test status bar displays default source and target."""
+        with patch("sys.stdout", new=StringIO()) as fake_out:
+            with patch("sys.stdout.isatty", return_value=False):
+                stats = {"included": 1, "skipped": 0, "discarded": 0}
+                print_status_bar(stats)
+                output = fake_out.getvalue()
+
+        assert "Source: working tree" in output
+        assert "Target: staging" in output
+
+    def test_status_bar_shows_custom_flow(self):
+        """Test status bar displays custom source and target."""
+        with patch("sys.stdout", new=StringIO()) as fake_out:
+            with patch("sys.stdout.isatty", return_value=False):
+                stats = {"included": 1, "skipped": 0, "discarded": 0}
+                print_status_bar(stats, source="batch:my-batch", target="staging")
+                output = fake_out.getvalue()
+
+        assert "Source: batch:my-batch" in output
+        assert "Target: staging" in output
+
+    def test_status_bar_shows_batch_target(self):
+        """Test status bar with batch as target."""
+        with patch("sys.stdout", new=StringIO()) as fake_out:
+            with patch("sys.stdout.isatty", return_value=False):
+                stats = {"included": 0, "skipped": 2, "discarded": 0}
+                print_status_bar(stats, source="working tree", target="batch:wip")
+                output = fake_out.getvalue()
+
+        assert "Source: working tree" in output
+        assert "Target: batch:wip" in output
+
 
 class TestPrintActionSummary:
     """Tests for print_action_summary function."""

@@ -352,3 +352,103 @@ class TestDegradedMode:
             with patch("git_stage_batch.tui.interactive.handle_quit") as mock_quit:
                 start_interactive_mode()
                 mock_quit.assert_called_once()
+
+
+class TestBatchSubmenu:
+    """Tests for batch management submenu."""
+
+    def test_batch_create(self, temp_git_repo):
+        """Test creating a batch from submenu."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("builtins.input", side_effect=["c", "my-batch", "my note"]):
+                with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                    with patch("git_stage_batch.tui.interactive.handle_quit"):
+                        start_interactive_mode()
+                        mock_new.assert_called_once_with(batch_id="my-batch", note="my note")
+
+    def test_batch_create_no_note(self, temp_git_repo):
+        """Test creating a batch without note from submenu."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("builtins.input", side_effect=["c", "my-batch", ""]):
+                with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                    with patch("git_stage_batch.tui.interactive.handle_quit"):
+                        start_interactive_mode()
+                        mock_new.assert_called_once_with(batch_id="my-batch", note=None)
+
+    def test_batch_create_cancel(self, temp_git_repo):
+        """Test cancelling batch creation."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("builtins.input", side_effect=["c", ""]):
+                with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                    with patch("git_stage_batch.tui.interactive.handle_quit"):
+                        start_interactive_mode()
+                        mock_new.assert_not_called()
+
+    def test_batch_edit(self, temp_git_repo):
+        """Test editing batch note from submenu."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("git_stage_batch.commands.list.command_list_batches", return_value=[("test-batch", "old note")]):
+                with patch("builtins.input", side_effect=["e", "1", "new note"]):
+                    with patch("git_stage_batch.commands.annotate.command_annotate_batch") as mock_annotate:
+                        with patch("git_stage_batch.tui.interactive.handle_quit"):
+                            start_interactive_mode()
+                            mock_annotate.assert_called_once_with(name="test-batch", note="new note")
+
+    def test_batch_drop(self, temp_git_repo):
+        """Test dropping a batch from submenu."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("git_stage_batch.commands.list.command_list_batches", return_value=[("test-batch", "some note")]):
+                with patch("builtins.input", side_effect=["d", "1"]):
+                    with patch("git_stage_batch.commands.drop.command_drop_batch") as mock_drop:
+                        with patch("git_stage_batch.tui.interactive.handle_quit"):
+                            start_interactive_mode()
+                            mock_drop.assert_called_once_with(name="test-batch")
+
+    def test_batch_apply(self, temp_git_repo):
+        """Test applying a batch from submenu."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("git_stage_batch.commands.list.command_list_batches", return_value=[("test-batch", "some note")]):
+                with patch("builtins.input", side_effect=["a", "1"]):
+                    with patch("git_stage_batch.commands.apply_from.command_apply_from_batch") as mock_apply:
+                        with patch("git_stage_batch.tui.interactive.handle_quit"):
+                            start_interactive_mode()
+                            mock_apply.assert_called_once_with(name="test-batch")
+
+    def test_batch_select_no_batches(self, temp_git_repo, capsys):
+        """Test selecting batch when none exist."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("git_stage_batch.commands.list.command_list_batches", return_value=[]):
+                with patch("builtins.input", side_effect=["e"]):
+                    with patch("git_stage_batch.tui.interactive.handle_quit"):
+                        start_interactive_mode()
+                        captured = capsys.readouterr()
+                        assert "No batches found" in captured.err
+
+    def test_batch_select_invalid(self, temp_git_repo, capsys):
+        """Test invalid batch selection."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("git_stage_batch.commands.list.command_list_batches", return_value=[("test-batch", "note")]):
+                with patch("builtins.input", side_effect=["e", "999"]):
+                    with patch("git_stage_batch.commands.annotate.command_annotate_batch") as mock_annotate:
+                        with patch("git_stage_batch.tui.interactive.handle_quit"):
+                            start_interactive_mode()
+                            mock_annotate.assert_not_called()
+                            captured = capsys.readouterr()
+                            assert "Invalid selection" in captured.err
+
+    def test_batch_submenu_cancel(self, temp_git_repo):
+        """Test cancelling batch submenu."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                with patch("git_stage_batch.tui.interactive.handle_quit"):
+                    start_interactive_mode()
+                    # Should not raise, just return to main menu
+
+    def test_batch_submenu_unknown_action(self, temp_git_repo, capsys):
+        """Test unknown action in batch submenu."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("builtins.input", side_effect=["x"]):
+                with patch("git_stage_batch.tui.interactive.handle_quit"):
+                    start_interactive_mode()
+                    captured = capsys.readouterr()
+                    assert "Unknown action" in captured.out

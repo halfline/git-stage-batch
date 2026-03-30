@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
     handle_file_selection,
     handle_line_selection,
@@ -207,7 +208,10 @@ class TestHandleFileSelection:
             with patch("git_stage_batch.commands.include.command_include_file") as mock_include:
                 with patch("git_stage_batch.tui.interactive.find_and_cache_next_unblocked_hunk", return_value=None):
                     with patch("builtins.input", return_value="i"):
-                        handle_file_selection()
+                        handle_file_selection(FlowState(
+                            source=FlowLocation.WORKING_TREE,
+                            target=FlowLocation.STAGING_AREA
+                        ))
                         mock_include.assert_called_once()
 
     def test_handle_file_selection_skip(self):
@@ -225,7 +229,10 @@ class TestHandleFileSelection:
             with patch("git_stage_batch.commands.skip.command_skip_file") as mock_skip:
                 with patch("git_stage_batch.tui.interactive.find_and_cache_next_unblocked_hunk", return_value=None):
                     with patch("builtins.input", return_value="s"):
-                        handle_file_selection()
+                        handle_file_selection(FlowState(
+                            source=FlowLocation.WORKING_TREE,
+                            target=FlowLocation.STAGING_AREA
+                        ))
                         mock_skip.assert_called_once()
 
     def test_handle_file_selection_cancel(self):
@@ -242,7 +249,10 @@ class TestHandleFileSelection:
         with patch("git_stage_batch.tui.interactive.load_current_lines_from_state", return_value=current_lines):
             with patch("builtins.input", side_effect=KeyboardInterrupt):
                 # Should return without raising
-                handle_file_selection()
+                handle_file_selection(FlowState(
+                            source=FlowLocation.WORKING_TREE,
+                            target=FlowLocation.STAGING_AREA
+                        ))
 
 
 class TestHandleLineSelection:
@@ -266,7 +276,10 @@ class TestHandleLineSelection:
             with patch("git_stage_batch.commands.include.command_include_line") as mock_include:
                 with patch("git_stage_batch.tui.interactive.prompt_line_ids", return_value="1"):
                     with patch("builtins.input", return_value="i"):
-                        handle_line_selection()
+                        handle_line_selection(FlowState(
+                            source=FlowLocation.WORKING_TREE,
+                            target=FlowLocation.STAGING_AREA
+                        ))
                         mock_include.assert_called_once_with("1")
 
     def test_handle_line_selection_no_changed_lines(self):
@@ -281,7 +294,10 @@ class TestHandleLineSelection:
         )
 
         with patch("git_stage_batch.tui.interactive.load_current_lines_from_state", return_value=current_lines):
-            handle_line_selection()
+            handle_line_selection(FlowState(
+                            source=FlowLocation.WORKING_TREE,
+                            target=FlowLocation.STAGING_AREA
+                        ))
             # Should return early without prompting
 
     def test_handle_line_selection_cancel(self):
@@ -298,7 +314,10 @@ class TestHandleLineSelection:
         with patch("git_stage_batch.tui.interactive.load_current_lines_from_state", return_value=current_lines):
             with patch("builtins.input", side_effect=KeyboardInterrupt):
                 # Should return without raising
-                handle_line_selection()
+                handle_line_selection(FlowState(
+                            source=FlowLocation.WORKING_TREE,
+                            target=FlowLocation.STAGING_AREA
+                        ))
 
 
 class TestDegradedMode:

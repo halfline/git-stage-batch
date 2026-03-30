@@ -94,6 +94,54 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     return False
 
 
+def cache_batch_as_single_hunk(batch_name: str) -> Optional[LineLevelChange]:
+    """Load entire batch diff and cache it as a single hunk.
+
+    For now, shows only the first hunk from the batch. Future enhancement
+    could combine all hunks or add batch hunk navigation.
+
+    Args:
+        batch_name: Name of the batch to load
+
+    Returns:
+        LineLevelChange for the first batch hunk if found, None if batch is empty
+    """
+    from ..batch import get_batch_diff
+    from ..core.diff_parser import parse_unified_diff_into_single_hunk_patches
+
+    # Get batch diff
+    diff = get_batch_diff(batch_name, get_context_lines())
+    if not diff:
+        return None
+
+    # Parse into individual hunks
+    patches = parse_unified_diff_into_single_hunk_patches(diff)
+    if not patches:
+        return None
+
+    # For now, show only the first hunk
+    # TODO: Future enhancement - navigate through all batch hunks
+    first_patch = patches[0]
+    patch_text = first_patch.to_patch_text()
+    patch_hash = compute_stable_hunk_hash(patch_text)
+
+    # Cache the hunk
+    write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
+    write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
+
+    # Build LineLevelChange for line IDs
+    line_changes = build_line_changes_from_patch_text(patch_text)
+    write_text_file_contents(get_line_changes_json_file_path(),
+                            json.dumps(convert_line_changes_to_serializable_dict(line_changes),
+                                      ensure_ascii=False, indent=0))
+
+    # No snapshots for batch hunks (they don't track staleness)
+    get_index_snapshot_file_path().unlink(missing_ok=True)
+    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+
+    return line_changes
+
+
 def fetch_next_change() -> Optional[LineLevelChange]:
     """Find the next hunk that isn't blocked and cache it as selected.
 

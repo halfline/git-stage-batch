@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from git_stage_batch.tui.flow import FlowLocation, FlowState
+from git_stage_batch.tui.flow import FlowLocation, LocationRole, FlowState
 from git_stage_batch.tui.interactive import (
     handle_file_selection,
     handle_line_selection,

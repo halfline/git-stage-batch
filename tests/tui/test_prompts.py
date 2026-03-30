@@ -98,6 +98,28 @@ class TestPromptAction:
         assert Colors.RED in output    # discard hotkey should be red
         assert Colors.CYAN in output   # "More options" should be cyan
 
+    def test_prompt_action_shows_flow_options(self):
+        """Test that flow options appear in menu."""
+        with patch("builtins.input", return_value="i"):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                with patch("sys.stdout.isatty", return_value=False):
+                    result = prompt_action(use_color=False)
+                    output = fake_out.getvalue()
+
+        assert result == "i"
+        assert "from" in output.lower() or "<" in output
+        assert "to" in output.lower() or ">" in output
+
+    def test_prompt_action_from_normalized(self):
+        """Test that 'from' normalizes to '<'."""
+        with patch("builtins.input", return_value="from"):
+            assert prompt_action(use_color=False) == "<"
+
+    def test_prompt_action_to_normalized(self):
+        """Test that 'to' normalizes to '>'."""
+        with patch("builtins.input", return_value="to"):
+            assert prompt_action(use_color=False) == ">"
+
 
 class TestConfirmDestructiveOperation:
     """Tests for confirm_destructive_operation function."""

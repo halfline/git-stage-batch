@@ -1,7 +1,16 @@
 """Tests for TUI interactive mode."""
 
+from git_stage_batch.utils.file_io import write_text_file_contents
+from git_stage_batch.utils.git import run_git_command
+from git_stage_batch.utils.paths import (
+    ensure_state_directory_exists,
+    get_start_head_file_path,
+    get_start_index_tree_file_path,
+)
+from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
+
 import subprocess
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -71,13 +80,6 @@ class TestHandleQuit:
     def test_handle_quit_no_changes_silent(self, temp_git_repo):
         """Test quit silently stops when no changes made."""
         # Set up start state matching selected state
-        from git_stage_batch.utils.file_io import write_text_file_contents
-        from git_stage_batch.utils.git import run_git_command
-        from git_stage_batch.utils.paths import (
-            ensure_state_directory_exists,
-            get_start_head_file_path,
-            get_start_index_tree_file_path,
-        )
 
         ensure_state_directory_exists()
 
@@ -97,13 +99,6 @@ class TestHandleQuit:
 
     def test_handle_quit_with_changes_keep(self, temp_git_repo):
         """Test quit with changes and user chooses to keep."""
-        from git_stage_batch.utils.file_io import write_text_file_contents
-        from git_stage_batch.utils.git import run_git_command
-        from git_stage_batch.utils.paths import (
-            ensure_state_directory_exists,
-            get_start_head_file_path,
-            get_start_index_tree_file_path,
-        )
 
         ensure_state_directory_exists()
 
@@ -128,13 +123,6 @@ class TestHandleQuit:
 
     def test_handle_quit_with_changes_undo(self, temp_git_repo):
         """Test quit with changes and user chooses to undo."""
-        from git_stage_batch.utils.file_io import write_text_file_contents
-        from git_stage_batch.utils.git import run_git_command
-        from git_stage_batch.utils.paths import (
-            ensure_state_directory_exists,
-            get_start_head_file_path,
-            get_start_index_tree_file_path,
-        )
 
         ensure_state_directory_exists()
 
@@ -159,13 +147,6 @@ class TestHandleQuit:
 
     def test_handle_quit_with_changes_cancel(self, temp_git_repo):
         """Test quit with changes and user cancels."""
-        from git_stage_batch.utils.file_io import write_text_file_contents
-        from git_stage_batch.utils.git import run_git_command
-        from git_stage_batch.utils.paths import (
-            ensure_state_directory_exists,
-            get_start_head_file_path,
-            get_start_index_tree_file_path,
-        )
 
         ensure_state_directory_exists()
 
@@ -195,13 +176,12 @@ class TestHandleFileSelection:
 
     def test_handle_file_selection_include(self):
         """Test file selection with include action."""
-        from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 
         header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
         line_changes = LineLevelChange(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="test\n")]
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
@@ -216,13 +196,12 @@ class TestHandleFileSelection:
 
     def test_handle_file_selection_skip(self):
         """Test file selection with skip action."""
-        from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 
         header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
         line_changes = LineLevelChange(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="test\n")]
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
@@ -235,15 +214,55 @@ class TestHandleFileSelection:
                         ))
                         mock_skip.assert_called_once()
 
-    def test_handle_file_selection_cancel(self):
-        """Test file selection with Ctrl-C."""
-        from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
+    def test_handle_file_selection_discard(self):
+        """Test file selection with discard action."""
 
         header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
         line_changes = LineLevelChange(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="test\n")]
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
+        )
+
+        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.commands.discard.command_discard_file") as mock_discard:
+                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
+                    with patch("git_stage_batch.tui.interactive.confirm_destructive_operation", return_value=True):
+                        with patch("builtins.input", return_value="d"):
+                            handle_file_selection(FlowState(
+                                source=FlowLocation.WORKING_TREE,
+                                target=FlowLocation.STAGING_AREA
+                            ))
+                            mock_discard.assert_called_once()
+
+    def test_handle_file_selection_discard_to_batch(self):
+        """Test file selection with discard action when target is batch."""
+
+        header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=header,
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
+        )
+
+        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.commands.discard.command_discard_to_batch") as mock_discard:
+                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
+                    with patch("builtins.input", return_value="d"):
+                        handle_file_selection(FlowState(
+                            source=FlowLocation.WORKING_TREE,
+                            target=FlowLocation.for_batch("mybatch")
+                        ))
+                        mock_discard.assert_called_once_with("mybatch", file="", quiet=True)
+
+    def test_handle_file_selection_cancel(self):
+        """Test file selection with Ctrl-C."""
+
+        header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=header,
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
@@ -260,15 +279,14 @@ class TestHandleLineSelection:
 
     def test_handle_line_selection_include(self):
         """Test line selection with include action."""
-        from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 
         header = HunkHeader(old_start=1, old_len=2, new_start=1, new_len=2)
         line_changes = LineLevelChange(
             path="test.txt",
             header=header,
             lines=[
-                LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="line1\n"),
-                LineEntry(id=2, kind="+", old_line_number=None, new_line_number=2, text="line2\n"),
+                LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"line1\n", text="line1\n"),
+                LineEntry(id=2, kind="+", old_line_number=None, new_line_number=2, text_bytes=b"line2\n", text="line2\n"),
             ]
         )
 
@@ -284,13 +302,12 @@ class TestHandleLineSelection:
 
     def test_handle_line_selection_no_changed_lines(self):
         """Test line selection when no changed lines exist."""
-        from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 
         header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
         line_changes = LineLevelChange(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=None, kind=" ", old_line_number=1, new_line_number=1, text=" unchanged\n")]
+            lines=[LineEntry(id=None, kind=" ", old_line_number=1, new_line_number=1, text_bytes=b" unchanged\n", text=" unchanged\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
@@ -302,13 +319,12 @@ class TestHandleLineSelection:
 
     def test_handle_line_selection_cancel(self):
         """Test line selection with Ctrl-C."""
-        from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 
         header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
         line_changes = LineLevelChange(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="test\n")]
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):

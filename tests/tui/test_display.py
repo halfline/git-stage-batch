@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from git_stage_batch.output.colors import Colors
 from git_stage_batch.tui.display import print_action_summary, print_status_bar
+from git_stage_batch.tui.flow import FlowLocation, FlowState
 
 
 class TestPrintStatusBar:
@@ -15,22 +16,30 @@ class TestPrintStatusBar:
         with patch("sys.stdout", new=StringIO()) as fake_out:
             with patch("sys.stdout.isatty", return_value=True):
                 stats = {"included": 5, "skipped": 2, "discarded": 1}
-                print_status_bar(stats)
+                flow_state = FlowState(source=FlowLocation.WORKING_TREE, target=FlowLocation.STAGING_AREA)
+                print_status_bar(stats, flow_state)
                 output = fake_out.getvalue()
 
-        assert "Included: 5" in output
-        assert "Skipped: 2" in output
-        assert "Discarded: 1" in output
+        assert "Source:" in output
+        assert "Target:" in output
+        assert "Included:" in output
+        assert " 5" in output
+        assert "Skipped:" in output
+        assert " 2" in output
+        assert "Discarded:" in output
+        assert " 1" in output
         assert "═" in output
         assert Colors.CYAN in output
         assert Colors.BOLD in output
+        assert Colors.GRAY in output  # Arrow should be gray
 
     def test_status_bar_without_colors(self):
         """Test status bar without colors."""
         with patch("sys.stdout", new=StringIO()) as fake_out:
             with patch("sys.stdout.isatty", return_value=False):
                 stats = {"included": 5, "skipped": 2, "discarded": 1}
-                print_status_bar(stats)
+                flow_state = FlowState(source=FlowLocation.WORKING_TREE, target=FlowLocation.STAGING_AREA)
+                print_status_bar(stats, flow_state)
                 output = fake_out.getvalue()
 
         assert "Included: 5" in output
@@ -44,7 +53,8 @@ class TestPrintStatusBar:
         with patch("sys.stdout", new=StringIO()) as fake_out:
             with patch("sys.stdout.isatty", return_value=False):
                 stats = {"included": 0, "skipped": 0, "discarded": 0}
-                print_status_bar(stats)
+                flow_state = FlowState(source=FlowLocation.WORKING_TREE, target=FlowLocation.STAGING_AREA)
+                print_status_bar(stats, flow_state)
                 output = fake_out.getvalue()
 
         assert "Included: 0" in output
@@ -56,7 +66,8 @@ class TestPrintStatusBar:
         with patch("sys.stdout", new=StringIO()) as fake_out:
             with patch("sys.stdout.isatty", return_value=False):
                 stats = {}  # Empty dict
-                print_status_bar(stats)
+                flow_state = FlowState(source=FlowLocation.WORKING_TREE, target=FlowLocation.STAGING_AREA)
+                print_status_bar(stats, flow_state)
                 output = fake_out.getvalue()
 
         assert "Included: 0" in output

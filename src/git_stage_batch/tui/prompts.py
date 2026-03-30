@@ -87,6 +87,12 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
             ("file", "f", ""),
         ]
 
+        # Flow options
+        flow_options = [
+            ("from", "<", ""),
+            ("to", ">", ""),
+        ]
+
         # More options
         more_options = [
             ("again", "a", ""),
@@ -104,6 +110,12 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
 
         # Scope options - none in degraded mode
         scope_options = []
+
+        # Flow options - still available
+        flow_options = [
+            ("from", "<", ""),
+            ("to", ">", ""),
+        ]
 
         # More options - limited set
         more_options = [
@@ -151,6 +163,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
 
         section_specs = [
                 (pgettext("menu section label", "Other scope"), scope_options),
+                (pgettext("menu section label", "Flow"), flow_options),
                 (pgettext("menu section label", "More"), more_options),
         ]
 
@@ -194,6 +207,8 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         "fixup": "x",
         "command": "!",
         "help": "?",
+        "from": "<",
+        "to": ">",
     }
 
     return word_to_letter.get(choice_lower, choice_lower)

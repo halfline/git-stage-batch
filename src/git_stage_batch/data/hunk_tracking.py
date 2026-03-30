@@ -94,6 +94,54 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     return False
 
 
+def cache_batch_as_single_hunk(batch_name: str) -> Optional[CurrentLines]:
+    """Load entire batch diff and cache it as a single hunk.
+
+    For now, shows only the first hunk from the batch. Future enhancement
+    could combine all hunks or add batch hunk navigation.
+
+    Args:
+        batch_name: Name of the batch to load
+
+    Returns:
+        CurrentLines for the first batch hunk if found, None if batch is empty
+    """
+    from ..batch import get_batch_diff
+    from ..core.diff_parser import parse_unified_diff_into_single_hunk_patches
+
+    # Get batch diff
+    diff = get_batch_diff(batch_name, get_context_lines())
+    if not diff:
+        return None
+
+    # Parse into individual hunks
+    patches = parse_unified_diff_into_single_hunk_patches(diff)
+    if not patches:
+        return None
+
+    # For now, show only the first hunk
+    # TODO: Future enhancement - navigate through all batch hunks
+    first_patch = patches[0]
+    patch_text = first_patch.to_patch_text()
+    patch_hash = compute_stable_hunk_hash(patch_text)
+
+    # Cache the hunk
+    write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
+    write_text_file_contents(get_current_hunk_hash_file_path(), patch_hash)
+
+    # Build CurrentLines for line IDs
+    current_lines = build_current_lines_from_patch_text(patch_text)
+    write_text_file_contents(get_current_lines_json_file_path(),
+                            json.dumps(convert_current_lines_to_serializable_dict(current_lines),
+                                      ensure_ascii=False, indent=0))
+
+    # No snapshots for batch hunks (they don't track staleness)
+    get_index_snapshot_file_path().unlink(missing_ok=True)
+    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+
+    return current_lines
+
+
 def find_and_cache_next_unblocked_hunk() -> Optional[CurrentLines]:
     """Find the next hunk that isn't blocked and cache it as current.
 

@@ -1,5 +1,7 @@
 """Tests for TUI prompt utilities."""
 
+from git_stage_batch.tui.prompts import _shell_command_history
+
 from io import StringIO
 from unittest.mock import patch
 
@@ -97,6 +99,28 @@ class TestPromptAction:
         assert Colors.GREEN in output  # include hotkey should be green
         assert Colors.RED in output    # discard hotkey should be red
         assert Colors.CYAN in output   # "More options" should be cyan
+
+    def test_prompt_action_shows_flow_options(self):
+        """Test that flow options appear in menu."""
+        with patch("builtins.input", return_value="i"):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                with patch("sys.stdout.isatty", return_value=False):
+                    result = prompt_action(use_color=False)
+                    output = fake_out.getvalue()
+
+        assert result == "i"
+        assert "from" in output.lower() or "<" in output
+        assert "to" in output.lower() or ">" in output
+
+    def test_prompt_action_from_normalized(self):
+        """Test that 'from' normalizes to '<'."""
+        with patch("builtins.input", return_value="from"):
+            assert prompt_action(use_color=False) == "<"
+
+    def test_prompt_action_to_normalized(self):
+        """Test that 'to' normalizes to '>'."""
+        with patch("builtins.input", return_value="to"):
+            assert prompt_action(use_color=False) == ">"
 
 
 class TestConfirmDestructiveOperation:
@@ -254,7 +278,6 @@ class TestPromptShellCommand:
 
     def test_prompt_shell_command_with_readline(self):
         """Test command is added to shell command history."""
-        from git_stage_batch.tui.prompts import _shell_command_history
 
         # Clear any existing history from previous tests
         _shell_command_history.clear()
@@ -276,7 +299,6 @@ class TestPromptShellCommand:
 
     def test_prompt_shell_command_with_libedit(self):
         """Test command history with libedit (Ctrl-R disabled)."""
-        from git_stage_batch.tui.prompts import _shell_command_history
 
         # Clear any existing history from previous tests
         _shell_command_history.clear()
@@ -291,7 +313,7 @@ class TestPromptShellCommand:
                         assert "git status" in _shell_command_history
                         # Verify readline.clear_history was called
                         assert mock_readline.clear_history.called
-                        # Verify Ctrl-R was NOT re-enabled for libedit
+                        # Verify Ctrl-R remains disabled for libedit.
                         parse_and_bind_calls = [call[0][0] for call in mock_readline.parse_and_bind.call_args_list]
                         assert "bind ^R em-inc-search-prev" not in parse_and_bind_calls
 

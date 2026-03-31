@@ -1,0 +1,1216 @@
+# Czech translation for git-stage-batch.
+# Copyright (C) 2026 git-stage-batch project
+# This file is distributed under the same license as the git-stage-batch package.
+# Claude <noreply@anthropic.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: git-stage-batch\n"
+"Report-Msgid-Bugs-To: https://github.com/halfline/git-stage-batch/issues\n"
+"POT-Creation-Date: 2026-04-02 12:07-0400\n"
+"PO-Revision-Date: 2026-03-31 12:00+0000\n"
+"Last-Translator: Claude <noreply@anthropic.com>\n"
+"Language-Team: Czech\n"
+"Language: cs\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n>=2 && n<=4 ? 1 : 2);\n"
+
+#: src/git_stage_batch/batch/operations.py:27
+#, python-brace-format
+msgid "Batch '{name}' already exists"
+msgstr "Dávka '{name}' již existuje"
+
+#: src/git_stage_batch/batch/operations.py:75
+#: src/git_stage_batch/batch/operations.py:91
+#: src/git_stage_batch/commands/reset.py:33
+#, python-brace-format
+msgid "Batch '{name}' does not exist"
+msgstr "Dávka '{name}' neexistuje"
+
+#: src/git_stage_batch/batch/validation.py:13
+msgid "Batch name cannot be empty"
+msgstr "Název dávky nemůže být prázdný"
+
+#: src/git_stage_batch/batch/validation.py:19
+#, python-brace-format
+msgid "Batch name cannot contain: {char}"
+msgstr "Název dávky nemůže obsahovat: {char}"
+
+#: src/git_stage_batch/batch/validation.py:23
+msgid "Batch name cannot start with '.'"
+msgstr "Název dávky nemůže začínat znakem '.'"
+
+#: src/git_stage_batch/cli/argument_parser.py:66
+msgid "Hunk-by-hunk and line-by-line staging for git"
+msgstr "Přidávání do indexu po částech a řádcích pro git"
+
+#: src/git_stage_batch/cli/argument_parser.py:78
+msgid "Start interactive mode"
+msgstr "Spustit interaktivní režim"
+
+#: src/git_stage_batch/cli/argument_parser.py:83
+msgid "Available commands"
+msgstr "Dostupné příkazy"
+
+#: src/git_stage_batch/cli/argument_parser.py:89
+msgid "Start a new batch staging session"
+msgstr "Zahájit novou relaci přidávání dávek"
+
+#: src/git_stage_batch/cli/argument_parser.py:96
+msgid "Start interactive hunk-by-hunk mode"
+msgstr "Spustit interaktivní režim po částech"
+
+#: src/git_stage_batch/cli/argument_parser.py:103
+msgid "Stop the current session and clear state"
+msgstr "Ukončit aktuální relaci a vymazat stav"
+
+#: src/git_stage_batch/cli/argument_parser.py:111
+msgid "Clear state and start a fresh pass"
+msgstr "Vymazat stav a začít znovu"
+
+#: src/git_stage_batch/cli/argument_parser.py:118
+msgid "Show the current hunk"
+msgstr "Zobrazit aktuální část"
+
+#: src/git_stage_batch/cli/argument_parser.py:124
+msgid "Show changes from batch"
+msgstr "Zobrazit změny z dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:135
+msgid "Show current session status"
+msgstr "Zobrazit stav aktuální relace"
+
+#: src/git_stage_batch/cli/argument_parser.py:143
+msgid "Stage the current hunk"
+msgstr "Přidat aktuální část do indexu"
+
+#: src/git_stage_batch/cli/argument_parser.py:150
+msgid "Stage only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Přidat pouze konkrétní ID řádků (např. '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:155
+msgid "Stage the entire file containing the current hunk"
+msgstr "Přidat celý soubor obsahující aktuální část"
+
+#: src/git_stage_batch/cli/argument_parser.py:161
+msgid "Include changes from batch"
+msgstr "Zahrnout změny z dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:167
+msgid "Include changes to batch"
+msgstr "Zahrnout změny do dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:181
+msgid "Skip the current hunk without staging"
+msgstr "Přeskočit aktuální část bez přidání"
+
+#: src/git_stage_batch/cli/argument_parser.py:188
+msgid "Skip only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Přeskočit pouze konkrétní ID řádků (např. '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:193
+msgid "Skip all hunks from the current file"
+msgstr "Přeskočit všechny části z aktuálního souboru"
+
+#: src/git_stage_batch/cli/argument_parser.py:205
+msgid "Remove the current hunk from working tree"
+msgstr "Odstranit aktuální část z pracovního stromu"
+
+#: src/git_stage_batch/cli/argument_parser.py:212
+msgid "Discard only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Zahodit pouze konkrétní ID řádků (např. '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:217
+msgid "Discard the entire file containing the current hunk"
+msgstr "Zahodit celý soubor obsahující aktuální část"
+
+#: src/git_stage_batch/cli/argument_parser.py:223
+msgid "Discard changes from batch"
+msgstr "Zahodit změny z dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:229
+msgid "Discard changes to batch"
+msgstr "Zahodit změny do dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:242
+msgid "Restore repository to pre-session state"
+msgstr "Obnovit repozitář do stavu před relací"
+
+#: src/git_stage_batch/cli/argument_parser.py:250
+msgid "Permanently exclude a file (adds to .gitignore)"
+msgstr "Trvale vyloučit soubor (přidá do .gitignore)"
+
+#: src/git_stage_batch/cli/argument_parser.py:254
+msgid "Path to the file to block"
+msgstr "Cesta k souboru, který má být blokován"
+
+#: src/git_stage_batch/cli/argument_parser.py:262
+msgid "Remove a file from the blocked list"
+msgstr "Odstranit soubor ze seznamu blokovaných"
+
+#: src/git_stage_batch/cli/argument_parser.py:266
+msgid "Path to the file to unblock"
+msgstr "Cesta k souboru, který má být odblokován"
+
+#: src/git_stage_batch/cli/argument_parser.py:274
+msgid "Suggest which commit the current hunk should be fixed up to"
+msgstr "Navrhnout, který commit by měl být opraven aktuální částí"
+
+#: src/git_stage_batch/cli/argument_parser.py:281
+msgid "Analyze only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Analyzovat pouze konkrétní ID řádků (např. '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:286
+msgid "Reset state and start search over from most recent"
+msgstr "Resetovat stav a začít hledání znovu od nejnovějšího"
+
+#: src/git_stage_batch/cli/argument_parser.py:291
+msgid "Clear state and exit without showing candidates"
+msgstr "Vymazat stav a ukončit bez zobrazení kandidátů"
+
+#: src/git_stage_batch/cli/argument_parser.py:296
+msgid "Re-show the last candidate without advancing"
+msgstr "Znovu zobrazit posledního kandidáta bez pokračování"
+
+#: src/git_stage_batch/cli/argument_parser.py:302
+#, python-brace-format
+msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
+msgstr ""
+"Git ref použitý jako dolní mez pro hledání commitů (výchozí: @{upstream})"
+
+#: src/git_stage_batch/cli/argument_parser.py:323
+msgid "Create a new batch"
+msgstr "Vytvořit novou dávku"
+
+#: src/git_stage_batch/cli/argument_parser.py:327
+msgid "Name of the batch to create"
+msgstr "Název dávky, která má být vytvořena"
+
+#: src/git_stage_batch/cli/argument_parser.py:332
+msgid "Optional description for the batch"
+msgstr "Volitelný popis dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:339
+msgid "List all batches"
+msgstr "Vypsat všechny dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:346
+msgid "Delete a batch"
+msgstr "Smazat dávku"
+
+#: src/git_stage_batch/cli/argument_parser.py:350
+msgid "Name of the batch to delete"
+msgstr "Název dávky, která má být smazána"
+
+#: src/git_stage_batch/cli/argument_parser.py:357
+msgid "Add or update batch description"
+msgstr "Přidat nebo aktualizovat popis dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:361
+msgid "Name of the batch"
+msgstr "Název dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:365
+msgid "Description text"
+msgstr "Text popisu"
+
+#: src/git_stage_batch/cli/argument_parser.py:372
+msgid "Apply batch changes to working tree"
+msgstr "Použít změny dávky do pracovního stromu"
+
+#: src/git_stage_batch/cli/argument_parser.py:379
+msgid "Apply changes from batch to working tree"
+msgstr "Použít změny z dávky do pracovního stromu"
+
+#: src/git_stage_batch/cli/argument_parser.py:386
+#: src/git_stage_batch/cli/argument_parser.py:393
+msgid "Remove claims from batch"
+msgstr "Odebrat nároky z dávky"
+
+#: src/git_stage_batch/cli/argument_parser.py:400
+msgid "Reset only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Resetovat pouze konkrétní ID řádků (např. '1,3,5-7')"
+
+#: src/git_stage_batch/cli/dispatch.py:24
+#: src/git_stage_batch/commands/status.py:72
+msgid "No batch staging session in progress."
+msgstr "Neprobíhá žádná relace přidávání dávek."
+
+#: src/git_stage_batch/cli/dispatch.py:25
+#: src/git_stage_batch/commands/status.py:73
+msgid "Run 'git-stage-batch start' to begin."
+msgstr "Spusťte 'git-stage-batch start' pro zahájení."
+
+#: src/git_stage_batch/commands/abort.py:30
+msgid "No session to abort. Abort state not found."
+msgstr "Žádná relace k přerušení. Stav přerušení nenalezen."
+
+#: src/git_stage_batch/commands/abort.py:48
+msgid "Resetting to {}..."
+msgstr "Resetování na {}..."
+
+#: src/git_stage_batch/commands/abort.py:70
+msgid "Restored: {}"
+msgstr "Obnoveno: {}"
+
+#: src/git_stage_batch/commands/abort.py:74
+msgid "Applying original changes..."
+msgstr "Aplikování původních změn..."
+
+#: src/git_stage_batch/commands/abort.py:82
+msgid "⚠ Warning: Could not apply stash cleanly: {}"
+msgstr "⚠ Varování: Nelze čistě aplikovat stash: {}"
+
+#: src/git_stage_batch/commands/abort.py:89
+msgid "✓ Session aborted. All changes reverted."
+msgstr "✓ Relace přerušena. Všechny změny vráceny zpět."
+
+#: src/git_stage_batch/commands/annotate.py:15
+#, python-brace-format
+msgid "✓ Updated note for batch '{name}'"
+msgstr "✓ Aktualizována poznámka pro dávku '{name}'"
+
+#: src/git_stage_batch/commands/apply_from.py:33
+#: src/git_stage_batch/commands/discard_from.py:32
+#: src/git_stage_batch/commands/include_from.py:38
+#: src/git_stage_batch/commands/show_from.py:27
+#, python-brace-format
+msgid "Batch '{name}' is empty or does not exist"
+msgstr "Dávka '{name}' je prázdná nebo neexistuje"
+
+#: src/git_stage_batch/commands/apply_from.py:39
+#: src/git_stage_batch/commands/discard_from.py:38
+#: src/git_stage_batch/commands/include_from.py:44
+#: src/git_stage_batch/commands/show_from.py:34
+#, python-brace-format
+msgid "No patches found in batch '{name}'"
+msgstr "Nenalezeny žádné patche v dávce '{name}'"
+
+#: src/git_stage_batch/commands/apply_from.py:54
+#: src/git_stage_batch/commands/discard_from.py:53
+#: src/git_stage_batch/commands/include_from.py:59
+#, python-brace-format
+#| msgid "Batch '{name}' does not exist"
+msgid "Batch '{name}' has no changes for {file}"
+msgstr "✓ Změny pro {file} z dávky '{name}' připraveny"
+
+#: src/git_stage_batch/commands/apply_from.py:74
+#: src/git_stage_batch/commands/include_from.py:76
+#, python-brace-format
+msgid ""
+"Failed to apply patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr ""
+"Selhalo zahození záplat pro soubory: {files}\\nSpusťte 'git-stage-batch show"
+" --from {name}' pro kontrolu změn\\nPoužijte --file nebo --line pro zahození"
+" kompatibilních částí"
+
+#: src/git_stage_batch/commands/apply_from.py:80
+#, python-brace-format
+#| msgid "✓ Applied changes from batch '{name}' to working tree"
+msgid "✓ Applied changes for {file} from batch '{name}' to working tree"
+msgstr "✓ Změny pro {file} z dávky '{name}' aplikovány do pracovního stromu"
+
+#: src/git_stage_batch/commands/apply_from.py:116
+#, python-brace-format
+msgid "✓ Applied selected lines from batch '{name}' to working tree"
+msgstr "✓ Aplikovány vybrané řádky z dávky '{name}' do pracovního stromu"
+
+#: src/git_stage_batch/commands/apply_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --line to apply compatible parts"
+msgstr "✓ Změny pro {file} z dávky '{name}' zahozeny z pracovního stromu"
+
+#: src/git_stage_batch/commands/apply_from.py:146
+#, python-brace-format
+msgid "✓ Applied changes from batch '{name}' to working tree"
+msgstr "✓ Aplikovány změny z dávky '{name}' do pracovního stromu"
+
+#: src/git_stage_batch/commands/block_file.py:20
+msgid "File path required for block-file command."
+msgstr "Cesta k souboru je vyžadována pro příkaz block-file."
+
+#: src/git_stage_batch/commands/block_file.py:31
+msgid "Blocked file: {}"
+msgstr "Blokován soubor: {}"
+
+#: src/git_stage_batch/commands/discard.py:45
+#: src/git_stage_batch/commands/include.py:46
+#: src/git_stage_batch/commands/show.py:56
+#: src/git_stage_batch/commands/skip.py:36
+#: src/git_stage_batch/data/hunk_tracking.py:234
+#: src/git_stage_batch/tui/interactive.py:656
+msgid "No more hunks to process."
+msgstr "Žádné další části ke zpracování."
+
+#: src/git_stage_batch/commands/discard.py:70
+msgid "Failed to discard hunk: {}"
+msgstr "Nepodařilo se zahodit část: {}"
+
+#: src/git_stage_batch/commands/discard.py:91
+#, python-brace-format
+msgid "✓ Hunk discarded from {file}"
+msgstr "✓ Část zahozena ze souboru {file}"
+
+#: src/git_stage_batch/commands/discard.py:120
+msgid "No changes to discard."
+msgstr "Žádné změny k zahození."
+
+#: src/git_stage_batch/commands/discard.py:147
+msgid "Failed to discard file: {}"
+msgstr "Nepodařilo se zahodit soubor: {}"
+
+#: src/git_stage_batch/commands/discard.py:154
+msgid "✓ File discarded: {}"
+msgstr "✓ Soubor zahozen: {}"
+
+#: src/git_stage_batch/commands/discard.py:178
+#: src/git_stage_batch/commands/discard.py:264
+#: src/git_stage_batch/commands/discard_from.py:106
+#, python-brace-format
+msgid "File not found in working tree: {file}"
+msgstr "Soubor nenalezen v pracovním stromu: {file}"
+
+#: src/git_stage_batch/commands/discard.py:190
+#, python-brace-format
+msgid "✓ Discarded line(s): {lines}"
+msgstr "✓ Zahozeny řádky: {lines}"
+
+#: src/git_stage_batch/commands/discard.py:274
+#, python-brace-format
+#| msgid "✓ Discarded line(s): {lines}"
+msgid "✓ Discarded line(s) to batch '{name}': {lines}"
+msgstr ""
+"Selhalo zahození záplat pro soubor: {file}\\nSpusťte 'git-stage-batch show "
+"--from {name}' pro kontrolu změn"
+
+#: src/git_stage_batch/commands/discard.py:317
+#: src/git_stage_batch/commands/include.py:321
+#: src/git_stage_batch/commands/skip.py:84
+#: src/git_stage_batch/commands/start.py:31
+msgid "No changes to process."
+msgstr "Žádné změny ke zpracování."
+
+#: src/git_stage_batch/commands/discard.py:372
+#, python-brace-format
+msgid "Failed to apply reverse patch: {error}"
+msgstr "Nepodařilo se aplikovat reverzní patch: {error}"
+
+#: src/git_stage_batch/commands/discard.py:389
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}' and discarded from working tree"
+msgstr "✓ Část uložena do dávky '{name}' a zahozena z pracovního stromu"
+
+#: src/git_stage_batch/commands/discard_from.py:73
+#, python-brace-format
+msgid ""
+"Failed to discard patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr "Žádná relace není spuštěna. Nejprve spusťte 'git-stage-batch start'."
+
+#: src/git_stage_batch/commands/discard_from.py:79
+#, python-brace-format
+#| msgid "✓ Discarded changes from batch '{name}' from working tree"
+msgid "✓ Discarded changes for {file} from batch '{name}' from working tree"
+msgstr ""
+"Selhalo použití záplat pro soubory: {files}\\nSpusťte 'git-stage-batch show "
+"--from {name}' pro kontrolu změn\\nPoužijte --line pro aplikaci "
+"kompatibilních částí"
+
+#: src/git_stage_batch/commands/discard_from.py:80
+#: src/git_stage_batch/commands/discard_from.py:119
+#: src/git_stage_batch/commands/discard_from.py:147
+#, python-brace-format
+msgid "Note: Batch '{name}' still exists (use 'drop' to delete it)"
+msgstr "Poznámka: Dávka '{name}' stále existuje (použijte 'drop' pro smazání)"
+
+#: src/git_stage_batch/commands/discard_from.py:118
+#, python-brace-format
+msgid "✓ Discarded selected lines from batch '{name}' from working tree"
+msgstr "✓ Zahozeny vybrané řádky z dávky '{name}' z pracovního stromu"
+
+#: src/git_stage_batch/commands/discard_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to discard patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to discard compatible parts"
+msgstr "Dávka '{name}' nemá žádné změny pro {file}"
+
+#: src/git_stage_batch/commands/discard_from.py:146
+#, python-brace-format
+msgid "✓ Discarded changes from batch '{name}' from working tree"
+msgstr "✓ Zahozeny změny z dávky '{name}' z pracovního stromu"
+
+#: src/git_stage_batch/commands/drop.py:15
+#, python-brace-format
+msgid "✓ Deleted batch '{name}'"
+msgstr "✓ Smazána dávka '{name}'"
+
+#: src/git_stage_batch/commands/include.py:67
+msgid "Failed to apply hunk: {}"
+msgstr "Nepodařilo se aplikovat část: {}"
+
+#: src/git_stage_batch/commands/include.py:78
+#, python-brace-format
+msgid "✓ Hunk staged from {file}"
+msgstr "✓ Část připravena ze souboru {file}"
+
+#: src/git_stage_batch/commands/include.py:107
+#: src/git_stage_batch/tui/interactive.py:617
+#: src/git_stage_batch/tui/interactive.py:658
+msgid "No changes to stage."
+msgstr "Žádné změny k přidání do indexu."
+
+#: src/git_stage_batch/commands/include.py:137
+#, python-brace-format
+msgid "Failed to apply hunk: {error}"
+msgstr "Nepodařilo se aplikovat část: {error}"
+
+#: src/git_stage_batch/commands/include.py:141
+#, python-brace-format
+msgid "No hunks staged from {file}"
+msgstr "Žádné části připraveny ze souboru {file}"
+
+#: src/git_stage_batch/commands/include.py:146
+#, python-brace-format
+msgid "✓ Staged {count} hunk from {file}"
+msgid_plural "✓ Staged {count} hunks from {file}"
+msgstr[0] "✓ Připravena {count} část ze souboru {file}"
+msgstr[1] "✓ Připraveny {count} části ze souboru {file}"
+msgstr[2] "✓ Připraveno {count} částí ze souboru {file}"
+
+#: src/git_stage_batch/commands/include.py:185
+#, python-brace-format
+msgid "✓ Included line(s): {lines}"
+msgstr "✓ Zahrnuty řádky: {lines}"
+
+#: src/git_stage_batch/commands/include.py:256
+#, python-brace-format
+#| msgid "✓ Included line(s): {lines}"
+msgid "✓ Included line(s) to batch '{name}': {lines}"
+msgstr "✓ Řádek/řádky zahrnuty do dávky '{name}': {lines}"
+
+#: src/git_stage_batch/commands/include.py:272
+#| msgid ""
+#| "\n"
+#| "No changed lines in this hunk."
+msgid "No more lines in this hunk."
+msgstr ""
+"Selhalo použití záplat pro soubor: {file}\\nSpusťte 'git-stage-batch show "
+"--from {name}' pro kontrolu změn"
+
+#: src/git_stage_batch/commands/include.py:377
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}'"
+msgstr "✓ Část uložena do dávky '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:82
+#, python-brace-format
+#| msgid "✓ Staged changes from batch '{name}'"
+msgid "✓ Staged changes for {file} from batch '{name}'"
+msgstr "✓ Řádek/řádky zahozeny do dávky '{name}': {lines}"
+
+#: src/git_stage_batch/commands/include_from.py:102
+#, python-brace-format
+msgid "Cannot determine baseline for batch '{name}'"
+msgstr "Nelze určit základní linii pro dávku '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:119
+#, python-brace-format
+msgid "✓ Staged selected lines from batch '{name}'"
+msgstr "✓ Připraveny vybrané řádky z dávky '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:141
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to apply compatible parts"
+msgstr "V tomto bloku již nejsou žádné řádky."
+
+#: src/git_stage_batch/commands/include_from.py:147
+#, python-brace-format
+msgid "✓ Staged changes from batch '{name}'"
+msgstr "✓ Připraveny změny z dávky '{name}'"
+
+#: src/git_stage_batch/commands/list.py:18
+msgid "No batches found"
+msgstr "Nenalezeny žádné dávky"
+
+#: src/git_stage_batch/commands/new.py:15
+#, python-brace-format
+msgid "✓ Created batch '{name}'"
+msgstr "✓ Vytvořena dávka '{name}'"
+
+#: src/git_stage_batch/commands/reset.py:44
+#, python-brace-format
+msgid "✓ Reset line(s) {lines} from batch '{name}'"
+msgstr "✓ Řádky {lines} resetovány z dávky '{name}'"
+
+#: src/git_stage_batch/commands/reset.py:47
+#, python-brace-format
+msgid "✓ Reset all claims from batch '{name}'"
+msgstr "✓ Všechny nároky resetovány z dávky '{name}'"
+
+#: src/git_stage_batch/commands/skip.py:55
+#, python-brace-format
+msgid "✓ Hunk skipped from {file}"
+msgstr "✓ Část přeskočena ze souboru {file}"
+
+#: src/git_stage_batch/commands/skip.py:106
+#, python-brace-format
+msgid "✓ Skipped {count} hunk from {file}"
+msgid_plural "✓ Skipped {count} hunks from {file}"
+msgstr[0] "✓ Přeskočena {count} část ze souboru {file}"
+msgstr[1] "✓ Přeskočeny {count} části ze souboru {file}"
+msgstr[2] "✓ Přeskočeno {count} částí ze souboru {file}"
+
+#: src/git_stage_batch/commands/skip.py:133
+#, python-brace-format
+msgid "✓ Skipped line(s): {lines}"
+msgstr "✓ Přeskočeny řádky: {lines}"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "in progress"
+msgstr "probíhá"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "complete"
+msgstr "dokončeno"
+
+#: src/git_stage_batch/commands/status.py:140
+msgid "Session: iteration {} ({})"
+msgstr "Relace: iterace {} ({})"
+
+#: src/git_stage_batch/commands/status.py:145
+msgid "Current hunk:"
+msgstr "Aktuální část:"
+
+#: src/git_stage_batch/commands/status.py:146
+msgid "  {}:{}"
+msgstr "  {}:{}"
+
+#: src/git_stage_batch/commands/status.py:147
+msgid "  [#{}]"
+msgstr "  [#{}]"
+
+#: src/git_stage_batch/commands/status.py:150
+msgid "Progress this iteration:"
+msgstr "Průběh této iterace:"
+
+#: src/git_stage_batch/commands/status.py:151
+msgid "  Included:  {} hunks"
+msgstr "  Zahrnuto:  {} částí"
+
+#: src/git_stage_batch/commands/status.py:152
+msgid "  Skipped:   {} hunks"
+msgstr "  Přeskočeno:   {} částí"
+
+#: src/git_stage_batch/commands/status.py:153
+msgid "  Discarded: {} hunks"
+msgstr "  Zahozeno: {} částí"
+
+#: src/git_stage_batch/commands/status.py:154
+msgid "  Remaining: ~{} hunks"
+msgstr "  Zbývá: ~{} částí"
+
+#: src/git_stage_batch/commands/status.py:158
+msgid "Skipped hunks:"
+msgstr "Přeskočené části:"
+
+#: src/git_stage_batch/commands/status.py:161
+msgid "  {}:{} [#{}]"
+msgstr "  {}:{} [#{}]"
+
+#: src/git_stage_batch/commands/stop.py:28
+msgid "✓ State cleared."
+msgstr "✓ Stav vymazán."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:192
+#: src/git_stage_batch/commands/suggest_fixup.py:399
+msgid "Suggest-fixup iteration cleared."
+msgstr "Iterace suggest-fixup vymazána."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:222
+msgid "Full hunk state not available. Run 'show' to cache the current hunk."
+msgstr ""
+"Selhalo použití záplat pro soubory: {files}\\nSpusťte 'git-stage-batch show "
+"--from {name}' pro kontrolu změn\\nPoužijte --file nebo --line pro aplikaci "
+"kompatibilních částí"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:236
+msgid "No old line numbers found in hunk (all lines may be additions)."
+msgstr ""
+"Nenalezena žádná stará čísla řádků v části (všechny řádky mohou být "
+"přidání)."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:246
+#: src/git_stage_batch/commands/suggest_fixup.py:449
+#, python-brace-format
+msgid "Invalid boundary ref: {boundary}"
+msgstr "Neplatný hraniční ref: {boundary}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:255
+#: src/git_stage_batch/commands/suggest_fixup.py:458
+#, python-brace-format
+msgid "Failed to get commit range {boundary}..HEAD"
+msgstr "Nepodařilo se získat rozsah commitů {boundary}..HEAD"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:258
+#: src/git_stage_batch/commands/suggest_fixup.py:461
+#, python-brace-format
+msgid "No commits found in range {boundary}..HEAD"
+msgstr "Nenalezeny žádné commity v rozsahu {boundary}..HEAD"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:299
+#: src/git_stage_batch/commands/suggest_fixup.py:359
+#: src/git_stage_batch/commands/suggest_fixup.py:502
+#: src/git_stage_batch/commands/suggest_fixup.py:562
+#, python-brace-format
+msgid "Candidate {iteration}: {info}"
+msgstr "Kandidát {iteration}: {info}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:301
+#: src/git_stage_batch/commands/suggest_fixup.py:361
+#: src/git_stage_batch/commands/suggest_fixup.py:504
+#: src/git_stage_batch/commands/suggest_fixup.py:564
+#, python-brace-format
+msgid "Run: git commit --fixup={commit}"
+msgstr "Spusťte: git commit --fixup={commit}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:325
+#: src/git_stage_batch/commands/suggest_fixup.py:528
+msgid "No more candidates found."
+msgstr "Nenalezeni žádní další kandidáti."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:439
+msgid ""
+"No old line numbers found for specified lines (they may be newly added "
+"lines)."
+msgstr ""
+"Nenalezena žádná stará čísla řádků pro specifikované řádky (mohou to být "
+"nově přidané řádky)."
+
+#: src/git_stage_batch/commands/unblock_file.py:20
+msgid "File path required for unblock-file command."
+msgstr "Cesta k souboru je vyžadována pro příkaz unblock-file."
+
+#: src/git_stage_batch/core/diff_parser.py:262
+msgid "Failed to parse hunk header."
+msgstr "Nepodařilo se naparsovat hlavičku části."
+
+#: src/git_stage_batch/data/hunk_tracking.py:285
+#: src/git_stage_batch/data/line_state.py:67
+msgid "No current hunk. Run 'start' first."
+msgstr "Žádná aktuální část. Nejprve spusťte 'start'."
+
+#: src/git_stage_batch/data/hunk_tracking.py:292
+msgid ""
+"Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
+msgstr ""
+"Kešovaná část je zastaralá (soubor byl změněn). Spusťte 'start' nebo 'again'"
+" pro pokračování."
+
+#: src/git_stage_batch/data/hunk_tracking.py:338
+msgid "No pending hunks."
+msgstr "Žádné čekající části."
+
+#: src/git_stage_batch/data/session.py:46
+#| msgid "Run 'git-stage-batch start' to begin."
+msgid "No session in progress. Run 'git-stage-batch start' first."
+msgstr ""
+"Úplný stav bloku není k dispozici. Spusťte 'show' pro uložení aktuálního "
+"bloku do mezipaměti."
+
+#: src/git_stage_batch/tui/display.py:32
+#, python-brace-format
+msgid "{source_label}{source} {arrow} {target_label}{target}"
+msgstr "{source_label}{source} {arrow} {target_label}{target}"
+
+#: src/git_stage_batch/tui/display.py:40
+#, python-brace-format
+msgid "Source: {source} → Target: {target}"
+msgstr "Zdroj: {source} → Cíl: {target}"
+
+#: src/git_stage_batch/tui/display.py:54
+#, python-brace-format
+msgid "Included: {count}"
+msgstr "Zahrnuto: {count}"
+
+#: src/git_stage_batch/tui/display.py:55
+#, python-brace-format
+msgid "Skipped: {count}"
+msgstr "Přeskočeno: {count}"
+
+#: src/git_stage_batch/tui/display.py:56
+#, python-brace-format
+msgid "Discarded: {count}"
+msgstr "Zahozeno: {count}"
+
+#: src/git_stage_batch/tui/flow.py:38
+msgid "Working tree"
+msgstr "Pracovní strom"
+
+#: src/git_stage_batch/tui/flow.py:41
+msgid "Index"
+msgstr "Index"
+
+#: src/git_stage_batch/tui/interactive.py:58
+#: src/git_stage_batch/tui/interactive.py:102
+msgid "Batch-to-batch transfers not yet supported. Target must be staging."
+msgstr "Přenosy mezi dávkami zatím nejsou podporovány. Cíl musí být staging."
+
+#: src/git_stage_batch/tui/interactive.py:80
+#: src/git_stage_batch/tui/interactive.py:765
+#: src/git_stage_batch/tui/interactive.py:879
+msgid "Skip is not available when pulling from a batch."
+msgstr "Přeskočení není dostupné při čerpání z dávky."
+
+#: src/git_stage_batch/tui/interactive.py:91
+msgid "This will remove the hunk from your working tree."
+msgstr "Toto odstraní část z vašeho pracovního stromu."
+
+#: src/git_stage_batch/tui/interactive.py:139
+msgid "Suggest-fixup is not available when pulling from a batch."
+msgstr "Suggest-fixup není dostupný při čerpání z dávky."
+
+#: src/git_stage_batch/tui/interactive.py:164
+msgid "Command exited with status {}"
+msgstr "Příkaz skončil se stavem {}"
+
+#: src/git_stage_batch/tui/interactive.py:167
+msgid ""
+"\n"
+"Press Enter to continue..."
+msgstr ""
+"\n"
+"Stiskněte Enter pro pokračování..."
+
+#: src/git_stage_batch/tui/interactive.py:171
+msgid "No command entered"
+msgstr "Nebyl zadán žádný příkaz"
+
+#: src/git_stage_batch/tui/interactive.py:189
+msgid "No batches found. Create one now."
+msgstr "Nenalezeny žádné dávky. Vytvořte jednu nyní."
+
+#: src/git_stage_batch/tui/interactive.py:196
+msgid "Existing batches:"
+msgstr "Existující dávky:"
+
+#: src/git_stage_batch/tui/interactive.py:202
+#: src/git_stage_batch/tui/interactive.py:207
+#, python-brace-format
+msgid "  {name} - {note}"
+msgstr "  {name} - {note}"
+
+#: src/git_stage_batch/tui/interactive.py:216
+msgid "Batch operations:"
+msgstr "Operace s dávkami:"
+
+#: src/git_stage_batch/tui/interactive.py:218
+msgid "create"
+msgstr "vytvořit"
+
+#: src/git_stage_batch/tui/interactive.py:219
+#: src/git_stage_batch/tui/interactive.py:273
+msgid "edit"
+msgstr "upravit"
+
+#: src/git_stage_batch/tui/interactive.py:220
+#: src/git_stage_batch/tui/interactive.py:289
+msgid "drop"
+msgstr "smazat"
+
+#: src/git_stage_batch/tui/interactive.py:221
+#: src/git_stage_batch/tui/interactive.py:300
+msgid "apply"
+msgstr "aplikovat"
+
+#: src/git_stage_batch/tui/interactive.py:229
+#: src/git_stage_batch/tui/interactive.py:342
+#: src/git_stage_batch/tui/interactive.py:403
+#: src/git_stage_batch/tui/interactive.py:470
+msgid "Select: "
+msgstr "Vyberte: "
+
+#: src/git_stage_batch/tui/interactive.py:247
+#: src/git_stage_batch/tui/interactive.py:776
+#: src/git_stage_batch/tui/interactive.py:843
+#: src/git_stage_batch/tui/interactive.py:973
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown action: '{action}'"
+msgstr ""
+"\n"
+"Neznámá akce: '{action}'"
+
+#: src/git_stage_batch/tui/interactive.py:257
+#: src/git_stage_batch/tui/interactive.py:480
+msgid "Batch ID: "
+msgstr "ID dávky: "
+
+#: src/git_stage_batch/tui/interactive.py:261
+#: src/git_stage_batch/tui/interactive.py:483
+msgid "Note (optional): "
+msgstr "Poznámka (volitelně): "
+
+#: src/git_stage_batch/tui/interactive.py:267
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' created."
+msgstr ""
+"\n"
+"Dávka '{name}' vytvořena."
+
+#: src/git_stage_batch/tui/interactive.py:278
+msgid "New note: "
+msgstr "Nová poznámka: "
+
+#: src/git_stage_batch/tui/interactive.py:284
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' note updated."
+msgstr ""
+"\n"
+"Poznámka dávky '{name}' aktualizována."
+
+#: src/git_stage_batch/tui/interactive.py:295
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' dropped."
+msgstr ""
+"\n"
+"Dávka '{name}' smazána."
+
+#: src/git_stage_batch/tui/interactive.py:306
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' applied to staging area."
+msgstr ""
+"\n"
+"Dávka '{name}' aplikována do oblasti přípravy."
+
+#: src/git_stage_batch/tui/interactive.py:325
+msgid "No batches found."
+msgstr "Nenalezeny žádné dávky."
+
+#: src/git_stage_batch/tui/interactive.py:333
+#, python-brace-format
+msgid "Select batch to {purpose}:"
+msgstr "Vyberte dávku k {purpose}:"
+
+#: src/git_stage_batch/tui/interactive.py:354
+msgid ""
+"\n"
+"Invalid selection."
+msgstr ""
+"\n"
+"Neplatný výběr."
+
+#: src/git_stage_batch/tui/interactive.py:366
+msgid "Pull changes from:"
+msgstr "Čerpat změny z:"
+
+#: src/git_stage_batch/tui/interactive.py:371
+#: src/git_stage_batch/tui/interactive.py:433
+msgid " (current)"
+msgstr " (aktuální)"
+
+#: src/git_stage_batch/tui/interactive.py:376
+#, python-brace-format
+msgid "Working tree{marker}"
+msgstr "Pracovní strom{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:390
+#: src/git_stage_batch/tui/interactive.py:452
+#, python-brace-format
+msgid "batch: {name}{note}{marker}"
+msgstr "dávka: {name}{note}{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:428
+msgid "Push changes to:"
+msgstr "Odeslat změny do:"
+
+#: src/git_stage_batch/tui/interactive.py:438
+#, python-brace-format
+msgid "Staging for commit{marker}"
+msgstr "Příprava pro commit{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:465
+msgid "New Batch..."
+msgstr "Nová dávka..."
+
+#: src/git_stage_batch/tui/interactive.py:518
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown command: '{cmd}'"
+msgstr ""
+"\n"
+"Neznámý příkaz: '{cmd}'"
+
+#: src/git_stage_batch/tui/interactive.py:521
+#, python-brace-format
+msgid ""
+"\n"
+"Error executing command: {error}"
+msgstr ""
+"\n"
+"Chyba při provádění příkazu: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:588
+msgid "No changes to process"
+msgstr "Žádné změny ke zpracování"
+
+#: src/git_stage_batch/tui/interactive.py:721
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude? "
+msgstr "Akce pro všechny části v {filename} - [z]ahrnout? "
+
+#: src/git_stage_batch/tui/interactive.py:724
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude or [s]kip? "
+msgstr "Akce pro všechny části v {filename} - [z]ahrnout nebo [p]řeskočit? "
+
+#: src/git_stage_batch/tui/interactive.py:731
+#, python-brace-format
+msgid "Action for all hunks in {filename} - {include} or {skip}? "
+msgstr "Akce pro všechny části v {filename} - {include} nebo {skip}? "
+
+#: src/git_stage_batch/tui/interactive.py:756
+#: src/git_stage_batch/tui/interactive.py:871
+#: src/git_stage_batch/tui/interactive.py:901
+msgid "Batch-to-batch transfers not yet supported."
+msgstr "Přenosy mezi dávkami zatím nejsou podporovány."
+
+#: src/git_stage_batch/tui/interactive.py:800
+msgid ""
+"\n"
+"No changed lines in this hunk."
+msgstr ""
+"\n"
+"Žádné změněné řádky v této části."
+
+#: src/git_stage_batch/tui/interactive.py:806
+#, python-brace-format
+msgid ""
+"\n"
+"Changed line IDs: {ids}"
+msgstr ""
+"\n"
+"ID změněných řádků: {ids}"
+
+#: src/git_stage_batch/tui/interactive.py:816
+msgid "Action for lines [i]nclude, [d]iscard? "
+msgstr "Akce pro řádky [z]ahrnout, [o]dstranit? "
+
+#: src/git_stage_batch/tui/interactive.py:819
+msgid "Action for lines [i]nclude, [s]kip, [d]iscard? "
+msgstr "Akce pro řádky [z]ahrnout, [p]řeskočit, [o]dstranit? "
+
+#: src/git_stage_batch/tui/interactive.py:826
+#, python-brace-format
+msgid "Action for lines {include}, {skip}, {discard}? "
+msgstr "Akce pro řádky {include}, {skip}, {discard}? "
+
+#: src/git_stage_batch/tui/interactive.py:848
+msgid ""
+"\n"
+"Skip is not available when pulling from a batch."
+msgstr ""
+"\n"
+"Přeskočení není dostupné při čerpání z dávky."
+
+#: src/git_stage_batch/tui/interactive.py:891
+#, python-brace-format
+msgid "This will remove lines {line_ids} from your working tree."
+msgstr "Toto odstraní řádky {line_ids} z vašeho pracovního stromu."
+
+#: src/git_stage_batch/tui/interactive.py:908
+#, python-brace-format
+msgid ""
+"\n"
+"Error: {error}"
+msgstr ""
+"\n"
+"Chyba: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:946
+msgid "Create fixup commit with:"
+msgstr "Vytvořit fixup commit pomocí:"
+
+#: src/git_stage_batch/tui/interactive.py:970
+msgid ""
+"\n"
+"Canceled."
+msgstr ""
+"\n"
+"Zrušeno."
+
+#: src/git_stage_batch/tui/interactive.py:1030
+msgid "Interactive Mode Commands:"
+msgstr "Příkazy interaktivního režimu:"
+
+#: src/git_stage_batch/tui/interactive.py:1037
+msgid "Primary actions:"
+msgstr "Primární akce:"
+
+#: src/git_stage_batch/tui/interactive.py:1038
+msgid "  i, include   - Stage this hunk to the index"
+msgstr "  i, include   - Přidat tuto část do indexu"
+
+#: src/git_stage_batch/tui/interactive.py:1039
+msgid "  s, skip      - Skip this hunk for now"
+msgstr "  s, skip      - Přeskočit tuto část prozatím"
+
+#: src/git_stage_batch/tui/interactive.py:1040
+msgid "  d, discard   - Remove this hunk from working tree (DESTRUCTIVE)"
+msgstr ""
+"  d, discard   - Odstranit tuto část z pracovního stromu (DESTRUKTIVNÍ)"
+
+#: src/git_stage_batch/tui/interactive.py:1041
+msgid "  q, quit      - Exit interactive mode"
+msgstr "  q, quit      - Ukončit interaktivní režim"
+
+#: src/git_stage_batch/tui/interactive.py:1043
+msgid "More options:"
+msgstr "Další možnosti:"
+
+#: src/git_stage_batch/tui/interactive.py:1044
+msgid ""
+"  a, again     - Clear state and start fresh pass through skipped hunks"
+msgstr ""
+"  a, again     - Vymazat stav a začít znovu procházet přeskočené části"
+
+#: src/git_stage_batch/tui/interactive.py:1045
+msgid "  l, lines     - Select specific lines from this hunk"
+msgstr "  l, lines     - Vybrat konkrétní řádky z této části"
+
+#: src/git_stage_batch/tui/interactive.py:1046
+msgid "  f, file      - Include or skip all hunks in this file"
+msgstr ""
+"  f, file      - Zahrnout nebo přeskočit všechny části v tomto souboru"
+
+#: src/git_stage_batch/tui/interactive.py:1047
+msgid "  x, fixup     - Suggest which commit to fixup (iterative)"
+msgstr "  x, fixup     - Navrhnout, který commit opravit (iterativně)"
+
+#: src/git_stage_batch/tui/interactive.py:1048
+msgid ""
+"  !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)"
+msgstr ""
+"  !<příkaz>    - Spustit shellový příkaz (např. !git log, nebo jen ! pro "
+"výzvu)"
+
+#: src/git_stage_batch/tui/interactive.py:1049
+msgid "  ?, help      - Show this help message"
+msgstr "  ?, help      - Zobrazit tuto nápovědu"
+
+#: src/git_stage_batch/tui/prompts.py:129
+msgid "What do you want to do with this hunk?"
+msgstr "Co chcete udělat s touto částí?"
+
+#: src/git_stage_batch/tui/prompts.py:131
+msgid "What do you want to do?"
+msgstr "Co chcete udělat?"
+
+#: src/git_stage_batch/tui/prompts.py:151
+#: src/git_stage_batch/tui/prompts.py:158
+#, python-brace-format
+msgid "{label}: {options}"
+msgstr "{label}: {options}"
+
+#: src/git_stage_batch/tui/prompts.py:188
+msgid "Action: "
+msgstr "Akce: "
+
+#: src/git_stage_batch/tui/prompts.py:231
+#, python-brace-format
+msgid "⚠️  {message}"
+msgstr "⚠️  {message}"
+
+#: src/git_stage_batch/tui/prompts.py:238
+#: src/git_stage_batch/tui/prompts.py:285
+msgid "yes"
+msgstr "ano"
+
+#: src/git_stage_batch/tui/prompts.py:239
+msgid "NO"
+msgstr "NE"
+
+#: src/git_stage_batch/tui/prompts.py:248
+#, python-brace-format
+msgid "Are you sure? [{yes}/{no}]: "
+msgstr "Jste si jisti? [{yes}/{no}]: "
+
+#: src/git_stage_batch/tui/prompts.py:267
+msgid "Enter line IDs (e.g., 1,3,5-7): "
+msgstr "Zadejte ID řádků (např. 1,3,5-7): "
+
+#: src/git_stage_batch/tui/prompts.py:283
+#: src/git_stage_batch/tui/prompts.py:365
+msgid "y"
+msgstr "a"
+
+#: src/git_stage_batch/tui/prompts.py:284
+#: src/git_stage_batch/tui/prompts.py:366
+msgid "n"
+msgstr "n"
+
+#: src/git_stage_batch/tui/prompts.py:286
+msgid "no"
+msgstr "ne"
+
+#: src/git_stage_batch/tui/prompts.py:295
+#, python-brace-format
+msgid "Keep staged changes? [{y}]es / [{n}]o: "
+msgstr "Zachovat připravené změny? [{y}]no / [{n}]e: "
+
+#: src/git_stage_batch/tui/prompts.py:367
+msgid "r"
+msgstr "r"
+
+#: src/git_stage_batch/tui/prompts.py:378
+#, python-brace-format
+msgid "[{y}]es / [{n}]ext / [{r}]eset: "
+msgstr "[{y}]no / [{n}]ásledující / [{r}]eset: "
+
+#: src/git_stage_batch/utils/git.py:113
+msgid "Not inside a git repository."
+msgstr "Nejste uvnitř git repozitáře."
+
+#, python-brace-format
+#~ msgid "Failed to read {file} from batch '{name}'"
+#~ msgstr "Nepodařilo se načíst {file} z dávky '{name}'"
+
+#, python-brace-format
+#~ msgid "✓ Applied all files from batch '{name}' to working tree (wholesale)"
+#~ msgstr ""
+#~ "✓ Aplikovány všechny soubory z dávky '{name}' do pracovního stromu "
+#~ "(hromadně)"
+
+#, python-brace-format
+#~ msgid "Failed to restore files from baseline: {error}"
+#~ msgstr "Nepodařilo se obnovit soubory ze základní linie: {error}"
+
+#, python-brace-format
+#~ msgid ""
+#~ "✓ Discarded all files from batch '{name}' from working tree (wholesale)"
+#~ msgstr ""
+#~ "✓ Zahozeny všechny soubory z dávky '{name}' z pracovního stromu (hromadně)"
+
+#, python-brace-format
+#~ msgid "✓ Staged all files from batch '{name}' (wholesale)"
+#~ msgstr "✓ Připraveny všechny soubory z dávky '{name}' (hromadně)"

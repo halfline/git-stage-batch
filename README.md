@@ -25,6 +25,7 @@ During development we experiment, refactor, backtrack, and fix mistakes. If ever
 - **Command-based workflow** - Perfect for automation and AI coding assistants
 - **Line-level control** - Stage specific lines within a hunk for maximum granularity
 - **State persistence** - Resume staging across multiple invocations
+- **Batch operations** - Save hunks for later, organize complex changes
 - **Machine-readable output** - `--porcelain` flag for scripting
 - **No dependencies** - Pure Python standard library
 
@@ -84,6 +85,7 @@ git-stage-batch a
 Similar to `git add -p` but **more granular and flexible**:
 
 - ✅ **Line-by-line staging** - Stage specific lines within a hunk
+- ✅ **Batch operations** - Save hunks for later processing
 - ✅ **Colored output** - Clear visual distinction in your terminal
 - ✅ **File operations** - Stage/skip entire files at once
 
@@ -97,6 +99,24 @@ git-stage-batch status --porcelain
 
 # Check if a hunk exists (exit code 0/1)
 git-stage-batch show --porcelain
+```
+
+## Batch Operations
+
+Save hunks for later processing with named batches:
+
+```bash
+# Create a new batch
+git-stage-batch new feature-work --note "Refactoring work"
+
+# List all batches
+git-stage-batch list
+
+# Annotate a batch
+git-stage-batch annotate feature-work "Updated description"
+
+# Drop a batch when done
+git-stage-batch drop feature-work
 ```
 
 ## Installation

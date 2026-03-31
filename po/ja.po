@@ -1,0 +1,1199 @@
+# Japanese translations for git-stage-batch package.
+# Copyright (C) 2026 THE git-stage-batch'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the git-stage-batch package.
+# Claude <noreply@anthropic.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: git-stage-batch\n"
+"Report-Msgid-Bugs-To: halfline@gmail.com\n"
+"POT-Creation-Date: 2026-04-02 14:10-0400\n"
+"PO-Revision-Date: 2026-03-31 09:23-0400\n"
+"Last-Translator: Claude <noreply@anthropic.com>\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/git_stage_batch/batch/operations.py:27
+#, python-brace-format
+msgid "Batch '{name}' already exists"
+msgstr "バッチ '{name}' は既に存在します"
+
+#: src/git_stage_batch/batch/operations.py:75
+#: src/git_stage_batch/batch/operations.py:91
+#: src/git_stage_batch/commands/reset.py:33
+#, python-brace-format
+msgid "Batch '{name}' does not exist"
+msgstr "バッチ '{name}' は存在しません"
+
+#: src/git_stage_batch/batch/validation.py:13
+msgid "Batch name cannot be empty"
+msgstr "バッチ名を空にすることはできません"
+
+#: src/git_stage_batch/batch/validation.py:19
+#, python-brace-format
+msgid "Batch name cannot contain: {char}"
+msgstr "バッチ名に次の文字は使用できません: {char}"
+
+#: src/git_stage_batch/batch/validation.py:23
+msgid "Batch name cannot start with '.'"
+msgstr "バッチ名を '.' で始めることはできません"
+
+#: src/git_stage_batch/cli/argument_parser.py:66
+msgid "Hunk-by-hunk and line-by-line staging for git"
+msgstr "Gitのハンク単位および行単位のステージング"
+
+#: src/git_stage_batch/cli/argument_parser.py:78
+msgid "Start interactive mode"
+msgstr "対話モードを開始"
+
+#: src/git_stage_batch/cli/argument_parser.py:83
+msgid "Available commands"
+msgstr "利用可能なコマンド"
+
+#: src/git_stage_batch/cli/argument_parser.py:89
+msgid "Start a new batch staging session"
+msgstr "新しいバッチステージングセッションを開始"
+
+#: src/git_stage_batch/cli/argument_parser.py:97
+msgid "Number of context lines in diff output (default: 3)"
+msgstr "diff出力のコンテキスト行数（デフォルト: 3）"
+
+#: src/git_stage_batch/cli/argument_parser.py:104
+msgid "Start interactive hunk-by-hunk mode"
+msgstr "対話型ハンク単位モードを開始"
+
+#: src/git_stage_batch/cli/argument_parser.py:111
+msgid "Stop the selected session and clear state"
+msgstr "現在のセッションを停止して状態をクリア"
+
+#: src/git_stage_batch/cli/argument_parser.py:119
+msgid "Clear state and start a fresh pass"
+msgstr "状態をクリアして新しいパスを開始"
+
+#: src/git_stage_batch/cli/argument_parser.py:126
+msgid "Show the selected hunk"
+msgstr "現在のハンクを表示"
+
+#: src/git_stage_batch/cli/argument_parser.py:132
+msgid "Show changes from batch"
+msgstr "バッチからの変更を表示"
+
+#: src/git_stage_batch/cli/argument_parser.py:143
+msgid "Show selected session status"
+msgstr "現在のセッション状態を表示"
+
+#: src/git_stage_batch/cli/argument_parser.py:151
+msgid "Stage the selected hunk"
+msgstr "現在のハンクをステージング"
+
+#: src/git_stage_batch/cli/argument_parser.py:158
+msgid "Stage only specific line IDs (e.g., '1,3,5-7')"
+msgstr "特定の行IDのみをステージング（例: '1,3,5-7'）"
+
+#: src/git_stage_batch/cli/argument_parser.py:163
+msgid "Stage the entire file containing the selected hunk"
+msgstr "現在のハンクを含むファイル全体をステージング"
+
+#: src/git_stage_batch/cli/argument_parser.py:169
+msgid "Include changes from batch"
+msgstr "バッチから変更を含める"
+
+#: src/git_stage_batch/cli/argument_parser.py:175
+msgid "Include changes to batch"
+msgstr "バッチに変更を含める"
+
+#: src/git_stage_batch/cli/argument_parser.py:189
+msgid "Skip the selected hunk without staging"
+msgstr "現在のハンクをステージングせずにスキップ"
+
+#: src/git_stage_batch/cli/argument_parser.py:196
+msgid "Skip only specific line IDs (e.g., '1,3,5-7')"
+msgstr "特定の行IDのみをスキップ（例: '1,3,5-7'）"
+
+#: src/git_stage_batch/cli/argument_parser.py:201
+msgid "Skip all hunks from the selected file"
+msgstr "現在のファイルからすべてのハンクをスキップ"
+
+#: src/git_stage_batch/cli/argument_parser.py:213
+msgid "Remove the selected hunk from working tree"
+msgstr "作業ツリーから現在のハンクを削除"
+
+#: src/git_stage_batch/cli/argument_parser.py:220
+msgid "Discard only specific line IDs (e.g., '1,3,5-7')"
+msgstr "特定の行IDのみを破棄（例: '1,3,5-7'）"
+
+#: src/git_stage_batch/cli/argument_parser.py:225
+msgid "Discard the entire file containing the selected hunk"
+msgstr "現在のハンクを含むファイル全体を破棄"
+
+#: src/git_stage_batch/cli/argument_parser.py:231
+msgid "Discard changes from batch"
+msgstr "バッチから変更を破棄"
+
+#: src/git_stage_batch/cli/argument_parser.py:237
+msgid "Discard changes to batch"
+msgstr "バッチに変更を破棄"
+
+#: src/git_stage_batch/cli/argument_parser.py:250
+msgid "Restore repository to pre-session state"
+msgstr "リポジトリをセッション前の状態に復元"
+
+#: src/git_stage_batch/cli/argument_parser.py:258
+msgid "Permanently exclude a file (adds to .gitignore)"
+msgstr "ファイルを永久に除外（.gitignoreに追加）"
+
+#: src/git_stage_batch/cli/argument_parser.py:262
+msgid "Path to the file to block"
+msgstr "ブロックするファイルのパス"
+
+#: src/git_stage_batch/cli/argument_parser.py:270
+msgid "Remove a file from the blocked list"
+msgstr "ブロックリストからファイルを削除"
+
+#: src/git_stage_batch/cli/argument_parser.py:274
+msgid "Path to the file to unblock"
+msgstr "ブロック解除するファイルのパス"
+
+#: src/git_stage_batch/cli/argument_parser.py:282
+msgid "Suggest which commit the selected hunk should be fixed up to"
+msgstr "現在のハンクを修正すべきコミットを提案"
+
+#: src/git_stage_batch/cli/argument_parser.py:289
+msgid "Analyze only specific line IDs (e.g., '1,3,5-7')"
+msgstr "特定の行IDのみを分析（例: '1,3,5-7'）"
+
+#: src/git_stage_batch/cli/argument_parser.py:294
+msgid "Reset state and start search over from most recent"
+msgstr "状態をリセットして最新から検索を再開"
+
+#: src/git_stage_batch/cli/argument_parser.py:299
+msgid "Clear state and exit without showing candidates"
+msgstr "状態をクリアして候補を表示せずに終了"
+
+#: src/git_stage_batch/cli/argument_parser.py:304
+msgid "Re-show the last candidate without advancing"
+msgstr "進めずに最後の候補を再表示"
+
+#: src/git_stage_batch/cli/argument_parser.py:310
+#, python-brace-format
+msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
+msgstr "コミット検索の下限として使用するGit参照（デフォルト: @{upstream}）"
+
+#: src/git_stage_batch/cli/argument_parser.py:331
+msgid "Create a new batch"
+msgstr "新しいバッチを作成"
+
+#: src/git_stage_batch/cli/argument_parser.py:335
+msgid "Name of the batch to create"
+msgstr "作成するバッチの名前"
+
+#: src/git_stage_batch/cli/argument_parser.py:340
+msgid "Optional description for the batch"
+msgstr "バッチのオプション説明"
+
+#: src/git_stage_batch/cli/argument_parser.py:347
+msgid "List all batches"
+msgstr "すべてのバッチを一覧表示"
+
+#: src/git_stage_batch/cli/argument_parser.py:354
+msgid "Delete a batch"
+msgstr "バッチを削除"
+
+#: src/git_stage_batch/cli/argument_parser.py:358
+msgid "Name of the batch to delete"
+msgstr "削除するバッチの名前"
+
+#: src/git_stage_batch/cli/argument_parser.py:365
+msgid "Add or update batch description"
+msgstr "バッチの説明を追加または更新"
+
+#: src/git_stage_batch/cli/argument_parser.py:369
+msgid "Name of the batch"
+msgstr "バッチ名"
+
+#: src/git_stage_batch/cli/argument_parser.py:373
+msgid "Description text"
+msgstr "説明テキスト"
+
+#: src/git_stage_batch/cli/argument_parser.py:380
+msgid "Apply batch changes to working tree"
+msgstr "バッチの変更を作業ツリーに適用"
+
+#: src/git_stage_batch/cli/argument_parser.py:387
+msgid "Apply changes from batch to working tree"
+msgstr "バッチから作業ツリーに変更を適用"
+
+#: src/git_stage_batch/cli/argument_parser.py:394
+#: src/git_stage_batch/cli/argument_parser.py:401
+msgid "Remove claims from batch"
+msgstr "バッチからクレームを削除"
+
+#: src/git_stage_batch/cli/argument_parser.py:408
+msgid "Reset only specific line IDs (e.g., '1,3,5-7')"
+msgstr "特定の行IDのみをリセット (例: '1,3,5-7')"
+
+#: src/git_stage_batch/cli/dispatch.py:24
+#: src/git_stage_batch/commands/status.py:72
+msgid "No batch staging session in progress."
+msgstr "バッチステージングセッションが実行されていません。"
+
+#: src/git_stage_batch/cli/dispatch.py:25
+#: src/git_stage_batch/commands/status.py:73
+msgid "Run 'git-stage-batch start' to begin."
+msgstr "'git-stage-batch start' を実行して開始してください。"
+
+#: src/git_stage_batch/commands/abort.py:30
+msgid "No session to abort. Abort state not found."
+msgstr "中止するセッションがありません。中止状態が見つかりません。"
+
+#: src/git_stage_batch/commands/abort.py:48
+msgid "Resetting to {}..."
+msgstr "{} にリセット中..."
+
+#: src/git_stage_batch/commands/abort.py:70
+msgid "Restored: {}"
+msgstr "復元しました: {}"
+
+#: src/git_stage_batch/commands/abort.py:74
+msgid "Applying original changes..."
+msgstr "元の変更を適用中..."
+
+#: src/git_stage_batch/commands/abort.py:82
+msgid "⚠ Warning: Could not apply stash cleanly: {}"
+msgstr "⚠ 警告: スタッシュを適用できませんでした: {}"
+
+#: src/git_stage_batch/commands/abort.py:89
+msgid "✓ Session aborted. All changes reverted."
+msgstr "✓ セッションを中止しました。すべての変更が元に戻されました。"
+
+#: src/git_stage_batch/commands/annotate.py:15
+#, python-brace-format
+msgid "✓ Updated note for batch '{name}'"
+msgstr "✓ バッチ '{name}' のメモを更新しました"
+
+#: src/git_stage_batch/commands/apply_from.py:33
+#: src/git_stage_batch/commands/discard_from.py:32
+#: src/git_stage_batch/commands/include_from.py:38
+#: src/git_stage_batch/commands/show_from.py:27
+#, python-brace-format
+msgid "Batch '{name}' is empty or does not exist"
+msgstr "バッチ '{name}' は空であるか存在しません"
+
+#: src/git_stage_batch/commands/apply_from.py:39
+#: src/git_stage_batch/commands/discard_from.py:38
+#: src/git_stage_batch/commands/include_from.py:44
+#: src/git_stage_batch/commands/show_from.py:34
+#: src/git_stage_batch/commands/show_from.py:62
+#, python-brace-format
+msgid "No patches found in batch '{name}'"
+msgstr "バッチ '{name}' にパッチが見つかりませんでした"
+
+#: src/git_stage_batch/commands/apply_from.py:54
+#: src/git_stage_batch/commands/discard_from.py:53
+#: src/git_stage_batch/commands/include_from.py:59
+#, python-brace-format
+msgid "Batch '{name}' has no changes for {file}"
+msgstr "バッチ '{name}' には {file} の変更がありません"
+
+#: src/git_stage_batch/commands/apply_from.py:74
+#: src/git_stage_batch/commands/include_from.py:76
+#, python-brace-format
+msgid ""
+"Failed to apply patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr ""
+"ファイル {file} のパッチ適用に失敗しました\\n'git-stage-batch show --from "
+"{name}' を実行して変更を確認してください"
+
+#: src/git_stage_batch/commands/apply_from.py:80
+#, python-brace-format
+msgid "✓ Applied changes for {file} from batch '{name}' to working tree"
+msgstr "✓ バッチ '{name}' から {file} の変更を作業ツリーに適用しました"
+
+#: src/git_stage_batch/commands/apply_from.py:116
+#, python-brace-format
+msgid "✓ Applied selected lines from batch '{name}' to working tree"
+msgstr "✓ バッチ '{name}' から選択した行を作業ツリーに適用しました"
+
+#: src/git_stage_batch/commands/apply_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --line to apply compatible parts"
+msgstr ""
+"ファイル {files} のパッチ適用に失敗しました\\n'git-stage-batch show --from "
+"{name}' を実行して変更を確認してください\\n互換性のある部分を適用するには --"
+"file または --line を使用してください"
+
+#: src/git_stage_batch/commands/apply_from.py:146
+#, python-brace-format
+msgid "✓ Applied changes from batch '{name}' to working tree"
+msgstr "✓ バッチ '{name}' から作業ツリーに変更を適用しました"
+
+#: src/git_stage_batch/commands/block_file.py:20
+msgid "File path required for block-file command."
+msgstr "block-fileコマンドにはファイルパスが必要です。"
+
+#: src/git_stage_batch/commands/block_file.py:31
+msgid "Blocked file: {}"
+msgstr "ブロックしたファイル: {}"
+
+#: src/git_stage_batch/commands/discard.py:45
+#: src/git_stage_batch/commands/include.py:46
+#: src/git_stage_batch/commands/show.py:58
+#: src/git_stage_batch/commands/skip.py:36
+#: src/git_stage_batch/data/hunk_tracking.py:235
+#: src/git_stage_batch/tui/interactive.py:656
+msgid "No more hunks to process."
+msgstr "処理するハンクがもうありません。"
+
+#: src/git_stage_batch/commands/discard.py:70
+msgid "Failed to discard hunk: {}"
+msgstr "ハンクの破棄に失敗しました: {}"
+
+#: src/git_stage_batch/commands/discard.py:91
+#, python-brace-format
+msgid "✓ Hunk discarded from {file}"
+msgstr "✓ {file} からハンクを破棄しました"
+
+#: src/git_stage_batch/commands/discard.py:120
+msgid "No changes to discard."
+msgstr "破棄する変更がありません。"
+
+#: src/git_stage_batch/commands/discard.py:147
+msgid "Failed to discard file: {}"
+msgstr "ファイルの破棄に失敗しました: {}"
+
+#: src/git_stage_batch/commands/discard.py:154
+msgid "✓ File discarded: {}"
+msgstr "✓ ファイルを破棄しました: {}"
+
+#: src/git_stage_batch/commands/discard.py:178
+#: src/git_stage_batch/commands/discard.py:264
+#: src/git_stage_batch/commands/discard_from.py:106
+#, python-brace-format
+msgid "File not found in working tree: {file}"
+msgstr "作業ツリーにファイルが見つかりません: {file}"
+
+#: src/git_stage_batch/commands/discard.py:190
+#, python-brace-format
+msgid "✓ Discarded line(s): {lines}"
+msgstr "✓ 行を破棄しました: {lines}"
+
+#: src/git_stage_batch/commands/discard.py:274
+#, python-brace-format
+msgid "✓ Discarded line(s) to batch '{name}': {lines}"
+msgstr "✓ バッチ '{name}' に行を破棄しました: {lines}"
+
+#: src/git_stage_batch/commands/discard.py:317
+#: src/git_stage_batch/commands/include.py:321
+#: src/git_stage_batch/commands/skip.py:84
+#: src/git_stage_batch/commands/start.py:39
+msgid "No changes to process."
+msgstr "処理する変更がありません。"
+
+#: src/git_stage_batch/commands/discard.py:372
+#: src/git_stage_batch/commands/discard.py:425
+#, python-brace-format
+msgid "Failed to apply reverse patch: {error}"
+msgstr "逆パッチの適用に失敗しました: {error}"
+
+#: src/git_stage_batch/commands/discard.py:394
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}' and discarded"
+msgid_plural ""
+"✓ {count} hunks from {file} saved to batch '{name}' and discarded"
+msgstr[0] "✓ {file}の{count}個のハンクをバッチ'{name}'に保存して破棄しました"
+
+#: src/git_stage_batch/commands/discard.py:442
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}' and discarded from working tree"
+msgstr "✓ ハンクをバッチ '{name}' に保存して作業ツリーから破棄しました"
+
+#: src/git_stage_batch/commands/discard_from.py:73
+#, python-brace-format
+msgid ""
+"Failed to discard patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr ""
+"ファイル {file} のパッチ破棄に失敗しました\\n'git-stage-batch show --from "
+"{name}' を実行して変更を確認してください"
+
+#: src/git_stage_batch/commands/discard_from.py:79
+#, python-brace-format
+msgid "✓ Discarded changes for {file} from batch '{name}' from working tree"
+msgstr "✓ バッチ '{name}' から {file} の変更を作業ツリーから破棄しました"
+
+#: src/git_stage_batch/commands/discard_from.py:80
+#: src/git_stage_batch/commands/discard_from.py:119
+#: src/git_stage_batch/commands/discard_from.py:147
+#, python-brace-format
+msgid "Note: Batch '{name}' still exists (use 'drop' to delete it)"
+msgstr ""
+"メモ: バッチ '{name}' はまだ存在します（削除するには 'drop' を使用してくださ"
+"い）"
+
+#: src/git_stage_batch/commands/discard_from.py:118
+#, python-brace-format
+msgid "✓ Discarded selected lines from batch '{name}' from working tree"
+msgstr "✓ バッチ '{name}' から選択した行を作業ツリーから破棄しました"
+
+#: src/git_stage_batch/commands/discard_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to discard patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to discard compatible parts"
+msgstr ""
+"ファイル {files} のパッチ破棄に失敗しました\\n'git-stage-batch show --from "
+"{name}' を実行して変更を確認してください\\n互換性のある部分を破棄するには --"
+"file または --line を使用してください"
+
+#: src/git_stage_batch/commands/discard_from.py:146
+#, python-brace-format
+msgid "✓ Discarded changes from batch '{name}' from working tree"
+msgstr "✓ バッチ '{name}' から作業ツリーの変更を破棄しました"
+
+#: src/git_stage_batch/commands/drop.py:15
+#, python-brace-format
+msgid "✓ Deleted batch '{name}'"
+msgstr "✓ バッチ '{name}' を削除しました"
+
+#: src/git_stage_batch/commands/include.py:67
+msgid "Failed to apply hunk: {}"
+msgstr "ハンクの適用に失敗しました: {}"
+
+#: src/git_stage_batch/commands/include.py:78
+#, python-brace-format
+msgid "✓ Hunk staged from {file}"
+msgstr "✓ {file} からハンクをステージングしました"
+
+#: src/git_stage_batch/commands/include.py:107
+#: src/git_stage_batch/tui/interactive.py:617
+#: src/git_stage_batch/tui/interactive.py:658
+msgid "No changes to stage."
+msgstr "ステージングする変更がありません。"
+
+#: src/git_stage_batch/commands/include.py:137
+#, python-brace-format
+msgid "Failed to apply hunk: {error}"
+msgstr "ハンクの適用に失敗しました: {error}"
+
+#: src/git_stage_batch/commands/include.py:141
+#, python-brace-format
+msgid "No hunks staged from {file}"
+msgstr "{file} からステージングされたハンクはありません"
+
+#: src/git_stage_batch/commands/include.py:146
+#, python-brace-format
+msgid "✓ Staged {count} hunk from {file}"
+msgid_plural "✓ Staged {count} hunks from {file}"
+msgstr[0] "✓ {file} から {count} 個のハンクをステージングしました"
+
+#: src/git_stage_batch/commands/include.py:185
+#, python-brace-format
+msgid "✓ Included line(s): {lines}"
+msgstr "✓ 行を含めました: {lines}"
+
+#: src/git_stage_batch/commands/include.py:256
+#, python-brace-format
+msgid "✓ Included line(s) to batch '{name}': {lines}"
+msgstr "✓ バッチ '{name}' に行を含めました: {lines}"
+
+#: src/git_stage_batch/commands/include.py:272
+msgid "No more lines in this hunk."
+msgstr "✓ バッチ '{name}' から {file} の変更をステージしました"
+
+#: src/git_stage_batch/commands/include.py:384
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}'"
+msgid_plural "✓ {count} hunks from {file} saved to batch '{name}'"
+msgstr[0] "✓ {file}の{count}個のハンクをバッチ'{name}'に保存しました"
+
+#: src/git_stage_batch/commands/include.py:420
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}'"
+msgstr "✓ ハンクをバッチ '{name}' に保存しました"
+
+#: src/git_stage_batch/commands/include_from.py:82
+#, python-brace-format
+msgid "✓ Staged changes for {file} from batch '{name}'"
+msgstr ""
+"セッションが進行中ではありません。まず 'git-stage-batch start' を実行してくだ"
+"さい。"
+
+#: src/git_stage_batch/commands/include_from.py:102
+#, python-brace-format
+msgid "Cannot determine baseline for batch '{name}'"
+msgstr "バッチ '{name}' のベースラインを決定できません"
+
+#: src/git_stage_batch/commands/include_from.py:119
+#, python-brace-format
+msgid "✓ Staged selected lines from batch '{name}'"
+msgstr "✓ バッチ '{name}' から選択した行をステージングしました"
+
+#: src/git_stage_batch/commands/include_from.py:141
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to apply compatible parts"
+msgstr "このhunkにはこれ以上の行がありません。"
+
+#: src/git_stage_batch/commands/include_from.py:147
+#, python-brace-format
+msgid "✓ Staged changes from batch '{name}'"
+msgstr "✓ バッチ '{name}' から変更をステージングしました"
+
+#: src/git_stage_batch/commands/list.py:18
+msgid "No batches found"
+msgstr "バッチが見つかりませんでした"
+
+#: src/git_stage_batch/commands/new.py:15
+#, python-brace-format
+msgid "✓ Created batch '{name}'"
+msgstr "✓ バッチ '{name}' を作成しました"
+
+#: src/git_stage_batch/commands/reset.py:44
+#, python-brace-format
+msgid "✓ Reset line(s) {lines} from batch '{name}'"
+msgstr "✓ バッチ '{name}' から行 {lines} をリセットしました"
+
+#: src/git_stage_batch/commands/reset.py:47
+#, python-brace-format
+msgid "✓ Reset all claims from batch '{name}'"
+msgstr "✓ バッチ '{name}' からすべてのクレームをリセットしました"
+
+#: src/git_stage_batch/commands/skip.py:55
+#, python-brace-format
+msgid "✓ Hunk skipped from {file}"
+msgstr "✓ {file} からハンクをスキップしました"
+
+#: src/git_stage_batch/commands/skip.py:106
+#, python-brace-format
+msgid "✓ Skipped {count} hunk from {file}"
+msgid_plural "✓ Skipped {count} hunks from {file}"
+msgstr[0] "✓ {file} から {count} 個のハンクをスキップしました"
+
+#: src/git_stage_batch/commands/skip.py:133
+#, python-brace-format
+msgid "✓ Skipped line(s): {lines}"
+msgstr "✓ 行をスキップしました: {lines}"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "in progress"
+msgstr "進行中"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "complete"
+msgstr "完了"
+
+#: src/git_stage_batch/commands/status.py:140
+msgid "Session: iteration {} ({})"
+msgstr "セッション: 反復 {} ({})"
+
+#: src/git_stage_batch/commands/status.py:145
+msgid "Current hunk:"
+msgstr "現在のハンク:"
+
+#: src/git_stage_batch/commands/status.py:146
+msgid "  {}:{}"
+msgstr "  {}:{}"
+
+#: src/git_stage_batch/commands/status.py:147
+msgid "  [#{}]"
+msgstr "  [#{}]"
+
+#: src/git_stage_batch/commands/status.py:150
+msgid "Progress this iteration:"
+msgstr "この反復の進捗:"
+
+#: src/git_stage_batch/commands/status.py:151
+msgid "  Included:  {} hunks"
+msgstr "  含めた:  {} 個のハンク"
+
+#: src/git_stage_batch/commands/status.py:152
+msgid "  Skipped:   {} hunks"
+msgstr "  スキップ:   {} 個のハンク"
+
+#: src/git_stage_batch/commands/status.py:153
+msgid "  Discarded: {} hunks"
+msgstr "  破棄:  {} 個のハンク"
+
+#: src/git_stage_batch/commands/status.py:154
+msgid "  Remaining: ~{} hunks"
+msgstr "  残り: 約 {} 個のハンク"
+
+#: src/git_stage_batch/commands/status.py:158
+msgid "Skipped hunks:"
+msgstr "スキップされたハンク:"
+
+#: src/git_stage_batch/commands/status.py:161
+msgid "  {}:{} [#{}]"
+msgstr "  {}:{} [#{}]"
+
+#: src/git_stage_batch/commands/stop.py:28
+msgid "✓ State cleared."
+msgstr "✓ 状態をクリアしました。"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:192
+#: src/git_stage_batch/commands/suggest_fixup.py:399
+msgid "Suggest-fixup iteration cleared."
+msgstr "suggest-fixup反復をクリアしました。"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:222
+msgid "Full hunk state not available. Run 'show' to cache the selected hunk."
+msgstr ""
+"ファイル {files} のパッチ適用に失敗しました\\n'git-stage-batch show --from "
+"{name}' を実行して変更を確認してください\\n互換性のある部分を適用するには --"
+"file または --line を使用してください"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:236
+msgid "No old line numbers found in hunk (all lines may be additions)."
+msgstr ""
+"ハンクに古い行番号が見つかりません（すべての行が追加の可能性があります）。"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:246
+#: src/git_stage_batch/commands/suggest_fixup.py:449
+#, python-brace-format
+msgid "Invalid boundary ref: {boundary}"
+msgstr "無効な境界参照: {boundary}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:255
+#: src/git_stage_batch/commands/suggest_fixup.py:458
+#, python-brace-format
+msgid "Failed to get commit range {boundary}..HEAD"
+msgstr "コミット範囲 {boundary}..HEAD の取得に失敗しました"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:258
+#: src/git_stage_batch/commands/suggest_fixup.py:461
+#, python-brace-format
+msgid "No commits found in range {boundary}..HEAD"
+msgstr "範囲 {boundary}..HEAD にコミットが見つかりませんでした"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:299
+#: src/git_stage_batch/commands/suggest_fixup.py:359
+#: src/git_stage_batch/commands/suggest_fixup.py:502
+#: src/git_stage_batch/commands/suggest_fixup.py:562
+#, python-brace-format
+msgid "Candidate {iteration}: {info}"
+msgstr "候補 {iteration}: {info}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:301
+#: src/git_stage_batch/commands/suggest_fixup.py:361
+#: src/git_stage_batch/commands/suggest_fixup.py:504
+#: src/git_stage_batch/commands/suggest_fixup.py:564
+#, python-brace-format
+msgid "Run: git commit --fixup={commit}"
+msgstr "実行: git commit --fixup={commit}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:325
+#: src/git_stage_batch/commands/suggest_fixup.py:528
+msgid "No more candidates found."
+msgstr "これ以上の候補が見つかりませんでした。"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:439
+msgid ""
+"No old line numbers found for specified lines (they may be newly added "
+"lines)."
+msgstr ""
+"指定した行の古い行番号が見つかりません（新しく追加された行の可能性がありま"
+"す）。"
+
+#: src/git_stage_batch/commands/unblock_file.py:20
+msgid "File path required for unblock-file command."
+msgstr "unblock-fileコマンドにはファイルパスが必要です。"
+
+#: src/git_stage_batch/core/diff_parser.py:262
+msgid "Failed to parse hunk header."
+msgstr "ハンクヘッダーの解析に失敗しました。"
+
+#: src/git_stage_batch/data/hunk_tracking.py:286
+#: src/git_stage_batch/data/line_state.py:67
+msgid "No selected hunk. Run 'start' first."
+msgstr "現在のハンクがありません。最初に 'start' を実行してください。"
+
+#: src/git_stage_batch/data/hunk_tracking.py:293
+msgid ""
+"Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
+msgstr ""
+"キャッシュされたハンクが古くなっています（ファイルが変更されました）。続行す"
+"るには 'start' または 'again' を実行してください。"
+
+#: src/git_stage_batch/data/hunk_tracking.py:339
+msgid "No pending hunks."
+msgstr "保留中のハンクがありません。"
+
+#: src/git_stage_batch/data/session.py:46
+msgid "No session in progress. Run 'git-stage-batch start' first."
+msgstr ""
+"完全なhunk状態が利用できません。'show' を実行して現在のhunkをキャッシュしてく"
+"ださい。"
+
+#: src/git_stage_batch/tui/display.py:32
+#, python-brace-format
+msgid "{source_label}{source} {arrow} {target_label}{target}"
+msgstr "{source_label}{source} {arrow} {target_label}{target}"
+
+#: src/git_stage_batch/tui/display.py:40
+#, python-brace-format
+msgid "Source: {source} → Target: {target}"
+msgstr "ソース: {source} → ターゲット: {target}"
+
+#: src/git_stage_batch/tui/display.py:54
+#, python-brace-format
+msgid "Included: {count}"
+msgstr "含めた: {count}"
+
+#: src/git_stage_batch/tui/display.py:55
+#, python-brace-format
+msgid "Skipped: {count}"
+msgstr "スキップ: {count}"
+
+#: src/git_stage_batch/tui/display.py:56
+#, python-brace-format
+msgid "Discarded: {count}"
+msgstr "破棄: {count}"
+
+#: src/git_stage_batch/tui/flow.py:38
+msgid "Working tree"
+msgstr "作業ツリー"
+
+#: src/git_stage_batch/tui/flow.py:41
+msgid "Index"
+msgstr "インデックス"
+
+#: src/git_stage_batch/tui/interactive.py:58
+#: src/git_stage_batch/tui/interactive.py:102
+msgid "Batch-to-batch transfers not yet supported. Target must be staging."
+msgstr ""
+"バッチ間の転送はまだサポートされていません。ターゲットはステージングである必"
+"要があります。"
+
+#: src/git_stage_batch/tui/interactive.py:80
+#: src/git_stage_batch/tui/interactive.py:765
+#: src/git_stage_batch/tui/interactive.py:879
+msgid "Skip is not available when pulling from a batch."
+msgstr "バッチから取得する場合、スキップは使用できません。"
+
+#: src/git_stage_batch/tui/interactive.py:91
+msgid "This will remove the hunk from your working tree."
+msgstr "これにより作業ツリーからハンクが削除されます。"
+
+#: src/git_stage_batch/tui/interactive.py:139
+msgid "Suggest-fixup is not available when pulling from a batch."
+msgstr "バッチから取得する場合、suggest-fixupは使用できません。"
+
+#: src/git_stage_batch/tui/interactive.py:164
+msgid "Command exited with status {}"
+msgstr "コマンドがステータス {} で終了しました"
+
+#: src/git_stage_batch/tui/interactive.py:167
+msgid ""
+"\n"
+"Press Enter to continue..."
+msgstr ""
+"\n"
+"Enterキーを押して続行..."
+
+#: src/git_stage_batch/tui/interactive.py:171
+msgid "No command entered"
+msgstr "コマンドが入力されていません"
+
+#: src/git_stage_batch/tui/interactive.py:189
+msgid "No batches found. Create one now."
+msgstr "バッチが見つかりませんでした。今すぐ作成してください。"
+
+#: src/git_stage_batch/tui/interactive.py:196
+msgid "Existing batches:"
+msgstr "既存のバッチ:"
+
+#: src/git_stage_batch/tui/interactive.py:202
+#: src/git_stage_batch/tui/interactive.py:207
+#, python-brace-format
+msgid "  {name} - {note}"
+msgstr "  {name} - {note}"
+
+#: src/git_stage_batch/tui/interactive.py:216
+msgid "Batch operations:"
+msgstr "バッチ操作:"
+
+#: src/git_stage_batch/tui/interactive.py:218
+msgid "create"
+msgstr "作成"
+
+#: src/git_stage_batch/tui/interactive.py:219
+#: src/git_stage_batch/tui/interactive.py:273
+msgid "edit"
+msgstr "編集"
+
+#: src/git_stage_batch/tui/interactive.py:220
+#: src/git_stage_batch/tui/interactive.py:289
+msgid "drop"
+msgstr "削除"
+
+#: src/git_stage_batch/tui/interactive.py:221
+#: src/git_stage_batch/tui/interactive.py:300
+msgid "apply"
+msgstr "適用"
+
+#: src/git_stage_batch/tui/interactive.py:229
+#: src/git_stage_batch/tui/interactive.py:342
+#: src/git_stage_batch/tui/interactive.py:403
+#: src/git_stage_batch/tui/interactive.py:470
+msgid "Select: "
+msgstr "選択: "
+
+#: src/git_stage_batch/tui/interactive.py:247
+#: src/git_stage_batch/tui/interactive.py:776
+#: src/git_stage_batch/tui/interactive.py:843
+#: src/git_stage_batch/tui/interactive.py:973
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown action: '{action}'"
+msgstr ""
+"\n"
+"不明なアクション: '{action}'"
+
+#: src/git_stage_batch/tui/interactive.py:257
+#: src/git_stage_batch/tui/interactive.py:480
+msgid "Batch ID: "
+msgstr "バッチID: "
+
+#: src/git_stage_batch/tui/interactive.py:261
+#: src/git_stage_batch/tui/interactive.py:483
+msgid "Note (optional): "
+msgstr "メモ（オプション）: "
+
+#: src/git_stage_batch/tui/interactive.py:267
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' created."
+msgstr ""
+"\n"
+"バッチ '{name}' を作成しました。"
+
+#: src/git_stage_batch/tui/interactive.py:278
+msgid "New note: "
+msgstr "新しいメモ: "
+
+#: src/git_stage_batch/tui/interactive.py:284
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' note updated."
+msgstr ""
+"\n"
+"バッチ '{name}' のメモを更新しました。"
+
+#: src/git_stage_batch/tui/interactive.py:295
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' dropped."
+msgstr ""
+"\n"
+"バッチ '{name}' を削除しました。"
+
+#: src/git_stage_batch/tui/interactive.py:306
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' applied to staging area."
+msgstr ""
+"\n"
+"バッチ '{name}' をステージング領域に適用しました。"
+
+#: src/git_stage_batch/tui/interactive.py:325
+msgid "No batches found."
+msgstr "バッチが見つかりませんでした。"
+
+#: src/git_stage_batch/tui/interactive.py:333
+#, python-brace-format
+msgid "Select batch to {purpose}:"
+msgstr "{purpose} するバッチを選択:"
+
+#: src/git_stage_batch/tui/interactive.py:354
+msgid ""
+"\n"
+"Invalid selection."
+msgstr ""
+"\n"
+"無効な選択です。"
+
+#: src/git_stage_batch/tui/interactive.py:366
+msgid "Pull changes from:"
+msgstr "変更を取得する元:"
+
+#: src/git_stage_batch/tui/interactive.py:371
+#: src/git_stage_batch/tui/interactive.py:433
+msgid " (selected)"
+msgstr " (現在)"
+
+#: src/git_stage_batch/tui/interactive.py:376
+#, python-brace-format
+msgid "Working tree{marker}"
+msgstr "作業ツリー{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:390
+#: src/git_stage_batch/tui/interactive.py:452
+#, python-brace-format
+msgid "batch: {name}{note}{marker}"
+msgstr "バッチ: {name}{note}{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:428
+msgid "Push changes to:"
+msgstr "変更をプッシュする先:"
+
+#: src/git_stage_batch/tui/interactive.py:438
+#, python-brace-format
+msgid "Staging for commit{marker}"
+msgstr "コミット用ステージング{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:465
+msgid "New Batch..."
+msgstr "新しいバッチ..."
+
+#: src/git_stage_batch/tui/interactive.py:518
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown command: '{cmd}'"
+msgstr ""
+"\n"
+"不明なコマンド: '{cmd}'"
+
+#: src/git_stage_batch/tui/interactive.py:521
+#, python-brace-format
+msgid ""
+"\n"
+"Error executing command: {error}"
+msgstr ""
+"\n"
+"コマンドの実行エラー: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:588
+msgid "No changes to process"
+msgstr "処理する変更がありません"
+
+#: src/git_stage_batch/tui/interactive.py:721
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude? "
+msgstr "{filename} のすべてのハンクに対するアクション - [i]含める？ "
+
+#: src/git_stage_batch/tui/interactive.py:724
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude or [s]kip? "
+msgstr ""
+"{filename} のすべてのハンクに対するアクション - [i]含める または [s]スキッ"
+"プ？ "
+
+#: src/git_stage_batch/tui/interactive.py:731
+#, python-brace-format
+msgid "Action for all hunks in {filename} - {include} or {skip}? "
+msgstr ""
+"{filename} のすべてのハンクに対するアクション - {include} または {skip}？ "
+
+#: src/git_stage_batch/tui/interactive.py:756
+#: src/git_stage_batch/tui/interactive.py:871
+#: src/git_stage_batch/tui/interactive.py:901
+msgid "Batch-to-batch transfers not yet supported."
+msgstr "バッチ間の転送はまだサポートされていません。"
+
+#: src/git_stage_batch/tui/interactive.py:800
+msgid ""
+"\n"
+"No changed lines in this hunk."
+msgstr ""
+"\n"
+"このハンクに変更された行がありません。"
+
+#: src/git_stage_batch/tui/interactive.py:806
+#, python-brace-format
+msgid ""
+"\n"
+"Changed line IDs: {ids}"
+msgstr ""
+"\n"
+"変更された行ID: {ids}"
+
+#: src/git_stage_batch/tui/interactive.py:816
+msgid "Action for lines [i]nclude, [d]iscard? "
+msgstr "行に対するアクション [i]含める、[d]破棄？ "
+
+#: src/git_stage_batch/tui/interactive.py:819
+msgid "Action for lines [i]nclude, [s]kip, [d]iscard? "
+msgstr "行に対するアクション [i]含める、[s]スキップ、[d]破棄？ "
+
+#: src/git_stage_batch/tui/interactive.py:826
+#, python-brace-format
+msgid "Action for lines {include}, {skip}, {discard}? "
+msgstr "行に対するアクション {include}、{skip}、{discard}？ "
+
+#: src/git_stage_batch/tui/interactive.py:848
+msgid ""
+"\n"
+"Skip is not available when pulling from a batch."
+msgstr ""
+"\n"
+"バッチから取得する場合、スキップは使用できません。"
+
+#: src/git_stage_batch/tui/interactive.py:891
+#, python-brace-format
+msgid "This will remove lines {line_ids} from your working tree."
+msgstr "これにより行 {line_ids} が作業ツリーから削除されます。"
+
+#: src/git_stage_batch/tui/interactive.py:908
+#, python-brace-format
+msgid ""
+"\n"
+"Error: {error}"
+msgstr ""
+"\n"
+"エラー: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:946
+msgid "Create fixup commit with:"
+msgstr "次を使用してfixupコミットを作成:"
+
+#: src/git_stage_batch/tui/interactive.py:970
+msgid ""
+"\n"
+"Canceled."
+msgstr ""
+"\n"
+"キャンセルされました。"
+
+#: src/git_stage_batch/tui/interactive.py:1030
+msgid "Interactive Mode Commands:"
+msgstr "対話モードコマンド:"
+
+#: src/git_stage_batch/tui/interactive.py:1037
+msgid "Primary actions:"
+msgstr "主なアクション:"
+
+#: src/git_stage_batch/tui/interactive.py:1038
+msgid "  i, include   - Stage this hunk to the index"
+msgstr "  i, include   - このハンクをインデックスにステージング"
+
+#: src/git_stage_batch/tui/interactive.py:1039
+msgid "  s, skip      - Skip this hunk for now"
+msgstr "  s, skip      - このハンクを今はスキップ"
+
+#: src/git_stage_batch/tui/interactive.py:1040
+msgid "  d, discard   - Remove this hunk from working tree (DESTRUCTIVE)"
+msgstr "  d, discard   - 作業ツリーからこのハンクを削除（破壊的）"
+
+#: src/git_stage_batch/tui/interactive.py:1041
+msgid "  q, quit      - Exit interactive mode"
+msgstr "  q, quit      - 対話モードを終了"
+
+#: src/git_stage_batch/tui/interactive.py:1043
+msgid "More options:"
+msgstr "その他のオプション:"
+
+#: src/git_stage_batch/tui/interactive.py:1044
+msgid "  a, again     - Clear state and start fresh pass through skipped hunks"
+msgstr "  a, again     - 状態をクリアしてスキップされたハンクを新しくパス"
+
+#: src/git_stage_batch/tui/interactive.py:1045
+msgid "  l, lines     - Select specific lines from this hunk"
+msgstr "  l, lines     - このハンクから特定の行を選択"
+
+#: src/git_stage_batch/tui/interactive.py:1046
+msgid "  f, file      - Include or skip all hunks in this file"
+msgstr "  f, file      - このファイルのすべてのハンクを含めるまたはスキップ"
+
+#: src/git_stage_batch/tui/interactive.py:1047
+msgid "  x, fixup     - Suggest which commit to fixup (iterative)"
+msgstr "  x, fixup     - fixupするコミットを提案（反復的）"
+
+#: src/git_stage_batch/tui/interactive.py:1048
+msgid ""
+"  !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)"
+msgstr ""
+"  !<cmd>       - シェルコマンドを実行（例: !git log、または ! でプロンプト）"
+
+#: src/git_stage_batch/tui/interactive.py:1049
+msgid "  ?, help      - Show this help message"
+msgstr "  ?, help      - このヘルプメッセージを表示"
+
+#: src/git_stage_batch/tui/prompts.py:129
+msgid "What do you want to do with this hunk?"
+msgstr "このハンクをどうしますか？"
+
+#: src/git_stage_batch/tui/prompts.py:131
+msgid "What do you want to do?"
+msgstr "何をしますか？"
+
+#: src/git_stage_batch/tui/prompts.py:151
+#: src/git_stage_batch/tui/prompts.py:158
+#, python-brace-format
+msgid "{label}: {options}"
+msgstr "{label}: {options}"
+
+#: src/git_stage_batch/tui/prompts.py:188
+msgid "Action: "
+msgstr "アクション: "
+
+#: src/git_stage_batch/tui/prompts.py:231
+#, python-brace-format
+msgid "⚠️  {message}"
+msgstr "⚠️  {message}"
+
+#: src/git_stage_batch/tui/prompts.py:238
+#: src/git_stage_batch/tui/prompts.py:285
+msgid "yes"
+msgstr "はい"
+
+#: src/git_stage_batch/tui/prompts.py:239
+msgid "NO"
+msgstr "いいえ"
+
+#: src/git_stage_batch/tui/prompts.py:248
+#, python-brace-format
+msgid "Are you sure? [{yes}/{no}]: "
+msgstr "よろしいですか？ [{yes}/{no}]: "
+
+#: src/git_stage_batch/tui/prompts.py:267
+msgid "Enter line IDs (e.g., 1,3,5-7): "
+msgstr "行IDを入力してください（例: 1,3,5-7）: "
+
+#: src/git_stage_batch/tui/prompts.py:283
+#: src/git_stage_batch/tui/prompts.py:365
+msgid "y"
+msgstr "y"
+
+#: src/git_stage_batch/tui/prompts.py:284
+#: src/git_stage_batch/tui/prompts.py:366
+msgid "n"
+msgstr "n"
+
+#: src/git_stage_batch/tui/prompts.py:286
+msgid "no"
+msgstr "いいえ"
+
+#: src/git_stage_batch/tui/prompts.py:295
+#, python-brace-format
+msgid "Keep staged changes? [{y}]es / [{n}]o: "
+msgstr "ステージングされた変更を保持しますか？ [{y}]はい / [{n}]いいえ: "
+
+#: src/git_stage_batch/tui/prompts.py:367
+msgid "r"
+msgstr "r"
+
+#: src/git_stage_batch/tui/prompts.py:378
+#, python-brace-format
+msgid "[{y}]es / [{n}]ext / [{r}]eset: "
+msgstr "[{y}]はい / [{n}]次 / [{r}]リセット: "
+
+#: src/git_stage_batch/utils/git.py:113
+msgid "Not inside a git repository."
+msgstr "Gitリポジトリ内ではありません。"

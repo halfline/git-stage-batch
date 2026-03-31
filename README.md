@@ -86,6 +86,18 @@ Similar to `git add -p` but **more granular and flexible**:
 - ✅ **Colored output** - Clear visual distinction in your terminal
 - ✅ **File operations** - Stage/skip entire files at once
 
+## Machine-Readable Output
+
+For scripting and automation, use the `--porcelain` flag:
+
+```bash
+# Get status as JSON
+git-stage-batch status --porcelain
+
+# Check if a hunk exists (exit code 0/1)
+git-stage-batch show --porcelain
+```
+
 ## Installation
 
 ```bash

@@ -24,6 +24,7 @@ During development we experiment, refactor, backtrack, and fix mistakes. If ever
 
 - **Command-based workflow** - Perfect for automation and AI coding assistants
 - **Line-level control** - Stage specific lines within a hunk for maximum granularity
+- **Interactive mode** - Menu-driven hunk-by-hunk workflow inspired by `git add -p`
 - **State persistence** - Resume staging across multiple invocations
 - **Batch operations** - Save hunks for later, organize complex changes
 - **Machine-readable output** - `--porcelain` flag for scripting
@@ -85,9 +86,22 @@ git-stage-batch a
 Similar to `git add -p` but **more granular and flexible**:
 
 - ✅ **Line-by-line staging** - Stage specific lines within a hunk
+- ✅ **Interactive mode** - Continuous hunk-by-hunk workflow with menus
 - ✅ **Batch operations** - Save hunks for later processing
 - ✅ **Colored output** - Clear visual distinction in your terminal
 - ✅ **File operations** - Stage/skip entire files at once
+
+## Interactive Mode
+
+For a continuous hunk-by-hunk workflow:
+
+```bash
+# Launch interactive mode
+git-stage-batch -i
+
+# Navigate with single-key commands
+# [i]nclude, [s]kip, [d]iscard, [l]ines, [f]ile, [a]gain, [q]uit
+```
 
 ## Machine-Readable Output
 

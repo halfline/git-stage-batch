@@ -25,6 +25,7 @@ During development we experiment, refactor, backtrack, and fix mistakes. If ever
 - **Command-based workflow** - Perfect for automation and AI coding assistants
 - **Line-level control** - Stage specific lines within a hunk for maximum granularity
 - **State persistence** - Resume staging across multiple invocations
+- **Machine-readable output** - `--porcelain` flag for scripting
 - **No dependencies** - Pure Python standard library
 
 ## Quick Start

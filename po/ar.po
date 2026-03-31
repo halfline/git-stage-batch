@@ -1,0 +1,1207 @@
+# Arabic translation for git-stage-batch
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the git-stage-batch package.
+# Claude <noreply@anthropic.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: git-stage-batch\n"
+"Report-Msgid-Bugs-To: halfline@gmail.com\n"
+"POT-Creation-Date: 2026-04-02 14:10-0400\n"
+"PO-Revision-Date: 2026-03-31 12:00+0000\n"
+"Last-Translator: Claude <noreply@anthropic.com>\n"
+"Language-Team: Arabic\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
+
+#: src/git_stage_batch/batch/operations.py:27
+#, python-brace-format
+msgid "Batch '{name}' already exists"
+msgstr "الدفعة '{name}' موجودة بالفعل"
+
+#: src/git_stage_batch/batch/operations.py:75
+#: src/git_stage_batch/batch/operations.py:91
+#: src/git_stage_batch/commands/reset.py:33
+#, python-brace-format
+msgid "Batch '{name}' does not exist"
+msgstr "الدفعة '{name}' غير موجودة"
+
+#: src/git_stage_batch/batch/validation.py:13
+msgid "Batch name cannot be empty"
+msgstr "لا يمكن أن يكون اسم الدفعة فارغاً"
+
+#: src/git_stage_batch/batch/validation.py:19
+#, python-brace-format
+msgid "Batch name cannot contain: {char}"
+msgstr "لا يمكن أن يحتوي اسم الدفعة على: {char}"
+
+#: src/git_stage_batch/batch/validation.py:23
+msgid "Batch name cannot start with '.'"
+msgstr "لا يمكن أن يبدأ اسم الدفعة بـ '.'"
+
+#: src/git_stage_batch/cli/argument_parser.py:66
+msgid "Hunk-by-hunk and line-by-line staging for git"
+msgstr "التجهيز مقطعاً بمقطع وسطراً بسطر لـ git"
+
+#: src/git_stage_batch/cli/argument_parser.py:78
+msgid "Start interactive mode"
+msgstr "بدء الوضع التفاعلي"
+
+#: src/git_stage_batch/cli/argument_parser.py:83
+msgid "Available commands"
+msgstr "الأوامر المتاحة"
+
+#: src/git_stage_batch/cli/argument_parser.py:89
+msgid "Start a new batch staging session"
+msgstr "بدء جلسة تجهيز دفعة جديدة"
+
+#: src/git_stage_batch/cli/argument_parser.py:97
+msgid "Number of context lines in diff output (default: 3)"
+msgstr "عدد أسطر السياق في مخرجات diff (الافتراضي: 3)"
+
+#: src/git_stage_batch/cli/argument_parser.py:104
+msgid "Start interactive hunk-by-hunk mode"
+msgstr "بدء الوضع التفاعلي مقطعاً بمقطع"
+
+#: src/git_stage_batch/cli/argument_parser.py:111
+msgid "Stop the current session and clear state"
+msgstr "إيقاف الجلسة الحالية ومسح الحالة"
+
+#: src/git_stage_batch/cli/argument_parser.py:119
+msgid "Clear state and start a fresh pass"
+msgstr "مسح الحالة وبدء دورة جديدة"
+
+#: src/git_stage_batch/cli/argument_parser.py:126
+msgid "Show the current hunk"
+msgstr "عرض المقطع الحالي"
+
+#: src/git_stage_batch/cli/argument_parser.py:132
+msgid "Show changes from batch"
+msgstr "عرض التغييرات من الدفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:143
+msgid "Show current session status"
+msgstr "عرض حالة الجلسة الحالية"
+
+#: src/git_stage_batch/cli/argument_parser.py:151
+msgid "Stage the current hunk"
+msgstr "تجهيز المقطع الحالي"
+
+#: src/git_stage_batch/cli/argument_parser.py:158
+msgid "Stage only specific line IDs (e.g., '1,3,5-7')"
+msgstr "تجهيز أرقام أسطر محددة فقط (مثل '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:163
+msgid "Stage the entire file containing the current hunk"
+msgstr "تجهيز الملف بأكمله الذي يحتوي على المقطع الحالي"
+
+#: src/git_stage_batch/cli/argument_parser.py:169
+msgid "Include changes from batch"
+msgstr "تضمين التغييرات من الدفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:175
+msgid "Include changes to batch"
+msgstr "تضمين التغييرات إلى الدفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:189
+msgid "Skip the current hunk without staging"
+msgstr "تخطي المقطع الحالي دون تجهيز"
+
+#: src/git_stage_batch/cli/argument_parser.py:196
+msgid "Skip only specific line IDs (e.g., '1,3,5-7')"
+msgstr "تخطي أرقام أسطر محددة فقط (مثل '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:201
+msgid "Skip all hunks from the current file"
+msgstr "تخطي جميع المقاطع من الملف الحالي"
+
+#: src/git_stage_batch/cli/argument_parser.py:213
+msgid "Remove the current hunk from working tree"
+msgstr "إزالة المقطع الحالي من شجرة العمل"
+
+#: src/git_stage_batch/cli/argument_parser.py:220
+msgid "Discard only specific line IDs (e.g., '1,3,5-7')"
+msgstr "تجاهل أرقام أسطر محددة فقط (مثل '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:225
+msgid "Discard the entire file containing the current hunk"
+msgstr "تجاهل الملف بأكمله الذي يحتوي على المقطع الحالي"
+
+#: src/git_stage_batch/cli/argument_parser.py:231
+msgid "Discard changes from batch"
+msgstr "تجاهل التغييرات من الدفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:237
+msgid "Discard changes to batch"
+msgstr "تجاهل التغييرات إلى الدفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:250
+msgid "Restore repository to pre-session state"
+msgstr "استعادة المستودع إلى حالة ما قبل الجلسة"
+
+#: src/git_stage_batch/cli/argument_parser.py:258
+msgid "Permanently exclude a file (adds to .gitignore)"
+msgstr "استبعاد ملف بشكل دائم (يضيف إلى .gitignore)"
+
+#: src/git_stage_batch/cli/argument_parser.py:262
+msgid "Path to the file to block"
+msgstr "مسار الملف المراد حظره"
+
+#: src/git_stage_batch/cli/argument_parser.py:270
+msgid "Remove a file from the blocked list"
+msgstr "إزالة ملف من قائمة المحظورين"
+
+#: src/git_stage_batch/cli/argument_parser.py:274
+msgid "Path to the file to unblock"
+msgstr "مسار الملف المراد إلغاء حظره"
+
+#: src/git_stage_batch/cli/argument_parser.py:282
+msgid "Suggest which commit the current hunk should be fixed up to"
+msgstr "اقتراح الإيداع الذي ينبغي إصلاح المقطع الحالي له"
+
+#: src/git_stage_batch/cli/argument_parser.py:289
+msgid "Analyze only specific line IDs (e.g., '1,3,5-7')"
+msgstr "تحليل أرقام أسطر محددة فقط (مثل '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:294
+msgid "Reset state and start search over from most recent"
+msgstr "إعادة تعيين الحالة وبدء البحث من الأحدث"
+
+#: src/git_stage_batch/cli/argument_parser.py:299
+msgid "Clear state and exit without showing candidates"
+msgstr "مسح الحالة والخروج دون عرض المرشحين"
+
+#: src/git_stage_batch/cli/argument_parser.py:304
+msgid "Re-show the last candidate without advancing"
+msgstr "إعادة عرض المرشح الأخير دون التقدم"
+
+#: src/git_stage_batch/cli/argument_parser.py:310
+#, python-brace-format
+msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
+msgstr "مرجع Git لاستخدامه كحد أدنى للبحث عن الإيداعات (افتراضي: @{upstream})"
+
+#: src/git_stage_batch/cli/argument_parser.py:331
+msgid "Create a new batch"
+msgstr "إنشاء دفعة جديدة"
+
+#: src/git_stage_batch/cli/argument_parser.py:335
+msgid "Name of the batch to create"
+msgstr "اسم الدفعة المراد إنشاؤها"
+
+#: src/git_stage_batch/cli/argument_parser.py:340
+msgid "Optional description for the batch"
+msgstr "وصف اختياري للدفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:347
+msgid "List all batches"
+msgstr "عرض جميع الدفعات"
+
+#: src/git_stage_batch/cli/argument_parser.py:354
+msgid "Delete a batch"
+msgstr "حذف دفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:358
+msgid "Name of the batch to delete"
+msgstr "اسم الدفعة المراد حذفها"
+
+#: src/git_stage_batch/cli/argument_parser.py:365
+msgid "Add or update batch description"
+msgstr "إضافة أو تحديث وصف الدفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:369
+msgid "Name of the batch"
+msgstr "اسم الدفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:373
+msgid "Description text"
+msgstr "نص الوصف"
+
+#: src/git_stage_batch/cli/argument_parser.py:380
+msgid "Apply batch changes to working tree"
+msgstr "تطبيق تغييرات الدفعة على شجرة العمل"
+
+#: src/git_stage_batch/cli/argument_parser.py:387
+msgid "Apply changes from batch to working tree"
+msgstr "تطبيق التغييرات من الدفعة إلى شجرة العمل"
+
+#: src/git_stage_batch/cli/argument_parser.py:394
+#: src/git_stage_batch/cli/argument_parser.py:401
+msgid "Remove claims from batch"
+msgstr "إزالة المطالبات من الدفعة"
+
+#: src/git_stage_batch/cli/argument_parser.py:408
+msgid "Reset only specific line IDs (e.g., '1,3,5-7')"
+msgstr "إعادة تعيين معرفات أسطر محددة فقط (مثل '1,3,5-7')"
+
+#: src/git_stage_batch/cli/dispatch.py:24
+#: src/git_stage_batch/commands/status.py:72
+msgid "No batch staging session in progress."
+msgstr "لا توجد جلسة تجهيز دفعة قيد التنفيذ."
+
+#: src/git_stage_batch/cli/dispatch.py:25
+#: src/git_stage_batch/commands/status.py:73
+msgid "Run 'git-stage-batch start' to begin."
+msgstr "قم بتشغيل 'git-stage-batch start' للبدء."
+
+#: src/git_stage_batch/commands/abort.py:30
+msgid "No session to abort. Abort state not found."
+msgstr "لا توجد جلسة لإلغائها. لم يتم العثور على حالة الإلغاء."
+
+#: src/git_stage_batch/commands/abort.py:48
+msgid "Resetting to {}..."
+msgstr "إعادة التعيين إلى {}..."
+
+#: src/git_stage_batch/commands/abort.py:70
+msgid "Restored: {}"
+msgstr "تمت الاستعادة: {}"
+
+#: src/git_stage_batch/commands/abort.py:74
+msgid "Applying original changes..."
+msgstr "تطبيق التغييرات الأصلية..."
+
+#: src/git_stage_batch/commands/abort.py:82
+msgid "⚠ Warning: Could not apply stash cleanly: {}"
+msgstr "⚠ تحذير: تعذر تطبيق المخزون بشكل نظيف: {}"
+
+#: src/git_stage_batch/commands/abort.py:89
+msgid "✓ Session aborted. All changes reverted."
+msgstr "✓ تم إلغاء الجلسة. تم التراجع عن جميع التغييرات."
+
+#: src/git_stage_batch/commands/annotate.py:15
+#, python-brace-format
+msgid "✓ Updated note for batch '{name}'"
+msgstr "✓ تم تحديث ملاحظة الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/apply_from.py:33
+#: src/git_stage_batch/commands/discard_from.py:32
+#: src/git_stage_batch/commands/include_from.py:38
+#: src/git_stage_batch/commands/show_from.py:27
+#, python-brace-format
+msgid "Batch '{name}' is empty or does not exist"
+msgstr "الدفعة '{name}' فارغة أو غير موجودة"
+
+#: src/git_stage_batch/commands/apply_from.py:39
+#: src/git_stage_batch/commands/discard_from.py:38
+#: src/git_stage_batch/commands/include_from.py:44
+#: src/git_stage_batch/commands/show_from.py:34
+#: src/git_stage_batch/commands/show_from.py:62
+#, python-brace-format
+msgid "No patches found in batch '{name}'"
+msgstr "لم يتم العثور على رقع في الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/apply_from.py:54
+#: src/git_stage_batch/commands/discard_from.py:53
+#: src/git_stage_batch/commands/include_from.py:59
+#, python-brace-format
+msgid "Batch '{name}' has no changes for {file}"
+msgstr "✓ تم إعداد التغييرات لـ {file} من الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/apply_from.py:74
+#: src/git_stage_batch/commands/include_from.py:76
+#, python-brace-format
+msgid ""
+"Failed to apply patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr ""
+"فشل تجاهل التصحيحات للملفات: {files}\\nقم بتشغيل 'git-stage-batch show --"
+"from {name}' لمراجعة التغييرات\\nاستخدم --file أو --line لتجاهل الأجزاء "
+"المتوافقة"
+
+#: src/git_stage_batch/commands/apply_from.py:80
+#, python-brace-format
+msgid "✓ Applied changes for {file} from batch '{name}' to working tree"
+msgstr "✓ تم تطبيق التغييرات لـ {file} من الدفعة '{name}' إلى شجرة العمل"
+
+#: src/git_stage_batch/commands/apply_from.py:116
+#, python-brace-format
+msgid "✓ Applied selected lines from batch '{name}' to working tree"
+msgstr "✓ تم تطبيق الأسطر المحددة من الدفعة '{name}' إلى شجرة العمل"
+
+#: src/git_stage_batch/commands/apply_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --line to apply compatible parts"
+msgstr "✓ تم تجاهل التغييرات لـ {file} من الدفعة '{name}' من شجرة العمل"
+
+#: src/git_stage_batch/commands/apply_from.py:146
+#, python-brace-format
+msgid "✓ Applied changes from batch '{name}' to working tree"
+msgstr "✓ تم تطبيق التغييرات من الدفعة '{name}' إلى شجرة العمل"
+
+#: src/git_stage_batch/commands/block_file.py:20
+msgid "File path required for block-file command."
+msgstr "مسار الملف مطلوب لأمر حظر الملف."
+
+#: src/git_stage_batch/commands/block_file.py:31
+msgid "Blocked file: {}"
+msgstr "ملف محظور: {}"
+
+#: src/git_stage_batch/commands/discard.py:45
+#: src/git_stage_batch/commands/include.py:46
+#: src/git_stage_batch/commands/show.py:58
+#: src/git_stage_batch/commands/skip.py:36
+#: src/git_stage_batch/data/hunk_tracking.py:235
+#: src/git_stage_batch/tui/interactive.py:656
+msgid "No more hunks to process."
+msgstr "لا توجد مقاطع أخرى للمعالجة."
+
+#: src/git_stage_batch/commands/discard.py:70
+msgid "Failed to discard hunk: {}"
+msgstr "فشل تجاهل المقطع: {}"
+
+#: src/git_stage_batch/commands/discard.py:91
+#, python-brace-format
+msgid "✓ Hunk discarded from {file}"
+msgstr "✓ تم تجاهل المقطع من {file}"
+
+#: src/git_stage_batch/commands/discard.py:120
+msgid "No changes to discard."
+msgstr "لا توجد تغييرات لتجاهلها."
+
+#: src/git_stage_batch/commands/discard.py:147
+msgid "Failed to discard file: {}"
+msgstr "فشل تجاهل الملف: {}"
+
+#: src/git_stage_batch/commands/discard.py:154
+msgid "✓ File discarded: {}"
+msgstr "✓ تم تجاهل الملف: {}"
+
+#: src/git_stage_batch/commands/discard.py:178
+#: src/git_stage_batch/commands/discard.py:264
+#: src/git_stage_batch/commands/discard_from.py:106
+#, python-brace-format
+msgid "File not found in working tree: {file}"
+msgstr "لم يتم العثور على الملف في شجرة العمل: {file}"
+
+#: src/git_stage_batch/commands/discard.py:190
+#, python-brace-format
+msgid "✓ Discarded line(s): {lines}"
+msgstr "✓ تم تجاهل السطر/الأسطر: {lines}"
+
+#: src/git_stage_batch/commands/discard.py:274
+#, python-brace-format
+msgid "✓ Discarded line(s) to batch '{name}': {lines}"
+msgstr ""
+"فشل تجاهل التصحيحات للملف: {file}\\nقم بتشغيل 'git-stage-batch show --from "
+"{name}' لمراجعة التغييرات"
+
+#: src/git_stage_batch/commands/discard.py:317
+#: src/git_stage_batch/commands/include.py:321
+#: src/git_stage_batch/commands/skip.py:84
+#: src/git_stage_batch/commands/start.py:39
+msgid "No changes to process."
+msgstr "لا توجد تغييرات للمعالجة."
+
+#: src/git_stage_batch/commands/discard.py:372
+#: src/git_stage_batch/commands/discard.py:425
+#, python-brace-format
+msgid "Failed to apply reverse patch: {error}"
+msgstr "فشل تطبيق الرقعة العكسية: {error}"
+
+#: src/git_stage_batch/commands/discard.py:394
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}' and discarded"
+msgid_plural ""
+"✓ {count} hunks from {file} saved to batch '{name}' and discarded"
+msgstr[0] "✓ لا يوجد كتل من {file} محفوظة في الدفعة '{name}' ومهملة"
+msgstr[1] "✓ كتلة {count} من {file} محفوظة في الدفعة '{name}' ومهملة"
+msgstr[2] "✓ كتلتان {count} من {file} محفوظتان في الدفعة '{name}' ومهملتان"
+msgstr[3] "✓ {count} كتل من {file} محفوظة في الدفعة '{name}' ومهملة"
+msgstr[4] "✓ {count} كتلة من {file} محفوظة في الدفعة '{name}' ومهملة"
+msgstr[5] "✓ {count} كتلة من {file} محفوظة في الدفعة '{name}' ومهملة"
+
+#: src/git_stage_batch/commands/discard.py:442
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}' and discarded from working tree"
+msgstr "✓ تم حفظ المقطع إلى الدفعة '{name}' وتجاهله من شجرة العمل"
+
+#: src/git_stage_batch/commands/discard_from.py:73
+#, python-brace-format
+msgid ""
+"Failed to discard patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr "لا توجد جلسة قيد التشغيل. قم بتشغيل 'git-stage-batch start' أولاً."
+
+#: src/git_stage_batch/commands/discard_from.py:79
+#, python-brace-format
+msgid "✓ Discarded changes for {file} from batch '{name}' from working tree"
+msgstr ""
+"فشل تطبيق التصحيحات للملفات: {files}\\nقم بتشغيل 'git-stage-batch show --"
+"from {name}' لمراجعة التغييرات\\nاستخدم --line لتطبيق الأجزاء المتوافقة"
+
+#: src/git_stage_batch/commands/discard_from.py:80
+#: src/git_stage_batch/commands/discard_from.py:119
+#: src/git_stage_batch/commands/discard_from.py:147
+#, python-brace-format
+msgid "Note: Batch '{name}' still exists (use 'drop' to delete it)"
+msgstr "ملاحظة: الدفعة '{name}' لا تزال موجودة (استخدم 'drop' لحذفها)"
+
+#: src/git_stage_batch/commands/discard_from.py:118
+#, python-brace-format
+msgid "✓ Discarded selected lines from batch '{name}' from working tree"
+msgstr "✓ تم تجاهل الأسطر المحددة من الدفعة '{name}' من شجرة العمل"
+
+#: src/git_stage_batch/commands/discard_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to discard patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to discard compatible parts"
+msgstr "الدفعة '{name}' لا تحتوي على تغييرات لـ {file}"
+
+#: src/git_stage_batch/commands/discard_from.py:146
+#, python-brace-format
+msgid "✓ Discarded changes from batch '{name}' from working tree"
+msgstr "✓ تم تجاهل التغييرات من الدفعة '{name}' من شجرة العمل"
+
+#: src/git_stage_batch/commands/drop.py:15
+#, python-brace-format
+msgid "✓ Deleted batch '{name}'"
+msgstr "✓ تم حذف الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/include.py:67
+msgid "Failed to apply hunk: {}"
+msgstr "فشل تطبيق المقطع: {}"
+
+#: src/git_stage_batch/commands/include.py:78
+#, python-brace-format
+msgid "✓ Hunk staged from {file}"
+msgstr "✓ تم تجهيز المقطع من {file}"
+
+#: src/git_stage_batch/commands/include.py:107
+#: src/git_stage_batch/tui/interactive.py:617
+#: src/git_stage_batch/tui/interactive.py:658
+msgid "No changes to stage."
+msgstr "لا توجد تغييرات للتجهيز."
+
+#: src/git_stage_batch/commands/include.py:137
+#, python-brace-format
+msgid "Failed to apply hunk: {error}"
+msgstr "فشل تطبيق المقطع: {error}"
+
+#: src/git_stage_batch/commands/include.py:141
+#, python-brace-format
+msgid "No hunks staged from {file}"
+msgstr "لم يتم تجهيز مقاطع من {file}"
+
+#: src/git_stage_batch/commands/include.py:146
+#, python-brace-format
+msgid "✓ Staged {count} hunk from {file}"
+msgid_plural "✓ Staged {count} hunks from {file}"
+msgstr[0] "✓ لم يتم تجهيز مقاطع من {file}"
+msgstr[1] "✓ تم تجهيز مقطع واحد من {file}"
+msgstr[2] "✓ تم تجهيز مقطعين من {file}"
+msgstr[3] "✓ تم تجهيز {count} مقاطع من {file}"
+msgstr[4] "✓ تم تجهيز {count} مقطعاً من {file}"
+msgstr[5] "✓ تم تجهيز {count} مقطع من {file}"
+
+#: src/git_stage_batch/commands/include.py:185
+#, python-brace-format
+msgid "✓ Included line(s): {lines}"
+msgstr "✓ تم تضمين السطر/الأسطر: {lines}"
+
+#: src/git_stage_batch/commands/include.py:256
+#, python-brace-format
+msgid "✓ Included line(s) to batch '{name}': {lines}"
+msgstr "✓ تم تضمين السطر/الأسطر في الدفعة '{name}': {lines}"
+
+#: src/git_stage_batch/commands/include.py:272
+msgid "No more lines in this hunk."
+msgstr ""
+"فشل تطبيق التصحيحات للملف: {file}\\nقم بتشغيل 'git-stage-batch show --from "
+"{name}' لمراجعة التغييرات"
+
+#: src/git_stage_batch/commands/include.py:384
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}'"
+msgid_plural "✓ {count} hunks from {file} saved to batch '{name}'"
+msgstr[0] "✓ لا يوجد كتل من {file} محفوظة في الدفعة '{name}'"
+msgstr[1] "✓ كتلة {count} من {file} محفوظة في الدفعة '{name}'"
+msgstr[2] "✓ كتلتان {count} من {file} محفوظتان في الدفعة '{name}'"
+msgstr[3] "✓ {count} كتل من {file} محفوظة في الدفعة '{name}'"
+msgstr[4] "✓ {count} كتلة من {file} محفوظة في الدفعة '{name}'"
+msgstr[5] "✓ {count} كتلة من {file} محفوظة في الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/include.py:420
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}'"
+msgstr "✓ تم حفظ المقطع إلى الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:82
+#, python-brace-format
+msgid "✓ Staged changes for {file} from batch '{name}'"
+msgstr "✓ تم تجاهل السطر/الأسطر إلى الدفعة '{name}': {lines}"
+
+#: src/git_stage_batch/commands/include_from.py:102
+#, python-brace-format
+msgid "Cannot determine baseline for batch '{name}'"
+msgstr "تعذر تحديد الأساس للدفعة '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:119
+#, python-brace-format
+msgid "✓ Staged selected lines from batch '{name}'"
+msgstr "✓ تم تجهيز الأسطر المحددة من الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:141
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to apply compatible parts"
+msgstr "لا توجد أسطر أخرى في هذا الجزء."
+
+#: src/git_stage_batch/commands/include_from.py:147
+#, python-brace-format
+msgid "✓ Staged changes from batch '{name}'"
+msgstr "✓ تم تجهيز التغييرات من الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/list.py:18
+msgid "No batches found"
+msgstr "لم يتم العثور على دفعات"
+
+#: src/git_stage_batch/commands/new.py:15
+#, python-brace-format
+msgid "✓ Created batch '{name}'"
+msgstr "✓ تم إنشاء الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/reset.py:44
+#, python-brace-format
+msgid "✓ Reset line(s) {lines} from batch '{name}'"
+msgstr "✓ تم إعادة تعيين السطر(الأسطر) {lines} من الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/reset.py:47
+#, python-brace-format
+msgid "✓ Reset all claims from batch '{name}'"
+msgstr "✓ تم إعادة تعيين جميع المطالبات من الدفعة '{name}'"
+
+#: src/git_stage_batch/commands/skip.py:55
+#, python-brace-format
+msgid "✓ Hunk skipped from {file}"
+msgstr "✓ تم تخطي المقطع من {file}"
+
+#: src/git_stage_batch/commands/skip.py:106
+#, python-brace-format
+msgid "✓ Skipped {count} hunk from {file}"
+msgid_plural "✓ Skipped {count} hunks from {file}"
+msgstr[0] "✓ لم يتم تخطي مقاطع من {file}"
+msgstr[1] "✓ تم تخطي مقطع واحد من {file}"
+msgstr[2] "✓ تم تخطي مقطعين من {file}"
+msgstr[3] "✓ تم تخطي {count} مقاطع من {file}"
+msgstr[4] "✓ تم تخطي {count} مقطعاً من {file}"
+msgstr[5] "✓ تم تخطي {count} مقطع من {file}"
+
+#: src/git_stage_batch/commands/skip.py:133
+#, python-brace-format
+msgid "✓ Skipped line(s): {lines}"
+msgstr "✓ تم تخطي السطر/الأسطر: {lines}"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "in progress"
+msgstr "قيد التنفيذ"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "complete"
+msgstr "مكتمل"
+
+#: src/git_stage_batch/commands/status.py:140
+msgid "Session: iteration {} ({})"
+msgstr "الجلسة: التكرار {} ({})"
+
+#: src/git_stage_batch/commands/status.py:145
+msgid "Current hunk:"
+msgstr "المقطع الحالي:"
+
+#: src/git_stage_batch/commands/status.py:146
+msgid "  {}:{}"
+msgstr "  {}:{}"
+
+#: src/git_stage_batch/commands/status.py:147
+msgid "  [#{}]"
+msgstr "  [#{}]"
+
+#: src/git_stage_batch/commands/status.py:150
+msgid "Progress this iteration:"
+msgstr "التقدم في هذا التكرار:"
+
+#: src/git_stage_batch/commands/status.py:151
+msgid "  Included:  {} hunks"
+msgstr "  المضمّنة:  {} مقطع"
+
+#: src/git_stage_batch/commands/status.py:152
+msgid "  Skipped:   {} hunks"
+msgstr "  المتخطاة:   {} مقطع"
+
+#: src/git_stage_batch/commands/status.py:153
+msgid "  Discarded: {} hunks"
+msgstr "  المتجاهلة: {} مقطع"
+
+#: src/git_stage_batch/commands/status.py:154
+msgid "  Remaining: ~{} hunks"
+msgstr "  المتبقية: ~{} مقطع"
+
+#: src/git_stage_batch/commands/status.py:158
+msgid "Skipped hunks:"
+msgstr "المقاطع المتخطاة:"
+
+#: src/git_stage_batch/commands/status.py:161
+msgid "  {}:{} [#{}]"
+msgstr "  {}:{} [#{}]"
+
+#: src/git_stage_batch/commands/stop.py:28
+msgid "✓ State cleared."
+msgstr "✓ تم مسح الحالة."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:192
+#: src/git_stage_batch/commands/suggest_fixup.py:399
+msgid "Suggest-fixup iteration cleared."
+msgstr "تم مسح تكرار اقتراح الإصلاح."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:222
+msgid "Full hunk state not available. Run 'show' to cache the current hunk."
+msgstr ""
+"فشل تطبيق التصحيحات للملفات: {files}\\nقم بتشغيل 'git-stage-batch show --"
+"from {name}' لمراجعة التغييرات\\nاستخدم --file أو --line لتطبيق الأجزاء "
+"المتوافقة"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:236
+msgid "No old line numbers found in hunk (all lines may be additions)."
+msgstr ""
+"لم يتم العثور على أرقام أسطر قديمة في المقطع (قد تكون جميع الأسطر إضافات)."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:246
+#: src/git_stage_batch/commands/suggest_fixup.py:449
+#, python-brace-format
+msgid "Invalid boundary ref: {boundary}"
+msgstr "مرجع حدودي غير صالح: {boundary}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:255
+#: src/git_stage_batch/commands/suggest_fixup.py:458
+#, python-brace-format
+msgid "Failed to get commit range {boundary}..HEAD"
+msgstr "فشل الحصول على نطاق الإيداعات {boundary}..HEAD"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:258
+#: src/git_stage_batch/commands/suggest_fixup.py:461
+#, python-brace-format
+msgid "No commits found in range {boundary}..HEAD"
+msgstr "لم يتم العثور على إيداعات في النطاق {boundary}..HEAD"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:299
+#: src/git_stage_batch/commands/suggest_fixup.py:359
+#: src/git_stage_batch/commands/suggest_fixup.py:502
+#: src/git_stage_batch/commands/suggest_fixup.py:562
+#, python-brace-format
+msgid "Candidate {iteration}: {info}"
+msgstr "المرشح {iteration}: {info}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:301
+#: src/git_stage_batch/commands/suggest_fixup.py:361
+#: src/git_stage_batch/commands/suggest_fixup.py:504
+#: src/git_stage_batch/commands/suggest_fixup.py:564
+#, python-brace-format
+msgid "Run: git commit --fixup={commit}"
+msgstr "شغّل: git commit --fixup={commit}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:325
+#: src/git_stage_batch/commands/suggest_fixup.py:528
+msgid "No more candidates found."
+msgstr "لم يتم العثور على مزيد من المرشحين."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:439
+msgid ""
+"No old line numbers found for specified lines (they may be newly added "
+"lines)."
+msgstr ""
+"لم يتم العثور على أرقام أسطر قديمة للأسطر المحددة (قد تكون أسطراً مضافة "
+"حديثاً)."
+
+#: src/git_stage_batch/commands/unblock_file.py:20
+msgid "File path required for unblock-file command."
+msgstr "مسار الملف مطلوب لأمر إلغاء حظر الملف."
+
+#: src/git_stage_batch/core/diff_parser.py:262
+msgid "Failed to parse hunk header."
+msgstr "فشل تحليل رأس المقطع."
+
+#: src/git_stage_batch/data/hunk_tracking.py:286
+#: src/git_stage_batch/data/line_state.py:67
+msgid "No current hunk. Run 'start' first."
+msgstr "لا يوجد مقطع حالي. قم بتشغيل 'start' أولاً."
+
+#: src/git_stage_batch/data/hunk_tracking.py:293
+msgid ""
+"Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
+msgstr ""
+"المقطع المخزن قديم (تم تغيير الملف). قم بتشغيل 'start' أو 'again' للمتابعة."
+
+#: src/git_stage_batch/data/hunk_tracking.py:339
+msgid "No pending hunks."
+msgstr "لا توجد مقاطع معلقة."
+
+#: src/git_stage_batch/data/session.py:46
+msgid "No session in progress. Run 'git-stage-batch start' first."
+msgstr ""
+"حالة الجزء الكاملة غير متاحة. قم بتشغيل 'show' لتخزين الجزء الحالي مؤقتاً."
+
+#: src/git_stage_batch/tui/display.py:32
+#, python-brace-format
+msgid "{source_label}{source} {arrow} {target_label}{target}"
+msgstr "{source_label}{source} {arrow} {target_label}{target}"
+
+#: src/git_stage_batch/tui/display.py:40
+#, python-brace-format
+msgid "Source: {source} → Target: {target}"
+msgstr "المصدر: {source} ← الهدف: {target}"
+
+#: src/git_stage_batch/tui/display.py:54
+#, python-brace-format
+msgid "Included: {count}"
+msgstr "المضمّنة: {count}"
+
+#: src/git_stage_batch/tui/display.py:55
+#, python-brace-format
+msgid "Skipped: {count}"
+msgstr "المتخطاة: {count}"
+
+#: src/git_stage_batch/tui/display.py:56
+#, python-brace-format
+msgid "Discarded: {count}"
+msgstr "المتجاهلة: {count}"
+
+#: src/git_stage_batch/tui/flow.py:38
+msgid "Working tree"
+msgstr "شجرة العمل"
+
+#: src/git_stage_batch/tui/flow.py:41
+msgid "Index"
+msgstr "الفهرس"
+
+#: src/git_stage_batch/tui/interactive.py:58
+#: src/git_stage_batch/tui/interactive.py:102
+msgid "Batch-to-batch transfers not yet supported. Target must be staging."
+msgstr "نقل الدفعة إلى الدفعة غير مدعوم بعد. يجب أن يكون الهدف التجهيز."
+
+#: src/git_stage_batch/tui/interactive.py:80
+#: src/git_stage_batch/tui/interactive.py:765
+#: src/git_stage_batch/tui/interactive.py:879
+msgid "Skip is not available when pulling from a batch."
+msgstr "التخطي غير متاح عند السحب من دفعة."
+
+#: src/git_stage_batch/tui/interactive.py:91
+msgid "This will remove the hunk from your working tree."
+msgstr "سيؤدي هذا إلى إزالة المقطع من شجرة العمل."
+
+#: src/git_stage_batch/tui/interactive.py:139
+msgid "Suggest-fixup is not available when pulling from a batch."
+msgstr "اقتراح الإصلاح غير متاح عند السحب من دفعة."
+
+#: src/git_stage_batch/tui/interactive.py:164
+msgid "Command exited with status {}"
+msgstr "خرج الأمر بحالة {}"
+
+#: src/git_stage_batch/tui/interactive.py:167
+msgid ""
+"\n"
+"Press Enter to continue..."
+msgstr ""
+"\n"
+"اضغط Enter للمتابعة..."
+
+#: src/git_stage_batch/tui/interactive.py:171
+msgid "No command entered"
+msgstr "لم يتم إدخال أمر"
+
+#: src/git_stage_batch/tui/interactive.py:189
+msgid "No batches found. Create one now."
+msgstr "لم يتم العثور على دفعات. قم بإنشاء واحدة الآن."
+
+#: src/git_stage_batch/tui/interactive.py:196
+msgid "Existing batches:"
+msgstr "الدفعات الموجودة:"
+
+#: src/git_stage_batch/tui/interactive.py:202
+#: src/git_stage_batch/tui/interactive.py:207
+#, python-brace-format
+msgid "  {name} - {note}"
+msgstr "  {name} - {note}"
+
+#: src/git_stage_batch/tui/interactive.py:216
+msgid "Batch operations:"
+msgstr "عمليات الدفعة:"
+
+#: src/git_stage_batch/tui/interactive.py:218
+msgid "create"
+msgstr "إنشاء"
+
+#: src/git_stage_batch/tui/interactive.py:219
+#: src/git_stage_batch/tui/interactive.py:273
+msgid "edit"
+msgstr "تحرير"
+
+#: src/git_stage_batch/tui/interactive.py:220
+#: src/git_stage_batch/tui/interactive.py:289
+msgid "drop"
+msgstr "حذف"
+
+#: src/git_stage_batch/tui/interactive.py:221
+#: src/git_stage_batch/tui/interactive.py:300
+msgid "apply"
+msgstr "تطبيق"
+
+#: src/git_stage_batch/tui/interactive.py:229
+#: src/git_stage_batch/tui/interactive.py:342
+#: src/git_stage_batch/tui/interactive.py:403
+#: src/git_stage_batch/tui/interactive.py:470
+msgid "Select: "
+msgstr "اختر: "
+
+#: src/git_stage_batch/tui/interactive.py:247
+#: src/git_stage_batch/tui/interactive.py:776
+#: src/git_stage_batch/tui/interactive.py:843
+#: src/git_stage_batch/tui/interactive.py:973
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown action: '{action}'"
+msgstr ""
+"\n"
+"إجراء غير معروف: '{action}'"
+
+#: src/git_stage_batch/tui/interactive.py:257
+#: src/git_stage_batch/tui/interactive.py:480
+msgid "Batch ID: "
+msgstr "معرّف الدفعة: "
+
+#: src/git_stage_batch/tui/interactive.py:261
+#: src/git_stage_batch/tui/interactive.py:483
+msgid "Note (optional): "
+msgstr "ملاحظة (اختياري): "
+
+#: src/git_stage_batch/tui/interactive.py:267
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' created."
+msgstr ""
+"\n"
+"تم إنشاء الدفعة '{name}'."
+
+#: src/git_stage_batch/tui/interactive.py:278
+msgid "New note: "
+msgstr "ملاحظة جديدة: "
+
+#: src/git_stage_batch/tui/interactive.py:284
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' note updated."
+msgstr ""
+"\n"
+"تم تحديث ملاحظة الدفعة '{name}'."
+
+#: src/git_stage_batch/tui/interactive.py:295
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' dropped."
+msgstr ""
+"\n"
+"تم حذف الدفعة '{name}'."
+
+#: src/git_stage_batch/tui/interactive.py:306
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' applied to staging area."
+msgstr ""
+"\n"
+"تم تطبيق الدفعة '{name}' إلى منطقة التجهيز."
+
+#: src/git_stage_batch/tui/interactive.py:325
+msgid "No batches found."
+msgstr "لم يتم العثور على دفعات."
+
+#: src/git_stage_batch/tui/interactive.py:333
+#, python-brace-format
+msgid "Select batch to {purpose}:"
+msgstr "اختر دفعة لـ {purpose}:"
+
+#: src/git_stage_batch/tui/interactive.py:354
+msgid ""
+"\n"
+"Invalid selection."
+msgstr ""
+"\n"
+"اختيار غير صالح."
+
+#: src/git_stage_batch/tui/interactive.py:366
+msgid "Pull changes from:"
+msgstr "سحب التغييرات من:"
+
+#: src/git_stage_batch/tui/interactive.py:371
+#: src/git_stage_batch/tui/interactive.py:433
+msgid " (current)"
+msgstr " (الحالي)"
+
+#: src/git_stage_batch/tui/interactive.py:376
+#, python-brace-format
+msgid "Working tree{marker}"
+msgstr "شجرة العمل{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:390
+#: src/git_stage_batch/tui/interactive.py:452
+#, python-brace-format
+msgid "batch: {name}{note}{marker}"
+msgstr "دفعة: {name}{note}{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:428
+msgid "Push changes to:"
+msgstr "دفع التغييرات إلى:"
+
+#: src/git_stage_batch/tui/interactive.py:438
+#, python-brace-format
+msgid "Staging for commit{marker}"
+msgstr "التجهيز للإيداع{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:465
+msgid "New Batch..."
+msgstr "دفعة جديدة..."
+
+#: src/git_stage_batch/tui/interactive.py:518
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown command: '{cmd}'"
+msgstr ""
+"\n"
+"أمر غير معروف: '{cmd}'"
+
+#: src/git_stage_batch/tui/interactive.py:521
+#, python-brace-format
+msgid ""
+"\n"
+"Error executing command: {error}"
+msgstr ""
+"\n"
+"خطأ في تنفيذ الأمر: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:588
+msgid "No changes to process"
+msgstr "لا توجد تغييرات للمعالجة"
+
+#: src/git_stage_batch/tui/interactive.py:721
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude? "
+msgstr "إجراء لجميع المقاطع في {filename} - ت[ض]مين؟ "
+
+#: src/git_stage_batch/tui/interactive.py:724
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude or [s]kip? "
+msgstr "إجراء لجميع المقاطع في {filename} - ت[ض]مين أم ت[خ]طي؟ "
+
+#: src/git_stage_batch/tui/interactive.py:731
+#, python-brace-format
+msgid "Action for all hunks in {filename} - {include} or {skip}? "
+msgstr "إجراء لجميع المقاطع في {filename} - {include} أم {skip}؟ "
+
+#: src/git_stage_batch/tui/interactive.py:756
+#: src/git_stage_batch/tui/interactive.py:871
+#: src/git_stage_batch/tui/interactive.py:901
+msgid "Batch-to-batch transfers not yet supported."
+msgstr "نقل الدفعة إلى الدفعة غير مدعوم بعد."
+
+#: src/git_stage_batch/tui/interactive.py:800
+msgid ""
+"\n"
+"No changed lines in this hunk."
+msgstr ""
+"\n"
+"لا توجد أسطر متغيرة في هذا المقطع."
+
+#: src/git_stage_batch/tui/interactive.py:806
+#, python-brace-format
+msgid ""
+"\n"
+"Changed line IDs: {ids}"
+msgstr ""
+"\n"
+"أرقام الأسطر المتغيرة: {ids}"
+
+#: src/git_stage_batch/tui/interactive.py:816
+msgid "Action for lines [i]nclude, [d]iscard? "
+msgstr "إجراء للأسطر ت[ض]مين، ت[ج]اهل؟ "
+
+#: src/git_stage_batch/tui/interactive.py:819
+msgid "Action for lines [i]nclude, [s]kip, [d]iscard? "
+msgstr "إجراء للأسطر ت[ض]مين، ت[خ]طي، ت[ج]اهل؟ "
+
+#: src/git_stage_batch/tui/interactive.py:826
+#, python-brace-format
+msgid "Action for lines {include}, {skip}, {discard}? "
+msgstr "إجراء للأسطر {include}، {skip}، {discard}؟ "
+
+#: src/git_stage_batch/tui/interactive.py:848
+msgid ""
+"\n"
+"Skip is not available when pulling from a batch."
+msgstr ""
+"\n"
+"التخطي غير متاح عند السحب من دفعة."
+
+#: src/git_stage_batch/tui/interactive.py:891
+#, python-brace-format
+msgid "This will remove lines {line_ids} from your working tree."
+msgstr "سيؤدي هذا إلى إزالة الأسطر {line_ids} من شجرة العمل."
+
+#: src/git_stage_batch/tui/interactive.py:908
+#, python-brace-format
+msgid ""
+"\n"
+"Error: {error}"
+msgstr ""
+"\n"
+"خطأ: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:946
+msgid "Create fixup commit with:"
+msgstr "إنشاء إيداع إصلاح باستخدام:"
+
+#: src/git_stage_batch/tui/interactive.py:970
+msgid ""
+"\n"
+"Canceled."
+msgstr ""
+"\n"
+"تم الإلغاء."
+
+#: src/git_stage_batch/tui/interactive.py:1030
+msgid "Interactive Mode Commands:"
+msgstr "أوامر الوضع التفاعلي:"
+
+#: src/git_stage_batch/tui/interactive.py:1037
+msgid "Primary actions:"
+msgstr "الإجراءات الأساسية:"
+
+#: src/git_stage_batch/tui/interactive.py:1038
+msgid "  i, include   - Stage this hunk to the index"
+msgstr "  i, include   - تجهيز هذا المقطع إلى الفهرس"
+
+#: src/git_stage_batch/tui/interactive.py:1039
+msgid "  s, skip      - Skip this hunk for now"
+msgstr "  s, skip      - تخطي هذا المقطع الآن"
+
+#: src/git_stage_batch/tui/interactive.py:1040
+msgid "  d, discard   - Remove this hunk from working tree (DESTRUCTIVE)"
+msgstr "  d, discard   - إزالة هذا المقطع من شجرة العمل (مدمّر)"
+
+#: src/git_stage_batch/tui/interactive.py:1041
+msgid "  q, quit      - Exit interactive mode"
+msgstr "  q, quit      - الخروج من الوضع التفاعلي"
+
+#: src/git_stage_batch/tui/interactive.py:1043
+msgid "More options:"
+msgstr "خيارات إضافية:"
+
+#: src/git_stage_batch/tui/interactive.py:1044
+msgid "  a, again     - Clear state and start fresh pass through skipped hunks"
+msgstr "  a, again     - مسح الحالة وبدء دورة جديدة عبر المقاطع المتخطاة"
+
+#: src/git_stage_batch/tui/interactive.py:1045
+msgid "  l, lines     - Select specific lines from this hunk"
+msgstr "  l, lines     - اختيار أسطر محددة من هذا المقطع"
+
+#: src/git_stage_batch/tui/interactive.py:1046
+msgid "  f, file      - Include or skip all hunks in this file"
+msgstr "  f, file      - تضمين أو تخطي جميع المقاطع في هذا الملف"
+
+#: src/git_stage_batch/tui/interactive.py:1047
+msgid "  x, fixup     - Suggest which commit to fixup (iterative)"
+msgstr "  x, fixup     - اقتراح الإيداع الذي يجب إصلاحه (تكراري)"
+
+#: src/git_stage_batch/tui/interactive.py:1048
+msgid ""
+"  !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)"
+msgstr "  !<cmd>       - تشغيل أمر shell (مثل !git log، أو فقط ! للمطالبة)"
+
+#: src/git_stage_batch/tui/interactive.py:1049
+msgid "  ?, help      - Show this help message"
+msgstr "  ?, help      - عرض رسالة المساعدة هذه"
+
+#: src/git_stage_batch/tui/prompts.py:129
+msgid "What do you want to do with this hunk?"
+msgstr "ماذا تريد أن تفعل بهذا المقطع؟"
+
+#: src/git_stage_batch/tui/prompts.py:131
+msgid "What do you want to do?"
+msgstr "ماذا تريد أن تفعل؟"
+
+#: src/git_stage_batch/tui/prompts.py:151
+#: src/git_stage_batch/tui/prompts.py:158
+#, python-brace-format
+msgid "{label}: {options}"
+msgstr "{label}: {options}"
+
+#: src/git_stage_batch/tui/prompts.py:188
+msgid "Action: "
+msgstr "إجراء: "
+
+#: src/git_stage_batch/tui/prompts.py:231
+#, python-brace-format
+msgid "⚠️  {message}"
+msgstr "⚠️  {message}"
+
+#: src/git_stage_batch/tui/prompts.py:238
+#: src/git_stage_batch/tui/prompts.py:285
+msgid "yes"
+msgstr "نعم"
+
+#: src/git_stage_batch/tui/prompts.py:239
+msgid "NO"
+msgstr "لا"
+
+#: src/git_stage_batch/tui/prompts.py:248
+#, python-brace-format
+msgid "Are you sure? [{yes}/{no}]: "
+msgstr "هل أنت متأكد؟ [{yes}/{no}]: "
+
+#: src/git_stage_batch/tui/prompts.py:267
+msgid "Enter line IDs (e.g., 1,3,5-7): "
+msgstr "أدخل أرقام الأسطر (مثل 1,3,5-7): "
+
+#: src/git_stage_batch/tui/prompts.py:283
+#: src/git_stage_batch/tui/prompts.py:365
+msgid "y"
+msgstr "ن"
+
+#: src/git_stage_batch/tui/prompts.py:284
+#: src/git_stage_batch/tui/prompts.py:366
+msgid "n"
+msgstr "ل"
+
+#: src/git_stage_batch/tui/prompts.py:286
+msgid "no"
+msgstr "لا"
+
+#: src/git_stage_batch/tui/prompts.py:295
+#, python-brace-format
+msgid "Keep staged changes? [{y}]es / [{n}]o: "
+msgstr "الاحتفاظ بالتغييرات المجهزة؟ [{y}]عم / [{n}]ا: "
+
+#: src/git_stage_batch/tui/prompts.py:367
+msgid "r"
+msgstr "ع"
+
+#: src/git_stage_batch/tui/prompts.py:378
+#, python-brace-format
+msgid "[{y}]es / [{n}]ext / [{r}]eset: "
+msgstr "[{y}]عم / [{n}]التالي / إ[{r}]ادة تعيين: "
+
+#: src/git_stage_batch/utils/git.py:113
+msgid "Not inside a git repository."
+msgstr "ليس داخل مستودع git."

@@ -1,0 +1,1192 @@
+# Korean translation for git-stage-batch.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the git-stage-batch package.
+# Claude <noreply@anthropic.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: git-stage-batch\n"
+"Report-Msgid-Bugs-To: https://github.com/halfline/git-stage-batch/issues\n"
+"POT-Creation-Date: 2026-04-02 12:07-0400\n"
+"PO-Revision-Date: 2026-03-31 12:00+0000\n"
+"Last-Translator: Claude <noreply@anthropic.com>\n"
+"Language-Team: Korean\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/git_stage_batch/batch/operations.py:27
+#, python-brace-format
+msgid "Batch '{name}' already exists"
+msgstr "배치 '{name}'이(가) 이미 존재합니다"
+
+#: src/git_stage_batch/batch/operations.py:75
+#: src/git_stage_batch/batch/operations.py:91
+#: src/git_stage_batch/commands/reset.py:33
+#, python-brace-format
+msgid "Batch '{name}' does not exist"
+msgstr "배치 '{name}'이(가) 존재하지 않습니다"
+
+#: src/git_stage_batch/batch/validation.py:13
+msgid "Batch name cannot be empty"
+msgstr "배치 이름은 비어 있을 수 없습니다"
+
+#: src/git_stage_batch/batch/validation.py:19
+#, python-brace-format
+msgid "Batch name cannot contain: {char}"
+msgstr "배치 이름에는 다음 문자를 포함할 수 없습니다: {char}"
+
+#: src/git_stage_batch/batch/validation.py:23
+msgid "Batch name cannot start with '.'"
+msgstr "배치 이름은 '.'으로 시작할 수 없습니다"
+
+#: src/git_stage_batch/cli/argument_parser.py:66
+msgid "Hunk-by-hunk and line-by-line staging for git"
+msgstr "git을 위한 헝크별 및 줄별 스테이징"
+
+#: src/git_stage_batch/cli/argument_parser.py:78
+msgid "Start interactive mode"
+msgstr "대화형 모드 시작"
+
+#: src/git_stage_batch/cli/argument_parser.py:83
+msgid "Available commands"
+msgstr "사용 가능한 명령"
+
+#: src/git_stage_batch/cli/argument_parser.py:89
+msgid "Start a new batch staging session"
+msgstr "새 배치 스테이징 세션 시작"
+
+#: src/git_stage_batch/cli/argument_parser.py:96
+msgid "Start interactive hunk-by-hunk mode"
+msgstr "대화형 헝크별 모드 시작"
+
+#: src/git_stage_batch/cli/argument_parser.py:103
+msgid "Stop the current session and clear state"
+msgstr "현재 세션 중지 및 상태 초기화"
+
+#: src/git_stage_batch/cli/argument_parser.py:111
+msgid "Clear state and start a fresh pass"
+msgstr "상태를 초기화하고 새로운 패스 시작"
+
+#: src/git_stage_batch/cli/argument_parser.py:118
+msgid "Show the current hunk"
+msgstr "현재 헝크 표시"
+
+#: src/git_stage_batch/cli/argument_parser.py:124
+msgid "Show changes from batch"
+msgstr "배치의 변경사항 표시"
+
+#: src/git_stage_batch/cli/argument_parser.py:135
+msgid "Show current session status"
+msgstr "현재 세션 상태 표시"
+
+#: src/git_stage_batch/cli/argument_parser.py:143
+msgid "Stage the current hunk"
+msgstr "현재 헝크 스테이징"
+
+#: src/git_stage_batch/cli/argument_parser.py:150
+msgid "Stage only specific line IDs (e.g., '1,3,5-7')"
+msgstr "특정 줄 ID만 스테이징 (예: '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:155
+msgid "Stage the entire file containing the current hunk"
+msgstr "현재 헝크를 포함하는 전체 파일 스테이징"
+
+#: src/git_stage_batch/cli/argument_parser.py:161
+msgid "Include changes from batch"
+msgstr "배치에서 변경사항 포함"
+
+#: src/git_stage_batch/cli/argument_parser.py:167
+msgid "Include changes to batch"
+msgstr "배치에 변경사항 포함"
+
+#: src/git_stage_batch/cli/argument_parser.py:181
+msgid "Skip the current hunk without staging"
+msgstr "스테이징하지 않고 현재 헝크 건너뛰기"
+
+#: src/git_stage_batch/cli/argument_parser.py:188
+msgid "Skip only specific line IDs (e.g., '1,3,5-7')"
+msgstr "특정 줄 ID만 건너뛰기 (예: '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:193
+msgid "Skip all hunks from the current file"
+msgstr "현재 파일의 모든 헝크 건너뛰기"
+
+#: src/git_stage_batch/cli/argument_parser.py:205
+msgid "Remove the current hunk from working tree"
+msgstr "작업 트리에서 현재 헝크 제거"
+
+#: src/git_stage_batch/cli/argument_parser.py:212
+msgid "Discard only specific line IDs (e.g., '1,3,5-7')"
+msgstr "특정 줄 ID만 폐기 (예: '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:217
+msgid "Discard the entire file containing the current hunk"
+msgstr "현재 헝크를 포함하는 전체 파일 폐기"
+
+#: src/git_stage_batch/cli/argument_parser.py:223
+msgid "Discard changes from batch"
+msgstr "배치에서 변경사항 폐기"
+
+#: src/git_stage_batch/cli/argument_parser.py:229
+msgid "Discard changes to batch"
+msgstr "배치에 변경사항 폐기"
+
+#: src/git_stage_batch/cli/argument_parser.py:242
+msgid "Restore repository to pre-session state"
+msgstr "저장소를 세션 이전 상태로 복원"
+
+#: src/git_stage_batch/cli/argument_parser.py:250
+msgid "Permanently exclude a file (adds to .gitignore)"
+msgstr "파일을 영구적으로 제외 (.gitignore에 추가)"
+
+#: src/git_stage_batch/cli/argument_parser.py:254
+msgid "Path to the file to block"
+msgstr "차단할 파일 경로"
+
+#: src/git_stage_batch/cli/argument_parser.py:262
+msgid "Remove a file from the blocked list"
+msgstr "차단 목록에서 파일 제거"
+
+#: src/git_stage_batch/cli/argument_parser.py:266
+msgid "Path to the file to unblock"
+msgstr "차단 해제할 파일 경로"
+
+#: src/git_stage_batch/cli/argument_parser.py:274
+msgid "Suggest which commit the current hunk should be fixed up to"
+msgstr "현재 헝크가 수정되어야 할 커밋 제안"
+
+#: src/git_stage_batch/cli/argument_parser.py:281
+msgid "Analyze only specific line IDs (e.g., '1,3,5-7')"
+msgstr "특정 줄 ID만 분석 (예: '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:286
+msgid "Reset state and start search over from most recent"
+msgstr "상태를 재설정하고 가장 최근부터 검색 재시작"
+
+#: src/git_stage_batch/cli/argument_parser.py:291
+msgid "Clear state and exit without showing candidates"
+msgstr "후보를 표시하지 않고 상태 초기화 및 종료"
+
+#: src/git_stage_batch/cli/argument_parser.py:296
+msgid "Re-show the last candidate without advancing"
+msgstr "진행하지 않고 마지막 후보 다시 표시"
+
+#: src/git_stage_batch/cli/argument_parser.py:302
+#, python-brace-format
+msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
+msgstr "커밋 검색의 하한으로 사용할 Git ref (기본값: @{upstream})"
+
+#: src/git_stage_batch/cli/argument_parser.py:323
+msgid "Create a new batch"
+msgstr "새 배치 생성"
+
+#: src/git_stage_batch/cli/argument_parser.py:327
+msgid "Name of the batch to create"
+msgstr "생성할 배치 이름"
+
+#: src/git_stage_batch/cli/argument_parser.py:332
+msgid "Optional description for the batch"
+msgstr "배치에 대한 설명 (선택사항)"
+
+#: src/git_stage_batch/cli/argument_parser.py:339
+msgid "List all batches"
+msgstr "모든 배치 목록 표시"
+
+#: src/git_stage_batch/cli/argument_parser.py:346
+msgid "Delete a batch"
+msgstr "배치 삭제"
+
+#: src/git_stage_batch/cli/argument_parser.py:350
+msgid "Name of the batch to delete"
+msgstr "삭제할 배치 이름"
+
+#: src/git_stage_batch/cli/argument_parser.py:357
+msgid "Add or update batch description"
+msgstr "배치 설명 추가 또는 업데이트"
+
+#: src/git_stage_batch/cli/argument_parser.py:361
+msgid "Name of the batch"
+msgstr "배치 이름"
+
+#: src/git_stage_batch/cli/argument_parser.py:365
+msgid "Description text"
+msgstr "설명 텍스트"
+
+#: src/git_stage_batch/cli/argument_parser.py:372
+msgid "Apply batch changes to working tree"
+msgstr "작업 트리에 배치 변경사항 적용"
+
+#: src/git_stage_batch/cli/argument_parser.py:379
+msgid "Apply changes from batch to working tree"
+msgstr "배치에서 작업 트리로 변경사항 적용"
+
+#: src/git_stage_batch/cli/argument_parser.py:386
+#: src/git_stage_batch/cli/argument_parser.py:393
+msgid "Remove claims from batch"
+msgstr "배치에서 청구 제거"
+
+#: src/git_stage_batch/cli/argument_parser.py:400
+msgid "Reset only specific line IDs (e.g., '1,3,5-7')"
+msgstr "특정 라인 ID만 재설정 (예: '1,3,5-7')"
+
+#: src/git_stage_batch/cli/dispatch.py:24
+#: src/git_stage_batch/commands/status.py:72
+msgid "No batch staging session in progress."
+msgstr "진행 중인 배치 스테이징 세션이 없습니다."
+
+#: src/git_stage_batch/cli/dispatch.py:25
+#: src/git_stage_batch/commands/status.py:73
+msgid "Run 'git-stage-batch start' to begin."
+msgstr "'git-stage-batch start'를 실행하여 시작하세요."
+
+#: src/git_stage_batch/commands/abort.py:30
+msgid "No session to abort. Abort state not found."
+msgstr "중단할 세션이 없습니다. 중단 상태를 찾을 수 없습니다."
+
+#: src/git_stage_batch/commands/abort.py:48
+msgid "Resetting to {}..."
+msgstr "{}로 재설정 중..."
+
+#: src/git_stage_batch/commands/abort.py:70
+msgid "Restored: {}"
+msgstr "복원됨: {}"
+
+#: src/git_stage_batch/commands/abort.py:74
+msgid "Applying original changes..."
+msgstr "원래 변경사항 적용 중..."
+
+#: src/git_stage_batch/commands/abort.py:82
+msgid "⚠ Warning: Could not apply stash cleanly: {}"
+msgstr "⚠ 경고: stash를 깔끔하게 적용할 수 없습니다: {}"
+
+#: src/git_stage_batch/commands/abort.py:89
+msgid "✓ Session aborted. All changes reverted."
+msgstr "✓ 세션이 중단되었습니다. 모든 변경사항이 되돌려졌습니다."
+
+#: src/git_stage_batch/commands/annotate.py:15
+#, python-brace-format
+msgid "✓ Updated note for batch '{name}'"
+msgstr "✓ 배치 '{name}'의 메모가 업데이트되었습니다"
+
+#: src/git_stage_batch/commands/apply_from.py:33
+#: src/git_stage_batch/commands/discard_from.py:32
+#: src/git_stage_batch/commands/include_from.py:38
+#: src/git_stage_batch/commands/show_from.py:27
+#, python-brace-format
+msgid "Batch '{name}' is empty or does not exist"
+msgstr "배치 '{name}'이(가) 비어 있거나 존재하지 않습니다"
+
+#: src/git_stage_batch/commands/apply_from.py:39
+#: src/git_stage_batch/commands/discard_from.py:38
+#: src/git_stage_batch/commands/include_from.py:44
+#: src/git_stage_batch/commands/show_from.py:34
+#, python-brace-format
+msgid "No patches found in batch '{name}'"
+msgstr "배치 '{name}'에서 패치를 찾을 수 없습니다"
+
+#: src/git_stage_batch/commands/apply_from.py:54
+#: src/git_stage_batch/commands/discard_from.py:53
+#: src/git_stage_batch/commands/include_from.py:59
+#, python-brace-format
+#| msgid "Batch '{name}' does not exist"
+msgid "Batch '{name}' has no changes for {file}"
+msgstr "배치 '{name}'에 {file}에 대한 변경사항이 없습니다"
+
+#: src/git_stage_batch/commands/apply_from.py:74
+#: src/git_stage_batch/commands/include_from.py:76
+#, python-brace-format
+msgid ""
+"Failed to apply patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr ""
+"파일 {file}에 대한 패치 적용 실패\\n'git-stage-batch show --from {name}'을 실행하여 변경사항을 "
+"확인하세요"
+
+#: src/git_stage_batch/commands/apply_from.py:80
+#, python-brace-format
+#| msgid "✓ Applied changes from batch '{name}' to working tree"
+msgid "✓ Applied changes for {file} from batch '{name}' to working tree"
+msgstr "✓ 배치 '{name}'에서 {file}에 대한 변경사항을 작업 트리에 적용했습니다"
+
+#: src/git_stage_batch/commands/apply_from.py:116
+#, python-brace-format
+msgid "✓ Applied selected lines from batch '{name}' to working tree"
+msgstr "✓ 배치 '{name}'에서 선택한 줄이 작업 트리에 적용되었습니다"
+
+#: src/git_stage_batch/commands/apply_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --line to apply compatible parts"
+msgstr ""
+"파일 {files}에 대한 패치 적용 실패\\n'git-stage-batch show --from {name}'을 실행하여 변경사항을 "
+"확인하세요\\n호환되는 부분을 적용하려면 --file 또는 --line을 사용하세요"
+
+#: src/git_stage_batch/commands/apply_from.py:146
+#, python-brace-format
+msgid "✓ Applied changes from batch '{name}' to working tree"
+msgstr "✓ 배치 '{name}'의 변경사항이 작업 트리에 적용되었습니다"
+
+#: src/git_stage_batch/commands/block_file.py:20
+msgid "File path required for block-file command."
+msgstr "block-file 명령에 파일 경로가 필요합니다."
+
+#: src/git_stage_batch/commands/block_file.py:31
+msgid "Blocked file: {}"
+msgstr "차단된 파일: {}"
+
+#: src/git_stage_batch/commands/discard.py:45
+#: src/git_stage_batch/commands/include.py:46
+#: src/git_stage_batch/commands/show.py:56
+#: src/git_stage_batch/commands/skip.py:36
+#: src/git_stage_batch/data/hunk_tracking.py:234
+#: src/git_stage_batch/tui/interactive.py:656
+msgid "No more hunks to process."
+msgstr "처리할 헝크가 더 이상 없습니다."
+
+#: src/git_stage_batch/commands/discard.py:70
+msgid "Failed to discard hunk: {}"
+msgstr "헝크 폐기 실패: {}"
+
+#: src/git_stage_batch/commands/discard.py:91
+#, python-brace-format
+msgid "✓ Hunk discarded from {file}"
+msgstr "✓ {file}에서 헝크가 폐기되었습니다"
+
+#: src/git_stage_batch/commands/discard.py:120
+msgid "No changes to discard."
+msgstr "폐기할 변경사항이 없습니다."
+
+#: src/git_stage_batch/commands/discard.py:147
+msgid "Failed to discard file: {}"
+msgstr "파일 폐기 실패: {}"
+
+#: src/git_stage_batch/commands/discard.py:154
+msgid "✓ File discarded: {}"
+msgstr "✓ 파일이 폐기되었습니다: {}"
+
+#: src/git_stage_batch/commands/discard.py:178
+#: src/git_stage_batch/commands/discard.py:264
+#: src/git_stage_batch/commands/discard_from.py:106
+#, python-brace-format
+msgid "File not found in working tree: {file}"
+msgstr "작업 트리에서 파일을 찾을 수 없습니다: {file}"
+
+#: src/git_stage_batch/commands/discard.py:190
+#, python-brace-format
+msgid "✓ Discarded line(s): {lines}"
+msgstr "✓ 폐기된 줄: {lines}"
+
+#: src/git_stage_batch/commands/discard.py:274
+#, python-brace-format
+#| msgid "✓ Discarded line(s): {lines}"
+msgid "✓ Discarded line(s) to batch '{name}': {lines}"
+msgstr "✓ 배치 '{name}'에 행을 폐기했습니다: {lines}"
+
+#: src/git_stage_batch/commands/discard.py:317
+#: src/git_stage_batch/commands/include.py:321
+#: src/git_stage_batch/commands/skip.py:84
+#: src/git_stage_batch/commands/start.py:31
+msgid "No changes to process."
+msgstr "처리할 변경사항이 없습니다."
+
+#: src/git_stage_batch/commands/discard.py:372
+#, python-brace-format
+msgid "Failed to apply reverse patch: {error}"
+msgstr "역방향 패치 적용 실패: {error}"
+
+#: src/git_stage_batch/commands/discard.py:389
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}' and discarded from working tree"
+msgstr "✓ 헝크가 배치 '{name}'에 저장되고 작업 트리에서 폐기되었습니다"
+
+#: src/git_stage_batch/commands/discard_from.py:73
+#, python-brace-format
+msgid ""
+"Failed to discard patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr ""
+"파일 {file}에 대한 패치 폐기 실패\\n'git-stage-batch show --from {name}'을 실행하여 변경사항을 "
+"확인하세요"
+
+#: src/git_stage_batch/commands/discard_from.py:79
+#, python-brace-format
+#| msgid "✓ Discarded changes from batch '{name}' from working tree"
+msgid "✓ Discarded changes for {file} from batch '{name}' from working tree"
+msgstr "✓ 배치 '{name}'에서 {file}에 대한 변경사항을 작업 트리에서 폐기했습니다"
+
+#: src/git_stage_batch/commands/discard_from.py:80
+#: src/git_stage_batch/commands/discard_from.py:119
+#: src/git_stage_batch/commands/discard_from.py:147
+#, python-brace-format
+msgid "Note: Batch '{name}' still exists (use 'drop' to delete it)"
+msgstr "참고: 배치 '{name}'은(는) 여전히 존재합니다 (삭제하려면 'drop' 사용)"
+
+#: src/git_stage_batch/commands/discard_from.py:118
+#, python-brace-format
+msgid "✓ Discarded selected lines from batch '{name}' from working tree"
+msgstr "✓ 배치 '{name}'에서 선택한 줄이 작업 트리에서 폐기되었습니다"
+
+#: src/git_stage_batch/commands/discard_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to discard patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to discard compatible parts"
+msgstr ""
+"파일 {files}에 대한 패치 폐기 실패\\n'git-stage-batch show --from {name}'을 실행하여 변경사항을 "
+"확인하세요\\n호환되는 부분을 폐기하려면 --file 또는 --line을 사용하세요"
+
+#: src/git_stage_batch/commands/discard_from.py:146
+#, python-brace-format
+msgid "✓ Discarded changes from batch '{name}' from working tree"
+msgstr "✓ 배치 '{name}'의 변경사항이 작업 트리에서 폐기되었습니다"
+
+#: src/git_stage_batch/commands/drop.py:15
+#, python-brace-format
+msgid "✓ Deleted batch '{name}'"
+msgstr "✓ 배치 '{name}'이(가) 삭제되었습니다"
+
+#: src/git_stage_batch/commands/include.py:67
+msgid "Failed to apply hunk: {}"
+msgstr "헝크 적용 실패: {}"
+
+#: src/git_stage_batch/commands/include.py:78
+#, python-brace-format
+msgid "✓ Hunk staged from {file}"
+msgstr "✓ {file}에서 헝크가 스테이징되었습니다"
+
+#: src/git_stage_batch/commands/include.py:107
+#: src/git_stage_batch/tui/interactive.py:617
+#: src/git_stage_batch/tui/interactive.py:658
+msgid "No changes to stage."
+msgstr "스테이징할 변경사항이 없습니다."
+
+#: src/git_stage_batch/commands/include.py:137
+#, python-brace-format
+msgid "Failed to apply hunk: {error}"
+msgstr "헝크 적용 실패: {error}"
+
+#: src/git_stage_batch/commands/include.py:141
+#, python-brace-format
+msgid "No hunks staged from {file}"
+msgstr "{file}에서 스테이징된 헝크가 없습니다"
+
+#: src/git_stage_batch/commands/include.py:146
+#, python-brace-format
+msgid "✓ Staged {count} hunk from {file}"
+msgid_plural "✓ Staged {count} hunks from {file}"
+msgstr[0] "✓ {file}에서 {count}개의 헝크가 스테이징되었습니다"
+
+#: src/git_stage_batch/commands/include.py:185
+#, python-brace-format
+msgid "✓ Included line(s): {lines}"
+msgstr "✓ 포함된 줄: {lines}"
+
+#: src/git_stage_batch/commands/include.py:256
+#, python-brace-format
+#| msgid "✓ Included line(s): {lines}"
+msgid "✓ Included line(s) to batch '{name}': {lines}"
+msgstr "✓ 배치 '{name}'에 행을 포함했습니다: {lines}"
+
+#: src/git_stage_batch/commands/include.py:272
+#| msgid ""
+#| "\n"
+#| "No changed lines in this hunk."
+msgid "No more lines in this hunk."
+msgstr "✓ 배치 '{name}'에서 {file}에 대한 변경사항을 스테이징했습니다"
+
+#: src/git_stage_batch/commands/include.py:377
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}'"
+msgstr "✓ 헝크가 배치 '{name}'에 저장되었습니다"
+
+#: src/git_stage_batch/commands/include_from.py:82
+#, python-brace-format
+#| msgid "✓ Staged changes from batch '{name}'"
+msgid "✓ Staged changes for {file} from batch '{name}'"
+msgstr "진행 중인 세션이 없습니다. 먼저 'git-stage-batch start'를 실행하세요."
+
+#: src/git_stage_batch/commands/include_from.py:102
+#, python-brace-format
+msgid "Cannot determine baseline for batch '{name}'"
+msgstr "배치 '{name}'의 기준선을 결정할 수 없습니다"
+
+#: src/git_stage_batch/commands/include_from.py:119
+#, python-brace-format
+msgid "✓ Staged selected lines from batch '{name}'"
+msgstr "✓ 배치 '{name}'에서 선택한 줄이 스테이징되었습니다"
+
+#: src/git_stage_batch/commands/include_from.py:141
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to apply compatible parts"
+msgstr "이 hunk에 더 이상 행이 없습니다."
+
+#: src/git_stage_batch/commands/include_from.py:147
+#, python-brace-format
+msgid "✓ Staged changes from batch '{name}'"
+msgstr "✓ 배치 '{name}'의 변경사항이 스테이징되었습니다"
+
+#: src/git_stage_batch/commands/list.py:18
+msgid "No batches found"
+msgstr "배치를 찾을 수 없습니다."
+
+#: src/git_stage_batch/commands/new.py:15
+#, python-brace-format
+msgid "✓ Created batch '{name}'"
+msgstr "✓ 배치 '{name}'이(가) 생성되었습니다"
+
+#: src/git_stage_batch/commands/reset.py:44
+#, python-brace-format
+msgid "✓ Reset line(s) {lines} from batch '{name}'"
+msgstr "✓ 배치 '{name}'에서 라인 {lines}을(를) 재설정했습니다"
+
+#: src/git_stage_batch/commands/reset.py:47
+#, python-brace-format
+msgid "✓ Reset all claims from batch '{name}'"
+msgstr "✓ 배치 '{name}'에서 모든 청구를 재설정했습니다"
+
+#: src/git_stage_batch/commands/skip.py:55
+#, python-brace-format
+msgid "✓ Hunk skipped from {file}"
+msgstr "✓ {file}에서 헝크가 건너뛰어졌습니다"
+
+#: src/git_stage_batch/commands/skip.py:106
+#, python-brace-format
+msgid "✓ Skipped {count} hunk from {file}"
+msgid_plural "✓ Skipped {count} hunks from {file}"
+msgstr[0] "✓ {file}에서 {count}개의 헝크가 건너뛰어졌습니다"
+
+#: src/git_stage_batch/commands/skip.py:133
+#, python-brace-format
+msgid "✓ Skipped line(s): {lines}"
+msgstr "✓ 건너뛴 줄: {lines}"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "in progress"
+msgstr "진행 중"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "complete"
+msgstr "완료"
+
+#: src/git_stage_batch/commands/status.py:140
+msgid "Session: iteration {} ({})"
+msgstr "세션: 반복 {} ({})"
+
+#: src/git_stage_batch/commands/status.py:145
+msgid "Current hunk:"
+msgstr "현재 헝크:"
+
+#: src/git_stage_batch/commands/status.py:146
+msgid "  {}:{}"
+msgstr "  {}:{}"
+
+#: src/git_stage_batch/commands/status.py:147
+msgid "  [#{}]"
+msgstr "  [#{}]"
+
+#: src/git_stage_batch/commands/status.py:150
+msgid "Progress this iteration:"
+msgstr "이번 반복 진행상황:"
+
+#: src/git_stage_batch/commands/status.py:151
+msgid "  Included:  {} hunks"
+msgstr "  포함됨:  {}개 헝크"
+
+#: src/git_stage_batch/commands/status.py:152
+msgid "  Skipped:   {} hunks"
+msgstr "  건너뜀:   {}개 헝크"
+
+#: src/git_stage_batch/commands/status.py:153
+msgid "  Discarded: {} hunks"
+msgstr "  폐기됨: {}개 헝크"
+
+#: src/git_stage_batch/commands/status.py:154
+msgid "  Remaining: ~{} hunks"
+msgstr "  남은 헝크: ~{}개"
+
+#: src/git_stage_batch/commands/status.py:158
+msgid "Skipped hunks:"
+msgstr "건너뛴 헝크:"
+
+#: src/git_stage_batch/commands/status.py:161
+msgid "  {}:{} [#{}]"
+msgstr "  {}:{} [#{}]"
+
+#: src/git_stage_batch/commands/stop.py:28
+msgid "✓ State cleared."
+msgstr "✓ 상태가 초기화되었습니다."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:192
+#: src/git_stage_batch/commands/suggest_fixup.py:399
+msgid "Suggest-fixup iteration cleared."
+msgstr "Suggest-fixup 반복이 초기화되었습니다."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:222
+msgid "Full hunk state not available. Run 'show' to cache the current hunk."
+msgstr ""
+"파일 {files}에 대한 패치 적용 실패\\n'git-stage-batch show --from {name}'을 실행하여 변경사항을 "
+"확인하세요\\n호환되는 부분을 적용하려면 --file 또는 --line을 사용하세요"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:236
+msgid "No old line numbers found in hunk (all lines may be additions)."
+msgstr "헝크에서 이전 줄 번호를 찾을 수 없습니다 (모든 줄이 추가일 수 있습니다)."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:246
+#: src/git_stage_batch/commands/suggest_fixup.py:449
+#, python-brace-format
+msgid "Invalid boundary ref: {boundary}"
+msgstr "잘못된 경계 ref: {boundary}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:255
+#: src/git_stage_batch/commands/suggest_fixup.py:458
+#, python-brace-format
+msgid "Failed to get commit range {boundary}..HEAD"
+msgstr "커밋 범위 {boundary}..HEAD를 가져오는데 실패했습니다"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:258
+#: src/git_stage_batch/commands/suggest_fixup.py:461
+#, python-brace-format
+msgid "No commits found in range {boundary}..HEAD"
+msgstr "{boundary}..HEAD 범위에서 커밋을 찾을 수 없습니다"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:299
+#: src/git_stage_batch/commands/suggest_fixup.py:359
+#: src/git_stage_batch/commands/suggest_fixup.py:502
+#: src/git_stage_batch/commands/suggest_fixup.py:562
+#, python-brace-format
+msgid "Candidate {iteration}: {info}"
+msgstr "후보 {iteration}: {info}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:301
+#: src/git_stage_batch/commands/suggest_fixup.py:361
+#: src/git_stage_batch/commands/suggest_fixup.py:504
+#: src/git_stage_batch/commands/suggest_fixup.py:564
+#, python-brace-format
+msgid "Run: git commit --fixup={commit}"
+msgstr "실행: git commit --fixup={commit}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:325
+#: src/git_stage_batch/commands/suggest_fixup.py:528
+msgid "No more candidates found."
+msgstr "더 이상 후보를 찾을 수 없습니다."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:439
+msgid ""
+"No old line numbers found for specified lines (they may be newly added "
+"lines)."
+msgstr "지정된 줄에 대한 이전 줄 번호를 찾을 수 없습니다 (새로 추가된 줄일 수 있습니다)."
+
+#: src/git_stage_batch/commands/unblock_file.py:20
+msgid "File path required for unblock-file command."
+msgstr "unblock-file 명령에 파일 경로가 필요합니다."
+
+#: src/git_stage_batch/core/diff_parser.py:262
+msgid "Failed to parse hunk header."
+msgstr "헝크 헤더 파싱 실패."
+
+#: src/git_stage_batch/data/hunk_tracking.py:285
+#: src/git_stage_batch/data/line_state.py:67
+msgid "No current hunk. Run 'start' first."
+msgstr "현재 헝크가 없습니다. 먼저 'start'를 실행하세요."
+
+#: src/git_stage_batch/data/hunk_tracking.py:292
+msgid ""
+"Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
+msgstr "캐시된 헝크가 오래되었습니다 (파일이 변경됨). 계속하려면 'start' 또는 'again'을 실행하세요."
+
+#: src/git_stage_batch/data/hunk_tracking.py:338
+msgid "No pending hunks."
+msgstr "대기 중인 헝크가 없습니다."
+
+#: src/git_stage_batch/data/session.py:46
+#| msgid "Run 'git-stage-batch start' to begin."
+msgid "No session in progress. Run 'git-stage-batch start' first."
+msgstr "전체 hunk 상태를 사용할 수 없습니다. 'show'를 실행하여 현재 hunk를 캐시하세요."
+
+#: src/git_stage_batch/tui/display.py:32
+#, python-brace-format
+msgid "{source_label}{source} {arrow} {target_label}{target}"
+msgstr "{source_label}{source} {arrow} {target_label}{target}"
+
+#: src/git_stage_batch/tui/display.py:40
+#, python-brace-format
+msgid "Source: {source} → Target: {target}"
+msgstr "소스: {source} → 대상: {target}"
+
+#: src/git_stage_batch/tui/display.py:54
+#, python-brace-format
+msgid "Included: {count}"
+msgstr "포함됨: {count}"
+
+#: src/git_stage_batch/tui/display.py:55
+#, python-brace-format
+msgid "Skipped: {count}"
+msgstr "건너뜀: {count}"
+
+#: src/git_stage_batch/tui/display.py:56
+#, python-brace-format
+msgid "Discarded: {count}"
+msgstr "폐기됨: {count}"
+
+#: src/git_stage_batch/tui/flow.py:38
+msgid "Working tree"
+msgstr "작업 트리"
+
+#: src/git_stage_batch/tui/flow.py:41
+msgid "Index"
+msgstr "인덱스"
+
+#: src/git_stage_batch/tui/interactive.py:58
+#: src/git_stage_batch/tui/interactive.py:102
+msgid "Batch-to-batch transfers not yet supported. Target must be staging."
+msgstr "배치 간 전송은 아직 지원되지 않습니다. 대상은 스테이징이어야 합니다."
+
+#: src/git_stage_batch/tui/interactive.py:80
+#: src/git_stage_batch/tui/interactive.py:765
+#: src/git_stage_batch/tui/interactive.py:879
+msgid "Skip is not available when pulling from a batch."
+msgstr "배치에서 가져올 때는 건너뛰기를 사용할 수 없습니다."
+
+#: src/git_stage_batch/tui/interactive.py:91
+msgid "This will remove the hunk from your working tree."
+msgstr "이것은 작업 트리에서 헝크를 제거합니다."
+
+#: src/git_stage_batch/tui/interactive.py:139
+msgid "Suggest-fixup is not available when pulling from a batch."
+msgstr "배치에서 가져올 때는 Suggest-fixup을 사용할 수 없습니다."
+
+#: src/git_stage_batch/tui/interactive.py:164
+msgid "Command exited with status {}"
+msgstr "명령이 상태 {}로 종료되었습니다"
+
+#: src/git_stage_batch/tui/interactive.py:167
+msgid ""
+"\n"
+"Press Enter to continue..."
+msgstr ""
+"\n"
+"계속하려면 Enter를 누르세요..."
+
+#: src/git_stage_batch/tui/interactive.py:171
+msgid "No command entered"
+msgstr "명령이 입력되지 않았습니다"
+
+#: src/git_stage_batch/tui/interactive.py:189
+msgid "No batches found. Create one now."
+msgstr "배치를 찾을 수 없습니다. 지금 생성하세요."
+
+#: src/git_stage_batch/tui/interactive.py:196
+msgid "Existing batches:"
+msgstr "기존 배치:"
+
+#: src/git_stage_batch/tui/interactive.py:202
+#: src/git_stage_batch/tui/interactive.py:207
+#, python-brace-format
+msgid "  {name} - {note}"
+msgstr "  {name} - {note}"
+
+#: src/git_stage_batch/tui/interactive.py:216
+msgid "Batch operations:"
+msgstr "배치 작업:"
+
+#: src/git_stage_batch/tui/interactive.py:218
+msgid "create"
+msgstr "생성"
+
+#: src/git_stage_batch/tui/interactive.py:219
+#: src/git_stage_batch/tui/interactive.py:273
+msgid "edit"
+msgstr "편집"
+
+#: src/git_stage_batch/tui/interactive.py:220
+#: src/git_stage_batch/tui/interactive.py:289
+msgid "drop"
+msgstr "삭제"
+
+#: src/git_stage_batch/tui/interactive.py:221
+#: src/git_stage_batch/tui/interactive.py:300
+msgid "apply"
+msgstr "적용"
+
+#: src/git_stage_batch/tui/interactive.py:229
+#: src/git_stage_batch/tui/interactive.py:342
+#: src/git_stage_batch/tui/interactive.py:403
+#: src/git_stage_batch/tui/interactive.py:470
+msgid "Select: "
+msgstr "선택: "
+
+#: src/git_stage_batch/tui/interactive.py:247
+#: src/git_stage_batch/tui/interactive.py:776
+#: src/git_stage_batch/tui/interactive.py:843
+#: src/git_stage_batch/tui/interactive.py:973
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown action: '{action}'"
+msgstr ""
+"\n"
+"알 수 없는 작업: '{action}'"
+
+#: src/git_stage_batch/tui/interactive.py:257
+#: src/git_stage_batch/tui/interactive.py:480
+msgid "Batch ID: "
+msgstr "배치 ID: "
+
+#: src/git_stage_batch/tui/interactive.py:261
+#: src/git_stage_batch/tui/interactive.py:483
+msgid "Note (optional): "
+msgstr "메모 (선택사항): "
+
+#: src/git_stage_batch/tui/interactive.py:267
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' created."
+msgstr ""
+"\n"
+"배치 '{name}'이(가) 생성되었습니다."
+
+#: src/git_stage_batch/tui/interactive.py:278
+msgid "New note: "
+msgstr "새 메모: "
+
+#: src/git_stage_batch/tui/interactive.py:284
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' note updated."
+msgstr ""
+"\n"
+"배치 '{name}' 메모가 업데이트되었습니다."
+
+#: src/git_stage_batch/tui/interactive.py:295
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' dropped."
+msgstr ""
+"\n"
+"배치 '{name}'이(가) 삭제되었습니다."
+
+#: src/git_stage_batch/tui/interactive.py:306
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' applied to staging area."
+msgstr ""
+"\n"
+"배치 '{name}'이(가) 스테이징 영역에 적용되었습니다."
+
+#: src/git_stage_batch/tui/interactive.py:325
+msgid "No batches found."
+msgstr "배치를 찾을 수 없습니다."
+
+#: src/git_stage_batch/tui/interactive.py:333
+#, python-brace-format
+msgid "Select batch to {purpose}:"
+msgstr "{purpose}할 배치 선택:"
+
+#: src/git_stage_batch/tui/interactive.py:354
+msgid ""
+"\n"
+"Invalid selection."
+msgstr ""
+"\n"
+"잘못된 선택입니다."
+
+#: src/git_stage_batch/tui/interactive.py:366
+msgid "Pull changes from:"
+msgstr "변경사항 가져오기:"
+
+#: src/git_stage_batch/tui/interactive.py:371
+#: src/git_stage_batch/tui/interactive.py:433
+msgid " (current)"
+msgstr " (현재)"
+
+#: src/git_stage_batch/tui/interactive.py:376
+#, python-brace-format
+msgid "Working tree{marker}"
+msgstr "작업 트리{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:390
+#: src/git_stage_batch/tui/interactive.py:452
+#, python-brace-format
+msgid "batch: {name}{note}{marker}"
+msgstr "배치: {name}{note}{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:428
+msgid "Push changes to:"
+msgstr "변경사항 푸시:"
+
+#: src/git_stage_batch/tui/interactive.py:438
+#, python-brace-format
+msgid "Staging for commit{marker}"
+msgstr "커밋용 스테이징{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:465
+msgid "New Batch..."
+msgstr "새 배치..."
+
+#: src/git_stage_batch/tui/interactive.py:518
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown command: '{cmd}'"
+msgstr ""
+"\n"
+"알 수 없는 명령: '{cmd}'"
+
+#: src/git_stage_batch/tui/interactive.py:521
+#, python-brace-format
+msgid ""
+"\n"
+"Error executing command: {error}"
+msgstr ""
+"\n"
+"명령 실행 오류: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:588
+msgid "No changes to process"
+msgstr "처리할 변경사항이 없습니다"
+
+#: src/git_stage_batch/tui/interactive.py:721
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude? "
+msgstr "{filename}의 모든 헝크에 대한 작업 - [i]포함? "
+
+#: src/git_stage_batch/tui/interactive.py:724
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude or [s]kip? "
+msgstr "{filename}의 모든 헝크에 대한 작업 - [i]포함 또는 [s]건너뛰기? "
+
+#: src/git_stage_batch/tui/interactive.py:731
+#, python-brace-format
+msgid "Action for all hunks in {filename} - {include} or {skip}? "
+msgstr "{filename}의 모든 헝크에 대한 작업 - {include} 또는 {skip}? "
+
+#: src/git_stage_batch/tui/interactive.py:756
+#: src/git_stage_batch/tui/interactive.py:871
+#: src/git_stage_batch/tui/interactive.py:901
+msgid "Batch-to-batch transfers not yet supported."
+msgstr "배치 간 전송은 아직 지원되지 않습니다."
+
+#: src/git_stage_batch/tui/interactive.py:800
+msgid ""
+"\n"
+"No changed lines in this hunk."
+msgstr ""
+"\n"
+"이 헝크에 변경된 줄이 없습니다."
+
+#: src/git_stage_batch/tui/interactive.py:806
+#, python-brace-format
+msgid ""
+"\n"
+"Changed line IDs: {ids}"
+msgstr ""
+"\n"
+"변경된 줄 ID: {ids}"
+
+#: src/git_stage_batch/tui/interactive.py:816
+msgid "Action for lines [i]nclude, [d]iscard? "
+msgstr "줄에 대한 작업 [i]포함, [d]폐기? "
+
+#: src/git_stage_batch/tui/interactive.py:819
+msgid "Action for lines [i]nclude, [s]kip, [d]iscard? "
+msgstr "줄에 대한 작업 [i]포함, [s]건너뛰기, [d]폐기? "
+
+#: src/git_stage_batch/tui/interactive.py:826
+#, python-brace-format
+msgid "Action for lines {include}, {skip}, {discard}? "
+msgstr "줄에 대한 작업 {include}, {skip}, {discard}? "
+
+#: src/git_stage_batch/tui/interactive.py:848
+msgid ""
+"\n"
+"Skip is not available when pulling from a batch."
+msgstr ""
+"\n"
+"배치에서 가져올 때는 건너뛰기를 사용할 수 없습니다."
+
+#: src/git_stage_batch/tui/interactive.py:891
+#, python-brace-format
+msgid "This will remove lines {line_ids} from your working tree."
+msgstr "작업 트리에서 줄 {line_ids}을(를) 제거합니다."
+
+#: src/git_stage_batch/tui/interactive.py:908
+#, python-brace-format
+msgid ""
+"\n"
+"Error: {error}"
+msgstr ""
+"\n"
+"오류: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:946
+msgid "Create fixup commit with:"
+msgstr "다음으로 fixup 커밋 생성:"
+
+#: src/git_stage_batch/tui/interactive.py:970
+msgid ""
+"\n"
+"Canceled."
+msgstr ""
+"\n"
+"취소되었습니다."
+
+#: src/git_stage_batch/tui/interactive.py:1030
+msgid "Interactive Mode Commands:"
+msgstr "대화형 모드 명령:"
+
+#: src/git_stage_batch/tui/interactive.py:1037
+msgid "Primary actions:"
+msgstr "주요 작업:"
+
+#: src/git_stage_batch/tui/interactive.py:1038
+msgid "  i, include   - Stage this hunk to the index"
+msgstr "  i, include   - 이 헝크를 인덱스에 스테이징"
+
+#: src/git_stage_batch/tui/interactive.py:1039
+msgid "  s, skip      - Skip this hunk for now"
+msgstr "  s, skip      - 이 헝크를 지금은 건너뛰기"
+
+#: src/git_stage_batch/tui/interactive.py:1040
+msgid "  d, discard   - Remove this hunk from working tree (DESTRUCTIVE)"
+msgstr "  d, discard   - 작업 트리에서 이 헝크 제거 (파괴적)"
+
+#: src/git_stage_batch/tui/interactive.py:1041
+msgid "  q, quit      - Exit interactive mode"
+msgstr "  q, quit      - 대화형 모드 종료"
+
+#: src/git_stage_batch/tui/interactive.py:1043
+msgid "More options:"
+msgstr "추가 옵션:"
+
+#: src/git_stage_batch/tui/interactive.py:1044
+msgid ""
+"  a, again     - Clear state and start fresh pass through skipped hunks"
+msgstr "  a, again     - 상태를 초기화하고 건너뛴 헝크부터 새로 시작"
+
+#: src/git_stage_batch/tui/interactive.py:1045
+msgid "  l, lines     - Select specific lines from this hunk"
+msgstr "  l, lines     - 이 헝크에서 특정 줄 선택"
+
+#: src/git_stage_batch/tui/interactive.py:1046
+msgid "  f, file      - Include or skip all hunks in this file"
+msgstr "  f, file      - 이 파일의 모든 헝크 포함 또는 건너뛰기"
+
+#: src/git_stage_batch/tui/interactive.py:1047
+msgid "  x, fixup     - Suggest which commit to fixup (iterative)"
+msgstr "  x, fixup     - fixup할 커밋 제안 (반복적)"
+
+#: src/git_stage_batch/tui/interactive.py:1048
+msgid ""
+"  !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)"
+msgstr "  !<cmd>       - 셸 명령 실행 (예: !git log, 또는 프롬프트만 표시하려면 !)"
+
+#: src/git_stage_batch/tui/interactive.py:1049
+msgid "  ?, help      - Show this help message"
+msgstr "  ?, help      - 이 도움말 메시지 표시"
+
+#: src/git_stage_batch/tui/prompts.py:129
+msgid "What do you want to do with this hunk?"
+msgstr "이 헝크로 무엇을 하시겠습니까?"
+
+#: src/git_stage_batch/tui/prompts.py:131
+msgid "What do you want to do?"
+msgstr "무엇을 하시겠습니까?"
+
+#: src/git_stage_batch/tui/prompts.py:151
+#: src/git_stage_batch/tui/prompts.py:158
+#, python-brace-format
+msgid "{label}: {options}"
+msgstr "{label}: {options}"
+
+#: src/git_stage_batch/tui/prompts.py:188
+msgid "Action: "
+msgstr "작업: "
+
+#: src/git_stage_batch/tui/prompts.py:231
+#, python-brace-format
+msgid "⚠️  {message}"
+msgstr "⚠️  {message}"
+
+#: src/git_stage_batch/tui/prompts.py:238
+#: src/git_stage_batch/tui/prompts.py:285
+msgid "yes"
+msgstr "예"
+
+#: src/git_stage_batch/tui/prompts.py:239
+msgid "NO"
+msgstr "아니오"
+
+#: src/git_stage_batch/tui/prompts.py:248
+#, python-brace-format
+msgid "Are you sure? [{yes}/{no}]: "
+msgstr "확실합니까? [{yes}/{no}]: "
+
+#: src/git_stage_batch/tui/prompts.py:267
+msgid "Enter line IDs (e.g., 1,3,5-7): "
+msgstr "줄 ID 입력 (예: 1,3,5-7): "
+
+#: src/git_stage_batch/tui/prompts.py:283
+#: src/git_stage_batch/tui/prompts.py:365
+msgid "y"
+msgstr "y"
+
+#: src/git_stage_batch/tui/prompts.py:284
+#: src/git_stage_batch/tui/prompts.py:366
+msgid "n"
+msgstr "n"
+
+#: src/git_stage_batch/tui/prompts.py:286
+msgid "no"
+msgstr "아니오"
+
+#: src/git_stage_batch/tui/prompts.py:295
+#, python-brace-format
+msgid "Keep staged changes? [{y}]es / [{n}]o: "
+msgstr "스테이징된 변경사항을 유지하시겠습니까? [{y}]예 / [{n}]아니오: "
+
+#: src/git_stage_batch/tui/prompts.py:367
+msgid "r"
+msgstr "r"
+
+#: src/git_stage_batch/tui/prompts.py:378
+#, python-brace-format
+msgid "[{y}]es / [{n}]ext / [{r}]eset: "
+msgstr "[{y}]예 / [{n}]다음 / [{r}]재설정: "
+
+#: src/git_stage_batch/utils/git.py:113
+msgid "Not inside a git repository."
+msgstr "git 저장소 내부가 아닙니다."
+
+#, python-brace-format
+#~ msgid "Failed to read {file} from batch '{name}'"
+#~ msgstr "배치 '{name}'에서 {file}을(를) 읽는데 실패했습니다"
+
+#, python-brace-format
+#~ msgid "✓ Applied all files from batch '{name}' to working tree (wholesale)"
+#~ msgstr "✓ 배치 '{name}'의 모든 파일이 작업 트리에 적용되었습니다 (전체)"
+
+#, python-brace-format
+#~ msgid "Failed to restore files from baseline: {error}"
+#~ msgstr "기준선에서 파일 복원 실패: {error}"
+
+#, python-brace-format
+#~ msgid ""
+#~ "✓ Discarded all files from batch '{name}' from working tree (wholesale)"
+#~ msgstr "✓ 배치 '{name}'의 모든 파일이 작업 트리에서 폐기되었습니다 (전체)"
+
+#, python-brace-format
+#~ msgid "✓ Staged all files from batch '{name}' (wholesale)"
+#~ msgstr "✓ 배치 '{name}'의 모든 파일이 스테이징되었습니다 (전체)"

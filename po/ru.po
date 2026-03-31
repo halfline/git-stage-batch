@@ -1,0 +1,1210 @@
+# Russian translation for git-stage-batch.
+# Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the git-stage-batch package.
+# Claude <noreply@anthropic.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: git-stage-batch\n"
+"Report-Msgid-Bugs-To: halfline@gmail.com\n"
+"POT-Creation-Date: 2026-04-02 14:10-0400\n"
+"PO-Revision-Date: 2026-03-31 12:00+0000\n"
+"Last-Translator: Claude <noreply@anthropic.com>\n"
+"Language-Team: Russian\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+#: src/git_stage_batch/batch/operations.py:27
+#, python-brace-format
+msgid "Batch '{name}' already exists"
+msgstr "Пакет '{name}' уже существует"
+
+#: src/git_stage_batch/batch/operations.py:75
+#: src/git_stage_batch/batch/operations.py:91
+#: src/git_stage_batch/commands/reset.py:33
+#, python-brace-format
+msgid "Batch '{name}' does not exist"
+msgstr "Пакет '{name}' не существует"
+
+#: src/git_stage_batch/batch/validation.py:13
+msgid "Batch name cannot be empty"
+msgstr "Имя пакета не может быть пустым"
+
+#: src/git_stage_batch/batch/validation.py:19
+#, python-brace-format
+msgid "Batch name cannot contain: {char}"
+msgstr "Имя пакета не может содержать: {char}"
+
+#: src/git_stage_batch/batch/validation.py:23
+msgid "Batch name cannot start with '.'"
+msgstr "Имя пакета не может начинаться с '.'"
+
+#: src/git_stage_batch/cli/argument_parser.py:66
+msgid "Hunk-by-hunk and line-by-line staging for git"
+msgstr "Индексирование по блокам и строкам для git"
+
+#: src/git_stage_batch/cli/argument_parser.py:78
+msgid "Start interactive mode"
+msgstr "Запустить интерактивный режим"
+
+#: src/git_stage_batch/cli/argument_parser.py:83
+msgid "Available commands"
+msgstr "Доступные команды"
+
+#: src/git_stage_batch/cli/argument_parser.py:89
+msgid "Start a new batch staging session"
+msgstr "Начать новую сессию пакетного индексирования"
+
+#: src/git_stage_batch/cli/argument_parser.py:97
+msgid "Number of context lines in diff output (default: 3)"
+msgstr "Количество строк контекста в выводе diff (по умолчанию: 3)"
+
+#: src/git_stage_batch/cli/argument_parser.py:104
+msgid "Start interactive hunk-by-hunk mode"
+msgstr "Запустить интерактивный режим по блокам"
+
+#: src/git_stage_batch/cli/argument_parser.py:111
+msgid "Stop the selected session and clear state"
+msgstr "Остановить текущую сессию и очистить состояние"
+
+#: src/git_stage_batch/cli/argument_parser.py:119
+msgid "Clear state and start a fresh pass"
+msgstr "Очистить состояние и начать новый проход"
+
+#: src/git_stage_batch/cli/argument_parser.py:126
+msgid "Show the selected hunk"
+msgstr "Показать текущий блок"
+
+#: src/git_stage_batch/cli/argument_parser.py:132
+msgid "Show changes from batch"
+msgstr "Показать изменения из пакета"
+
+#: src/git_stage_batch/cli/argument_parser.py:143
+msgid "Show selected session status"
+msgstr "Показать статус текущей сессии"
+
+#: src/git_stage_batch/cli/argument_parser.py:151
+msgid "Stage the selected hunk"
+msgstr "Индексировать текущий блок"
+
+#: src/git_stage_batch/cli/argument_parser.py:158
+msgid "Stage only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Индексировать только указанные строки (например, '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:163
+msgid "Stage the entire file containing the selected hunk"
+msgstr "Индексировать весь файл, содержащий текущий блок"
+
+#: src/git_stage_batch/cli/argument_parser.py:169
+msgid "Include changes from batch"
+msgstr "Включить изменения из пакета"
+
+#: src/git_stage_batch/cli/argument_parser.py:175
+msgid "Include changes to batch"
+msgstr "Включить изменения в пакет"
+
+#: src/git_stage_batch/cli/argument_parser.py:189
+msgid "Skip the selected hunk without staging"
+msgstr "Пропустить текущий блок без индексирования"
+
+#: src/git_stage_batch/cli/argument_parser.py:196
+msgid "Skip only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Пропустить только указанные строки (например, '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:201
+msgid "Skip all hunks from the selected file"
+msgstr "Пропустить все блоки из текущего файла"
+
+#: src/git_stage_batch/cli/argument_parser.py:213
+msgid "Remove the selected hunk from working tree"
+msgstr "Удалить текущий блок из рабочего дерева"
+
+#: src/git_stage_batch/cli/argument_parser.py:220
+msgid "Discard only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Отбросить только указанные строки (например, '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:225
+msgid "Discard the entire file containing the selected hunk"
+msgstr "Отбросить весь файл, содержащий текущий блок"
+
+#: src/git_stage_batch/cli/argument_parser.py:231
+msgid "Discard changes from batch"
+msgstr "Отбросить изменения из пакета"
+
+#: src/git_stage_batch/cli/argument_parser.py:237
+msgid "Discard changes to batch"
+msgstr "Отбросить изменения в пакет"
+
+#: src/git_stage_batch/cli/argument_parser.py:250
+msgid "Restore repository to pre-session state"
+msgstr "Восстановить репозиторий в состояние до начала сессии"
+
+#: src/git_stage_batch/cli/argument_parser.py:258
+msgid "Permanently exclude a file (adds to .gitignore)"
+msgstr "Навсегда исключить файл (добавить в .gitignore)"
+
+#: src/git_stage_batch/cli/argument_parser.py:262
+msgid "Path to the file to block"
+msgstr "Путь к файлу для блокировки"
+
+#: src/git_stage_batch/cli/argument_parser.py:270
+msgid "Remove a file from the blocked list"
+msgstr "Удалить файл из списка заблокированных"
+
+#: src/git_stage_batch/cli/argument_parser.py:274
+msgid "Path to the file to unblock"
+msgstr "Путь к файлу для разблокировки"
+
+#: src/git_stage_batch/cli/argument_parser.py:282
+msgid "Suggest which commit the selected hunk should be fixed up to"
+msgstr ""
+"Предложить, к какому коммиту следует применить исправление текущего блока"
+
+#: src/git_stage_batch/cli/argument_parser.py:289
+msgid "Analyze only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Анализировать только указанные строки (например, '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:294
+msgid "Reset state and start search over from most recent"
+msgstr "Сбросить состояние и начать поиск сначала с самых последних"
+
+#: src/git_stage_batch/cli/argument_parser.py:299
+msgid "Clear state and exit without showing candidates"
+msgstr "Очистить состояние и выйти без показа кандидатов"
+
+#: src/git_stage_batch/cli/argument_parser.py:304
+msgid "Re-show the last candidate without advancing"
+msgstr "Показать снова последнего кандидата без продвижения"
+
+#: src/git_stage_batch/cli/argument_parser.py:310
+#, python-brace-format
+msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
+msgstr ""
+"Git-ссылка для использования в качестве нижней границы поиска коммитов (по "
+"умолчанию: @{upstream})"
+
+#: src/git_stage_batch/cli/argument_parser.py:331
+msgid "Create a new batch"
+msgstr "Создать новый пакет"
+
+#: src/git_stage_batch/cli/argument_parser.py:335
+msgid "Name of the batch to create"
+msgstr "Имя создаваемого пакета"
+
+#: src/git_stage_batch/cli/argument_parser.py:340
+msgid "Optional description for the batch"
+msgstr "Необязательное описание пакета"
+
+#: src/git_stage_batch/cli/argument_parser.py:347
+msgid "List all batches"
+msgstr "Показать все пакеты"
+
+#: src/git_stage_batch/cli/argument_parser.py:354
+msgid "Delete a batch"
+msgstr "Удалить пакет"
+
+#: src/git_stage_batch/cli/argument_parser.py:358
+msgid "Name of the batch to delete"
+msgstr "Имя удаляемого пакета"
+
+#: src/git_stage_batch/cli/argument_parser.py:365
+msgid "Add or update batch description"
+msgstr "Добавить или обновить описание пакета"
+
+#: src/git_stage_batch/cli/argument_parser.py:369
+msgid "Name of the batch"
+msgstr "Имя пакета"
+
+#: src/git_stage_batch/cli/argument_parser.py:373
+msgid "Description text"
+msgstr "Текст описания"
+
+#: src/git_stage_batch/cli/argument_parser.py:380
+msgid "Apply batch changes to working tree"
+msgstr "Применить изменения пакета к рабочему дереву"
+
+#: src/git_stage_batch/cli/argument_parser.py:387
+msgid "Apply changes from batch to working tree"
+msgstr "Применить изменения из пакета к рабочему дереву"
+
+#: src/git_stage_batch/cli/argument_parser.py:394
+#: src/git_stage_batch/cli/argument_parser.py:401
+msgid "Remove claims from batch"
+msgstr "Удалить заявки из пакета"
+
+#: src/git_stage_batch/cli/argument_parser.py:408
+msgid "Reset only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Сбросить только определенные ID строк (например, '1,3,5-7')"
+
+#: src/git_stage_batch/cli/dispatch.py:24
+#: src/git_stage_batch/commands/status.py:72
+msgid "No batch staging session in progress."
+msgstr "Сессия пакетного индексирования не запущена."
+
+#: src/git_stage_batch/cli/dispatch.py:25
+#: src/git_stage_batch/commands/status.py:73
+msgid "Run 'git-stage-batch start' to begin."
+msgstr "Запустите 'git-stage-batch start' для начала."
+
+#: src/git_stage_batch/commands/abort.py:30
+msgid "No session to abort. Abort state not found."
+msgstr "Нет сессии для прерывания. Состояние прерывания не найдено."
+
+#: src/git_stage_batch/commands/abort.py:48
+msgid "Resetting to {}..."
+msgstr "Сброс к {}..."
+
+#: src/git_stage_batch/commands/abort.py:70
+msgid "Restored: {}"
+msgstr "Восстановлено: {}"
+
+#: src/git_stage_batch/commands/abort.py:74
+msgid "Applying original changes..."
+msgstr "Применение исходных изменений..."
+
+#: src/git_stage_batch/commands/abort.py:82
+msgid "⚠ Warning: Could not apply stash cleanly: {}"
+msgstr "⚠ Предупреждение: Не удалось чисто применить stash: {}"
+
+#: src/git_stage_batch/commands/abort.py:89
+msgid "✓ Session aborted. All changes reverted."
+msgstr "✓ Сессия прервана. Все изменения отменены."
+
+#: src/git_stage_batch/commands/annotate.py:15
+#, python-brace-format
+msgid "✓ Updated note for batch '{name}'"
+msgstr "✓ Обновлена заметка для пакета '{name}'"
+
+#: src/git_stage_batch/commands/apply_from.py:33
+#: src/git_stage_batch/commands/discard_from.py:32
+#: src/git_stage_batch/commands/include_from.py:38
+#: src/git_stage_batch/commands/show_from.py:27
+#, python-brace-format
+msgid "Batch '{name}' is empty or does not exist"
+msgstr "Пакет '{name}' пуст или не существует"
+
+#: src/git_stage_batch/commands/apply_from.py:39
+#: src/git_stage_batch/commands/discard_from.py:38
+#: src/git_stage_batch/commands/include_from.py:44
+#: src/git_stage_batch/commands/show_from.py:34
+#: src/git_stage_batch/commands/show_from.py:62
+#, python-brace-format
+msgid "No patches found in batch '{name}'"
+msgstr "В пакете '{name}' не найдено патчей"
+
+#: src/git_stage_batch/commands/apply_from.py:54
+#: src/git_stage_batch/commands/discard_from.py:53
+#: src/git_stage_batch/commands/include_from.py:59
+#, python-brace-format
+msgid "Batch '{name}' has no changes for {file}"
+msgstr "✓ Изменения для {file} из пакета '{name}' подготовлены"
+
+#: src/git_stage_batch/commands/apply_from.py:74
+#: src/git_stage_batch/commands/include_from.py:76
+#, python-brace-format
+msgid ""
+"Failed to apply patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr ""
+"Не удалось отбросить патчи для файлов: {files}\\nВыполните 'git-stage-batch "
+"show --from {name}' для просмотра изменений\\nИспользуйте --file или --line "
+"для отбрасывания совместимых частей"
+
+#: src/git_stage_batch/commands/apply_from.py:80
+#, python-brace-format
+msgid "✓ Applied changes for {file} from batch '{name}' to working tree"
+msgstr "✓ Изменения для {file} из пакета '{name}' применены к рабочему дереву"
+
+#: src/git_stage_batch/commands/apply_from.py:116
+#, python-brace-format
+msgid "✓ Applied selected lines from batch '{name}' to working tree"
+msgstr "✓ Применены выбранные строки из пакета '{name}' к рабочему дереву"
+
+#: src/git_stage_batch/commands/apply_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --line to apply compatible parts"
+msgstr "✓ Изменения для {file} из пакета '{name}' отброшены из рабочего дерева"
+
+#: src/git_stage_batch/commands/apply_from.py:146
+#, python-brace-format
+msgid "✓ Applied changes from batch '{name}' to working tree"
+msgstr "✓ Применены изменения из пакета '{name}' к рабочему дереву"
+
+#: src/git_stage_batch/commands/block_file.py:20
+msgid "File path required for block-file command."
+msgstr "Для команды block-file требуется путь к файлу."
+
+#: src/git_stage_batch/commands/block_file.py:31
+msgid "Blocked file: {}"
+msgstr "Заблокирован файл: {}"
+
+#: src/git_stage_batch/commands/discard.py:45
+#: src/git_stage_batch/commands/include.py:46
+#: src/git_stage_batch/commands/show.py:58
+#: src/git_stage_batch/commands/skip.py:36
+#: src/git_stage_batch/data/hunk_tracking.py:235
+#: src/git_stage_batch/tui/interactive.py:656
+msgid "No more hunks to process."
+msgstr "Больше нет блоков для обработки."
+
+#: src/git_stage_batch/commands/discard.py:70
+msgid "Failed to discard hunk: {}"
+msgstr "Не удалось отбросить блок: {}"
+
+#: src/git_stage_batch/commands/discard.py:91
+#, python-brace-format
+msgid "✓ Hunk discarded from {file}"
+msgstr "✓ Блок отброшен из {file}"
+
+#: src/git_stage_batch/commands/discard.py:120
+msgid "No changes to discard."
+msgstr "Нет изменений для отбрасывания."
+
+#: src/git_stage_batch/commands/discard.py:147
+msgid "Failed to discard file: {}"
+msgstr "Не удалось отбросить файл: {}"
+
+#: src/git_stage_batch/commands/discard.py:154
+msgid "✓ File discarded: {}"
+msgstr "✓ Файл отброшен: {}"
+
+#: src/git_stage_batch/commands/discard.py:178
+#: src/git_stage_batch/commands/discard.py:264
+#: src/git_stage_batch/commands/discard_from.py:106
+#, python-brace-format
+msgid "File not found in working tree: {file}"
+msgstr "Файл не найден в рабочем дереве: {file}"
+
+#: src/git_stage_batch/commands/discard.py:190
+#, python-brace-format
+msgid "✓ Discarded line(s): {lines}"
+msgstr "✓ Отброшены строки: {lines}"
+
+#: src/git_stage_batch/commands/discard.py:274
+#, python-brace-format
+msgid "✓ Discarded line(s) to batch '{name}': {lines}"
+msgstr ""
+"Не удалось отбросить патчи для файла: {file}\\nВыполните 'git-stage-batch "
+"show --from {name}' для просмотра изменений"
+
+#: src/git_stage_batch/commands/discard.py:317
+#: src/git_stage_batch/commands/include.py:321
+#: src/git_stage_batch/commands/skip.py:84
+#: src/git_stage_batch/commands/start.py:39
+msgid "No changes to process."
+msgstr "Нет изменений для обработки."
+
+#: src/git_stage_batch/commands/discard.py:372
+#: src/git_stage_batch/commands/discard.py:425
+#, python-brace-format
+msgid "Failed to apply reverse patch: {error}"
+msgstr "Не удалось применить обратный патч: {error}"
+
+#: src/git_stage_batch/commands/discard.py:394
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}' and discarded"
+msgid_plural ""
+"✓ {count} hunks from {file} saved to batch '{name}' and discarded"
+msgstr[0] "✓ {count} фрагмент из {file} сохранён в пакет '{name}' и удалён"
+msgstr[1] "✓ {count} фрагмента из {file} сохранены в пакет '{name}' и удалены"
+msgstr[2] "✓ {count} фрагментов из {file} сохранены в пакет '{name}' и удалены"
+
+#: src/git_stage_batch/commands/discard.py:442
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}' and discarded from working tree"
+msgstr "✓ Блок сохранен в пакет '{name}' и отброшен из рабочего дерева"
+
+#: src/git_stage_batch/commands/discard_from.py:73
+#, python-brace-format
+msgid ""
+"Failed to discard patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr "Нет активной сессии. Сначала выполните 'git-stage-batch start'."
+
+#: src/git_stage_batch/commands/discard_from.py:79
+#, python-brace-format
+msgid "✓ Discarded changes for {file} from batch '{name}' from working tree"
+msgstr ""
+"Не удалось применить патчи для файлов: {files}\\nВыполните 'git-stage-batch "
+"show --from {name}' для просмотра изменений\\nИспользуйте --line для "
+"применения совместимых частей"
+
+#: src/git_stage_batch/commands/discard_from.py:80
+#: src/git_stage_batch/commands/discard_from.py:119
+#: src/git_stage_batch/commands/discard_from.py:147
+#, python-brace-format
+msgid "Note: Batch '{name}' still exists (use 'drop' to delete it)"
+msgstr ""
+"Примечание: Пакет '{name}' все еще существует (используйте 'drop' для "
+"удаления)"
+
+#: src/git_stage_batch/commands/discard_from.py:118
+#, python-brace-format
+msgid "✓ Discarded selected lines from batch '{name}' from working tree"
+msgstr "✓ Отброшены выбранные строки из пакета '{name}' из рабочего дерева"
+
+#: src/git_stage_batch/commands/discard_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to discard patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to discard compatible parts"
+msgstr "Пакет '{name}' не имеет изменений для {file}"
+
+#: src/git_stage_batch/commands/discard_from.py:146
+#, python-brace-format
+msgid "✓ Discarded changes from batch '{name}' from working tree"
+msgstr "✓ Отброшены изменения из пакета '{name}' из рабочего дерева"
+
+#: src/git_stage_batch/commands/drop.py:15
+#, python-brace-format
+msgid "✓ Deleted batch '{name}'"
+msgstr "✓ Удален пакет '{name}'"
+
+#: src/git_stage_batch/commands/include.py:67
+msgid "Failed to apply hunk: {}"
+msgstr "Не удалось применить блок: {}"
+
+#: src/git_stage_batch/commands/include.py:78
+#, python-brace-format
+msgid "✓ Hunk staged from {file}"
+msgstr "✓ Блок индексирован из {file}"
+
+#: src/git_stage_batch/commands/include.py:107
+#: src/git_stage_batch/tui/interactive.py:617
+#: src/git_stage_batch/tui/interactive.py:658
+msgid "No changes to stage."
+msgstr "Нет изменений для индексирования."
+
+#: src/git_stage_batch/commands/include.py:137
+#, python-brace-format
+msgid "Failed to apply hunk: {error}"
+msgstr "Не удалось применить блок: {error}"
+
+#: src/git_stage_batch/commands/include.py:141
+#, python-brace-format
+msgid "No hunks staged from {file}"
+msgstr "Не индексировано ни одного блока из {file}"
+
+#: src/git_stage_batch/commands/include.py:146
+#, python-brace-format
+msgid "✓ Staged {count} hunk from {file}"
+msgid_plural "✓ Staged {count} hunks from {file}"
+msgstr[0] "✓ Индексирован {count} блок из {file}"
+msgstr[1] "✓ Индексировано {count} блока из {file}"
+msgstr[2] "✓ Индексировано {count} блоков из {file}"
+
+#: src/git_stage_batch/commands/include.py:185
+#, python-brace-format
+msgid "✓ Included line(s): {lines}"
+msgstr "✓ Включены строки: {lines}"
+
+#: src/git_stage_batch/commands/include.py:256
+#, python-brace-format
+msgid "✓ Included line(s) to batch '{name}': {lines}"
+msgstr "✓ Строка(и) включена(ы) в пакет '{name}': {lines}"
+
+#: src/git_stage_batch/commands/include.py:272
+msgid "No more lines in this hunk."
+msgstr ""
+"Не удалось применить патчи для файла: {file}\\nВыполните 'git-stage-batch "
+"show --from {name}' для просмотра изменений"
+
+#: src/git_stage_batch/commands/include.py:384
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}'"
+msgid_plural "✓ {count} hunks from {file} saved to batch '{name}'"
+msgstr[0] "✓ {count} фрагмент из {file} сохранён в пакет '{name}'"
+msgstr[1] "✓ {count} фрагмента из {file} сохранены в пакет '{name}'"
+msgstr[2] "✓ {count} фрагментов из {file} сохранены в пакет '{name}'"
+
+#: src/git_stage_batch/commands/include.py:420
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}'"
+msgstr "✓ Блок сохранен в пакет '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:82
+#, python-brace-format
+msgid "✓ Staged changes for {file} from batch '{name}'"
+msgstr "✓ Строка(и) отброшена(ы) в пакет '{name}': {lines}"
+
+#: src/git_stage_batch/commands/include_from.py:102
+#, python-brace-format
+msgid "Cannot determine baseline for batch '{name}'"
+msgstr "Невозможно определить базовую линию для пакета '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:119
+#, python-brace-format
+msgid "✓ Staged selected lines from batch '{name}'"
+msgstr "✓ Индексированы выбранные строки из пакета '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:141
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to apply compatible parts"
+msgstr "Больше нет строк в этом фрагменте."
+
+#: src/git_stage_batch/commands/include_from.py:147
+#, python-brace-format
+msgid "✓ Staged changes from batch '{name}'"
+msgstr "✓ Индексированы изменения из пакета '{name}'"
+
+#: src/git_stage_batch/commands/list.py:18
+msgid "No batches found"
+msgstr "Пакеты не найдены"
+
+#: src/git_stage_batch/commands/new.py:15
+#, python-brace-format
+msgid "✓ Created batch '{name}'"
+msgstr "✓ Создан пакет '{name}'"
+
+#: src/git_stage_batch/commands/reset.py:44
+#, python-brace-format
+msgid "✓ Reset line(s) {lines} from batch '{name}'"
+msgstr "✓ Строка(и) {lines} сброшены из пакета '{name}'"
+
+#: src/git_stage_batch/commands/reset.py:47
+#, python-brace-format
+msgid "✓ Reset all claims from batch '{name}'"
+msgstr "✓ Все заявки сброшены из пакета '{name}'"
+
+#: src/git_stage_batch/commands/skip.py:55
+#, python-brace-format
+msgid "✓ Hunk skipped from {file}"
+msgstr "✓ Блок пропущен из {file}"
+
+#: src/git_stage_batch/commands/skip.py:106
+#, python-brace-format
+msgid "✓ Skipped {count} hunk from {file}"
+msgid_plural "✓ Skipped {count} hunks from {file}"
+msgstr[0] "✓ Пропущен {count} блок из {file}"
+msgstr[1] "✓ Пропущено {count} блока из {file}"
+msgstr[2] "✓ Пропущено {count} блоков из {file}"
+
+#: src/git_stage_batch/commands/skip.py:133
+#, python-brace-format
+msgid "✓ Skipped line(s): {lines}"
+msgstr "✓ Пропущены строки: {lines}"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "in progress"
+msgstr "выполняется"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "complete"
+msgstr "завершено"
+
+#: src/git_stage_batch/commands/status.py:140
+msgid "Session: iteration {} ({})"
+msgstr "Сессия: итерация {} ({})"
+
+#: src/git_stage_batch/commands/status.py:145
+msgid "Current hunk:"
+msgstr "Текущий блок:"
+
+#: src/git_stage_batch/commands/status.py:146
+msgid "  {}:{}"
+msgstr "  {}:{}"
+
+#: src/git_stage_batch/commands/status.py:147
+msgid "  [#{}]"
+msgstr "  [#{}]"
+
+#: src/git_stage_batch/commands/status.py:150
+msgid "Progress this iteration:"
+msgstr "Прогресс этой итерации:"
+
+#: src/git_stage_batch/commands/status.py:151
+msgid "  Included:  {} hunks"
+msgstr "  Включено:  {} блоков"
+
+#: src/git_stage_batch/commands/status.py:152
+msgid "  Skipped:   {} hunks"
+msgstr "  Пропущено:   {} блоков"
+
+#: src/git_stage_batch/commands/status.py:153
+msgid "  Discarded: {} hunks"
+msgstr "  Отброшено: {} блоков"
+
+#: src/git_stage_batch/commands/status.py:154
+msgid "  Remaining: ~{} hunks"
+msgstr "  Осталось: ~{} блоков"
+
+#: src/git_stage_batch/commands/status.py:158
+msgid "Skipped hunks:"
+msgstr "Пропущенные блоки:"
+
+#: src/git_stage_batch/commands/status.py:161
+msgid "  {}:{} [#{}]"
+msgstr "  {}:{} [#{}]"
+
+#: src/git_stage_batch/commands/stop.py:28
+msgid "✓ State cleared."
+msgstr "✓ Состояние очищено."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:192
+#: src/git_stage_batch/commands/suggest_fixup.py:399
+msgid "Suggest-fixup iteration cleared."
+msgstr "Итерация suggest-fixup очищена."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:222
+msgid "Full hunk state not available. Run 'show' to cache the selected hunk."
+msgstr ""
+"Не удалось применить патчи для файлов: {files}\\nВыполните 'git-stage-batch "
+"show --from {name}' для просмотра изменений\\nИспользуйте --file или --line "
+"для применения совместимых частей"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:236
+msgid "No old line numbers found in hunk (all lines may be additions)."
+msgstr ""
+"В блоке не найдено номеров старых строк (все строки могут быть добавлениями)."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:246
+#: src/git_stage_batch/commands/suggest_fixup.py:449
+#, python-brace-format
+msgid "Invalid boundary ref: {boundary}"
+msgstr "Недопустимая граничная ссылка: {boundary}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:255
+#: src/git_stage_batch/commands/suggest_fixup.py:458
+#, python-brace-format
+msgid "Failed to get commit range {boundary}..HEAD"
+msgstr "Не удалось получить диапазон коммитов {boundary}..HEAD"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:258
+#: src/git_stage_batch/commands/suggest_fixup.py:461
+#, python-brace-format
+msgid "No commits found in range {boundary}..HEAD"
+msgstr "В диапазоне {boundary}..HEAD не найдено коммитов"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:299
+#: src/git_stage_batch/commands/suggest_fixup.py:359
+#: src/git_stage_batch/commands/suggest_fixup.py:502
+#: src/git_stage_batch/commands/suggest_fixup.py:562
+#, python-brace-format
+msgid "Candidate {iteration}: {info}"
+msgstr "Кандидат {iteration}: {info}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:301
+#: src/git_stage_batch/commands/suggest_fixup.py:361
+#: src/git_stage_batch/commands/suggest_fixup.py:504
+#: src/git_stage_batch/commands/suggest_fixup.py:564
+#, python-brace-format
+msgid "Run: git commit --fixup={commit}"
+msgstr "Выполните: git commit --fixup={commit}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:325
+#: src/git_stage_batch/commands/suggest_fixup.py:528
+msgid "No more candidates found."
+msgstr "Больше не найдено кандидатов."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:439
+msgid ""
+"No old line numbers found for specified lines (they may be newly added "
+"lines)."
+msgstr ""
+"Для указанных строк не найдено номеров старых строк (они могут быть новыми "
+"добавленными строками)."
+
+#: src/git_stage_batch/commands/unblock_file.py:20
+msgid "File path required for unblock-file command."
+msgstr "Для команды unblock-file требуется путь к файлу."
+
+#: src/git_stage_batch/core/diff_parser.py:262
+msgid "Failed to parse hunk header."
+msgstr "Не удалось разобрать заголовок блока."
+
+#: src/git_stage_batch/data/hunk_tracking.py:286
+#: src/git_stage_batch/data/line_state.py:67
+msgid "No selected hunk. Run 'start' first."
+msgstr "Нет текущего блока. Сначала выполните 'start'."
+
+#: src/git_stage_batch/data/hunk_tracking.py:293
+msgid ""
+"Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
+msgstr ""
+"Кэшированный блок устарел (файл был изменен). Выполните 'start' или 'again' "
+"для продолжения."
+
+#: src/git_stage_batch/data/hunk_tracking.py:339
+msgid "No pending hunks."
+msgstr "Нет ожидающих блоков."
+
+#: src/git_stage_batch/data/session.py:46
+msgid "No session in progress. Run 'git-stage-batch start' first."
+msgstr ""
+"Полное состояние фрагмента недоступно. Выполните 'show' для кэширования "
+"текущего фрагмента."
+
+#: src/git_stage_batch/tui/display.py:32
+#, python-brace-format
+msgid "{source_label}{source} {arrow} {target_label}{target}"
+msgstr "{source_label}{source} {arrow} {target_label}{target}"
+
+#: src/git_stage_batch/tui/display.py:40
+#, python-brace-format
+msgid "Source: {source} → Target: {target}"
+msgstr "Источник: {source} → Цель: {target}"
+
+#: src/git_stage_batch/tui/display.py:54
+#, python-brace-format
+msgid "Included: {count}"
+msgstr "Включено: {count}"
+
+#: src/git_stage_batch/tui/display.py:55
+#, python-brace-format
+msgid "Skipped: {count}"
+msgstr "Пропущено: {count}"
+
+#: src/git_stage_batch/tui/display.py:56
+#, python-brace-format
+msgid "Discarded: {count}"
+msgstr "Отброшено: {count}"
+
+#: src/git_stage_batch/tui/flow.py:38
+msgid "Working tree"
+msgstr "Рабочее дерево"
+
+#: src/git_stage_batch/tui/flow.py:41
+msgid "Index"
+msgstr "Индекс"
+
+#: src/git_stage_batch/tui/interactive.py:58
+#: src/git_stage_batch/tui/interactive.py:102
+msgid "Batch-to-batch transfers not yet supported. Target must be staging."
+msgstr ""
+"Передача между пакетами пока не поддерживается. Цель должна быть индексом."
+
+#: src/git_stage_batch/tui/interactive.py:80
+#: src/git_stage_batch/tui/interactive.py:765
+#: src/git_stage_batch/tui/interactive.py:879
+msgid "Skip is not available when pulling from a batch."
+msgstr "Пропуск недоступен при извлечении из пакета."
+
+#: src/git_stage_batch/tui/interactive.py:91
+msgid "This will remove the hunk from your working tree."
+msgstr "Это удалит блок из вашего рабочего дерева."
+
+#: src/git_stage_batch/tui/interactive.py:139
+msgid "Suggest-fixup is not available when pulling from a batch."
+msgstr "Suggest-fixup недоступен при извлечении из пакета."
+
+#: src/git_stage_batch/tui/interactive.py:164
+msgid "Command exited with status {}"
+msgstr "Команда завершилась с кодом {}"
+
+#: src/git_stage_batch/tui/interactive.py:167
+msgid ""
+"\n"
+"Press Enter to continue..."
+msgstr ""
+"\n"
+"Нажмите Enter для продолжения..."
+
+#: src/git_stage_batch/tui/interactive.py:171
+msgid "No command entered"
+msgstr "Команда не введена"
+
+#: src/git_stage_batch/tui/interactive.py:189
+msgid "No batches found. Create one now."
+msgstr "Пакеты не найдены. Создайте один сейчас."
+
+#: src/git_stage_batch/tui/interactive.py:196
+msgid "Existing batches:"
+msgstr "Существующие пакеты:"
+
+#: src/git_stage_batch/tui/interactive.py:202
+#: src/git_stage_batch/tui/interactive.py:207
+#, python-brace-format
+msgid "  {name} - {note}"
+msgstr "  {name} - {note}"
+
+#: src/git_stage_batch/tui/interactive.py:216
+msgid "Batch operations:"
+msgstr "Операции с пакетами:"
+
+#: src/git_stage_batch/tui/interactive.py:218
+msgid "create"
+msgstr "создать"
+
+#: src/git_stage_batch/tui/interactive.py:219
+#: src/git_stage_batch/tui/interactive.py:273
+msgid "edit"
+msgstr "изменить"
+
+#: src/git_stage_batch/tui/interactive.py:220
+#: src/git_stage_batch/tui/interactive.py:289
+msgid "drop"
+msgstr "удалить"
+
+#: src/git_stage_batch/tui/interactive.py:221
+#: src/git_stage_batch/tui/interactive.py:300
+msgid "apply"
+msgstr "применить"
+
+#: src/git_stage_batch/tui/interactive.py:229
+#: src/git_stage_batch/tui/interactive.py:342
+#: src/git_stage_batch/tui/interactive.py:403
+#: src/git_stage_batch/tui/interactive.py:470
+msgid "Select: "
+msgstr "Выберите: "
+
+#: src/git_stage_batch/tui/interactive.py:247
+#: src/git_stage_batch/tui/interactive.py:776
+#: src/git_stage_batch/tui/interactive.py:843
+#: src/git_stage_batch/tui/interactive.py:973
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown action: '{action}'"
+msgstr ""
+"\n"
+"Неизвестное действие: '{action}'"
+
+#: src/git_stage_batch/tui/interactive.py:257
+#: src/git_stage_batch/tui/interactive.py:480
+msgid "Batch ID: "
+msgstr "ID пакета: "
+
+#: src/git_stage_batch/tui/interactive.py:261
+#: src/git_stage_batch/tui/interactive.py:483
+msgid "Note (optional): "
+msgstr "Заметка (необязательно): "
+
+#: src/git_stage_batch/tui/interactive.py:267
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' created."
+msgstr ""
+"\n"
+"Пакет '{name}' создан."
+
+#: src/git_stage_batch/tui/interactive.py:278
+msgid "New note: "
+msgstr "Новая заметка: "
+
+#: src/git_stage_batch/tui/interactive.py:284
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' note updated."
+msgstr ""
+"\n"
+"Заметка пакета '{name}' обновлена."
+
+#: src/git_stage_batch/tui/interactive.py:295
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' dropped."
+msgstr ""
+"\n"
+"Пакет '{name}' удален."
+
+#: src/git_stage_batch/tui/interactive.py:306
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' applied to staging area."
+msgstr ""
+"\n"
+"Пакет '{name}' применен к области индексирования."
+
+#: src/git_stage_batch/tui/interactive.py:325
+msgid "No batches found."
+msgstr "Пакеты не найдены."
+
+#: src/git_stage_batch/tui/interactive.py:333
+#, python-brace-format
+msgid "Select batch to {purpose}:"
+msgstr "Выберите пакет для {purpose}:"
+
+#: src/git_stage_batch/tui/interactive.py:354
+msgid ""
+"\n"
+"Invalid selection."
+msgstr ""
+"\n"
+"Недопустимый выбор."
+
+#: src/git_stage_batch/tui/interactive.py:366
+msgid "Pull changes from:"
+msgstr "Извлечь изменения из:"
+
+#: src/git_stage_batch/tui/interactive.py:371
+#: src/git_stage_batch/tui/interactive.py:433
+msgid " (selected)"
+msgstr " (текущий)"
+
+#: src/git_stage_batch/tui/interactive.py:376
+#, python-brace-format
+msgid "Working tree{marker}"
+msgstr "Рабочее дерево{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:390
+#: src/git_stage_batch/tui/interactive.py:452
+#, python-brace-format
+msgid "batch: {name}{note}{marker}"
+msgstr "пакет: {name}{note}{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:428
+msgid "Push changes to:"
+msgstr "Отправить изменения в:"
+
+#: src/git_stage_batch/tui/interactive.py:438
+#, python-brace-format
+msgid "Staging for commit{marker}"
+msgstr "Индексирование для коммита{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:465
+msgid "New Batch..."
+msgstr "Новый пакет..."
+
+#: src/git_stage_batch/tui/interactive.py:518
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown command: '{cmd}'"
+msgstr ""
+"\n"
+"Неизвестная команда: '{cmd}'"
+
+#: src/git_stage_batch/tui/interactive.py:521
+#, python-brace-format
+msgid ""
+"\n"
+"Error executing command: {error}"
+msgstr ""
+"\n"
+"Ошибка выполнения команды: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:588
+msgid "No changes to process"
+msgstr "Нет изменений для обработки"
+
+#: src/git_stage_batch/tui/interactive.py:721
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude? "
+msgstr "Действие для всех блоков в {filename} - [i] включить? "
+
+#: src/git_stage_batch/tui/interactive.py:724
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude or [s]kip? "
+msgstr ""
+"Действие для всех блоков в {filename} - [i] включить или [s] пропустить? "
+
+#: src/git_stage_batch/tui/interactive.py:731
+#, python-brace-format
+msgid "Action for all hunks in {filename} - {include} or {skip}? "
+msgstr "Действие для всех блоков в {filename} - {include} или {skip}? "
+
+#: src/git_stage_batch/tui/interactive.py:756
+#: src/git_stage_batch/tui/interactive.py:871
+#: src/git_stage_batch/tui/interactive.py:901
+msgid "Batch-to-batch transfers not yet supported."
+msgstr "Передача между пакетами пока не поддерживается."
+
+#: src/git_stage_batch/tui/interactive.py:800
+msgid ""
+"\n"
+"No changed lines in this hunk."
+msgstr ""
+"\n"
+"В этом блоке нет измененных строк."
+
+#: src/git_stage_batch/tui/interactive.py:806
+#, python-brace-format
+msgid ""
+"\n"
+"Changed line IDs: {ids}"
+msgstr ""
+"\n"
+"ID измененных строк: {ids}"
+
+#: src/git_stage_batch/tui/interactive.py:816
+msgid "Action for lines [i]nclude, [d]iscard? "
+msgstr "Действие для строк [i] включить, [d] отбросить? "
+
+#: src/git_stage_batch/tui/interactive.py:819
+msgid "Action for lines [i]nclude, [s]kip, [d]iscard? "
+msgstr "Действие для строк [i] включить, [s] пропустить, [d] отбросить? "
+
+#: src/git_stage_batch/tui/interactive.py:826
+#, python-brace-format
+msgid "Action for lines {include}, {skip}, {discard}? "
+msgstr "Действие для строк {include}, {skip}, {discard}? "
+
+#: src/git_stage_batch/tui/interactive.py:848
+msgid ""
+"\n"
+"Skip is not available when pulling from a batch."
+msgstr ""
+"\n"
+"Пропуск недоступен при извлечении из пакета."
+
+#: src/git_stage_batch/tui/interactive.py:891
+#, python-brace-format
+msgid "This will remove lines {line_ids} from your working tree."
+msgstr "Это удалит строки {line_ids} из вашего рабочего дерева."
+
+#: src/git_stage_batch/tui/interactive.py:908
+#, python-brace-format
+msgid ""
+"\n"
+"Error: {error}"
+msgstr ""
+"\n"
+"Ошибка: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:946
+msgid "Create fixup commit with:"
+msgstr "Создать fixup-коммит с:"
+
+#: src/git_stage_batch/tui/interactive.py:970
+msgid ""
+"\n"
+"Canceled."
+msgstr ""
+"\n"
+"Отменено."
+
+#: src/git_stage_batch/tui/interactive.py:1030
+msgid "Interactive Mode Commands:"
+msgstr "Команды интерактивного режима:"
+
+#: src/git_stage_batch/tui/interactive.py:1037
+msgid "Primary actions:"
+msgstr "Основные действия:"
+
+#: src/git_stage_batch/tui/interactive.py:1038
+msgid "  i, include   - Stage this hunk to the index"
+msgstr "  i, include   - Индексировать этот блок в индекс"
+
+#: src/git_stage_batch/tui/interactive.py:1039
+msgid "  s, skip      - Skip this hunk for now"
+msgstr "  s, skip      - Пропустить этот блок пока"
+
+#: src/git_stage_batch/tui/interactive.py:1040
+msgid "  d, discard   - Remove this hunk from working tree (DESTRUCTIVE)"
+msgstr "  d, discard   - Удалить этот блок из рабочего дерева (ОПАСНО)"
+
+#: src/git_stage_batch/tui/interactive.py:1041
+msgid "  q, quit      - Exit interactive mode"
+msgstr "  q, quit      - Выйти из интерактивного режима"
+
+#: src/git_stage_batch/tui/interactive.py:1043
+msgid "More options:"
+msgstr "Дополнительные параметры:"
+
+#: src/git_stage_batch/tui/interactive.py:1044
+msgid "  a, again     - Clear state and start fresh pass through skipped hunks"
+msgstr ""
+"  a, again     - Очистить состояние и начать новый проход по пропущенным "
+"блокам"
+
+#: src/git_stage_batch/tui/interactive.py:1045
+msgid "  l, lines     - Select specific lines from this hunk"
+msgstr "  l, lines     - Выбрать конкретные строки из этого блока"
+
+#: src/git_stage_batch/tui/interactive.py:1046
+msgid "  f, file      - Include or skip all hunks in this file"
+msgstr "  f, file      - Включить или пропустить все блоки в этом файле"
+
+#: src/git_stage_batch/tui/interactive.py:1047
+msgid "  x, fixup     - Suggest which commit to fixup (iterative)"
+msgstr ""
+"  x, fixup     - Предложить, к какому коммиту применить fixup (итеративно)"
+
+#: src/git_stage_batch/tui/interactive.py:1048
+msgid ""
+"  !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)"
+msgstr ""
+"  !<cmd>       - Выполнить команду оболочки (например, !git log, или "
+"просто ! для запроса)"
+
+#: src/git_stage_batch/tui/interactive.py:1049
+msgid "  ?, help      - Show this help message"
+msgstr "  ?, help      - Показать это справочное сообщение"
+
+#: src/git_stage_batch/tui/prompts.py:129
+msgid "What do you want to do with this hunk?"
+msgstr "Что вы хотите сделать с этим блоком?"
+
+#: src/git_stage_batch/tui/prompts.py:131
+msgid "What do you want to do?"
+msgstr "Что вы хотите сделать?"
+
+#: src/git_stage_batch/tui/prompts.py:151
+#: src/git_stage_batch/tui/prompts.py:158
+#, python-brace-format
+msgid "{label}: {options}"
+msgstr "{label}: {options}"
+
+#: src/git_stage_batch/tui/prompts.py:188
+msgid "Action: "
+msgstr "Действие: "
+
+#: src/git_stage_batch/tui/prompts.py:231
+#, python-brace-format
+msgid "⚠️  {message}"
+msgstr "⚠️  {message}"
+
+#: src/git_stage_batch/tui/prompts.py:238
+#: src/git_stage_batch/tui/prompts.py:285
+msgid "yes"
+msgstr "да"
+
+#: src/git_stage_batch/tui/prompts.py:239
+msgid "NO"
+msgstr "НЕТ"
+
+#: src/git_stage_batch/tui/prompts.py:248
+#, python-brace-format
+msgid "Are you sure? [{yes}/{no}]: "
+msgstr "Вы уверены? [{yes}/{no}]: "
+
+#: src/git_stage_batch/tui/prompts.py:267
+msgid "Enter line IDs (e.g., 1,3,5-7): "
+msgstr "Введите ID строк (например, 1,3,5-7): "
+
+#: src/git_stage_batch/tui/prompts.py:283
+#: src/git_stage_batch/tui/prompts.py:365
+msgid "y"
+msgstr "д"
+
+#: src/git_stage_batch/tui/prompts.py:284
+#: src/git_stage_batch/tui/prompts.py:366
+msgid "n"
+msgstr "н"
+
+#: src/git_stage_batch/tui/prompts.py:286
+msgid "no"
+msgstr "нет"
+
+#: src/git_stage_batch/tui/prompts.py:295
+#, python-brace-format
+msgid "Keep staged changes? [{y}]es / [{n}]o: "
+msgstr "Сохранить индексированные изменения? [{y}] да / [{n}] нет: "
+
+#: src/git_stage_batch/tui/prompts.py:367
+msgid "r"
+msgstr "с"
+
+#: src/git_stage_batch/tui/prompts.py:378
+#, python-brace-format
+msgid "[{y}]es / [{n}]ext / [{r}]eset: "
+msgstr "[{y}] да / [{n}] следующий / [{r}] сброс: "
+
+#: src/git_stage_batch/utils/git.py:113
+msgid "Not inside a git repository."
+msgstr "Не внутри git-репозитория."

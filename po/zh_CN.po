@@ -1,0 +1,1180 @@
+# Chinese translations for git-stage-batch package
+# git-stage-batch 软件包的简体中文翻译.
+# Copyright (C) 2026 THE git-stage-batch'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the git-stage-batch package.
+# Claude <noreply@anthropic.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: git-stage-batch\n"
+"Report-Msgid-Bugs-To: halfline@gmail.com\n"
+"POT-Creation-Date: 2026-04-02 14:10-0400\n"
+"PO-Revision-Date: 2026-03-31 09:23-0400\n"
+"Last-Translator: Claude <noreply@anthropic.com>\n"
+"Language-Team: Chinese (Simplified)\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/git_stage_batch/batch/operations.py:27
+#, python-brace-format
+msgid "Batch '{name}' already exists"
+msgstr "批次 '{name}' 已存在"
+
+#: src/git_stage_batch/batch/operations.py:75
+#: src/git_stage_batch/batch/operations.py:91
+#: src/git_stage_batch/commands/reset.py:33
+#, python-brace-format
+msgid "Batch '{name}' does not exist"
+msgstr "批次 '{name}' 不存在"
+
+#: src/git_stage_batch/batch/validation.py:13
+msgid "Batch name cannot be empty"
+msgstr "批次名称不能为空"
+
+#: src/git_stage_batch/batch/validation.py:19
+#, python-brace-format
+msgid "Batch name cannot contain: {char}"
+msgstr "批次名称不能包含：{char}"
+
+#: src/git_stage_batch/batch/validation.py:23
+msgid "Batch name cannot start with '.'"
+msgstr "批次名称不能以 '.' 开头"
+
+#: src/git_stage_batch/cli/argument_parser.py:66
+msgid "Hunk-by-hunk and line-by-line staging for git"
+msgstr "Git 的逐块和逐行暂存"
+
+#: src/git_stage_batch/cli/argument_parser.py:78
+msgid "Start interactive mode"
+msgstr "启动交互模式"
+
+#: src/git_stage_batch/cli/argument_parser.py:83
+msgid "Available commands"
+msgstr "可用命令"
+
+#: src/git_stage_batch/cli/argument_parser.py:89
+msgid "Start a new batch staging session"
+msgstr "开始新的批次暂存会话"
+
+#: src/git_stage_batch/cli/argument_parser.py:97
+msgid "Number of context lines in diff output (default: 3)"
+msgstr "diff输出中的上下文行数（默认值：3）"
+
+#: src/git_stage_batch/cli/argument_parser.py:104
+msgid "Start interactive hunk-by-hunk mode"
+msgstr "启动交互式逐块模式"
+
+#: src/git_stage_batch/cli/argument_parser.py:111
+msgid "Stop the selected session and clear state"
+msgstr "停止当前会话并清除状态"
+
+#: src/git_stage_batch/cli/argument_parser.py:119
+msgid "Clear state and start a fresh pass"
+msgstr "清除状态并开始新的过程"
+
+#: src/git_stage_batch/cli/argument_parser.py:126
+msgid "Show the selected hunk"
+msgstr "显示当前块"
+
+#: src/git_stage_batch/cli/argument_parser.py:132
+msgid "Show changes from batch"
+msgstr "显示批次中的更改"
+
+#: src/git_stage_batch/cli/argument_parser.py:143
+msgid "Show selected session status"
+msgstr "显示当前会话状态"
+
+#: src/git_stage_batch/cli/argument_parser.py:151
+msgid "Stage the selected hunk"
+msgstr "暂存当前块"
+
+#: src/git_stage_batch/cli/argument_parser.py:158
+msgid "Stage only specific line IDs (e.g., '1,3,5-7')"
+msgstr "仅暂存特定行 ID（例如：'1,3,5-7'）"
+
+#: src/git_stage_batch/cli/argument_parser.py:163
+msgid "Stage the entire file containing the selected hunk"
+msgstr "暂存包含当前块的整个文件"
+
+#: src/git_stage_batch/cli/argument_parser.py:169
+msgid "Include changes from batch"
+msgstr "包含批次中的更改"
+
+#: src/git_stage_batch/cli/argument_parser.py:175
+msgid "Include changes to batch"
+msgstr "将更改包含到批次"
+
+#: src/git_stage_batch/cli/argument_parser.py:189
+msgid "Skip the selected hunk without staging"
+msgstr "跳过当前块而不暂存"
+
+#: src/git_stage_batch/cli/argument_parser.py:196
+msgid "Skip only specific line IDs (e.g., '1,3,5-7')"
+msgstr "仅跳过特定行 ID（例如：'1,3,5-7'）"
+
+#: src/git_stage_batch/cli/argument_parser.py:201
+msgid "Skip all hunks from the selected file"
+msgstr "跳过当前文件的所有块"
+
+#: src/git_stage_batch/cli/argument_parser.py:213
+msgid "Remove the selected hunk from working tree"
+msgstr "从工作树中删除当前块"
+
+#: src/git_stage_batch/cli/argument_parser.py:220
+msgid "Discard only specific line IDs (e.g., '1,3,5-7')"
+msgstr "仅丢弃特定行 ID（例如：'1,3,5-7'）"
+
+#: src/git_stage_batch/cli/argument_parser.py:225
+msgid "Discard the entire file containing the selected hunk"
+msgstr "丢弃包含当前块的整个文件"
+
+#: src/git_stage_batch/cli/argument_parser.py:231
+msgid "Discard changes from batch"
+msgstr "丢弃批次中的更改"
+
+#: src/git_stage_batch/cli/argument_parser.py:237
+msgid "Discard changes to batch"
+msgstr "将更改丢弃到批次"
+
+#: src/git_stage_batch/cli/argument_parser.py:250
+msgid "Restore repository to pre-session state"
+msgstr "将仓库恢复到会话前的状态"
+
+#: src/git_stage_batch/cli/argument_parser.py:258
+msgid "Permanently exclude a file (adds to .gitignore)"
+msgstr "永久排除文件（添加到 .gitignore）"
+
+#: src/git_stage_batch/cli/argument_parser.py:262
+msgid "Path to the file to block"
+msgstr "要阻止的文件路径"
+
+#: src/git_stage_batch/cli/argument_parser.py:270
+msgid "Remove a file from the blocked list"
+msgstr "从阻止列表中删除文件"
+
+#: src/git_stage_batch/cli/argument_parser.py:274
+msgid "Path to the file to unblock"
+msgstr "要解除阻止的文件路径"
+
+#: src/git_stage_batch/cli/argument_parser.py:282
+msgid "Suggest which commit the selected hunk should be fixed up to"
+msgstr "建议当前块应修复到哪个提交"
+
+#: src/git_stage_batch/cli/argument_parser.py:289
+msgid "Analyze only specific line IDs (e.g., '1,3,5-7')"
+msgstr "仅分析特定行 ID（例如：'1,3,5-7'）"
+
+#: src/git_stage_batch/cli/argument_parser.py:294
+msgid "Reset state and start search over from most recent"
+msgstr "重置状态并从最近的位置重新开始搜索"
+
+#: src/git_stage_batch/cli/argument_parser.py:299
+msgid "Clear state and exit without showing candidates"
+msgstr "清除状态并退出而不显示候选项"
+
+#: src/git_stage_batch/cli/argument_parser.py:304
+msgid "Re-show the last candidate without advancing"
+msgstr "重新显示上一个候选项而不前进"
+
+#: src/git_stage_batch/cli/argument_parser.py:310
+#, python-brace-format
+msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
+msgstr "用作提交搜索下限的 Git 引用（默认：@{upstream}）"
+
+#: src/git_stage_batch/cli/argument_parser.py:331
+msgid "Create a new batch"
+msgstr "创建新批次"
+
+#: src/git_stage_batch/cli/argument_parser.py:335
+msgid "Name of the batch to create"
+msgstr "要创建的批次名称"
+
+#: src/git_stage_batch/cli/argument_parser.py:340
+msgid "Optional description for the batch"
+msgstr "批次的可选描述"
+
+#: src/git_stage_batch/cli/argument_parser.py:347
+msgid "List all batches"
+msgstr "列出所有批次"
+
+#: src/git_stage_batch/cli/argument_parser.py:354
+msgid "Delete a batch"
+msgstr "删除批次"
+
+#: src/git_stage_batch/cli/argument_parser.py:358
+msgid "Name of the batch to delete"
+msgstr "要删除的批次名称"
+
+#: src/git_stage_batch/cli/argument_parser.py:365
+msgid "Add or update batch description"
+msgstr "添加或更新批次描述"
+
+#: src/git_stage_batch/cli/argument_parser.py:369
+msgid "Name of the batch"
+msgstr "批次名称"
+
+#: src/git_stage_batch/cli/argument_parser.py:373
+msgid "Description text"
+msgstr "描述文本"
+
+#: src/git_stage_batch/cli/argument_parser.py:380
+msgid "Apply batch changes to working tree"
+msgstr "将批次更改应用到工作树"
+
+#: src/git_stage_batch/cli/argument_parser.py:387
+msgid "Apply changes from batch to working tree"
+msgstr "将批次中的更改应用到工作树"
+
+#: src/git_stage_batch/cli/argument_parser.py:394
+#: src/git_stage_batch/cli/argument_parser.py:401
+msgid "Remove claims from batch"
+msgstr "从批次中删除声明"
+
+#: src/git_stage_batch/cli/argument_parser.py:408
+msgid "Reset only specific line IDs (e.g., '1,3,5-7')"
+msgstr "仅重置特定行ID（例如，'1,3,5-7'）"
+
+#: src/git_stage_batch/cli/dispatch.py:24
+#: src/git_stage_batch/commands/status.py:72
+msgid "No batch staging session in progress."
+msgstr "没有正在进行的批次暂存会话。"
+
+#: src/git_stage_batch/cli/dispatch.py:25
+#: src/git_stage_batch/commands/status.py:73
+msgid "Run 'git-stage-batch start' to begin."
+msgstr "运行 'git-stage-batch start' 以开始。"
+
+#: src/git_stage_batch/commands/abort.py:30
+msgid "No session to abort. Abort state not found."
+msgstr "没有要中止的会话。未找到中止状态。"
+
+#: src/git_stage_batch/commands/abort.py:48
+msgid "Resetting to {}..."
+msgstr "正在重置到 {}..."
+
+#: src/git_stage_batch/commands/abort.py:70
+msgid "Restored: {}"
+msgstr "已恢复：{}"
+
+#: src/git_stage_batch/commands/abort.py:74
+msgid "Applying original changes..."
+msgstr "正在应用原始更改..."
+
+#: src/git_stage_batch/commands/abort.py:82
+msgid "⚠ Warning: Could not apply stash cleanly: {}"
+msgstr "⚠ 警告：无法完全应用储藏：{}"
+
+#: src/git_stage_batch/commands/abort.py:89
+msgid "✓ Session aborted. All changes reverted."
+msgstr "✓ 会话已中止。所有更改已恢复。"
+
+#: src/git_stage_batch/commands/annotate.py:15
+#, python-brace-format
+msgid "✓ Updated note for batch '{name}'"
+msgstr "✓ 已更新批次 '{name}' 的备注"
+
+#: src/git_stage_batch/commands/apply_from.py:33
+#: src/git_stage_batch/commands/discard_from.py:32
+#: src/git_stage_batch/commands/include_from.py:38
+#: src/git_stage_batch/commands/show_from.py:27
+#, python-brace-format
+msgid "Batch '{name}' is empty or does not exist"
+msgstr "批次 '{name}' 为空或不存在"
+
+#: src/git_stage_batch/commands/apply_from.py:39
+#: src/git_stage_batch/commands/discard_from.py:38
+#: src/git_stage_batch/commands/include_from.py:44
+#: src/git_stage_batch/commands/show_from.py:34
+#: src/git_stage_batch/commands/show_from.py:62
+#, python-brace-format
+msgid "No patches found in batch '{name}'"
+msgstr "在批次 '{name}' 中未找到补丁"
+
+#: src/git_stage_batch/commands/apply_from.py:54
+#: src/git_stage_batch/commands/discard_from.py:53
+#: src/git_stage_batch/commands/include_from.py:59
+#, python-brace-format
+msgid "Batch '{name}' has no changes for {file}"
+msgstr "✓ 已暂存批次 '{name}' 中 {file} 的更改"
+
+#: src/git_stage_batch/commands/apply_from.py:74
+#: src/git_stage_batch/commands/include_from.py:76
+#, python-brace-format
+msgid ""
+"Failed to apply patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr ""
+"丢弃文件补丁失败：{files}\\n运行 'git-stage-batch show --from {name}' 以查看"
+"更改\\n使用 --file 或 --line 丢弃兼容部分"
+
+#: src/git_stage_batch/commands/apply_from.py:80
+#, python-brace-format
+msgid "✓ Applied changes for {file} from batch '{name}' to working tree"
+msgstr "✓ 已将批次 '{name}' 中 {file} 的更改应用到工作树"
+
+#: src/git_stage_batch/commands/apply_from.py:116
+#, python-brace-format
+msgid "✓ Applied selected lines from batch '{name}' to working tree"
+msgstr "✓ 已将批次 '{name}' 中选定的行应用到工作树"
+
+#: src/git_stage_batch/commands/apply_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --line to apply compatible parts"
+msgstr "✓ 已从工作树丢弃批次 '{name}' 中 {file} 的更改"
+
+#: src/git_stage_batch/commands/apply_from.py:146
+#, python-brace-format
+msgid "✓ Applied changes from batch '{name}' to working tree"
+msgstr "✓ 已将批次 '{name}' 中的更改应用到工作树"
+
+#: src/git_stage_batch/commands/block_file.py:20
+msgid "File path required for block-file command."
+msgstr "block-file 命令需要文件路径。"
+
+#: src/git_stage_batch/commands/block_file.py:31
+msgid "Blocked file: {}"
+msgstr "已阻止文件：{}"
+
+#: src/git_stage_batch/commands/discard.py:45
+#: src/git_stage_batch/commands/include.py:46
+#: src/git_stage_batch/commands/show.py:58
+#: src/git_stage_batch/commands/skip.py:36
+#: src/git_stage_batch/data/hunk_tracking.py:235
+#: src/git_stage_batch/tui/interactive.py:656
+msgid "No more hunks to process."
+msgstr "没有更多的块需要处理。"
+
+#: src/git_stage_batch/commands/discard.py:70
+msgid "Failed to discard hunk: {}"
+msgstr "丢弃块失败：{}"
+
+#: src/git_stage_batch/commands/discard.py:91
+#, python-brace-format
+msgid "✓ Hunk discarded from {file}"
+msgstr "✓ 已从 {file} 丢弃块"
+
+#: src/git_stage_batch/commands/discard.py:120
+msgid "No changes to discard."
+msgstr "没有要丢弃的更改。"
+
+#: src/git_stage_batch/commands/discard.py:147
+msgid "Failed to discard file: {}"
+msgstr "丢弃文件失败：{}"
+
+#: src/git_stage_batch/commands/discard.py:154
+msgid "✓ File discarded: {}"
+msgstr "✓ 已丢弃文件：{}"
+
+#: src/git_stage_batch/commands/discard.py:178
+#: src/git_stage_batch/commands/discard.py:264
+#: src/git_stage_batch/commands/discard_from.py:106
+#, python-brace-format
+msgid "File not found in working tree: {file}"
+msgstr "在工作树中未找到文件：{file}"
+
+#: src/git_stage_batch/commands/discard.py:190
+#, python-brace-format
+msgid "✓ Discarded line(s): {lines}"
+msgstr "✓ 已丢弃行：{lines}"
+
+#: src/git_stage_batch/commands/discard.py:274
+#, python-brace-format
+msgid "✓ Discarded line(s) to batch '{name}': {lines}"
+msgstr ""
+"丢弃文件补丁失败：{file}\\n运行 'git-stage-batch show --from {name}' 以查看更"
+"改"
+
+#: src/git_stage_batch/commands/discard.py:317
+#: src/git_stage_batch/commands/include.py:321
+#: src/git_stage_batch/commands/skip.py:84
+#: src/git_stage_batch/commands/start.py:39
+msgid "No changes to process."
+msgstr "没有要处理的更改。"
+
+#: src/git_stage_batch/commands/discard.py:372
+#: src/git_stage_batch/commands/discard.py:425
+#, python-brace-format
+msgid "Failed to apply reverse patch: {error}"
+msgstr "应用反向补丁失败：{error}"
+
+#: src/git_stage_batch/commands/discard.py:394
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}' and discarded"
+msgid_plural ""
+"✓ {count} hunks from {file} saved to batch '{name}' and discarded"
+msgstr[0] "✓ 已将{file}的{count}个块保存到批次'{name}'并丢弃"
+
+#: src/git_stage_batch/commands/discard.py:442
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}' and discarded from working tree"
+msgstr "✓ 块已保存到批次 '{name}' 并从工作树中丢弃"
+
+#: src/git_stage_batch/commands/discard_from.py:73
+#, python-brace-format
+msgid ""
+"Failed to discard patches for file: {file}\n"
+"Run 'git-stage-batch show --from {name}' to review changes"
+msgstr "没有正在进行的会话。请先运行 'git-stage-batch start'。"
+
+#: src/git_stage_batch/commands/discard_from.py:79
+#, python-brace-format
+msgid "✓ Discarded changes for {file} from batch '{name}' from working tree"
+msgstr ""
+"应用文件补丁失败：{files}\\n运行 'git-stage-batch show --from {name}' 以查看"
+"更改\\n使用 --line 应用兼容部分"
+
+#: src/git_stage_batch/commands/discard_from.py:80
+#: src/git_stage_batch/commands/discard_from.py:119
+#: src/git_stage_batch/commands/discard_from.py:147
+#, python-brace-format
+msgid "Note: Batch '{name}' still exists (use 'drop' to delete it)"
+msgstr "注意：批次 '{name}' 仍然存在（使用 'drop' 删除它）"
+
+#: src/git_stage_batch/commands/discard_from.py:118
+#, python-brace-format
+msgid "✓ Discarded selected lines from batch '{name}' from working tree"
+msgstr "✓ 已从工作树中丢弃批次 '{name}' 中选定的行"
+
+#: src/git_stage_batch/commands/discard_from.py:140
+#, python-brace-format
+msgid ""
+"Failed to discard patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to discard compatible parts"
+msgstr "批次 '{name}' 没有 {file} 的更改"
+
+#: src/git_stage_batch/commands/discard_from.py:146
+#, python-brace-format
+msgid "✓ Discarded changes from batch '{name}' from working tree"
+msgstr "✓ 已从工作树中丢弃批次 '{name}' 中的更改"
+
+#: src/git_stage_batch/commands/drop.py:15
+#, python-brace-format
+msgid "✓ Deleted batch '{name}'"
+msgstr "✓ 已删除批次 '{name}'"
+
+#: src/git_stage_batch/commands/include.py:67
+msgid "Failed to apply hunk: {}"
+msgstr "应用块失败：{}"
+
+#: src/git_stage_batch/commands/include.py:78
+#, python-brace-format
+msgid "✓ Hunk staged from {file}"
+msgstr "✓ 已从 {file} 暂存块"
+
+#: src/git_stage_batch/commands/include.py:107
+#: src/git_stage_batch/tui/interactive.py:617
+#: src/git_stage_batch/tui/interactive.py:658
+msgid "No changes to stage."
+msgstr "没有要暂存的更改。"
+
+#: src/git_stage_batch/commands/include.py:137
+#, python-brace-format
+msgid "Failed to apply hunk: {error}"
+msgstr "应用块失败：{error}"
+
+#: src/git_stage_batch/commands/include.py:141
+#, python-brace-format
+msgid "No hunks staged from {file}"
+msgstr "未从 {file} 暂存任何块"
+
+#: src/git_stage_batch/commands/include.py:146
+#, python-brace-format
+msgid "✓ Staged {count} hunk from {file}"
+msgid_plural "✓ Staged {count} hunks from {file}"
+msgstr[0] "✓ 已从 {file} 暂存 {count} 个块"
+
+#: src/git_stage_batch/commands/include.py:185
+#, python-brace-format
+msgid "✓ Included line(s): {lines}"
+msgstr "✓ 已包含行：{lines}"
+
+#: src/git_stage_batch/commands/include.py:256
+#, python-brace-format
+msgid "✓ Included line(s) to batch '{name}': {lines}"
+msgstr "✓ 已将行包含到批次 '{name}'：{lines}"
+
+#: src/git_stage_batch/commands/include.py:272
+msgid "No more lines in this hunk."
+msgstr ""
+"应用文件补丁失败：{file}\\n运行 'git-stage-batch show --from {name}' 以查看更"
+"改"
+
+#: src/git_stage_batch/commands/include.py:384
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}'"
+msgid_plural "✓ {count} hunks from {file} saved to batch '{name}'"
+msgstr[0] "✓ 已将{file}的{count}个块保存到批次'{name}'"
+
+#: src/git_stage_batch/commands/include.py:420
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}'"
+msgstr "✓ 块已保存到批次 '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:82
+#, python-brace-format
+msgid "✓ Staged changes for {file} from batch '{name}'"
+msgstr "✓ 已将行丢弃到批次 '{name}'：{lines}"
+
+#: src/git_stage_batch/commands/include_from.py:102
+#, python-brace-format
+msgid "Cannot determine baseline for batch '{name}'"
+msgstr "无法确定批次 '{name}' 的基线"
+
+#: src/git_stage_batch/commands/include_from.py:119
+#, python-brace-format
+msgid "✓ Staged selected lines from batch '{name}'"
+msgstr "✓ 已从批次 '{name}' 暂存选定的行"
+
+#: src/git_stage_batch/commands/include_from.py:141
+#, python-brace-format
+msgid ""
+"Failed to apply patches for files: {files}\n"
+"Run 'git-stage-batch show --from {name}' to review changes\n"
+"Use --file or --line to apply compatible parts"
+msgstr "此块中没有更多行。"
+
+#: src/git_stage_batch/commands/include_from.py:147
+#, python-brace-format
+msgid "✓ Staged changes from batch '{name}'"
+msgstr "✓ 已从批次 '{name}' 暂存更改"
+
+#: src/git_stage_batch/commands/list.py:18
+msgid "No batches found"
+msgstr "未找到批次"
+
+#: src/git_stage_batch/commands/new.py:15
+#, python-brace-format
+msgid "✓ Created batch '{name}'"
+msgstr "✓ 已创建批次 '{name}'"
+
+#: src/git_stage_batch/commands/reset.py:44
+#, python-brace-format
+msgid "✓ Reset line(s) {lines} from batch '{name}'"
+msgstr "✓ 已从批次 '{name}' 重置行 {lines}"
+
+#: src/git_stage_batch/commands/reset.py:47
+#, python-brace-format
+msgid "✓ Reset all claims from batch '{name}'"
+msgstr "✓ 已从批次 '{name}' 重置所有声明"
+
+#: src/git_stage_batch/commands/skip.py:55
+#, python-brace-format
+msgid "✓ Hunk skipped from {file}"
+msgstr "✓ 已跳过 {file} 中的块"
+
+#: src/git_stage_batch/commands/skip.py:106
+#, python-brace-format
+msgid "✓ Skipped {count} hunk from {file}"
+msgid_plural "✓ Skipped {count} hunks from {file}"
+msgstr[0] "✓ 已跳过 {file} 中的 {count} 个块"
+
+#: src/git_stage_batch/commands/skip.py:133
+#, python-brace-format
+msgid "✓ Skipped line(s): {lines}"
+msgstr "✓ 已跳过行：{lines}"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "in progress"
+msgstr "进行中"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "complete"
+msgstr "完成"
+
+#: src/git_stage_batch/commands/status.py:140
+msgid "Session: iteration {} ({})"
+msgstr "会话：迭代 {} ({})"
+
+#: src/git_stage_batch/commands/status.py:145
+msgid "Current hunk:"
+msgstr "当前块："
+
+#: src/git_stage_batch/commands/status.py:146
+msgid "  {}:{}"
+msgstr "  {}:{}"
+
+#: src/git_stage_batch/commands/status.py:147
+msgid "  [#{}]"
+msgstr "  [#{}]"
+
+#: src/git_stage_batch/commands/status.py:150
+msgid "Progress this iteration:"
+msgstr "本次迭代进度："
+
+#: src/git_stage_batch/commands/status.py:151
+msgid "  Included:  {} hunks"
+msgstr "  已包含：{} 个块"
+
+#: src/git_stage_batch/commands/status.py:152
+msgid "  Skipped:   {} hunks"
+msgstr "  已跳过：{} 个块"
+
+#: src/git_stage_batch/commands/status.py:153
+msgid "  Discarded: {} hunks"
+msgstr "  已丢弃：{} 个块"
+
+#: src/git_stage_batch/commands/status.py:154
+msgid "  Remaining: ~{} hunks"
+msgstr "  剩余：约 {} 个块"
+
+#: src/git_stage_batch/commands/status.py:158
+msgid "Skipped hunks:"
+msgstr "已跳过的块："
+
+#: src/git_stage_batch/commands/status.py:161
+msgid "  {}:{} [#{}]"
+msgstr "  {}:{} [#{}]"
+
+#: src/git_stage_batch/commands/stop.py:28
+msgid "✓ State cleared."
+msgstr "✓ 状态已清除。"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:192
+#: src/git_stage_batch/commands/suggest_fixup.py:399
+msgid "Suggest-fixup iteration cleared."
+msgstr "建议修复迭代已清除。"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:222
+msgid "Full hunk state not available. Run 'show' to cache the selected hunk."
+msgstr ""
+"应用文件补丁失败：{files}\\n运行 'git-stage-batch show --from {name}' 以查看"
+"更改\\n使用 --file 或 --line 应用兼容部分"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:236
+msgid "No old line numbers found in hunk (all lines may be additions)."
+msgstr "在块中未找到旧行号（所有行可能都是新增的）。"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:246
+#: src/git_stage_batch/commands/suggest_fixup.py:449
+#, python-brace-format
+msgid "Invalid boundary ref: {boundary}"
+msgstr "无效的边界引用：{boundary}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:255
+#: src/git_stage_batch/commands/suggest_fixup.py:458
+#, python-brace-format
+msgid "Failed to get commit range {boundary}..HEAD"
+msgstr "获取提交范围 {boundary}..HEAD 失败"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:258
+#: src/git_stage_batch/commands/suggest_fixup.py:461
+#, python-brace-format
+msgid "No commits found in range {boundary}..HEAD"
+msgstr "在范围 {boundary}..HEAD 中未找到提交"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:299
+#: src/git_stage_batch/commands/suggest_fixup.py:359
+#: src/git_stage_batch/commands/suggest_fixup.py:502
+#: src/git_stage_batch/commands/suggest_fixup.py:562
+#, python-brace-format
+msgid "Candidate {iteration}: {info}"
+msgstr "候选项 {iteration}：{info}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:301
+#: src/git_stage_batch/commands/suggest_fixup.py:361
+#: src/git_stage_batch/commands/suggest_fixup.py:504
+#: src/git_stage_batch/commands/suggest_fixup.py:564
+#, python-brace-format
+msgid "Run: git commit --fixup={commit}"
+msgstr "运行：git commit --fixup={commit}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:325
+#: src/git_stage_batch/commands/suggest_fixup.py:528
+msgid "No more candidates found."
+msgstr "未找到更多候选项。"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:439
+msgid ""
+"No old line numbers found for specified lines (they may be newly added "
+"lines)."
+msgstr "未找到指定行的旧行号（它们可能是新添加的行）。"
+
+#: src/git_stage_batch/commands/unblock_file.py:20
+msgid "File path required for unblock-file command."
+msgstr "unblock-file 命令需要文件路径。"
+
+#: src/git_stage_batch/core/diff_parser.py:262
+msgid "Failed to parse hunk header."
+msgstr "解析块头失败。"
+
+#: src/git_stage_batch/data/hunk_tracking.py:286
+#: src/git_stage_batch/data/line_state.py:67
+msgid "No selected hunk. Run 'start' first."
+msgstr "没有当前块。请先运行 'start'。"
+
+#: src/git_stage_batch/data/hunk_tracking.py:293
+msgid ""
+"Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
+msgstr "缓存的块已过时（文件已更改）。请运行 'start' 或 'again' 以继续。"
+
+#: src/git_stage_batch/data/hunk_tracking.py:339
+msgid "No pending hunks."
+msgstr "没有待处理的块。"
+
+#: src/git_stage_batch/data/session.py:46
+msgid "No session in progress. Run 'git-stage-batch start' first."
+msgstr "完整块状态不可用。运行 'show' 以缓存当前块。"
+
+#: src/git_stage_batch/tui/display.py:32
+#, python-brace-format
+msgid "{source_label}{source} {arrow} {target_label}{target}"
+msgstr "{source_label}{source} {arrow} {target_label}{target}"
+
+#: src/git_stage_batch/tui/display.py:40
+#, python-brace-format
+msgid "Source: {source} → Target: {target}"
+msgstr "源：{source} → 目标：{target}"
+
+#: src/git_stage_batch/tui/display.py:54
+#, python-brace-format
+msgid "Included: {count}"
+msgstr "已包含：{count}"
+
+#: src/git_stage_batch/tui/display.py:55
+#, python-brace-format
+msgid "Skipped: {count}"
+msgstr "已跳过：{count}"
+
+#: src/git_stage_batch/tui/display.py:56
+#, python-brace-format
+msgid "Discarded: {count}"
+msgstr "已丢弃：{count}"
+
+#: src/git_stage_batch/tui/flow.py:38
+msgid "Working tree"
+msgstr "工作树"
+
+#: src/git_stage_batch/tui/flow.py:41
+msgid "Index"
+msgstr "索引"
+
+#: src/git_stage_batch/tui/interactive.py:58
+#: src/git_stage_batch/tui/interactive.py:102
+msgid "Batch-to-batch transfers not yet supported. Target must be staging."
+msgstr "尚不支持批次到批次的传输。目标必须是暂存区。"
+
+#: src/git_stage_batch/tui/interactive.py:80
+#: src/git_stage_batch/tui/interactive.py:765
+#: src/git_stage_batch/tui/interactive.py:879
+msgid "Skip is not available when pulling from a batch."
+msgstr "从批次拉取时无法使用跳过。"
+
+#: src/git_stage_batch/tui/interactive.py:91
+msgid "This will remove the hunk from your working tree."
+msgstr "这将从您的工作树中删除块。"
+
+#: src/git_stage_batch/tui/interactive.py:139
+msgid "Suggest-fixup is not available when pulling from a batch."
+msgstr "从批次拉取时无法使用建议修复。"
+
+#: src/git_stage_batch/tui/interactive.py:164
+msgid "Command exited with status {}"
+msgstr "命令退出，状态码 {}"
+
+#: src/git_stage_batch/tui/interactive.py:167
+msgid ""
+"\n"
+"Press Enter to continue..."
+msgstr ""
+"\n"
+"按 Enter 键继续..."
+
+#: src/git_stage_batch/tui/interactive.py:171
+msgid "No command entered"
+msgstr "未输入命令"
+
+#: src/git_stage_batch/tui/interactive.py:189
+msgid "No batches found. Create one now."
+msgstr "未找到批次。现在创建一个。"
+
+#: src/git_stage_batch/tui/interactive.py:196
+msgid "Existing batches:"
+msgstr "现有批次："
+
+#: src/git_stage_batch/tui/interactive.py:202
+#: src/git_stage_batch/tui/interactive.py:207
+#, python-brace-format
+msgid "  {name} - {note}"
+msgstr "  {name} - {note}"
+
+#: src/git_stage_batch/tui/interactive.py:216
+msgid "Batch operations:"
+msgstr "批次操作："
+
+#: src/git_stage_batch/tui/interactive.py:218
+msgid "create"
+msgstr "创建"
+
+#: src/git_stage_batch/tui/interactive.py:219
+#: src/git_stage_batch/tui/interactive.py:273
+msgid "edit"
+msgstr "编辑"
+
+#: src/git_stage_batch/tui/interactive.py:220
+#: src/git_stage_batch/tui/interactive.py:289
+msgid "drop"
+msgstr "删除"
+
+#: src/git_stage_batch/tui/interactive.py:221
+#: src/git_stage_batch/tui/interactive.py:300
+msgid "apply"
+msgstr "应用"
+
+#: src/git_stage_batch/tui/interactive.py:229
+#: src/git_stage_batch/tui/interactive.py:342
+#: src/git_stage_batch/tui/interactive.py:403
+#: src/git_stage_batch/tui/interactive.py:470
+msgid "Select: "
+msgstr "选择："
+
+#: src/git_stage_batch/tui/interactive.py:247
+#: src/git_stage_batch/tui/interactive.py:776
+#: src/git_stage_batch/tui/interactive.py:843
+#: src/git_stage_batch/tui/interactive.py:973
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown action: '{action}'"
+msgstr ""
+"\n"
+"未知操作：'{action}'"
+
+#: src/git_stage_batch/tui/interactive.py:257
+#: src/git_stage_batch/tui/interactive.py:480
+msgid "Batch ID: "
+msgstr "批次 ID："
+
+#: src/git_stage_batch/tui/interactive.py:261
+#: src/git_stage_batch/tui/interactive.py:483
+msgid "Note (optional): "
+msgstr "备注（可选）："
+
+#: src/git_stage_batch/tui/interactive.py:267
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' created."
+msgstr ""
+"\n"
+"批次 '{name}' 已创建。"
+
+#: src/git_stage_batch/tui/interactive.py:278
+msgid "New note: "
+msgstr "新备注："
+
+#: src/git_stage_batch/tui/interactive.py:284
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' note updated."
+msgstr ""
+"\n"
+"批次 '{name}' 的备注已更新。"
+
+#: src/git_stage_batch/tui/interactive.py:295
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' dropped."
+msgstr ""
+"\n"
+"批次 '{name}' 已删除。"
+
+#: src/git_stage_batch/tui/interactive.py:306
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' applied to staging area."
+msgstr ""
+"\n"
+"批次 '{name}' 已应用到暂存区。"
+
+#: src/git_stage_batch/tui/interactive.py:325
+msgid "No batches found."
+msgstr "未找到批次。"
+
+#: src/git_stage_batch/tui/interactive.py:333
+#, python-brace-format
+msgid "Select batch to {purpose}:"
+msgstr "选择要{purpose}的批次："
+
+#: src/git_stage_batch/tui/interactive.py:354
+msgid ""
+"\n"
+"Invalid selection."
+msgstr ""
+"\n"
+"无效的选择。"
+
+#: src/git_stage_batch/tui/interactive.py:366
+msgid "Pull changes from:"
+msgstr "拉取更改从："
+
+#: src/git_stage_batch/tui/interactive.py:371
+#: src/git_stage_batch/tui/interactive.py:433
+msgid " (selected)"
+msgstr "（当前）"
+
+#: src/git_stage_batch/tui/interactive.py:376
+#, python-brace-format
+msgid "Working tree{marker}"
+msgstr "工作树{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:390
+#: src/git_stage_batch/tui/interactive.py:452
+#, python-brace-format
+msgid "batch: {name}{note}{marker}"
+msgstr "批次：{name}{note}{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:428
+msgid "Push changes to:"
+msgstr "推送更改到："
+
+#: src/git_stage_batch/tui/interactive.py:438
+#, python-brace-format
+msgid "Staging for commit{marker}"
+msgstr "暂存以便提交{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:465
+msgid "New Batch..."
+msgstr "新批次..."
+
+#: src/git_stage_batch/tui/interactive.py:518
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown command: '{cmd}'"
+msgstr ""
+"\n"
+"未知命令：'{cmd}'"
+
+#: src/git_stage_batch/tui/interactive.py:521
+#, python-brace-format
+msgid ""
+"\n"
+"Error executing command: {error}"
+msgstr ""
+"\n"
+"执行命令时出错：{error}"
+
+#: src/git_stage_batch/tui/interactive.py:588
+msgid "No changes to process"
+msgstr "没有要处理的更改"
+
+#: src/git_stage_batch/tui/interactive.py:721
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude? "
+msgstr "对 {filename} 中所有块的操作 - [i]包含？"
+
+#: src/git_stage_batch/tui/interactive.py:724
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude or [s]kip? "
+msgstr "对 {filename} 中所有块的操作 - [i]包含或 [s]跳过？"
+
+#: src/git_stage_batch/tui/interactive.py:731
+#, python-brace-format
+msgid "Action for all hunks in {filename} - {include} or {skip}? "
+msgstr "对 {filename} 中所有块的操作 - {include}或{skip}？"
+
+#: src/git_stage_batch/tui/interactive.py:756
+#: src/git_stage_batch/tui/interactive.py:871
+#: src/git_stage_batch/tui/interactive.py:901
+msgid "Batch-to-batch transfers not yet supported."
+msgstr "尚不支持批次到批次的传输。"
+
+#: src/git_stage_batch/tui/interactive.py:800
+msgid ""
+"\n"
+"No changed lines in this hunk."
+msgstr ""
+"\n"
+"此块中没有更改的行。"
+
+#: src/git_stage_batch/tui/interactive.py:806
+#, python-brace-format
+msgid ""
+"\n"
+"Changed line IDs: {ids}"
+msgstr ""
+"\n"
+"更改的行 ID：{ids}"
+
+#: src/git_stage_batch/tui/interactive.py:816
+msgid "Action for lines [i]nclude, [d]iscard? "
+msgstr "对行的操作 [i]包含、[d]丢弃？"
+
+#: src/git_stage_batch/tui/interactive.py:819
+msgid "Action for lines [i]nclude, [s]kip, [d]iscard? "
+msgstr "对行的操作 [i]包含、[s]跳过、[d]丢弃？"
+
+#: src/git_stage_batch/tui/interactive.py:826
+#, python-brace-format
+msgid "Action for lines {include}, {skip}, {discard}? "
+msgstr "对行的操作 {include}、{skip}、{discard}？"
+
+#: src/git_stage_batch/tui/interactive.py:848
+msgid ""
+"\n"
+"Skip is not available when pulling from a batch."
+msgstr ""
+"\n"
+"从批次拉取时无法使用跳过。"
+
+#: src/git_stage_batch/tui/interactive.py:891
+#, python-brace-format
+msgid "This will remove lines {line_ids} from your working tree."
+msgstr "这将从您的工作树中删除第 {line_ids} 行。"
+
+#: src/git_stage_batch/tui/interactive.py:908
+#, python-brace-format
+msgid ""
+"\n"
+"Error: {error}"
+msgstr ""
+"\n"
+"错误：{error}"
+
+#: src/git_stage_batch/tui/interactive.py:946
+msgid "Create fixup commit with:"
+msgstr "创建修复提交使用："
+
+#: src/git_stage_batch/tui/interactive.py:970
+msgid ""
+"\n"
+"Canceled."
+msgstr ""
+"\n"
+"已取消。"
+
+#: src/git_stage_batch/tui/interactive.py:1030
+msgid "Interactive Mode Commands:"
+msgstr "交互模式命令："
+
+#: src/git_stage_batch/tui/interactive.py:1037
+msgid "Primary actions:"
+msgstr "主要操作："
+
+#: src/git_stage_batch/tui/interactive.py:1038
+msgid "  i, include   - Stage this hunk to the index"
+msgstr "  i, include   - 将此块暂存到索引"
+
+#: src/git_stage_batch/tui/interactive.py:1039
+msgid "  s, skip      - Skip this hunk for now"
+msgstr "  s, skip      - 暂时跳过此块"
+
+#: src/git_stage_batch/tui/interactive.py:1040
+msgid "  d, discard   - Remove this hunk from working tree (DESTRUCTIVE)"
+msgstr "  d, discard   - 从工作树中删除此块（破坏性操作）"
+
+#: src/git_stage_batch/tui/interactive.py:1041
+msgid "  q, quit      - Exit interactive mode"
+msgstr "  q, quit      - 退出交互模式"
+
+#: src/git_stage_batch/tui/interactive.py:1043
+msgid "More options:"
+msgstr "更多选项："
+
+#: src/git_stage_batch/tui/interactive.py:1044
+msgid "  a, again     - Clear state and start fresh pass through skipped hunks"
+msgstr "  a, again     - 清除状态并重新开始处理已跳过的块"
+
+#: src/git_stage_batch/tui/interactive.py:1045
+msgid "  l, lines     - Select specific lines from this hunk"
+msgstr "  l, lines     - 从此块中选择特定行"
+
+#: src/git_stage_batch/tui/interactive.py:1046
+msgid "  f, file      - Include or skip all hunks in this file"
+msgstr "  f, file      - 包含或跳过此文件中的所有块"
+
+#: src/git_stage_batch/tui/interactive.py:1047
+msgid "  x, fixup     - Suggest which commit to fixup (iterative)"
+msgstr "  x, fixup     - 建议要修复的提交（迭代）"
+
+#: src/git_stage_batch/tui/interactive.py:1048
+msgid ""
+"  !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)"
+msgstr "  !<cmd>       - 运行 shell 命令（例如：!git log，或仅输入 ! 提示）"
+
+#: src/git_stage_batch/tui/interactive.py:1049
+msgid "  ?, help      - Show this help message"
+msgstr "  ?, help      - 显示此帮助信息"
+
+#: src/git_stage_batch/tui/prompts.py:129
+msgid "What do you want to do with this hunk?"
+msgstr "您想如何处理此块？"
+
+#: src/git_stage_batch/tui/prompts.py:131
+msgid "What do you want to do?"
+msgstr "您想做什么？"
+
+#: src/git_stage_batch/tui/prompts.py:151
+#: src/git_stage_batch/tui/prompts.py:158
+#, python-brace-format
+msgid "{label}: {options}"
+msgstr "{label}：{options}"
+
+#: src/git_stage_batch/tui/prompts.py:188
+msgid "Action: "
+msgstr "操作："
+
+#: src/git_stage_batch/tui/prompts.py:231
+#, python-brace-format
+msgid "⚠️  {message}"
+msgstr "⚠️  {message}"
+
+#: src/git_stage_batch/tui/prompts.py:238
+#: src/git_stage_batch/tui/prompts.py:285
+msgid "yes"
+msgstr "是"
+
+#: src/git_stage_batch/tui/prompts.py:239
+msgid "NO"
+msgstr "否"
+
+#: src/git_stage_batch/tui/prompts.py:248
+#, python-brace-format
+msgid "Are you sure? [{yes}/{no}]: "
+msgstr "您确定吗？[{yes}/{no}]："
+
+#: src/git_stage_batch/tui/prompts.py:267
+msgid "Enter line IDs (e.g., 1,3,5-7): "
+msgstr "输入行 ID（例如：1,3,5-7）："
+
+#: src/git_stage_batch/tui/prompts.py:283
+#: src/git_stage_batch/tui/prompts.py:365
+msgid "y"
+msgstr "y"
+
+#: src/git_stage_batch/tui/prompts.py:284
+#: src/git_stage_batch/tui/prompts.py:366
+msgid "n"
+msgstr "n"
+
+#: src/git_stage_batch/tui/prompts.py:286
+msgid "no"
+msgstr "否"
+
+#: src/git_stage_batch/tui/prompts.py:295
+#, python-brace-format
+msgid "Keep staged changes? [{y}]es / [{n}]o: "
+msgstr "保留已暂存的更改？[{y}]是 / [{n}]否："
+
+#: src/git_stage_batch/tui/prompts.py:367
+msgid "r"
+msgstr "r"
+
+#: src/git_stage_batch/tui/prompts.py:378
+#, python-brace-format
+msgid "[{y}]es / [{n}]ext / [{r}]eset: "
+msgstr "[{y}]是 / [{n}]下一个 / [{r}]重置："
+
+#: src/git_stage_batch/utils/git.py:113
+msgid "Not inside a git repository."
+msgstr "不在 Git 仓库中。"

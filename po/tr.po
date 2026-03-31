@@ -1,0 +1,1841 @@
+# Turkish translations for git-stage-batch package.
+# Copyright (C) 2026 THE git-stage-batch'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the git-stage-batch package.
+# Translation contributors, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: git-stage-batch\n"
+"Report-Msgid-Bugs-To: halfline@gmail.com\n"
+"POT-Creation-Date: 2026-04-16 21:43-0400\n"
+"PO-Revision-Date: 2026-03-31 12:00+0000\n"
+"Last-Translator: Translation contributors\n"
+"Language-Team: Turkish\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: src/git_stage_batch/batch/display.py:158
+#, python-brace-format
+msgid "... {count} more line ..."
+msgid_plural "... {count} more lines ..."
+msgstr[0] "... {count} more satır ..."
+msgstr[1] "... {count} more satırlar ..."
+
+#: src/git_stage_batch/batch/merge.py:146
+#, python-brace-format
+msgid "Cannot reliably place claimed line {line}: file completely rewritten"
+msgstr "Yapılamıyor reliably place sahiplenilen satır {line}: dosya completely rewritten"
+
+#: src/git_stage_batch/batch/merge.py:154
+#, python-brace-format
+msgid "Claimed line {line} is out of range (batch source has {count} lines)"
+msgstr "sahiplenilen satır {line} is out of range (toplu işlem kaynağı has {count} satırlar)"
+
+#: src/git_stage_batch/batch/merge.py:176
+#, python-brace-format
+msgid "Cannot reliably place claimed line {line}: surrounding context lost"
+msgstr "Yapılamıyor reliably place sahiplenilen satır {line}: surrounding context lost"
+
+#: src/git_stage_batch/batch/merge.py:187
+#, python-brace-format
+msgid "Deletion after line {line} is out of range"
+msgstr "Deletion after satır {line} is out of range"
+
+#: src/git_stage_batch/batch/merge.py:199
+#, python-brace-format
+msgid ""
+"Cannot determine deletion position after line {line}: anchor and neighbors "
+"missing"
+msgstr "Yapılamıyor determine deletion position after satır {line}: anchor and neighbors missing"
+
+#: src/git_stage_batch/batch/merge.py:268
+#: src/git_stage_batch/batch/merge.py:969
+msgid "Batch was created from a different version of the file"
+msgstr "Toplu işlem was created from a different version of the dosya"
+
+#: src/git_stage_batch/batch/merge.py:732
+#, python-brace-format
+msgid "Cannot satisfy claimed line {line}: removed by absence constraints"
+msgstr "Yapılamıyor satisfy sahiplenilen satır {line}: removed by absence constraints"
+
+#: src/git_stage_batch/batch/merge.py:804
+#, python-brace-format
+msgid ""
+"Cannot locate anchor boundary after source line {line}: anchor not present "
+"in realized content"
+msgstr "Yapılamıyor locate anchor boundary after kaynak satır {line}: anchor not present in realized content"
+
+#: src/git_stage_batch/batch/merge.py:813
+#, python-brace-format
+msgid ""
+"Anchor ambiguity: source line {line} appears {count} times in realized "
+"content but none are claimed"
+msgstr "Anchor ambiguity: kaynak satır {line} appears {count} times in realized content but none are claimed"
+
+#: src/git_stage_batch/batch/merge.py:819
+#, python-brace-format
+msgid "Anchor ambiguity: source line {line} claimed {count} times"
+msgstr "Anchor ambiguity: kaynak satır {line} claimed {count} times"
+
+#: src/git_stage_batch/batch/merge.py:1412
+#, python-brace-format
+msgid "Cannot discard source line {line}: no baseline restoration region found"
+msgstr "Yapılamıyor discard kaynak satır {line}: no basesatır restoration region found"
+
+#: src/git_stage_batch/batch/merge.py:1419
+#, python-brace-format
+msgid "Cannot discard source line {line}: baseline restoration is ambiguous"
+msgstr "Yapılamıyor discard kaynak satır {line}: basesatır restoration is ambiguous"
+
+#: src/git_stage_batch/batch/merge.py:1434
+#, python-brace-format
+msgid "Source line {line} offset {offset} outside region bounds"
+msgstr "kaynak satır {line} offset {offset} outside region bounds"
+
+#: src/git_stage_batch/batch/merge.py:1452
+#, python-brace-format
+msgid ""
+"Cannot discard partial ownership of by-hunk replace region (source lines "
+"{start}-{end}): batch owns {owned} of {total} lines"
+msgstr "Yapılamıyor discard partial ownership of by-hunk replace region (kaynak satırs {start}-{end}): Toplu işlem owns {owned} of {total} satırlar"
+
+#: src/git_stage_batch/batch/merge.py:1471
+#, python-brace-format
+msgid "Unknown region kind: {kind}"
+msgstr "Bilinmeyen region kind: {kind}"
+
+#: src/git_stage_batch/batch/merge.py:1675
+#, python-brace-format
+msgid ""
+"Ownership conflict: line {line} is claimed by one batch but would be deleted "
+"by another (content: {preview})"
+msgstr "Ownership conflict: satır {line} is claimed by one Toplu işlem but would be deleted by another (content: {preview})"
+
+#: src/git_stage_batch/batch/metadata_validation.py:31
+#, python-brace-format
+msgid ""
+"The git-stage-batch metadata directory is missing.\n"
+"Expected directory: {dir}\n"
+"This may indicate the batch session was not initialized properly."
+msgstr "The git-stage-Toplu işlem üst veri directory is missing.\nExpected directory: {dir}\nThis may indicate the Toplu işlem session was not initialized properly."
+
+#: src/git_stage_batch/batch/metadata_validation.py:40
+#, python-brace-format
+msgid "The git-stage-batch metadata path exists but is not a directory: {dir}"
+msgstr "The git-stage-Toplu işlem üst veri path exists but is not a directory: {dir}"
+
+#: src/git_stage_batch/batch/metadata_validation.py:68
+#, python-brace-format
+msgid ""
+"Batch metadata is missing or corrupted for '{name}'.\n"
+"The batch ref exists (refs/batches/{name}) but metadata file is missing.\n"
+"Expected metadata file: {file}\n"
+"The batch may not be recoverable automatically."
+msgstr "Toplu işlem üst veri is missing or corrupted for '{name}'.\nThe Toplu işlem ref exists (refs/Toplu işlemes/{name}) but üst veri dosyası is missing.\nExpected üst veri dosyası: {file}\nThe Toplu işlem may not be recoverable automatically."
+
+#: src/git_stage_batch/batch/metadata_validation.py:100
+#, python-brace-format
+msgid ""
+"Batch metadata for '{name}' is missing required field: 'baseline'.\n"
+"The metadata file may be corrupted."
+msgstr "Toplu işlem üst veri for '{name}' is missing required field: 'basesatır'.\nThe üst veri dosyası may be corrupted."
+
+#: src/git_stage_batch/batch/metadata_validation.py:107
+#: src/git_stage_batch/batch/metadata_validation.py:294
+#, python-brace-format
+msgid ""
+"Batch '{name}' has no baseline commit.\n"
+"The batch metadata exists but baseline is null or missing.\n"
+"This indicates corrupted or incomplete batch state."
+msgstr "Toplu işlem '{name}' has no basesatır commit.\nThe Toplu işlem üst veri exists but basesatır is null or missing.\nThis indicates corrupted or incomplete Toplu işlem state."
+
+#: src/git_stage_batch/batch/metadata_validation.py:120
+#, python-brace-format
+msgid ""
+"Batch '{name}' has invalid baseline commit: {baseline}\n"
+"The baseline commit does not exist in the repository.\n"
+"The batch metadata may be corrupted."
+msgstr "Toplu işlem '{name}' has invalid basesatır commit: {baseline}\nThe basesatır commit does not exist in the repository.\nThe Toplu işlem üst veri may be corrupted."
+
+#: src/git_stage_batch/batch/metadata_validation.py:133
+#, python-brace-format
+msgid ""
+"Batch metadata for '{name}' has invalid 'files' field (expected object).\n"
+"The metadata file may be corrupted."
+msgstr "Toplu işlem üst veri for '{name}' has invalid 'dosyas' field (expected object).\nThe üst veri dosyası may be corrupted."
+
+#: src/git_stage_batch/batch/metadata_validation.py:141
+#, python-brace-format
+msgid ""
+"Batch metadata for '{name}' has invalid file entry for '{file}'.\n"
+"The metadata file may be corrupted."
+msgstr "Toplu işlem üst veri for '{name}' has invalid dosya entry for '{file}'.\nThe üst veri dosyası may be corrupted."
+
+#: src/git_stage_batch/batch/metadata_validation.py:154
+#, python-brace-format
+msgid ""
+"Batch metadata for '{name}' is missing 'batch_source_commit' for file "
+"'{file}'.\n"
+"The metadata file may be corrupted."
+msgstr "Toplu işlem üst veri for '{name}' is missing 'Toplu işlem_kaynak_commit' for dosya '{file}'.\nThe üst veri dosyası may be corrupted."
+
+#: src/git_stage_batch/batch/metadata_validation.py:170
+#, python-brace-format
+msgid ""
+"Batch '{name}' has invalid batch_source_commit for file '{file}': {commit}\n"
+"The batch source commit does not exist in the repository.\n"
+"The batch metadata may be corrupted."
+msgstr "Toplu işlem '{name}' has invalid Toplu işlem_kaynak_commit for dosya '{file}': {commit}\nThe toplu işlem kaynak commit'i does not exist in the repository.\nThe Toplu işlem üst veri may be corrupted."
+
+#: src/git_stage_batch/batch/metadata_validation.py:228
+#, python-brace-format
+msgid ""
+"Batch metadata for '{name}' is corrupted (invalid JSON).\n"
+"Metadata file: {file}\n"
+"Error: {error}"
+msgstr "Toplu işlem üst veri for '{name}' is corrupted (invalid JSON).\nüst veri dosyası: {file}\nHata: {error}"
+
+#: src/git_stage_batch/batch/metadata_validation.py:238
+#, python-brace-format
+msgid ""
+"Failed to read batch metadata for '{name}'.\n"
+"Metadata file: {file}\n"
+"Error: {error}"
+msgstr "Başarısız read Toplu işlem üst veri for '{name}'.\nüst veri dosyası: {file}\nHata: {error}"
+
+#: src/git_stage_batch/batch/operations.py:27
+#, python-brace-format
+msgid "Batch '{name}' already exists"
+msgstr "'{name}' grubu zaten mevcut"
+
+#: src/git_stage_batch/batch/operations.py:76
+#: src/git_stage_batch/batch/operations.py:92
+#: src/git_stage_batch/commands/apply_from.py:90
+#: src/git_stage_batch/commands/discard_from.py:75
+#: src/git_stage_batch/commands/include_from.py:40
+#: src/git_stage_batch/commands/reset.py:58
+#: src/git_stage_batch/commands/show_from.py:35
+#: src/git_stage_batch/commands/sift.py:193
+#, python-brace-format
+msgid "Batch '{name}' does not exist"
+msgstr "'{name}' grubu mevcut değil"
+
+#: src/git_stage_batch/batch/ownership.py:552
+msgid "Invalid replacement unit: must have both claimed lines and deletions"
+msgstr "Invalid replacement unit: must have both sahiplenilen satırs and deletions"
+
+#: src/git_stage_batch/batch/ownership.py:557
+msgid "Invalid deletion-only unit: must have deletions but no claimed lines"
+msgstr "Invalid deletion-only unit: must have deletions but no sahiplenilen satırs"
+
+#: src/git_stage_batch/batch/ownership.py:593
+#, python-brace-format
+msgid ""
+"Cannot partially select atomic ownership unit.\n"
+"Unit kind: {kind}{reason}\n"
+"Selected: {selected_ids}"
+msgstr "Yapılamıyor partially select atomic ownership unit.\nUnit kind: {kind}{reason}\nSelected: {selected_ids}"
+
+#: src/git_stage_batch/batch/selection.py:53
+#: src/git_stage_batch/commands/discard.py:307
+#: src/git_stage_batch/commands/include.py:290
+#: src/git_stage_batch/commands/show.py:51
+msgid "No selected hunk. Run 'show' first or specify file path."
+msgstr "No selected hunk. Run 'show' first or specify dosya path."
+
+#: src/git_stage_batch/batch/selection.py:94
+#, python-brace-format
+msgid ""
+"Line-level {operation} (--line) requires single-file context.\n"
+"Use --file to specify a file, or run 'show --from {name}' first to select a "
+"file."
+msgstr "satır-level {operation} (--satır) requires single-dosya context.\nUse --dosya to specify a dosya, or run 'show --from {name}' first to select a dosya."
+
+#: src/git_stage_batch/batch/selection.py:135
+msgid ""
+"These lines form a replacement (deletion + addition) and must be selected "
+"together."
+msgstr "These satırlar form a replacement (deletion + addition) and must be selected together."
+
+#: src/git_stage_batch/batch/selection.py:137
+msgid "These lines form a deletion and must be selected together."
+msgstr "These satırlar form a deletion and must be selected together."
+
+#: src/git_stage_batch/batch/selection.py:139
+msgid "These lines must be selected together."
+msgstr "These satırlar must be selected together."
+
+#: src/git_stage_batch/batch/selection.py:142
+#, python-brace-format
+msgid ""
+"{explanation}\n"
+"Use: --line {range}"
+msgstr "{explanation}\nUse: --line {range}"
+
+#: src/git_stage_batch/batch/selection.py:148
+#, python-brace-format
+msgid "Failed to {operation} batch '{name}': {error}"
+msgstr "Başarısız {operation} Toplu işlem '{name}': {error}"
+
+#: src/git_stage_batch/batch/validation.py:13
+msgid "Batch name cannot be empty"
+msgstr "Grup adı boş olamaz"
+
+#: src/git_stage_batch/batch/validation.py:19
+#, python-brace-format
+msgid "Batch name cannot contain: {char}"
+msgstr "Grup adı şunu içeremez: {char}"
+
+#: src/git_stage_batch/batch/validation.py:23
+msgid "Batch name cannot start with '.'"
+msgstr "Grup adı '.' ile başlayamaz"
+
+#: src/git_stage_batch/cli/argument_parser.py:66
+msgid "Hunk-by-hunk and line-by-line staging for git"
+msgstr "Git için parça parça ve satır satır hazırlama"
+
+#: src/git_stage_batch/cli/argument_parser.py:79
+msgid "Run as if started in path"
+msgstr "Yolda başlatılmış gibi çalıştır"
+
+#: src/git_stage_batch/cli/argument_parser.py:85
+msgid "Start interactive mode"
+msgstr "Etkileşimli modu başlat"
+
+#: src/git_stage_batch/cli/argument_parser.py:90
+msgid "Available commands"
+msgstr "Kullanılabilir komutlar"
+
+#: src/git_stage_batch/cli/argument_parser.py:96
+msgid "Start a new batch staging session"
+msgstr "Yeni bir grup hazırlama oturumu başlat"
+
+#: src/git_stage_batch/cli/argument_parser.py:104
+msgid "Number of context lines in diff output (default: 3)"
+msgstr "Diff çıktısında bağlam satırı sayısı (varsayılan: 3)"
+
+#: src/git_stage_batch/cli/argument_parser.py:111
+msgid "Start interactive hunk-by-hunk mode"
+msgstr "Etkileşimli parça parça modunu başlat"
+
+#: src/git_stage_batch/cli/argument_parser.py:118
+msgid "Stop the selected session and clear state"
+msgstr "Geçerli oturumu durdur ve durumu temizle"
+
+#: src/git_stage_batch/cli/argument_parser.py:126
+msgid "Clear state and start a fresh pass"
+msgstr "Durumu temizle ve yeni bir geçiş başlat"
+
+#: src/git_stage_batch/cli/argument_parser.py:133
+msgid "Show the selected hunk"
+msgstr "Geçerli parçayı göster"
+
+#: src/git_stage_batch/cli/argument_parser.py:139
+msgid "Show changes from batch"
+msgstr "Gruptaki değişiklikleri göster"
+
+#: src/git_stage_batch/cli/argument_parser.py:146
+msgid "Show only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Show only specific satır kimlikleri (e.g., '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:154
+msgid ""
+"Operate on entire file (live working tree state). If PATH omitted, uses "
+"selected hunk's file. With --line, operates on line IDs from entire file."
+msgstr "Operate on entire dosya (live çalışma ağacı state). If PATH omitted, uses selected hunk's dosya. With --satır, operates on satır kimlikleri from entire dosya."
+
+#: src/git_stage_batch/cli/argument_parser.py:161
+#: src/git_stage_batch/cli/argument_parser.py:178
+msgid "Output JSON for scripting instead of human-readable text"
+msgstr "İnsan tarafından okunabilir metin yerine betikler için JSON çıktısı ver"
+
+#: src/git_stage_batch/cli/argument_parser.py:173
+msgid "Show selected session status"
+msgstr "Geçerli oturum durumunu göster"
+
+#: src/git_stage_batch/cli/argument_parser.py:186
+msgid "Stage the selected hunk"
+msgstr "Geçerli parçayı hazırla"
+
+#: src/git_stage_batch/cli/argument_parser.py:193
+msgid "Stage only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Sadece belirli satır kimliklerini hazırla (örn. '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:201
+msgid ""
+"Operate on entire file (live working tree state). If PATH omitted, uses "
+"selected hunk's file. Without --line, stages entire file. With --line, "
+"operates on line IDs from entire file."
+msgstr "Operate on entire dosya (live çalışma ağacı state). If PATH omitted, uses selected hunk's dosya. Without --satır, stages entire dosya. With --satır, operates on satır kimlikleri from entire dosya."
+
+#: src/git_stage_batch/cli/argument_parser.py:210
+msgid "Include changes from batch"
+msgstr "Gruptaki değişiklikleri dahil et"
+
+#: src/git_stage_batch/cli/argument_parser.py:216
+msgid "Include changes to batch"
+msgstr "Değişiklikleri gruba dahil et"
+
+#: src/git_stage_batch/cli/argument_parser.py:230
+msgid "Skip the selected hunk without staging"
+msgstr "Geçerli parçayı hazırlamadan atla"
+
+#: src/git_stage_batch/cli/argument_parser.py:237
+msgid "Skip only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Sadece belirli satır kimliklerini atla (örn. '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:242
+msgid "Skip all hunks from the selected file"
+msgstr "Geçerli dosyadaki tüm parçaları atla"
+
+#: src/git_stage_batch/cli/argument_parser.py:254
+msgid "Remove the selected hunk from working tree"
+msgstr "Geçerli parçayı çalışma ağacından kaldır"
+
+#: src/git_stage_batch/cli/argument_parser.py:261
+msgid "Discard only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Sadece belirli satır kimliklerini at (örn. '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:269
+msgid ""
+"Operate on entire file (live working tree state). If PATH omitted, uses "
+"selected hunk's file. Without --line, discards entire file. With --line, "
+"operates on line IDs from entire file."
+msgstr "Operate on entire dosya (live çalışma ağacı state). If PATH omitted, uses selected hunk's dosya. Without --satır, discards entire dosya. With --satır, operates on satır kimlikleri from entire dosya."
+
+#: src/git_stage_batch/cli/argument_parser.py:278
+msgid "Discard changes from batch"
+msgstr "Gruptaki değişiklikleri at"
+
+#: src/git_stage_batch/cli/argument_parser.py:284
+msgid "Discard changes to batch"
+msgstr "Değişiklikleri gruptan at"
+
+#: src/git_stage_batch/cli/argument_parser.py:297
+msgid "Restore repository to pre-session state"
+msgstr "Depoyu oturum öncesi durumuna geri yükle"
+
+#: src/git_stage_batch/cli/argument_parser.py:305
+msgid "Permanently exclude a file (adds to .gitignore)"
+msgstr "Bir dosyayı kalıcı olarak hariç tut (.gitignore'a ekler)"
+
+#: src/git_stage_batch/cli/argument_parser.py:309
+msgid "Path to the file to block"
+msgstr "Engellenecek dosyanın yolu"
+
+#: src/git_stage_batch/cli/argument_parser.py:317
+msgid "Remove a file from the blocked list"
+msgstr "Bir dosyayı engelleme listesinden çıkar"
+
+#: src/git_stage_batch/cli/argument_parser.py:321
+msgid "Path to the file to unblock"
+msgstr "Engeli kaldırılacak dosyanın yolu"
+
+#: src/git_stage_batch/cli/argument_parser.py:329
+msgid "Suggest which commit the selected hunk should be fixed up to"
+msgstr ""
+"Geçerli parçanın hangi commit'e düzeltme olarak eklenmesi gerektiğini öner"
+
+#: src/git_stage_batch/cli/argument_parser.py:336
+msgid "Analyze only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Sadece belirli satır kimliklerini analiz et (örn. '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:341
+msgid "Reset state and start search over from most recent"
+msgstr "Durumu sıfırla ve aramayı en yeniden başlat"
+
+#: src/git_stage_batch/cli/argument_parser.py:346
+msgid "Clear state and exit without showing candidates"
+msgstr "Durumu temizle ve adayları göstermeden çık"
+
+#: src/git_stage_batch/cli/argument_parser.py:351
+msgid "Re-show the last candidate without advancing"
+msgstr "Son adayı ilerlemeden tekrar göster"
+
+#: src/git_stage_batch/cli/argument_parser.py:357
+#, python-brace-format
+msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
+msgstr ""
+"Commit araması için alt sınır olarak kullanılacak git referansı (varsayılan: "
+"@{upstream})"
+
+#: src/git_stage_batch/cli/argument_parser.py:378
+msgid "Create a new batch"
+msgstr "Yeni bir grup oluştur"
+
+#: src/git_stage_batch/cli/argument_parser.py:382
+msgid "Name of the batch to create"
+msgstr "Oluşturulacak grubun adı"
+
+#: src/git_stage_batch/cli/argument_parser.py:387
+msgid "Optional description for the batch"
+msgstr "Grup için isteğe bağlı açıklama"
+
+#: src/git_stage_batch/cli/argument_parser.py:394
+msgid "List all batches"
+msgstr "Tüm grupları listele"
+
+#: src/git_stage_batch/cli/argument_parser.py:401
+msgid "Delete a batch"
+msgstr "Bir grubu sil"
+
+#: src/git_stage_batch/cli/argument_parser.py:405
+msgid "Name of the batch to delete"
+msgstr "Silinecek grubun adı"
+
+#: src/git_stage_batch/cli/argument_parser.py:412
+msgid "Add or update batch description"
+msgstr "Grup açıklamasını ekle veya güncelle"
+
+#: src/git_stage_batch/cli/argument_parser.py:416
+msgid "Name of the batch"
+msgstr "Grubun adı"
+
+#: src/git_stage_batch/cli/argument_parser.py:420
+msgid "Description text"
+msgstr "Açıklama metni"
+
+#: src/git_stage_batch/cli/argument_parser.py:427
+msgid "Apply batch changes to working tree"
+msgstr "Grup değişikliklerini çalışma ağacına uygula"
+
+#: src/git_stage_batch/cli/argument_parser.py:434
+msgid "Apply changes from batch to working tree"
+msgstr "Gruptaki değişiklikleri çalışma ağacına uygula"
+
+#: src/git_stage_batch/cli/argument_parser.py:441
+msgid "Apply only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Apply only specific satır kimlikleri (e.g., '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:449
+msgid ""
+"Operate on entire file from batch. If PATH omitted, uses first file in batch "
+"(sorted order). With --line, operates on line IDs from entire file."
+msgstr "Operate on entire dosya from Toplu işlem. If PATH omitted, uses first dosya in Toplu işlem (sorted order). With --satır, operates on satır kimlikleri from entire dosya."
+
+#: src/git_stage_batch/cli/argument_parser.py:458
+#: src/git_stage_batch/cli/argument_parser.py:465
+msgid "Remove claims from batch"
+msgstr "Toplu işten talepleri kaldır"
+
+#: src/git_stage_batch/cli/argument_parser.py:471
+msgid "Move reset claims to another batch"
+msgstr "Move reset claims to another Toplu işlem"
+
+#: src/git_stage_batch/cli/argument_parser.py:478
+msgid "Reset only specific line IDs (e.g., '1,3,5-7')"
+msgstr "Yalnızca belirli satır IDlerini sıfırla (örn., '1,3,5-7')"
+
+#: src/git_stage_batch/cli/argument_parser.py:486
+msgid ""
+"Operate on entire file from batch. If PATH omitted, uses selected hunk's "
+"file. With --line, operates on line IDs from entire file."
+msgstr "Operate on entire dosya from Toplu işlem. If PATH omitted, uses selected hunk's dosya. With --satır, operates on satır kimlikleri from entire dosya."
+
+#: src/git_stage_batch/cli/argument_parser.py:495
+msgid "Remove already-present portions from a batch"
+msgstr "Remove already-present portions from a Toplu işlem"
+
+#: src/git_stage_batch/cli/argument_parser.py:502
+msgid "Source batch to sift"
+msgstr "kaynak Toplu işlem to sift"
+
+#: src/git_stage_batch/cli/argument_parser.py:509
+msgid "Destination batch (may equal source for in-place sift)"
+msgstr "hedef Toplu işlem (may equal kaynak for in-place sift)"
+
+#: src/git_stage_batch/cli/dispatch.py:24
+#: src/git_stage_batch/commands/status.py:71
+msgid "No batch staging session in progress."
+msgstr "Devam eden grup hazırlama oturumu yok."
+
+#: src/git_stage_batch/cli/dispatch.py:25
+#: src/git_stage_batch/commands/status.py:72
+msgid "Run 'git-stage-batch start' to begin."
+msgstr "Başlamak için 'git-stage-batch start' komutunu çalıştırın."
+
+#: src/git_stage_batch/commands/abort.py:32
+msgid "No session to abort. Abort state not found."
+msgstr "İptal edilecek oturum yok. İptal durumu bulunamadı."
+
+#: src/git_stage_batch/commands/abort.py:50
+msgid "Resetting to {}..."
+msgstr "{} konumuna sıfırlanıyor..."
+
+#: src/git_stage_batch/commands/abort.py:61
+msgid "Applying original changes..."
+msgstr "Orijinal değişiklikler uygulanıyor..."
+
+#: src/git_stage_batch/commands/abort.py:69
+msgid "⚠ Warning: Could not apply stash cleanly: {}"
+msgstr "⚠ Uyarı: Stash düzgün uygulanamadı: {}"
+
+#: src/git_stage_batch/commands/abort.py:84
+msgid "Restored: {}"
+msgstr "Geri yüklendi: {}"
+
+#: src/git_stage_batch/commands/abort.py:102
+msgid "✓ Session aborted. All changes reverted."
+msgstr "✓ Oturum iptal edildi. Tüm değişiklikler geri alındı."
+
+#: src/git_stage_batch/commands/annotate.py:15
+#, python-brace-format
+msgid "✓ Updated note for batch '{name}'"
+msgstr "✓ '{name}' grubu için not güncellendi"
+
+#: src/git_stage_batch/commands/apply_from.py:64
+#, python-brace-format
+msgid "✓ Applied new binary file: {file}"
+msgstr "✓ Applied new ikili dosya: {file}"
+
+#: src/git_stage_batch/commands/apply_from.py:66
+#, python-brace-format
+msgid "✓ Replaced binary file: {file}"
+msgstr "✓ Replaced ikili dosya: {file}"
+
+#: src/git_stage_batch/commands/apply_from.py:71
+#, python-brace-format
+msgid "✓ Deleted binary file: {file}"
+msgstr "✓ Deleted ikili dosya: {file}"
+
+#: src/git_stage_batch/commands/apply_from.py:101
+#: src/git_stage_batch/commands/discard_from.py:86
+#: src/git_stage_batch/commands/include_from.py:51
+#: src/git_stage_batch/commands/show_from.py:110
+#, python-brace-format
+msgid "Batch '{name}' is empty"
+msgstr "Toplu işlem '{name}' is empty"
+
+#: src/git_stage_batch/commands/apply_from.py:115
+msgid ""
+"Cannot use --lines with binary files. Binary files must be applied as "
+"complete units."
+msgstr "Yapılamıyor use --satırlar with ikili dosyas. ikili dosyas must be applied as complete units."
+
+#: src/git_stage_batch/commands/apply_from.py:131
+#: src/git_stage_batch/commands/discard_from.py:115
+#: src/git_stage_batch/commands/include_from.py:75
+#: src/git_stage_batch/commands/show_from.py:76
+#, python-brace-format
+msgid "Line ID {id} not found or not individually mergeable"
+msgstr "satır kimliği {id} not found or not individually mergeable"
+
+#: src/git_stage_batch/commands/apply_from.py:176
+#, python-brace-format
+msgid "Failed to apply batch '{name}': {error}"
+msgstr "Başarısız apply Toplu işlem '{name}': {error}"
+
+#: src/git_stage_batch/commands/apply_from.py:203
+#, python-brace-format
+msgid "Error applying {file}: {error}"
+msgstr "Hata applying {file}: {error}"
+
+#: src/git_stage_batch/commands/apply_from.py:214
+#: src/git_stage_batch/commands/include_from.py:152
+#, python-brace-format
+msgid ""
+"Batch '{batch}' contains changes to {file} that are incompatible with the "
+"current working tree. Use 'git-stage-batch show --from {batch}' to review "
+"the batch, or use '--lines' to apply only specific changes."
+msgstr "Toplu işlem '{batch}' contains değişiklikler to {file} that are incompatible with the current çalışma ağacı. Use 'git-stage-Toplu işlem show --from {batch}' to review the Toplu işlem, or use '--satırlar' to apply only specific değişiklikler."
+
+#: src/git_stage_batch/commands/apply_from.py:221
+#: src/git_stage_batch/commands/include_from.py:159
+#, python-brace-format
+msgid ""
+"Batch '{batch}' contains changes to {file} that are incompatible with the "
+"current working tree. Use 'git-stage-batch show --from {batch}' to review "
+"the batch."
+msgstr "Toplu işlem '{batch}' contains değişiklikler to {file} that are incompatible with the current çalışma ağacı. Use 'git-stage-Toplu işlem show --from {batch}' to review the Toplu işlem."
+
+#: src/git_stage_batch/commands/apply_from.py:229
+#: src/git_stage_batch/commands/include_from.py:167
+#, python-brace-format
+msgid ""
+"Batch '{batch}' contains changes to one or more files that are incompatible "
+"with the current working tree. Failed for: {files}. Use 'git-stage-batch "
+"show --from {batch}' to review the batch, or use '--lines' to apply only "
+"specific changes."
+msgstr "Toplu işlem '{batch}' contains değişiklikler to one or more dosyas that are incompatible with the current çalışma ağacı. Failed for: {files}. Use 'git-stage-Toplu işlem show --from {batch}' to review the Toplu işlem, or use '--satırlar' to apply only specific değişiklikler."
+
+#: src/git_stage_batch/commands/apply_from.py:239
+#, python-brace-format
+msgid "✓ Applied selected lines from batch '{name}' to working tree"
+msgstr "✓ '{name}' grubundaki seçili satırlar çalışma ağacına uygulandı"
+
+#: src/git_stage_batch/commands/apply_from.py:241
+#, python-brace-format
+msgid "✓ Applied changes for {file} from batch '{name}' to working tree"
+msgstr ""
+"✓ '{name}' partisinden {file} için değişiklikler çalışma ağacına uygulandı"
+
+#: src/git_stage_batch/commands/apply_from.py:243
+#, python-brace-format
+msgid "✓ Applied changes from batch '{name}' to working tree"
+msgstr "✓ '{name}' grubundaki değişiklikler çalışma ağacına uygulandı"
+
+#: src/git_stage_batch/commands/block_file.py:20
+msgid "File path required for block-file command."
+msgstr "block-file komutu için dosya yolu gerekli."
+
+#: src/git_stage_batch/commands/block_file.py:31
+msgid "Blocked file: {}"
+msgstr "Engellenen dosya: {}"
+
+#: src/git_stage_batch/commands/discard.py:64
+#: src/git_stage_batch/commands/discard.py:198
+#: src/git_stage_batch/commands/include.py:68
+#: src/git_stage_batch/commands/show.py:113
+#: src/git_stage_batch/commands/skip.py:40
+#: src/git_stage_batch/data/hunk_tracking.py:724
+#: src/git_stage_batch/tui/interactive.py:655
+msgid "No more hunks to process."
+msgstr "İşlenecek başka parça yok."
+
+#: src/git_stage_batch/commands/discard.py:91
+#: src/git_stage_batch/commands/discard.py:98
+msgid "Failed to restore binary file: {}"
+msgstr "Başarısız restore ikili dosya: {}"
+
+#: src/git_stage_batch/commands/discard.py:111
+#, python-brace-format
+msgid "✓ Binary file {desc} discarded: {file}"
+msgstr "✓ ikili dosya {desc} discarded: {file}"
+
+#: src/git_stage_batch/commands/discard.py:148
+msgid "Failed to discard hunk: {}"
+msgstr "Parça atılamadı: {}"
+
+#: src/git_stage_batch/commands/discard.py:171
+#, python-brace-format
+msgid "✓ Hunk discarded from {file}"
+msgstr "✓ {file} dosyasından parça atıldı"
+
+#: src/git_stage_batch/commands/discard.py:237
+msgid "Failed to discard file: {}"
+msgstr "Dosya atılamadı: {}"
+
+#: src/git_stage_batch/commands/discard.py:246
+msgid "✓ File discarded: {}"
+msgstr "✓ Dosya atıldı: {}"
+
+#: src/git_stage_batch/commands/discard.py:270
+#: src/git_stage_batch/commands/discard.py:554
+#: src/git_stage_batch/commands/discard.py:650
+#, python-brace-format
+msgid "File not found in working tree: {file}"
+msgstr "Dosya çalışma ağacında bulunamadı: {file}"
+
+#: src/git_stage_batch/commands/discard.py:282
+#, python-brace-format
+msgid "✓ Discarded line(s): {lines}"
+msgstr "✓ Satır(lar) atıldı: {lines}"
+
+#: src/git_stage_batch/commands/discard.py:389
+#: src/git_stage_batch/commands/discard.py:469
+#, python-brace-format
+msgid "Discarded file '{file}' to batch '{batch}'"
+msgstr "Discarded dosya '{file}' to Toplu işlem '{batch}'"
+
+#: src/git_stage_batch/commands/discard.py:395
+#, python-brace-format
+msgid "No changes in file '{file}' to discard."
+msgstr "No değişiklikler in dosya '{file}' to discard."
+
+#: src/git_stage_batch/commands/discard.py:423
+#, python-brace-format
+msgid ""
+"Cannot discard file to batch: batch source is stale and remapping failed.\n"
+"File: {file}\n"
+"Batch: {batch}\n"
+"Error: {error}"
+msgstr "Yapılamıyor discard dosya to Toplu işlem: toplu işlem kaynağı is stale and remapping failed.\ndosya: {file}\nToplu işlem: {batch}\nHata: {error}"
+
+#: src/git_stage_batch/commands/discard.py:457
+#, python-brace-format
+msgid "Failed to discard changes from file: {err}"
+msgstr "Başarısız discard değişiklikler from dosya: {err}"
+
+#: src/git_stage_batch/commands/discard.py:486
+#: src/git_stage_batch/commands/include.py:389
+#: src/git_stage_batch/commands/show.py:61
+#, python-brace-format
+msgid "No changes in file '{file}'."
+msgstr "No değişiklikler in dosya '{file}'."
+
+#: src/git_stage_batch/commands/discard.py:501
+#: src/git_stage_batch/commands/include.py:404
+#, python-brace-format
+msgid "No lines match the specified IDs in file '{file}'."
+msgstr "No satırlar match the specified IDs in dosya '{file}'."
+
+#: src/git_stage_batch/commands/discard.py:537
+#: src/git_stage_batch/commands/discard.py:621
+#, python-brace-format
+msgid ""
+"Cannot discard lines to batch: batch source is stale and remapping failed.\n"
+"File: {file}\n"
+"Batch: {batch}\n"
+"Error: {error}"
+msgstr "Yapılamıyor discard satırlar to Toplu işlem: toplu işlem kaynağı is stale and remapping failed.\ndosya: {file}\nToplu işlem: {batch}\nHata: {error}"
+
+#: src/git_stage_batch/commands/discard.py:564
+#, python-brace-format
+msgid "Discarded line(s) from file '{file}' to batch '{batch}': {lines}"
+msgstr "Discarded satır(s) from dosya '{file}' to Toplu işlem '{batch}': {lines}"
+
+#: src/git_stage_batch/commands/discard.py:594
+#: src/git_stage_batch/commands/include.py:480
+#, python-brace-format
+msgid "No matching lines found for selection: {ids}"
+msgstr "No matching satırlar found for selection: {ids}"
+
+#: src/git_stage_batch/commands/discard.py:662
+#, python-brace-format
+msgid "✓ Discarded line(s) to batch '{name}': {lines}"
+msgstr "✓ Discarded satır(s) to Toplu işlem '{name}': {lines}"
+
+#: src/git_stage_batch/commands/discard.py:690
+#: src/git_stage_batch/commands/include.py:583
+#: src/git_stage_batch/commands/skip.py:107
+#: src/git_stage_batch/commands/start.py:53
+msgid "No changes to process."
+msgstr "İşlenecek değişiklik yok."
+
+#: src/git_stage_batch/commands/discard.py:768
+#, python-brace-format
+msgid ""
+"Cannot discard to batch: batch source is stale and remapping failed.\n"
+"File: {file}\n"
+"Batch: {batch}\n"
+"Error: {error}"
+msgstr "Yapılamıyor discard to Toplu işlem: toplu işlem kaynağı is stale and remapping failed.\ndosya: {file}\nToplu işlem: {batch}\nHata: {error}"
+
+#: src/git_stage_batch/commands/discard.py:812
+#, python-brace-format
+msgid "Failed to apply reverse patch: {error}"
+msgstr "Ters yama uygulanamadı: {error}"
+
+#: src/git_stage_batch/commands/discard.py:849
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}' and discarded"
+msgid_plural ""
+"✓ {count} hunks from {file} saved to batch '{name}' and discarded"
+msgstr[0] ""
+"✓ {file} dosyasından {count} parça '{name}' toplu işine kaydedildi ve atıldı"
+msgstr[1] ""
+"✓ {file} dosyasından {count} parça '{name}' toplu işine kaydedildi ve atıldı"
+
+#: src/git_stage_batch/commands/discard.py:855
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}' and discarded from working tree"
+msgstr "✓ Parça '{name}' grubuna kaydedildi ve çalışma ağacından atıldı"
+
+#: src/git_stage_batch/commands/discard_from.py:51
+#, python-brace-format
+msgid "✓ Restored binary file to baseline: {file}"
+msgstr "✓ Restored ikili dosya to basesatır: {file}"
+
+#: src/git_stage_batch/commands/discard_from.py:56
+#, python-brace-format
+msgid "✓ Removed binary file (not in baseline): {file}"
+msgstr "✓ Removed ikili dosya (not in basesatır): {file}"
+
+#: src/git_stage_batch/commands/discard_from.py:100
+msgid ""
+"Cannot use --lines with binary files. Binary files must be discarded as "
+"complete units."
+msgstr "Yapılamıyor use --satırlar with ikili dosyas. ikili dosyas must be discarded as complete units."
+
+#: src/git_stage_batch/commands/discard_from.py:186
+#: src/git_stage_batch/commands/discard_from.py:189
+#, python-brace-format
+msgid "Error discarding {file}: {error}"
+msgstr "Hata discarding {file}: {error}"
+
+#: src/git_stage_batch/commands/discard_from.py:194
+#, python-brace-format
+msgid "Failed to discard changes for some files: {files}"
+msgstr "Başarısız discard değişiklikler for some dosyas: {files}"
+
+#: src/git_stage_batch/commands/discard_from.py:199
+#, python-brace-format
+msgid "✓ Discarded selected lines from batch '{name}'"
+msgstr "✓ Discarded selected satırlar from Toplu işlem '{name}'"
+
+#: src/git_stage_batch/commands/discard_from.py:201
+#, python-brace-format
+msgid "✓ Discarded changes for {file} from batch '{name}'"
+msgstr "✓ Discarded değişiklikler for {file} from Toplu işlem '{name}'"
+
+#: src/git_stage_batch/commands/discard_from.py:203
+#, python-brace-format
+msgid "✓ Discarded changes from batch '{name}'"
+msgstr "✓ Discarded değişiklikler from Toplu işlem '{name}'"
+
+#: src/git_stage_batch/commands/discard_from.py:205
+#, python-brace-format
+msgid "Note: Batch '{name}' still exists (use 'drop' to delete it)"
+msgstr "Not: '{name}' grubu hala mevcut (silmek için 'drop' kullanın)"
+
+#: src/git_stage_batch/commands/drop.py:15
+#, python-brace-format
+msgid "✓ Deleted batch '{name}'"
+msgstr "✓ '{name}' grubu silindi"
+
+#: src/git_stage_batch/commands/include.py:82
+msgid "Failed to stage binary file: {}"
+msgstr "Başarısız stage ikili dosya: {}"
+
+#: src/git_stage_batch/commands/include.py:94
+#, python-brace-format
+msgid "✓ Binary file {desc}: {file}"
+msgstr "✓ ikili dosya {desc}: {file}"
+
+#: src/git_stage_batch/commands/include.py:122
+msgid "Failed to apply hunk: {}"
+msgstr "Parça uygulanamadı: {}"
+
+#: src/git_stage_batch/commands/include.py:133
+#, python-brace-format
+msgid "✓ Hunk staged from {file}"
+msgstr "✓ {file} dosyasından parça hazırlandı"
+
+#: src/git_stage_batch/commands/include.py:171
+#: src/git_stage_batch/tui/interactive.py:614
+#: src/git_stage_batch/tui/interactive.py:657
+msgid "No changes to stage."
+msgstr "Hazırlanacak değişiklik yok."
+
+#: src/git_stage_batch/commands/include.py:217
+#, python-brace-format
+msgid "Failed to apply hunk: {error}"
+msgstr "Parça uygulanamadı: {error}"
+
+#: src/git_stage_batch/commands/include.py:221
+#, python-brace-format
+msgid "No hunks staged from {file}"
+msgstr "{file} dosyasından hazırlanan parça yok"
+
+#: src/git_stage_batch/commands/include.py:226
+#, python-brace-format
+msgid "✓ Staged {count} hunk from {file}"
+msgid_plural "✓ Staged {count} hunks from {file}"
+msgstr[0] "✓ {file} dosyasından {count} parça hazırlandı"
+msgstr[1] "✓ {file} dosyasından {count} parça hazırlandı"
+
+#: src/git_stage_batch/commands/include.py:265
+#, python-brace-format
+msgid "✓ Included line(s): {lines}"
+msgstr "✓ Dahil edilen satır(lar): {lines}"
+
+#: src/git_stage_batch/commands/include.py:334
+#, python-brace-format
+msgid "No changes in file '{file}' to include."
+msgstr "No değişiklikler in dosya '{file}' to include."
+
+#: src/git_stage_batch/commands/include.py:362
+#, python-brace-format
+msgid ""
+"Cannot include file to batch: batch source is stale and remapping failed.\n"
+"File: {file}\n"
+"Batch: {batch}\n"
+"Error: {error}"
+msgstr "Yapılamıyor include dosya to Toplu işlem: toplu işlem kaynağı is stale and remapping failed.\ndosya: {file}\nToplu işlem: {batch}\nHata: {error}"
+
+#: src/git_stage_batch/commands/include.py:374
+#, python-brace-format
+msgid "Included file '{file}' to batch '{batch}'"
+msgstr "Included dosya '{file}' to Toplu işlem '{batch}'"
+
+#: src/git_stage_batch/commands/include.py:440
+#: src/git_stage_batch/commands/include.py:507
+#, python-brace-format
+msgid ""
+"Cannot include lines to batch: batch source is stale and remapping failed.\n"
+"File: {file}\n"
+"Batch: {batch}\n"
+"Error: {error}"
+msgstr "Yapılamıyor include satırlar to Toplu işlem: toplu işlem kaynağı is stale and remapping failed.\ndosya: {file}\nToplu işlem: {batch}\nHata: {error}"
+
+#: src/git_stage_batch/commands/include.py:452
+#, python-brace-format
+msgid "Included line(s) from file '{file}' to batch '{batch}': {lines}"
+msgstr "Included satır(s) from dosya '{file}' to Toplu işlem '{batch}': {lines}"
+
+#: src/git_stage_batch/commands/include.py:524
+#, python-brace-format
+msgid "✓ Included line(s) to batch '{name}': {lines}"
+msgstr "✓ '{name}' partisine satır(lar) dahil edildi: {lines}"
+
+#: src/git_stage_batch/commands/include.py:544
+#: src/git_stage_batch/data/hunk_tracking.py:828
+msgid "No more lines in this hunk."
+msgstr ""
+"Dosya için yamalar uygulanamadı: {file}\\nDeğişiklikleri gözden geçirmek "
+"için 'git-stage-batch show --from {name}' komutunu çalıştırın"
+
+#: src/git_stage_batch/commands/include.py:652
+#, python-brace-format
+msgid ""
+"Cannot include to batch: batch source is stale and remapping failed.\n"
+"File: {file}\n"
+"Batch: {batch}\n"
+"Error: {error}"
+msgstr "Yapılamıyor include to Toplu işlem: toplu işlem kaynağı is stale and remapping failed.\ndosya: {file}\nToplu işlem: {batch}\nHata: {error}"
+
+#: src/git_stage_batch/commands/include.py:673
+#, python-brace-format
+msgid "✓ {count} hunk from {file} saved to batch '{name}'"
+msgid_plural "✓ {count} hunks from {file} saved to batch '{name}'"
+msgstr[0] "✓ {file} dosyasından {count} parça '{name}' toplu işine kaydedildi"
+msgstr[1] "✓ {file} dosyasından {count} parça '{name}' toplu işine kaydedildi"
+
+#: src/git_stage_batch/commands/include.py:679
+#, python-brace-format
+msgid "✓ Hunk saved to batch '{name}'"
+msgstr "✓ Parça '{name}' grubuna kaydedildi"
+
+#: src/git_stage_batch/commands/include_from.py:115
+#, python-brace-format
+msgid "Failed to include from batch '{name}': {error}"
+msgstr "Başarısız include from Toplu işlem '{name}': {error}"
+
+#: src/git_stage_batch/commands/include_from.py:141
+#, python-brace-format
+msgid "Error staging {file}: {error}"
+msgstr "Hata staging {file}: {error}"
+
+#: src/git_stage_batch/commands/include_from.py:177
+#, python-brace-format
+msgid "✓ Staged selected lines from batch '{name}'"
+msgstr "✓ '{name}' grubundaki seçili satırlar hazırlandı"
+
+#: src/git_stage_batch/commands/include_from.py:179
+#, python-brace-format
+msgid "✓ Staged changes for {file} from batch '{name}'"
+msgstr "✓ Staged değişiklikler for {file} from Toplu işlem '{name}'"
+
+#: src/git_stage_batch/commands/include_from.py:181
+#, python-brace-format
+msgid "✓ Staged changes from batch '{name}'"
+msgstr "✓ '{name}' grubundaki değişiklikler hazırlandı"
+
+#: src/git_stage_batch/commands/list.py:18
+msgid "No batches found"
+msgstr "Grup bulunamadı"
+
+#: src/git_stage_batch/commands/new.py:15
+#, python-brace-format
+msgid "✓ Created batch '{name}'"
+msgstr "✓ '{name}' grubu oluşturuldu"
+
+#: src/git_stage_batch/commands/reset.py:63
+msgid "--to must name a different batch"
+msgstr "--to must name a different Toplu işlem"
+
+#: src/git_stage_batch/commands/reset.py:73
+#, python-brace-format
+msgid "✓ Moved line(s) {lines} from batch '{source}' to '{dest}'"
+msgstr "✓ Moved satır(s) {lines} from Toplu işlem '{source}' to '{dest}'"
+
+#: src/git_stage_batch/commands/reset.py:76
+#, python-brace-format
+msgid "✓ Moved file from batch '{source}' to '{dest}'"
+msgstr "✓ Moved dosya from Toplu işlem '{source}' to '{dest}'"
+
+#: src/git_stage_batch/commands/reset.py:79
+#, python-brace-format
+msgid "✓ Moved all claims from batch '{source}' to '{dest}'"
+msgstr "✓ Moved all claims from Toplu işlem '{source}' to '{dest}'"
+
+#: src/git_stage_batch/commands/reset.py:82
+#, python-brace-format
+msgid "✓ Reset line(s) {lines} from batch '{name}'"
+msgstr "✓ '{name}' toplu işinden {lines} satırı sıfırlandı"
+
+#: src/git_stage_batch/commands/reset.py:85
+#, python-brace-format
+msgid "✓ Reset file from batch '{name}'"
+msgstr "✓ Reset dosya from Toplu işlem '{name}'"
+
+#: src/git_stage_batch/commands/reset.py:87
+#, python-brace-format
+msgid "✓ Reset all claims from batch '{name}'"
+msgstr "✓ '{name}' toplu işinden tüm talepler sıfırlandı"
+
+#: src/git_stage_batch/commands/reset.py:98
+#, python-brace-format
+msgid ""
+"Destination batch '{dest}' has a different baseline from source batch "
+"'{source}'"
+msgstr "hedef Toplu işlem '{dest}' has a different basesatır from kaynak Toplu işlem '{source}'"
+
+#: src/git_stage_batch/commands/reset.py:105
+#, python-brace-format
+msgid "Split from {source}"
+msgstr "{source} kaynağından ayrıldı"
+
+#: src/git_stage_batch/commands/reset.py:137
+#, python-brace-format
+msgid "Destination batch already has file '{file}'"
+msgstr "hedef Toplu işlem already has dosya '{file}'"
+
+#: src/git_stage_batch/commands/reset.py:159
+#, python-brace-format
+msgid "Cannot merge text claims into binary file '{file}' in destination batch"
+msgstr "Yapılamıyor merge text claims into ikili dosya '{file}' in hedef Toplu işlem"
+
+#: src/git_stage_batch/commands/reset.py:162
+#, python-brace-format
+msgid ""
+"Destination batch already has file '{file}' with a different batch source"
+msgstr "hedef Toplu işlem already has dosya '{file}' with a different toplu işlem kaynağı"
+
+#: src/git_stage_batch/commands/reset.py:236
+#: src/git_stage_batch/commands/reset.py:284
+msgid ""
+"Cannot use --lines with binary files. Binary files must be reset as complete "
+"units."
+msgstr "Yapılamıyor use --satırlar with ikili dosyas. ikili dosyas must be reset as complete units."
+
+#: src/git_stage_batch/commands/reset.py:248
+#: src/git_stage_batch/commands/reset.py:294
+#, python-brace-format
+msgid "Failed to read batch source content for {file}"
+msgstr "Başarısız read toplu işlem kaynağı content for {file}"
+
+#: src/git_stage_batch/commands/show_from.py:65
+#, python-brace-format
+msgid "No changes for file '{file}' in batch '{name}'."
+msgstr "No değişiklikler for dosya '{file}' in Toplu işlem '{name}'."
+
+#: src/git_stage_batch/commands/sift.py:158
+#, python-brace-format
+msgid "Batch '{name}' has no baseline commit"
+msgstr "Toplu işlem '{name}' has no basesatır commit"
+
+#: src/git_stage_batch/commands/sift.py:212
+#, python-brace-format
+msgid ""
+"Destination batch '{name}' already exists. Drop it first or use --to "
+"{source} for in-place sift."
+msgstr "hedef Toplu işlem '{name}' already exists. Drop it first or use --to {source} for in-place sift."
+
+#: src/git_stage_batch/commands/sift.py:283
+#, python-brace-format
+msgid "Could not sift batch '{source}': {error}"
+msgstr "Could not sift Toplu işlem '{source}': {error}"
+
+#: src/git_stage_batch/commands/sift.py:293
+#, python-brace-format
+msgid ""
+"✓ Sifted batch '{name}' in-place: all content already present at tip (batch "
+"now empty)"
+msgstr "✓ Sifted Toplu işlem '{name}' in-place: all content already present at tip (Toplu işlem now empty)"
+
+#: src/git_stage_batch/commands/sift.py:300
+#, python-brace-format
+msgid ""
+"✓ Sifted batch '{source}' to '{dest}': all content already present at tip "
+"(destination empty)"
+msgstr "✓ Sifted Toplu işlem '{source}' to '{dest}': all content already present at tip (hedef empty)"
+
+#: src/git_stage_batch/commands/sift.py:311
+#, python-brace-format
+msgid ""
+"✓ Sifted batch '{name}' in-place: {retained} of {total} files still need "
+"changes"
+msgstr "✓ Sifted Toplu işlem '{name}' in-place: {retained} of {total} dosyas still need değişiklikler"
+
+#: src/git_stage_batch/commands/sift.py:322
+#, python-brace-format
+msgid ""
+"✓ Sifted batch '{source}' to '{dest}': {retained} of {total} files still "
+"need changes"
+msgstr "✓ Sifted Toplu işlem '{source}' to '{dest}': {retained} of {total} dosyas still need değişiklikler"
+
+#: src/git_stage_batch/commands/sift.py:406
+#, python-brace-format
+msgid "Batch '{name}' is already empty"
+msgstr "Toplu işlem '{name}' is already empty"
+
+#: src/git_stage_batch/commands/sift.py:414
+#, python-brace-format
+msgid "✓ Sifted batch '{source}' to '{dest}': source was empty"
+msgstr "✓ Sifted Toplu işlem '{source}' to '{dest}': kaynak was empty"
+
+#: src/git_stage_batch/commands/skip.py:59
+#, python-brace-format
+msgid "✓ Binary file {desc} skipped: {file}"
+msgstr "✓ ikili dosya {desc} skipped: {file}"
+
+#: src/git_stage_batch/commands/skip.py:78
+#, python-brace-format
+msgid "✓ Hunk skipped from {file}"
+msgstr "✓ {file} dosyasından parça atlandı"
+
+#: src/git_stage_batch/commands/skip.py:129
+#, python-brace-format
+msgid "✓ Skipped {count} hunk from {file}"
+msgid_plural "✓ Skipped {count} hunks from {file}"
+msgstr[0] "✓ {file} dosyasından {count} parça atlandı"
+msgstr[1] "✓ {file} dosyasından {count} parça atlandı"
+
+#: src/git_stage_batch/commands/skip.py:156
+#, python-brace-format
+msgid "✓ Skipped line(s): {lines}"
+msgstr "✓ Atlanan satır(lar): {lines}"
+
+#: src/git_stage_batch/commands/status.py:138
+msgid "in progress"
+msgstr "devam ediyor"
+
+#: src/git_stage_batch/commands/status.py:138
+msgid "complete"
+msgstr "tamamlandı"
+
+#: src/git_stage_batch/commands/status.py:139
+msgid "Session: iteration {} ({})"
+msgstr "Oturum: yineleme {} ({})"
+
+#: src/git_stage_batch/commands/status.py:144
+msgid "Current hunk:"
+msgstr "Geçerli parça:"
+
+#: src/git_stage_batch/commands/status.py:145
+msgid "  {}:{}"
+msgstr "  {}:{}"
+
+#: src/git_stage_batch/commands/status.py:146
+msgid "  [#{}]"
+msgstr "  [#{}]"
+
+#: src/git_stage_batch/commands/status.py:149
+msgid "Progress this iteration:"
+msgstr "Bu yinelemede ilerleme:"
+
+#: src/git_stage_batch/commands/status.py:150
+msgid "  Included:  {} hunks"
+msgstr "  Dahil edilen:  {} parça"
+
+#: src/git_stage_batch/commands/status.py:151
+msgid "  Skipped:   {} hunks"
+msgstr "  Atlanan:   {} parça"
+
+#: src/git_stage_batch/commands/status.py:152
+msgid "  Discarded: {} hunks"
+msgstr "  Atılan: {} parça"
+
+#: src/git_stage_batch/commands/status.py:153
+msgid "  Remaining: ~{} hunks"
+msgstr "  Kalan: ~{} parça"
+
+#: src/git_stage_batch/commands/status.py:157
+msgid "Skipped hunks:"
+msgstr "Atlanan parçalar:"
+
+#: src/git_stage_batch/commands/status.py:160
+msgid "  {}:{} [#{}]"
+msgstr "  {}:{} [#{}]"
+
+#: src/git_stage_batch/commands/stop.py:28
+msgid "✓ State cleared."
+msgstr "✓ Durum temizlendi."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:192
+#: src/git_stage_batch/commands/suggest_fixup.py:399
+msgid "Suggest-fixup iteration cleared."
+msgstr "Suggest-fixup yinelemesi temizlendi."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:222
+msgid "Full hunk state not available. Run 'show' to select a hunk."
+msgstr "Tam parça durumu kullanılamıyor. Bir parça seçmek için 'show' çalıştırın."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:236
+msgid "No old line numbers found in hunk (all lines may be additions)."
+msgstr ""
+"Parçada eski satır numarası bulunamadı (tüm satırlar yeni eklemeler "
+"olabilir)."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:246
+#: src/git_stage_batch/commands/suggest_fixup.py:449
+#, python-brace-format
+msgid "Invalid boundary ref: {boundary}"
+msgstr "Geçersiz sınır referansı: {boundary}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:255
+#: src/git_stage_batch/commands/suggest_fixup.py:458
+#, python-brace-format
+msgid "Failed to get commit range {boundary}..HEAD"
+msgstr "{boundary}..HEAD commit aralığı alınamadı"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:258
+#: src/git_stage_batch/commands/suggest_fixup.py:461
+#, python-brace-format
+msgid "No commits found in range {boundary}..HEAD"
+msgstr "{boundary}..HEAD aralığında commit bulunamadı"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:299
+#: src/git_stage_batch/commands/suggest_fixup.py:359
+#: src/git_stage_batch/commands/suggest_fixup.py:502
+#: src/git_stage_batch/commands/suggest_fixup.py:562
+#, python-brace-format
+msgid "Candidate {iteration}: {info}"
+msgstr "Aday {iteration}: {info}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:301
+#: src/git_stage_batch/commands/suggest_fixup.py:361
+#: src/git_stage_batch/commands/suggest_fixup.py:504
+#: src/git_stage_batch/commands/suggest_fixup.py:564
+#, python-brace-format
+msgid "Run: git commit --fixup={commit}"
+msgstr "Çalıştır: git commit --fixup={commit}"
+
+#: src/git_stage_batch/commands/suggest_fixup.py:325
+#: src/git_stage_batch/commands/suggest_fixup.py:528
+msgid "No more candidates found."
+msgstr "Başka aday bulunamadı."
+
+#: src/git_stage_batch/commands/suggest_fixup.py:439
+msgid ""
+"No old line numbers found for specified lines (they may be newly added "
+"lines)."
+msgstr ""
+"Belirtilen satırlar için eski satır numarası bulunamadı (yeni eklenen "
+"satırlar olabilirler)."
+
+#: src/git_stage_batch/commands/unblock_file.py:20
+msgid "File path required for unblock-file command."
+msgstr "unblock-file komutu için dosya yolu gerekli."
+
+#: src/git_stage_batch/core/diff_parser.py:376
+msgid "Failed to parse hunk header."
+msgstr "Parça başlığı ayrıştırılamadı."
+
+#: src/git_stage_batch/data/batch_sources.py:52
+#, python-brace-format
+msgid "Snapshot for untracked file not found: {file}"
+msgstr "Snapshot for untracked dosya not found: {file}"
+
+#: src/git_stage_batch/data/batch_sources.py:70
+msgid "No session found"
+msgstr "Oturum bulunamadı"
+
+#: src/git_stage_batch/data/hunk_tracking.py:775
+#: src/git_stage_batch/data/line_state.py:70
+msgid "No selected hunk. Run 'start' first."
+msgstr "Geçerli parça yok. Önce 'start' komutunu çalıştırın."
+
+#: src/git_stage_batch/data/hunk_tracking.py:782
+msgid ""
+"Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
+msgstr ""
+"Önbelleğe alınan parça eskimiş (dosya değiştirilmiş). Devam etmek için "
+"'start' veya 'again' komutunu çalıştırın."
+
+#: src/git_stage_batch/data/hunk_tracking.py:839
+msgid "No pending hunks."
+msgstr "Bekleyen parça yok."
+
+#: src/git_stage_batch/data/session.py:166
+msgid "No session in progress. Run 'git-stage-batch start' first."
+msgstr ""
+"Tam parça durumu mevcut değil. Mevcut parçayı önbelleğe almak için 'show' "
+"komutunu çalıştırın."
+
+#: src/git_stage_batch/tui/display.py:32
+#, python-brace-format
+msgid "{source_label}{source} {arrow} {target_label}{target}"
+msgstr "{source_label}{source} {arrow} {target_label}{target}"
+
+#: src/git_stage_batch/tui/display.py:40
+#, python-brace-format
+msgid "Source: {source} → Target: {target}"
+msgstr "Kaynak: {source} → Hedef: {target}"
+
+#: src/git_stage_batch/tui/display.py:54
+#, python-brace-format
+msgid "Included: {count}"
+msgstr "Dahil edilen: {count}"
+
+#: src/git_stage_batch/tui/display.py:55
+#, python-brace-format
+msgid "Skipped: {count}"
+msgstr "Atlanan: {count}"
+
+#: src/git_stage_batch/tui/display.py:56
+#, python-brace-format
+msgid "Discarded: {count}"
+msgstr "Atılan: {count}"
+
+#: src/git_stage_batch/tui/flow.py:38
+msgid "Working tree"
+msgstr "Çalışma ağacı"
+
+#: src/git_stage_batch/tui/flow.py:41
+msgid "Index"
+msgstr "İndeks"
+
+#: src/git_stage_batch/tui/interactive.py:61
+#: src/git_stage_batch/tui/interactive.py:105
+msgid "Batch-to-batch transfers not yet supported. Target must be staging."
+msgstr ""
+"Gruptan gruba aktarım henüz desteklenmiyor. Hedef hazırlama alanı olmalı."
+
+#: src/git_stage_batch/tui/interactive.py:83
+#: src/git_stage_batch/tui/interactive.py:772
+#: src/git_stage_batch/tui/interactive.py:904
+msgid "Skip is not available when pulling from a batch."
+msgstr "Bir gruptan çekerken atlama kullanılamaz."
+
+#: src/git_stage_batch/tui/interactive.py:94
+msgid "This will remove the hunk from your working tree."
+msgstr "Bu, parçayı çalışma ağacınızdan kaldıracak."
+
+#: src/git_stage_batch/tui/interactive.py:141
+msgid "Suggest-fixup is not available when pulling from a batch."
+msgstr "Bir gruptan çekerken suggest-fixup kullanılamaz."
+
+#: src/git_stage_batch/tui/interactive.py:166
+msgid "Command exited with status {}"
+msgstr "Komut {} durumu ile çıkış yaptı"
+
+#: src/git_stage_batch/tui/interactive.py:169
+msgid ""
+"\n"
+"Press Enter to continue..."
+msgstr ""
+"\n"
+"Devam etmek için Enter'a basın..."
+
+#: src/git_stage_batch/tui/interactive.py:173
+msgid "No command entered"
+msgstr "Komut girilmedi"
+
+#: src/git_stage_batch/tui/interactive.py:189
+msgid "No batches found. Create one now."
+msgstr "Grup bulunamadı. Şimdi bir tane oluşturun."
+
+#: src/git_stage_batch/tui/interactive.py:196
+msgid "Existing batches:"
+msgstr "Mevcut gruplar:"
+
+#: src/git_stage_batch/tui/interactive.py:202
+#: src/git_stage_batch/tui/interactive.py:207
+#, python-brace-format
+msgid "  {name} - {note}"
+msgstr "  {name} - {note}"
+
+#: src/git_stage_batch/tui/interactive.py:216
+msgid "Batch operations:"
+msgstr "Grup işlemleri:"
+
+#: src/git_stage_batch/tui/interactive.py:218
+msgid "create"
+msgstr "oluştur"
+
+#: src/git_stage_batch/tui/interactive.py:219
+#: src/git_stage_batch/tui/interactive.py:273
+msgid "edit"
+msgstr "düzenle"
+
+#: src/git_stage_batch/tui/interactive.py:220
+#: src/git_stage_batch/tui/interactive.py:289
+msgid "drop"
+msgstr "sil"
+
+#: src/git_stage_batch/tui/interactive.py:221
+#: src/git_stage_batch/tui/interactive.py:300
+msgid "apply"
+msgstr "uygula"
+
+#: src/git_stage_batch/tui/interactive.py:229
+#: src/git_stage_batch/tui/interactive.py:341
+#: src/git_stage_batch/tui/interactive.py:401
+#: src/git_stage_batch/tui/interactive.py:467
+msgid "Select: "
+msgstr "Seç: "
+
+#: src/git_stage_batch/tui/interactive.py:247
+#: src/git_stage_batch/tui/interactive.py:803
+#: src/git_stage_batch/tui/interactive.py:868
+#: src/git_stage_batch/tui/interactive.py:997
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown action: '{action}'"
+msgstr ""
+"\n"
+"Bilinmeyen eylem: '{action}'"
+
+#: src/git_stage_batch/tui/interactive.py:257
+#: src/git_stage_batch/tui/interactive.py:477
+msgid "Batch ID: "
+msgstr "Grup kimliği: "
+
+#: src/git_stage_batch/tui/interactive.py:261
+#: src/git_stage_batch/tui/interactive.py:480
+msgid "Note (optional): "
+msgstr "Not (isteğe bağlı): "
+
+#: src/git_stage_batch/tui/interactive.py:267
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' created."
+msgstr ""
+"\n"
+"'{name}' grubu oluşturuldu."
+
+#: src/git_stage_batch/tui/interactive.py:278
+msgid "New note: "
+msgstr "Yeni not: "
+
+#: src/git_stage_batch/tui/interactive.py:284
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' note updated."
+msgstr ""
+"\n"
+"'{name}' grubu notu güncellendi."
+
+#: src/git_stage_batch/tui/interactive.py:295
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' dropped."
+msgstr ""
+"\n"
+"'{name}' grubu silindi."
+
+#: src/git_stage_batch/tui/interactive.py:306
+#, python-brace-format
+msgid ""
+"\n"
+"Batch '{name}' applied to staging area."
+msgstr ""
+"\n"
+"'{name}' grubu hazırlama alanına uygulandı."
+
+#: src/git_stage_batch/tui/interactive.py:324
+msgid "No batches found."
+msgstr "Grup bulunamadı."
+
+#: src/git_stage_batch/tui/interactive.py:332
+#, python-brace-format
+msgid "Select batch to {purpose}:"
+msgstr "{purpose} için grup seçin:"
+
+#: src/git_stage_batch/tui/interactive.py:353
+msgid ""
+"\n"
+"Invalid selection."
+msgstr ""
+"\n"
+"Geçersiz seçim."
+
+#: src/git_stage_batch/tui/interactive.py:364
+msgid "Pull changes from:"
+msgstr "Değişiklikleri şuradan çek:"
+
+#: src/git_stage_batch/tui/interactive.py:369
+#: src/git_stage_batch/tui/interactive.py:430
+msgid " (selected)"
+msgstr " (geçerli)"
+
+#: src/git_stage_batch/tui/interactive.py:374
+#, python-brace-format
+msgid "Working tree{marker}"
+msgstr "Çalışma ağacı{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:388
+#: src/git_stage_batch/tui/interactive.py:449
+#, python-brace-format
+msgid "batch: {name}{note}{marker}"
+msgstr "grup: {name}{note}{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:425
+msgid "Push changes to:"
+msgstr "Değişiklikleri şuraya gönder:"
+
+#: src/git_stage_batch/tui/interactive.py:435
+#, python-brace-format
+msgid "Staging for commit{marker}"
+msgstr "Commit için hazırlama{marker}"
+
+#: src/git_stage_batch/tui/interactive.py:462
+msgid "New Batch..."
+msgstr "Yeni Grup..."
+
+#: src/git_stage_batch/tui/interactive.py:515
+#, python-brace-format
+msgid ""
+"\n"
+"Unknown command: '{cmd}'"
+msgstr ""
+"\n"
+"Bilinmeyen komut: '{cmd}'"
+
+#: src/git_stage_batch/tui/interactive.py:518
+#, python-brace-format
+msgid ""
+"\n"
+"Error executing command: {error}"
+msgstr ""
+"\n"
+"Komut çalıştırılırken hata: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:585
+msgid "No changes to process"
+msgstr "İşlenecek değişiklik yok"
+
+#: src/git_stage_batch/tui/interactive.py:721
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude, [d]iscard? "
+msgstr "{filename} içindeki tüm parçalar için eylem - [i]nclude, [d]iscard? "
+
+#: src/git_stage_batch/tui/interactive.py:724
+#, python-brace-format
+msgid "Action for all hunks in {filename} - [i]nclude, [s]kip, [d]iscard? "
+msgstr "{filename} içindeki tüm parçalar için eylem - [i]nclude, [s]kip, [d]iscard? "
+
+#: src/git_stage_batch/tui/interactive.py:731
+#, python-brace-format
+msgid "Action for all hunks in {filename} - {include}, {skip}, {discard}? "
+msgstr "{filename} içindeki tüm parçalar için eylem - {include}, {skip}, {discard}? "
+
+#: src/git_stage_batch/tui/interactive.py:738
+#, python-brace-format
+msgid "Action for all hunks in {filename} - {include}, {discard}? "
+msgstr "{filename} içindeki tüm parçalar için eylem - {include}, {discard}? "
+
+#: src/git_stage_batch/tui/interactive.py:763
+#: src/git_stage_batch/tui/interactive.py:795
+#: src/git_stage_batch/tui/interactive.py:896
+#: src/git_stage_batch/tui/interactive.py:926
+msgid "Batch-to-batch transfers not yet supported."
+msgstr "Gruptan gruba aktarım henüz desteklenmiyor."
+
+#: src/git_stage_batch/tui/interactive.py:785
+#, python-brace-format
+msgid "This will remove all hunks from {filename} in your working tree."
+msgstr "Bu, çalışma ağacınızdaki {filename} içindeki tüm parçaları kaldırır."
+
+#: src/git_stage_batch/tui/interactive.py:827
+msgid ""
+"\n"
+"No changed lines in this hunk."
+msgstr ""
+"\n"
+"Bu parçada değiştirilen satır yok."
+
+#: src/git_stage_batch/tui/interactive.py:832
+#, python-brace-format
+msgid ""
+"\n"
+"Changed line IDs: {ids}"
+msgstr ""
+"\n"
+"Değiştirilen satır kimlikleri: {ids}"
+
+#: src/git_stage_batch/tui/interactive.py:842
+msgid "Action for lines [i]nclude, [d]iscard? "
+msgstr "Satırlar için eylem [d]ahil et, [a]t? "
+
+#: src/git_stage_batch/tui/interactive.py:845
+msgid "Action for lines [i]nclude, [s]kip, [d]iscard? "
+msgstr "Satırlar için eylem [d]ahil et, [a]tla, [v]azgeç? "
+
+#: src/git_stage_batch/tui/interactive.py:851
+#, python-brace-format
+msgid "Action for lines {include}, {skip}, {discard}? "
+msgstr "Satırlar için eylem {include}, {skip}, {discard}? "
+
+#: src/git_stage_batch/tui/interactive.py:873
+msgid ""
+"\n"
+"Skip is not available when pulling from a batch."
+msgstr ""
+"\n"
+"Bir gruptan çekerken atlama kullanılamaz."
+
+#: src/git_stage_batch/tui/interactive.py:916
+#, python-brace-format
+msgid "This will remove lines {line_ids} from your working tree."
+msgstr "Bu, {line_ids} satırlarını çalışma ağacınızdan kaldıracak."
+
+#: src/git_stage_batch/tui/interactive.py:933
+#, python-brace-format
+msgid ""
+"\n"
+"Error: {error}"
+msgstr ""
+"\n"
+"Hata: {error}"
+
+#: src/git_stage_batch/tui/interactive.py:970
+msgid "Create fixup commit with:"
+msgstr "Düzeltme commit'i şununla oluştur:"
+
+#: src/git_stage_batch/tui/interactive.py:994
+msgid ""
+"\n"
+"Canceled."
+msgstr ""
+"\n"
+"İptal edildi."
+
+#: src/git_stage_batch/tui/interactive.py:1054
+msgid "Interactive Mode Commands:"
+msgstr "Etkileşimli Mod Komutları:"
+
+#: src/git_stage_batch/tui/interactive.py:1061
+msgid "Primary actions:"
+msgstr "Birincil eylemler:"
+
+#: src/git_stage_batch/tui/interactive.py:1062
+msgid "  i, include   - Stage this hunk to the index"
+msgstr "  i, include   - Bu parçayı indekse hazırla"
+
+#: src/git_stage_batch/tui/interactive.py:1063
+msgid "  s, skip      - Skip this hunk for now"
+msgstr "  s, skip      - Şimdilik bu parçayı atla"
+
+#: src/git_stage_batch/tui/interactive.py:1064
+msgid "  d, discard   - Remove this hunk from working tree (DESTRUCTIVE)"
+msgstr "  d, discard   - Bu parçayı çalışma ağacından kaldır (YIKICI)"
+
+#: src/git_stage_batch/tui/interactive.py:1065
+msgid "  q, quit      - Exit interactive mode"
+msgstr "  q, quit      - Etkileşimli moddan çık"
+
+#: src/git_stage_batch/tui/interactive.py:1067
+msgid "More options:"
+msgstr "Daha fazla seçenek:"
+
+#: src/git_stage_batch/tui/interactive.py:1068
+msgid "  a, again     - Clear state and start fresh pass through skipped hunks"
+msgstr ""
+"  a, again     - Durumu temizle ve atlanan parçalarda yeni geçiş başlat"
+
+#: src/git_stage_batch/tui/interactive.py:1069
+msgid "  l, lines     - Select specific lines from this hunk"
+msgstr "  l, lines     - Bu parçadan belirli satırları seç"
+
+#: src/git_stage_batch/tui/interactive.py:1070
+msgid "  f, file      - Include or skip all hunks in this file"
+msgstr "  f, file      - Bu dosyadaki tüm parçaları dahil et veya atla"
+
+#: src/git_stage_batch/tui/interactive.py:1071
+msgid "  x, fixup     - Suggest which commit to fixup (iterative)"
+msgstr ""
+"  x, fixup     - Hangi commit'e düzeltme yapılacağını öner (yinelemeli)"
+
+#: src/git_stage_batch/tui/interactive.py:1072
+msgid ""
+"  !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)"
+msgstr ""
+"  !<cmd>       - Kabuk komutu çalıştır (örn. !git log, veya sadece ! ile "
+"sorgu)"
+
+#: src/git_stage_batch/tui/interactive.py:1073
+msgid "  ?, help      - Show this help message"
+msgstr "  ?, help      - Bu yardım mesajını göster"
+
+#: src/git_stage_batch/tui/prompts.py:129
+msgid "What do you want to do with this hunk?"
+msgstr "Bu parça ile ne yapmak istiyorsunuz?"
+
+#: src/git_stage_batch/tui/prompts.py:131
+msgid "What do you want to do?"
+msgstr "Ne yapmak istiyorsunuz?"
+
+#: src/git_stage_batch/tui/prompts.py:151
+#: src/git_stage_batch/tui/prompts.py:158
+#, python-brace-format
+msgid "{label}: {options}"
+msgstr "{label}: {options}"
+
+#: src/git_stage_batch/tui/prompts.py:165
+msgctxt "menu section label"
+msgid "Other scope"
+msgstr "Diğer kapsam"
+
+#: src/git_stage_batch/tui/prompts.py:166
+msgctxt "menu section label"
+msgid "Flow"
+msgstr "Akış"
+
+#: src/git_stage_batch/tui/prompts.py:167
+msgctxt "menu section label"
+msgid "More"
+msgstr "Daha fazla"
+
+#: src/git_stage_batch/tui/prompts.py:180
+msgctxt "menu section separator"
+msgid " | "
+msgstr " | "
+
+#: src/git_stage_batch/tui/prompts.py:188
+msgid "Action: "
+msgstr "Eylem: "
+
+#: src/git_stage_batch/tui/prompts.py:231
+#, python-brace-format
+msgid "⚠️  {message}"
+msgstr "⚠️  {message}"
+
+#: src/git_stage_batch/tui/prompts.py:238
+#: src/git_stage_batch/tui/prompts.py:285
+msgid "yes"
+msgstr "evet"
+
+#: src/git_stage_batch/tui/prompts.py:239
+msgid "NO"
+msgstr "HAYIR"
+
+#: src/git_stage_batch/tui/prompts.py:248
+#, python-brace-format
+msgid "Are you sure? [{yes}/{no}]: "
+msgstr "Emin misiniz? [{yes}/{no}]: "
+
+#: src/git_stage_batch/tui/prompts.py:267
+msgid "Enter line IDs (e.g., 1,3,5-7): "
+msgstr "Satır kimliklerini girin (örn. 1,3,5-7): "
+
+#: src/git_stage_batch/tui/prompts.py:283
+#: src/git_stage_batch/tui/prompts.py:365
+msgid "y"
+msgstr "e"
+
+#: src/git_stage_batch/tui/prompts.py:284
+#: src/git_stage_batch/tui/prompts.py:366
+msgid "n"
+msgstr "h"
+
+#: src/git_stage_batch/tui/prompts.py:286
+msgid "no"
+msgstr "hayır"
+
+#: src/git_stage_batch/tui/prompts.py:295
+#, python-brace-format
+msgid "Keep staged changes? [{y}]es / [{n}]o: "
+msgstr "Hazırlanan değişiklikler korunsun mu? [{y}]vet / [{n}]ayır: "
+
+#: src/git_stage_batch/tui/prompts.py:367
+msgid "r"
+msgstr "s"
+
+#: src/git_stage_batch/tui/prompts.py:378
+#, python-brace-format
+msgid "[{y}]es / [{n}]ext / [{r}]eset: "
+msgstr "[{y}]vet / [{n}]onraki / [{r}]ıfırla: "
+
+#: src/git_stage_batch/utils/git.py:227
+msgid "Not inside a git repository."
+msgstr "Bir git deposu içinde değil."

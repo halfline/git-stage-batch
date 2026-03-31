@@ -18,11 +18,12 @@ Hunk-by-hunk and line-by-line staging for git, designed for building clean commi
 
 During development we experiment, refactor, backtrack, and fix mistakes. If every step ends up as a commit, the history becomes noise. A curated history turns that process into a clear sequence of logical changes.
 
-`git-stage-batch` helps you build that history incrementally by letting you stage changes hunk-by-hunk, shaping commits around meaning instead of the order the edits happened.
+`git-stage-batch` helps you build that history incrementally by letting you stage changes hunk-by-hunk or line-by-line, shaping commits around meaning instead of the order the edits happened.
 
 ## Features
 
 - **Command-based workflow** - Perfect for automation and AI coding assistants
+- **Line-level control** - Stage specific lines within a hunk for maximum granularity
 - **State persistence** - Resume staging across multiple invocations
 - **No dependencies** - Pure Python standard library
 
@@ -40,6 +41,11 @@ git-stage-batch skip
 
 # Discard it (remove from working tree)
 git-stage-batch discard
+
+# Stage specific lines within a hunk
+git-stage-batch include --line 1,3,5-7
+git-stage-batch skip --line 2,4
+git-stage-batch discard --line 8-10
 
 # Check what's been processed
 git-stage-batch status
@@ -76,6 +82,7 @@ git-stage-batch a
 
 Similar to `git add -p` but **more granular and flexible**:
 
+- ✅ **Line-by-line staging** - Stage specific lines within a hunk
 - ✅ **Colored output** - Clear visual distinction in your terminal
 - ✅ **File operations** - Stage/skip entire files at once
 

@@ -367,6 +367,27 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_apply.set_defaults(func=lambda args: commands.command_apply_from_batch(args.from_batch))
 
+    # reset - Remove claims from batch
+    parser_reset = subparsers.add_parser(
+        "reset",
+        help=_("Remove claims from batch"),
+    )
+    parser_reset.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        required=True,
+        help=_("Remove claims from batch"),
+    )
+    parser_reset.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Reset only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_reset.set_defaults(func=lambda args: commands.command_reset_from_batch(args.from_batch, args.line_ids))
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

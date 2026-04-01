@@ -454,17 +454,17 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Remove claims from batch"),
     )
     parser_reset.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        help=_("Move reset claims to another batch"),
+    )
+    parser_reset.add_argument(
         "--line",
         "--lines",
         dest="line_ids",
         metavar="IDS",
         help=_("Reset only specific line IDs (e.g., '1,3,5-7')"),
-    )
-    parser_reset.add_argument(
-        "--to",
-        dest="to_batch",
-        metavar="BATCH",
-        help=_("Move reset claims to another batch"),
     )
     parser_reset.add_argument(
         "--file",

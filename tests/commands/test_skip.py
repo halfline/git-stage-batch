@@ -43,7 +43,7 @@ class TestCommandSkip:
         command_start()
         command_skip()
 
-        # Check that changes are NOT staged
+        # Check that changes remain unstaged.
         result = subprocess.run(
             ["git", "diff", "--cached"],
             check=True,

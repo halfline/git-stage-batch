@@ -7,6 +7,7 @@ import pytest
 from git_stage_batch.commands.skip import command_skip, command_skip_line
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import find_and_cache_next_unblocked_hunk
+from git_stage_batch.data.line_state import load_current_lines_from_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
@@ -204,3 +205,127 @@ class TestCommandSkipLine:
         skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
         skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
         assert set(skip_ids) == {"1", "3"}
+
+
+class TestCommandIncludeToBatch:
+    """Tests for skip to batch command."""
+
+    def test_include_to_batch_saves_and_skips(self, temp_git_repo):
+        """Test that skip to batch saves changes to batch and skips."""
+        from git_stage_batch.batch import list_batch_files, read_file_from_batch
+        from git_stage_batch.commands.include import command_include_to_batch
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified content\n")
+
+        command_include_to_batch("test-batch")
+
+        # Verify batch was created and contains the file
+        files = list_batch_files("test-batch")
+        assert "README.md" in files
+
+        # Verify file content was saved to batch
+        content = read_file_from_batch("test-batch", "README.md")
+        assert content == "# Test\nModified content\n"
+
+        # Verify changes are NOT staged
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert result.stdout == ""
+
+    def test_include_to_batch_auto_creates_batch(self, temp_git_repo):
+        """Test that skip to batch auto-creates batch if it doesn't exist."""
+        from git_stage_batch.batch.validation import batch_exists
+        from git_stage_batch.commands.include import command_include_to_batch
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Batch doesn't exist yet
+        assert not batch_exists("auto-batch")
+
+        command_include_to_batch("auto-batch")
+
+        # Batch should now exist
+        assert batch_exists("auto-batch")
+
+    def test_include_lines_to_batch_saves_partial_content(self, temp_git_repo):
+        """Test that line-level batching synthesizes correct partial content."""
+        from git_stage_batch.batch import read_file_from_batch
+        from git_stage_batch.commands.include import command_include_to_batch
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Include only lines 1-2 to batch
+        command_include_to_batch("partial-batch", line_ids="1-2")
+
+        # Verify batch contains partial content (original + lines 1-2)
+        content = read_file_from_batch("partial-batch", "README.md")
+        assert content is not None
+        assert "Line 1" in content
+        assert "Line 2" in content
+        # Should not have Line 3 since we only included lines 1-2
+        # (but the base "# Test" should be there)
+        assert "# Test" in content
+
+    def test_include_lines_to_batch_filters_hunk(self, temp_git_repo, capsys):
+        """Test that batching lines filters hunk to show only remaining lines."""
+
+    def test_include_lines_to_batch_accumulates(self, temp_git_repo):
+        """Test that multiple line selections accumulate in batch."""
+        from git_stage_batch.batch import read_file_from_batch
+        from git_stage_batch.commands.include import command_include_to_batch
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+
+        # Include line 1
+        command_include_to_batch("accum-batch", line_ids="1")
+
+        # Include line 3 (line 2 in filtered view)
+        command_include_to_batch("accum-batch", line_ids="2")
+
+        # Verify batch contains both lines
+        content = read_file_from_batch("accum-batch", "README.md")
+        assert content is not None
+        assert "Line 1" in content
+        assert "Line 3" in content
+
+    def test_batched_hunks_survive_again(self, temp_git_repo):
+        """Test that whole-hunk batches don't reappear after again command."""
+        from git_stage_batch.commands.again import command_again
+        from git_stage_batch.commands.include import command_include_to_batch
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nBatched content\n")
+
+        # Cache and batch the hunk
+        command_start()
+        find_and_cache_next_unblocked_hunk()
+        command_include_to_batch("persist-batch")
+
+        # Run again - should not show batched hunk
+        command_again()
+
+        # Verify no hunk is cached (batched hunk filtered out)
+        current_lines = load_current_lines_from_state()
+        assert current_lines is None

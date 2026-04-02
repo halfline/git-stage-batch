@@ -308,3 +308,38 @@ class TestBatchMetadataPaths:
 
         snapshot_file = get_batch_refs_snapshot_file_path()
         assert snapshot_file == temp_git_repo / ".git" / "git-stage-batch" / "batch-refs-snapshot.json"
+
+    def test_get_batch_claimed_hunks_file_path(self, temp_git_repo):
+        """Test getting a batch's claimed hunks file path."""
+        from git_stage_batch.utils.paths import get_batch_claimed_hunks_file_path
+
+        claimed_hunks_file = get_batch_claimed_hunks_file_path("my-batch")
+        assert claimed_hunks_file == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch" / "claimed_hunks"
+
+    def test_get_batch_claimed_line_ids_file_path(self, temp_git_repo):
+        """Test getting a batch's claimed line IDs file path."""
+        from git_stage_batch.utils.paths import get_batch_claimed_line_ids_file_path
+
+        claimed_line_ids_file = get_batch_claimed_line_ids_file_path("my-batch")
+        assert claimed_line_ids_file == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch" / "claimed_line_ids"
+
+    def test_get_processed_batch_ids_file_path(self, temp_git_repo):
+        """Test getting the processed batch IDs file path."""
+        from git_stage_batch.utils.paths import get_processed_batch_ids_file_path
+
+        batch_ids_file = get_processed_batch_ids_file_path()
+        assert batch_ids_file == temp_git_repo / ".git" / "git-stage-batch" / "processed.batch"
+
+    def test_get_batched_hunks_file_path(self, temp_git_repo):
+        """Test getting the batched hunks file path."""
+        from git_stage_batch.utils.paths import get_batched_hunks_file_path
+
+        batched_hunks_file = get_batched_hunks_file_path()
+        assert batched_hunks_file == temp_git_repo / ".git" / "git-stage-batch" / "batched-hunks"
+
+    def test_get_start_batch_refs_file_path(self, temp_git_repo):
+        """Test getting the start batch refs file path."""
+        from git_stage_batch.utils.paths import get_start_batch_refs_file_path
+
+        start_batch_refs_file = get_start_batch_refs_file_path()
+        assert start_batch_refs_file == temp_git_repo / ".git" / "git-stage-batch" / "start-batch-refs.json"

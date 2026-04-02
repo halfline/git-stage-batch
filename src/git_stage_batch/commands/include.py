@@ -183,3 +183,243 @@ def command_include_line(line_id_specification: str) -> None:
     recalculate_selected_hunk_for_file(line_changes.path)
 
     print(_("✓ Included line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+
+
+def command_include_to_batch(batch_name: str, line_ids: str | None = None, file_only: bool = False, *, quiet: bool = False) -> None:
+    """Save selected changes to batch instead of staging."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    # Line-level batch operation
+    if line_ids is not None:
+        _command_include_lines_to_batch(batch_name, line_ids, quiet=quiet)
+        return
+
+    # Whole-hunk or file-level batch operation
+    _command_include_hunk_to_batch(batch_name, file_only=file_only, quiet=quiet)
+
+
+def _command_include_lines_to_batch(batch_name: str, line_id_specification: str, *, quiet: bool = False) -> None:
+    """Save specific lines to batch (internal helper)."""
+    from ..batch import add_file_to_batch, read_file_from_batch
+    from ..batch.validation import batch_exists
+    from ..core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
+    from ..data.hunk_tracking import recalculate_selected_hunk_for_file, require_selected_hunk
+    from ..data.line_state import load_line_changes_from_state
+    from ..staging.operations import build_target_index_content_with_selected_lines
+    from ..utils.file_io import read_text_file_contents
+    from ..utils.git import run_git_command
+    from ..utils.paths import get_index_snapshot_file_path, get_processed_batch_ids_file_path
+
+    require_selected_hunk()
+
+    # Auto-create batch if it doesn't exist
+    if not batch_exists(batch_name):
+        from ..batch import create_batch
+        create_batch(batch_name, "Auto-created")
+
+    requested_ids = parse_line_selection(line_id_specification)
+    already_batched_ids = set(read_line_ids_file(get_processed_batch_ids_file_path()))
+    combined_batch_ids = already_batched_ids | set(requested_ids)
+
+    line_changes = load_line_changes_from_state()
+
+    # Get base content: what's in batch, or index if not in batch yet
+    base_text = read_file_from_batch(batch_name, line_changes.path)
+    if base_text is None:
+        # Not in batch yet, use index as base
+        base_text = read_text_file_contents(get_index_snapshot_file_path())
+
+    # Apply selected lines to create synthetic batch content
+    target_batch_content = build_target_index_content_with_selected_lines(line_changes, combined_batch_ids, base_text)
+
+    # Detect file mode
+    ls_result = run_git_command(["ls-files", "-s", "--", line_changes.path], check=False)
+    file_mode = "100644"  # default
+    if ls_result.returncode == 0 and ls_result.stdout.strip():
+        parts = ls_result.stdout.strip().split()
+        if parts:
+            file_mode = parts[0]
+
+    # Save to batch
+    add_file_to_batch(batch_name, line_changes.path, target_batch_content, file_mode)
+
+    # Update batch's claimed line IDs
+    from ..utils.paths import get_batch_claimed_line_ids_file_path
+    write_line_ids_file(get_batch_claimed_line_ids_file_path(batch_name), combined_batch_ids)
+
+    # Recompute global mask from all batch claims
+    from ..batch.mask import recompute_global_batch_mask
+    recompute_global_batch_mask()
+
+    if not quiet:
+        print(_("✓ Included line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)
+
+    # Filter hunk to show remaining lines
+    _filter_selected_hunk_excluding_batched_lines()
+
+
+def _filter_selected_hunk_excluding_batched_lines() -> None:
+    """Filter the selected hunk to exclude lines that have been batched and display it."""
+    from ..data.hunk_tracking import apply_line_level_batch_filter_to_cached_hunk, clear_selected_change_state_files
+    from ..data.line_state import load_line_changes_from_state
+    from ..output.hunk import print_line_level_changes
+
+    # Apply filtering
+    if apply_line_level_batch_filter_to_cached_hunk():
+        # All lines were batched, clear the hunk
+        clear_selected_change_state_files()
+        print(_("No more lines in this hunk."), file=sys.stderr)
+        return
+
+    # Display filtered hunk
+    line_changes = load_line_changes_from_state()
+    if line_changes is not None:
+        print_line_level_changes(line_changes)
+
+
+def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, quiet: bool = False) -> None:
+    """Save whole hunk or file to batch (internal helper)."""
+    from ..batch import add_file_to_batch, create_batch
+    from ..batch.validation import batch_exists
+    from ..core.hashing import compute_stable_hunk_hash
+    from ..core.diff_parser import build_line_changes_from_patch_text, parse_unified_diff_streaming, write_snapshots_for_selected_file_path
+    from ..data.hunk_tracking import advance_to_and_show_next_change, advance_to_next_change, record_hunk_skipped
+    from ..data.line_state import convert_line_changes_to_serializable_dict
+    from ..utils.file_io import append_lines_to_file, read_text_file_contents, write_text_file_contents
+    from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
+    from ..utils.paths import (
+        get_block_list_file_path,
+        get_context_lines,
+        get_selected_hunk_hash_file_path,
+        get_selected_hunk_patch_file_path,
+        get_line_changes_json_file_path,
+    )
+    import json
+
+    # Auto-create batch if it doesn't exist
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
+
+    # Load blocklist
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
+
+    # Stream diff to find first non-blocked hunk
+    selected_patch = None
+    selected_hash = None
+    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        patch_text = patch.to_patch_text()
+        patch_hash = compute_stable_hunk_hash(patch_text)
+        if patch_hash not in blocked_hashes:
+            selected_patch = patch
+            selected_hash = patch_hash
+            break
+
+    if selected_patch is None:
+        print(_("No changes to process."), file=sys.stderr)
+        return
+
+    # Get the file path
+    file_path = selected_patch.new_path
+    repo_root = get_git_repository_root_path()
+    full_path = repo_root / file_path
+
+    # Read selected file content
+    if full_path.exists():
+        content = full_path.read_text(encoding="utf-8", errors="surrogateescape")
+    else:
+        # File deleted - save empty content
+        content = ""
+
+    # Detect file mode
+    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+    file_mode = "100644"  # default
+    if ls_result.returncode == 0 and ls_result.stdout.strip():
+        # Format: <mode> <hash> <stage>\t<path>
+        parts = ls_result.stdout.strip().split()
+        if parts:
+            file_mode = parts[0]
+
+    # Save to batch (save file content once)
+    add_file_to_batch(batch_name, file_path, content, file_mode)
+
+    if file_only:
+        # File-level operation: process all hunks from this file
+        hunks_processed = 0
+        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+            # Only process hunks from the target file
+            if patch.new_path != file_path:
+                continue
+
+            patch_text = patch.to_patch_text()
+            patch_hash = compute_stable_hunk_hash(patch_text)
+
+            # Skip already blocked hunks
+            if patch_hash in blocked_hashes:
+                continue
+
+            # Mark this hunk as processed
+            append_lines_to_file(blocklist_path, [patch_hash])
+            blocked_hashes.add(patch_hash)
+
+            # Record hunk as claimed by this batch
+            from ..utils.paths import get_batch_claimed_hunks_file_path
+            append_lines_to_file(get_batch_claimed_hunks_file_path(batch_name), [patch_hash])
+
+            # Record hunk as skipped for progress tracking
+            line_changes = build_line_changes_from_patch_text(patch_text)
+            record_hunk_skipped(line_changes, patch_hash)
+
+            hunks_processed += 1
+
+        # Recompute global mask from all batch claims
+        from ..batch.mask import recompute_global_batch_mask
+        recompute_global_batch_mask()
+
+        if not quiet:
+            from ..i18n import ngettext
+            msg = ngettext(
+                "✓ {count} hunk from {file} saved to batch '{name}'",
+                "✓ {count} hunks from {file} saved to batch '{name}'",
+                hunks_processed
+            ).format(count=hunks_processed, file=file_path, name=batch_name)
+            print(msg, file=sys.stderr)
+    else:
+        # Single hunk operation
+        # Cache this hunk as selected
+        patch_text = selected_patch.to_patch_text()
+        write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
+        write_text_file_contents(get_selected_hunk_hash_file_path(), selected_hash)
+
+        # Cache LineLevelChange state for progress tracking
+        line_changes = build_line_changes_from_patch_text(patch_text)
+        write_text_file_contents(get_line_changes_json_file_path(),
+                                json.dumps(convert_line_changes_to_serializable_dict(line_changes),
+                                          ensure_ascii=False, indent=0))
+
+        # Save snapshots for staleness detection
+        write_snapshots_for_selected_file_path(line_changes.path)
+
+        # Add hash to blocklist (mark as processed)
+        append_lines_to_file(blocklist_path, [selected_hash])
+
+        # Record hunk as claimed by this batch
+        from ..utils.paths import get_batch_claimed_hunks_file_path
+        append_lines_to_file(get_batch_claimed_hunks_file_path(batch_name), [selected_hash])
+
+        # Recompute global mask from all batch claims
+        from ..batch.mask import recompute_global_batch_mask
+        recompute_global_batch_mask()
+
+        # Record hunk as skipped for progress tracking
+        record_hunk_skipped(line_changes, selected_hash)
+
+        if not quiet:
+            print(_("✓ Hunk saved to batch '{name}'").format(name=batch_name), file=sys.stderr)
+
+    if quiet:
+        advance_to_next_change()
+    else:
+        advance_to_and_show_next_change()

@@ -17,6 +17,7 @@ from ..output.hunk import print_annotated_hunk_with_aligned_gutter
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
 from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
 from ..utils.paths import (
+    get_batched_hunks_file_path,
     get_block_list_file_path,
     get_blocked_files_file_path,
     get_context_lines,
@@ -26,6 +27,7 @@ from ..utils.paths import (
     get_discarded_hunks_file_path,
     get_included_hunks_file_path,
     get_index_snapshot_file_path,
+    get_processed_batch_ids_file_path,
     get_processed_include_ids_file_path,
     get_skipped_hunks_jsonl_file_path,
     get_working_tree_snapshot_file_path,
@@ -41,6 +43,55 @@ def clear_current_hunk_state_files() -> None:
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
+    get_processed_batch_ids_file_path().unlink(missing_ok=True)
+
+
+def apply_line_level_batch_filter_to_cached_hunk() -> bool:
+    """Filter cached hunk to exclude batched lines.
+
+    Returns:
+        True if hunk should be skipped (all lines filtered), False otherwise
+    """
+    from dataclasses import replace
+    from ..core.line_selection import read_line_ids_file
+    from .line_state import load_current_lines_from_state, convert_current_lines_to_serializable_dict
+
+    current_lines = load_current_lines_from_state()
+    if current_lines is None:
+        return True
+
+    batched_ids = set(read_line_ids_file(get_processed_batch_ids_file_path()))
+    if not batched_ids:
+        return False  # No filtering needed
+
+    # Filter out batched lines and renumber
+    filtered_lines = []
+    new_id = 1
+    for line_entry in current_lines.lines:
+        if line_entry.id in batched_ids:
+            continue  # Skip batched lines
+        # Create new line with renumbered ID
+        filtered_lines.append(replace(line_entry, id=new_id if line_entry.kind != " " else 0))
+        if line_entry.kind != " ":
+            new_id += 1
+
+    # If all lines were batched, skip this hunk
+    if not any(line.kind in ("+", "-") for line in filtered_lines):
+        return True
+
+    # Create filtered CurrentLines
+    filtered_current_lines = CurrentLines(
+        path=current_lines.path,
+        header=current_lines.header,
+        lines=filtered_lines
+    )
+
+    # Update cached hunk with filtered version
+    write_text_file_contents(get_current_lines_json_file_path(),
+                            json.dumps(convert_current_lines_to_serializable_dict(filtered_current_lines),
+                                      ensure_ascii=False, indent=0))
+
+    return False
 
 
 def find_and_cache_next_unblocked_hunk() -> Optional[CurrentLines]:
@@ -52,9 +103,14 @@ def find_and_cache_next_unblocked_hunk() -> Optional[CurrentLines]:
     # Get list of blocked files
     blocked_files = set(read_file_paths_file(get_blocked_files_file_path()))
 
-    # Load blocklist
+    # Load blocklist (includes current iteration)
     blocklist_content = read_text_file_contents(get_block_list_file_path())
     blocked_hashes = set(blocklist_content.splitlines())
+
+    # Load batched hunks (permanent, survives 'again')
+    batched_content = read_text_file_contents(get_batched_hunks_file_path())
+    batched_hashes = set(batched_content.splitlines()) if batched_content else set()
+    blocked_hashes.update(batched_hashes)
 
     # Stream git diff and parse incrementally - stops after first unblocked hunk found
     try:
@@ -77,7 +133,15 @@ def find_and_cache_next_unblocked_hunk() -> Optional[CurrentLines]:
                                                 ensure_ascii=False, indent=0))
             write_snapshots_for_current_file_path(current_lines.path)
 
-            return current_lines
+            # Apply line-level batch filtering
+            if apply_line_level_batch_filter_to_cached_hunk():
+                # All lines were batched, skip this hunk and continue
+                clear_current_hunk_state_files()
+                continue
+
+            # Return filtered hunk (or original if no filtering applied)
+            from .line_state import load_current_lines_from_state
+            return load_current_lines_from_state()
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         pass

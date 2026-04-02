@@ -6,6 +6,7 @@ import pytest
 
 from git_stage_batch.data.hunk_tracking import (
     advance_to_next_change,
+    apply_line_level_batch_filter_to_cached_hunk,
     clear_selected_change_state_files,
     fetch_next_change,
     recalculate_selected_hunk_for_file,
@@ -17,6 +18,7 @@ from git_stage_batch.data.hunk_tracking import (
 from git_stage_batch.utils.file_io import append_lines_to_file, write_text_file_contents
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
+    get_batched_hunks_file_path,
     get_block_list_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
@@ -24,6 +26,7 @@ from git_stage_batch.utils.paths import (
     get_discarded_hunks_file_path,
     get_included_hunks_file_path,
     get_index_snapshot_file_path,
+    get_processed_batch_ids_file_path,
     get_processed_include_ids_file_path,
     get_state_directory_path,
     get_working_tree_snapshot_file_path,
@@ -63,6 +66,7 @@ class TestClearCurrentHunkStateFiles:
         get_index_snapshot_file_path().write_text("index")
         get_working_tree_snapshot_file_path().write_text("tree")
         get_processed_include_ids_file_path().write_text("1\n2\n")
+        get_processed_batch_ids_file_path().write_text("3\n4\n")
 
         # Clear state
         clear_selected_change_state_files()
@@ -74,6 +78,7 @@ class TestClearCurrentHunkStateFiles:
         assert not get_index_snapshot_file_path().exists()
         assert not get_working_tree_snapshot_file_path().exists()
         assert not get_processed_include_ids_file_path().exists()
+        assert not get_processed_batch_ids_file_path().exists()
 
     def test_handles_missing_files(self, temp_git_repo):
         """Test that clearing works even when files don't exist."""
@@ -200,6 +205,160 @@ class TestFindAndCacheNextUnblockedHunk:
 
         assert line_changes is None
 
+    def test_skips_batched_hunks(self, temp_git_repo):
+        """Test that batched hunks are skipped."""
+        from git_stage_batch.core.hashing import compute_stable_hunk_hash
+        from git_stage_batch.core.diff_parser import parse_unified_diff_into_single_hunk_patches
+
+        # Create two files
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        # Get hash of first hunk and mark it as batched
+        result = subprocess.run(
+            ["git", "diff", "--no-color"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
+        first_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+
+        write_text_file_contents(get_batched_hunks_file_path(), f"{first_hash}\n")
+
+        # Find next hunk - should skip batched one
+        line_changes = fetch_next_change()
+
+        assert line_changes is not None
+        assert line_changes.path == "file2.txt"
+
+    def test_returns_none_when_all_batched(self, temp_git_repo):
+        """Test that None is returned when all hunks are batched."""
+        from git_stage_batch.core.hashing import compute_stable_hunk_hash
+        from git_stage_batch.core.diff_parser import parse_unified_diff_into_single_hunk_patches
+
+        # Create a change
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("original\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("modified\n")
+
+        # Mark hunk as batched
+        result = subprocess.run(
+            ["git", "diff", "--no-color"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
+        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+
+        write_text_file_contents(get_batched_hunks_file_path(), f"{hunk_hash}\n")
+
+        # Try to find next hunk
+        line_changes = fetch_next_change()
+
+        assert line_changes is None
+
+
+class TestApplyLineLevelBatchFilter:
+    """Tests for apply_line_level_batch_filter_to_cached_hunk()."""
+
+    def test_returns_false_when_no_batched_ids(self, temp_git_repo):
+        """Test that function returns False when no IDs are batched."""
+        from git_stage_batch.core.line_selection import write_line_ids_file
+
+        # Create a file and cache a hunk
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nline2\nline3\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("changed1\nchanged2\nchanged3\n")
+
+        fetch_next_change()
+
+        # Create empty batched IDs file
+        write_line_ids_file(get_processed_batch_ids_file_path(), set())
+
+        # Should return False (no filtering needed)
+        assert apply_line_level_batch_filter_to_cached_hunk() is False
+
+    def test_returns_true_when_all_lines_batched(self, temp_git_repo):
+        """Test that function returns True when all lines are batched."""
+        from git_stage_batch.core.line_selection import write_line_ids_file
+        from git_stage_batch.data.line_state import load_line_changes_from_state
+
+        # Create a simple file with one line change
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("original\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("modified\n")
+
+        fetch_next_change()
+
+        # Get the selected lines to see what IDs exist
+        line_changes = load_line_changes_from_state()
+        line_ids = {line.id for line in line_changes.lines if line.kind in ("+", "-")}
+
+        # Mark all lines as batched
+        write_line_ids_file(get_processed_batch_ids_file_path(), line_ids)
+
+        # Should return True (all lines batched, skip hunk)
+        assert apply_line_level_batch_filter_to_cached_hunk() is True
+
+    def test_filters_and_renumbers_partial_batch(self, temp_git_repo):
+        """Test that partially batched hunks are filtered and renumbered."""
+        from git_stage_batch.core.line_selection import write_line_ids_file
+        from git_stage_batch.data.line_state import load_line_changes_from_state
+
+        # Create a file with multiple line changes
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("line1\nline2\nline3\nline4\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("changed1\nchanged2\nchanged3\nchanged4\n")
+
+        fetch_next_change()
+
+        # Get selected lines
+        line_changes = load_line_changes_from_state()
+        all_line_ids = [line.id for line in line_changes.lines if line.kind in ("+", "-")]
+
+        # Mark first two line IDs as batched (assuming we have at least 2)
+        if len(all_line_ids) >= 2:
+            write_line_ids_file(get_processed_batch_ids_file_path(), {all_line_ids[0], all_line_ids[1]})
+
+            # Should return False (some lines remain)
+            assert apply_line_level_batch_filter_to_cached_hunk() is False
+
+            # Verify filtered hunk has renumbered IDs
+            filtered_lines = load_line_changes_from_state()
+            filtered_ids = [line.id for line in filtered_lines.lines if line.kind in ("+", "-")]
+
+            # IDs should start from 1 and be sequential
+            assert filtered_ids == list(range(1, len(filtered_ids) + 1))
+            # Should have fewer lines than before
+            assert len(filtered_ids) < len(all_line_ids)
+
+    def test_returns_true_when_no_cached_hunk(self, temp_git_repo):
+        """Test that function returns True when no hunk is cached."""
+        assert apply_line_level_batch_filter_to_cached_hunk() is True
+
 
 class TestAdvanceToNextHunk:
     """Tests for advance_to_next_change()."""
@@ -221,12 +380,14 @@ class TestAdvanceToNextHunk:
         get_selected_hunk_patch_file_path().write_text("old patch")
         get_selected_hunk_hash_file_path().write_text("old hash")
         get_processed_include_ids_file_path().write_text("1\n")
+        get_processed_batch_ids_file_path().write_text("2\n")
 
         # Advance to next hunk
         advance_to_next_change()
 
         # Old processed IDs should be cleared
         assert not get_processed_include_ids_file_path().exists()
+        assert not get_processed_batch_ids_file_path().exists()
 
         # New hunk should be cached
         assert get_selected_hunk_patch_file_path().exists()

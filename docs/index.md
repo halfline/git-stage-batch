@@ -81,6 +81,14 @@ This clarity assists contributors explore the codebase, maintainers review chang
 
     [:octicons-arrow-right-24: See Examples](examples.md)
 
+-   :material-package-variant:{ .lg .middle } __Named Batches__
+
+    ---
+
+    Defer and label changes for later processing. Advanced patch-series organization for complex workflows.
+
+    [:octicons-arrow-right-24: Batch Operations](batches.md)
+
 </div>
 
 ## See it in Action
@@ -161,7 +169,12 @@ Similar to `git add -p` but **more granular and flexible**:
 
 # Start fresh after committing
 ❯ git-stage-batch again   # or: a
+
+# For advanced workflows, defer changes to named batches
+❯ git-stage-batch include --to feature-work  # Save to batch for later
 ```
+
+See [batch operations](batches.md) for advanced patch-series organization.
 
 ## Example Workflow
 
@@ -333,6 +346,17 @@ Because Git history is read by people.
 A raw commit log is a transcript of development: experiments, mistakes, and partial fixes.
 
 A curated history is documentation of how the system evolved. It is far easier for contributors, reviewers, and your future self to understand.
+
+### When should I use batches?
+
+Most workflows don't need batches. The core commands (`include`, `skip`, `discard`) handle typical staging scenarios.
+
+Use batches when you need to:
+- Defer specific changes for a separate commit while continuing to process other hunks
+- Group related changes across multiple files for thematic organization
+- Temporarily set aside changes you're uncertain about
+
+See the [batch operations guide](batches.md) for detailed workflows and examples.
 
 ## Next Steps
 

@@ -76,7 +76,15 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "start",
         help=_("Start a new batch staging session"),
     )
-    parser_start.set_defaults(func=lambda _: commands.command_start())
+    parser_start.add_argument(
+        "-U",
+        "--unified",
+        dest="context_lines",
+        type=int,
+        metavar="N",
+        help=_("Number of context lines in diff output (default: 3)"),
+    )
+    parser_start.set_defaults(func=lambda args: commands.command_start(context_lines=args.context_lines))
 
     # stop - Stop the selected session and clear state
     parser_stop = subparsers.add_parser(

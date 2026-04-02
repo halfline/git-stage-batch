@@ -10,7 +10,7 @@ from ..core.line_selection import parse_line_selection, read_line_ids_file, writ
 from ..data.hunk_tracking import advance_to_and_show_next_hunk, advance_to_next_hunk, record_hunk_skipped, require_current_hunk_and_check_stale
 from ..data.session import require_session_started
 from ..i18n import _, ngettext
-from ..utils.file_io import append_lines_to_file, read_text_file_contents
+from ..utils.file_io import append_lines_to_file, read_text_file_contents, write_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.paths import (
     ensure_state_directory_exists,

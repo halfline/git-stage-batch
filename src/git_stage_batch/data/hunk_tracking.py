@@ -11,7 +11,7 @@ from ..core.hashing import compute_stable_hunk_hash
 from ..core.models import CurrentLines
 from ..core.diff_parser import build_current_lines_from_patch_text, parse_unified_diff_streaming
 from ..i18n import _
-from ..output.patch import print_colored_patch
+from ..output.hunk import print_annotated_hunk_with_aligned_gutter
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
 from ..utils.git import stream_git_command
 from ..utils.paths import (
@@ -94,7 +94,8 @@ def show_current_hunk() -> None:
     patch_path = get_current_hunk_patch_file_path()
     if patch_path.exists():
         patch_text = read_text_file_contents(patch_path)
-        print_colored_patch(patch_text)
+        current_lines = build_current_lines_from_patch_text(patch_text)
+        print_annotated_hunk_with_aligned_gutter(current_lines)
 
 
 def advance_to_and_show_next_hunk() -> None:
@@ -110,6 +111,7 @@ def advance_to_and_show_next_hunk() -> None:
     patch_path = get_current_hunk_patch_file_path()
     if patch_path.exists():
         patch_text = read_text_file_contents(patch_path)
-        print_colored_patch(patch_text)
+        current_lines = build_current_lines_from_patch_text(patch_text)
+        print_annotated_hunk_with_aligned_gutter(current_lines)
     else:
         print(_("No more hunks to process."), file=sys.stderr)

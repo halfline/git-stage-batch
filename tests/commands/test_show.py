@@ -41,7 +41,8 @@ class TestCommandShow:
 
         captured = capsys.readouterr()
         assert "README.md" in captured.out
-        assert "+New line added" in captured.out
+        assert "New line added" in captured.out
+        assert "[#1]" in captured.out  # Check for line ID annotation
 
     def test_show_no_changes(self, temp_git_repo, capsys):
         """Test that show displays message when no more hunks remain."""
@@ -110,6 +111,7 @@ class TestCommandShow:
         blocklist_path = get_block_list_file_path()
         blocklist_path.write_text(f"{first_patch_hash}\n")
 
+        command_start()
         command_show()
 
         captured = capsys.readouterr()
@@ -130,6 +132,8 @@ class TestCommandShow:
 
         # Initialize session without caching a hunk
         ensure_state_directory_exists()
+
+        command_start()
 
         # Get the hash and block it
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))

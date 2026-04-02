@@ -11,7 +11,7 @@ from ..core.hashing import compute_stable_hunk_hash
 from ..core.models import LineLevelChange
 from ..core.diff_parser import build_line_changes_from_patch_text, parse_unified_diff_streaming
 from ..i18n import _
-from ..output.patch import print_colored_patch
+from ..output.hunk import print_line_level_changes
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
 from ..utils.git import stream_git_command
 from ..utils.paths import (
@@ -94,7 +94,8 @@ def show_selected_change() -> None:
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
         patch_text = read_text_file_contents(patch_path)
-        print_colored_patch(patch_text)
+        line_changes = build_line_changes_from_patch_text(patch_text)
+        print_line_level_changes(line_changes)
 
 
 def advance_to_and_show_next_change() -> None:
@@ -110,6 +111,7 @@ def advance_to_and_show_next_change() -> None:
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
         patch_text = read_text_file_contents(patch_path)
-        print_colored_patch(patch_text)
+        line_changes = build_line_changes_from_patch_text(patch_text)
+        print_line_level_changes(line_changes)
     else:
         print(_("No more hunks to process."), file=sys.stderr)

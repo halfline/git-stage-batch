@@ -6,7 +6,7 @@ import sys
 
 from ..batch.mask import recompute_global_batch_mask
 from ..batch.validation import batch_exists, validate_batch_name
-from ..core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
+from ..core.line_selection import parse_line_selection
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
@@ -14,7 +14,6 @@ from ..utils.git import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_batch_claimed_hunks_file_path,
-    get_batch_claimed_line_ids_file_path,
 )
 
 
@@ -54,18 +53,58 @@ def _reset_line_claims_from_batch(batch_name: str, line_id_specification: str) -
         batch_name: Name of the batch
         line_id_specification: Line ID specification (e.g., "1,3,5-7")
     """
-    requested_ids = set(parse_line_selection(line_id_specification))
-    claimed_line_ids_path = get_batch_claimed_line_ids_file_path(batch_name)
+    import json
+    from ..batch.query import read_batch_metadata
+    from ..batch.ownership import BatchOwnership
+    from ..batch.storage import add_file_to_batch
+    from ..core.line_selection import format_line_ids
+    from ..utils.paths import get_batch_metadata_file_path
+    from ..data.hunk_tracking import require_current_hunk_and_check_stale
+    from ..data.line_state import load_current_lines_from_state
 
-    if not claimed_line_ids_path.exists():
-        # No line claims to reset
-        return
+    # Require cached hunk to know which file to reset lines from
+    require_current_hunk_and_check_stale()
+    current_lines = load_current_lines_from_state()
+    file_path = current_lines.path
 
-    current_claims = set(read_line_ids_file(claimed_line_ids_path))
-    remaining_claims = current_claims - requested_ids
+    # Read batch metadata
+    metadata = read_batch_metadata(batch_name)
+    if file_path not in metadata.get("files", {}):
+        exit_with_error(_("File {file} not found in batch '{name}'").format(
+            file=file_path, name=batch_name))
 
-    # Write back remaining claims
-    write_line_ids_file(claimed_line_ids_path, remaining_claims)
+    # Parse line IDs to remove
+    lines_to_remove = set(parse_line_selection(line_id_specification))
+
+    # Get current ownership for the file
+    ownership = BatchOwnership.from_metadata_dict(metadata["files"][file_path])
+
+    # Collect all claimed lines and remove the specified ones
+    all_claimed_ids = set()
+    for range_str in ownership.claimed_lines:
+        all_claimed_ids.update(parse_line_selection(range_str))
+
+    # Remove the specified lines
+    remaining_ids = all_claimed_ids - lines_to_remove
+
+    # Format back into range strings
+    new_claimed_lines = [format_line_ids(list(remaining_ids))] if remaining_ids else []
+
+    # Create updated ownership
+    new_ownership = BatchOwnership(
+        claimed_lines=new_claimed_lines,
+        deletions=ownership.deletions  # Keep deletions unchanged
+    )
+
+    # If no ownership remains, remove the file from batch
+    if not new_ownership.claimed_lines and not new_ownership.insertions:
+        del metadata["files"][file_path]
+        metadata_path = get_batch_metadata_file_path(batch_name)
+        write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    else:
+        # Update the batch with new ownership
+        file_mode = metadata["files"][file_path].get("mode", "100644")
+        add_file_to_batch(batch_name, file_path, new_ownership, file_mode)
 
 
 def _reset_all_claims_from_batch(batch_name: str) -> None:
@@ -79,7 +118,12 @@ def _reset_all_claims_from_batch(batch_name: str) -> None:
     if claimed_hunks_path.exists():
         write_text_file_contents(claimed_hunks_path, "")
 
-    # Clear line claims
-    claimed_line_ids_path = get_batch_claimed_line_ids_file_path(batch_name)
-    if claimed_line_ids_path.exists():
-        write_line_ids_file(claimed_line_ids_path, set())
+    # Clear batch metadata files section
+    from ..batch.query import read_batch_metadata
+    from ..utils.paths import get_batch_metadata_file_path
+    import json
+
+    metadata = read_batch_metadata(batch_name)
+    metadata["files"] = {}
+    metadata_path = get_batch_metadata_file_path(batch_name)
+    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))

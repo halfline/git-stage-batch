@@ -15,6 +15,9 @@ def main() -> None:
         args = parse_command_line(sys.argv[1:], quiet=False)
         if args is not None:
             dispatch_args(args)
+        else:
+            # Parsing failed
+            sys.exit(2)
     except CommandError as e:
         if e.message:
             print(e.message, file=sys.stderr)

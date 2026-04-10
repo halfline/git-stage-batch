@@ -4,11 +4,68 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from ..exceptions import exit_with_error
 from ..i18n import _
+from .command import CommandEvent, ExitEvent, OutputEvent, stream_command
+from .text import bytes_to_lines
+
+
+def stream_git_command(
+    arguments: list[str],
+    stdin_chunks: Iterable[bytes] | None = None,
+    *,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> Iterator[bytes]:
+    """Stream git command output as bytes lines.
+
+    Wrapper around stream_command that:
+    1. Prepends "git" to arguments
+    2. Streams stdout as bytes lines (split at \\n)
+    3. Captures stderr for error reporting
+    4. Raises on non-zero exit with stderr in exception
+
+    Args:
+        arguments: Git command arguments (e.g., ["diff", "--no-color"])
+        stdin_chunks: Iterable yielding bytes chunks to write to stdin (None for no input)
+        cwd: Working directory for the command
+        env: Environment variables
+
+    Yields:
+        Bytes lines from stdout
+
+    Raises:
+        subprocess.CalledProcessError: If git command fails (includes stderr)
+    """
+    def stdout_chunks():
+        """Generator that yields only stdout chunks from command events."""
+        nonlocal exit_code, stderr_chunks
+        for event in stream_command(["git", *arguments], stdin_chunks, cwd=cwd, env=env):
+            if isinstance(event, ExitEvent):
+                exit_code = event.exit_code
+            elif isinstance(event, OutputEvent):
+                if event.fd == 1:  # stdout
+                    yield event.data
+                elif event.fd == 2:  # stderr
+                    stderr_chunks.append(event.data)
+
+    exit_code = 0
+    stderr_chunks = []
+
+    # Convert binary stdout chunks to text lines
+    yield from bytes_to_lines(stdout_chunks())
+
+    # Check exit code after stream completes
+    if exit_code != 0:
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+        raise subprocess.CalledProcessError(
+            exit_code,
+            ["git", *arguments],
+            stderr=stderr_text,
+        )
 
 
 def run_git_command(
@@ -37,62 +94,71 @@ def run_git_command(
     )
 
 
-def stream_git_command(arguments: list[str]) -> Iterator[str]:
-    """Stream git command output line-by-line.
-
-    If the caller stops consuming early, the git process is terminated
-    and no error is raised for that intentional cancellation.
+def create_git_blob(content_chunks: Iterable[bytes]) -> str:
+    """Create a git blob object from streaming content.
 
     Args:
-        arguments: Git command arguments (e.g., ["diff", "--no-color"])
+        content_chunks: Iterable yielding binary content chunks to store
 
-    Yields:
-        Lines from git's stdout
+    Returns:
+        SHA-1 hash of the created blob object
 
     Raises:
-        subprocess.CalledProcessError: If git command fails
+        RuntimeError: If git hash-object fails or produces no output
     """
-    process = subprocess.Popen(
-        ["git", *arguments],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-    )
-    cancelled = False
+    stdout_chunks = []
+    stderr_chunks = []
+    exit_code = 0
 
-    assert process.stdout is not None
-    assert process.stderr is not None
+    for event in stream_command(["git", "hash-object", "-w", "--stdin"], content_chunks):
+        if isinstance(event, ExitEvent):
+            exit_code = event.exit_code
+        elif isinstance(event, OutputEvent):
+            if event.fd == 1:  # stdout
+                stdout_chunks.append(event.data)
+            elif event.fd == 2:  # stderr
+                stderr_chunks.append(event.data)
 
-    try:
-        for line in process.stdout:
-            yield line
-    except GeneratorExit:
-        cancelled = True
+    if exit_code != 0:
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+        raise RuntimeError(f"git hash-object failed with exit code {exit_code}: {stderr_text}")
 
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-        raise
-    finally:
-        process.stdout.close()
+    if not stdout_chunks:
+        raise RuntimeError("git hash-object produced no output")
 
-        if process.poll() is None:
-            process.wait()
+    # git hash-object outputs a single line with the SHA
+    stdout_bytes = b"".join(stdout_chunks)
+    blob_sha = stdout_bytes.strip().decode("utf-8")
+    return blob_sha
 
-        if not cancelled and process.returncode != 0:
-            stderr = process.stderr.read()
-            raise subprocess.CalledProcessError(
-                process.returncode,
-                ["git", *arguments],
-                stderr=stderr,
-            )
 
-        process.stderr.close()
+def read_git_blob(blob_sha: str) -> Iterator[bytes]:
+    """Read a git blob object as a stream.
+
+    Args:
+        blob_sha: SHA-1 hash of the blob to read
+
+    Yields:
+        Binary chunks from the blob content
+
+    Raises:
+        RuntimeError: If git cat-file fails or blob doesn't exist
+    """
+    stderr_chunks = []
+    exit_code = 0
+
+    for event in stream_command(["git", "cat-file", "blob", blob_sha], None):
+        if isinstance(event, ExitEvent):
+            exit_code = event.exit_code
+        elif isinstance(event, OutputEvent):
+            if event.fd == 1:  # stdout
+                yield event.data
+            elif event.fd == 2:  # stderr
+                stderr_chunks.append(event.data)
+
+    if exit_code != 0:
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+        raise RuntimeError(f"git cat-file failed with exit code {exit_code}: {stderr_text}")
 
 
 def require_git_repository() -> None:

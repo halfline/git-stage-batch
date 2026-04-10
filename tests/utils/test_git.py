@@ -83,7 +83,7 @@ class TestStreamGitCommand:
         lines = list(stream_git_command(["diff", "--cached"]))
         assert len(lines) > 0
         # Should have lines from the diff
-        assert any("line 1" in line for line in lines)
+        assert any(b"line 1" in line for line in lines)
 
     def test_stream_git_command_early_termination(self, temp_git_repo):
         """Test that stream can be terminated early without error."""

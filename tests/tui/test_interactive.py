@@ -201,7 +201,7 @@ class TestHandleFileSelection:
         current_lines = CurrentLines(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="test\n")]
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_current_lines_from_state", return_value=current_lines):
@@ -222,7 +222,7 @@ class TestHandleFileSelection:
         current_lines = CurrentLines(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="test\n")]
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_current_lines_from_state", return_value=current_lines):
@@ -243,7 +243,7 @@ class TestHandleFileSelection:
         current_lines = CurrentLines(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="test\n")]
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_current_lines_from_state", return_value=current_lines):
@@ -267,8 +267,8 @@ class TestHandleLineSelection:
             path="test.txt",
             header=header,
             lines=[
-                LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="line1\n"),
-                LineEntry(id=2, kind="+", old_line_number=None, new_line_number=2, text="line2\n"),
+                LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"line1\n", text="line1\n"),
+                LineEntry(id=2, kind="+", old_line_number=None, new_line_number=2, text_bytes=b"line2\n", text="line2\n"),
             ]
         )
 
@@ -290,7 +290,7 @@ class TestHandleLineSelection:
         current_lines = CurrentLines(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=None, kind=" ", old_line_number=1, new_line_number=1, text=" unchanged\n")]
+            lines=[LineEntry(id=None, kind=" ", old_line_number=1, new_line_number=1, text_bytes=b" unchanged\n", text=" unchanged\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_current_lines_from_state", return_value=current_lines):
@@ -308,7 +308,7 @@ class TestHandleLineSelection:
         current_lines = CurrentLines(
             path="test.txt",
             header=header,
-            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="test\n")]
+            lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
         with patch("git_stage_batch.tui.interactive.load_current_lines_from_state", return_value=current_lines):

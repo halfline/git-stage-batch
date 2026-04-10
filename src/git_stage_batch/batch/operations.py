@@ -34,6 +34,7 @@ def create_batch(name: str, note: str = "") -> None:
         "note": note,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "baseline": baseline_commit,
+        "files": {}
     }
     metadata_path = get_batch_metadata_file_path(name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))

@@ -139,6 +139,15 @@ def get_abort_snapshot_list_file_path() -> Path:
     return get_state_directory_path() / "snapshot-list"
 
 
+def get_session_batch_sources_file_path() -> Path:
+    """Get the path to the session batch sources cache file.
+
+    Returns:
+        Path to session-batch-sources.json file
+    """
+    return get_state_directory_path() / "session-batch-sources.json"
+
+
 def get_auto_added_files_file_path() -> Path:
     """Get the path to the auto-added files list file.
 

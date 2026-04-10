@@ -4,9 +4,11 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch import add_file_to_batch, create_batch
+from git_stage_batch.batch import create_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
+from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
+from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
 @pytest.fixture
@@ -25,6 +27,10 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
 
+    # Initialize session for batch operations
+    ensure_state_directory_exists()
+    initialize_abort_state()
+
     return repo
 
 
@@ -33,8 +39,13 @@ class TestCommandShowFromBatch:
 
     def test_show_from_batch_displays_changes(self, temp_git_repo, capsys):
         """Test showing changes from a batch."""
-        create_batch("test-batch")
-        add_file_to_batch("test-batch", "file.txt", "content\n")
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.commands.include import command_include_to_batch
+
+        # Create a new file and save to batch
+        (temp_git_repo / "file.txt").write_text("content\n")
+        command_start()
+        command_include_to_batch("test-batch", quiet=True)
 
         command_show_from_batch("test-batch")
 
@@ -43,14 +54,13 @@ class TestCommandShowFromBatch:
         assert "content" in captured.out
         assert "[#1]" in captured.out  # Check for line ID annotation
 
-    def test_show_from_empty_batch_fails(self, temp_git_repo):
-        """Test showing from an empty batch fails."""
+    def test_show_from_empty_batch_succeeds(self, temp_git_repo):
+        """Test showing from an empty batch succeeds with no output."""
         create_batch("empty-batch")
-        # Add baseline file to batch so there's no diff
-        add_file_to_batch("empty-batch", "README.md", "# Test\n")
+        # Empty batch (only contains baseline from HEAD) has no diff
 
-        with pytest.raises(CommandError):
-            command_show_from_batch("empty-batch")
+        # Empty batch should succeed but produce no output
+        command_show_from_batch("empty-batch")
 
     def test_show_from_nonexistent_batch_fails(self, temp_git_repo):
         """Test showing from nonexistent batch fails."""

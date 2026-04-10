@@ -6,6 +6,8 @@ import pytest
 
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.storage import add_file_to_batch, get_batch_diff, read_file_from_batch
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.data.session import initialize_abort_state
 
 
 @pytest.fixture
@@ -21,44 +23,78 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "add", "README"], check=True)
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, capture_output=True)
 
+    # Create a file for testing
+    (tmp_path / "file.txt").write_text("line1\nline2\nline3\n")
+
+    # Initialize abort state (needed for batch source creation)
+    from git_stage_batch.utils.paths import ensure_state_directory_exists
+    ensure_state_directory_exists()
+    initialize_abort_state()
+
     return tmp_path
 
 
 def test_add_file_to_batch_creates_batch(temp_git_repo):
     """Test that add_file_to_batch auto-creates batch if needed."""
-    add_file_to_batch("test-batch", "file.txt", "content")
+    # Claim lines 1-2 from file.txt (range string format)
+    ownership = BatchOwnership(claimed_lines=["1-2"], deletions=[])
+    add_file_to_batch("test-batch", "file.txt", ownership)
 
     content = read_file_from_batch("test-batch", "file.txt")
-    assert content == "content"
+    assert content is not None
+    assert "line1" in content
+    assert "line2" in content
 
 
 def test_add_file_to_batch_existing_batch(temp_git_repo):
     """Test adding file to existing batch."""
     create_batch("test-batch", "Test")
-    add_file_to_batch("test-batch", "file.txt", "content")
+
+    # Claim line 1
+    ownership = BatchOwnership(claimed_lines=["1"], deletions=[])
+    add_file_to_batch("test-batch", "file.txt", ownership)
 
     content = read_file_from_batch("test-batch", "file.txt")
-    assert content == "content"
+    assert content is not None
+    assert "line1" in content
 
 
 def test_add_file_to_batch_update_file(temp_git_repo):
     """Test updating existing file in batch."""
     create_batch("test-batch", "Test")
-    add_file_to_batch("test-batch", "file.txt", "original")
-    add_file_to_batch("test-batch", "file.txt", "updated")
+
+    # First add line 1
+    ownership1 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    add_file_to_batch("test-batch", "file.txt", ownership1)
+
+    # Then update to lines 1-2
+    ownership2 = BatchOwnership(claimed_lines=["1-2"], deletions=[])
+    add_file_to_batch("test-batch", "file.txt", ownership2)
 
     content = read_file_from_batch("test-batch", "file.txt")
-    assert content == "updated"
+    assert content is not None
+    assert "line1" in content
+    assert "line2" in content
 
 
 def test_add_file_to_batch_multiple_files(temp_git_repo):
     """Test adding multiple files to batch."""
-    create_batch("test-batch", "Test")
-    add_file_to_batch("test-batch", "file1.txt", "content1")
-    add_file_to_batch("test-batch", "file2.txt", "content2")
+    # Create another test file
+    (temp_git_repo / "file2.txt").write_text("other1\nother2\n")
 
-    assert read_file_from_batch("test-batch", "file1.txt") == "content1"
-    assert read_file_from_batch("test-batch", "file2.txt") == "content2"
+    create_batch("test-batch", "Test")
+
+    ownership1 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    add_file_to_batch("test-batch", "file.txt", ownership1)
+
+    ownership2 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    add_file_to_batch("test-batch", "file2.txt", ownership2)
+
+    content1 = read_file_from_batch("test-batch", "file.txt")
+    content2 = read_file_from_batch("test-batch", "file2.txt")
+
+    assert content1 is not None and "line1" in content1
+    assert content2 is not None and "other1" in content2
 
 
 def test_read_file_from_batch_nonexistent_batch(temp_git_repo):
@@ -81,29 +117,34 @@ def test_get_batch_diff_empty_batch(temp_git_repo):
 
     diff = get_batch_diff("test-batch")
     # Empty batch starts with HEAD's tree, so no diff (same as baseline)
-    assert diff == ""
+    assert diff == b""
 
 
 def test_get_batch_diff_with_file(temp_git_repo):
     """Test getting diff for batch with file."""
     create_batch("test-batch", "Test")
-    add_file_to_batch("test-batch", "file.txt", "new content\n")
+
+    # Claim lines from file.txt
+    ownership = BatchOwnership(claimed_lines=["1-2"], deletions=[])
+    add_file_to_batch("test-batch", "file.txt", ownership)
 
     diff = get_batch_diff("test-batch")
-    assert "file.txt" in diff
-    assert "+new content" in diff
+    assert b"file.txt" in diff
+    assert b"+line" in diff  # Should show added lines
 
 
 def test_get_batch_diff_nonexistent_batch(temp_git_repo):
     """Test getting diff for nonexistent batch returns empty string."""
     diff = get_batch_diff("nonexistent")
-    assert diff == ""
+    assert diff == b""
 
 
 def test_get_batch_diff_custom_context(temp_git_repo):
     """Test getting diff with custom context lines."""
     create_batch("test-batch", "Test")
-    add_file_to_batch("test-batch", "file.txt", "line1\nline2\nline3\n")
+
+    ownership = BatchOwnership(claimed_lines=["1-3"], deletions=[])
+    add_file_to_batch("test-batch", "file.txt", ownership)
 
     diff = get_batch_diff("test-batch", context_lines=1)
-    assert "file.txt" in diff
+    assert b"file.txt" in diff

@@ -16,24 +16,39 @@ class HunkHeader:
 
 @dataclass
 class SingleHunkPatch:
-    """Represents a patch for a single file containing exactly one hunk."""
+    """Represents a patch for a single file containing exactly one hunk.
+
+    Lines are stored as bytes with their \\n terminators preserved (except
+    possibly the last line). This preserves exact file content regardless
+    of encoding or line ending style.
+    """
     old_path: str
     new_path: str
-    lines: list[str]  # includes ---/+++ and a single @@ hunk body
+    lines: list[bytes]  # includes ---/+++ and a single @@ hunk body, with \n terminators
 
-    def to_patch_text(self) -> str:
-        """Convert the patch to unified diff text format."""
-        return "\n".join(self.lines).rstrip("\n") + "\n"
+    def to_patch_bytes(self) -> bytes:
+        """Convert the patch to unified diff bytes format.
+
+        Lines already include their \\n terminators, so we just join them.
+        """
+        return b"".join(self.lines)
 
 
 @dataclass
 class LineEntry:
-    """Represents a single line in a hunk with metadata for line-level selection."""
+    """Represents a single line in a hunk with metadata for line-level selection.
+
+    Invariant: bytes are canonical, strings are derived.
+    - text_bytes: Exact bytes from the diff (without +/- prefix)
+    - text: Decoded for display (UTF-8 with errors='replace')
+    """
     id: int | None  # Line ID for selection (None for context lines without changes)
     kind: str  # " " (context), "+" (addition), "-" (deletion)
     old_line_number: int | None  # Line number in old file (None for additions)
     new_line_number: int | None  # Line number in new file (None for deletions)
-    text: str  # The line content without the leading +/- marker
+    text_bytes: bytes  # Canonical line content without the leading +/- marker
+    text: str  # Derived from text_bytes for display (decoded with errors='replace')
+    source_line: int | None = None  # Line position in source reference (e.g., batch source, merge base)
 
 
 @dataclass

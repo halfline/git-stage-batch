@@ -7,7 +7,6 @@ import pytest
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.batch.operations import create_batch
-from git_stage_batch.core.line_selection import write_line_ids_file
 from git_stage_batch.utils.file_io import read_text_file_contents, write_text_file_contents
 from git_stage_batch.utils.paths import (
     get_abort_head_file_path,
@@ -15,7 +14,6 @@ from git_stage_batch.utils.paths import (
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
     get_batch_claimed_hunks_file_path,
-    get_batch_claimed_line_ids_file_path,
     get_batch_directory_path,
     get_batched_hunks_file_path,
     get_batches_directory_path,
@@ -83,6 +81,8 @@ class TestCommandAgain:
 
     def test_again_preserves_batch_directories(self, temp_git_repo):
         """Test that again preserves batch directories across state wipe."""
+        import json
+
         # Create changes and start session
         (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
         command_start()
@@ -95,9 +95,18 @@ class TestCommandAgain:
         claimed_hunks_path = get_batch_claimed_hunks_file_path("my-batch")
         write_text_file_contents(claimed_hunks_path, "hash1\nhash2\n")
 
-        # Add claimed line IDs
-        claimed_line_ids_path = get_batch_claimed_line_ids_file_path("my-batch")
-        write_line_ids_file(claimed_line_ids_path, {1, 2, 3})
+        # Add claimed lines to metadata (JSON format)
+        metadata_path = batch_dir / "metadata.json"
+        metadata = json.loads(read_text_file_contents(metadata_path))
+        metadata["files"] = {
+            "README.md": {
+                "batch_source_commit": "dummy",
+                "claimed_lines": ["1-3"],
+                "deletions": [],
+                "mode": "100644"
+            }
+        }
+        write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
         # Run again
         command_again()
@@ -110,13 +119,21 @@ class TestCommandAgain:
         content = read_text_file_contents(claimed_hunks_path)
         assert content == "hash1\nhash2\n"
 
-        assert claimed_line_ids_path.exists()
-        from git_stage_batch.core.line_selection import read_line_ids_file
-        line_ids = read_line_ids_file(claimed_line_ids_path)
-        assert set(line_ids) == {1, 2, 3}
+        # Metadata should be preserved
+        assert metadata_path.exists()
+        from git_stage_batch.core.line_selection import parse_line_selection
+        metadata_after = json.loads(read_text_file_contents(metadata_path))
+        file_data = metadata_after["files"]["README.md"]
+        line_ids = set()
+        for range_str in file_data.get("claimed_lines", []):
+            line_ids.update(parse_line_selection(range_str))
+        assert line_ids == {1, 2, 3}
 
     def test_again_recomputes_global_batch_mask(self, temp_git_repo):
         """Test that again recomputes global batch mask from preserved claims."""
+        import json
+        from git_stage_batch.core.line_selection import parse_line_selection
+
         # Create changes and start session
         (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
         command_start()
@@ -124,11 +141,29 @@ class TestCommandAgain:
         # Create batch with claims
         create_batch("batch1", "Test")
         write_text_file_contents(get_batch_claimed_hunks_file_path("batch1"), "hash1\nhash2\n")
-        write_line_ids_file(get_batch_claimed_line_ids_file_path("batch1"), {1, 2})
+
+        # Add claimed lines to batch metadata (JSON format)
+        metadata_path = get_batch_directory_path("batch1") / "metadata.json"
+        metadata = json.loads(read_text_file_contents(metadata_path))
+        metadata["files"] = {
+            "README.md": {
+                "batch_source_commit": "dummy",
+                "claimed_lines": ["1", "2"],
+                "deletions": [],
+                "mode": "100644"
+            }
+        }
+        write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
         # Manually set global masks
         write_text_file_contents(get_batched_hunks_file_path(), "hash1\nhash2\n")
-        write_line_ids_file(get_processed_batch_ids_file_path(), {1, 2})
+        global_mask = {
+            "README.md": {
+                "batch_source_commit": "dummy",
+                "claimed_lines": ["1", "2"]
+            }
+        }
+        write_text_file_contents(get_processed_batch_ids_file_path(), json.dumps(global_mask, indent=2))
 
         # Run again
         command_again()
@@ -138,9 +173,13 @@ class TestCommandAgain:
         assert "hash1" in batched_hunks
         assert "hash2" in batched_hunks
 
-        from git_stage_batch.core.line_selection import read_line_ids_file
-        batch_ids = read_line_ids_file(get_processed_batch_ids_file_path())
-        assert set(batch_ids) == {1, 2}
+        # Check JSON format for line IDs
+        global_mask_after = json.loads(read_text_file_contents(get_processed_batch_ids_file_path()))
+        file_data = global_mask_after.get("README.md", {})
+        batch_line_ids = set()
+        for range_str in file_data.get("claimed_lines", []):
+            batch_line_ids.update(parse_line_selection(range_str))
+        assert batch_line_ids == {1, 2}
 
     def test_again_preserves_multiple_batches(self, temp_git_repo):
         """Test that again preserves multiple batches correctly."""

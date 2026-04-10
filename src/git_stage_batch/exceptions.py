@@ -25,3 +25,8 @@ class QuitInteractive(Exception):
 class BypassRefresh(Exception):
     """Raised when an action should not refresh the display."""
     pass
+
+
+class MergeError(Exception):
+    """Raised when batch merge fails due to structural ambiguity."""
+    pass

@@ -72,8 +72,9 @@ class TestSnapshotBatchRefs:
 
         assert batch_name in snapshot_data
         assert snapshot_data[batch_name]["commit_sha"] == commit_sha
-        assert snapshot_data[batch_name]["note"] == "Test note"
-        assert snapshot_data[batch_name]["created_at"] == "2026-03-13T12:00:00Z"
+        # Metadata is now nested under "metadata" key
+        assert snapshot_data[batch_name]["metadata"]["note"] == "Test note"
+        assert snapshot_data[batch_name]["metadata"]["created_at"] == "2026-03-13T12:00:00Z"
 
 
 class TestRestoreBatchRefs:

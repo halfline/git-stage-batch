@@ -69,6 +69,14 @@ def command_abort() -> None:
                 shutil.copy2(snapshot_path, target_path)
                 print(_("Restored: {}").format(file_path), file=sys.stderr)
 
+    # Restore intent-to-add status for files that had it before session
+    intent_to_add_path = get_state_directory_path() / "intent-to-add-files"
+    if intent_to_add_path.exists():
+        intent_to_add_files = read_file_paths_file(intent_to_add_path)
+        for file_path in intent_to_add_files:
+            # Re-add with intent-to-add flag
+            run_git_command(["add", "-N", file_path], check=False)
+
     # Apply original stash if it exists (with --index to restore staged state)
     if abort_stash:
         print(_("Applying original changes..."), file=sys.stderr)
@@ -80,6 +88,10 @@ def command_abort() -> None:
         )
         if result.returncode != 0:
             print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)
+
+    # Restore batch refs to their original state
+    from ..data.batch_refs import restore_batch_refs
+    restore_batch_refs()
 
     # Clear all state
     state_dir = get_state_directory_path()

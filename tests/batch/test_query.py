@@ -15,7 +15,9 @@ from git_stage_batch.batch.query import (
 )
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.storage import add_file_to_batch
-from git_stage_batch.utils.paths import get_batch_metadata_file_path
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.utils.paths import get_batch_metadata_file_path, ensure_state_directory_exists
 
 
 @pytest.fixture
@@ -30,6 +32,14 @@ def temp_git_repo(tmp_path, monkeypatch):
     (tmp_path / "README").write_text("initial\n")
     subprocess.run(["git", "add", "README"], check=True)
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, capture_output=True)
+
+    # Create test files
+    (tmp_path / "file.txt").write_text("line1\nline2\nline3\n")
+    (tmp_path / "file2.txt").write_text("other1\nother2\n")
+
+    # Initialize session (needed for batch source creation)
+    ensure_state_directory_exists()
+    initialize_abort_state()
 
     return tmp_path
 
@@ -140,20 +150,31 @@ def test_list_batch_files_empty(temp_git_repo):
 def test_list_batch_files_with_files(temp_git_repo):
     """Test listing files in batch with files."""
     create_batch("test-batch", "Test")
-    add_file_to_batch("test-batch", "file1.txt", "content1")
-    add_file_to_batch("test-batch", "file2.txt", "content2")
+
+    ownership1 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    add_file_to_batch("test-batch", "file.txt", ownership1)
+
+    ownership2 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    add_file_to_batch("test-batch", "file2.txt", ownership2)
 
     files = list_batch_files("test-batch")
     # Batch starts with HEAD's tree (README), then adds new files
-    assert files == ["README", "file1.txt", "file2.txt"]
+    assert files == ["README", "file.txt", "file2.txt"]
 
 
 def test_list_batch_files_sorted(temp_git_repo):
     """Test that batch files are returned in sorted order."""
+    # Create test files
+    (temp_git_repo / "zebra.txt").write_text("z\n")
+    (temp_git_repo / "apple.txt").write_text("a\n")
+    (temp_git_repo / "middle.txt").write_text("m\n")
+
     create_batch("test-batch", "Test")
-    add_file_to_batch("test-batch", "zebra.txt", "z")
-    add_file_to_batch("test-batch", "apple.txt", "a")
-    add_file_to_batch("test-batch", "middle.txt", "m")
+
+    ownership = BatchOwnership(claimed_lines=["1"], deletions=[])
+    add_file_to_batch("test-batch", "zebra.txt", ownership)
+    add_file_to_batch("test-batch", "apple.txt", ownership)
+    add_file_to_batch("test-batch", "middle.txt", ownership)
 
     files = list_batch_files("test-batch")
     # Batch starts with HEAD's tree (README), then adds new files (sorted)

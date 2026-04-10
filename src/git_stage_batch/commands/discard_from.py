@@ -2,42 +2,37 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from typing import Optional
 
-from ..batch import (
-    get_batch_baseline_commit,
-    get_batch_diff,
-)
-from ..data.session import snapshot_file_if_untracked
-from ..staging.operations import build_target_working_tree_content_with_discarded_lines
-from ..exceptions import exit_with_error
-from ..i18n import _
+from ..batch.display import filter_batch_by_display_ids
+from ..batch.merge import discard_batch
+from ..batch.query import read_batch_metadata
+from ..batch.validation import batch_exists
 from ..core.line_selection import parse_line_selection
-from ..core.diff_parser import build_current_lines_from_patch_text, parse_unified_diff_into_single_hunk_patches
+from ..data.session import snapshot_file_if_untracked
+from ..exceptions import exit_with_error, MergeError
+from ..i18n import _
+from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command
-from ..utils.paths import get_context_lines
 
 
 def command_discard_from_batch(batch_name: str, line_ids: Optional[str] = None, file_only: bool = False) -> None:
-    """Remove batch changes from working tree."""
+    """Remove batch changes from working tree using structural merge."""
     require_git_repository()
 
-    # Get batch diff
-    context_lines = get_context_lines()
-    diff = get_batch_diff(batch_name, context_lines)
+    # Check batch exists
+    if not batch_exists(batch_name):
+        exit_with_error(_("Batch '{name}' does not exist").format(name=batch_name))
 
-    if not diff:
-        exit_with_error(_("Batch '{name}' is empty or does not exist").format(name=batch_name))
+    # Read batch metadata
+    metadata = read_batch_metadata(batch_name)
+    files = metadata.get("files", {})
 
-    # Parse diff into patches
-    patches = parse_unified_diff_into_single_hunk_patches(diff)
+    if not files:
+        exit_with_error(_("Batch '{name}' is empty").format(name=batch_name))
 
-    if not patches:
-        exit_with_error(_("No patches found in batch '{name}'").format(name=batch_name))
-
-    # If file_only, filter to current file only
+    # If file_only, filter to current file
     if file_only:
         from ..data.hunk_tracking import require_current_hunk_and_check_stale
         from ..data.line_state import load_current_lines_from_state
@@ -46,102 +41,92 @@ def command_discard_from_batch(batch_name: str, line_ids: Optional[str] = None, 
         current_lines = load_current_lines_from_state()
         current_file = current_lines.path
 
-        # Filter patches to current file
-        patches = [p for p in patches if p.new_path == current_file]
-
-        if not patches:
+        if current_file not in files:
             exit_with_error(_("Batch '{name}' has no changes for {file}").format(name=batch_name, file=current_file))
 
-        # Apply reverse patches for current file
-        failed_files = []
-        for patch in patches:
-            # Snapshot before modifying
-            snapshot_file_if_untracked(current_file)
+        files = {current_file: files[current_file]}
 
-            result = subprocess.run(
-                ["git", "apply", "--reverse", "--unidiff-zero"],
-                input=patch.to_patch_text(),
-                capture_output=True,
-                text=True,
-                check=False
-            )
-            if result.returncode != 0:
-                failed_files.append(patch.new_path)
-
-        if failed_files:
-            exit_with_error(
-                _("Failed to discard patches for file: {file}\nRun 'git-stage-batch show --from {name}' to review changes").format(
-                    file=current_file,
-                    name=batch_name
-                )
-            )
-
-        print(_("✓ Discarded changes for {file} from batch '{name}' from working tree").format(file=current_file, name=batch_name), file=sys.stderr)
-        print(_("Note: Batch '{name}' still exists (use 'drop' to delete it)").format(name=batch_name), file=sys.stderr)
-        return
-
-    # If line_ids specified, use line-level discarding
+    # Parse line selection if provided
+    selected_ids = None
     if line_ids:
         selected_ids = parse_line_selection(line_ids)
 
-        for patch in patches:
-            patch_text = patch.to_patch_text()
-            current_lines = build_current_lines_from_patch_text(patch_text)
-            file_path = current_lines.path
+    # Get baseline commit
+    from ..batch.query import get_batch_baseline_commit
+    baseline_commit = get_batch_baseline_commit(batch_name)
+    if not baseline_commit:
+        exit_with_error(_("Batch '{name}' has no baseline commit").format(name=batch_name))
 
-            # Filter to selected lines
-            filtered_lines = [line for line in current_lines.lines if line.id in selected_ids]
-            if not filtered_lines:
-                continue
+    # Discard all files in batch
+    repo_root = get_git_repository_root_path()
+    failed_files = []
 
+    for file_path, file_meta in files.items():
+        try:
             # Snapshot file before modifying
             snapshot_file_if_untracked(file_path)
 
+            # Get batch source commit content
+            batch_source_commit = file_meta["batch_source_commit"]
+            batch_source_result = run_git_command(["show", f"{batch_source_commit}:{file_path}"], check=False)
+            if batch_source_result.returncode != 0:
+                failed_files.append(file_path)
+                continue
+            batch_source_content = batch_source_result.stdout
+
+            # Get baseline content
+            baseline_result = run_git_command(["show", f"{baseline_commit}:{file_path}"], check=False)
+            baseline_content = baseline_result.stdout if baseline_result.returncode == 0 else ""
+
             # Get current working tree content
-            repo_root = get_git_repository_root_path()
             full_path = repo_root / file_path
             if full_path.exists():
-                working_text = full_path.read_text(encoding="utf-8", errors="surrogateescape")
+                working_content = read_text_file_contents(full_path)
             else:
-                exit_with_error(_("File not found in working tree: {file}").format(file=file_path))
+                working_content = ""
 
-            # Build target content with selected lines discarded
-            target_content = build_target_working_tree_content_with_discarded_lines(
-                current_lines, selected_ids, working_text
+            # Get ownership from metadata
+            from ..batch.ownership import BatchOwnership
+            ownership = BatchOwnership.from_metadata_dict(file_meta)
+
+            # Filter by line IDs if specified
+            if selected_ids:
+                ownership = filter_batch_by_display_ids(
+                    ownership,
+                    batch_source_content,
+                    selected_ids
+                )
+
+                # If nothing selected for this file, skip it
+                if ownership.is_empty():
+                    continue
+
+            # Perform structural discard (inverse of merge)
+            discarded_content = discard_batch(
+                batch_source_content,
+                ownership,
+                working_content,
+                baseline_content
             )
 
             # Write to working tree
-            repo_root = get_git_repository_root_path()
-            full_path = repo_root / file_path
-            full_path.write_text(target_content, encoding="utf-8", errors="surrogateescape")
+            write_text_file_contents(full_path, discarded_content)
 
-        print(_("✓ Discarded selected lines from batch '{name}' from working tree").format(name=batch_name), file=sys.stderr)
-        print(_("Note: Batch '{name}' still exists (use 'drop' to delete it)").format(name=batch_name), file=sys.stderr)
+        except MergeError as e:
+            print(_("✗ Failed to discard {file}: {error}").format(file=file_path, error=e.message), file=sys.stderr)
+            failed_files.append(file_path)
+
+    if failed_files:
+        exit_with_error(
+            _("Failed to discard changes for some files: {files}").format(files=", ".join(failed_files))
+        )
+
+    # Success message
+    if file_only:
+        print(_("✓ Discarded changes for {file} from batch '{name}'").format(file=list(files.keys())[0], name=batch_name), file=sys.stderr)
+    elif line_ids:
+        print(_("✓ Discarded selected lines from batch '{name}'").format(name=batch_name), file=sys.stderr)
     else:
-        # Apply entire patches in reverse to the working tree (strict mode)
-        failed_files = []
-        for patch in patches:
-            file_path = patch.new_path
+        print(_("✓ Discarded changes from batch '{name}'").format(name=batch_name), file=sys.stderr)
 
-            # Try to apply the patch in reverse
-            result = subprocess.run(
-                ["git", "apply", "--reverse", "--unidiff-zero"],
-                input=patch.to_patch_text(),
-                capture_output=True,
-                text=True,
-                check=False
-            )
-
-            if result.returncode != 0:
-                failed_files.append(file_path)
-
-        if failed_files:
-            exit_with_error(
-                _("Failed to discard patches for files: {files}\nRun 'git-stage-batch show --from {name}' to review changes\nUse --file or --line to discard compatible parts").format(
-                    files=', '.join(failed_files),
-                    name=batch_name
-                )
-            )
-
-        print(_("✓ Discarded changes from batch '{name}' from working tree").format(name=batch_name), file=sys.stderr)
-        print(_("Note: Batch '{name}' still exists (use 'drop' to delete it)").format(name=batch_name), file=sys.stderr)
+    print(_("Note: Batch '{name}' still exists (use 'drop' to delete it)").format(name=batch_name), file=sys.stderr)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 
 
-def compute_stable_hunk_hash(patch_text: str) -> str:
+def compute_stable_hunk_hash(patch_bytes: bytes) -> str:
     """
     Compute a stable identity hash for a one-hunk patch.
 
@@ -14,31 +14,42 @@ def compute_stable_hunk_hash(patch_text: str) -> str:
     code changes or when different -U context values are used.
     This allows tracking which hunks have been processed or blocked
     even as the working tree changes.
+
+    Args:
+        patch_bytes: Unified diff patch as bytes
+
+    Returns:
+        SHA-1 hash (hex string)
     """
-    selected_path = ""
-    header_text = ""
-    body_lines: list[str] = []
+    selected_path_bytes = b""
+    header_bytes = b""
+    body_lines_bytes: list[bytes] = []
     saw_header = False
 
-    for line in patch_text.splitlines():
-        if line.startswith("+++ "):
-            path_value = line.split(" ", 1)[1].strip()
-            if path_value != "/dev/null":
-                selected_path = path_value[2:] if path_value.startswith("b/") else path_value
+    # Use splitlines(keepends=True) to preserve exact line endings for hashing
+    for line_with_ending in patch_bytes.splitlines(keepends=True):
+        # Strip \n for comparison
+        line = line_with_ending.rstrip(b'\n')
+
+        if line.startswith(b"+++ "):
+            path_value = line.split(b" ", 1)[1].strip()
+            if path_value != b"/dev/null":
+                selected_path_bytes = path_value[2:] if path_value.startswith(b"b/") else path_value
             continue
-        if line.startswith("--- ") and not selected_path:
-            path_value = line.split(" ", 1)[1].strip()
-            if path_value != "/dev/null":
-                selected_path = path_value[2:] if path_value.startswith("a/") else path_value
+        if line.startswith(b"--- ") and not selected_path_bytes:
+            path_value = line.split(b" ", 1)[1].strip()
+            if path_value != b"/dev/null":
+                selected_path_bytes = path_value[2:] if path_value.startswith(b"a/") else path_value
             continue
-        if line.startswith("@@ ") and not saw_header:
-            header_text = line.rstrip("\n")
+        if line.startswith(b"@@ ") and not saw_header:
+            header_bytes = line
             saw_header = True
             continue
         if saw_header:
             # Only include actual changes (+ or -), not context lines (space)
-            if line and line[0] in ('+', '-'):
-                body_lines.append(line)
+            if line and line[0:1] in (b'+', b'-'):
+                body_lines_bytes.append(line)
 
-    key = f"{selected_path}\0{header_text}\0{'\n'.join(body_lines)}"
-    return hashlib.sha1(key.encode("utf-8", errors="surrogateescape")).hexdigest()
+    # Build hash key from bytes (no encoding needed)
+    key = selected_path_bytes + b"\0" + header_bytes + b"\0" + b'\n'.join(body_lines_bytes)
+    return hashlib.sha1(key).hexdigest()

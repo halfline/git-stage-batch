@@ -4,10 +4,12 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch import add_file_to_batch, create_batch
+from git_stage_batch.batch import create_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
+from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git import run_git_command
+from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
 @pytest.fixture
@@ -26,6 +28,10 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
 
+    # Initialize session for batch operations
+    ensure_state_directory_exists()
+    initialize_abort_state()
+
     return repo
 
 
@@ -34,9 +40,17 @@ class TestCommandIncludeFromBatch:
 
     def test_include_from_batch_stages_changes(self, temp_git_repo, capsys):
         """Test including changes from a batch stages them."""
-        create_batch("test-batch")
-        add_file_to_batch("test-batch", "README.md", "# Test\n")  # Baseline
-        add_file_to_batch("test-batch", "new.txt", "new content\n")
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.commands.include import command_include_to_batch
+
+        # Create a new file and save to batch
+        (temp_git_repo / "new.txt").write_text("new content\n")
+        command_start()
+        command_include_to_batch("test-batch", quiet=True)
+
+        # Remove from working tree and unstage
+        (temp_git_repo / "new.txt").unlink()
+        run_git_command(["reset", "HEAD", "new.txt"], check=False)
 
         command_include_from_batch("test-batch")
 
@@ -50,8 +64,7 @@ class TestCommandIncludeFromBatch:
     def test_include_from_empty_batch_fails(self, temp_git_repo):
         """Test including from an empty batch fails."""
         create_batch("empty-batch")
-        # Add baseline file to batch so there's no diff
-        add_file_to_batch("empty-batch", "README.md", "# Test\n")
+        # Empty batch (only contains baseline from HEAD) has no diff
 
         with pytest.raises(CommandError):
             command_include_from_batch("empty-batch")
@@ -74,23 +87,30 @@ class TestCommandIncludeFromBatch:
         """Test that --file mode filters batch diff to current file only."""
         from unittest.mock import patch, MagicMock
         from git_stage_batch.core.models import CurrentLines, LineEntry
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.commands.include import command_include_to_batch
 
         # Create baseline with multiple files
-        (temp_git_repo / "file1.txt").write_text("file1 content\n")
-        (temp_git_repo / "file2.txt").write_text("file2 content\n")
+        (temp_git_repo / "file1.txt").write_text("line 1\nline 2\n")
+        (temp_git_repo / "file2.txt").write_text("line A\nline B\n")
         subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
         subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
 
-        # Create batch with changes to both files
-        create_batch("test-batch")
-        add_file_to_batch("test-batch", "file1.txt", "file1 MODIFIED\n")
-        add_file_to_batch("test-batch", "file2.txt", "file2 MODIFIED\n")
+        # Add new lines to both files and save to batch
+        (temp_git_repo / "file1.txt").write_text("line 1\nline 2\nfile1 added\n")
+        (temp_git_repo / "file2.txt").write_text("line A\nline B\nfile2 added\n")
+        command_start()
+        command_include_to_batch("test-batch", quiet=True)
+
+        # Reset files to original
+        (temp_git_repo / "file1.txt").write_text("line 1\nline 2\n")
+        (temp_git_repo / "file2.txt").write_text("line A\nline B\n")
 
         # Mock cached hunk state to make it look like file1.txt is the current file
         mock_lines = CurrentLines(
             path="file1.txt",
             header=MagicMock(),  # Mock header (not relevant for this test)
-            lines=[LineEntry(id=1, kind="+", text="file1 MODIFIED\n", old_line_number=None, new_line_number=1)]
+            lines=[LineEntry(id=1, kind="+", text_bytes=b"file1 added\n", text="file1 added\n", old_line_number=None, new_line_number=3)]
         )
 
         with patch("git_stage_batch.data.hunk_tracking.require_current_hunk_and_check_stale"):
@@ -104,18 +124,23 @@ class TestCommandIncludeFromBatch:
         assert "file1.txt" in staged_files
         assert "file2.txt" not in staged_files
 
-        # Verify file1 has the batch content
+        # Verify file1 has the added line
         result = run_git_command(["show", ":file1.txt"])
-        assert result.stdout == "file1 MODIFIED\n"
+        assert "file1 added" in result.stdout
 
         captured = capsys.readouterr()
         assert "Staged changes for file1.txt from batch" in captured.err
 
     def test_include_from_batch_file_mode_requires_cached_hunk(self, temp_git_repo):
         """Test that --file mode requires a cached hunk."""
-        create_batch("test-batch")
-        add_file_to_batch("test-batch", "new.txt", "content\n")
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.commands.include import command_include_to_batch
 
-        # Try to use --file without starting session
+        # Create a new file and save to batch
+        (temp_git_repo / "new.txt").write_text("content\n")
+        command_start()
+        command_include_to_batch("test-batch", quiet=True)
+
+        # Try to use --file without cached hunk (no find_and_cache_next_unblocked_hunk call after command_start)
         with pytest.raises(CommandError):
             command_include_from_batch("test-batch", file_only=True)

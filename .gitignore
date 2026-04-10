@@ -56,3 +56,5 @@ po/POTFILES.in
 
 # Generated documentation assets
 docs/assets/demo.gif
+
+x86_64-redhat-linux-gnu/

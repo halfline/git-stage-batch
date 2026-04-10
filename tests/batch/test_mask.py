@@ -1,12 +1,13 @@
 """Tests for batch mask operations."""
 
+import json
 import subprocess
 
 import pytest
 
 from git_stage_batch.batch.mask import recompute_global_batch_mask
 from git_stage_batch.batch.operations import create_batch
-from git_stage_batch.core.line_selection import read_line_ids_file, write_line_ids_file
+from git_stage_batch.core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
 from git_stage_batch.utils.file_io import read_text_file_contents, write_text_file_contents
 from git_stage_batch.utils.paths import (
     get_batch_directory_path,
@@ -30,6 +31,31 @@ def temp_git_repo(tmp_path, monkeypatch):
     return tmp_path
 
 
+def read_line_ids_from_json_mask(mask_path):
+    """Read all line IDs from JSON mask file (new format).
+
+    Returns set of all line IDs across all files in the mask.
+    """
+    if not mask_path.exists():
+        return set()
+
+    content = read_text_file_contents(mask_path)
+    if not content:
+        return set()
+
+    mask = json.loads(content)
+    all_ids = set()
+
+    for file_data in mask.values():
+        claimed_lines = file_data.get("claimed_lines", [])
+        if claimed_lines:
+            # claimed_lines is a list of range strings like ["1-3", "5"]
+            line_ids = parse_line_selection(",".join(claimed_lines))
+            all_ids.update(line_ids)
+
+    return all_ids
+
+
 class TestRecomputeGlobalBatchMask:
     """Tests for recompute_global_batch_mask function."""
 
@@ -46,8 +72,8 @@ class TestRecomputeGlobalBatchMask:
 
         processed_batch_ids_path = state_dir / "processed.batch"
         assert processed_batch_ids_path.exists()
-        line_ids = read_line_ids_file(processed_batch_ids_path)
-        assert line_ids == []
+        line_ids = read_line_ids_from_json_mask(processed_batch_ids_path)
+        assert line_ids == set()
 
     def test_single_batch_with_claimed_hunks(self, temp_git_repo):
         """Test that single batch's claimed hunks appear in global mask."""
@@ -66,23 +92,6 @@ class TestRecomputeGlobalBatchMask:
         content = read_text_file_contents(batched_hunks_path)
         hashes = content.strip().split("\n") if content.strip() else []
         assert sorted(hashes) == ["hash1", "hash2", "hash3"]
-
-    def test_single_batch_with_claimed_line_ids(self, temp_git_repo):
-        """Test that single batch's claimed line IDs appear in global mask."""
-        create_batch("batch1", "Test batch")
-
-        # Add claimed line IDs to batch
-        batch_dir = get_batch_directory_path("batch1")
-        claimed_line_ids_path = batch_dir / "claimed_line_ids"
-        write_line_ids_file(claimed_line_ids_path, {1, 3, 5})
-
-        recompute_global_batch_mask()
-
-        # Global mask should contain all line IDs
-        state_dir = get_state_directory_path()
-        processed_batch_ids_path = state_dir / "processed.batch"
-        line_ids = read_line_ids_file(processed_batch_ids_path)
-        assert set(line_ids) == {1, 3, 5}
 
     def test_multiple_batches_with_overlapping_hunks(self, temp_git_repo):
         """Test that overlapping hunk claims from multiple batches are unioned."""
@@ -108,31 +117,8 @@ class TestRecomputeGlobalBatchMask:
         hashes = content.strip().split("\n") if content.strip() else []
         assert sorted(hashes) == ["hash1", "hash2", "hash3"]
 
-    def test_multiple_batches_with_overlapping_line_ids(self, temp_git_repo):
-        """Test that overlapping line ID claims from multiple batches are unioned."""
-        create_batch("batch1", "First batch")
-        create_batch("batch2", "Second batch")
-
-        # Batch1 claims IDs 1, 2, 3
-        batch_dir1 = get_batch_directory_path("batch1")
-        claimed_line_ids_path1 = batch_dir1 / "claimed_line_ids"
-        write_line_ids_file(claimed_line_ids_path1, {1, 2, 3})
-
-        # Batch2 claims IDs 3, 4, 5 (3 overlaps)
-        batch_dir2 = get_batch_directory_path("batch2")
-        claimed_line_ids_path2 = batch_dir2 / "claimed_line_ids"
-        write_line_ids_file(claimed_line_ids_path2, {3, 4, 5})
-
-        recompute_global_batch_mask()
-
-        # Global mask should be union: 1, 2, 3, 4, 5
-        state_dir = get_state_directory_path()
-        processed_batch_ids_path = state_dir / "processed.batch"
-        line_ids = read_line_ids_file(processed_batch_ids_path)
-        assert set(line_ids) == {1, 2, 3, 4, 5}
-
     def test_multiple_batches_with_disjoint_claims(self, temp_git_repo):
-        """Test that disjoint claims from multiple batches are unioned."""
+        """Test that disjoint hunk claims from multiple batches are unioned."""
         create_batch("batch1", "First batch")
         create_batch("batch2", "Second batch")
 
@@ -146,14 +132,6 @@ class TestRecomputeGlobalBatchMask:
         claimed_hunks_path2 = batch_dir2 / "claimed_hunks"
         write_text_file_contents(claimed_hunks_path2, "hash2\n")
 
-        # Batch1 claims line IDs 1, 2
-        claimed_line_ids_path1 = batch_dir1 / "claimed_line_ids"
-        write_line_ids_file(claimed_line_ids_path1, {1, 2})
-
-        # Batch2 claims line IDs 3, 4
-        claimed_line_ids_path2 = batch_dir2 / "claimed_line_ids"
-        write_line_ids_file(claimed_line_ids_path2, {3, 4})
-
         recompute_global_batch_mask()
 
         # Global hunks mask should contain both hashes
@@ -163,35 +141,23 @@ class TestRecomputeGlobalBatchMask:
         hashes = content.strip().split("\n") if content.strip() else []
         assert sorted(hashes) == ["hash1", "hash2"]
 
-        # Global line IDs mask should contain all IDs
-        processed_batch_ids_path = state_dir / "processed.batch"
-        line_ids = read_line_ids_file(processed_batch_ids_path)
-        assert set(line_ids) == {1, 2, 3, 4}
-
-    def test_batch_with_both_hunks_and_line_ids(self, temp_git_repo):
-        """Test that batch with both hunks and line IDs is handled correctly."""
+    def test_batch_with_claimed_hunks(self, temp_git_repo):
+        """Test that batch with claimed hunks is handled correctly."""
         create_batch("batch1", "Test batch")
 
-        # Add both claimed hunks and line IDs
+        # Add claimed hunks
         batch_dir = get_batch_directory_path("batch1")
         claimed_hunks_path = batch_dir / "claimed_hunks"
         write_text_file_contents(claimed_hunks_path, "hash1\nhash2\n")
 
-        claimed_line_ids_path = batch_dir / "claimed_line_ids"
-        write_line_ids_file(claimed_line_ids_path, {1, 2, 3})
-
         recompute_global_batch_mask()
 
-        # Both global masks should be populated
+        # Global hunks mask should be populated
         state_dir = get_state_directory_path()
         batched_hunks_path = state_dir / "batched-hunks"
         content = read_text_file_contents(batched_hunks_path)
         hashes = content.strip().split("\n") if content.strip() else []
         assert sorted(hashes) == ["hash1", "hash2"]
-
-        processed_batch_ids_path = state_dir / "processed.batch"
-        line_ids = read_line_ids_file(processed_batch_ids_path)
-        assert set(line_ids) == {1, 2, 3}
 
     def test_batch_with_no_claims(self, temp_git_repo):
         """Test that batch with no claim files doesn't cause errors."""
@@ -207,8 +173,8 @@ class TestRecomputeGlobalBatchMask:
         assert content == ""
 
         processed_batch_ids_path = state_dir / "processed.batch"
-        line_ids = read_line_ids_file(processed_batch_ids_path)
-        assert line_ids == []
+        line_ids = read_line_ids_from_json_mask(processed_batch_ids_path)
+        assert line_ids == set()
 
     def test_hashes_are_sorted_in_output(self, temp_git_repo):
         """Test that hunk hashes are sorted in the output file."""

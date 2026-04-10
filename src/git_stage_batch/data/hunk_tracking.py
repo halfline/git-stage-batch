@@ -7,9 +7,14 @@ import subprocess
 import sys
 from typing import Optional
 
+from ..batch.display import annotate_with_batch_source
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.models import CurrentLines
-from ..core.diff_parser import build_current_lines_from_patch_text, parse_unified_diff_streaming, write_snapshots_for_current_file_path
+from ..core.diff_parser import (
+    build_current_lines_from_patch_bytes,
+    parse_unified_diff_streaming,
+    write_snapshots_for_current_file_path,
+)
 from ..core.line_selection import write_line_ids_file
 from ..exceptions import exit_with_error
 from ..i18n import _
@@ -43,39 +48,99 @@ def clear_current_hunk_state_files() -> None:
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
-    get_processed_batch_ids_file_path().unlink(missing_ok=True)
+    # NOTE: processed_batch_ids is global state (union of all batches), not per-hunk state
 
 
 def apply_line_level_batch_filter_to_cached_hunk() -> bool:
-    """Filter cached hunk to exclude batched lines.
+    """Filter cached hunk to exclude batched lines using stable batch source coordinates.
 
     Returns:
         True if hunk should be skipped (all lines filtered), False otherwise
     """
     from dataclasses import replace
-    from ..core.line_selection import read_line_ids_file
+    from ..core.line_selection import parse_line_selection
     from .line_state import load_current_lines_from_state, convert_current_lines_to_serializable_dict
 
     current_lines = load_current_lines_from_state()
     if current_lines is None:
         return True
 
-    batched_ids = set(read_line_ids_file(get_processed_batch_ids_file_path()))
-    if not batched_ids:
-        return False  # No filtering needed
+    # Load batch mask (handles both new JSON format and legacy line-ID format)
+    mask_path = get_processed_batch_ids_file_path()
+    if not mask_path.exists():
+        return False  # No mask, no filtering needed
 
-    # Filter out batched lines and renumber
-    filtered_lines = []
-    new_id = 1
-    for line_entry in current_lines.lines:
-        if line_entry.id in batched_ids:
-            continue  # Skip batched lines
-        # Create new line with renumbered ID
-        filtered_lines.append(replace(line_entry, id=new_id if line_entry.kind != " " else 0))
-        if line_entry.kind != " ":
-            new_id += 1
+    try:
+        mask_content = read_text_file_contents(mask_path)
+        if not mask_content:
+            return False
 
-    # If all lines were batched, skip this hunk
+        # Try new JSON format first
+        if mask_content.strip().startswith('{'):
+            try:
+                file_mask = json.loads(mask_content)
+                if not file_mask:  # Empty dict
+                    return False
+
+                # Check if current file is in mask
+                file_path = current_lines.path
+                if file_path not in file_mask:
+                    return False  # File not masked
+
+                file_data = file_mask[file_path]
+
+                # Get claimed source lines and deletion positions from mask
+                claimed_lines_ranges = file_data.get("claimed_lines", [])
+                deletion_position_ranges = file_data.get("deletion_positions", [])
+
+                if not claimed_lines_ranges and not deletion_position_ranges:
+                    return False  # No lines claimed or deletions
+
+                claimed_source_lines = set(parse_line_selection(",".join(claimed_lines_ranges))) if claimed_lines_ranges else set()
+                deletion_positions = set(parse_line_selection(",".join(deletion_position_ranges))) if deletion_position_ranges else set()
+
+                # Filter out lines whose source_line is in the mask
+                filtered_lines = []
+                new_id = 1
+                for line_entry in current_lines.lines:
+                    # Check if this line's source position is masked
+                    if line_entry.source_line is not None:
+                        # For deletions (kind == '-'), check deletion positions
+                        # For context/additions (kind == ' ' or '+'), check claimed lines
+                        if line_entry.kind == '-' and line_entry.source_line in deletion_positions:
+                            continue  # Skip batched deletion
+                        elif line_entry.kind in (' ', '+') and line_entry.source_line in claimed_source_lines:
+                            continue  # Skip batched context/addition
+                    # Keep this line with renumbered ID
+                    filtered_lines.append(replace(line_entry, id=new_id if line_entry.kind != " " else 0))
+                    if line_entry.kind != " ":
+                        new_id += 1
+            except json.JSONDecodeError:
+                # Fall through to legacy format
+                pass
+
+        # Legacy format: line IDs separated by newlines (display IDs, not source line positions)
+        # This is kept for backward compatibility with old tests
+        if 'filtered_lines' not in locals():
+            from ..core.line_selection import read_line_ids_file
+            batched_ids = set(read_line_ids_file(mask_path))
+            if not batched_ids:
+                return False  # No filtering needed
+
+            # Filter out batched lines and renumber
+            filtered_lines = []
+            new_id = 1
+            for line_entry in current_lines.lines:
+                if line_entry.id in batched_ids:
+                    continue  # Skip batched lines
+                # Create new line with renumbered ID
+                filtered_lines.append(replace(line_entry, id=new_id if line_entry.kind != " " else 0))
+                if line_entry.kind != " ":
+                    new_id += 1
+    except FileNotFoundError:
+        return False
+
+    # If all changed lines were batched, skip this hunk
     if not any(line.kind in ("+", "-") for line in filtered_lines):
         return True
 
@@ -95,42 +160,122 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
 
 
 def cache_batch_as_single_hunk(batch_name: str) -> Optional[CurrentLines]:
-    """Load entire batch diff and cache it as a single hunk.
+    """Load entire batch and cache it as a single hunk using batch source model.
 
-    For now, shows only the first hunk from the batch. Future enhancement
-    could combine all hunks or add batch hunk navigation.
+    For now, shows only the first file from the batch. Future enhancement
+    could combine all files or add batch file navigation.
 
     Args:
         batch_name: Name of the batch to load
 
     Returns:
-        CurrentLines for the first batch hunk if found, None if batch is empty
+        CurrentLines for the first batch file if found, None if batch is empty
     """
-    from ..batch import get_batch_diff
-    from ..core.diff_parser import parse_unified_diff_into_single_hunk_patches
+    from ..batch.display import build_display_lines_from_batch_source
+    from ..batch.query import read_batch_metadata
+    from ..batch.ownership import BatchOwnership
+    from ..core.models import CurrentLines, HunkHeader, LineEntry
+    from ..utils.git import run_git_command
 
-    # Get batch diff
-    diff = get_batch_diff(batch_name, get_context_lines())
-    if not diff:
+    # Read batch metadata
+    metadata = read_batch_metadata(batch_name)
+    files = metadata.get("files", {})
+
+    if not files:
         return None
 
-    # Parse into individual hunks
-    patches = parse_unified_diff_into_single_hunk_patches(diff)
-    if not patches:
+    # For now, show only the first file
+    # TODO: Future enhancement - navigate through all batch files
+    file_path = next(iter(files.keys()))
+    file_meta = files[file_path]
+
+    # Get batch source commit and ownership
+    batch_source_commit = file_meta["batch_source_commit"]
+    ownership = BatchOwnership.from_metadata_dict(file_meta)
+
+    # Read batch source content
+    batch_source_result = run_git_command(["show", f"{batch_source_commit}:{file_path}"], check=False)
+    if batch_source_result.returncode != 0:
+        return None
+    batch_source_content = batch_source_result.stdout
+
+    # Build display lines (already has correct line IDs matching ownership)
+    display_lines = build_display_lines_from_batch_source(batch_source_content, ownership)
+
+    if not display_lines:
         return None
 
-    # For now, show only the first hunk
-    # TODO: Future enhancement - navigate through all batch hunks
-    first_patch = patches[0]
-    patch_text = first_patch.to_patch_text()
+    # Convert to CurrentLines format for display compatibility
+    line_entries = []
+    new_line_num = 1
+
+    for display_line in display_lines:
+        line_id = display_line["id"]
+        content = display_line["content"]
+
+        # Convert string content to bytes (encode as UTF-8)
+        content_bytes = content.encode('utf-8')
+        # Strip only the newline terminator, preserve \r
+        text_bytes = content_bytes.rstrip(b'\n')
+        # Decode with replacement for display
+        text = text_bytes.decode('utf-8', errors='replace')
+
+        if display_line["type"] == "claimed":
+            # Claimed line from batch source
+            source_line = display_line["source_line"]
+            line_entries.append(LineEntry(
+                id=line_id,
+                kind="+",
+                old_line_number=None,
+                new_line_number=new_line_num,
+                text_bytes=text_bytes,
+                text=text,
+                source_line=source_line
+            ))
+        else:  # insertion
+            # Insertion (doesn't exist in batch source)
+            line_entries.append(LineEntry(
+                id=line_id,
+                kind="+",
+                old_line_number=None,
+                new_line_number=new_line_num,
+                text_bytes=text_bytes,
+                text=text,
+                source_line=None
+            ))
+        new_line_num += 1
+
+    # Create hunk header (all additions, no old content)
+    header = HunkHeader(
+        old_start=0,
+        old_len=0,
+        new_start=1,
+        new_len=len(line_entries)
+    )
+
+    current_lines = CurrentLines(
+        path=file_path,
+        header=header,
+        lines=line_entries
+    )
+
+    # Synthesize a patch text for hashing (not used for applying, just for identity)
+    patch_lines = [
+        f"--- /dev/null",
+        f"+++ b/{file_path}",
+        f"@@ -0,0 +1,{len(line_entries)} @@"
+    ]
+    for entry in line_entries:
+        patch_lines.append(f"+{entry.text}")
+    patch_text = "\n".join(patch_lines) + "\n"
+
     patch_hash = compute_stable_hunk_hash(patch_text)
 
     # Cache the hunk
     write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
     write_text_file_contents(get_current_hunk_hash_file_path(), patch_hash)
 
-    # Build CurrentLines for line IDs
-    current_lines = build_current_lines_from_patch_text(patch_text)
+    # Save CurrentLines for line-level operations
     write_text_file_contents(get_current_lines_json_file_path(),
                             json.dumps(convert_current_lines_to_serializable_dict(current_lines),
                                       ensure_ascii=False, indent=0))
@@ -163,16 +308,18 @@ def find_and_cache_next_unblocked_hunk() -> Optional[CurrentLines]:
     # Stream git diff and parse incrementally - stops after first unblocked hunk found
     try:
         for single_hunk in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-            patch_text = single_hunk.to_patch_text()
-            hunk_hash = compute_stable_hunk_hash(patch_text)
+            patch_bytes = single_hunk.to_patch_bytes()
+            hunk_hash = compute_stable_hunk_hash(patch_bytes)
             if hunk_hash in blocked_hashes:
                 continue
 
             # Skip hunks from blocked files
-            current_lines = build_current_lines_from_patch_text(patch_text)
+            current_lines = build_current_lines_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
             if current_lines.path in blocked_files:
                 continue
 
+            # Decode to text for storage (with errors='replace' for non-UTF-8)
+            patch_text = patch_bytes.decode('utf-8', errors='replace')
             write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
             write_text_file_contents(get_current_hunk_hash_file_path(), hunk_hash)
 
@@ -212,7 +359,8 @@ def show_current_hunk() -> None:
     patch_path = get_current_hunk_patch_file_path()
     if patch_path.exists():
         patch_text = read_text_file_contents(patch_path)
-        current_lines = build_current_lines_from_patch_text(patch_text)
+        patch_bytes = patch_text.encode('utf-8')  # Convert stored text to bytes
+        current_lines = build_current_lines_from_patch_bytes(patch_bytes)
         print_annotated_hunk_with_aligned_gutter(current_lines)
 
 
@@ -229,7 +377,8 @@ def advance_to_and_show_next_hunk() -> None:
     patch_path = get_current_hunk_patch_file_path()
     if patch_path.exists():
         patch_text = read_text_file_contents(patch_path)
-        current_lines = build_current_lines_from_patch_text(patch_text)
+        patch_bytes = patch_text.encode('utf-8')  # Convert stored text to bytes
+        current_lines = build_current_lines_from_patch_bytes(patch_bytes)
         print_annotated_hunk_with_aligned_gutter(current_lines)
     else:
         print(_("No more hunks to process."), file=sys.stderr)
@@ -302,6 +451,8 @@ def recalculate_current_hunk_for_file(file_path: str) -> None:
     Args:
         file_path: Repository-relative path to recalculate hunk for
     """
+    from .line_state import load_current_lines_from_state
+
     # Clear processed IDs since old line numbers don't apply to fresh hunk
     write_line_ids_file(get_processed_include_ids_file_path(), set())
 
@@ -315,23 +466,34 @@ def recalculate_current_hunk_for_file(file_path: str) -> None:
             if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
                 continue
 
-            patch_text = single_hunk.to_patch_text()
-            hunk_hash = compute_stable_hunk_hash(patch_text)
+            patch_bytes = single_hunk.to_patch_bytes()
+            hunk_hash = compute_stable_hunk_hash(patch_bytes)
 
             if hunk_hash in blocked_hashes:
                 continue
 
-            # Cache this hunk as current
+            # Cache this hunk as current (decode to text for storage)
+            patch_text = patch_bytes.decode('utf-8', errors='replace')
             write_text_file_contents(get_current_hunk_patch_file_path(), patch_text)
             write_text_file_contents(get_current_hunk_hash_file_path(), hunk_hash)
 
-            current_lines = build_current_lines_from_patch_text(patch_text)
+            current_lines = build_current_lines_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
             write_text_file_contents(get_current_lines_json_file_path(),
                                     json.dumps(convert_current_lines_to_serializable_dict(current_lines),
                                               ensure_ascii=False, indent=0))
             write_snapshots_for_current_file_path(current_lines.path)
 
-            print_annotated_hunk_with_aligned_gutter(current_lines)
+            # Apply batch filter to exclude batched lines
+            if apply_line_level_batch_filter_to_cached_hunk():
+                # All lines were batched, clear the hunk
+                clear_current_hunk_state_files()
+                print(_("No more lines in this hunk."), file=sys.stderr)
+                return
+
+            # Display filtered hunk
+            current_lines = load_current_lines_from_state()
+            if current_lines is not None:
+                print_annotated_hunk_with_aligned_gutter(current_lines)
             return
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)

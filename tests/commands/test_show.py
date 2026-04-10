@@ -108,7 +108,7 @@ class TestCommandShow:
 
         # Get the hash of the first hunk and block it
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
-        first_patch_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        first_patch_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         blocklist_path = get_block_list_file_path()
         blocklist_path.write_text(f"{first_patch_hash}\n")
@@ -141,7 +141,7 @@ class TestCommandShow:
 
         # Get the hash and block it
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
-        patch_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        patch_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         blocklist_path = get_block_list_file_path()
         blocklist_path.write_text(f"{patch_hash}\n")
@@ -174,7 +174,7 @@ class TestCommandShow:
 
         # Get expected patch and hash
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
-        expected_patch = patches[0].to_patch_text()
+        expected_patch = patches[0].to_patch_bytes()
         expected_hash = compute_stable_hunk_hash(expected_patch)
 
         command_show()
@@ -184,7 +184,7 @@ class TestCommandShow:
         assert get_current_hunk_hash_file_path().exists()
 
         # Verify patch content
-        cached_patch = get_current_hunk_patch_file_path().read_text()
+        cached_patch = get_current_hunk_patch_file_path().read_bytes()
         assert cached_patch == expected_patch
 
         # Verify hash content
@@ -244,7 +244,7 @@ class TestCommandShow:
 
         # Block the hunk
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
-        patch_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        patch_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         blocklist_path = get_block_list_file_path()
         blocklist_path.write_text(f"{patch_hash}\n")

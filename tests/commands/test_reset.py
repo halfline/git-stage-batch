@@ -12,7 +12,7 @@ from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import (
     get_batch_claimed_hunks_file_path,
-    get_batch_claimed_line_ids_file_path,
+    get_batch_metadata_file_path,
     get_batched_hunks_file_path,
     get_processed_batch_ids_file_path,
 )
@@ -94,6 +94,9 @@ class TestResetFromBatch:
 
     def test_reset_line_claims(self, temp_git_repo):
         """Test resetting specific line claims from a batch."""
+        import json
+        from git_stage_batch.core.line_selection import parse_line_selection
+
         # Create a file with multiple lines
         test_file = temp_git_repo / "test.py"
         test_file.write_text("line 1\nline 2\nline 3\n")
@@ -106,25 +109,37 @@ class TestResetFromBatch:
         # Start session and include lines to batch
         command_start()
         find_and_cache_next_unblocked_hunk()
-        command_include_to_batch("mybatch", line_ids="1,2,3", quiet=True)
+        command_include_to_batch("mybatch", line_ids="4,5,6", quiet=True)
 
-        # Verify line claims exist
-        from git_stage_batch.core.line_selection import read_line_ids_file
-        batch_line_ids_path = get_batch_claimed_line_ids_file_path("mybatch")
-        assert batch_line_ids_path.exists()
-        batch_line_ids = read_line_ids_file(batch_line_ids_path)
-        assert set(batch_line_ids) == {1, 2, 3}
+        # Verify line claims exist in metadata JSON
+        from git_stage_batch.utils.file_io import read_text_file_contents
+        metadata_path = get_batch_metadata_file_path("mybatch")
+        assert metadata_path.exists()
+        metadata = json.loads(read_text_file_contents(metadata_path))
+        batch_ownership = metadata["files"]["test.py"]
+        batch_line_ids = set()
+        for range_str in batch_ownership.get("claimed_lines", []):
+            batch_line_ids.update(parse_line_selection(range_str))
+        assert batch_line_ids == {1, 2, 3}
 
-        # Reset only line 2
+        # Reset only line 2 (renumbered from display ID 5)
         command_reset_from_batch("mybatch", line_ids="2")
 
         # Verify line 2 is removed from batch claims
-        batch_line_ids_after = read_line_ids_file(batch_line_ids_path)
-        assert set(batch_line_ids_after) == {1, 3}
+        metadata_after = json.loads(read_text_file_contents(metadata_path))
+        batch_ownership_after = metadata_after["files"]["test.py"]
+        batch_line_ids_after = set()
+        for range_str in batch_ownership_after.get("claimed_lines", []):
+            batch_line_ids_after.update(parse_line_selection(range_str))
+        assert batch_line_ids_after == {1, 3}
 
-        # Verify global mask still contains 1 and 3
-        global_line_ids_path = get_processed_batch_ids_file_path()
-        global_line_ids = set(read_line_ids_file(global_line_ids_path))
+        # Verify global mask still contains 1 and 3 (JSON format)
+        global_mask_path = get_processed_batch_ids_file_path()
+        global_mask = json.loads(read_text_file_contents(global_mask_path))
+        file_data = global_mask.get("test.py", {})
+        global_line_ids = set()
+        for range_str in file_data.get("claimed_lines", []):
+            global_line_ids.update(parse_line_selection(range_str))
         assert 1 in global_line_ids
         assert 2 not in global_line_ids
         assert 3 in global_line_ids

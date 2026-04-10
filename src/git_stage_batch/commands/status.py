@@ -43,7 +43,7 @@ def estimate_remaining_hunks() -> int:
     remaining = 0
     try:
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-            hunk_hash = compute_stable_hunk_hash(patch.to_patch_text())
+            hunk_hash = compute_stable_hunk_hash(patch.to_patch_bytes())
             file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
             file_path = file_path.removeprefix("a/").removeprefix("b/")
 

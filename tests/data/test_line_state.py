@@ -50,10 +50,10 @@ def sample_current_lines():
     """Create a sample CurrentLines object for testing."""
     header = HunkHeader(old_start=1, old_len=3, new_start=1, new_len=3)
     lines = [
-        LineEntry(id=None, kind=" ", old_line_number=1, new_line_number=1, text="unchanged line"),
-        LineEntry(id=1, kind="-", old_line_number=2, new_line_number=None, text="removed line"),
-        LineEntry(id=2, kind="+", old_line_number=None, new_line_number=2, text="added line"),
-        LineEntry(id=None, kind=" ", old_line_number=3, new_line_number=3, text="another unchanged"),
+        LineEntry(id=None, kind=" ", old_line_number=1, new_line_number=1, text_bytes=b"unchanged line", text="unchanged line"),
+        LineEntry(id=1, kind="-", old_line_number=2, new_line_number=None, text_bytes=b"removed line", text="removed line"),
+        LineEntry(id=2, kind="+", old_line_number=None, new_line_number=2, text_bytes=b"added line", text="added line"),
+        LineEntry(id=None, kind=" ", old_line_number=3, new_line_number=3, text_bytes=b"another unchanged", text="another unchanged"),
     ]
     return CurrentLines(path="test.py", header=header, lines=lines)
 
@@ -258,11 +258,11 @@ class TestComputeRemainingChangedLineIds:
         # Create a hunk with multiple changed lines
         header = HunkHeader(old_start=1, old_len=5, new_start=1, new_len=5)
         lines = [
-            LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text="added 1"),
-            LineEntry(id=2, kind="-", old_line_number=1, new_line_number=None, text="removed 1"),
-            LineEntry(id=3, kind="+", old_line_number=None, new_line_number=2, text="added 2"),
-            LineEntry(id=4, kind="-", old_line_number=2, new_line_number=None, text="removed 2"),
-            LineEntry(id=None, kind=" ", old_line_number=3, new_line_number=3, text="unchanged"),
+            LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"added 1", text="added 1"),
+            LineEntry(id=2, kind="-", old_line_number=1, new_line_number=None, text_bytes=b"removed 1", text="removed 1"),
+            LineEntry(id=3, kind="+", old_line_number=None, new_line_number=2, text_bytes=b"added 2", text="added 2"),
+            LineEntry(id=4, kind="-", old_line_number=2, new_line_number=None, text_bytes=b"removed 2", text="removed 2"),
+            LineEntry(id=None, kind=" ", old_line_number=3, new_line_number=3, text_bytes=b"unchanged", text="unchanged"),
         ]
         current_lines = CurrentLines(path="test.py", header=header, lines=lines)
 

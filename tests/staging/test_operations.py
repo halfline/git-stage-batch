@@ -34,9 +34,9 @@ class TestBuildTargetIndexContent:
         """Test including a single added line."""
         header = HunkHeader(1, 2, 1, 3)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "+", None, 2, "new line"),
-            LineEntry(None, " ", 2, 3, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "+", None, 2, text_bytes=b"new line", text="new line"),
+            LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
@@ -49,9 +49,9 @@ class TestBuildTargetIndexContent:
         """Test including a single deleted line."""
         header = HunkHeader(1, 3, 1, 2)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "-", 2, None, "deleted line"),
-            LineEntry(None, " ", 3, 2, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"deleted line", text="deleted line"),
+            LineEntry(None, " ", 3, 2, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "line1\ndeleted line\nline2\n"
@@ -64,9 +64,9 @@ class TestBuildTargetIndexContent:
         """Test skipping an added line (not including it)."""
         header = HunkHeader(1, 2, 1, 3)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "+", None, 2, "new line"),
-            LineEntry(None, " ", 2, 3, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "+", None, 2, text_bytes=b"new line", text="new line"),
+            LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
@@ -80,9 +80,9 @@ class TestBuildTargetIndexContent:
         """Test skipping a deleted line (keeping it)."""
         header = HunkHeader(1, 3, 1, 2)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "-", 2, None, "kept line"),
-            LineEntry(None, " ", 3, 2, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"kept line", text="kept line"),
+            LineEntry(None, " ", 3, 2, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "line1\nkept line\nline2\n"
@@ -96,10 +96,10 @@ class TestBuildTargetIndexContent:
         """Test including both deletion and addition (replacement)."""
         header = HunkHeader(1, 3, 1, 3)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "-", 2, None, "old line"),
-            LineEntry(2, "+", None, 2, "new line"),
-            LineEntry(None, " ", 3, 3, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old line", text="old line"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new line", text="new line"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "line1\nold line\nline2\n"
@@ -112,10 +112,10 @@ class TestBuildTargetIndexContent:
         """Test selecting only some changes from a hunk."""
         header = HunkHeader(1, 1, 1, 4)
         lines = [
-            LineEntry(1, "+", None, 1, "add1"),
-            LineEntry(2, "+", None, 2, "add2"),
-            LineEntry(None, " ", 1, 3, "context"),
-            LineEntry(3, "+", None, 4, "add3"),
+            LineEntry(1, "+", None, 1, text_bytes=b"add1", text="add1"),
+            LineEntry(2, "+", None, 2, text_bytes=b"add2", text="add2"),
+            LineEntry(None, " ", 1, 3, text_bytes=b"context", text="context"),
+            LineEntry(3, "+", None, 4, text_bytes=b"add3", text="add3"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "context\n"
@@ -129,10 +129,10 @@ class TestBuildTargetIndexContent:
         """Test including multiple deletions."""
         header = HunkHeader(1, 4, 1, 1)
         lines = [
-            LineEntry(1, "-", 1, None, "delete1"),
-            LineEntry(2, "-", 2, None, "delete2"),
-            LineEntry(3, "-", 3, None, "delete3"),
-            LineEntry(None, " ", 4, 1, "kept"),
+            LineEntry(1, "-", 1, None, text_bytes=b"delete1", text="delete1"),
+            LineEntry(2, "-", 2, None, text_bytes=b"delete2", text="delete2"),
+            LineEntry(3, "-", 3, None, text_bytes=b"delete3", text="delete3"),
+            LineEntry(None, " ", 4, 1, text_bytes=b"kept", text="kept"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "delete1\ndelete2\ndelete3\nkept\n"
@@ -145,9 +145,9 @@ class TestBuildTargetIndexContent:
         """Test hunk starting at line 1."""
         header = HunkHeader(1, 2, 1, 3)
         lines = [
-            LineEntry(1, "+", None, 1, "new first line"),
-            LineEntry(None, " ", 1, 2, "line1"),
-            LineEntry(None, " ", 2, 3, "line2"),
+            LineEntry(1, "+", None, 1, text_bytes=b"new first line", text="new first line"),
+            LineEntry(None, " ", 1, 2, text_bytes=b"line1", text="line1"),
+            LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
@@ -160,8 +160,8 @@ class TestBuildTargetIndexContent:
         """Test hunk at the end of a file."""
         header = HunkHeader(2, 1, 2, 2)
         lines = [
-            LineEntry(None, " ", 2, 2, "line2"),
-            LineEntry(1, "+", None, 3, "new last line"),
+            LineEntry(None, " ", 2, 2, text_bytes=b"line2", text="line2"),
+            LineEntry(1, "+", None, 3, text_bytes=b"new last line", text="new last line"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
@@ -174,8 +174,8 @@ class TestBuildTargetIndexContent:
         """Test with empty base (new file)."""
         header = HunkHeader(0, 0, 1, 2)
         lines = [
-            LineEntry(1, "+", None, 1, "line1"),
-            LineEntry(2, "+", None, 2, "line2"),
+            LineEntry(1, "+", None, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(2, "+", None, 2, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = ""
@@ -188,8 +188,8 @@ class TestBuildTargetIndexContent:
         """Test that trailing newline is preserved from base."""
         header = HunkHeader(1, 1, 1, 2)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "+", None, 2, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "+", None, 2, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "line1\n"
@@ -202,9 +202,9 @@ class TestBuildTargetIndexContent:
         """Test with empty include set (no changes applied)."""
         header = HunkHeader(1, 2, 1, 3)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "+", None, 2, "added"),
-            LineEntry(None, " ", 2, 3, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "+", None, 2, text_bytes=b"added", text="added"),
+            LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
@@ -222,9 +222,9 @@ class TestBuildTargetWorkingTreeContent:
         """Test discarding a single added line."""
         header = HunkHeader(1, 2, 1, 3)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "+", None, 2, "added line"),
-            LineEntry(None, " ", 2, 3, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "+", None, 2, text_bytes=b"added line", text="added line"),
+            LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         working_text = "line1\nadded line\nline2\n"
@@ -238,9 +238,9 @@ class TestBuildTargetWorkingTreeContent:
         """Test discarding a deletion (reinserts the line)."""
         header = HunkHeader(1, 3, 1, 2)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "-", 2, None, "deleted line"),
-            LineEntry(None, " ", 3, 2, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"deleted line", text="deleted line"),
+            LineEntry(None, " ", 3, 2, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline2\n"  # Line already deleted in working tree
@@ -254,9 +254,9 @@ class TestBuildTargetWorkingTreeContent:
         """Test keeping an added line (not discarding)."""
         header = HunkHeader(1, 2, 1, 3)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "+", None, 2, "added line"),
-            LineEntry(None, " ", 2, 3, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "+", None, 2, text_bytes=b"added line", text="added line"),
+            LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         working_text = "line1\nadded line\nline2\n"
@@ -270,9 +270,9 @@ class TestBuildTargetWorkingTreeContent:
         """Test keeping a deletion (not discarding)."""
         header = HunkHeader(1, 3, 1, 2)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "-", 2, None, "deleted line"),
-            LineEntry(None, " ", 3, 2, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"deleted line", text="deleted line"),
+            LineEntry(None, " ", 3, 2, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline2\n"
@@ -286,10 +286,10 @@ class TestBuildTargetWorkingTreeContent:
         """Test discarding a replacement (deletion + addition)."""
         header = HunkHeader(1, 3, 1, 3)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "-", 2, None, "old line"),
-            LineEntry(2, "+", None, 2, "new line"),
-            LineEntry(None, " ", 3, 3, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old line", text="old line"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new line", text="new line"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         working_text = "line1\nnew line\nline2\n"
@@ -303,10 +303,10 @@ class TestBuildTargetWorkingTreeContent:
         """Test discarding only some changes."""
         header = HunkHeader(1, 1, 1, 4)
         lines = [
-            LineEntry(1, "+", None, 1, "add1"),
-            LineEntry(2, "+", None, 2, "add2"),
-            LineEntry(None, " ", 1, 3, "context"),
-            LineEntry(3, "+", None, 4, "add3"),
+            LineEntry(1, "+", None, 1, text_bytes=b"add1", text="add1"),
+            LineEntry(2, "+", None, 2, text_bytes=b"add2", text="add2"),
+            LineEntry(None, " ", 1, 3, text_bytes=b"context", text="context"),
+            LineEntry(3, "+", None, 4, text_bytes=b"add3", text="add3"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         working_text = "add1\nadd2\ncontext\nadd3\n"
@@ -320,10 +320,10 @@ class TestBuildTargetWorkingTreeContent:
         """Test discarding multiple additions."""
         header = HunkHeader(1, 1, 1, 4)
         lines = [
-            LineEntry(1, "+", None, 1, "add1"),
-            LineEntry(2, "+", None, 2, "add2"),
-            LineEntry(3, "+", None, 3, "add3"),
-            LineEntry(None, " ", 1, 4, "kept"),
+            LineEntry(1, "+", None, 1, text_bytes=b"add1", text="add1"),
+            LineEntry(2, "+", None, 2, text_bytes=b"add2", text="add2"),
+            LineEntry(3, "+", None, 3, text_bytes=b"add3", text="add3"),
+            LineEntry(None, " ", 1, 4, text_bytes=b"kept", text="kept"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         working_text = "add1\nadd2\nadd3\nkept\n"
@@ -336,9 +336,9 @@ class TestBuildTargetWorkingTreeContent:
         """Test discarding at beginning of file."""
         header = HunkHeader(1, 2, 1, 3)
         lines = [
-            LineEntry(1, "+", None, 1, "added first"),
-            LineEntry(None, " ", 1, 2, "line1"),
-            LineEntry(None, " ", 2, 3, "line2"),
+            LineEntry(1, "+", None, 1, text_bytes=b"added first", text="added first"),
+            LineEntry(None, " ", 1, 2, text_bytes=b"line1", text="line1"),
+            LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         working_text = "added first\nline1\nline2\n"
@@ -351,8 +351,8 @@ class TestBuildTargetWorkingTreeContent:
         """Test that trailing newline is preserved."""
         header = HunkHeader(1, 1, 1, 2)
         lines = [
-            LineEntry(None, " ", 1, 1, "line1"),
-            LineEntry(1, "+", None, 2, "line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "+", None, 2, text_bytes=b"line2", text="line2"),
         ]
         current_lines = CurrentLines(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline2\n"

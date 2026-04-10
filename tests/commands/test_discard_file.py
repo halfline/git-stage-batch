@@ -60,10 +60,8 @@ class TestCommandDiscardFile:
             ["git", "diff", "--cached", "--name-status"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        assert "D\tunwanted.txt" in result.stdout
+            capture_output=True,)
+        assert b"D\tunwanted.txt" in result.stdout
 
         captured = capsys.readouterr()
         assert "File discarded: unwanted.txt" in captured.err
@@ -90,10 +88,8 @@ class TestCommandDiscardFile:
             ["git", "status", "--short"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        assert "D  multi.txt" in result.stdout
+            capture_output=True,)
+        assert b"D  multi.txt" in result.stdout
 
         captured = capsys.readouterr()
         assert "File discarded: multi.txt" in captured.err
@@ -127,10 +123,8 @@ class TestCommandDiscardFile:
             ["git", "diff", "--cached", "--name-status"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        assert "D\tfile1.txt" in result.stdout
+            capture_output=True,)
+        assert b"D\tfile1.txt" in result.stdout
 
         captured = capsys.readouterr()
         assert "File discarded: file1.txt" in captured.err
@@ -146,11 +140,11 @@ class TestCommandDiscardFile:
         command_discard_file()
         capsys.readouterr()  # Clear output
 
-        # Try to discard file again - should show "No changes"
+        # Try to discard file again - should show "No more hunks"
         command_discard_file()
 
         captured = capsys.readouterr()
-        assert "No changes to discard" in captured.err
+        assert "No more hunks to process" in captured.err
 
     def test_abort_restores_discarded_untracked_file(self, temp_git_repo):
         """Test that abort restores untracked files discarded with discard-file."""
@@ -203,11 +197,9 @@ class TestCommandDiscardFile:
             ["git", "diff", "-U3", "--no-color"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        expected_hashes = {compute_stable_hunk_hash(patch.to_patch_text()) for patch in patches}
+            capture_output=True,)
+        patches = parse_unified_diff_into_single_hunk_patches(result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8"))
+        expected_hashes = {compute_stable_hunk_hash(patch.to_patch_bytes()) for patch in patches}
 
         # Verify we have multiple hunks
         assert len(expected_hashes) >= 2, "Test requires at least 2 hunks"
@@ -224,10 +216,8 @@ class TestCommandDiscardFile:
             ["git", "diff", "--cached", "--name-status"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        assert "D\tmulti.txt" in result.stdout
+            capture_output=True,)
+        assert b"D\tmulti.txt" in result.stdout
 
         # All hunks should be marked as processed in blocklist
         blocklist_path = get_block_list_file_path()

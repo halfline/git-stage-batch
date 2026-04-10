@@ -35,6 +35,7 @@ def convert_current_lines_to_serializable_dict(current_lines: CurrentLines) -> d
                 "old_lineno": line_entry.old_line_number,
                 "new_lineno": line_entry.new_line_number,
                 "text": line_entry.text,
+                "source_line": line_entry.source_line,
             }
             for line_entry in current_lines.lines
         ],
@@ -55,7 +56,9 @@ def load_current_lines_from_state() -> Optional[CurrentLines]:
                        kind=le["kind"],
                        old_line_number=le["old_lineno"],
                        new_line_number=le["new_lineno"],
-                       text=le["text"])
+                       text_bytes=le["text"].encode('utf-8'),  # Encode text to bytes
+                       text=le["text"],
+                       source_line=le.get("source_line"))
              for le in data["lines"]]
     return CurrentLines(path=data["path"], header=header, lines=lines)
 

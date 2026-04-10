@@ -13,6 +13,7 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.git import get_git_repository_root_path, run_git_command
+from ..utils.journal import log_journal
 from ..utils.paths import (
     get_abort_head_file_path,
     get_abort_snapshot_list_file_path,
@@ -22,18 +23,97 @@ from ..utils.paths import (
 )
 
 
+def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
+    """Snapshot all intent-to-add files so they survive git reset --hard on abort.
+
+    Intent-to-add files (added with git add -N) are in the index with an empty blob
+    but won't be captured by git stash. Since git reset --hard will wipe them out,
+    we need to snapshot them upfront and record them so we can restore their status.
+
+    Returns:
+        Tuple of (all_intent_to_add_files, new_intent_to_add_files)
+        - all_intent_to_add_files: All files with intent-to-add
+        - new_intent_to_add_files: Only files NOT in HEAD (safe to git rm --cached)
+    """
+    from ..utils.file_io import write_file_paths_file
+    from ..utils.paths import get_state_directory_path
+
+    # Find all intent-to-add files (files in index with empty blob)
+    EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    ls_result = run_git_command(["ls-files", "--stage"], check=True)
+
+    all_intent_to_add_files = []
+    new_intent_to_add_files = []
+
+    for line in ls_result.stdout.strip().split('\n'):
+        if not line:
+            continue
+        # Format: <mode> <hash> <stage>\t<path>
+        parts = line.split()
+        if len(parts) >= 4:
+            blob_hash = parts[1]
+            file_path = parts[3]
+            if blob_hash == EMPTY_BLOB_HASH:
+                # This is an intent-to-add file - snapshot it
+                snapshot_file_if_untracked(file_path)
+                all_intent_to_add_files.append(file_path)
+
+                # Check if file exists in HEAD
+                # Only new files (not in HEAD) are safe to git rm --cached
+                head_check = run_git_command(["cat-file", "-e", f"HEAD:{file_path}"], check=False)
+                if head_check.returncode != 0:
+                    # File not in HEAD - safe to remove from index
+                    new_intent_to_add_files.append(file_path)
+
+    # Save list of intent-to-add files for abort restoration
+    if all_intent_to_add_files:
+        intent_to_add_file = get_state_directory_path() / "intent-to-add-files"
+        write_file_paths_file(intent_to_add_file, all_intent_to_add_files)
+
+    return (all_intent_to_add_files, new_intent_to_add_files)
+
+
 def initialize_abort_state() -> None:
     """Save current HEAD and stash for abort functionality."""
     # Save current HEAD
     head_result = run_git_command(["rev-parse", "HEAD"])
     write_text_file_contents(get_abort_head_file_path(), head_result.stdout.strip())
 
+    # Snapshot all intent-to-add files upfront
+    # These files won't survive git reset --hard but aren't in the stash
+    # We need to snapshot them now so they can be restored on abort
+    all_intent_to_add_files, new_intent_to_add_files = _snapshot_intent_to_add_files()
+
+    # Temporarily remove NEW intent-to-add files from index so git stash create can succeed
+    # Intent-to-add files with content in working tree cause "not uptodate" errors
+    # IMPORTANT: Only remove files NOT in HEAD. Removing tracked files stages deletions!
+    if new_intent_to_add_files:
+        log_journal("session_removing_intent_to_add_files_for_stash", files=new_intent_to_add_files)
+        run_git_command(["rm", "--cached", "--quiet", "--"] + new_intent_to_add_files, check=False)
+
     # Create stash of tracked file changes
     # Note: git stash create (without -u) only captures changes to tracked files
     # Untracked files that we modify will be handled by lazy snapshots
+    log_journal("session_creating_stash")
     stash_result = run_git_command(["stash", "create"], check=False)
     if stash_result.returncode == 0 and stash_result.stdout.strip():
         write_text_file_contents(get_abort_stash_file_path(), stash_result.stdout.strip())
+        log_journal("session_stash_created", stash_hash=stash_result.stdout.strip())
+    else:
+        log_journal("session_stash_failed", returncode=stash_result.returncode, stderr=stash_result.stderr)
+
+    # Re-add NEW intent-to-add files to index (the ones we removed)
+    if new_intent_to_add_files:
+        log_journal("session_re_adding_intent_to_add_files", files=new_intent_to_add_files)
+        for file_path in new_intent_to_add_files:
+            ls_before = run_git_command(["ls-files", "--stage", "--", file_path], check=False).stdout.strip()
+            run_git_command(["add", "-N", "--", file_path], check=False)
+            ls_after = run_git_command(["ls-files", "--stage", "--", file_path], check=False).stdout.strip()
+            log_journal("session_re_add_intent_to_add", file_path=file_path, index_before=ls_before, index_after=ls_after)
+
+    # Snapshot batch refs so they can be reverted on abort
+    from .batch_refs import snapshot_batch_refs
+    snapshot_batch_refs()
 
 
 def require_session_started() -> None:

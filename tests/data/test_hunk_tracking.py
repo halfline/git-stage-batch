@@ -59,6 +59,8 @@ class TestClearCurrentHunkStateFiles:
 
     def test_clears_all_state_files(self, temp_git_repo):
         """Test that all current hunk state files are cleared."""
+        import json
+
         # Create state files
         get_current_hunk_patch_file_path().write_text("patch")
         get_current_hunk_hash_file_path().write_text("hash")
@@ -66,19 +68,21 @@ class TestClearCurrentHunkStateFiles:
         get_index_snapshot_file_path().write_text("index")
         get_working_tree_snapshot_file_path().write_text("tree")
         get_processed_include_ids_file_path().write_text("1\n2\n")
-        get_processed_batch_ids_file_path().write_text("3\n4\n")
+        # processed.batch uses JSON format now and is global state (not per-hunk)
+        get_processed_batch_ids_file_path().write_text(json.dumps({"test.py": {"claimed_lines": ["1", "2"]}}))
 
         # Clear state
         clear_current_hunk_state_files()
 
-        # Verify all files are removed
+        # Verify per-hunk files are removed
         assert not get_current_hunk_patch_file_path().exists()
         assert not get_current_hunk_hash_file_path().exists()
         assert not get_current_lines_json_file_path().exists()
         assert not get_index_snapshot_file_path().exists()
         assert not get_working_tree_snapshot_file_path().exists()
         assert not get_processed_include_ids_file_path().exists()
-        assert not get_processed_batch_ids_file_path().exists()
+        # processed.batch is global state (not per-hunk), should NOT be cleared
+        assert get_processed_batch_ids_file_path().exists()
 
     def test_handles_missing_files(self, temp_git_repo):
         """Test that clearing works even when files don't exist."""
@@ -129,11 +133,9 @@ class TestFindAndCacheNextUnblockedHunk:
             ["git", "diff", "--no-color"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        first_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+            capture_output=True,)
+        patches = parse_unified_diff_into_single_hunk_patches(result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8"))
+        first_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         append_lines_to_file(get_block_list_file_path(), [first_hash])
 
@@ -192,11 +194,9 @@ class TestFindAndCacheNextUnblockedHunk:
             ["git", "diff", "--no-color"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+            capture_output=True,)
+        patches = parse_unified_diff_into_single_hunk_patches(result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8"))
+        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         append_lines_to_file(get_block_list_file_path(), [hunk_hash])
 
@@ -226,11 +226,9 @@ class TestFindAndCacheNextUnblockedHunk:
             ["git", "diff", "--no-color"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        first_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+            capture_output=True,)
+        patches = parse_unified_diff_into_single_hunk_patches(result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8"))
+        first_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         write_text_file_contents(get_batched_hunks_file_path(), f"{first_hash}\n")
 
@@ -258,11 +256,9 @@ class TestFindAndCacheNextUnblockedHunk:
             ["git", "diff", "--no-color"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+            capture_output=True,)
+        patches = parse_unified_diff_into_single_hunk_patches(result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8"))
+        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         write_text_file_contents(get_batched_hunks_file_path(), f"{hunk_hash}\n")
 
@@ -365,6 +361,8 @@ class TestAdvanceToNextHunk:
 
     def test_clears_state_and_finds_next(self, temp_git_repo):
         """Test that advance clears old state and finds next hunk."""
+        import json
+
         # Create two changes
         file1 = temp_git_repo / "file1.txt"
         file1.write_text("original 1\n")
@@ -380,14 +378,16 @@ class TestAdvanceToNextHunk:
         get_current_hunk_patch_file_path().write_text("old patch")
         get_current_hunk_hash_file_path().write_text("old hash")
         get_processed_include_ids_file_path().write_text("1\n")
-        get_processed_batch_ids_file_path().write_text("2\n")
+        # processed.batch uses JSON format now and is global state (persists across hunks)
+        get_processed_batch_ids_file_path().write_text(json.dumps({"file1.txt": {"claimed_lines": ["2"]}}))
 
         # Advance to next hunk
         advance_to_next_hunk()
 
-        # Old processed IDs should be cleared
+        # Old per-hunk processed IDs should be cleared
         assert not get_processed_include_ids_file_path().exists()
-        assert not get_processed_batch_ids_file_path().exists()
+        # processed.batch is global state - should still exist
+        assert get_processed_batch_ids_file_path().exists()
 
         # New hunk should be cached
         assert get_current_hunk_patch_file_path().exists()
@@ -604,12 +604,10 @@ class TestRecalculateCurrentHunkForFile:
             ["git", "diff", "--no-color", "test.txt"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
+            capture_output=True,)
         from git_stage_batch.core.diff_parser import parse_unified_diff_into_single_hunk_patches
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        patches = parse_unified_diff_into_single_hunk_patches(result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8"))
+        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         append_lines_to_file(get_block_list_file_path(), [hunk_hash])
 

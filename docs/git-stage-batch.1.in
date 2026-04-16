@@ -212,6 +212,40 @@ Use \fB\-\-line\fR with \fB\-\-file\fR to reset specific line claims from a file
 Use \fB\-\-to\fR to move the reset claims into another batch before removing
 them from the source batch.
 .PP
+The following command uses both \fB\-\-from\fR and \fB\-\-to\fR for batch transformation:
+.TP
+.B sift \-\-from \fISOURCE_BATCH\fR \-\-to \fIDEST_BATCH\fR
+Reconcile a batch against the current tip by removing portions whose effect
+is already present in the current working tree state, writing the remainder
+to the destination batch.
+.RS
+.PP
+After ad hoc history surgery, some parts of a batch may already have landed
+in history while other parts are still unapplied.
+.B sift
+removes the already-present portions and writes the remaining unapplied
+portion to the destination batch.
+.PP
+Both \fB\-\-from\fR and \fB\-\-to\fR are required.
+If \fB\-\-to\fR equals \fB\-\-from\fR, performs an in-place sift.
+If \fB\-\-to\fR differs from \fB\-\-from\fR, creates a new destination batch
+(which must not already exist) and preserves the source batch unchanged.
+.PP
+This command does not modify the working tree or staging area.
+It only transforms batch ownership to reflect what is still needed.
+.PP
+Example:
+.RS
+.nf
+# Sift to a new batch
+git-stage-batch sift \-\-from feature-cleanups \-\-to feature-cleanups-pruned
+
+# In-place sift
+git-stage-batch sift \-\-from feature-cleanups \-\-to feature-cleanups
+.fi
+.RE
+.RE
+.PP
 The following commands accept \fB\-\-to\fR flags to save changes to batches:
 .TP
 .B include \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]

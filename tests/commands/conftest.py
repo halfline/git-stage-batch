@@ -1,7 +1,6 @@
 """Shared fixtures for command tests."""
 
 import subprocess
-
 import pytest
 
 from git_stage_batch.data.session import initialize_abort_state

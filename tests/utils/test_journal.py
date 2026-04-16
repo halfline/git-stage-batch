@@ -1,5 +1,7 @@
 """Tests for journal logging."""
 
+from git_stage_batch.utils.paths import ensure_state_directory_exists
+
 import json
 import subprocess
 from pathlib import Path
@@ -55,7 +57,6 @@ class TestJournal:
 
     def test_journal_global_only_with_debug_env(self, temp_git_repo, monkeypatch):
         """Test that global journal only logs when GIT_STAGE_BATCH_DEBUG is set."""
-        from git_stage_batch.utils.paths import ensure_state_directory_exists
 
         global_journal_path = Path("/var/tmp/git-stage-batch-journal.jsonl")
 
@@ -152,7 +153,6 @@ class TestJournal:
 
     def test_journal_logging_never_breaks_operations(self, temp_git_repo, monkeypatch):
         """Test that journal logging failures don't break operations."""
-        from git_stage_batch.utils.paths import ensure_state_directory_exists
 
         # Ensure state directory exists first
         ensure_state_directory_exists()

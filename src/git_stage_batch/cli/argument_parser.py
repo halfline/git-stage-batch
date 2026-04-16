@@ -125,9 +125,32 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="BATCH",
         help=_("Show changes from batch"),
     )
+    parser_show.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Show only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_show.add_argument(
+        "--file",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=_("Operate on entire file (live working tree state). "
+               "If PATH omitted, uses selected hunk's file. "
+               "With --line, operates on line IDs from entire file."),
+    )
+    parser_show.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Output JSON for scripting instead of human-readable text"),
+    )
     parser_show.set_defaults(func=lambda args: (
-        commands.command_show_from_batch(args.from_batch) if args.from_batch
-        else commands.command_show()
+        commands.command_show_from_batch(args.from_batch, args.line_ids, args.file) if args.from_batch
+        else commands.command_show(file=args.file, porcelain=args.porcelain) if args.line_ids or args.file is not None
+        else commands.command_show(porcelain=args.porcelain)
     ))
 
     # status - Show selected session status

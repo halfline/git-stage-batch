@@ -418,6 +418,44 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_apply.set_defaults(func=lambda args: commands.command_apply_from_batch(args.from_batch, line_ids=args.line_ids if hasattr(args, 'line_ids') else None, file=args.file if hasattr(args, 'file') else None))
 
+    # reset - Remove claims from batch
+    parser_reset = subparsers.add_parser(
+        "reset",
+        help=_("Remove claims from batch"),
+    )
+    parser_reset.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        required=True,
+        help=_("Remove claims from batch"),
+    )
+    parser_reset.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Reset only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_reset.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        help=_("Move reset claims to another batch"),
+    )
+    parser_reset.add_argument(
+        "--file",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=_("Operate on entire file from batch. "
+               "If PATH omitted, uses selected hunk's file. "
+               "With --line, operates on line IDs from entire file."),
+    )
+    parser_reset.set_defaults(func=lambda args: commands.command_reset_from_batch(args.from_batch, args.line_ids, args.file, args.to_batch))
+
+
     # Parse arguments, return None on failure
     try:
         return parser.parse_args(expanded)

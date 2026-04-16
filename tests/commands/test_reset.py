@@ -1,5 +1,14 @@
 """Tests for reset command."""
 
+import json
+from git_stage_batch.core.line_selection import parse_line_selection
+from git_stage_batch.exceptions import NoMoreHunks
+from git_stage_batch.commands.again import command_again
+from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.storage import add_file_to_batch
+from git_stage_batch.commands.new import command_new_batch
+from git_stage_batch.batch.ownership import BatchOwnership
+
 import subprocess
 
 import pytest
@@ -11,10 +20,7 @@ from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import (
-    get_batch_claimed_hunks_file_path,
-    get_batch_claimed_line_ids_file_path,
-    get_batched_hunks_file_path,
-    get_processed_batch_ids_file_path,
+    get_batch_metadata_file_path,
 )
 
 
@@ -55,6 +61,7 @@ class TestResetFromBatch:
 
     def test_reset_whole_batch(self, temp_git_repo):
         """Test resetting all claims from a batch."""
+
         # Create a file with changes
         test_file = temp_git_repo / "test.py"
         test_file.write_text("line 1\nline 2\nline 3\n")
@@ -69,31 +76,23 @@ class TestResetFromBatch:
         fetch_next_change()
         command_include_to_batch("mybatch", quiet=True)
 
-        # Verify hunk is masked
-        batched_hunks_path = get_batched_hunks_file_path()
-        assert batched_hunks_path.exists()
-        batched_content = read_text_file_contents(batched_hunks_path)
-        assert batched_content.strip() != ""
-
-        # Verify batch has claims
-        batch_hunks_path = get_batch_claimed_hunks_file_path("mybatch")
-        assert batch_hunks_path.exists()
-        batch_hunks_content = read_text_file_contents(batch_hunks_path)
-        assert batch_hunks_content.strip() != ""
+        # Verify batch has claims in metadata
+        metadata_path = get_batch_metadata_file_path("mybatch")
+        assert metadata_path.exists()
+        metadata = json.loads(read_text_file_contents(metadata_path))
+        assert "test.py" in metadata["files"]
+        assert len(metadata["files"]["test.py"]["claimed_lines"]) > 0
 
         # Reset the batch
         command_reset_from_batch("mybatch")
 
-        # Verify batch claims are cleared
-        batch_hunks_content_after = read_text_file_contents(batch_hunks_path)
-        assert batch_hunks_content_after.strip() == ""
-
-        # Verify global mask is cleared (since batch was the only claim)
-        batched_content_after = read_text_file_contents(batched_hunks_path)
-        assert batched_content_after.strip() == ""
+        # Verify batch metadata files section is cleared
+        metadata_after = json.loads(read_text_file_contents(metadata_path))
+        assert metadata_after["files"] == {}
 
     def test_reset_line_claims(self, temp_git_repo):
         """Test resetting specific line claims from a batch."""
+
         # Create a file with multiple lines
         test_file = temp_git_repo / "test.py"
         test_file.write_text("line 1\nline 2\nline 3\n")
@@ -106,31 +105,32 @@ class TestResetFromBatch:
         # Start session and include lines to batch
         command_start()
         fetch_next_change()
-        command_include_to_batch("mybatch", line_ids="1,2,3", quiet=True)
+        command_include_to_batch("mybatch", line_ids="4,5,6", quiet=True)
 
-        # Verify line claims exist
-        from git_stage_batch.core.line_selection import read_line_ids_file
-        batch_line_ids_path = get_batch_claimed_line_ids_file_path("mybatch")
-        assert batch_line_ids_path.exists()
-        batch_line_ids = read_line_ids_file(batch_line_ids_path)
-        assert set(batch_line_ids) == {1, 2, 3}
+        # Verify line claims exist in metadata JSON
+        metadata_path = get_batch_metadata_file_path("mybatch")
+        assert metadata_path.exists()
+        metadata = json.loads(read_text_file_contents(metadata_path))
+        batch_ownership = metadata["files"]["test.py"]
+        batch_line_ids = set()
+        for range_str in batch_ownership.get("claimed_lines", []):
+            batch_line_ids.update(parse_line_selection(range_str))
+        assert batch_line_ids == {1, 2, 3}
 
-        # Reset only line 2
+        # Reset only line 2 (renumbered from display ID 5)
         command_reset_from_batch("mybatch", line_ids="2")
 
         # Verify line 2 is removed from batch claims
-        batch_line_ids_after = read_line_ids_file(batch_line_ids_path)
-        assert set(batch_line_ids_after) == {1, 3}
-
-        # Verify global mask still contains 1 and 3
-        global_line_ids_path = get_processed_batch_ids_file_path()
-        global_line_ids = set(read_line_ids_file(global_line_ids_path))
-        assert 1 in global_line_ids
-        assert 2 not in global_line_ids
-        assert 3 in global_line_ids
+        metadata_after = json.loads(read_text_file_contents(metadata_path))
+        batch_ownership_after = metadata_after["files"]["test.py"]
+        batch_line_ids_after = set()
+        for range_str in batch_ownership_after.get("claimed_lines", []):
+            batch_line_ids_after.update(parse_line_selection(range_str))
+        assert batch_line_ids_after == {1, 3}
 
     def test_reset_with_multiple_batches(self, temp_git_repo):
-        """Test that reset only unmasks hunks not claimed by other batches."""
+        """Test that reset only makes hunks visible if not claimed by other batches."""
+
         # Create a file with changes
         test_file = temp_git_repo / "test.py"
         test_file.write_text("line 1\n")
@@ -145,26 +145,248 @@ class TestResetFromBatch:
         command_include_to_batch("batch-a", quiet=True)
 
         # Reset and include again to second batch
-        from git_stage_batch.commands.again import command_again
         command_again()
         command_include_to_batch("batch-b", quiet=True)
 
-        # Verify hunk is in global mask
-        batched_hunks_path = get_batched_hunks_file_path()
-        batched_content = read_text_file_contents(batched_hunks_path)
-        hunk_hash = batched_content.strip()
-        assert hunk_hash != ""
+        # Verify both batches have the file
+        metadata_a_path = get_batch_metadata_file_path("batch-a")
+        metadata_a = json.loads(read_text_file_contents(metadata_a_path))
+        assert "test.py" in metadata_a["files"]
+
+        metadata_b_path = get_batch_metadata_file_path("batch-b")
+        metadata_b = json.loads(read_text_file_contents(metadata_b_path))
+        assert "test.py" in metadata_b["files"]
 
         # Reset batch-a
         command_reset_from_batch("batch-a")
 
-        # Verify hunk is STILL masked (because batch-b still claims it)
-        batched_content_after = read_text_file_contents(batched_hunks_path)
-        assert batched_content_after.strip() == hunk_hash
+        # Verify batch-a no longer claims the file
+        metadata_a_after = json.loads(read_text_file_contents(metadata_a_path))
+        assert "test.py" not in metadata_a_after["files"]
+
+        # Verify hunk is STILL filtered (because batch-b still claims it)
+        command_again()
+        with pytest.raises(NoMoreHunks):
+            fetch_next_change()
 
         # Reset batch-b
         command_reset_from_batch("batch-b")
 
-        # NOW hunk should be unmasked
-        batched_content_final = read_text_file_contents(batched_hunks_path)
-        assert batched_content_final.strip() == ""
+        # NOW hunk should be visible
+        command_again()
+        item = fetch_next_change()
+        assert item is not None
+
+    def test_reset_replacement_unit_removes_both_presence_and_deletion(self, temp_git_repo):
+        """Test that resetting a replacement unit removes both claimed line and deletion."""
+
+        # Create a file
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make changes
+        test_file.write_text("line 1 modified\nline 2\nline 3\n")
+
+        # Create batch with replacement-style ownership (claimed line + coupled deletion)
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        fetch_next_change()
+
+        # Manually create ownership with replacement: claim line 1, delete original line 1
+        # The deletion is anchored at line 0 (start of file) to be spatially close to line 1
+        ownership = BatchOwnership(
+            claimed_lines=["1"],
+            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])]
+        )
+        add_file_to_batch("mybatch", "test.py", ownership, "100644")
+
+        # Verify initial ownership has both claimed line and deletion
+        metadata = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        file_ownership = BatchOwnership.from_metadata_dict(metadata["files"]["test.py"])
+        assert "1" in ",".join(file_ownership.claimed_lines)
+        assert len(file_ownership.deletions) == 1
+
+        # Reset the replacement unit - must select ALL display IDs in the unit
+        # Display structure: deletion (ID 1) + claimed line (ID 2) = replacement unit
+        # To reset this atomic unit, must select both display IDs
+        command_reset_from_batch("mybatch", line_ids="1,2")
+
+        # Verify file is removed from batch (no ownership remains)
+        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        assert "test.py" not in metadata_after.get("files", {}), \
+            "Expected file to be removed from batch when all ownership is reset"
+
+    def test_reset_partial_replacement_unit_errors(self, temp_git_repo):
+        """Test that partially selecting a replacement unit raises error."""
+
+        # Create a file
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make changes
+        test_file.write_text("line 1 modified\nline 2\nline 3\n")
+
+        # Create batch with replacement
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        fetch_next_change()
+
+        # Create replacement: deletion + claimed line
+        ownership = BatchOwnership(
+            claimed_lines=["1"],
+            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])]
+        )
+        add_file_to_batch("mybatch", "test.py", ownership, "100644")
+
+        # Attempting to select only display ID 1 (deletion) should error
+        # because the unit includes both IDs 1 and 2 (deletion + claimed)
+        with pytest.raises(CommandError) as exc_info:
+            command_reset_from_batch("mybatch", line_ids="1")
+
+        assert "atomic ownership unit" in str(exc_info.value.message).lower()
+        assert "replacement" in str(exc_info.value.message).lower()
+
+    def test_reset_presence_only_keeps_unrelated_deletions(self, temp_git_repo):
+        """Test that resetting presence-only lines preserves unrelated deletion claims."""
+
+        # Create a file with enough lines to test distant anchoring
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make changes
+        test_file.write_text("line 1 modified\nline 2\nline 3 modified\nline 4\nline 5\nline 6\nline 7\n")
+
+        # Create batch
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        fetch_next_change()
+
+        # Create ownership with:
+        # - claimed lines 1, 3, and 5 (line 5 separates line 3 from deletion in display)
+        # - deletion anchored after line 6
+        # Display order: claimed1, claimed3, claimed5, deletion-at-6
+        # This keeps claimed3 separate from the deletion.
+        ownership = BatchOwnership(
+            claimed_lines=["1", "3", "5"],
+            deletions=[DeletionClaim(anchor_line=6, content_lines=[b"debug_log()\n"])]
+        )
+        add_file_to_batch("mybatch", "test.py", ownership, "100644")
+
+        # Display structure (display adjacency grouping):
+        # - Display ID 1: claimed line 1 (PRESENCE_ONLY - not adjacent to deletion)
+        # - Display ID 2: claimed line 3 (PRESENCE_ONLY - not adjacent to deletion)
+        # - Display ID 3: claimed line 5 (REPLACEMENT with deletion - adjacent in display)
+        # - Display ID 4: deletion (part of REPLACEMENT with claimed5)
+
+        # Reset claimed line 3 (display ID 2) - should remove only that line
+        command_reset_from_batch("mybatch", line_ids="2")
+
+        # Verify line 3 is removed but lines 1, 5 and deletion remain
+        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
+        claimed_ids = set()
+        for range_str in file_ownership.claimed_lines:
+            claimed_ids.update(parse_line_selection(range_str))
+
+        assert 1 in claimed_ids, "Line 1 should remain"
+        assert 3 not in claimed_ids, "Line 3 should be removed"
+        assert 5 in claimed_ids, "Line 5 should remain (couples with deletion)"
+        assert len(file_ownership.deletions) == 1, "Deletion should remain (couples with line 5)"
+
+    def test_reset_replacement_unit_keeps_separate_presence_line(self, temp_git_repo):
+        """Test that resetting a replacement unit preserves separate presence-only lines."""
+
+        # Create a file
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make changes
+        test_file.write_text("line 1 modified\nline 2 modified\nline 3\n")
+
+        # Create batch
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        fetch_next_change()
+
+        # Create ownership with:
+        # - Replacement unit: deletion + claimed line 1
+        # - Presence-only: claimed line 2
+        ownership = BatchOwnership(
+            claimed_lines=["1", "2"],
+            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])]
+        )
+        add_file_to_batch("mybatch", "test.py", ownership, "100644")
+
+        # Display structure:
+        # - Display ID 1: deletion (start of replacement unit)
+        # - Display ID 2: claimed source line 1 (end of replacement unit, atomic)
+        # - Display ID 3: claimed source line 2 (separate presence-only unit)
+
+        # Reset the replacement unit (display IDs 1,2) - should remove both deletion and line 1
+        command_reset_from_batch("mybatch", line_ids="1,2")
+
+        # Verify line 1 AND its deletion are removed, but line 2 remains
+        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
+        claimed_ids = set()
+        for range_str in file_ownership.claimed_lines:
+            claimed_ids.update(parse_line_selection(range_str))
+
+        assert 1 not in claimed_ids, "Source line 1 should be removed (replacement unit)"
+        assert 2 in claimed_ids, "Source line 2 should remain (separate presence-only unit)"
+        assert len(file_ownership.deletions) == 0, "Deletion should be removed with line 1 (replacement unit)"
+
+    def test_reset_single_line_from_multi_line_presence_group(self, temp_git_repo):
+        """Test that resetting one line from multiple presence-only lines works independently.
+
+        Consecutive claimed lines remain separate reset targets.
+        """
+
+        # Create a file
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\nline 4\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Make changes to lines 1, 2, and 3
+        test_file.write_text("line 1 modified\nline 2 modified\nline 3 modified\nline 4\n")
+
+        # Create batch
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        fetch_next_change()
+
+        # Create ownership with multiple claimed lines (no deletions)
+        ownership = BatchOwnership(
+            claimed_lines=["1", "2", "3"],
+            deletions=[]
+        )
+        add_file_to_batch("mybatch", "test.py", ownership, "100644")
+
+        # Display structure:
+        # - Display ID 1: claimed source line 1 (presence-only unit)
+        # - Display ID 2: claimed source line 2 (presence-only unit)
+        # - Display ID 3: claimed source line 3 (presence-only unit)
+
+        # Reset ONLY display ID 2 (source line 2)
+        command_reset_from_batch("mybatch", line_ids="2")
+
+        # Verify only source line 2 is removed, lines 1 and 3 remain
+        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
+        claimed_ids = set()
+        for range_str in file_ownership.claimed_lines:
+            claimed_ids.update(parse_line_selection(range_str))
+
+        assert 1 in claimed_ids, "Source line 1 should remain (separate unit)"
+        assert 2 not in claimed_ids, "Source line 2 should be removed (selected)"
+        assert 3 in claimed_ids, "Source line 3 should remain (separate unit)"
+        assert len(file_ownership.deletions) == 0, "No deletions in this ownership"

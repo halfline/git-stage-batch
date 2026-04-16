@@ -1,8 +1,11 @@
 """Tests for file I/O utilities."""
 
-from pathlib import Path
 
-import pytest
+
+from git_stage_batch.utils.file_io import read_file_paths_file
+from git_stage_batch.utils.file_io import read_file_paths_file, write_file_paths_file
+from git_stage_batch.utils.file_io import append_file_path_to_file, read_file_paths_file
+from git_stage_batch.utils.file_io import read_file_paths_file, remove_file_path_from_file, write_file_paths_file
 
 from git_stage_batch.utils.file_io import (
     append_lines_to_file,
@@ -146,7 +149,6 @@ class TestFilePathListManagement:
 
     def test_read_file_paths_file_empty(self, tmp_path):
         """Test reading an empty file paths file."""
-        from git_stage_batch.utils.file_io import read_file_paths_file
 
         path = tmp_path / "empty.txt"
         path.write_text("", encoding="utf-8")
@@ -155,7 +157,6 @@ class TestFilePathListManagement:
 
     def test_read_file_paths_file_nonexistent(self, tmp_path):
         """Test reading a nonexistent file paths file."""
-        from git_stage_batch.utils.file_io import read_file_paths_file
 
         path = tmp_path / "nonexistent.txt"
         result = read_file_paths_file(path)
@@ -163,7 +164,6 @@ class TestFilePathListManagement:
 
     def test_write_file_paths_file(self, tmp_path):
         """Test writing file paths to a file."""
-        from git_stage_batch.utils.file_io import read_file_paths_file, write_file_paths_file
 
         path = tmp_path / "paths.txt"
         file_paths = ["path/to/file1.txt", "path/to/file2.txt", "another/file.py"]
@@ -175,7 +175,6 @@ class TestFilePathListManagement:
 
     def test_write_file_paths_file_deduplicates(self, tmp_path):
         """Test that write_file_paths_file deduplicates entries."""
-        from git_stage_batch.utils.file_io import read_file_paths_file, write_file_paths_file
 
         path = tmp_path / "paths.txt"
         file_paths = ["file1.txt", "file2.txt", "file1.txt", "file3.txt", "file2.txt"]
@@ -186,7 +185,6 @@ class TestFilePathListManagement:
 
     def test_append_file_path_to_file(self, tmp_path):
         """Test appending a file path to a list."""
-        from git_stage_batch.utils.file_io import append_file_path_to_file, read_file_paths_file
 
         path = tmp_path / "paths.txt"
         append_file_path_to_file(path, "file1.txt")
@@ -198,7 +196,6 @@ class TestFilePathListManagement:
 
     def test_append_file_path_to_file_no_duplicates(self, tmp_path):
         """Test that appending doesn't create duplicates."""
-        from git_stage_batch.utils.file_io import append_file_path_to_file, read_file_paths_file
 
         path = tmp_path / "paths.txt"
         append_file_path_to_file(path, "file1.txt")
@@ -210,7 +207,6 @@ class TestFilePathListManagement:
 
     def test_remove_file_path_from_file(self, tmp_path):
         """Test removing a file path from a list."""
-        from git_stage_batch.utils.file_io import read_file_paths_file, remove_file_path_from_file, write_file_paths_file
 
         path = tmp_path / "paths.txt"
         write_file_paths_file(path, ["file1.txt", "file2.txt", "file3.txt"])
@@ -221,7 +217,6 @@ class TestFilePathListManagement:
 
     def test_remove_file_path_from_file_nonexistent(self, tmp_path):
         """Test removing a nonexistent file path doesn't error."""
-        from git_stage_batch.utils.file_io import read_file_paths_file, remove_file_path_from_file, write_file_paths_file
 
         path = tmp_path / "paths.txt"
         write_file_paths_file(path, ["file1.txt", "file2.txt"])

@@ -1,5 +1,7 @@
 """Tests for batch reference snapshot and restore."""
 
+from git_stage_batch.utils.file_io import write_text_file_contents
+
 import json
 import subprocess
 
@@ -9,7 +11,6 @@ from git_stage_batch.data.batch_refs import restore_batch_refs, snapshot_batch_r
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.git import run_git_command
 from git_stage_batch.utils.paths import (
-    get_batch_directory_path,
     get_batch_metadata_file_path,
     get_batch_refs_snapshot_file_path,
 )
@@ -60,7 +61,6 @@ class TestSnapshotBatchRefs:
         # Create metadata
         metadata_path = get_batch_metadata_file_path(batch_name)
         metadata = {"note": "Test note", "created_at": "2026-03-13T12:00:00Z"}
-        from git_stage_batch.utils.file_io import write_text_file_contents
         write_text_file_contents(metadata_path, json.dumps(metadata))
 
         # Snapshot
@@ -72,8 +72,9 @@ class TestSnapshotBatchRefs:
 
         assert batch_name in snapshot_data
         assert snapshot_data[batch_name]["commit_sha"] == commit_sha
-        assert snapshot_data[batch_name]["note"] == "Test note"
-        assert snapshot_data[batch_name]["created_at"] == "2026-03-13T12:00:00Z"
+        # Metadata is now nested under "metadata" key
+        assert snapshot_data[batch_name]["metadata"]["note"] == "Test note"
+        assert snapshot_data[batch_name]["metadata"]["created_at"] == "2026-03-13T12:00:00Z"
 
 
 class TestRestoreBatchRefs:
@@ -117,7 +118,6 @@ class TestRestoreBatchRefs:
         # Create metadata
         metadata_path = get_batch_metadata_file_path(batch_name)
         metadata = {"note": "Test note", "created_at": "2026-03-13T12:00:00Z"}
-        from git_stage_batch.utils.file_io import write_text_file_contents
         write_text_file_contents(metadata_path, json.dumps(metadata))
 
         # Snapshot

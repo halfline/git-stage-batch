@@ -1,5 +1,12 @@
 """Tests for include to batch command."""
 
+from git_stage_batch.commands.include import command_include_to_batch
+from git_stage_batch.batch import read_file_from_batch
+from git_stage_batch.commands.again import command_again
+from git_stage_batch.batch import list_batch_files, read_file_from_batch
+from git_stage_batch.batch.validation import batch_exists
+from git_stage_batch.exceptions import NoMoreHunks
+
 import subprocess
 
 import pytest
@@ -33,7 +40,6 @@ class TestCommandIncludeToBatch:
 
     def test_include_lines_to_batch_filters_hunk(self, temp_git_repo, capsys):
         """Test that batching lines filters hunk to show only remaining lines."""
-        from git_stage_batch.commands.include import command_include_to_batch
 
         # Modify README with multiple lines
         readme = temp_git_repo / "README.md"
@@ -64,9 +70,6 @@ class TestCommandIncludeToBatch:
         Line-level filtering automatically reapplies when loading hunks.
         Batched line IDs are tracked in processed.batch and survive 'again'.
         """
-        from git_stage_batch.batch import read_file_from_batch
-        from git_stage_batch.commands.again import command_again
-        from git_stage_batch.commands.include import command_include_to_batch
 
         # Modify README with multiple lines
         readme = temp_git_repo / "README.md"
@@ -105,7 +108,6 @@ class TestCommandIncludeToBatch:
 
     def test_filter_clears_hunk_when_all_batched(self, temp_git_repo, capsys):
         """Test that hunk is cleared when all lines are batched."""
-        from git_stage_batch.commands.include import command_include_to_batch
 
         # Modify README with single line
         readme = temp_git_repo / "README.md"
@@ -125,3 +127,145 @@ class TestCommandIncludeToBatch:
         # Verify message printed
         captured = capsys.readouterr()
         assert "No more lines in this hunk" in captured.err
+
+    def test_include_to_batch_saves_whole_hunk(self, temp_git_repo):
+        """Test that include to batch saves changes to batch."""
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified content\n")
+
+        # Start session (needed for batch source commits)
+        command_start()
+        command_include_to_batch("test-batch")
+
+        # Verify batch was created and contains the file
+        files = list_batch_files("test-batch")
+        assert "README.md" in files
+
+        # Verify file content was saved to batch
+        content = read_file_from_batch("test-batch", "README.md")
+        assert content == "# Test\nModified content\n"
+
+        # Verify changes remain unstaged.
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True
+        )
+        assert result.stdout == ""
+
+    def test_include_to_batch_auto_creates_batch(self, temp_git_repo):
+        """Test that include to batch auto-creates batch if it doesn't exist."""
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+
+        # Batch doesn't exist yet
+        assert not batch_exists("auto-batch")
+
+        # Start session (needed for batch source commits)
+        command_start()
+        command_include_to_batch("auto-batch")
+
+        # Batch should now exist
+        assert batch_exists("auto-batch")
+
+    def test_include_lines_to_batch_saves_partial_content(self, temp_git_repo):
+        """Test that line-level batching synthesizes correct partial content."""
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Include only lines 1-2 to batch
+        command_include_to_batch("partial-batch", line_ids="1-2")
+
+        # Verify batch contains partial content (original + lines 1-2)
+        content = read_file_from_batch("partial-batch", "README.md")
+        assert content is not None
+        assert "Line 1" in content
+        assert "Line 2" in content
+        # Should not have Line 3 since we only included lines 1-2
+        # (but the base "# Test" should be there)
+        assert "# Test" in content
+
+    def test_include_lines_to_batch_accumulates(self, temp_git_repo):
+        """Test that multiple line selections accumulate in batch."""
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Include line 1
+        command_include_to_batch("accum-batch", line_ids="1")
+
+        # Include line 3 (line 2 in filtered view)
+        command_include_to_batch("accum-batch", line_ids="2")
+
+        # Verify batch contains both lines
+        content = read_file_from_batch("accum-batch", "README.md")
+        assert content is not None
+        assert "Line 1" in content
+        assert "Line 3" in content
+
+    def test_batched_whole_hunk_survives_again(self, temp_git_repo):
+        """Test that whole-hunk batches don't reappear after again command."""
+
+        # Modify README
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nBatched content\n")
+
+        # Cache and batch the hunk
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("persist-batch")
+
+        # Run again - should not show batched hunk
+        command_again()
+
+        # Verify no hunk is cached (batched hunk filtered out)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is None
+
+    def test_deletion_lines_are_masked_after_batching(self, temp_git_repo):
+        """Test that deletion lines are properly masked after batching."""
+
+        # Create file with 3 lines and commit
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine A\nLine B\nLine C\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add lines"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Delete middle line
+        readme.write_text("# Test\nLine A\nLine C\n")
+
+        # Start session and cache hunk
+        command_start()
+        fetch_next_change()
+
+        # Batch the deletion (line 1)
+        command_include_to_batch("deletion-batch", line_ids="1")
+
+        # Verify hunk is cleared (all lines batched)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is None
+
+        # Run again - deletion should still be masked
+        command_again()
+
+        # Try to find hunk - should raise NoMoreHunks since all lines are masked
+
+        with pytest.raises(NoMoreHunks):
+            fetch_next_change()

@@ -1,5 +1,7 @@
 """Tests for new batch command."""
 
+from git_stage_batch.batch import read_batch_metadata
+
 import subprocess
 
 import pytest
@@ -59,7 +61,6 @@ class TestCommandNewBatch:
         assert result.returncode == 0
 
         # Verify note is stored in metadata
-        from git_stage_batch.batch import read_batch_metadata
         metadata = read_batch_metadata("test-batch")
         assert metadata["note"] == "Test description"
 

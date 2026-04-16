@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 from ..core.models import LineLevelChange
-from ..utils.file_io import write_text_file_contents
-from ..utils.git import run_git_command
-from ..utils.paths import get_state_directory_path
+from ..utils.git import create_git_blob, run_git_command
+from ..utils.journal import log_journal
 
 
 def build_target_index_content_with_selected_lines(
@@ -132,16 +128,17 @@ def build_target_working_tree_content_with_discarded_lines(
     return "\n".join(output_lines) + ("\n" if (working_text.endswith("\n") or output_lines) else "")
 
 
-def update_index_with_blob_content(path: str, content: str) -> None:
+def update_index_with_blob_content(path: str, content: bytes) -> None:
     """
     Update the git index with new content for a file.
 
     Creates a temporary blob, hashes it, and updates the index entry.
     Preserves the file mode from the existing index entry if available.
     """
-    temporary_blob_path = Path(os.path.join(get_state_directory_path(), ".temporary_index_blob"))
-    write_text_file_contents(temporary_blob_path, content)
-    blob_hash = run_git_command(["hash-object", "-w", str(temporary_blob_path)]).stdout.strip()
+    # Log before state
+    ls_before = run_git_command(["ls-files", "--stage", "--", path], check=False).stdout.strip()
+
+    blob_hash = create_git_blob([content])
 
     file_mode = ""
     try:
@@ -156,7 +153,15 @@ def update_index_with_blob_content(path: str, content: str) -> None:
 
     run_git_command(["update-index", "--add", "--cacheinfo", f"{file_mode},{blob_hash},{path}"])
 
-    try:
-        temporary_blob_path.unlink(missing_ok=True)
-    except Exception:
-        pass
+    # Log after state
+    ls_after = run_git_command(["ls-files", "--stage", "--", path], check=False).stdout.strip()
+    log_journal(
+        "update_index_with_blob_content",
+        path=path,
+        content_len=len(content),
+        content_preview=content[:200].decode('utf-8', errors='replace') if content else "(empty)",
+        blob_hash=blob_hash,
+        file_mode=file_mode,
+        index_before=ls_before,
+        index_after=ls_after
+    )

@@ -12,22 +12,49 @@ from ..utils.paths import get_batch_metadata_file_path
 
 
 def read_batch_metadata(name: str) -> dict:
-    """Read metadata for a batch (note, created_at, and baseline)."""
+    """Read metadata for a batch.
+
+    Returns metadata with structure:
+    {
+        "note": str,
+        "created_at": str,
+        "baseline": str | None,
+        "files": {
+            "path": {
+                "batch_source_commit": str,  # Batch source SHA
+                "claimed_lines": list[str],  # e.g. ["1-5", "10", "15-20"]
+                "insertions": list[dict],  # [{"after_source_line": int|None, "blob": str}]
+                "mode": str  # File mode (e.g. "100644")
+            }
+        }
+    }
+    """
     validate_batch_name(name)
 
     metadata_path = get_batch_metadata_file_path(name)
     if not metadata_path.exists():
-        return {"note": "", "created_at": "", "baseline": None}
+        return {
+            "note": "",
+            "created_at": "",
+            "baseline": None,
+            "files": {}
+        }
 
     try:
         metadata = json.loads(read_text_file_contents(metadata_path))
         return {
             "note": metadata.get("note", ""),
             "created_at": metadata.get("created_at", ""),
-            "baseline": metadata.get("baseline", None)
+            "baseline": metadata.get("baseline", None),
+            "files": metadata.get("files", {})
         }
     except (json.JSONDecodeError, KeyError):
-        return {"note": "", "created_at": "", "baseline": None}
+        return {
+            "note": "",
+            "created_at": "",
+            "baseline": None,
+            "files": {}
+        }
 
 
 def get_batch_commit_sha(name: str) -> Optional[str]:

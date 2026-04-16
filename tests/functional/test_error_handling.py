@@ -94,7 +94,7 @@ class TestEdgeCases:
         subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
 
         # Should still be able to start session with unstaged changes
-        result = git_stage_batch("start", check=False)
+        git_stage_batch("start", check=False)
         # May succeed or fail depending on if there are unstaged changes
 
     def test_abort_multiple_times(self, repo_with_changes):
@@ -139,7 +139,7 @@ class TestEdgeCases:
 
         # Try to start session in second repo
         monkeypatch.chdir(repo2)
-        result = git_stage_batch("start", check=False)
+        git_stage_batch("start", check=False)
         # Should work independently
 
 
@@ -155,7 +155,7 @@ class TestBatchConflicts:
 
         # Don't restore, so working tree still has changes
         # Try to apply batch (may conflict)
-        result = git_stage_batch("apply", "--from", "test-batch", check=False)
+        git_stage_batch("apply", "--from", "test-batch", check=False)
         # Should handle gracefully (may succeed or report conflict)
 
     def test_batch_after_working_tree_diverges(self, repo_with_changes):
@@ -196,7 +196,7 @@ class TestPermissionErrors:
 
     def test_corrupted_git_repo(self, functional_repo, monkeypatch):
         """Test with corrupted git directory."""
-        # Remove critical git file
+        # Remove a git metadata file.
         git_dir = functional_repo / ".git"
         if (git_dir / "HEAD").exists():
             (git_dir / "HEAD").unlink()
@@ -216,7 +216,7 @@ class TestRecovery:
         git_stage_batch("include", "--line", "999", check=False)
 
         # Should still be able to continue
-        result = git_stage_batch("show", check=False)
+        git_stage_batch("show", check=False)
         # Should work or indicate no more hunks
 
     def test_recover_from_failed_batch_operation(self, repo_with_changes):
@@ -227,7 +227,7 @@ class TestRecovery:
         git_stage_batch("include", "--to", "nonexistent", "--line", "1", check=False)
 
         # Should still be able to do normal operations
-        result = git_stage_batch("include", "--line", "1", check=False)
+        git_stage_batch("include", "--line", "1", check=False)
         # Should work
 
     def test_abort_after_errors(self, repo_with_changes):

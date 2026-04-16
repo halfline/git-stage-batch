@@ -35,6 +35,7 @@ def convert_line_changes_to_serializable_dict(line_changes: LineLevelChange) -> 
                 "old_lineno": line_entry.old_line_number,
                 "new_lineno": line_entry.new_line_number,
                 "text": line_entry.text,
+                "source_line": line_entry.source_line,
             }
             for line_entry in line_changes.lines
         ],
@@ -55,7 +56,9 @@ def load_line_changes_from_state() -> Optional[LineLevelChange]:
                        kind=le["kind"],
                        old_line_number=le["old_lineno"],
                        new_line_number=le["new_lineno"],
-                       text=le["text"])
+                       text_bytes=le["text"].encode('utf-8'),  # Encode text to bytes
+                       text=le["text"],
+                       source_line=le.get("source_line"))
              for le in data["lines"]]
     return LineLevelChange(path=data["path"], header=header, lines=lines)
 

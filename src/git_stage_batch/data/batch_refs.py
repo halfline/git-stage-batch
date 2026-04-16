@@ -19,9 +19,9 @@ def snapshot_batch_refs() -> None:
     """Save selected state of all batch refs to snapshot file for abort support.
 
     Stores a single JSON object mapping batch names to their state:
-    {"batch-name": {"commit_sha": "...", "note": "...", "created_at": "..."}}
+    {"batch-name": {"commit_sha": "...", "metadata": {...}}}
 
-    This includes metadata so dropped batches can be fully restored.
+    This includes complete metadata so dropped batches can be fully restored.
     """
     # Get all batch refs
     result = run_git_command(["for-each-ref", "--format=%(objectname) %(refname)", "refs/batches/"], check=False)
@@ -41,22 +41,18 @@ def snapshot_batch_refs() -> None:
 
         batch_name = ref[len("refs/batches/"):]
 
-        # Read metadata if it exists
+        # Read complete metadata if it exists
         metadata_path = get_batch_metadata_file_path(batch_name)
-        note = ""
-        created_at = ""
+        full_metadata = {}
         if metadata_path.exists():
             try:
-                metadata = json.loads(read_text_file_contents(metadata_path))
-                note = metadata.get("note", "")
-                created_at = metadata.get("created_at", "")
+                full_metadata = json.loads(read_text_file_contents(metadata_path))
             except (json.JSONDecodeError, KeyError):
                 pass
 
         snapshot_data[batch_name] = {
             "commit_sha": commit_sha,
-            "note": note,
-            "created_at": created_at
+            "metadata": full_metadata
         }
 
     write_text_file_contents(get_batch_refs_snapshot_file_path(), json.dumps(snapshot_data, indent=2))
@@ -105,16 +101,11 @@ def restore_batch_refs() -> None:
     # Restore/revert batches from snapshot
     for batch_name, batch_state in snapshot_data.items():
         commit_sha = batch_state["commit_sha"]
-        note = batch_state.get("note", "")
-        created_at = batch_state.get("created_at", "")
+        full_metadata = batch_state.get("metadata", {})
 
         # Restore or revert ref
         run_git_command(["update-ref", f"refs/batches/{batch_name}", commit_sha])
 
-        # Restore metadata
+        # Restore complete metadata
         metadata_path = get_batch_metadata_file_path(batch_name)
-        metadata = {
-            "note": note,
-            "created_at": created_at
-        }
-        write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+        write_text_file_contents(metadata_path, json.dumps(full_metadata, indent=2))

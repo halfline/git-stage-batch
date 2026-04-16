@@ -18,6 +18,7 @@ from .new import command_new_batch
 from .reset import command_reset_from_batch
 from .show import command_show
 from .show_from import command_show_from_batch
+from .sift import command_sift_batch
 from .skip import command_skip, command_skip_file, command_skip_line
 from .start import command_start
 from .status import command_status
@@ -48,6 +49,7 @@ __all__ = [
     "command_reset_from_batch",
     "command_show",
     "command_show_from_batch",
+    "command_sift_batch",
     "command_skip",
     "command_skip_file",
     "command_skip_line",

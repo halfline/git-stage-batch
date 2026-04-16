@@ -90,7 +90,7 @@ def get_file_progress() -> tuple[int, int]:
             selected_index = files.index(selected_path) + 1
             return (selected_index, total)
         else:
-            # File not in diff, might be staged already
+            # File not in diff
             return (0, total)
 
     except (json.JSONDecodeError, KeyError):

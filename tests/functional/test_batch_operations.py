@@ -2,9 +2,8 @@
 
 import subprocess
 
-import pytest
 
-from .conftest import git_stage_batch, get_staged_diff, get_unstaged_diff
+from .conftest import git_stage_batch, get_unstaged_diff
 
 
 class TestCreateBatch:
@@ -50,7 +49,7 @@ class TestIncludeToBatch:
         assert "test-batch" in result.stderr
 
         # Changes should be removed from working tree
-        unstaged = get_unstaged_diff()
+        get_unstaged_diff()
         # Should have fewer unstaged changes
 
     def test_include_to_batch_stays_on_hunk(self, repo_with_changes):
@@ -58,7 +57,7 @@ class TestIncludeToBatch:
         git_stage_batch("new", "test-batch")
         git_stage_batch("start")
 
-        first_show = git_stage_batch("show")
+        git_stage_batch("show")
 
         # Include only line 1 to batch
         git_stage_batch("include", "--to", "test-batch", "--line", "1")
@@ -116,7 +115,7 @@ class TestDiscardToBatch:
         assert result.stdout
 
         # Changes should be removed from working tree
-        unstaged = get_unstaged_diff()
+        get_unstaged_diff()
         # Should have fewer changes
 
 
@@ -153,6 +152,8 @@ class TestShowFromBatch:
 class TestApplyFromBatch:
     """Test applying changes from a batch."""
 
+
+
     def test_apply_from_batch_stages_changes(self, repo_with_changes):
         """Test applying from batch stages the changes."""
         # Save changes to batch
@@ -173,15 +174,20 @@ class TestApplyFromBatch:
         assert "+" in unstaged
 
     def test_apply_from_batch_with_line_selection(self, repo_with_changes):
-        """Test applying specific lines from a batch."""
+        """Test applying specific lines from a batch.
+
+        Note: Lines 1,2,3 form an atomic replacement unit (deletion + coupled additions),
+        so we select all three to respect the semantic boundary.
+        """
         git_stage_batch("new", "test-batch")
         git_stage_batch("start")
         git_stage_batch("include", "--to", "test-batch", "--line", "1,2,3,4")
 
         subprocess.run(["git", "restore", "."], check=True, capture_output=True)
 
-        # Apply only specific lines
-        result = git_stage_batch("apply", "--from", "test-batch", "--line", "1,2")
+        # Apply only specific lines (must respect atomic unit boundaries)
+        # Lines 1,2,3 form one atomic replacement unit
+        result = git_stage_batch("apply", "--from", "test-batch", "--line", "1,2,3")
         assert result.returncode == 0
 
         unstaged = get_unstaged_diff()
@@ -290,7 +296,7 @@ class TestOddEvenLinesBatches:
         assert "even-lines" in list_result.stdout
 
     def test_apply_odd_then_even_lines_together(self, functional_repo):
-        """Test discarding to odd/even batches then applying both."""
+        """Test discarding to odd/even batches then applying both in order."""
         # Create a file with initial content
         test_file = functional_repo / "sequence.txt"
         test_file.write_text("Header\n")
@@ -541,7 +547,7 @@ class TestBatchAbortReversion:
         assert "Line 1" not in batch_a_show.stdout
 
         # batch-b should exist
-        batch_b_show = git_stage_batch("show", "--from", "batch-b", check=False)
+        git_stage_batch("show", "--from", "batch-b", check=False)
         # Should exist even if empty
         assert "batch-b" in list_after.stdout
 
@@ -554,7 +560,7 @@ class TestComplexBatchWorkflows:
         # Create batches for different features
         git_stage_batch("new", "feature-a", "-m", "Feature A changes")
         git_stage_batch("new", "feature-b", "-m", "Feature B changes")
-        git_stage_batch("new", "bugfix", "-m", "Bug fixes")
+        git_stage_batch("new", "fixes", "-m", "Fixes")
 
         git_stage_batch("start")
 
@@ -563,10 +569,10 @@ class TestComplexBatchWorkflows:
         git_stage_batch("skip", check=False)
         git_stage_batch("include", "--to", "feature-b", "--line", "1", check=False)
         git_stage_batch("skip", check=False)
-        git_stage_batch("include", "--to", "bugfix", "--line", "1", check=False)
+        git_stage_batch("include", "--to", "fixes", "--line", "1", check=False)
 
         # All batches should have content
-        for batch in ["feature-a", "feature-b", "bugfix"]:
+        for batch in ["feature-a", "feature-b", "fixes"]:
             result = git_stage_batch("show", "--from", batch, check=False)
             if result.returncode == 0:
                 assert result.stdout
@@ -586,7 +592,7 @@ class TestComplexBatchWorkflows:
 
         # Second session: add more to same batch
         git_stage_batch("start")
-        result = git_stage_batch("include", "--to", "accumulated", "--line", "1", check=False)
+        git_stage_batch("include", "--to", "accumulated", "--line", "1", check=False)
 
         # Batch should have accumulated content
         batch_show = git_stage_batch("show", "--from", "accumulated")

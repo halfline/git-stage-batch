@@ -1,11 +1,12 @@
 """Functional tests for interactive/TUI mode."""
 
+from pathlib import Path
+
 import subprocess
-import time
 
 import pytest
 
-from .conftest import git_stage_batch, get_staged_files, get_staged_diff
+from .conftest import git_stage_batch, get_staged_files
 
 
 def run_interactive(*inputs, timeout=5):
@@ -18,7 +19,6 @@ def run_interactive(*inputs, timeout=5):
     Returns:
         subprocess.CompletedProcess
     """
-    from pathlib import Path
 
     # Find the venv git-stage-batch to ensure we use in-tree version
     test_dir = Path(__file__).parent
@@ -64,7 +64,6 @@ class TestInteractiveMode:
 
     def test_interactive_command_alias(self, repo_with_changes):
         """Test starting with 'interactive' command."""
-        from pathlib import Path
 
         test_dir = Path(__file__).parent
         project_root = test_dir.parent.parent
@@ -580,7 +579,6 @@ class TestInteractiveErrorHandling:
 
     def test_interactive_with_staged_changes(self, repo_with_changes):
         """Test interactive mode with already staged changes."""
-        import subprocess
 
         # Stage some changes manually
         subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
@@ -668,7 +666,7 @@ class TestInteractiveFlowControls:
         assert result.returncode == 0
 
         # Should have staged changes
-        staged = get_staged_files()
+        get_staged_files()
         # May or may not have files depending on batch content
 
     def test_flow_to_then_include(self, repo_with_changes):
@@ -768,7 +766,6 @@ class TestInteractiveFixupSubmenu:
     def test_fixup_submenu_basic(self, repo_with_changes):
         """Test opening fixup submenu."""
         # Make a commit that we could fixup
-        import subprocess
         subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", "Test commit"], check=True, capture_output=True)
 
@@ -782,7 +779,6 @@ class TestInteractiveFixupSubmenu:
 
     def test_fixup_next_candidate(self, repo_with_changes):
         """Test navigating through fixup candidates with 'n'."""
-        import subprocess
 
         # Create multiple commits
         readme = repo_with_changes / "README.md"
@@ -800,7 +796,6 @@ class TestInteractiveFixupSubmenu:
 
     def test_fixup_reset(self, repo_with_changes):
         """Test resetting fixup iteration with 'r'."""
-        import subprocess
 
         # Create commits
         readme = repo_with_changes / "README.md"
@@ -821,7 +816,6 @@ class TestInteractiveFixupSubmenu:
 
     def test_fixup_word_shortcut(self, repo_with_changes):
         """Test 'fixup' word shortcut."""
-        import subprocess
 
         # Setup commit
         subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
@@ -957,9 +951,7 @@ class TestInteractiveHelpSubmenu:
 
     def test_help_displays_commands(self, repo_with_changes):
         """Test help displays available commands."""
-        result = run_interactive("?", "q")
-        # Should mention some commands
-        output = result.stdout + result.stderr
+        run_interactive("?", "q")
         # At minimum should not crash
 
 

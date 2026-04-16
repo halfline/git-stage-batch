@@ -4,6 +4,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
+from git_stage_batch.output.colors import Colors
 from git_stage_batch.output.hunk import print_line_level_changes
 
 
@@ -14,10 +15,10 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         """Test displaying a simple hunk with additions and deletions."""
         header = HunkHeader(old_start=1, old_len=3, new_start=1, new_len=3)
         lines = [
-            LineEntry(None, " ", 1, 1, "context"),
-            LineEntry(1, "-", 2, None, "old line"),
-            LineEntry(2, "+", None, 2, "new line"),
-            LineEntry(None, " ", 3, 3, "context"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"context", text="context"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old line", text="old line"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new line", text="new line"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"context", text="context"),
         ]
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
 
@@ -34,9 +35,9 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         """Test displaying a hunk with two-digit line IDs."""
         header = HunkHeader(old_start=1, old_len=12, new_start=1, new_len=12)
         lines = [
-            LineEntry(10, "+", None, 1, "line 10"),
-            LineEntry(11, "+", None, 2, "line 11"),
-            LineEntry(12, "+", None, 3, "line 12"),
+            LineEntry(10, "+", None, 1, text_bytes=b"line 10", text="line 10"),
+            LineEntry(11, "+", None, 2, text_bytes=b"line 11", text="line 11"),
+            LineEntry(12, "+", None, 3, text_bytes=b"line 12", text="line 12"),
         ]
         line_changes = LineLevelChange(path="file.py", header=header, lines=lines)
 
@@ -53,9 +54,9 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         """Test displaying a hunk with three-digit line IDs."""
         header = HunkHeader(old_start=1, old_len=3, new_start=1, new_len=3)
         lines = [
-            LineEntry(100, "+", None, 1, "line 100"),
-            LineEntry(200, "+", None, 2, "line 200"),
-            LineEntry(300, "+", None, 3, "line 300"),
+            LineEntry(100, "+", None, 1, text_bytes=b"line 100", text="line 100"),
+            LineEntry(200, "+", None, 2, text_bytes=b"line 200", text="line 200"),
+            LineEntry(300, "+", None, 3, text_bytes=b"line 300", text="line 300"),
         ]
         line_changes = LineLevelChange(path="big.txt", header=header, lines=lines)
 
@@ -72,8 +73,8 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         """Test displaying a hunk with only context lines."""
         header = HunkHeader(old_start=1, old_len=2, new_start=1, new_len=2)
         lines = [
-            LineEntry(None, " ", 1, 1, "line 1"),
-            LineEntry(None, " ", 2, 2, "line 2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line 1", text="line 1"),
+            LineEntry(None, " ", 2, 2, text_bytes=b"line 2", text="line 2"),
         ]
         line_changes = LineLevelChange(path="unchanged.txt", header=header, lines=lines)
 
@@ -91,8 +92,8 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         """Test displaying a hunk for a new file (all additions)."""
         header = HunkHeader(old_start=0, old_len=0, new_start=1, new_len=2)
         lines = [
-            LineEntry(1, "+", None, 1, "first line"),
-            LineEntry(2, "+", None, 2, "second line"),
+            LineEntry(1, "+", None, 1, text_bytes=b"first line", text="first line"),
+            LineEntry(2, "+", None, 2, text_bytes=b"second line", text="second line"),
         ]
         line_changes = LineLevelChange(path="new.txt", header=header, lines=lines)
 
@@ -108,8 +109,8 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         """Test displaying a hunk for a deleted file (all deletions)."""
         header = HunkHeader(old_start=1, old_len=2, new_start=0, new_len=0)
         lines = [
-            LineEntry(1, "-", 1, None, "first line"),
-            LineEntry(2, "-", 2, None, "second line"),
+            LineEntry(1, "-", 1, None, text_bytes=b"first line", text="first line"),
+            LineEntry(2, "-", 2, None, text_bytes=b"second line", text="second line"),
         ]
         line_changes = LineLevelChange(path="deleted.txt", header=header, lines=lines)
 
@@ -125,8 +126,8 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         """Test that empty lines are displayed correctly."""
         header = HunkHeader(old_start=1, old_len=2, new_start=1, new_len=2)
         lines = [
-            LineEntry(1, "+", None, 1, ""),
-            LineEntry(None, " ", 2, 2, ""),
+            LineEntry(1, "+", None, 1, text_bytes=b"", text=""),
+            LineEntry(None, " ", 2, 2, text_bytes=b"", text=""),
         ]
         line_changes = LineLevelChange(path="empty.txt", header=header, lines=lines)
 
@@ -141,9 +142,9 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         """Test that mixed single and double-digit IDs are aligned."""
         header = HunkHeader(old_start=1, old_len=4, new_start=1, new_len=4)
         lines = [
-            LineEntry(5, "+", None, 1, "line 5"),
-            LineEntry(12, "+", None, 2, "line 12"),
-            LineEntry(3, "+", None, 3, "line 3"),
+            LineEntry(5, "+", None, 1, text_bytes=b"line 5", text="line 5"),
+            LineEntry(12, "+", None, 2, text_bytes=b"line 12", text="line 12"),
+            LineEntry(3, "+", None, 3, text_bytes=b"line 3", text="line 3"),
         ]
         line_changes = LineLevelChange(path="mixed.txt", header=header, lines=lines)
 
@@ -160,7 +161,7 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         """Test that gutter width adjusts correctly for different max ID sizes."""
         # With max ID = 1 digit, gutter is [#N] (4 chars)
         header = HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1)
-        lines = [LineEntry(1, "+", None, 1, "test")]
+        lines = [LineEntry(1, "+", None, 1, text_bytes=b"test", text="test")]
         line_changes = LineLevelChange(path="file.txt", header=header, lines=lines)
 
         with patch("sys.stdout", new=StringIO()) as fake_out:
@@ -168,3 +169,27 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
             output = fake_out.getvalue()
 
         assert "[#1] + test" in output
+
+    def test_gap_line_is_gray_when_color_enabled(self):
+        """Synthetic omitted-context markers should be colored like the gutter."""
+        header = HunkHeader(old_start=1, old_len=3, new_start=1, new_len=3)
+        lines = [
+            LineEntry(1, "+", None, 1, text_bytes=b"first", text="first"),
+            LineEntry(
+                None,
+                " ",
+                None,
+                None,
+                text_bytes=b"... 2 more lines ...",
+                text="... 2 more lines ...",
+            ),
+            LineEntry(2, "+", None, 4, text_bytes=b"last", text="last"),
+        ]
+        line_changes = LineLevelChange(path="gap.txt", header=header, lines=lines)
+
+        with patch.object(Colors, "enabled", return_value=True):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                print_line_level_changes(line_changes)
+                output = fake_out.getvalue()
+
+        assert f"{Colors.GRAY}   ... 2 more lines ...{Colors.RESET}" in output

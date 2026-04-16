@@ -1,5 +1,19 @@
 """Tests for show command."""
 
+from git_stage_batch.core.hashing import compute_stable_hunk_hash
+from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+from git_stage_batch.utils.git import stream_git_command
+from git_stage_batch.utils.paths import get_block_list_file_path, get_context_lines
+from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.utils.paths import ensure_state_directory_exists, get_block_list_file_path, get_context_lines
+from git_stage_batch.utils.paths import (
+    ensure_state_directory_exists,
+    get_context_lines,
+    get_selected_hunk_hash_file_path,
+    get_selected_hunk_patch_file_path,
+)
+from git_stage_batch.utils.paths import ensure_state_directory_exists
+
 import subprocess
 
 import pytest
@@ -84,11 +98,6 @@ class TestCommandShow:
 
     def test_show_skips_blocked_hunks(self, temp_git_repo, capsys):
         """Test that show skips hunks in the blocklist."""
-        from git_stage_batch.core.hashing import compute_stable_hunk_hash
-        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
-        from git_stage_batch.data.session import initialize_abort_state
-        from git_stage_batch.utils.git import stream_git_command
-        from git_stage_batch.utils.paths import ensure_state_directory_exists, get_block_list_file_path, get_context_lines
 
         # Create and commit two files
         file1 = temp_git_repo / "file1.txt"
@@ -102,18 +111,18 @@ class TestCommandShow:
         file1.write_text("modified 1\n")
         file2.write_text("modified 2\n")
 
-        # Initialize session without caching a hunk
-        ensure_state_directory_exists()
-        initialize_abort_state()
+        # Start the session, then seed the iteration blocklist. Calling start
+        # on an already-initialized session clears iteration state by design.
+        command_start()
+        capsys.readouterr()
 
         # Get the hash of the first hunk and block it
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
-        first_patch_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        first_patch_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         blocklist_path = get_block_list_file_path()
         blocklist_path.write_text(f"{first_patch_hash}\n")
 
-        command_start()
         command_show()
 
         captured = capsys.readouterr()
@@ -123,11 +132,6 @@ class TestCommandShow:
 
     def test_show_all_hunks_blocked(self, temp_git_repo, capsys):
         """Test that show displays message when all hunks are blocked."""
-        from git_stage_batch.core.hashing import compute_stable_hunk_hash
-        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
-        from git_stage_batch.data.session import initialize_abort_state
-        from git_stage_batch.utils.git import stream_git_command
-        from git_stage_batch.utils.paths import ensure_state_directory_exists, get_block_list_file_path, get_context_lines
 
         # Modify the README
         readme = temp_git_repo / "README.md"
@@ -141,7 +145,7 @@ class TestCommandShow:
 
         # Get the hash and block it
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
-        patch_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        patch_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         blocklist_path = get_block_list_file_path()
         blocklist_path.write_text(f"{patch_hash}\n")
@@ -153,16 +157,6 @@ class TestCommandShow:
 
     def test_show_caches_selected_hunk_state(self, temp_git_repo, capsys):
         """Test that show caches the selected hunk patch and hash."""
-        from git_stage_batch.core.hashing import compute_stable_hunk_hash
-        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
-        from git_stage_batch.data.session import initialize_abort_state
-        from git_stage_batch.utils.git import stream_git_command
-        from git_stage_batch.utils.paths import (
-            ensure_state_directory_exists,
-            get_context_lines,
-            get_selected_hunk_hash_file_path,
-            get_selected_hunk_patch_file_path,
-        )
 
         # Modify the README
         readme = temp_git_repo / "README.md"
@@ -174,7 +168,7 @@ class TestCommandShow:
 
         # Get expected patch and hash
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
-        expected_patch = patches[0].to_patch_text()
+        expected_patch = patches[0].to_patch_bytes()
         expected_hash = compute_stable_hunk_hash(expected_patch)
 
         command_show()
@@ -184,7 +178,7 @@ class TestCommandShow:
         assert get_selected_hunk_hash_file_path().exists()
 
         # Verify patch content
-        cached_patch = get_selected_hunk_patch_file_path().read_text()
+        cached_patch = get_selected_hunk_patch_file_path().read_bytes()
         assert cached_patch == expected_patch
 
         # Verify hash content
@@ -193,8 +187,6 @@ class TestCommandShow:
 
     def test_show_porcelain_with_hunk(self, temp_git_repo, capsys):
         """Test that show --porcelain exits 0 with no output when hunk exists."""
-        from git_stage_batch.data.session import initialize_abort_state
-        from git_stage_batch.utils.paths import ensure_state_directory_exists
 
         # Modify the README
         readme = temp_git_repo / "README.md"
@@ -213,8 +205,6 @@ class TestCommandShow:
 
     def test_show_porcelain_no_hunks(self, temp_git_repo):
         """Test that show --porcelain exits 1 when no hunks remain."""
-        from git_stage_batch.data.session import initialize_abort_state
-        from git_stage_batch.utils.paths import ensure_state_directory_exists
 
         # Initialize session without changes
         ensure_state_directory_exists()
@@ -228,11 +218,6 @@ class TestCommandShow:
 
     def test_show_porcelain_all_blocked(self, temp_git_repo):
         """Test that show --porcelain exits 1 when all hunks are blocked."""
-        from git_stage_batch.core.hashing import compute_stable_hunk_hash
-        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
-        from git_stage_batch.data.session import initialize_abort_state
-        from git_stage_batch.utils.git import stream_git_command
-        from git_stage_batch.utils.paths import ensure_state_directory_exists, get_block_list_file_path, get_context_lines
 
         # Modify the README
         readme = temp_git_repo / "README.md"
@@ -244,7 +229,7 @@ class TestCommandShow:
 
         # Block the hunk
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
-        patch_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        patch_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         blocklist_path = get_block_list_file_path()
         blocklist_path.write_text(f"{patch_hash}\n")

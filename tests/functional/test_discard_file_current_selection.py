@@ -1,11 +1,4 @@
-"""Test case to reproduce bug where discard --file saves the wrong file to batch.
-
-Bug: When running `discard --file --to BATCH`, the command reports saving a
-different file than the one currently being displayed.
-
-Expected: discard --file should save the currently displayed file to the batch
-Actual: discard --file saves a different file (possibly alphabetically first?)
-"""
+"""Tests for discard --file using the current displayed file."""
 
 import subprocess
 
@@ -43,11 +36,7 @@ def repo_with_multiple_files(tmp_path, monkeypatch):
 
 
 def test_discard_file_discards_currently_displayed_file(repo_with_multiple_files):
-    """Test that discard --file discards the file that's currently being shown.
-
-    This reproduces a bug where discard --file was saving the wrong file to
-    the batch - it would save a different file than the one currently displayed.
-    """
+    """Test that discard --file discards the file that's currently being shown."""
     # Start session
     start_result = git_stage_batch("start")
     assert start_result.returncode == 0
@@ -70,9 +59,8 @@ def test_discard_file_discards_currently_displayed_file(repo_with_multiple_files
     discard_result = git_stage_batch("discard", "--file", "--to", "test-batch")
     assert discard_result.returncode == 0
 
-    # CRITICAL: The discard output should mention the file that was displayed
     assert first_file in discard_result.stderr or first_file in discard_result.stdout, (
-        f"BUG REPRODUCED: discard --file claimed to save a different file!\n"
+        f"discard --file saved a different file\n"
         f"Currently displayed: {first_file}\n"
         f"Discard output: {discard_result.stdout}\n{discard_result.stderr}"
     )
@@ -81,16 +69,15 @@ def test_discard_file_discards_currently_displayed_file(repo_with_multiple_files
     show_result = git_stage_batch("show", "--from", "test-batch")
     assert show_result.returncode == 0
     assert first_file in show_result.stdout, (
-        f"BUG: Batch contains wrong file!\n"
+        f"batch contains the wrong file\n"
         f"Expected: {first_file}\n"
         f"Batch contents: {show_result.stdout[:500]}"
     )
 
     # Verify the file was removed from working tree
-    import os
     file_path = repo_with_multiple_files / first_file
     assert not file_path.exists(), (
-        f"BUG: File still exists in working tree after discard --file!\n"
+        f"file still exists in working tree after discard --file\n"
         f"File: {first_file}"
     )
 
@@ -137,8 +124,8 @@ def test_discard_file_processes_files_in_display_order(repo_with_multiple_files)
 
     # Second discard
     show2 = git_stage_batch("show", check=False)
-    if show2.returncode != 0:
-        pytest.skip(f"No more hunks after first discard. Show output: {show2.stderr}")
+
+    assert show2.returncode == 0
 
     file2 = None
     for fname in ["file_a.py", "file_b.py", "file_c.py"]:

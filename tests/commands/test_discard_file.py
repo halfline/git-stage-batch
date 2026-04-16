@@ -8,7 +8,7 @@ from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.discard import command_discard_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.hashing import compute_stable_hunk_hash
-from git_stage_batch.core.diff_parser import parse_unified_diff_into_single_hunk_patches
+from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -50,7 +50,7 @@ class TestCommandDiscardFile:
         test_file.write_text("line 1 modified\nline 2 modified\nline 3 modified\n")
 
         command_start()
-        command_discard_file()
+        command_discard_file(file="")
 
         # File should be completely removed from working tree
         assert not test_file.exists()
@@ -60,10 +60,8 @@ class TestCommandDiscardFile:
             ["git", "diff", "--cached", "--name-status"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        assert "D\tunwanted.txt" in result.stdout
+            capture_output=True,)
+        assert b"D\tunwanted.txt" in result.stdout
 
         captured = capsys.readouterr()
         assert "File discarded: unwanted.txt" in captured.err
@@ -80,7 +78,7 @@ class TestCommandDiscardFile:
         test_file.write_text("line 1 modified\nline 2\nline 3\nline 4 modified\nline 5\nline 6\nline 7 modified\n")
 
         command_start()
-        command_discard_file()
+        command_discard_file(file="")
 
         # File should be completely removed
         assert not test_file.exists()
@@ -90,10 +88,8 @@ class TestCommandDiscardFile:
             ["git", "status", "--short"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        assert "D  multi.txt" in result.stdout
+            capture_output=True,)
+        assert b"D  multi.txt" in result.stdout
 
         captured = capsys.readouterr()
         assert "File discarded: multi.txt" in captured.err
@@ -113,7 +109,7 @@ class TestCommandDiscardFile:
         file2.write_text("modified 2\n")
 
         command_start()
-        command_discard_file()
+        command_discard_file(file="")
 
         # Only the first file should be removed
         assert not file1.exists()
@@ -127,10 +123,8 @@ class TestCommandDiscardFile:
             ["git", "diff", "--cached", "--name-status"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        assert "D\tfile1.txt" in result.stdout
+            capture_output=True,)
+        assert b"D\tfile1.txt" in result.stdout
 
         captured = capsys.readouterr()
         assert "File discarded: file1.txt" in captured.err
@@ -143,14 +137,14 @@ class TestCommandDiscardFile:
 
         # Start session and discard the file
         command_start()
-        command_discard_file()
+        command_discard_file(file="")
         capsys.readouterr()  # Clear output
 
-        # Try to discard file again - should show "No changes"
-        command_discard_file()
+        # Try to discard file again - should show "No more hunks"
+        command_discard_file(file="")
 
         captured = capsys.readouterr()
-        assert "No changes to discard" in captured.err
+        assert "No more hunks to process" in captured.err
 
     def test_abort_restores_discarded_untracked_file(self, temp_git_repo):
         """Test that abort restores untracked files discarded with discard-file."""
@@ -168,7 +162,7 @@ class TestCommandDiscardFile:
         command_start()
 
         # Discard the file (should snapshot before deleting)
-        command_discard_file()
+        command_discard_file(file="")
 
         # File should be deleted
         assert not untracked_file.exists()
@@ -203,11 +197,10 @@ class TestCommandDiscardFile:
             ["git", "diff", "-U3", "--no-color"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        expected_hashes = {compute_stable_hunk_hash(patch.to_patch_text()) for patch in patches}
+            capture_output=True,)
+        stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
+        patches = list(parse_unified_diff_streaming(stdout_bytes.splitlines(keepends=True)))
+        expected_hashes = {compute_stable_hunk_hash(patch.to_patch_bytes()) for patch in patches}
 
         # Verify we have multiple hunks
         assert len(expected_hashes) >= 2, "Test requires at least 2 hunks"
@@ -216,7 +209,7 @@ class TestCommandDiscardFile:
         command_start()
 
         # Discard the file
-        command_discard_file()
+        command_discard_file(file="")
 
         # File should be removed and staged for deletion
         assert not test_file.exists()
@@ -224,10 +217,8 @@ class TestCommandDiscardFile:
             ["git", "diff", "--cached", "--name-status"],
             check=True,
             cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        )
-        assert "D\tmulti.txt" in result.stdout
+            capture_output=True,)
+        assert b"D\tmulti.txt" in result.stdout
 
         # All hunks should be marked as processed in blocklist
         blocklist_path = get_block_list_file_path()

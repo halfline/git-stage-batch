@@ -6,7 +6,6 @@ import pytest
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
-from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.utils.paths import get_selected_hunk_patch_file_path
 from git_stage_batch.utils.file_io import read_text_file_contents
 

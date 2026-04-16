@@ -103,6 +103,18 @@ def get_selected_hunk_hash_file_path() -> Path:
     return get_state_directory_path() / "selected-hunk-hash"
 
 
+def get_selected_binary_file_json_path() -> Path:
+    """Get the path to the selected binary file JSON file.
+
+    When the selected item is a binary file (not a text hunk), this file stores
+    the BinaryFileChange information as JSON.
+
+    Returns:
+        Path to selected binary file JSON file
+    """
+    return get_state_directory_path() / "selected-binary-file.json"
+
+
 def get_abort_head_file_path() -> Path:
     """Get the path to the abort HEAD file for session restoration.
 
@@ -137,6 +149,15 @@ def get_abort_snapshot_list_file_path() -> Path:
         Path to snapshot list file
     """
     return get_state_directory_path() / "snapshot-list"
+
+
+def get_session_batch_sources_file_path() -> Path:
+    """Get the path to the session batch sources cache file.
+
+    Returns:
+        Path to session-batch-sources.json file
+    """
+    return get_state_directory_path() / "session-batch-sources.json"
 
 
 def get_auto_added_files_file_path() -> Path:

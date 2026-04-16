@@ -1,5 +1,30 @@
 """Tests for state directory path utilities."""
 
+from git_stage_batch.utils.paths import get_processed_include_ids_file_path
+from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
+from git_stage_batch.utils.paths import get_line_changes_json_file_path
+from git_stage_batch.utils.paths import get_index_snapshot_file_path
+from git_stage_batch.utils.paths import get_working_tree_snapshot_file_path
+from git_stage_batch.utils.paths import get_abort_head_file_path
+from git_stage_batch.utils.paths import get_abort_stash_file_path
+from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
+from git_stage_batch.utils.paths import get_abort_snapshot_list_file_path
+from git_stage_batch.utils.paths import get_auto_added_files_file_path
+from git_stage_batch.utils.paths import get_blocked_files_file_path
+from git_stage_batch.utils.paths import get_iteration_count_file_path
+from git_stage_batch.utils.paths import get_start_head_file_path
+from git_stage_batch.utils.paths import get_start_index_tree_file_path
+from git_stage_batch.utils.paths import get_suggest_fixup_state_file_path
+from git_stage_batch.utils.paths import get_batches_directory_path
+from git_stage_batch.utils.paths import get_batch_directory_path
+from git_stage_batch.utils.paths import get_batch_metadata_file_path
+from git_stage_batch.utils.paths import get_batch_refs_snapshot_file_path
+from git_stage_batch.utils.paths import get_batch_claimed_hunks_file_path
+from git_stage_batch.utils.paths import get_batch_claimed_line_ids_file_path
+from git_stage_batch.utils.paths import get_processed_batch_ids_file_path
+from git_stage_batch.utils.paths import get_batched_hunks_file_path
+from git_stage_batch.utils.paths import get_start_batch_refs_file_path
+
 import subprocess
 
 import pytest
@@ -67,7 +92,6 @@ class TestLineLevelOperationPaths:
 
     def test_get_processed_include_ids_file_path(self, temp_git_repo):
         """Test getting the processed include IDs file path."""
-        from git_stage_batch.utils.paths import get_processed_include_ids_file_path
 
         include_ids_path = get_processed_include_ids_file_path()
         state_dir = get_state_directory_path()
@@ -75,7 +99,6 @@ class TestLineLevelOperationPaths:
 
     def test_get_processed_skip_ids_file_path(self, temp_git_repo):
         """Test getting the processed skip IDs file path."""
-        from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
 
         skip_ids_path = get_processed_skip_ids_file_path()
         state_dir = get_state_directory_path()
@@ -83,7 +106,6 @@ class TestLineLevelOperationPaths:
 
     def test_get_line_changes_json_file_path(self, temp_git_repo):
         """Test getting the selected lines JSON file path."""
-        from git_stage_batch.utils.paths import get_line_changes_json_file_path
 
         line_changes_path = get_line_changes_json_file_path()
         state_dir = get_state_directory_path()
@@ -91,7 +113,6 @@ class TestLineLevelOperationPaths:
 
     def test_get_index_snapshot_file_path(self, temp_git_repo):
         """Test getting the index snapshot file path."""
-        from git_stage_batch.utils.paths import get_index_snapshot_file_path
 
         index_snapshot_path = get_index_snapshot_file_path()
         state_dir = get_state_directory_path()
@@ -99,7 +120,6 @@ class TestLineLevelOperationPaths:
 
     def test_get_working_tree_snapshot_file_path(self, temp_git_repo):
         """Test getting the working tree snapshot file path."""
-        from git_stage_batch.utils.paths import get_working_tree_snapshot_file_path
 
         working_tree_path = get_working_tree_snapshot_file_path()
         state_dir = get_state_directory_path()
@@ -143,7 +163,6 @@ class TestAbortStatePaths:
 
     def test_get_abort_head_file_path(self, temp_git_repo):
         """Test getting the abort head file path."""
-        from git_stage_batch.utils.paths import get_abort_head_file_path
 
         abort_head_path = get_abort_head_file_path()
         state_dir = get_state_directory_path()
@@ -151,7 +170,6 @@ class TestAbortStatePaths:
 
     def test_get_abort_stash_file_path(self, temp_git_repo):
         """Test getting the abort stash file path."""
-        from git_stage_batch.utils.paths import get_abort_stash_file_path
 
         abort_stash_path = get_abort_stash_file_path()
         state_dir = get_state_directory_path()
@@ -159,7 +177,6 @@ class TestAbortStatePaths:
 
     def test_get_abort_snapshots_directory_path(self, temp_git_repo):
         """Test getting the abort snapshots directory path."""
-        from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
 
         snapshots_dir = get_abort_snapshots_directory_path()
         state_dir = get_state_directory_path()
@@ -167,7 +184,6 @@ class TestAbortStatePaths:
 
     def test_get_abort_snapshot_list_file_path(self, temp_git_repo):
         """Test getting the abort snapshot list file path."""
-        from git_stage_batch.utils.paths import get_abort_snapshot_list_file_path
 
         snapshot_list_path = get_abort_snapshot_list_file_path()
         state_dir = get_state_directory_path()
@@ -179,7 +195,6 @@ class TestAutoAddedFilesPath:
 
     def test_get_auto_added_files_file_path(self, temp_git_repo):
         """Test getting the auto-added files file path."""
-        from git_stage_batch.utils.paths import get_auto_added_files_file_path
 
         auto_added_path = get_auto_added_files_file_path()
         state_dir = get_state_directory_path()
@@ -191,55 +206,10 @@ class TestBlockedFilesPath:
 
     def test_get_blocked_files_file_path(self, temp_git_repo):
         """Test getting the blocked files file path."""
-        from git_stage_batch.utils.paths import get_blocked_files_file_path
 
         blocked_files_path = get_blocked_files_file_path()
         state_dir = get_state_directory_path()
         assert blocked_files_path == state_dir / "blocked-files"
-
-
-class TestLineLevelOperationPaths:
-    """Tests for line-level operation path functions."""
-
-    def test_get_processed_include_ids_file_path(self, temp_git_repo):
-        """Test getting the processed include IDs file path."""
-        from git_stage_batch.utils.paths import get_processed_include_ids_file_path
-
-        include_ids_path = get_processed_include_ids_file_path()
-        state_dir = get_state_directory_path()
-        assert include_ids_path == state_dir / "processed.include"
-
-    def test_get_processed_skip_ids_file_path(self, temp_git_repo):
-        """Test getting the processed skip IDs file path."""
-        from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
-
-        skip_ids_path = get_processed_skip_ids_file_path()
-        state_dir = get_state_directory_path()
-        assert skip_ids_path == state_dir / "processed.skip"
-
-    def test_get_line_changes_json_file_path(self, temp_git_repo):
-        """Test getting the selected lines JSON file path."""
-        from git_stage_batch.utils.paths import get_line_changes_json_file_path
-
-        line_changes_path = get_line_changes_json_file_path()
-        state_dir = get_state_directory_path()
-        assert line_changes_path == state_dir / "selected-lines.json"
-
-    def test_get_index_snapshot_file_path(self, temp_git_repo):
-        """Test getting the index snapshot file path."""
-        from git_stage_batch.utils.paths import get_index_snapshot_file_path
-
-        index_snapshot_path = get_index_snapshot_file_path()
-        state_dir = get_state_directory_path()
-        assert index_snapshot_path == state_dir / "index-snapshot"
-
-    def test_get_working_tree_snapshot_file_path(self, temp_git_repo):
-        """Test getting the working tree snapshot file path."""
-        from git_stage_batch.utils.paths import get_working_tree_snapshot_file_path
-
-        working_tree_path = get_working_tree_snapshot_file_path()
-        state_dir = get_state_directory_path()
-        assert working_tree_path == state_dir / "working-tree-snapshot"
 
 
 class TestSessionTrackingPaths:
@@ -247,7 +217,6 @@ class TestSessionTrackingPaths:
 
     def test_get_iteration_count_file_path(self, temp_git_repo):
         """Test getting the iteration count file path."""
-        from git_stage_batch.utils.paths import get_iteration_count_file_path
 
         iteration_count_path = get_iteration_count_file_path()
         state_dir = get_state_directory_path()
@@ -255,7 +224,6 @@ class TestSessionTrackingPaths:
 
     def test_get_start_head_file_path(self, temp_git_repo):
         """Test getting the start HEAD file path."""
-        from git_stage_batch.utils.paths import get_start_head_file_path
 
         start_head_path = get_start_head_file_path()
         state_dir = get_state_directory_path()
@@ -263,7 +231,6 @@ class TestSessionTrackingPaths:
 
     def test_get_start_index_tree_file_path(self, temp_git_repo):
         """Test getting the start index tree file path."""
-        from git_stage_batch.utils.paths import get_start_index_tree_file_path
 
         start_index_tree_path = get_start_index_tree_file_path()
         state_dir = get_state_directory_path()
@@ -271,7 +238,6 @@ class TestSessionTrackingPaths:
 
     def test_get_suggest_fixup_state_file_path(self, temp_git_repo):
         """Test getting the suggest-fixup state file path."""
-        from git_stage_batch.utils.paths import get_suggest_fixup_state_file_path
 
         suggest_fixup_path = get_suggest_fixup_state_file_path()
         state_dir = get_state_directory_path()
@@ -283,63 +249,54 @@ class TestBatchMetadataPaths:
 
     def test_get_batches_directory_path(self, temp_git_repo):
         """Test getting the batches directory path."""
-        from git_stage_batch.utils.paths import get_batches_directory_path
 
         batches_dir = get_batches_directory_path()
         assert batches_dir == temp_git_repo / ".git" / "git-stage-batch" / "batches"
 
     def test_get_batch_directory_path(self, temp_git_repo):
         """Test getting a specific batch directory path."""
-        from git_stage_batch.utils.paths import get_batch_directory_path
 
         batch_dir = get_batch_directory_path("my-batch")
         assert batch_dir == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch"
 
     def test_get_batch_metadata_file_path(self, temp_git_repo):
         """Test getting a batch metadata file path."""
-        from git_stage_batch.utils.paths import get_batch_metadata_file_path
 
         metadata_file = get_batch_metadata_file_path("my-batch")
         assert metadata_file == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch" / "metadata.json"
 
     def test_get_batch_refs_snapshot_file_path(self, temp_git_repo):
         """Test getting the batch refs snapshot file path."""
-        from git_stage_batch.utils.paths import get_batch_refs_snapshot_file_path
 
         snapshot_file = get_batch_refs_snapshot_file_path()
         assert snapshot_file == temp_git_repo / ".git" / "git-stage-batch" / "batch-refs-snapshot.json"
 
     def test_get_batch_claimed_hunks_file_path(self, temp_git_repo):
         """Test getting a batch's claimed hunks file path."""
-        from git_stage_batch.utils.paths import get_batch_claimed_hunks_file_path
 
         claimed_hunks_file = get_batch_claimed_hunks_file_path("my-batch")
         assert claimed_hunks_file == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch" / "claimed_hunks"
 
     def test_get_batch_claimed_line_ids_file_path(self, temp_git_repo):
         """Test getting a batch's claimed line IDs file path."""
-        from git_stage_batch.utils.paths import get_batch_claimed_line_ids_file_path
 
         claimed_line_ids_file = get_batch_claimed_line_ids_file_path("my-batch")
         assert claimed_line_ids_file == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch" / "claimed_line_ids"
 
     def test_get_processed_batch_ids_file_path(self, temp_git_repo):
         """Test getting the processed batch IDs file path."""
-        from git_stage_batch.utils.paths import get_processed_batch_ids_file_path
 
         batch_ids_file = get_processed_batch_ids_file_path()
         assert batch_ids_file == temp_git_repo / ".git" / "git-stage-batch" / "processed.batch"
 
     def test_get_batched_hunks_file_path(self, temp_git_repo):
         """Test getting the batched hunks file path."""
-        from git_stage_batch.utils.paths import get_batched_hunks_file_path
 
         batched_hunks_file = get_batched_hunks_file_path()
         assert batched_hunks_file == temp_git_repo / ".git" / "git-stage-batch" / "batched-hunks"
 
     def test_get_start_batch_refs_file_path(self, temp_git_repo):
         """Test getting the start batch refs file path."""
-        from git_stage_batch.utils.paths import get_start_batch_refs_file_path
 
         start_batch_refs_file = get_start_batch_refs_file_path()
         assert start_batch_refs_file == temp_git_repo / ".git" / "git-stage-batch" / "start-batch-refs.json"

@@ -75,7 +75,7 @@ def _get_commit_details(commit_hash: str) -> dict[str, str]:
     except subprocess.CalledProcessError:
         pass
 
-    # Fallback for errors
+    # Return minimal info when git show fails
     return {
         "hash": commit_hash[:7] if len(commit_hash) > 7 else commit_hash,
         "full_hash": commit_hash,
@@ -219,7 +219,7 @@ def command_suggest_fixup(
     if line_changes is None:
         if porcelain:
             sys.exit(1)
-        exit_with_error(_("Full hunk state not available. Run 'show' to cache the selected hunk."))
+        exit_with_error(_("Full hunk state not available. Run 'show' to select a hunk."))
 
     # Get hunk hash for state tracking
     hunk_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()

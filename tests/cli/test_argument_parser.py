@@ -29,7 +29,7 @@ def test_parse_command_line_quick_action_help():
 
 def test_parse_command_line_invalid_arg():
     """Test parsing invalid argument returns None."""
-    args = parse_command_line(["--invalid-arg"], quiet=True)
+    parse_command_line(["--invalid-arg"], quiet=True)
     # Should return None for invalid arguments
     # (depends on argparse behavior, may return None or valid Namespace)
     # Just verify function is callable
@@ -121,7 +121,7 @@ def test_parse_command_line_include_with_file():
     """Test parsing include command with --file flag."""
     args = parse_command_line(["include", "--file"], quiet=True)
     assert args is not None
-    assert args.file is True
+    assert args.file == ""
     assert hasattr(args, "func")
     assert callable(args.func)
 
@@ -193,7 +193,7 @@ def test_parse_command_line_discard_with_file():
     """Test parsing discard command with --file flag."""
     args = parse_command_line(["discard", "--file"], quiet=True)
     assert args is not None
-    assert args.file is True
+    assert args.file == ""
     assert hasattr(args, "func")
     assert callable(args.func)
 

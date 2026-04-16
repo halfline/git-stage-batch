@@ -1,13 +1,4 @@
-"""Test case for bug where discard --file causes empty deletion hunks to appear.
-
-Bug: After running `discard --file --to BATCH` on a new file, the session
-gets stuck showing an empty deletion hunk for that same file instead of
-advancing to the next file.
-
-Root cause: When a new file is removed from the working tree by discard --file,
-git sees it as a deletion. The session then processes this deletion as a "hunk",
-creating an empty patch that blocks progress.
-"""
+"""Tests for discard --file advancement after removing new files."""
 
 import subprocess
 
@@ -69,17 +60,15 @@ def test_discard_file_advances_to_next_file_not_deletion_hunk(repo_with_new_file
     discard_result = git_stage_batch("discard", "--file", "--to", "test-batch")
     assert discard_result.returncode == 0
 
-    # Show should now display a DIFFERENT file, not the one we just discarded
+    # Show should now display a different file, not the one we just discarded.
     show_result = git_stage_batch("show", check=False)
 
     if show_result.returncode != 0:
         # No more hunks is acceptable
         return
 
-    # BUG CHECK: The show output should NOT be the file we just discarded
     assert first_file not in show_result.stdout, (
-        f"BUG REPRODUCED: After discarding {first_file}, show is still displaying it!\n"
-        f"This suggests the session is stuck on an empty deletion hunk.\n"
+        f"after discarding {first_file}, show is still displaying it\n"
         f"Show output:\n{show_result.stdout[:500]}"
     )
 
@@ -88,7 +77,7 @@ def test_discard_file_advances_to_next_file_not_deletion_hunk(repo_with_new_file
     found_other_file = any(fname in show_result.stdout for fname in other_files)
 
     assert found_other_file, (
-        f"BUG: After discarding {first_file}, show is not displaying any other file!\n"
+        f"after discarding {first_file}, show is not displaying any other file\n"
         f"Expected one of: {other_files}\n"
         f"Show output:\n{show_result.stdout[:500]}"
     )
@@ -97,8 +86,7 @@ def test_discard_file_advances_to_next_file_not_deletion_hunk(repo_with_new_file
 def test_discard_file_does_not_create_empty_hunks(repo_with_new_files):
     """Test that discard --file doesn't create empty @@ -0,0 +0,0 @@ hunks.
 
-    After discarding a file, if we see a hunk header like @@ -0,0 +0,0 @@,
-    that's a sign of the bug - an empty deletion hunk is being processed.
+    After discarding a file, the session should advance to content hunks.
     """
     # Start session
     git_stage_batch("start")
@@ -115,10 +103,8 @@ def test_discard_file_does_not_create_empty_hunks(repo_with_new_files):
         # No more hunks is fine
         return
 
-    # BUG CHECK: Empty hunk headers indicate the deletion bug
     assert "@@ -0,0 +0,0 @@" not in show_result.stdout, (
-        f"BUG REPRODUCED: Empty deletion hunk found after discard --file!\n"
-        f"This indicates git-stage-batch is processing the deletion as a hunk.\n"
+        f"empty deletion hunk found after discard --file\n"
         f"Show output:\n{show_result.stdout[:500]}"
     )
 
@@ -129,6 +115,6 @@ def test_discard_file_does_not_create_empty_hunks(repo_with_new_files):
         # This looks like a hunk. Check if there's content after the header
         content_lines = [l for l in lines[2:] if l.strip()]
         assert len(content_lines) > 0, (
-            f"BUG: Hunk has header but no content lines!\n"
+            f"hunk has header but no content lines\n"
             f"Show output:\n{show_result.stdout[:500]}"
         )

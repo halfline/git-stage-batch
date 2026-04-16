@@ -1,5 +1,9 @@
 """Tests for suggest-fixup command infrastructure."""
 
+from git_stage_batch.commands.stop import command_stop
+from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
+from git_stage_batch.commands.suggest_fixup import command_suggest_fixup_line
+
 import json
 import subprocess
 
@@ -16,9 +20,8 @@ from git_stage_batch.commands.suggest_fixup import (
 )
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
-from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.paths import ensure_state_directory_exists, get_suggest_fixup_state_file_path
+from git_stage_batch.utils.paths import get_suggest_fixup_state_file_path
 
 
 @pytest.fixture
@@ -350,8 +353,6 @@ class TestCommandSuggestFixupLine:
     def test_suggest_fixup_line_errors_on_new_lines(self, temp_git_repo, capsys):
         """Test error when all specified lines are new."""
 
-        from git_stage_batch.commands.start import command_start
-        from git_stage_batch.commands.stop import command_stop
 
         # Create empty file
         test_file = temp_git_repo / "test.py"
@@ -407,7 +408,6 @@ class TestCommandSuggestFixupLine:
 
     def test_suggest_fixup_porcelain_abort_silent(self, temp_git_repo, capsys):
         """Test that suggest-fixup --porcelain --abort produces no output."""
-        from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
 
         command_suggest_fixup(abort=True, porcelain=True)
 
@@ -417,10 +417,6 @@ class TestCommandSuggestFixupLine:
 
     def test_suggest_fixup_line_porcelain_outputs_json(self, temp_git_repo, capsys):
         """Test that suggest-fixup-line --porcelain outputs JSON."""
-        from git_stage_batch.commands.start import command_start
-        from git_stage_batch.commands.suggest_fixup import command_suggest_fixup_line
-        from git_stage_batch.data.session import initialize_abort_state
-        from git_stage_batch.utils.paths import ensure_state_directory_exists
 
         # Create base commit
         test_file = temp_git_repo / "test.py"

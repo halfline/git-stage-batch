@@ -1,13 +1,6 @@
-"""Test cases for bugs in abort restoration behavior.
-
-Observed issues:
-1. After abort, only one file is restored instead of all files
-2. Batches created during session persist after abort (should be dropped)
-3. Restored file has wrong git status (untracked instead of staged)
-"""
+"""Tests for abort restoration behavior."""
 
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -45,11 +38,7 @@ def repo_with_staged_files(tmp_path, monkeypatch):
 
 
 def test_abort_restores_all_files_not_just_one(repo_with_staged_files):
-    """Test that abort restores ALL files that were present at session start.
-
-    Bug: After abort, only one file is restored. All other files are lost.
-    Expected: All files present at session start should be restored.
-    """
+    """Test that abort restores all files that were present at session start."""
     # Record files before session
     status_before = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -96,10 +85,9 @@ def test_abort_restores_all_files_not_just_one(repo_with_staged_files):
     )
     files_after = set(line.split()[-1] for line in status_after.stdout.strip().split('\n') if line)
 
-    # BUG CHECK: All files should be restored
     missing_files = files_before - files_after
     assert len(missing_files) == 0, (
-        f"BUG REPRODUCED: After abort, {len(missing_files)} file(s) were NOT restored!\n"
+        f"after abort, {len(missing_files)} file(s) were not restored\n"
         f"Missing files: {missing_files}\n"
         f"Files before: {files_before}\n"
         f"Files after: {files_after}\n"
@@ -108,11 +96,7 @@ def test_abort_restores_all_files_not_just_one(repo_with_staged_files):
 
 
 def test_abort_preserves_file_git_status(repo_with_staged_files):
-    """Test that abort restores files with their original git status.
-
-    Bug: Files that were staged ("A") before session become untracked ("??") after abort.
-    Expected: Files should maintain their original git status.
-    """
+    """Test that abort restores files with their original git status."""
     # Record status before session
     status_before = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -171,11 +155,10 @@ def test_abort_preserves_file_git_status(repo_with_staged_files):
                 filename = parts[-1]
                 files_status_after[filename] = status_code
 
-    # BUG CHECK: Files should have same status as before
     for filename, status_code_before in files_status_before.items():
         status_code_after = files_status_after.get(filename)
         assert status_code_after == status_code_before, (
-            f"BUG REPRODUCED: File {filename} changed status after abort!\n"
+            f"file {filename} changed status after abort\n"
             f"Status before: '{status_code_before}'\n"
             f"Status after: '{status_code_after}'\n"
             f"Expected: Staged files should remain staged after abort"
@@ -183,11 +166,7 @@ def test_abort_preserves_file_git_status(repo_with_staged_files):
 
 
 def test_abort_drops_batches_created_during_session(repo_with_staged_files):
-    """Test that abort removes batches created during the session.
-
-    Bug: Batches created during a session persist after abort.
-    Expected: Batches should be dropped when aborting the session.
-    """
+    """Test that abort removes batches created during the session."""
     # Record batches before session
     list_before = git_stage_batch("list", check=False)
     batches_before = set()
@@ -216,10 +195,9 @@ def test_abort_drops_batches_created_during_session(repo_with_staged_files):
     if list_after.returncode == 0:
         batches_after = set(list_after.stdout.strip().split('\n')) if list_after.stdout.strip() else set()
 
-    # BUG CHECK: Session batches should be removed
     session_batches_remaining = {"batch-from-session", "another-batch"} & batches_after
     assert len(session_batches_remaining) == 0, (
-        f"BUG REPRODUCED: After abort, {len(session_batches_remaining)} batch(es) were NOT dropped!\n"
+        f"after abort, {len(session_batches_remaining)} batch(es) were not dropped\n"
         f"Batches that should have been dropped: {session_batches_remaining}\n"
         f"Batches before session: {batches_before}\n"
         f"Batches after abort: {batches_after}\n"
@@ -230,8 +208,7 @@ def test_abort_drops_batches_created_during_session(repo_with_staged_files):
 def test_abort_multiple_files_discarded_all_restored(repo_with_staged_files):
     """Test that abort restores all files even when multiple were discarded.
 
-    This is a more comprehensive test that discards multiple files to different
-    batches and verifies they're all restored.
+    It discards multiple files to different batches and verifies they're all restored.
     """
     # Start session
     git_stage_batch("start")

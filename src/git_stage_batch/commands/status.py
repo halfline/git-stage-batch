@@ -11,7 +11,6 @@ from ..data.hunk_tracking import format_id_range, snapshots_are_stale
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import get_iteration_count
 from ..i18n import _
-from ..core.line_selection import format_line_ids
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.paths import (
@@ -43,7 +42,7 @@ def estimate_remaining_hunks() -> int:
     remaining = 0
     try:
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-            hunk_hash = compute_stable_hunk_hash(patch.to_patch_text())
+            hunk_hash = compute_stable_hunk_hash(patch.to_patch_bytes())
             file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
             file_path = file_path.removeprefix("a/").removeprefix("b/")
 

@@ -72,6 +72,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         version=f"git-stage-batch {__version__}",
     )
     parser.add_argument(
+        "-C",
+        dest="working_directory",
+        metavar="path",
+        default=None,
+        help=_("Run as if started in path"),
+    )
+    parser.add_argument(
         "-i",
         dest="interactive_flag",
         action="store_true",
@@ -131,9 +138,32 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="BATCH",
         help=_("Show changes from batch"),
     )
+    parser_show.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Show only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_show.add_argument(
+        "--file",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=_("Operate on entire file (live working tree state). "
+               "If PATH omitted, uses selected hunk's file. "
+               "With --line, operates on line IDs from entire file."),
+    )
+    parser_show.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Output JSON for scripting instead of human-readable text"),
+    )
     parser_show.set_defaults(func=lambda args: (
-        commands.command_show_from_batch(args.from_batch) if args.from_batch
-        else commands.command_show()
+        commands.command_show_from_batch(args.from_batch, args.line_ids, args.file) if args.from_batch
+        else commands.command_show(file=args.file, porcelain=args.porcelain) if args.line_ids or args.file is not None
+        else commands.command_show(porcelain=args.porcelain)
     ))
 
     # status - Show selected session status
@@ -142,7 +172,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["st"],
         help=_("Show selected session status"),
     )
-    parser_status.set_defaults(func=lambda _: commands.command_status())
+    parser_status.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Output JSON for scripting instead of human-readable text"),
+    )
+    parser_status.set_defaults(func=lambda args: commands.command_status(porcelain=args.porcelain))
 
     # include - Stage the selected hunk
     parser_include = subparsers.add_parser(
@@ -159,8 +194,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_include.add_argument(
         "--file",
-        action="store_true",
-        help=_("Stage the entire file containing the selected hunk"),
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=_("Operate on entire file (live working tree state). "
+               "If PATH omitted, uses selected hunk's file. "
+               "Without --line, stages entire file. "
+               "With --line, operates on line IDs from entire file."),
     )
     parser_include.add_argument(
         "--from",
@@ -178,7 +219,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         commands.command_include_from_batch(args.from_batch, args.line_ids, args.file) if args.from_batch
         else commands.command_include_to_batch(args.to_batch, args.line_ids, args.file) if args.to_batch
         else commands.command_include_line(args.line_ids) if args.line_ids
-        else commands.command_include_file() if args.file
+        else commands.command_include_file(args.file) if args.file is not None
         else commands.command_include()
     ))
 
@@ -221,8 +262,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_discard.add_argument(
         "--file",
-        action="store_true",
-        help=_("Discard the entire file containing the selected hunk"),
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=_("Operate on entire file (live working tree state). "
+               "If PATH omitted, uses selected hunk's file. "
+               "Without --line, discards entire file. "
+               "With --line, operates on line IDs from entire file."),
     )
     parser_discard.add_argument(
         "--from",
@@ -240,7 +287,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         commands.command_discard_from_batch(args.from_batch, args.line_ids, args.file) if args.from_batch
         else commands.command_discard_to_batch(args.to_batch, args.line_ids, args.file) if args.to_batch
         else commands.command_discard_line(args.line_ids) if args.line_ids
-        else commands.command_discard_file() if args.file
+        else commands.command_discard_file(args.file) if args.file is not None
         else commands.command_discard()
     ))
 
@@ -335,7 +382,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Name of the batch to create"),
     )
     parser_new.add_argument(
-        "--note",
+        "-m", "--note",
         default="",
         help=_("Optional description for the batch"),
     )
@@ -386,7 +433,24 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         required=True,
         help=_("Apply changes from batch to working tree"),
     )
-    parser_apply.set_defaults(func=lambda args: commands.command_apply_from_batch(args.from_batch))
+    parser_apply.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Apply only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    parser_apply.add_argument(
+        "--file",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=_("Operate on entire file from batch. "
+               "If PATH omitted, uses first file in batch (sorted order). "
+               "With --line, operates on line IDs from entire file."),
+    )
+    parser_apply.set_defaults(func=lambda args: commands.command_apply_from_batch(args.from_batch, line_ids=args.line_ids if hasattr(args, 'line_ids') else None, file=args.file if hasattr(args, 'file') else None))
 
     # reset - Remove claims from batch
     parser_reset = subparsers.add_parser(
@@ -408,6 +472,27 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Reset only specific line IDs (e.g., '1,3,5-7')"),
     )
     parser_reset.set_defaults(func=lambda args: commands.command_reset_from_batch(args.from_batch, args.line_ids))
+
+    # sift - Reconcile batch against current tip
+    parser_sift = subparsers.add_parser(
+        "sift",
+        help=_("Remove already-present portions from a batch"),
+    )
+    parser_sift.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        required=True,
+        help=_("Source batch to sift"),
+    )
+    parser_sift.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        required=True,
+        help=_("Destination batch (may equal source for in-place sift)"),
+    )
+    parser_sift.set_defaults(func=lambda args: commands.command_sift_batch(args.from_batch, args.to_batch))
 
     # Parse arguments, return None on failure
     try:

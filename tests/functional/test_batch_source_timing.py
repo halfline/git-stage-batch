@@ -1,17 +1,15 @@
 """Test that batch source commits capture content at session start, not at first discard."""
 
+import json
+from pathlib import Path
+
 import subprocess
 
 from .conftest import git_stage_batch
 
 
 def test_batch_source_captures_session_start_content(repo_with_changes):
-    """Verify batch source commit has content from session start, not from after discard.
-
-    This reproduces the bug where batch source commits were created lazily after
-    discard operations, capturing the wrong (empty) content instead of the content
-    that existed at session start.
-    """
+    """Verify batch source commit has content from session start, not after discard."""
     repo = repo_with_changes
 
     # Create a new file with specific content
@@ -51,8 +49,6 @@ def my_function():
 
     # Now verify the batch source commit contains the ORIGINAL content
     # Read the batch metadata to get batch source commit
-    import json
-    from pathlib import Path
 
     state_dir = Path(".git/git-stage-batch")
     metadata_file = state_dir / "batches" / "test-batch" / "metadata.json"
@@ -74,15 +70,15 @@ def my_function():
     )
     batch_source_content = result.stdout
 
-    # CRITICAL: Batch source should have the imports that were in the file at session start
+    # Batch source should have the imports that were in the file at session start.
     assert "from batch.display import display_func" in batch_source_content, (
-        f"BUG: Batch source commit doesn't have original content!\n"
+        f"batch source commit doesn't have original content\n"
         f"Expected imports from session start\n"
         f"Got: {batch_source_content[:200]}"
     )
     assert "from batch.match import match_func" in batch_source_content, (
-        "BUG: Batch source missing second import"
+        "batch source missing second import"
     )
     assert "def my_function():" in batch_source_content, (
-        "BUG: Batch source missing function definition"
+        "batch source missing function definition"
     )

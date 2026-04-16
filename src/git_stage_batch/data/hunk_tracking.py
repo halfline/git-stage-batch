@@ -5,34 +5,48 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from typing import Optional
+from typing import Generator, Optional, Union
 
-from ..core.hashing import compute_stable_hunk_hash
-from ..core.models import LineLevelChange
-from ..core.diff_parser import build_line_changes_from_patch_text, parse_unified_diff_streaming, write_snapshots_for_selected_file_path
+from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
+from ..batch import display as batch_display
+from ..batch import merge as batch_merge
+from ..batch.display import annotate_with_batch_source
+from ..batch.ownership import (
+    BatchOwnership,
+    build_ownership_units_from_display_lines,
+    rebuild_ownership_from_units,
+    validate_ownership_units,
+)
+from ..batch.query import read_batch_metadata
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
+from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, RenderedBatchDisplay
+from ..core.diff_parser import (
+    build_line_changes_from_patch_bytes,
+    parse_unified_diff_streaming,
+    write_snapshots_for_selected_file_path,
+)
 from ..core.line_selection import write_line_ids_file
-from ..exceptions import exit_with_error
+from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _
-from ..output.hunk import print_line_level_changes
+from ..output import print_line_level_changes, print_binary_file_change
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
 from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
 from ..utils.paths import (
-    get_batched_hunks_file_path,
     get_block_list_file_path,
     get_blocked_files_file_path,
     get_context_lines,
+    get_selected_binary_file_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
     get_discarded_hunks_file_path,
     get_included_hunks_file_path,
     get_index_snapshot_file_path,
-    get_processed_batch_ids_file_path,
     get_processed_include_ids_file_path,
     get_skipped_hunks_jsonl_file_path,
     get_working_tree_snapshot_file_path,
 )
-from .line_state import convert_line_changes_to_serializable_dict
+from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 
 
 def clear_selected_change_state_files() -> None:
@@ -40,97 +54,356 @@ def clear_selected_change_state_files() -> None:
     get_selected_hunk_patch_file_path().unlink(missing_ok=True)
     get_selected_hunk_hash_file_path().unlink(missing_ok=True)
     get_line_changes_json_file_path().unlink(missing_ok=True)
+    get_selected_binary_file_json_path().unlink(missing_ok=True)
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
-    get_processed_batch_ids_file_path().unlink(missing_ok=True)
+    # processed_batch_ids is global state (union of all batches), not per-hunk state
+
+
+def load_selected_binary_file() -> Optional[BinaryFileChange]:
+    """Load the currently cached binary file.
+
+    Returns:
+        BinaryFileChange if a binary file is cached, None otherwise
+    """
+    binary_path = get_selected_binary_file_json_path()
+    if not binary_path.exists():
+        return None
+
+    try:
+        binary_data = json.loads(read_text_file_contents(binary_path))
+        return BinaryFileChange(
+            old_path=binary_data["old_path"],
+            new_path=binary_data["new_path"],
+            change_type=binary_data["change_type"]
+        )
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+def get_selected_change_file_path() -> Optional[str]:
+    """Return the file path for the currently cached selected change.
+
+    The selected patch/binary cache is the source of truth for pathless
+    file-scoped commands because it is what navigation just displayed.
+    selected-lines.json is derived state and may lag after display/navigation
+    edge cases.
+    """
+    binary_file = load_selected_binary_file()
+    if binary_file is not None:
+        return binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
+
+    patch_path = get_selected_hunk_patch_file_path()
+    if not patch_path.exists():
+        return None
+
+    patch_text = read_text_file_contents(patch_path)
+    patch_bytes = patch_text.encode("utf-8")
+    line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+    return line_changes.path
 
 
 def apply_line_level_batch_filter_to_cached_hunk() -> bool:
-    """Filter cached hunk to exclude batched lines.
+    """Filter cached hunk using file-centric ownership attribution.
+
+    File-centric blame-like approach:
+    1. Build complete file attribution (all ownership-relevant units + batch owners)
+    2. Project attribution onto diff fragments
+    3. Filter owned fragments
 
     Returns:
         True if hunk should be skipped (all lines filtered), False otherwise
     """
-    from dataclasses import replace
-    from ..core.line_selection import read_line_ids_file
-    from .line_state import load_line_changes_from_state, convert_line_changes_to_serializable_dict
-
     line_changes = load_line_changes_from_state()
     if line_changes is None:
         return True
 
-    batched_ids = set(read_line_ids_file(get_processed_batch_ids_file_path()))
-    if not batched_ids:
-        return False  # No filtering needed
+    file_path = line_changes.path
 
-    # Filter out batched lines and renumber
-    filtered_lines = []
-    new_id = 1
-    for line_entry in line_changes.lines:
-        if line_entry.id in batched_ids:
-            continue  # Skip batched lines
-        # Create new line with renumbered ID
-        filtered_lines.append(replace(line_entry, id=new_id if line_entry.kind != " " else 0))
-        if line_entry.kind != " ":
-            new_id += 1
+    # Step 1: Build file attribution (file-centric, not diff-centric)
+    attribution = build_file_attribution(file_path)
 
-    # If all lines were batched, skip this hunk
-    if not any(line.kind in ("+", "-") for line in filtered_lines):
-        return True
-
-    # Create filtered LineLevelChange
-    filtered_line_changes = LineLevelChange(
-        path=line_changes.path,
-        header=line_changes.header,
-        lines=filtered_lines
+    # Step 2 & 3: Project to diff and filter owned fragments
+    should_skip, filtered_line_changes = filter_owned_diff_fragments(
+        line_changes, attribution
     )
 
+    if should_skip:
+        return True
+
     # Update cached hunk with filtered version
-    write_text_file_contents(get_line_changes_json_file_path(),
-                            json.dumps(convert_line_changes_to_serializable_dict(filtered_line_changes),
-                                      ensure_ascii=False, indent=0))
+    write_text_file_contents(
+        get_line_changes_json_file_path(),
+        json.dumps(convert_line_changes_to_serializable_dict(filtered_line_changes),
+                  ensure_ascii=False, indent=0)
+    )
 
     return False
 
 
-def cache_batch_as_single_hunk(batch_name: str) -> Optional[LineLevelChange]:
-    """Load entire batch diff and cache it as a single hunk.
+def render_batch_file_display(
+    batch_name: str,
+    file_path: str,
+    metadata: dict | None = None,
+) -> Optional['RenderedBatchDisplay']:
+    """Pure function to render batch file display with gutter ID translation.
 
-    For now, shows only the first hunk from the batch. Future enhancement
-    could combine all hunks or add batch hunk navigation.
+    This is a side-effect-free helper that:
+    - Reads batch metadata
+    - Reads batch source content
+    - Reads current working tree content
+    - Probes individual line mergeability
+    - Builds LineLevelChange with original selection IDs
+    - Builds gutter ID mappings
+
+    It does not:
+    - Write cache files
+    - Mutate selected hunk state
+    - Compute patch hashes
+
+    Args:
+        batch_name: Name of the batch
+        file_path: Specific file to render
+
+    Returns:
+        RenderedBatchDisplay with line changes and gutter ID translation, or None if file not found.
+    """
+    # Read batch metadata
+    if metadata is None:
+        metadata = read_batch_metadata(batch_name)
+    files = metadata.get("files", {})
+
+    if not files or file_path not in files:
+        return None
+
+    file_meta = files[file_path]
+
+    # Get batch source commit and ownership
+    batch_source_commit = file_meta["batch_source_commit"]
+    ownership = BatchOwnership.from_metadata_dict(file_meta)
+
+    # Read batch source content (as bytes)
+    batch_source_result = run_git_command(["show", f"{batch_source_commit}:{file_path}"], check=False, text_output=False)
+    if batch_source_result.returncode != 0:
+        return None
+    batch_source_content_bytes = batch_source_result.stdout
+    batch_source_content_str = batch_source_content_bytes.decode('utf-8', errors='replace')
+
+    # Read current working tree content for mergeability probing
+    repo_root = get_git_repository_root_path()
+    working_path = repo_root / file_path
+    if working_path.exists():
+        working_content = working_path.read_bytes()
+    else:
+        working_content = b""
+
+    # Build display lines (already has correct line IDs matching ownership)
+    display_lines = batch_display.build_display_lines_from_batch_source(
+        batch_source_content_str,
+        ownership,
+        context_lines=get_context_lines(),
+    )
+
+    if not display_lines:
+        return None
+
+    # Determine which display lines should get gutter IDs
+    # Include:
+    # 1. Individually mergeable lines (can be selected alone)
+    # 2. Lines that are part of atomic units (can be selected together with unit)
+    mergeable_ids = set()
+
+    # Build ownership units to identify atomic groupings
+    units = build_ownership_units_from_display_lines(ownership, display_lines)
+
+    # Check each ownership unit once.  All lines in an atomic unit share the
+    # same mergeability result, and merge_batch performs the expensive
+    # structural matching internally.
+    for unit in units:
+        try:
+            validate_ownership_units([unit])
+            ownership_for_unit = rebuild_ownership_from_units([unit])
+            if ownership_for_unit.is_empty():
+                continue
+            batch_merge.merge_batch(batch_source_content_bytes, ownership_for_unit, working_content)
+            mergeable_ids.update(unit.display_line_ids)
+        except (MergeError, ValueError, KeyError, Exception):
+            # Unit not mergeable - exclude all its lines
+            pass
+
+    # Keep original selection IDs; mergeability is stored separately.
+    line_entries = []
+    new_line_num = 1
+
+    for display_line in display_lines:
+        line_id = display_line["id"]  # Keep original selection ID
+        content = display_line["content"]
+
+        # Convert string content to bytes (encode as UTF-8)
+        content_bytes = content.encode('utf-8')
+        # Strip only the newline terminator, preserve \r
+        text_bytes = content_bytes.rstrip(b'\n')
+        # Decode with replacement for display
+        text = text_bytes.decode('utf-8', errors='replace')
+
+        if display_line["type"] == "claimed":
+            # Claimed line from batch source
+            source_line = display_line["source_line"]
+            line_entries.append(LineEntry(
+                id=line_id,
+                kind="+",
+                old_line_number=None,
+                new_line_number=new_line_num,
+                text_bytes=text_bytes,
+                text=text,
+                source_line=source_line
+            ))
+            new_line_num += 1
+        elif display_line["type"] == "deletion":
+            # Deletion (suppression constraint - show as deletion for display)
+            line_entries.append(LineEntry(
+                id=line_id,
+                kind="-",
+                old_line_number=None,  # Not from old file (it's a constraint)
+                new_line_number=None,
+                text_bytes=text_bytes,
+                text=text,
+                source_line=None
+            ))
+        elif display_line["type"] == "context":
+            line_entries.append(LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=None,
+                new_line_number=new_line_num,
+                text_bytes=text_bytes,
+                text=text,
+                source_line=display_line["source_line"]
+            ))
+            new_line_num += 1
+        elif display_line["type"] == "gap":
+            line_entries.append(LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=None,
+                new_line_number=None,
+                text_bytes=text_bytes,
+                text=text,
+                source_line=None
+            ))
+
+    # Compute header based on actual line types
+    addition_count = sum(1 for e in line_entries if e.kind == "+")
+    deletion_count = sum(1 for e in line_entries if e.kind == "-")
+
+    # Create hunk header
+    header = HunkHeader(
+        old_start=0 if deletion_count == 0 else 1,
+        old_len=deletion_count,
+        new_start=0 if addition_count == 0 else 1,
+        new_len=addition_count
+    )
+
+    line_changes = LineLevelChange(
+        path=file_path,
+        header=header,
+        lines=line_entries
+    )
+
+    # Build gutter ID mappings
+    # Only mergeable lines get consecutive gutter IDs (1, 2, 3...)
+    gutter_to_selection_id = {}
+    selection_id_to_gutter = {}
+    gutter_num = 1
+    for entry in line_entries:
+        if entry.id is not None and entry.id in mergeable_ids:
+            gutter_to_selection_id[gutter_num] = entry.id
+            selection_id_to_gutter[entry.id] = gutter_num
+            gutter_num += 1
+
+    return RenderedBatchDisplay(
+        line_changes=line_changes,
+        gutter_to_selection_id=gutter_to_selection_id,
+        selection_id_to_gutter=selection_id_to_gutter
+    )
+
+
+def cache_batch_as_single_hunk(
+    batch_name: str,
+    file_path: str | None = None,
+    metadata: dict | None = None,
+) -> Optional['RenderedBatchDisplay']:
+    """Load file from batch and cache it as a single hunk using batch source model.
 
     Args:
         batch_name: Name of the batch to load
+        file_path: Specific file to cache, or None for first file
 
     Returns:
-        LineLevelChange for the first batch hunk if found, None if batch is empty
+        RenderedBatchDisplay with line changes and gutter ID translation, or None if batch is empty or file not found.
+        The gutter_to_selection_id mapping translates user-visible filtered gutter IDs (1, 2, 3...)
+        to original selection IDs for ownership selection commands.
     """
-    from ..batch import get_batch_diff
-    from ..core.diff_parser import parse_unified_diff_into_single_hunk_patches
+    # Read batch metadata
+    if metadata is None:
+        metadata = read_batch_metadata(batch_name)
+    files = metadata.get("files", {})
 
-    # Get batch diff
-    diff = get_batch_diff(batch_name, get_context_lines())
-    if not diff:
+    if not files:
         return None
 
-    # Parse into individual hunks
-    patches = parse_unified_diff_into_single_hunk_patches(diff)
-    if not patches:
+    # Determine which file to use
+    if file_path is None:
+        # Default to first file (sorted order for consistency)
+        file_path = sorted(files.keys())[0]
+    elif file_path not in files:
+        # Requested file not in batch
+        raise CommandError(f"File '{file_path}' not found in batch '{batch_name}'")
+
+    # Use pure render helper (side-effect free)
+    rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
+    if rendered is None:
         return None
 
-    # For now, show only the first hunk
-    # TODO: Future enhancement - navigate through all batch hunks
-    first_patch = patches[0]
-    patch_text = first_patch.to_patch_text()
-    patch_hash = compute_stable_hunk_hash(patch_text)
+    cache_rendered_batch_file_display(file_path, rendered)
+    return rendered
 
-    # Cache the hunk
+
+def cache_rendered_batch_file_display(
+    file_path: str,
+    rendered: 'RenderedBatchDisplay',
+) -> None:
+    """Cache an already rendered batch file as the selected hunk."""
+    line_changes = rendered.line_changes
+    line_entries = line_changes.lines
+    header = line_changes.header
+
+    # Compute counts for patch synthesis
+    addition_count = sum(1 for e in line_entries if e.kind == "+")
+    deletion_count = sum(1 for e in line_entries if e.kind == "-")
+
+    # Synthesize a patch for hashing and caching (preserving original bytes)
+    old_path = "/dev/null" if deletion_count == 0 and addition_count > 0 else f"a/{file_path}"
+    new_path = "/dev/null" if addition_count == 0 and deletion_count > 0 else f"b/{file_path}"
+
+    patch_bytes_parts = [
+        f"--- {old_path}\n".encode('utf-8'),
+        f"+++ {new_path}\n".encode('utf-8'),
+        f"@@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@\n".encode('utf-8')
+    ]
+    for entry in line_entries:
+        patch_bytes_parts.append(entry.kind.encode('utf-8') + entry.text_bytes + b'\n')
+    patch_bytes = b"".join(patch_bytes_parts)
+
+    patch_hash = compute_stable_hunk_hash(patch_bytes)
+
+    # Cache the hunk (decode with replacement for text storage)
+    patch_text = patch_bytes.decode('utf-8', errors='replace')
     write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
 
-    # Build LineLevelChange for line IDs
-    line_changes = build_line_changes_from_patch_text(patch_text)
+    # Save LineLevelChange for line-level operations
     write_text_file_contents(get_line_changes_json_file_path(),
                             json.dumps(convert_line_changes_to_serializable_dict(line_changes),
                                       ensure_ascii=False, indent=0))
@@ -139,14 +412,186 @@ def cache_batch_as_single_hunk(batch_name: str) -> Optional[LineLevelChange]:
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
 
-    return line_changes
+
+def cache_batch_files_generator(
+    batch_name: str,
+    metadata: dict | None = None,
+) -> Generator['RenderedBatchDisplay', None, None]:
+    """Yield RenderedBatchDisplay for each file in batch.
+
+    Files are yielded in sorted order. Each file has line IDs
+    from original display IDs. Batch content comes from batch storage (not working tree).
+
+    Args:
+        batch_name: Name of the batch
+
+    Yields:
+        RenderedBatchDisplay for each file in batch with gutter ID translation.
+    """
+    # Read batch metadata
+    if metadata is None:
+        metadata = read_batch_metadata(batch_name)
+    files = sorted(metadata.get("files", {}).keys())
+
+    for file_path in files:
+        # Use pure render helper (side-effect free)
+        rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
+        if rendered is not None:
+            yield rendered
 
 
-def fetch_next_change() -> Optional[LineLevelChange]:
-    """Find the next hunk that isn't blocked and cache it as selected.
+def get_batch_file_for_line_operation(batch_name: str, file: str | None) -> str:
+    """Determine which file in batch to operate on.
+
+    Args:
+        batch_name: Name of batch
+        file: User-specified file path, or None for default
 
     Returns:
-        LineLevelChange for the hunk if found, None otherwise
+        File path to use
+
+    Raises:
+        CommandError: If batch empty or file not in batch
+    """
+    metadata = read_batch_metadata(batch_name)
+    files = sorted(metadata.get("files", {}).keys())
+
+    if not files:
+        raise CommandError(f"Batch '{batch_name}' is empty")
+
+    if file is None:
+        # Default to first file (sorted order)
+        return files[0]
+
+    if file not in files:
+        raise CommandError(f"File '{file}' not found in batch '{batch_name}'")
+
+    return file
+
+
+def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
+    """Cache all changes for a file as a single concatenated hunk.
+
+    Reads the CURRENT working tree state for the file and fetches ALL
+    hunks (ignoring blocklist/batches), concatenating them into one
+    LineLevelChange with continuous line IDs.
+
+    This always reflects the live working tree state, unlike regular
+    hunk caching which uses snapshots.
+
+    Args:
+        file_path: Repository-relative path to file
+
+    Returns:
+        LineLevelChange with all file changes, or None if no changes
+    """
+    # Get diff for entire file from selected working tree
+    # Using git diff HEAD -- file_path to get live state
+    try:
+        all_line_entries = []
+        line_id_counter = 1
+        min_old_start = None
+        max_old_end = None
+        min_new_start = None
+        max_new_end = None
+
+        for single_hunk in parse_unified_diff_streaming(
+            stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])
+        ):
+            # Build LineLevelChange from this hunk
+            patch_bytes = single_hunk.to_patch_bytes()
+            line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+
+            # Track bounds for combined header
+            if min_old_start is None:
+                min_old_start = line_changes.header.old_start
+                min_new_start = line_changes.header.new_start
+
+            max_old_end = line_changes.header.old_start + line_changes.header.old_len
+            max_new_end = line_changes.header.new_start + line_changes.header.new_len
+
+            # Renumber line IDs to be continuous across all hunks
+            for line_entry in line_changes.lines:
+                if line_entry.kind != " ":
+                    # Changed line: assign new continuous ID
+                    new_entry = LineEntry(
+                        id=line_id_counter,
+                        kind=line_entry.kind,
+                        old_line_number=line_entry.old_line_number,
+                        new_line_number=line_entry.new_line_number,
+                        text_bytes=line_entry.text_bytes,
+                        text=line_entry.text,
+                        source_line=line_entry.source_line
+                    )
+                    line_id_counter += 1
+                else:
+                    # Context line: keep None
+                    new_entry = LineEntry(
+                        id=None,
+                        kind=line_entry.kind,
+                        old_line_number=line_entry.old_line_number,
+                        new_line_number=line_entry.new_line_number,
+                        text_bytes=line_entry.text_bytes,
+                        text=line_entry.text,
+                        source_line=line_entry.source_line
+                    )
+                all_line_entries.append(new_entry)
+
+        if not all_line_entries:
+            return None
+
+        # Create combined header spanning all hunks
+        combined_header = HunkHeader(
+            old_start=min_old_start,
+            old_len=max_old_end - min_old_start,
+            new_start=min_new_start,
+            new_len=max_new_end - min_new_start
+        )
+
+        combined_line_changes = LineLevelChange(
+            path=file_path,
+            header=combined_header,
+            lines=all_line_entries
+        )
+
+        # Synthesize patch text for caching (used for hashing/identity)
+        patch_lines = [
+            f"--- a/{file_path}",
+            f"+++ b/{file_path}",
+            f"@@ -{combined_header.old_start},{combined_header.old_len} +{combined_header.new_start},{combined_header.new_len} @@"
+        ]
+        for entry in all_line_entries:
+            patch_lines.append(f"{entry.kind}{entry.text}")
+        patch_text = "\n".join(patch_lines) + "\n"
+
+        patch_hash = compute_stable_hunk_hash(patch_text.encode('utf-8'))
+
+        # Cache the combined hunk
+        write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
+        write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
+        write_text_file_contents(get_line_changes_json_file_path(),
+                                json.dumps(convert_line_changes_to_serializable_dict(combined_line_changes),
+                                          ensure_ascii=False, indent=0))
+
+        # No snapshots for file-scoped hunks (they use live state)
+        get_index_snapshot_file_path().unlink(missing_ok=True)
+        get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+
+        return combined_line_changes
+
+    except subprocess.CalledProcessError:
+        # Git diff failed (e.g., no changes in file)
+        return None
+
+
+def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
+    """Find the next hunk or binary file that isn't blocked and cache it as selected.
+
+    Returns:
+        LineLevelChange for text hunks, BinaryFileChange for binary files.
+
+    Raises:
+        NoMoreHunks: When there are no more items to process.
     """
     # Get list of blocked files
     blocked_files = set(read_file_paths_file(get_blocked_files_file_path()))
@@ -155,24 +600,46 @@ def fetch_next_change() -> Optional[LineLevelChange]:
     blocklist_content = read_text_file_contents(get_block_list_file_path())
     blocked_hashes = set(blocklist_content.splitlines())
 
-    # Load batched hunks (permanent, survives 'again')
-    batched_content = read_text_file_contents(get_batched_hunks_file_path())
-    batched_hashes = set(batched_content.splitlines()) if batched_content else set()
-    blocked_hashes.update(batched_hashes)
-
-    # Stream git diff and parse incrementally - stops after first unblocked hunk found
+    # Stream git diff and parse incrementally - stops after first unblocked item found
     try:
-        for single_hunk in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-            patch_text = single_hunk.to_patch_text()
-            hunk_hash = compute_stable_hunk_hash(patch_text)
+        for item in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+            # Handle binary files
+            if isinstance(item, BinaryFileChange):
+                binary_hash = compute_binary_file_hash(item)
+                if binary_hash in blocked_hashes:
+                    continue
+
+                # Determine file path for blocked files check
+                file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+                if file_path in blocked_files:
+                    continue
+
+                # Cache binary file as JSON (for state persistence)
+                binary_data = {
+                    "old_path": item.old_path,
+                    "new_path": item.new_path,
+                    "change_type": item.change_type,
+                }
+                write_text_file_contents(get_selected_binary_file_json_path(),
+                                       json.dumps(binary_data, ensure_ascii=False, indent=0))
+                write_text_file_contents(get_selected_hunk_hash_file_path(), binary_hash)
+
+                # Return the BinaryFileChange object directly
+                return item
+
+            # Handle text hunks (SingleHunkPatch)
+            patch_bytes = item.to_patch_bytes()
+            hunk_hash = compute_stable_hunk_hash(patch_bytes)
             if hunk_hash in blocked_hashes:
                 continue
 
             # Skip hunks from blocked files
-            line_changes = build_line_changes_from_patch_text(patch_text)
+            line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
             if line_changes.path in blocked_files:
                 continue
 
+            # Decode to text for storage (with errors='replace' for non-UTF-8)
+            patch_text = patch_bytes.decode('utf-8', errors='replace')
             write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
 
@@ -188,48 +655,70 @@ def fetch_next_change() -> Optional[LineLevelChange]:
                 continue
 
             # Return filtered hunk (or original if no filtering applied)
-            from .line_state import load_line_changes_from_state
             return load_line_changes_from_state()
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         pass
 
-    return None
+    # No more items to process
+    raise NoMoreHunks()
 
 
 def advance_to_next_change() -> None:
-    """Clear selected hunk state and advance to the next unblocked hunk."""
+    """Clear selected hunk state and advance to the next unblocked hunk.
+
+    If no more hunks exist, clears state and returns silently.
+    """
     clear_selected_change_state_files()
-    fetch_next_change()
+    try:
+        fetch_next_change()
+    except NoMoreHunks:
+        # No more items - state is already cleared
+        pass
 
 
 def show_selected_change() -> None:
-    """Display the currently cached hunk.
+    """Display the currently cached hunk or binary file.
 
     This is a helper for commands that need to display the cached hunk
     without advancing (e.g., start, again).
     """
+    # Check if selected item is a binary file
+    binary_file = load_selected_binary_file()
+    if binary_file is not None:
+        print_binary_file_change(binary_file)
+        return
+
+    # Otherwise, show text hunk
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
         patch_text = read_text_file_contents(patch_path)
-        line_changes = build_line_changes_from_patch_text(patch_text)
+        patch_bytes = patch_text.encode('utf-8')  # Convert stored text to bytes
+        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
         print_line_level_changes(line_changes)
 
 
 def advance_to_and_show_next_change() -> None:
-    """Advance to next hunk and display it (CLI workflow helper).
+    """Advance to next hunk/binary file and display it (CLI workflow helper).
 
     This is a convenience wrapper for CLI commands that combines advancing
-    to the next hunk with displaying it. If no more hunks exist, prints
-    a message to stderr.
+    to the next hunk/binary file with displaying it. If no more items exist,
+    prints a message to stderr.
     """
     advance_to_next_change()
 
-    # Check if a hunk was cached
+    # Check if a binary file was cached
+    binary_file = load_selected_binary_file()
+    if binary_file is not None:
+        print_binary_file_change(binary_file)
+        return
+
+    # Check if a text hunk was cached
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
         patch_text = read_text_file_contents(patch_path)
-        line_changes = build_line_changes_from_patch_text(patch_text)
+        patch_bytes = patch_text.encode('utf-8')  # Convert stored text to bytes
+        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
         print_line_level_changes(line_changes)
     else:
         print(_("No more hunks to process."), file=sys.stderr)
@@ -315,23 +804,34 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
             if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
                 continue
 
-            patch_text = single_hunk.to_patch_text()
-            hunk_hash = compute_stable_hunk_hash(patch_text)
+            patch_bytes = single_hunk.to_patch_bytes()
+            hunk_hash = compute_stable_hunk_hash(patch_bytes)
 
             if hunk_hash in blocked_hashes:
                 continue
 
-            # Cache this hunk as selected
+            # Cache this hunk as selected (decode to text for storage)
+            patch_text = patch_bytes.decode('utf-8', errors='replace')
             write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
 
-            line_changes = build_line_changes_from_patch_text(patch_text)
+            line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
             write_text_file_contents(get_line_changes_json_file_path(),
                                     json.dumps(convert_line_changes_to_serializable_dict(line_changes),
                                               ensure_ascii=False, indent=0))
             write_snapshots_for_selected_file_path(line_changes.path)
 
-            print_line_level_changes(line_changes)
+            # Apply batch filter to exclude batched lines
+            if apply_line_level_batch_filter_to_cached_hunk():
+                # All lines were batched, clear the hunk
+                clear_selected_change_state_files()
+                print(_("No more lines in this hunk."), file=sys.stderr)
+                return
+
+            # Display filtered hunk
+            line_changes = load_line_changes_from_state()
+            if line_changes is not None:
+                print_line_level_changes(line_changes)
             return
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)

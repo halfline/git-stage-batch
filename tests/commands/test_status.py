@@ -1,5 +1,10 @@
 """Tests for status command."""
 
+from git_stage_batch.commands.show import command_show
+from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.utils.paths import get_iteration_count_file_path
+from git_stage_batch.utils.paths import ensure_state_directory_exists
+
 import json
 import subprocess
 
@@ -117,7 +122,6 @@ class TestCommandStatus:
 
     def test_status_shows_line_range_when_cached(self, temp_git_repo, capsys):
         """Test that status shows line range when cached state is available."""
-        from git_stage_batch.commands.show import command_show
 
         # Create and commit a file
         test_file = temp_git_repo / "test.txt"
@@ -146,9 +150,6 @@ class TestCommandStatus:
 
     def test_status_shows_iteration_and_progress_metrics(self, temp_git_repo, capsys):
         """Test that status shows iteration number and progress metrics."""
-        from git_stage_batch.commands.show import command_show
-        from git_stage_batch.data.session import get_iteration_count, initialize_abort_state
-        from git_stage_batch.utils.paths import get_iteration_count_file_path
 
         # Create and commit a file
         test_file = temp_git_repo / "test.txt"
@@ -160,7 +161,6 @@ class TestCommandStatus:
         test_file.write_text("line 1\nMODIFIED\nline 3\n")
 
         # Set iteration count to 2 to test iteration display
-        from git_stage_batch.utils.paths import ensure_state_directory_exists
         ensure_state_directory_exists()
         initialize_abort_state()
         get_iteration_count_file_path().write_text("2")
@@ -194,9 +194,6 @@ class TestCommandStatus:
 
     def test_status_porcelain_with_session(self, temp_git_repo, capsys):
         """Test status --porcelain outputs JSON with session data."""
-        from git_stage_batch.commands.show import command_show
-        from git_stage_batch.data.session import initialize_abort_state
-        from git_stage_batch.utils.paths import ensure_state_directory_exists
 
         # Create and commit a file
         test_file = temp_git_repo / "test.txt"
@@ -234,9 +231,6 @@ class TestCommandStatus:
 
     def test_status_porcelain_includes_selected_hunk(self, temp_git_repo, capsys):
         """Test status --porcelain includes selected hunk details."""
-        from git_stage_batch.commands.show import command_show
-        from git_stage_batch.data.session import initialize_abort_state
-        from git_stage_batch.utils.paths import ensure_state_directory_exists
 
         # Create and commit a file
         test_file = temp_git_repo / "test.txt"

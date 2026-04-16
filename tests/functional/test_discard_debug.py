@@ -1,7 +1,6 @@
 """Debug test to see what's happening with discard --file."""
 
 import subprocess
-from pathlib import Path
 
 from .conftest import git_stage_batch
 
@@ -55,5 +54,4 @@ def test_debug_discard_file_patches(repo_with_changes):
         content = new_file.read_text()
         print(f"File content ({len(content)} chars): {repr(content)}")
 
-    # This should fail if the bug still exists
     assert not new_file.exists(), f"File should be deleted! Still has: {new_file.read_text() if new_file.exists() else 'N/A'}"

@@ -1,8 +1,7 @@
 """Functional tests for status command."""
 
-import subprocess
 
-from .conftest import git_stage_batch, get_staged_files
+from .conftest import git_stage_batch
 
 
 class TestStatusCommand:

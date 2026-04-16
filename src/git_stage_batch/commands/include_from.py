@@ -2,146 +2,180 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from typing import Optional
 
-from ..batch import (
-    get_batch_baseline_commit,
-    get_batch_diff,
+from ..batch.merge import merge_batch
+from ..batch.metadata_validation import read_validated_batch_metadata
+from ..batch.selection import (
+    resolve_batch_file_scope,
+    require_single_file_context_for_line_selection,
+    select_batch_ownership_for_display_ids,
+    translate_atomic_unit_error_to_gutter_ids,
 )
-from ..staging.operations import (
-    build_target_index_content_with_selected_lines,
-    update_index_with_blob_content,
-)
-from ..exceptions import exit_with_error
+from ..batch.validation import batch_exists
+from ..data.hunk_tracking import render_batch_file_display
+from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError, BatchMetadataError
 from ..i18n import _
-from ..core.line_selection import parse_line_selection
-from ..core.diff_parser import build_line_changes_from_patch_text, parse_unified_diff_into_single_hunk_patches
+from ..staging.operations import update_index_with_blob_content
 from ..utils.git import require_git_repository, run_git_command
-from ..utils.paths import get_context_lines
 
 
-def command_include_from_batch(batch_name: str, line_ids: Optional[str] = None, file_only: bool = False) -> None:
-    """Stage changes from a batch to the index."""
+def command_include_from_batch(batch_name: str, line_ids: Optional[str] = None, file: Optional[str] = None) -> None:
+    """Stage batch changes to index using structural merge.
+
+    Args:
+        batch_name: Name of batch to include from
+        line_ids: Optional line IDs to include (requires single-file context)
+        file: Optional file path to select from batch.
+              If None, includes all files in batch.
+    """
     require_git_repository()
 
     # Refresh index to ensure git's cached stat info is up-to-date
-    # This prevents "does not match index" errors when files have been manually modified
     run_git_command(["update-index", "--refresh"], check=False)
 
-    # Get batch diff
-    context_lines = get_context_lines()
-    diff = get_batch_diff(batch_name, context_lines)
+    # Check batch exists
+    if not batch_exists(batch_name):
+        exit_with_error(_("Batch '{name}' does not exist").format(name=batch_name))
 
-    if not diff:
-        exit_with_error(_("Batch '{name}' is empty or does not exist").format(name=batch_name))
+    # Read and validate batch metadata
+    try:
+        metadata = read_validated_batch_metadata(batch_name)
+    except BatchMetadataError as e:
+        exit_with_error(str(e))
 
-    # Parse diff into patches
-    patches = parse_unified_diff_into_single_hunk_patches(diff)
+    all_files = metadata.get("files", {})
 
-    if not patches:
-        exit_with_error(_("No patches found in batch '{name}'").format(name=batch_name))
+    if not all_files:
+        exit_with_error(_("Batch '{name}' is empty").format(name=batch_name))
 
-    # If file_only, filter to selected file only
-    if file_only:
-        from ..data.hunk_tracking import require_selected_hunk
-        from ..data.line_state import load_line_changes_from_state
+    # Determine which files to operate on
+    files = resolve_batch_file_scope(batch_name, all_files, file)
 
-        require_selected_hunk()
-        line_changes = load_line_changes_from_state()
-        selected_file = line_changes.path
+    # Parse line selection and enforce single-file context
+    selected_ids = require_single_file_context_for_line_selection(
+        batch_name, files, line_ids, "include"
+    )
 
-        # Filter patches to selected file
-        patches = [p for p in patches if p.new_path == selected_file]
+    # Translate gutter IDs to selection IDs if line selection is active
+    selection_ids_to_include = selected_ids
+    rendered = None  # Store for error translation
+    if selected_ids:
+        # Use pure render helper to get gutter ID mapping (no side effects)
+        file_path_for_render = list(files.keys())[0]  # Single file context enforced above
+        rendered = render_batch_file_display(batch_name, file_path_for_render)
+        if rendered:
+            # Translate gutter IDs (what user sees) to selection IDs (internal)
+            selection_ids_to_include = set()
+            for gutter_id in selected_ids:
+                if gutter_id in rendered.gutter_to_selection_id:
+                    selection_ids_to_include.add(rendered.gutter_to_selection_id[gutter_id])
+                else:
+                    exit_with_error(_("Line ID {id} not found or not individually mergeable").format(id=gutter_id))
 
-        if not patches:
-            exit_with_error(_("Batch '{name}' has no changes for {file}").format(name=batch_name, file=selected_file))
+    # Apply all files in batch
+    failed_files = []
 
-        # Apply patches for selected file
-        failed_files = []
-        for patch in patches:
-            result = subprocess.run(
-                ["git", "apply", "--index", "--unidiff-zero"],
-                input=patch.to_patch_text(),
-                capture_output=True,
-                text=True,
-                check=False
+    for file_path, file_meta in files.items():
+        try:
+            # Get batch source commit content (as bytes)
+            batch_source_commit = file_meta["batch_source_commit"]
+            batch_source_result = run_git_command(
+                ["show", f"{batch_source_commit}:{file_path}"],
+                check=False,
+                text_output=False
             )
-            if result.returncode != 0:
-                failed_files.append(patch.new_path)
+            if batch_source_result.returncode != 0:
+                failed_files.append(file_path)
+                continue
+            batch_source_content = batch_source_result.stdout
 
-        if failed_files:
-            exit_with_error(
-                _("Failed to apply patches for file: {file}\nRun 'git-stage-batch show --from {name}' to review changes").format(
-                    file=selected_file,
-                    name=batch_name
+            # Get selected index content (as bytes)
+            index_result = run_git_command(
+                ["show", f":{file_path}"],
+                check=False,
+                text_output=False
+            )
+            if index_result.returncode == 0:
+                index_content = index_result.stdout
+            else:
+                index_content = b""
+
+            # Get ownership from metadata, filtered by selected selection IDs if specified
+            try:
+                ownership = select_batch_ownership_for_display_ids(
+                    file_meta, batch_source_content, selection_ids_to_include
                 )
-            )
+            except AtomicUnitError as e:
+                # Translate selection IDs to gutter IDs and exit with user-friendly error
+                if rendered:
+                    translate_atomic_unit_error_to_gutter_ids(e, rendered, "include from", batch_name)
+                # No rendered context - show original error
+                exit_with_error(_("Failed to include from batch '{name}': {error}").format(
+                    name=batch_name,
+                    error=str(e)
+                ))
 
-        print(_("✓ Staged changes for {file} from batch '{name}'").format(file=selected_file, name=batch_name), file=sys.stderr)
-        return
-
-    # If line_ids specified, use line-level staging
-    if line_ids:
-        selected_ids = parse_line_selection(line_ids)
-
-        for patch in patches:
-            patch_text = patch.to_patch_text()
-            line_changes = build_line_changes_from_patch_text(patch_text)
-            file_path = line_changes.path
-
-            # Filter to selected lines
-            filtered_lines = [line for line in line_changes.lines if line.id in selected_ids]
-            if not filtered_lines:
+            # If nothing selected for this file, skip it
+            if ownership.is_empty():
                 continue
 
-            # Get base content from batch baseline
-            baseline_commit = get_batch_baseline_commit(batch_name)
-            if not baseline_commit:
-                exit_with_error(_("Cannot determine baseline for batch '{name}'").format(name=batch_name))
-
-            # Read base file content from baseline commit
-            base_result = run_git_command(
-                ["show", f"{baseline_commit}:{file_path}"],
-                check=False
-            )
-            base_text = base_result.stdout if base_result.returncode == 0 else ""
-
-            # Build target content with selected lines
-            target_content = build_target_index_content_with_selected_lines(
-                line_changes, selected_ids, base_text
+            # Perform structural merge
+            merged_content = merge_batch(
+                batch_source_content,
+                ownership,
+                index_content
             )
 
-            # Update index
-            update_index_with_blob_content(file_path, target_content)
+            # Update index with merged content
+            update_index_with_blob_content(file_path, merged_content)
 
-        print(_("✓ Staged selected lines from batch '{name}'").format(name=batch_name), file=sys.stderr)
-    else:
-        # Apply entire patches to working tree and index (strict mode)
-        failed_files = []
-        for patch in patches:
-            file_path = patch.new_path
+        except MergeError:
+            # Merge conflict - batch created from different file version
+            failed_files.append(file_path)
+        except CommandError:
+            # Re-raise user errors (e.g., partial atomic selection)
+            raise
+        except Exception as e:
+            print(_("Error staging {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
+            failed_files.append(file_path)
 
-            # Try to apply the patch
-            # Apply to both working tree and index using --index
-            result = subprocess.run(
-                ["git", "apply", "--index", "--unidiff-zero"],
-                input=patch.to_patch_text(),
-                capture_output=True,
-                text=True,
-                check=False
-            )
+    if failed_files:
+        if len(failed_files) == 1:
+            # Check if there are individually mergeable lines to suggest --lines
+            file_path = failed_files[0]
+            rendered = render_batch_file_display(batch_name, file_path)
+            has_mergeable_lines = rendered and len(rendered.gutter_to_selection_id) > 0
 
-            if result.returncode != 0:
-                failed_files.append(file_path)
-
-        if failed_files:
+            if has_mergeable_lines:
+                error_msg = _("Batch '{batch}' contains changes to {file} that are incompatible with the current working tree. "
+                             "Use 'git-stage-batch show --from {batch}' to review the batch, "
+                             "or use '--lines' to apply only specific changes.").format(
+                    batch=batch_name,
+                    file=file_path
+                )
+            else:
+                error_msg = _("Batch '{batch}' contains changes to {file} that are incompatible with the current working tree. "
+                             "Use 'git-stage-batch show --from {batch}' to review the batch.").format(
+                    batch=batch_name,
+                    file=file_path
+                )
+            exit_with_error(error_msg)
+        else:
             exit_with_error(
-                _("Failed to apply patches for files: {files}\nRun 'git-stage-batch show --from {name}' to review changes\nUse --file or --line to apply compatible parts").format(
-                    files=', '.join(failed_files),
-                    name=batch_name
+                _("Batch '{batch}' contains changes to one or more files that are incompatible with the current working tree. "
+                  "Failed for: {files}. "
+                  "Use 'git-stage-batch show --from {batch}' to review the batch, "
+                  "or use '--lines' to apply only specific changes.").format(
+                    batch=batch_name,
+                    files=', '.join(failed_files)
                 )
             )
 
+    if line_ids:
+        print(_("✓ Staged selected lines from batch '{name}'").format(name=batch_name), file=sys.stderr)
+    elif file is not None:
+        print(_("✓ Staged changes for {file} from batch '{name}'").format(file=list(files.keys())[0], name=batch_name), file=sys.stderr)
+    else:
         print(_("✓ Staged changes from batch '{name}'").format(name=batch_name), file=sys.stderr)

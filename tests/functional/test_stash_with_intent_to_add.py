@@ -1,17 +1,15 @@
 """Test that stash creation works even with intent-to-add files in index."""
 
+from pathlib import Path
+import json
+
 import subprocess
 
 from .conftest import git_stage_batch
 
 
 def test_stash_created_despite_intent_to_add_files(repo_with_changes):
-    """Test that git stash create succeeds even when intent-to-add files exist.
-
-    This reproduces the bug where intent-to-add files in the index prevent
-    git stash create from succeeding, which means modified tracked files
-    don't get stashed, and batch sources capture wrong content.
-    """
+    """Test that session start snapshots tracked changes with intent-to-add files."""
     repo = repo_with_changes
 
     # Create a tracked file and commit it
@@ -31,7 +29,7 @@ def test_stash_created_despite_intent_to_add_files(repo_with_changes):
     # Verify git stash create would fail in this state
     stash_test = subprocess.run(["git", "stash", "create"], capture_output=True, text=True)
     if stash_test.returncode != 0:
-        print(f"Expected: git stash create fails with intent-to-add files")
+        print("Expected: git stash create fails with intent-to-add files")
         print(f"Error: {stash_test.stderr}")
         assert "not uptodate" in stash_test.stderr.lower() or "cannot" in stash_test.stderr.lower()
 
@@ -39,20 +37,16 @@ def test_stash_created_despite_intent_to_add_files(repo_with_changes):
     git_stage_batch("start")
 
     # Verify stash was created by checking if abort-stash file exists
-    from pathlib import Path
     stash_file = Path(".git/git-stage-batch/abort-stash")
 
-    # If stash file doesn't exist, that's the bug
     if not stash_file.exists():
-        # Try to understand why - check what files got snapshotted
         snapshot_list = Path(".git/git-stage-batch/abort-snapshot-list")
         if snapshot_list.exists():
             snapshots = snapshot_list.read_text().strip().split('\n')
             print(f"Snapshots created: {snapshots}")
 
-        # This is the bug - stash wasn't created because intent-to-add files block it
         raise AssertionError(
-            "BUG REPRODUCED: No stash was created!\n"
+            "no stash was created\n"
             "Intent-to-add files in index prevent 'git stash create' from succeeding.\n"
             "This means modified tracked files won't be captured correctly in batch sources."
         )
@@ -94,7 +88,7 @@ def test_batch_source_from_stashed_tracked_file(repo_with_changes):
     # Modify it
     tracked_file.write_text("# Version 2\ndef version_two():\n    return 'new'\n")
 
-    # Add intent-to-add file (to trigger the stash bug)
+    # Add an intent-to-add file alongside the tracked modification.
     new_file = repo / "another.py"
     new_file.write_text("def another():\n    pass\n")
     subprocess.run(["git", "add", "-N", "another.py"], check=True, capture_output=True)
@@ -116,8 +110,6 @@ def test_batch_source_from_stashed_tracked_file(repo_with_changes):
     git_stage_batch("discard", "--file", "--to", "test-batch")
 
     # Check batch source commit has the modified content (from stash)
-    import json
-    from pathlib import Path
 
     metadata_file = Path(".git/git-stage-batch/batches/test-batch/metadata.json")
     metadata = json.loads(metadata_file.read_text())
@@ -133,9 +125,8 @@ def test_batch_source_from_stashed_tracked_file(repo_with_changes):
     )
     batch_source_content = result.stdout
 
-    # CRITICAL: Should have version 2 (from stash), not version 1 (from HEAD)
     assert "version_two" in batch_source_content, (
-        f"BUG: Batch source has wrong content!\n"
+        f"batch source has wrong content\n"
         f"Expected: Modified content from working tree at session start (Version 2)\n"
         f"Got: {batch_source_content}"
     )

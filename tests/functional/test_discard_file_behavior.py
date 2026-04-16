@@ -1,22 +1,17 @@
-"""Test to reproduce discard --file bug where files aren't removed from working tree."""
+"""Tests for discard --file working-tree behavior."""
 
 import subprocess
-from pathlib import Path
 
 import pytest
 
-from .conftest import git_stage_batch, get_unstaged_diff
+from .conftest import git_stage_batch
 
 
-class TestDiscardFileBug:
-    """Reproduce the bug where discard --file doesn't actually remove files."""
+class TestDiscardFile:
+    """Tests for discard --file removing files and preserving batch content."""
 
     def test_discard_file_removes_new_file_from_working_tree(self, repo_with_changes):
-        """Test that discarding a new file actually removes it from working tree.
-
-        This reproduces the bug where utils/command.py (607 lines) was reported
-        as discarded but remained in the working tree.
-        """
+        """Test that discarding a new file removes it from the working tree."""
         repo = repo_with_changes
 
         # Create a large new file (similar to utils/command.py with 607 lines)
@@ -51,10 +46,8 @@ class TestDiscardFileBug:
         result = git_stage_batch("discard", "--file", "--to", "test-batch")
         assert result.returncode == 0
 
-        # CRITICAL: File should be removed from working tree
-        # This is where the bug occurs - file still exists after discard --file
         assert not new_file.exists(), (
-            f"BUG REPRODUCED: File still exists after discard --file!\n"
+            f"file still exists after discard --file\n"
             f"File has {len(original_content.splitlines())} lines of content.\n"
             f"Expected: File removed from working tree\n"
             f"Actual: File still present with {len(new_file.read_text().splitlines()) if new_file.exists() else 0} lines"
@@ -67,7 +60,7 @@ class TestDiscardFileBug:
     def test_discard_file_with_multiple_hunks(self, repo_with_changes):
         """Test discard --file with a file split into multiple hunks.
 
-        Reproduces the bug where test_merge.py (701 lines) remained after discard.
+        The operation should remove every hunk for the file.
         """
         repo = repo_with_changes
 
@@ -100,7 +93,7 @@ class TestDiscardFileBug:
 
         # File should be completely removed
         assert not test_file.exists(), (
-            f"BUG: Large file still exists after discard --file!"
+            "large file still exists after discard --file"
         )
 
     def test_batch_content_not_corrupted(self, repo_with_changes):
@@ -163,7 +156,7 @@ class TestDiscardFileBug:
         batch_b = batch_b_result.stdout
 
         assert "MARKER_A" in batch_a, "batch-a should contain file_a"
-        assert "MARKER_B" not in batch_a, "BUG: batch-a contaminated with file_b content!"
+        assert "MARKER_B" not in batch_a, "batch-a contains file_b content"
 
         assert "MARKER_B" in batch_b, "batch-b should contain file_b"
-        assert "MARKER_A" not in batch_b, "BUG: batch-b contaminated with file_a content!"
+        assert "MARKER_A" not in batch_b, "batch-b contains file_a content"

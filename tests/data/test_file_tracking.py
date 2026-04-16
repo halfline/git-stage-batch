@@ -58,7 +58,7 @@ class TestAutoAddUntrackedFiles:
         )
         assert "new.txt" in result.stdout
 
-        # Verify file is NOT staged (git add -N doesn't stage content)
+        # Verify file content is not staged by git add -N.
         result = subprocess.run(
             ["git", "diff", "--cached", "--name-only"],
             check=True,

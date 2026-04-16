@@ -6,14 +6,75 @@
 
 Batches are named collections of accumulated changes that can be staged or discarded later as a unit. They persist across sessions and are stored as git commits under `refs/batches/<name>`.
 
+Each batch captures not just the changes themselves, but also the working tree state at the time changes were saved (the **batch source**). This allows batch operations to intelligently merge or discard changes even when your code has evolved since the batch was created.
+
 **When to use batches:**
 - Accumulating related changes across multiple hunks for review together
 - Deferring changes without losing them while working on other commits
 - Grouping changes by type (e.g., debugging, refactoring) for separate handling
 
-**When NOT to use batches:**
+**When to avoid batches:**
 - Simple linear workflows (just use skip and again for another pass)
 - One-off staging decisions (include/skip/discard are simpler)
+
+---
+
+## How Batches Work
+
+### Storage Model
+
+When you save content to a batch (via `include --to` or `discard --to`), the tool captures:
+
+1. **Batch source commit**: A snapshot of the working tree state at save time
+2. **Ownership claims**: Which specific lines or line ranges are batch-owned
+3. **Deletion claims**: Which sequences were deleted by the batch (if any)
+
+This information is stored in:
+- A Git commit under `refs/batches/<name>` containing the realized batch content
+- Metadata tracking the batch source commit and ownership structure
+
+### Application Model (include/apply --from)
+
+When applying a batch to your working tree or index, the tool uses **structural merge**:
+
+1. **Conservative matching**: Uses longest common subsequence-based alignment to map batch source lines to current file lines
+2. **Presence constraints**: Ensures batch-claimed lines are present in the result
+3. **Absence constraints**: Enforces batch deletions at exact anchored boundaries
+
+This allows batches to be applied even when your code has evolved, as long as:
+- Batch-claimed lines can be structurally located
+- Changes have sufficient context (surrounding lines) for alignment
+- File structure hasn't changed so drastically that alignment fails
+
+### Reversal Model (discard --from)
+
+When discarding a batch from your working tree, the tool uses **constraint-based reversal**:
+
+1. **Region classification**: Analyzes how batch source differs from baseline using difflib's SequenceMatcher
+   - EQUAL regions: unchanged lines
+   - INSERT regions: batch-added content
+   - REPLACE_LINE_BY_LINE regions: same-size changes with clear 1:1 line correspondence
+   - REPLACE_BY_HUNK regions: different-size changes requiring atomic restoration
+
+2. **Presence reversal**: For each batch-owned line in the working tree:
+   - EQUAL/REPLACE_LINE_BY_LINE: restore individual baseline line
+   - INSERT: remove (batch-added content)
+   - REPLACE_BY_HUNK: verify full ownership, then restore entire baseline block atomically
+
+3. **Absence restoration**: Re-insert batch-deleted sequences at their original anchored boundaries
+
+This allows batches to be cleanly removed even when working tree has diverged, as long as:
+- Batch-owned content can be unambiguously identified
+- Modified regions have clear correspondence OR are fully batch-owned
+- Deleted content can be re-inserted at original boundaries
+
+### Bytes-Based Correctness
+
+All batch operations work directly with bytes, not decoded text. This ensures:
+- No data corruption from encoding assumptions
+- Support for non-UTF-8 files (ISO-8859-1, Windows-1252, etc.)
+- Correct handling of mixed encodings within a repository
+- Preservation of CRLF line endings in cross-platform workflows
 
 ---
 
@@ -98,6 +159,7 @@ Filter the display to show only specific line IDs from the batch.
 
 Stage the changes from a batch to the index.
 
+**Stage entire batch:**
 ```
 ❯ git-stage-batch include --from batch-name
 ```
@@ -111,18 +173,46 @@ Applies the batch's accumulated changes to the index, staging them for commit.
 
 Stage only specific lines from the batch, allowing partial application of batch changes.
 
-**Current file staging:**
+**File-level staging (selected file):**
 ```
 ❯ git-stage-batch include --from batch-name --file
 ```
 
-Stage changes from the batch for the selected file only. Use this during a staging session when you want to pull in batch changes for the file you're reviewing, without affecting other files in the batch.
+Stage changes from the batch for the selected hunk's file only. Use this during a staging session when you want to pull in batch changes for the file you're reviewing, without affecting other files in the batch.
 
-!!! warning "Strict Application"
-    `include --from BATCH` fails if the batch's changes cannot be applied cleanly
-    to the selected repository state. This happens when the code has diverged from the
-    baseline when the batch was created.
+**File-level staging (specific file):**
+```
+❯ git-stage-batch include --from batch-name --file src/config.py
+```
 
+Stage changes from the batch for `src/config.py` only, without needing a selected hunk. Useful for applying specific files from multi-file batches outside of an active staging session.
+
+**Example - Selective file application:**
+```bash
+# Create batch with changes from multiple files
+❯ git-stage-batch new refactor
+❯ git-stage-batch discard --to refactor --file auth.py
+❯ git-stage-batch discard --to refactor --file config.py
+❯ git-stage-batch discard --to refactor --file utils.py
+
+# Later, apply only config.py changes
+❯ git-stage-batch include --from refactor --file config.py
+# Only config.py is staged, auth.py and utils.py remain in batch
+```
+
+!!! warning "Merge-Based Application"
+    `include --from BATCH` uses structural merge to intelligently apply batch changes
+    to your current working tree, even if the code has evolved since the batch was created.
+    
+    The merge succeeds when:
+    - Batch-claimed lines can be unambiguously located in the current file structure
+    - Changes have context (surrounding unchanged lines) for alignment
+    
+    Failures occur when:
+    - The file structure has changed so drastically that batch lines cannot be located
+    - Claimed lines lack sufficient context for structural alignment
+    - The batch attempts to delete content that no longer exists at expected positions
+    
     On failure, run `show --from BATCH` to review the changes, or use `--line` or
     `--file` to apply only compatible parts.
 
@@ -132,6 +222,7 @@ Stage changes from the batch for the selected file only. Use this during a stagi
 
 Remove batch changes from the working tree.
 
+**Discard entire batch:**
 ```
 ❯ git-stage-batch discard --from batch-name
 ```
@@ -145,40 +236,41 @@ Removes the batch's changes from your working tree by applying the reverse of th
 
 Discard only specific lines from the batch, allowing surgical removal of batch changes.
 
-**Current file discarding:**
+**File-level discarding (selected file):**
 ```
 ❯ git-stage-batch discard --from batch-name --file
 ```
 
-Remove batch changes from the working tree for the selected file only. Use this during a staging session when you want to discard batch changes for the file you're reviewing, without affecting other files in the batch.
+Remove batch changes from the working tree for the selected hunk's file only. Use this during a staging session when you want to discard batch changes for the file you're reviewing, without affecting other files in the batch.
+
+**File-level discarding (specific file):**
+```
+❯ git-stage-batch discard --from batch-name --file src/experimental.py
+```
+
+Remove batch changes for `src/experimental.py` only, without needing a selected hunk. Useful for discarding specific files from multi-file batches.
 
 !!! warning "Destructive Operation"
     This permanently removes changes from your working tree.
 
-!!! warning "Strict Reversal"
-    `discard --from BATCH` fails if the batch's changes cannot be reversed cleanly.
+!!! warning "Constraint-Based Reversal"
+    `discard --from BATCH` uses structural analysis to reverse batch changes by:
+    - Removing batch-added content (insertions)
+    - Restoring batch-modified lines to their baseline state
+    - Re-inserting batch-deleted sequences at their original boundaries
+    
+    The operation succeeds when:
+    - Batch-owned content can be unambiguously identified in the current file
+    - Modified regions have clear line-by-line correspondence with baseline, OR
+    - Modified regions are fully batch-owned (allowing atomic restoration)
+    
+    Failures occur when:
+    - Partial ownership of regions that cannot be restored line-by-line
+    - File structure has changed so drastically that batch content cannot be located
+    - Deleted sequences cannot be re-inserted at original anchored boundaries
+    
     The batch itself persists - only the working tree is modified. Use `--file` to
-    filter to the selected file, or `--line` to discard only specific lines.
-
----
-
-## `include --to BATCH`
-
-Include the selected hunk in a batch for later staging.
-
-```
-❯ git-stage-batch include --to batch-name
-```
-
-This saves the selected working tree state of the file to the batch and marks the hunk as processed, allowing you to continue with other hunks. The changes remain in your working tree and can be staged later using `include --from BATCH`.
-
-**Auto-creation:**
-If the batch doesn't exist, it will be automatically created with the note "Auto-created".
-
-**Use cases:**
-- Defer changes to a separate batch for later commit
-- Group related hunks together for thematic commits
-- Save experimental changes without committing them
+    filter to a specific file, or `--line` to discard only specific lines.
 
 ---
 
@@ -186,6 +278,7 @@ If the batch doesn't exist, it will be automatically created with the note "Auto
 
 Apply batch changes to the working tree without staging them.
 
+**Apply entire batch:**
 ```
 ❯ git-stage-batch apply --from batch-name
 ```
@@ -204,19 +297,29 @@ Applies the batch's accumulated changes to your working tree, leaving the index 
 
 Apply only specific lines from the batch to the working tree.
 
-**Current file application:**
+**File-level application (selected file):**
 ```
 ❯ git-stage-batch apply --from batch-name --file
 ```
 
-Apply batch changes to the working tree for the selected file only. Use this during a staging session when you want to preview batch changes for the file you're reviewing, without affecting other files in the batch.
+Apply batch changes to the working tree for the selected hunk's file only. Use this during a staging session when you want to preview batch changes for the file you're reviewing, without affecting other files in the batch.
 
-!!! warning "Strict Application"
-    `apply --from BATCH` fails if the batch's changes cannot be applied cleanly
-    to the selected working tree state.
+**File-level application (specific file):**
+```
+❯ git-stage-batch apply --from batch-name --file src/debug.py
+```
 
+Apply batch changes for `src/debug.py` only to the working tree, without needing a selected hunk. Useful for testing specific files from multi-file batches.
+
+!!! warning "Merge-Based Application"
+    `apply --from BATCH` uses the same structural merge as `include --from BATCH`,
+    intelligently applying batch changes even if the working tree has evolved.
+    
+    See the warning under `include --from BATCH` for details on when merge succeeds
+    or fails.
+    
     On failure, run `show --from BATCH` to review the changes, or use `--file` to
-    filter to the selected file, or `--line` to apply only specific lines.
+    filter to a specific file, or `--line` to apply only specific lines.
 
 !!! info "Working Tree Only"
     Unlike `include --from`, this command modifies only the working tree and leaves
@@ -237,6 +340,19 @@ Apply batch changes to the working tree for the selected file only. Use this dur
 ❯ git restore .
 ```
 
+**Example - Selective file preview:**
+```bash
+# Batch has changes to auth.py, config.py, utils.py
+❯ git-stage-batch apply --from refactor --file auth.py
+# Only auth.py changes are in working tree, others remain in batch
+
+# Test auth.py changes...
+
+# Restore and try a different file
+❯ git restore auth.py
+❯ git-stage-batch apply --from refactor --file config.py
+```
+
 ---
 
 ## `include --to BATCH`
@@ -247,7 +363,9 @@ Include the selected hunk in a batch for later staging.
 ❯ git-stage-batch include --to batch-name
 ```
 
-This saves the selected working tree state of the file to the batch and marks the hunk as processed, allowing you to continue with other hunks. The changes remain in your working tree and can be staged later using `include --from BATCH`.
+This captures a snapshot of the current working tree state (the **batch source**) along with ownership information for the selected lines, then marks the hunk as processed. The changes remain in your working tree and can be staged later using `include --from BATCH`.
+
+The batch source allows later operations to intelligently merge or discard changes even if your code has evolved since the batch was created.
 
 **Save specific lines only:**
 ```
@@ -288,7 +406,7 @@ Save the selected hunk to a batch, then discard it from the working tree.
 ❯ git-stage-batch discard --to batch-name
 ```
 
-This first saves the working tree state to the batch, then removes the changes from your working tree. The batch acts as a backup allowing later recovery.
+This captures a snapshot of the current working tree state (the **batch source**) along with ownership information for the selected lines, then removes the changes from your working tree. The batch acts as a backup allowing later recovery via `apply --from BATCH` or `include --from BATCH`.
 
 **Save and discard specific lines only:**
 ```
@@ -583,7 +701,7 @@ They operate at different levels of the workflow.
 
 No.
 
-Batches exist outside of your commit history. They only affect how you prepare commits.
+Batches are stored separately from your commit history. They only affect how you prepare commits.
 
 Once a batch is included and committed, the batch itself can be dropped.
 

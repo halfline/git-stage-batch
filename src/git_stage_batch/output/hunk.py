@@ -6,12 +6,22 @@ from ..core.models import LineLevelChange
 from .colors import Colors
 
 
-def print_line_level_changes(line_changes: LineLevelChange) -> None:
+def print_line_level_changes(line_changes: LineLevelChange, *, gutter_to_selection_id: dict[int, int] | None = None) -> None:
     """Print a hunk with line IDs in an aligned gutter.
 
     Changed lines (+ or -) are labeled with [#N] where N is the line ID.
     Context lines have no label. The gutter is aligned based on the
     maximum line ID digit count.
+
+    If gutter_to_selection_id is provided, only lines with IDs mapped in that dict will be
+    numbered in the gutter. This creates filtered gutter numbering where
+    unmergeable lines are still shown but without selectable IDs.
+
+    Args:
+        line_changes: The hunk to display
+        gutter_to_selection_id: Optional mapping from filtered gutter ID to selection ID.
+                               If provided, only selection IDs in the mapping get gutter numbers.
+                               If None, all non-None IDs are numbered as usual.
     """
     use_color = Colors.enabled()
 
@@ -26,14 +36,48 @@ def print_line_level_changes(line_changes: LineLevelChange) -> None:
     else:
         print(header_line)
 
-    maximum_digits = line_changes.maximum_line_id_digit_count()
+    # Use provided gutter mapping if available, otherwise build reverse map from selection IDs
+    if gutter_to_selection_id is not None:
+        # Reverse the mapping: selection ID -> gutter number
+        selection_id_to_gutter = {selection_id: gutter_num for gutter_num, selection_id in gutter_to_selection_id.items()}
+
+        # Compute maximum digits for filtered gutter numbers
+        if gutter_to_selection_id:
+            maximum_digits = len(str(max(gutter_to_selection_id.keys())))
+        else:
+            maximum_digits = 1
+    else:
+        selection_id_to_gutter = None
+        maximum_digits = line_changes.maximum_line_id_digit_count()
+
     label_width = maximum_digits + 3  # "[#N]" plus one space
 
     for line_entry in line_changes.lines:
+        is_gap_line = (
+            line_entry.id is None
+            and line_entry.kind == " "
+            and line_entry.old_line_number is None
+            and line_entry.new_line_number is None
+            and line_entry.source_line is None
+        )
+
         # Build gutter (line ID label area)
         if line_entry.id is not None:
-            label_text = f"[#{line_entry.id}]"
-            label_padding = " " * (label_width - len(label_text))
+            # Check if this ID should be numbered
+            if selection_id_to_gutter is not None:
+                # Filtered mode: only show number if ID is in selection_id_to_gutter
+                if line_entry.id in selection_id_to_gutter:
+                    gutter_number = selection_id_to_gutter[line_entry.id]
+                    label_text = f"[#{gutter_number}]"
+                    label_padding = " " * (label_width - len(label_text))
+                else:
+                    # Unmergeable line: no gutter number
+                    label_text = ""
+                    label_padding = " " * label_width
+            else:
+                # Normal mode: show original ID
+                label_text = f"[#{line_entry.id}]"
+                label_padding = " " * (label_width - len(label_text))
         else:
             label_text = ""
             label_padding = " " * label_width
@@ -53,6 +97,8 @@ def print_line_level_changes(line_changes: LineLevelChange) -> None:
                 print(f"{Colors.GREEN}{line_text}{Colors.RESET}")
             elif line_entry.kind == "-":
                 print(f"{Colors.RED}{line_text}{Colors.RESET}")
+            elif is_gap_line:
+                print(f"{Colors.GRAY}{line_text}{Colors.RESET}")
             else:
                 print(line_text)
         else:

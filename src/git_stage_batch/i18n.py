@@ -12,12 +12,17 @@ import gettext
 import importlib.resources
 import locale
 
-lang, _ = locale.getdefaultlocale()
+# Get language from locale (replacement for deprecated getdefaultlocale)
+try:
+    locale.setlocale(locale.LC_MESSAGES, '')
+    lang, encoding = locale.getlocale(locale.LC_MESSAGES)
+except (locale.Error, ValueError):
+    lang = None
 
 translation = gettext.translation(
     "git-stage-batch",
     localedir=str(importlib.resources.files("git_stage_batch") / "locale"),
-    languages=[lang],
+    languages=[lang] if lang else None,
     fallback=True,
 )
 

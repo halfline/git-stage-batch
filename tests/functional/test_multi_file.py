@@ -121,9 +121,10 @@ class TestLargeChangesets:
     """Test with large changesets across many files."""
 
     def test_many_files_many_changes(self, functional_repo):
-        """Test workflow with many files and changes."""
-        # Create many files with changes
-        for i in range(10):
+        """Test workflow with multiple files and changes."""
+        # Keep this broad enough to exercise multi-file iteration without making
+        # the default suite pay for a stress test on every run.
+        for i in range(4):
             file_path = functional_repo / f"file{i}.txt"
             file_path.write_text(f"Line 1\nLine 2\nLine 3\nLine {i}\n")
 
@@ -131,7 +132,7 @@ class TestLargeChangesets:
 
         # Should be able to navigate through all hunks
         hunk_count = 0
-        for _ in range(50):  # Safety limit
+        for _ in range(8):  # Safety limit
             result = git_stage_batch("show", check=False)
             if result.returncode != 0:
                 break
@@ -148,9 +149,9 @@ class TestLargeChangesets:
         assert len(staged_files) > 0
 
     def test_batch_with_many_files(self, functional_repo):
-        """Test batching with many files."""
-        # Create changes in many files
-        for i in range(10):
+        """Test batching with multiple files."""
+        # Keep this as behavior coverage; larger stress coverage should be opt-in.
+        for i in range(4):
             file_path = functional_repo / f"batch_file{i}.txt"
             file_path.write_text(f"Content {i}\n")
 
@@ -158,7 +159,7 @@ class TestLargeChangesets:
         git_stage_batch("start", check=False)
 
         # Add multiple files to batch
-        for _ in range(20):
+        for _ in range(8):
             result = git_stage_batch("show", check=False)
             if result.returncode != 0:
                 break

@@ -6,12 +6,12 @@ from typing import Optional
 
 from ..data.hunk_tracking import fetch_next_change, show_selected_change
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.session import initialize_abort_state
-from ..exceptions import CommandError
+from ..data.session import initialize_abort_state, clear_iteration_state
+from ..exceptions import CommandError, NoMoreHunks
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import require_git_repository
-from ..utils.paths import ensure_state_directory_exists, get_context_lines_file_path
+from ..utils.paths import ensure_state_directory_exists, get_context_lines_file_path, get_abort_head_file_path
 
 
 def command_start(*, context_lines: Optional[int] = None, quiet: bool = False) -> None:
@@ -24,6 +24,18 @@ def command_start(*, context_lines: Optional[int] = None, quiet: bool = False) -
     require_git_repository()
     ensure_state_directory_exists()
 
+    # If session already exists, run again logic instead
+    if get_abort_head_file_path().exists():
+        # Clear iteration-specific state (shared logic with again/stop/abort)
+        clear_iteration_state()
+
+        # Auto-add untracked files for fresh pass
+        auto_add_untracked_files()
+
+        if not quiet:
+            show_selected_change()
+        return
+
     # Initialize abort state for new session
     initialize_abort_state()
 
@@ -35,7 +47,9 @@ def command_start(*, context_lines: Optional[int] = None, quiet: bool = False) -
     auto_add_untracked_files()
 
     # Find and cache first hunk
-    if fetch_next_change() is None:
+    try:
+        fetch_next_change()
+    except NoMoreHunks:
         raise CommandError(_("No changes to process."), exit_code=2)
 
     # Display the first hunk

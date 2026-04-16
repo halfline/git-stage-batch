@@ -6,7 +6,6 @@ from unittest.mock import patch
 import pytest
 
 from git_stage_batch.cli.main import main
-from git_stage_batch.exceptions import CommandError
 
 
 def test_main_callable():

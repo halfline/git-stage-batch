@@ -1,5 +1,8 @@
 """Comprehensive tests for abort, again, and display correctness."""
 
+from pathlib import Path
+import pytest
+
 import subprocess
 
 from .conftest import git_stage_batch, get_staged_files, get_unstaged_diff, get_git_status
@@ -7,7 +10,6 @@ from .conftest import git_stage_batch, get_staged_files, get_unstaged_diff, get_
 
 def run_interactive(*inputs, timeout=5):
     """Run interactive mode with simulated input."""
-    from pathlib import Path
 
     test_dir = Path(__file__).parent
     project_root = test_dir.parent.parent
@@ -31,7 +33,6 @@ def run_interactive(*inputs, timeout=5):
         )
         return result
     except subprocess.TimeoutExpired:
-        import pytest
         pytest.fail("Interactive mode timed out")
 
 
@@ -69,8 +70,6 @@ class TestAbortThorough:
         git_stage_batch("start")
         git_stage_batch("include", "--to", "test-batch", "--line", "1,2", check=False)
 
-        original_status = get_git_status()
-
         # Abort
         git_stage_batch("abort")
 
@@ -85,8 +84,6 @@ class TestAbortThorough:
 
     def test_abort_after_discard(self, repo_with_changes):
         """Test abort restores discarded changes."""
-        original_diff = get_unstaged_diff()
-
         git_stage_batch("start")
         git_stage_batch("discard", "--line", "1", check=False)
 
@@ -330,7 +327,7 @@ class TestDisplayCorrectness:
         git_stage_batch("include", "--to", "mask-test", "--line", "1", check=False)
 
         # Show should not display line 1 anymore (or show next hunk)
-        result = git_stage_batch("show", check=False)
+        git_stage_batch("show", check=False)
 
         # If we still have a hunk, line 1 from the batched hunk shouldn't be there
         # Or we've moved to the next hunk

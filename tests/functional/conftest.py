@@ -97,8 +97,6 @@ def git_stage_batch(*args, input_text=None, check=True):
     Returns:
         subprocess.CompletedProcess
     """
-    import sys
-    import os
 
     # Find the project root (where pyproject.toml is)
     test_dir = Path(__file__).parent

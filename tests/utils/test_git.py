@@ -1,5 +1,18 @@
 """Tests for git command execution utilities."""
 
+from git_stage_batch.utils.git import stream_git_command
+from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
+from git_stage_batch.utils.git import read_gitignore_lines
+from git_stage_batch.utils.git import get_gitignore_path, read_gitignore_lines
+from git_stage_batch.utils.git import get_gitignore_path, write_gitignore_lines
+from git_stage_batch.utils.git import add_file_to_gitignore, read_gitignore_lines
+from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path, read_gitignore_lines
+from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path
+from git_stage_batch.utils.git import add_file_to_gitignore, read_gitignore_lines, remove_file_from_gitignore
+from git_stage_batch.utils.git import get_gitignore_path, read_gitignore_lines, remove_file_from_gitignore
+from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path, read_gitignore_lines, remove_file_from_gitignore
+from git_stage_batch.utils.git import get_gitignore_path, remove_file_from_gitignore
+
 import subprocess
 from pathlib import Path
 
@@ -72,7 +85,6 @@ class TestStreamGitCommand:
 
     def test_stream_git_command_success(self, temp_git_repo):
         """Test streaming a successful git command."""
-        from git_stage_batch.utils.git import stream_git_command
 
         # Create a file with multiple lines
         test_file = temp_git_repo / "test.txt"
@@ -83,11 +95,10 @@ class TestStreamGitCommand:
         lines = list(stream_git_command(["diff", "--cached"]))
         assert len(lines) > 0
         # Should have lines from the diff
-        assert any("line 1" in line for line in lines)
+        assert any(b"line 1" in line for line in lines)
 
     def test_stream_git_command_early_termination(self, temp_git_repo):
         """Test that stream can be terminated early without error."""
-        from git_stage_batch.utils.git import stream_git_command
 
         # Create a large file
         large_content = "\n".join([f"line {i}" for i in range(1000)])
@@ -107,7 +118,6 @@ class TestStreamGitCommand:
 
     def test_stream_git_command_failure(self, temp_git_repo):
         """Test that streaming a failing command raises error."""
-        from git_stage_batch.utils.git import stream_git_command
 
         with pytest.raises(subprocess.CalledProcessError):
             # Consume the entire stream to trigger error check
@@ -159,14 +169,12 @@ class TestResolveFilePathToRepoRelative:
 
     def test_resolve_file_path_to_repo_relative_relative(self, temp_git_repo):
         """Test that relative paths are returned as-is."""
-        from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
 
         result = resolve_file_path_to_repo_relative("src/file.py")
         assert result == "src/file.py"
 
     def test_resolve_file_path_to_repo_relative_absolute(self, temp_git_repo):
         """Test that absolute paths inside repo are made relative."""
-        from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
 
         absolute_path = str(temp_git_repo / "src" / "file.py")
         result = resolve_file_path_to_repo_relative(absolute_path)
@@ -174,7 +182,6 @@ class TestResolveFilePathToRepoRelative:
 
     def test_resolve_file_path_to_repo_relative_outside_repo(self, temp_git_repo, tmp_path):
         """Test that paths outside repo are returned as-is."""
-        from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
 
         outside_path = str(tmp_path / "outside.txt")
         result = resolve_file_path_to_repo_relative(outside_path)
@@ -186,14 +193,12 @@ class TestGitignoreManipulation:
 
     def test_read_gitignore_lines_nonexistent(self, temp_git_repo):
         """Test reading .gitignore when it doesn't exist."""
-        from git_stage_batch.utils.git import read_gitignore_lines
 
         lines = read_gitignore_lines()
         assert lines == []
 
     def test_read_gitignore_lines_existing(self, temp_git_repo):
         """Test reading existing .gitignore."""
-        from git_stage_batch.utils.git import get_gitignore_path, read_gitignore_lines
 
         gitignore = get_gitignore_path()
         gitignore.write_text("*.pyc\n__pycache__/\n.env\n")
@@ -203,7 +208,6 @@ class TestGitignoreManipulation:
 
     def test_write_gitignore_lines(self, temp_git_repo):
         """Test writing .gitignore lines."""
-        from git_stage_batch.utils.git import get_gitignore_path, write_gitignore_lines
 
         lines = ["*.pyc\n", "__pycache__/\n", ".env\n"]
         write_gitignore_lines(lines)
@@ -214,7 +218,6 @@ class TestGitignoreManipulation:
 
     def test_add_file_to_gitignore_new(self, temp_git_repo):
         """Test adding a file to .gitignore when .gitignore doesn't exist."""
-        from git_stage_batch.utils.git import add_file_to_gitignore, read_gitignore_lines
 
         add_file_to_gitignore("test.txt")
 
@@ -223,7 +226,6 @@ class TestGitignoreManipulation:
 
     def test_add_file_to_gitignore_existing(self, temp_git_repo):
         """Test adding a file to existing .gitignore."""
-        from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path, read_gitignore_lines
 
         gitignore = get_gitignore_path()
         gitignore.write_text("*.pyc\n__pycache__/\n")
@@ -237,7 +239,6 @@ class TestGitignoreManipulation:
 
     def test_add_file_to_gitignore_no_duplicates(self, temp_git_repo):
         """Test adding a file twice doesn't create duplicates."""
-        from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path
 
         add_file_to_gitignore("test.txt")
         add_file_to_gitignore("test.txt")
@@ -248,7 +249,6 @@ class TestGitignoreManipulation:
 
     def test_add_file_to_gitignore_preserves_no_trailing_newline(self, temp_git_repo):
         """Test adding to .gitignore when existing file has no trailing newline."""
-        from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path
 
         gitignore = get_gitignore_path()
         gitignore.write_text("*.pyc")  # No trailing newline
@@ -260,7 +260,6 @@ class TestGitignoreManipulation:
 
     def test_remove_file_from_gitignore_with_marker(self, temp_git_repo):
         """Test removing a file from .gitignore."""
-        from git_stage_batch.utils.git import add_file_to_gitignore, read_gitignore_lines, remove_file_from_gitignore
 
         add_file_to_gitignore("test.txt")
 
@@ -272,7 +271,6 @@ class TestGitignoreManipulation:
 
     def test_remove_file_from_gitignore_without_marker(self, temp_git_repo):
         """Test that we can remove any entry from .gitignore."""
-        from git_stage_batch.utils.git import get_gitignore_path, read_gitignore_lines, remove_file_from_gitignore
 
         gitignore = get_gitignore_path()
         gitignore.write_text("test.txt\n*.pyc\n")
@@ -288,7 +286,6 @@ class TestGitignoreManipulation:
 
     def test_remove_file_from_gitignore_preserves_other_entries(self, temp_git_repo):
         """Test that removing one entry preserves others."""
-        from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path, read_gitignore_lines, remove_file_from_gitignore
 
         gitignore = get_gitignore_path()
         gitignore.write_text("*.pyc\n")
@@ -305,7 +302,6 @@ class TestGitignoreManipulation:
 
     def test_remove_file_from_gitignore_nonexistent(self, temp_git_repo):
         """Test removing a file that doesn't exist in .gitignore."""
-        from git_stage_batch.utils.git import get_gitignore_path, remove_file_from_gitignore
 
         gitignore = get_gitignore_path()
         gitignore.write_text("*.pyc\n")

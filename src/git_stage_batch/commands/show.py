@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import sys
 
-from ..core.diff_parser import build_line_changes_from_patch_text, parse_unified_diff_streaming
+from ..batch.display import annotate_with_batch_source
+from ..core.diff_parser import build_line_changes_from_patch_bytes, parse_unified_diff_streaming
+from ..core.diff_parser import write_snapshots_for_selected_file_path
 from ..core.hashing import compute_stable_hunk_hash
+from ..core.models import BinaryFileChange
+from ..data.hunk_tracking import apply_line_level_batch_filter_to_cached_hunk, cache_file_as_single_hunk, get_selected_change_file_path
+from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.session import require_session_started
+from ..exceptions import exit_with_error
 from ..i18n import _
 from ..output import print_line_level_changes
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
@@ -15,21 +22,50 @@ from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_context_lines,
+    get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
 
 
-def command_show(*, porcelain: bool = False) -> None:
-    """Show the first unprocessed hunk.
+def command_show(file: str | None = None, *, porcelain: bool = False) -> None:
+    """Show the first unprocessed hunk or entire file.
 
     Args:
+        file: Optional file path for file-scoped display.
+              If empty string, uses selected hunk's file.
+              If None, shows selected hunk (normal behavior).
         porcelain: If True, produce no output and exit with code 0 if hunk found, 1 if none
     """
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
 
+    # File-scoped operation
+    if file is not None:
+        # Determine target file
+        if file == "":
+            # --file with no arg: use selected hunk's file
+            target_file = get_selected_change_file_path()
+            if target_file is None:
+                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+        else:
+            target_file = file
+
+        # Cache and display entire file
+        file_lines = cache_file_as_single_hunk(target_file)
+        if file_lines is None:
+            if porcelain:
+                sys.exit(1)
+            else:
+                print(_("No changes in file '{file}'.").format(file=target_file), file=sys.stderr)
+            return
+
+        if not porcelain:
+            print_line_level_changes(file_lines)
+        return
+
+    # Hunk-scoped operation (selected behavior)
     # Load blocklist
     blocklist_path = get_block_list_file_path()
     blocklist_text = read_text_file_contents(blocklist_path)
@@ -37,17 +73,36 @@ def command_show(*, porcelain: bool = False) -> None:
 
     # Stream diff and show first unblocked hunk
     for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-        patch_text = patch.to_patch_text()
-        patch_hash = compute_stable_hunk_hash(patch_text)
+        # Skip binary files for now (they need special handling)
+        if isinstance(patch, BinaryFileChange):
+            continue
+
+        patch_bytes = patch.to_patch_bytes()
+        patch_hash = compute_stable_hunk_hash(patch_bytes)
         if patch_hash not in blocked_hashes:
             # Cache selected hunk state for status and other commands
+            # Decode to text for storage (with errors='replace' for non-UTF-8)
+            patch_text = patch_bytes.decode('utf-8', errors='replace')
             write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
             write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
 
+            # Parse and cache line_changes for batch filtering
+            line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
+            write_text_file_contents(get_line_changes_json_file_path(),
+                                    json.dumps(convert_line_changes_to_serializable_dict(line_changes),
+                                              ensure_ascii=False, indent=0))
+            write_snapshots_for_selected_file_path(line_changes.path)
+
+            # Apply line-level batch filtering
+            if apply_line_level_batch_filter_to_cached_hunk():
+                # All lines in this hunk are batched, skip to next
+                continue
+
             # Display this unprocessed hunk (unless porcelain mode)
             if not porcelain:
-                line_changes = build_line_changes_from_patch_text(patch_text)
-                print_line_level_changes(line_changes)
+                line_changes = load_line_changes_from_state()
+                if line_changes is not None:
+                    print_line_level_changes(line_changes)
             return
 
     # Either no changes or all hunks are blocked

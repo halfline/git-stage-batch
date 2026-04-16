@@ -23,20 +23,36 @@ Resets state if a session is already in progress.
 
 ---
 
-### `show`
+### `show [--file [PATH]]`
 
-Reprint the cached "selected" hunk.
+Display the cached "selected" hunk or an entire file's changes.
 
+**Show selected hunk:**
 ```
 ❯ git-stage-batch show
 ```
 
+**Show all changes from selected hunk's file:**
+```
+❯ git-stage-batch show --file
+```
+
+**Show all changes from specific file:**
+```
+❯ git-stage-batch show --file src/config.py
+```
+
+When `--file` is used, displays all changes from the entire file (all hunks merged into a unified view), rather than just the selected hunk. This is useful for reviewing all changes in a file before staging or discarding them.
+
 **Options:**
+- `--file [PATH]`: Display entire file instead of single hunk
+  - Without PATH: uses selected hunk's file
+  - With PATH: displays specified file
 - `--porcelain`: Exit silently with status code only (no output)
 
 **Exit codes:**
-- `0` if hunk exists
-- `1` if no hunk
+- `0` if hunk/file has changes
+- `1` if no changes
 
 **Usage in scripts:**
 ```bash
@@ -45,6 +61,11 @@ if git-stage-batch show --porcelain; then
     echo "Hunk available for processing"
 else
     echo "No hunks remaining"
+fi
+
+# Check if a specific file has changes
+if git-stage-batch show --file auth.py --porcelain; then
+    echo "auth.py has changes"
 fi
 ```
 
@@ -199,15 +220,38 @@ This:
 
 ## File-Level Operations
 
-### `include --file`
+### `include --file [PATH]`
 
-Stage all hunks from the selected file.
+Stage all hunks from a file.
 
+**Stage selected hunk's file:**
 ```
 ❯ git-stage-batch include --file
 ```
 
-Advances to the next file after staging all hunks.
+**Stage specific file by path:**
+```
+❯ git-stage-batch include --file src/auth.py
+```
+
+Stages all hunks from the specified file and advances to the next file. When a path is provided, you can stage any file in your working tree regardless of which file the selected hunk is from.
+
+**Use cases:**
+- `--file` (no path): Stage all hunks from the file of the selected hunk
+- `--file PATH`: Stage all hunks from the specified file, even if it's not the selected file
+
+**Example workflow:**
+```bash
+❯ git-stage-batch start
+# Current hunk is from config.py
+
+# Stage a different file without changing selected position
+❯ git-stage-batch include --file auth.py
+# auth.py is now fully staged, selected hunk still from config.py
+
+# Continue with selected file
+❯ git-stage-batch include
+```
 
 ---
 
@@ -223,13 +267,25 @@ All hunks from the file are marked as skipped and can be revisited with `again`.
 
 ---
 
-### `discard --file`
+### `discard --file [PATH]`
 
-Discard the entire selected file from the working tree.
+Discard entire file from the working tree.
 
+**Discard selected hunk's file:**
 ```
 ❯ git-stage-batch discard --file
 ```
+
+**Discard specific file by path:**
+```
+❯ git-stage-batch discard --file src/debug.py
+```
+
+Removes all changes from the specified file. When a path is provided, you can discard any file in your working tree regardless of which file the selected hunk is from.
+
+**Use cases:**
+- `--file` (no path): Discard the entire file of the selected hunk
+- `--file PATH`: Discard the specified file, even if it's not the selected file
 
 !!! warning "Destructive Operation"
     This permanently removes the entire file from your working tree.
@@ -433,6 +489,54 @@ Suggest fixup target for specific lines only.
 ```
 
 Useful when a hunk contains changes to multiple unrelated areas. You can get separate fixup suggestions for different line ranges within the same hunk.
+
+---
+
+---
+
+## Batch Operations
+
+### `sift`
+
+Reconcile a batch against the current tip by removing portions whose effect is already present.
+
+```
+❯ git-stage-batch sift --from OLD_BATCH --to NEW_BATCH
+```
+
+**Required arguments:**
+- `--from BATCH`: Source batch to sift
+- `--to BATCH`: Destination batch (may equal `--from` for in-place sift)
+
+**Purpose:**
+
+After ad hoc history surgery, some parts of a batch may already have landed in history while other parts are still unapplied. `sift` removes the already-present portions and writes the remaining unapplied portion to the destination batch.
+
+**Examples:**
+
+```bash
+# Sift to a new batch
+❯ git-stage-batch sift --from feature-cleanups --to feature-cleanups-pruned
+
+# In-place sift
+❯ git-stage-batch sift --from feature-cleanups --to feature-cleanups
+```
+
+**Output:**
+
+Shows summary of:
+- Source and destination batch names
+- Number of files processed
+- Number of files removed (already present at tip)
+- Number of files retained (still needed)
+
+**Behavior:**
+
+- Does not modify working tree or staging area
+- Preserves source batch when `--from != --to`
+- Performs atomic in-place rewrite when `--from == --to`
+- Creates destination batch if needed (using source baseline)
+- Fails if destination exists (except for in-place mode)
 
 ---
 

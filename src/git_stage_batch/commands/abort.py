@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 
+from ..data.batch_refs import restore_batch_refs
+from ..data.session import clear_session_state
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
@@ -17,7 +19,7 @@ from ..utils.paths import (
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
     get_auto_added_files_file_path,
-    get_state_directory_path,
+    get_state_directory_path,  # Still used for intent-to-add-files path construction
 )
 
 
@@ -54,6 +56,18 @@ def command_abort() -> None:
         text=True
     )
 
+    # Apply original stash if it exists (with --index to restore staged state)
+    if abort_stash:
+        print(_("Applying original changes..."), file=sys.stderr)
+        result = subprocess.run(
+            ["git", "stash", "apply", "--index", abort_stash],
+            env=env,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)
+
     # Restore snapshotted untracked files
     snapshot_list_path = get_abort_snapshot_list_file_path()
     if snapshot_list_path.exists():
@@ -69,21 +83,20 @@ def command_abort() -> None:
                 shutil.copy2(snapshot_path, target_path)
                 print(_("Restored: {}").format(file_path), file=sys.stderr)
 
-    # Apply original stash if it exists (with --index to restore staged state)
-    if abort_stash:
-        print(_("Applying original changes..."), file=sys.stderr)
-        result = subprocess.run(
-            ["git", "stash", "apply", "--index", abort_stash],
-            env=env,
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)
+    # Restore intent-to-add status for files that had it before session
+    intent_to_add_path = get_state_directory_path() / "intent-to-add-files"
+    if intent_to_add_path.exists():
+        intent_to_add_files = read_file_paths_file(intent_to_add_path)
+        for file_path in intent_to_add_files:
+            # Re-add with intent-to-add flag
+            run_git_command(["add", "-N", file_path], check=False)
 
-    # Clear all state
-    state_dir = get_state_directory_path()
-    if state_dir.exists():
-        shutil.rmtree(state_dir)
+    # Restore batch refs to their original state
+    # This recreates both git refs and metadata files from the snapshot
+    restore_batch_refs()
+
+    # Clear all session state (preserves batches and batch-sources)
+    # Do this AFTER restore_batch_refs so snapshot file is available
+    clear_session_state()
 
     print(_("✓ Session aborted. All changes reverted."), file=sys.stderr)

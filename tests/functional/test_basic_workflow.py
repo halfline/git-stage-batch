@@ -1,8 +1,9 @@
 """Functional tests for basic git-stage-batch workflow."""
 
+import re
+
 import subprocess
 
-import pytest
 
 from .conftest import git_stage_batch, get_git_status, get_staged_files, get_staged_diff, get_unstaged_diff
 
@@ -76,7 +77,6 @@ class TestIncludeWorkflow:
         # Get first hunk and include all its lines
         result = git_stage_batch("show")
         # Extract line IDs from output (look for [#N])
-        import re
         line_ids = re.findall(r'\[#(\d+)\]', result.stdout)
         if line_ids:
             git_stage_batch("include", "--line", ",".join(line_ids))
@@ -134,13 +134,12 @@ class TestDiscardWorkflow:
 
         # Get all line IDs and discard them
         result = git_stage_batch("show")
-        import re
         line_ids = re.findall(r'\[#(\d+)\]', result.stdout)
         if line_ids:
             git_stage_batch("discard", "--line", ",".join(line_ids))
 
             # Verify changes are gone
-            unstaged = get_unstaged_diff()
+            get_unstaged_diff()
             # Should have fewer changes now
 
 
@@ -166,7 +165,6 @@ class TestShowCommand:
         first_content = first_show.stdout
 
         # Include all lines
-        import re
         line_ids = re.findall(r'\[#(\d+)\]', first_content)
         if line_ids:
             git_stage_batch("include", "--line", ",".join(line_ids))
@@ -257,7 +255,6 @@ class TestCompleteWorkflow:
             if result.returncode != 0:
                 break
 
-            import re
             line_ids = re.findall(r'\[#(\d+)\]', result.stdout)
             if line_ids:
                 # Include all lines in this hunk

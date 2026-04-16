@@ -2,94 +2,374 @@
 
 from __future__ import annotations
 
+import json
 import os
-from typing import Optional
+import subprocess
+from typing import TYPE_CHECKING, Optional
 
+from .metadata_validation import get_validated_baseline_commit
 from .operations import create_batch
-from .query import get_batch_baseline_commit, get_batch_commit_sha
+from .query import get_batch_baseline_commit, get_batch_commit_sha, read_batch_metadata
 from .validation import batch_exists, validate_batch_name
+from ..core.models import BinaryFileChange
+from ..data.batch_sources import (
+    create_batch_source_commit,
+    get_batch_source_for_file,
+    load_session_batch_sources,
+    save_session_batch_sources,
+)
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import run_git_command
-from ..utils.paths import get_state_directory_path
+from ..utils.git import create_git_blob, run_git_command
+from ..utils.paths import get_batch_metadata_file_path, get_state_directory_path
+from .merge import _satisfy_constraints
+
+if TYPE_CHECKING:
+    from .ownership import BatchOwnership, DeletionClaim
 
 
-def add_file_to_batch(batch_name: str, file_path: str, content: str, file_mode: str = "100644") -> None:
-    """
-    Add or update a file in a batch using git plumbing.
+def add_file_to_batch(
+    batch_name: str,
+    file_path: str,
+    ownership: 'BatchOwnership',
+    file_mode: str = "100644"
+) -> None:
+    """Add or update a file in a batch using batch source-based storage.
 
-    This creates a new commit with the file's content, using the existing
-    batch commit as parent (or HEAD for new batches). The batch commit
-    chain allows us to track history and compute diffs.
+    This stores the file's batch source commit (working tree at session start),
+    claimed line ranges, and deletions in the batch metadata. It then builds
+    realized content and updates the batch commit tree.
 
     Args:
         batch_name: Name of the batch
         file_path: Repository-relative path to the file
-        content: File content to store
+        ownership: BatchOwnership specifying claimed lines and deletions
         file_mode: Git file mode (default: 100644)
     """
     validate_batch_name(batch_name)
 
-    # Auto-create batch if it doesn't exist (with metadata)
+    # Auto-create batch if it doesn't exist
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
-    # Create temporary index file
-    temp_index_path = get_state_directory_path() / f".batch_index_{batch_name}"
+    # Get or create batch source commit for this file
+    batch_source_commit = get_batch_source_for_file(file_path)
+    if not batch_source_commit:
+        # Create batch source commit
+        batch_source_commit = create_batch_source_commit(file_path)
+        # Save to session cache
+        batch_sources = load_session_batch_sources()
+        batch_sources[file_path] = batch_source_commit
+        save_session_batch_sources(batch_sources)
 
-    # Set up environment with temporary index
+    # Read baseline and batch source content
+    # Use validated version to get clear error if metadata is corrupted
+    baseline_commit = get_validated_baseline_commit(batch_name)
+
+    # Read base file content as bytes
+    base_result = run_git_command(["show", f"{baseline_commit}:{file_path}"], check=False, text_output=False)
+    base_content = base_result.stdout if base_result.returncode == 0 else b""
+
+    # Read batch source content as bytes
+    batch_source_result = run_git_command(["show", f"{batch_source_commit}:{file_path}"], check=False, text_output=False)
+    batch_source_content = batch_source_result.stdout if batch_source_result.returncode == 0 else b""
+
+    # Build realized content: base + claimed changes + deletions
+    realized_content_bytes = _build_realized_content(
+        base_content,
+        batch_source_content,
+        ownership
+    )
+
+    # Create blob for realized content (already bytes, no encoding needed)
+    blob_sha = create_git_blob([realized_content_bytes])
+
+    # Update batch metadata
+    metadata = read_batch_metadata(batch_name)
+    if "files" not in metadata:
+        metadata["files"] = {}
+
+    metadata["files"][file_path] = {
+        "batch_source_commit": batch_source_commit,
+        **ownership.to_metadata_dict(),
+        "mode": file_mode
+    }
+
+    # Write updated metadata
+    metadata_path = get_batch_metadata_file_path(batch_name)
+    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+
+    # Build batch commit tree with realized content
+    _update_batch_commit(batch_name, file_path, blob_sha, file_mode)
+
+
+def add_binary_file_to_batch(
+    batch_name: str,
+    binary_change: BinaryFileChange,
+    file_mode: str = "100644"
+) -> None:
+    """Add a binary file change to a batch as an atomic unit.
+
+    Binary files cannot have line-level operations, so they're stored
+    as complete file changes (added, modified, or deleted).
+
+    Args:
+        batch_name: Name of the batch
+        binary_change: BinaryFileChange describing the change
+        file_mode: Git file mode (default: 100644)
+    """
+    validate_batch_name(batch_name)
+
+    # Auto-create batch if it doesn't exist
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
+
+    # Determine file path
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+
+    # Get or create batch source commit for this file
+    batch_source_commit = get_batch_source_for_file(file_path)
+    if not batch_source_commit:
+        # Create batch source commit
+        batch_source_commit = create_batch_source_commit(file_path)
+        # Save to session cache
+        batch_sources = load_session_batch_sources()
+        batch_sources[file_path] = batch_source_commit
+        save_session_batch_sources(batch_sources)
+
+    # For binary files, store the full file from batch source as the realized content
+    if binary_change.is_deleted_file():
+        # Deleted file: no content in batch (will be deleted when applied)
+        blob_sha = None
+    else:
+        # Added or modified: read full file from batch source
+        batch_source_result = run_git_command(
+            ["show", f"{batch_source_commit}:{file_path}"],
+            check=False,
+            text_output=False
+        )
+        if batch_source_result.returncode == 0:
+            blob_sha = create_git_blob([batch_source_result.stdout])
+        else:
+            # File doesn't exist in batch source (shouldn't happen for binary files)
+            blob_sha = None
+
+    # Update batch metadata with binary file marker
+    metadata = read_batch_metadata(batch_name)
+    if "files" not in metadata:
+        metadata["files"] = {}
+
+    metadata["files"][file_path] = {
+        "file_type": "binary",
+        "change_type": binary_change.change_type,
+        "batch_source_commit": batch_source_commit,
+        "mode": file_mode
+    }
+
+    # Write updated metadata
+    metadata_path = get_batch_metadata_file_path(batch_name)
+    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+
+    # Update batch commit tree
+    if blob_sha:
+        # Added or modified: add file to batch commit tree
+        _update_batch_commit(batch_name, file_path, blob_sha, file_mode)
+    else:
+        # Deleted: remove file from batch commit tree
+        _remove_file_from_batch_commit(batch_name, file_path)
+
+
+def _build_realized_content(
+    base_content: bytes,
+    batch_source_content: bytes,
+    ownership: 'BatchOwnership'
+) -> bytes:
+    """Build realized batch content using constraint-based structural model.
+
+    This uses the same semantic model as merge_batch:
+    - Conservative structural alignment via match_lines
+    - Presence constraints applied with provenance tracking
+    - Absence constraints enforced at exact anchored boundaries
+
+    The realization answers: what would the file look like if only this batch's
+    claimed changes were applied to baseline?
+
+    This is semantically equivalent to merge_batch(batch_source, ownership, baseline)
+    but returns bytes directly instead of decoding to str.
+
+    Args:
+        base_content: Content from baseline commit (bytes)
+        batch_source_content: Content from batch source commit (bytes)
+        ownership: BatchOwnership specifying claimed lines and deletion constraints
+
+    Returns:
+        Realized batch content as bytes (full file for display)
+    """
+    base_bytes = base_content if base_content else b""
+    source_bytes = batch_source_content if batch_source_content else b""
+
+    # Detect line ending style in batch source (for preservation)
+    has_crlf = b'\r\n' in source_bytes
+    has_cr = b'\r' in source_bytes and not has_crlf
+
+    # Normalize line endings for matching (in bytes)
+    base_normalized = base_bytes.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    source_normalized = source_bytes.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+
+    base_lines = base_normalized.splitlines(keepends=True) if base_normalized else []
+    source_lines = source_normalized.splitlines(keepends=True) if source_normalized else []
+
+    # Resolve ownership
+    resolved = ownership.resolve()
+    claimed_line_set = resolved.claimed_line_set
+    deletion_claims = resolved.deletion_claims
+
+    # Apply constraints using same model as merge, with lenient absence
+    # enforcement because baseline may not have deletion content at that boundary.
+    realized_entries = _satisfy_constraints(
+        source_lines,
+        base_lines,
+        claimed_line_set,
+        deletion_claims,
+        strict=False
+    )
+
+    # Emit final bytes
+    result_bytes = b"".join(entry.content for entry in realized_entries)
+
+    # Restore original line ending style from batch source
+    if has_crlf:
+        result_bytes = result_bytes.replace(b'\n', b'\r\n')
+    elif has_cr:
+        result_bytes = result_bytes.replace(b'\n', b'\r')
+
+    return result_bytes
+
+
+def _suppress_sequence_at_position_bytes(
+    lines: list[bytes],
+    sequence: list[bytes],
+    position: int
+) -> list[bytes]:
+    """Suppress exact byte sequence at specific position if it matches.
+
+    This is position-specific, not global removal.
+
+    Args:
+        lines: File content as list of byte lines
+        sequence: Byte sequence to suppress
+        position: 0-indexed position to check (sequence should start here)
+
+    Returns:
+        Lines with sequence suppressed if found at position, otherwise unchanged
+    """
+    if not sequence or not lines:
+        return lines
+
+    seq_len = len(sequence)
+
+    # Check if position is valid
+    if position < 0 or position >= len(lines):
+        return lines
+
+    # Check if sequence matches at this position
+    if position + seq_len > len(lines):
+        # Not enough lines remaining for sequence to match
+        return lines
+
+    # Check for exact match
+    match = all(
+        lines[position + j] == sequence[j]
+        for j in range(seq_len)
+    )
+
+    if not match:
+        # Sequence not found at this position - constraint already satisfied
+        return lines
+
+    # Suppress the sequence by removing it
+    return lines[:position] + lines[position + seq_len:]
+
+
+def _enforce_deletion_constraint(
+    lines: list[bytes],
+    claim: 'DeletionClaim'
+) -> list[bytes]:
+    """Remove sequences matching a deletion constraint.
+
+    Scans the line list and removes any occurrence of the exact sequence
+    specified by the deletion claim.
+
+    Args:
+        lines: Current content as list of lines (bytes with newlines)
+        claim: Deletion constraint specifying content to suppress
+
+    Returns:
+        Content with matching sequences removed
+    """
+    if not claim.content_lines or not lines:
+        return lines
+
+    claim_length = len(claim.content_lines)
+    result = []
+    i = 0
+
+    while i < len(lines):
+        # Check if we have a match starting at position i
+        if i + claim_length <= len(lines):
+            match = all(
+                lines[i + j] == claim.content_lines[j]
+                for j in range(claim_length)
+            )
+            if match:
+                # Skip this sequence (suppress it)
+                i += claim_length
+                continue
+
+        # No match: keep this line
+        result.append(lines[i])
+        i += 1
+
+    return result
+
+
+def _remove_file_from_batch_commit(batch_name: str, file_path: str) -> None:
+    """Remove a file from batch commit tree (for deletions).
+
+    Creates a new batch commit with the file removed from the tree.
+    Used when a binary file deletion is stored in a batch.
+
+    Args:
+        batch_name: Name of the batch
+        file_path: Repository-relative path to the file to remove
+    """
+    # Create temporary index
+    temp_index_path = get_state_directory_path() / f".batch_index_{batch_name}"
     env = os.environ.copy()
     env["GIT_INDEX_FILE"] = str(temp_index_path)
 
     try:
-        # Load existing tree if batch exists
+        # Load existing batch tree if exists
         existing_commit = get_batch_commit_sha(batch_name)
         if existing_commit:
-            # Use subprocess directly to ensure GIT_INDEX_FILE is respected
-            import subprocess
             subprocess.run(
                 ["git", "read-tree", existing_commit],
                 env=env,
                 check=True,
-                capture_output=True,
-                text=True
+                capture_output=True
             )
 
-        # Write file content as blob
-        temp_blob_path = get_state_directory_path() / f".batch_blob_{batch_name}"
-        write_text_file_contents(temp_blob_path, content)
-        blob_result = run_git_command(["hash-object", "-w", str(temp_blob_path)])
-        blob_sha = blob_result.stdout.strip()
-        temp_blob_path.unlink(missing_ok=True)
-
-        # Detect file mode from existing index if available
-        detected_mode = file_mode
-        try:
-            # Use subprocess directly to read from temporary index
-            import subprocess
-            ls_result = subprocess.run(
-                ["git", "ls-files", "-s", "--", file_path],
-                env=env,
-                capture_output=True,
-                text=True,
-                check=False
-            )
-            if ls_result.returncode == 0 and ls_result.stdout.strip():
-                detected_mode = ls_result.stdout.strip().split()[0]
-        except Exception:
-            pass
-
-        # Update temporary index with blob
-        # Use subprocess with env to ensure GIT_INDEX_FILE is used
-        import subprocess
+        # Remove file from the temporary index regardless of the working tree.
+        # `--remove` consults worktree state and can leave a baseline blob in
+        # the batch tree when the file exists locally; stored deletions need the
+        # path absent from the batch commit unconditionally.
         subprocess.run(
-            ["git", "update-index", "--add", "--cacheinfo", f"{detected_mode},{blob_sha},{file_path}"],
+            ["git", "update-index", "--force-remove", "--", file_path],
             env=env,
-            check=True,
-            capture_output=True,
-            text=True
+            check=False,  # Don't fail if file not in index
+            capture_output=True
         )
 
-        # Write tree from temporary index
+        # Write tree
         tree_result = subprocess.run(
             ["git", "write-tree"],
             env=env,
@@ -99,29 +379,41 @@ def add_file_to_batch(batch_name: str, file_path: str, content: str, file_mode: 
         )
         tree_sha = tree_result.stdout.strip()
 
-        # Determine parent commit
-        parent_commit = None
-        if existing_commit:
-            # Use existing batch commit as parent (preserves history)
-            parent_commit = existing_commit
-        else:
-            # Use HEAD as parent (establishes baseline)
-            head_result = run_git_command(["rev-parse", "HEAD"], check=False)
-            if head_result.returncode == 0:
-                parent_commit = head_result.stdout.strip()
+        # Collect parent commits: baseline + batch sources
+        baseline = get_batch_baseline_commit(batch_name)
+        metadata = read_batch_metadata(batch_name)
 
-        # Create commit
-        if parent_commit:
-            commit_result = run_git_command([
-                "commit-tree", tree_sha, "-p", parent_commit,
-                "-m", f"Batch: {batch_name}"
-            ])
+        parents = []
+        if baseline:
+            parents.append(baseline)
+
+        # Add batch source commits as parents
+        batch_source_commits = set()
+        for file_meta in metadata.get("files", {}).values():
+            if "batch_source_commit" in file_meta:
+                batch_source_commits.add(file_meta["batch_source_commit"])
+
+        parents.extend(sorted(batch_source_commits))
+
+        # Create commit with multi-parent
+        parent_args = []
+        for parent in parents:
+            parent_args.extend(["-p", parent])
+
+        if parent_args:
+            commit_result = subprocess.run(
+                ["git", "commit-tree", tree_sha] + parent_args + ["-m", f"Batch: {batch_name}"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
         else:
-            # No parent (initial commit in empty repo)
-            commit_result = run_git_command([
-                "commit-tree", tree_sha,
-                "-m", f"Batch: {batch_name}"
-            ])
+            commit_result = subprocess.run(
+                ["git", "commit-tree", tree_sha, "-m", f"Batch: {batch_name}"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
 
         commit_sha = commit_result.stdout.strip()
 
@@ -129,7 +421,97 @@ def add_file_to_batch(batch_name: str, file_path: str, content: str, file_mode: 
         run_git_command(["update-ref", f"refs/batches/{batch_name}", commit_sha])
 
     finally:
-        # Clean up temporary files
+        if temp_index_path.exists():
+            temp_index_path.unlink(missing_ok=True)
+
+
+def _update_batch_commit(batch_name: str, file_path: str, blob_sha: str, file_mode: str) -> None:
+    """Update batch commit tree with new/updated file.
+
+    Creates a new batch commit with parents=[baseline, ...batch sources].
+
+    Args:
+        batch_name: Name of the batch
+        file_path: Repository-relative path to the file
+        blob_sha: Blob SHA for the file content
+        file_mode: File mode
+    """
+    # Create temporary index
+    temp_index_path = get_state_directory_path() / f".batch_index_{batch_name}"
+    env = os.environ.copy()
+    env["GIT_INDEX_FILE"] = str(temp_index_path)
+
+    try:
+        # Load existing batch tree if exists
+        existing_commit = get_batch_commit_sha(batch_name)
+        if existing_commit:
+            subprocess.run(
+                ["git", "read-tree", existing_commit],
+                env=env,
+                check=True,
+                capture_output=True
+            )
+
+        # Update index with new blob
+        subprocess.run(
+            ["git", "update-index", "--add", "--cacheinfo", f"{file_mode},{blob_sha},{file_path}"],
+            env=env,
+            check=True,
+            capture_output=True
+        )
+
+        # Write tree
+        tree_result = subprocess.run(
+            ["git", "write-tree"],
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        tree_sha = tree_result.stdout.strip()
+
+        # Collect parent commits: baseline + batch sources
+        baseline = get_batch_baseline_commit(batch_name)
+        metadata = read_batch_metadata(batch_name)
+
+        parents = []
+        if baseline:
+            parents.append(baseline)
+
+        # Add batch source commits as parents
+        batch_source_commits = set()
+        for file_meta in metadata.get("files", {}).values():
+            if "batch_source_commit" in file_meta:
+                batch_source_commits.add(file_meta["batch_source_commit"])
+
+        parents.extend(sorted(batch_source_commits))
+
+        # Create commit with multi-parent
+        parent_args = []
+        for parent in parents:
+            parent_args.extend(["-p", parent])
+
+        if parent_args:
+            commit_result = subprocess.run(
+                ["git", "commit-tree", tree_sha] + parent_args + ["-m", f"Batch: {batch_name}"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+        else:
+            commit_result = subprocess.run(
+                ["git", "commit-tree", tree_sha, "-m", f"Batch: {batch_name}"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+        commit_sha = commit_result.stdout.strip()
+
+        # Update batch ref
+        run_git_command(["update-ref", f"refs/batches/{batch_name}", commit_sha])
+
+    finally:
         if temp_index_path.exists():
             temp_index_path.unlink(missing_ok=True)
 
@@ -157,18 +539,18 @@ def read_file_from_batch(batch_name: str, file_path: str) -> Optional[str]:
     return result.stdout
 
 
-def get_batch_diff(batch_name: str, context_lines: int = 3) -> str:
+def get_batch_diff(batch_name: str, context_lines: int = 3) -> bytes:
     """
     Get the unified diff from baseline to batch.
 
-    This shows what changes the batch represents. Returns empty string
+    This shows what changes the batch represents. Returns empty bytes
     if baseline cannot be determined or batch doesn't exist.
     """
     validate_batch_name(batch_name)
 
     commit_sha = get_batch_commit_sha(batch_name)
     if not commit_sha:
-        return ""
+        return b""
 
     baseline = get_batch_baseline_commit(batch_name)
     if not baseline:
@@ -176,12 +558,13 @@ def get_batch_diff(batch_name: str, context_lines: int = 3) -> str:
         empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
         baseline = empty_tree
 
-    # Generate diff
+    # Generate diff as bytes
     result = run_git_command(
         ["diff", f"-U{context_lines}", baseline, commit_sha],
-        check=False
+        check=False,
+        text_output=False
     )
     if result.returncode != 0:
-        return ""
+        return b""
 
     return result.stdout

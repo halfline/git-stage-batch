@@ -42,7 +42,7 @@ class TestCommandIncludeFile:
         test_file.write_text("line 1 modified\nline 2\nline 3\nline 4\nline 5 modified\n")
 
         command_start()
-        command_include_file()
+        command_include_file(file="")
 
         # Check that all changes are staged
         result = subprocess.run(
@@ -68,11 +68,11 @@ class TestCommandIncludeFile:
 
         # Start session and include the file
         command_start()
-        command_include_file()
+        command_include_file(file="")
         capsys.readouterr()  # Clear output
 
         # Try to include file again - should show "No changes"
-        command_include_file()
+        command_include_file(file="")
 
         captured = capsys.readouterr()
         assert "No changes to stage" in captured.err
@@ -95,7 +95,7 @@ class TestCommandIncludeFile:
         command_start()
 
         # Include-file should only stage file1
-        command_include_file()
+        command_include_file(file="")
         capsys.readouterr()  # Clear output
 
         # Verify only file1 is staged

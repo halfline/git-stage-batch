@@ -65,6 +65,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="version",
         version=f"git-stage-batch {__version__}",
     )
+    parser.add_argument(
+        "-C",
+        dest="working_directory",
+        metavar="path",
+        default=None,
+        help=_("Run as if started in path"),
+    )
 
     subparsers = parser.add_subparsers(
         dest="command",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from ..exceptions import CommandError
@@ -14,6 +15,8 @@ def main() -> None:
     try:
         args = parse_command_line(sys.argv[1:], quiet=False)
         if args is not None:
+            if args.working_directory is not None:
+                os.chdir(args.working_directory)
             dispatch_args(args)
         else:
             # Parsing failed

@@ -7,16 +7,26 @@ import subprocess
 import sys
 from typing import Generator, Optional, Union
 
+from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
+from ..batch import display as batch_display
+from ..batch import merge as batch_merge
 from ..batch.display import annotate_with_batch_source
+from ..batch.ownership import (
+    BatchOwnership,
+    build_ownership_units_from_display_lines,
+    rebuild_ownership_from_units,
+    validate_ownership_units,
+)
+from ..batch.query import read_batch_metadata
 from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
-from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry
+from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, RenderedBatchDisplay
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
     parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
 )
 from ..core.line_selection import write_line_ids_file
-from ..exceptions import CommandError, NoMoreHunks, exit_with_error
+from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _
 from ..output import print_line_level_changes, print_binary_file_change
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
@@ -36,7 +46,7 @@ from ..utils.paths import (
     get_skipped_hunks_jsonl_file_path,
     get_working_tree_snapshot_file_path,
 )
-from .line_state import convert_line_changes_to_serializable_dict
+from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 
 
 def clear_selected_change_state_files() -> None:
@@ -72,6 +82,28 @@ def load_selected_binary_file() -> Optional[BinaryFileChange]:
         return None
 
 
+def get_selected_change_file_path() -> Optional[str]:
+    """Return the file path for the currently cached selected change.
+
+    The selected patch/binary cache is the source of truth for pathless
+    file-scoped commands because it is what navigation just displayed.
+    selected-lines.json is derived state and may lag after display/navigation
+    edge cases.
+    """
+    binary_file = load_selected_binary_file()
+    if binary_file is not None:
+        return binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
+
+    patch_path = get_selected_hunk_patch_file_path()
+    if not patch_path.exists():
+        return None
+
+    patch_text = read_text_file_contents(patch_path)
+    patch_bytes = patch_text.encode("utf-8")
+    line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+    return line_changes.path
+
+
 def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     """Filter cached hunk using file-centric ownership attribution.
 
@@ -83,9 +115,6 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     Returns:
         True if hunk should be skipped (all lines filtered), False otherwise
     """
-    from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
-    from .line_state import load_line_changes_from_state, convert_line_changes_to_serializable_dict
-
     line_changes = load_line_changes_from_state()
     if line_changes is None:
         return True
@@ -113,7 +142,11 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     return False
 
 
-def render_batch_file_display(batch_name: str, file_path: str, *, metadata=None) -> Optional['RenderedBatchDisplay']:
+def render_batch_file_display(
+    batch_name: str,
+    file_path: str,
+    metadata: dict | None = None,
+) -> Optional['RenderedBatchDisplay']:
     """Pure function to render batch file display with gutter ID translation.
 
     This is a side-effect-free helper that:
@@ -124,7 +157,7 @@ def render_batch_file_display(batch_name: str, file_path: str, *, metadata=None)
     - Builds LineLevelChange with original selection IDs
     - Builds gutter ID mappings
 
-    Does NOT:
+    It does not:
     - Write cache files
     - Mutate selected hunk state
     - Compute patch hashes
@@ -136,13 +169,7 @@ def render_batch_file_display(batch_name: str, file_path: str, *, metadata=None)
     Returns:
         RenderedBatchDisplay with line changes and gutter ID translation, or None if file not found.
     """
-    from ..batch.display import build_display_lines_from_batch_source
-    from ..batch.merge import merge_batch as _merge_batch
-    from ..batch.ownership import BatchOwnership, build_ownership_units_from_display
-    from ..batch.query import read_batch_metadata
-    from ..utils.git import run_git_command, get_git_repository_root_path
-
-    # Read batch metadata (use passed metadata if provided to avoid re-reading)
+    # Read batch metadata
     if metadata is None:
         metadata = read_batch_metadata(batch_name)
     files = metadata.get("files", {})
@@ -172,29 +199,40 @@ def render_batch_file_display(batch_name: str, file_path: str, *, metadata=None)
         working_content = b""
 
     # Build display lines (already has correct line IDs matching ownership)
-    display_lines = build_display_lines_from_batch_source(batch_source_content_str, ownership)
+    display_lines = batch_display.build_display_lines_from_batch_source(
+        batch_source_content_str,
+        ownership,
+        context_lines=get_context_lines(),
+    )
 
     if not display_lines:
         return None
 
-    # Build ownership units reusing already-built display lines (avoids re-rendering)
-    from ..batch.ownership import BatchOwnership as _BatchOwnership
-    units = build_ownership_units_from_display(ownership, batch_source_content_bytes, display_lines=display_lines)
-    mergeable_display_ids = set()
+    # Determine which display lines should get gutter IDs
+    # Include:
+    # 1. Individually mergeable lines (can be selected alone)
+    # 2. Lines that are part of atomic units (can be selected together with unit)
+    mergeable_ids = set()
+
+    # Build ownership units to identify atomic groupings
+    units = build_ownership_units_from_display_lines(ownership, display_lines)
+
+    # Check each ownership unit once.  All lines in an atomic unit share the
+    # same mergeability result, and merge_batch performs the expensive
+    # structural matching internally.
     for unit in units:
         try:
-            # Build unit ownership directly from unit data (no re-rendering)
-            unit_ownership = _BatchOwnership(
-                claimed_lines=list(str(l) for l in unit.claimed_source_lines),
-                deletions=list(unit.deletion_claims),
-            )
-            _merge_batch(batch_source_content_bytes, unit_ownership, working_content)
-            mergeable_display_ids |= unit.display_line_ids
-        except Exception:
+            validate_ownership_units([unit])
+            ownership_for_unit = rebuild_ownership_from_units([unit])
+            if ownership_for_unit.is_empty():
+                continue
+            batch_merge.merge_batch(batch_source_content_bytes, ownership_for_unit, working_content)
+            mergeable_ids.update(unit.display_line_ids)
+        except (MergeError, ValueError, KeyError, Exception):
+            # Unit not mergeable - exclude all its lines
             pass
 
-    # Convert to LineLevelChange format for display compatibility
-    # Keep original selection IDs - mergeability is stored separately
+    # Keep original selection IDs; mergeability is stored separately.
     line_entries = []
     new_line_num = 1
 
@@ -233,6 +271,27 @@ def render_batch_file_display(batch_name: str, file_path: str, *, metadata=None)
                 text=text,
                 source_line=None
             ))
+        elif display_line["type"] == "context":
+            line_entries.append(LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=None,
+                new_line_number=new_line_num,
+                text_bytes=text_bytes,
+                text=text,
+                source_line=display_line["source_line"]
+            ))
+            new_line_num += 1
+        elif display_line["type"] == "gap":
+            line_entries.append(LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=None,
+                new_line_number=None,
+                text_bytes=text_bytes,
+                text=text,
+                source_line=None
+            ))
 
     # Compute header based on actual line types
     addition_count = sum(1 for e in line_entries if e.kind == "+")
@@ -253,17 +312,16 @@ def render_batch_file_display(batch_name: str, file_path: str, *, metadata=None)
     )
 
     # Build gutter ID mappings
-    # All display lines in mergeable units get consecutive gutter IDs (1, 2, 3...)
+    # Only mergeable lines get consecutive gutter IDs (1, 2, 3...)
     gutter_to_selection_id = {}
     selection_id_to_gutter = {}
     gutter_num = 1
     for entry in line_entries:
-        if entry.id is not None and entry.id in mergeable_display_ids:
+        if entry.id is not None and entry.id in mergeable_ids:
             gutter_to_selection_id[gutter_num] = entry.id
             selection_id_to_gutter[entry.id] = gutter_num
             gutter_num += 1
 
-    from ..core.models import RenderedBatchDisplay
     return RenderedBatchDisplay(
         line_changes=line_changes,
         gutter_to_selection_id=gutter_to_selection_id,
@@ -271,19 +329,55 @@ def render_batch_file_display(batch_name: str, file_path: str, *, metadata=None)
     )
 
 
-def write_hunk_cache_from_rendered(rendered: 'RenderedBatchDisplay') -> None:
-    """Write hunk cache files from an already-rendered batch display.
-
-    Extracts the caching side effects from cache_batch_as_single_hunk so
-    callers that already have a rendered display don't need to re-render.
+def cache_batch_as_single_hunk(
+    batch_name: str,
+    file_path: str | None = None,
+    metadata: dict | None = None,
+) -> Optional['RenderedBatchDisplay']:
+    """Load file from batch and cache it as a single hunk using batch source model.
 
     Args:
-        rendered: Already-rendered batch display to cache
+        batch_name: Name of the batch to load
+        file_path: Specific file to cache, or None for first file
+
+    Returns:
+        RenderedBatchDisplay with line changes and gutter ID translation, or None if batch is empty or file not found.
+        The gutter_to_selection_id mapping translates user-visible filtered gutter IDs (1, 2, 3...)
+        to original selection IDs for ownership selection commands.
     """
+    # Read batch metadata
+    if metadata is None:
+        metadata = read_batch_metadata(batch_name)
+    files = metadata.get("files", {})
+
+    if not files:
+        return None
+
+    # Determine which file to use
+    if file_path is None:
+        # Default to first file (sorted order for consistency)
+        file_path = sorted(files.keys())[0]
+    elif file_path not in files:
+        # Requested file not in batch
+        raise CommandError(f"File '{file_path}' not found in batch '{batch_name}'")
+
+    # Use pure render helper (side-effect free)
+    rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
+    if rendered is None:
+        return None
+
+    cache_rendered_batch_file_display(file_path, rendered)
+    return rendered
+
+
+def cache_rendered_batch_file_display(
+    file_path: str,
+    rendered: 'RenderedBatchDisplay',
+) -> None:
+    """Cache an already rendered batch file as the selected hunk."""
     line_changes = rendered.line_changes
     line_entries = line_changes.lines
     header = line_changes.header
-    file_path = line_changes.path
 
     # Compute counts for patch synthesis
     addition_count = sum(1 for e in line_entries if e.kind == "+")
@@ -319,45 +413,10 @@ def write_hunk_cache_from_rendered(rendered: 'RenderedBatchDisplay') -> None:
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
 
 
-def cache_batch_as_single_hunk(batch_name: str, file_path: str | None = None) -> Optional['RenderedBatchDisplay']:
-    """Load file from batch and cache it as a single hunk using batch source model.
-
-    Args:
-        batch_name: Name of the batch to load
-        file_path: Specific file to cache, or None for first file
-
-    Returns:
-        RenderedBatchDisplay with line changes and gutter ID translation, or None if batch is empty or file not found.
-        The gutter_to_selection_id mapping translates user-visible filtered gutter IDs (1, 2, 3...)
-        to original selection IDs for ownership selection commands.
-    """
-    from ..batch.query import read_batch_metadata
-
-    # Read batch metadata
-    metadata = read_batch_metadata(batch_name)
-    files = metadata.get("files", {})
-
-    if not files:
-        return None
-
-    # Determine which file to use
-    if file_path is None:
-        # Default to first file (sorted order for consistency)
-        file_path = sorted(files.keys())[0]
-    elif file_path not in files:
-        # Requested file not in batch
-        raise CommandError(f"File '{file_path}' not found in batch '{batch_name}'")
-
-    # Use pure render helper (side-effect free)
-    rendered = render_batch_file_display(batch_name, file_path)
-    if rendered is None:
-        return None
-
-    write_hunk_cache_from_rendered(rendered)
-    return rendered
-
-
-def cache_batch_files_generator(batch_name: str) -> Generator['RenderedBatchDisplay', None, None]:
+def cache_batch_files_generator(
+    batch_name: str,
+    metadata: dict | None = None,
+) -> Generator['RenderedBatchDisplay', None, None]:
     """Yield RenderedBatchDisplay for each file in batch.
 
     Files are yielded in sorted order. Each file has line IDs
@@ -369,15 +428,14 @@ def cache_batch_files_generator(batch_name: str) -> Generator['RenderedBatchDisp
     Yields:
         RenderedBatchDisplay for each file in batch with gutter ID translation.
     """
-    from ..batch.query import read_batch_metadata
-
     # Read batch metadata
-    metadata = read_batch_metadata(batch_name)
+    if metadata is None:
+        metadata = read_batch_metadata(batch_name)
     files = sorted(metadata.get("files", {}).keys())
 
     for file_path in files:
         # Use pure render helper (side-effect free)
-        rendered = render_batch_file_display(batch_name, file_path)
+        rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
         if rendered is not None:
             yield rendered
 
@@ -395,8 +453,6 @@ def get_batch_file_for_line_operation(batch_name: str, file: str | None) -> str:
     Raises:
         CommandError: If batch empty or file not in batch
     """
-    from ..batch.query import read_batch_metadata
-
     metadata = read_batch_metadata(batch_name)
     files = sorted(metadata.get("files", {}).keys())
 
@@ -599,7 +655,6 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
                 continue
 
             # Return filtered hunk (or original if no filtering applied)
-            from .line_state import load_line_changes_from_state
             return load_line_changes_from_state()
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
@@ -669,22 +724,6 @@ def advance_to_and_show_next_change() -> None:
         print(_("No more hunks to process."), file=sys.stderr)
 
 
-def get_selected_change_file_path() -> Optional[str]:
-    """Get the file path of the currently cached hunk.
-
-    Returns:
-        Repository-relative path if a hunk is selected, None otherwise
-    """
-    json_path = get_line_changes_json_file_path()
-    if not json_path.exists():
-        return None
-    try:
-        data = json.loads(read_text_file_contents(json_path))
-        return data.get("path")
-    except Exception:
-        return None
-
-
 def snapshots_are_stale(file_path: str) -> bool:
     """Check if cached snapshots are stale (file changed since snapshots taken).
 
@@ -752,8 +791,6 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
     Args:
         file_path: Repository-relative path to recalculate hunk for
     """
-    from .line_state import load_line_changes_from_state
-
     # Clear processed IDs since old line numbers don't apply to fresh hunk
     write_line_ids_file(get_processed_include_ids_file_path(), set())
 

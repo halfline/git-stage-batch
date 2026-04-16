@@ -1,7 +1,5 @@
 """Tests for batch storage operations."""
 
-from git_stage_batch.utils.paths import ensure_state_directory_exists
-
 import subprocess
 
 import pytest
@@ -29,6 +27,7 @@ def temp_git_repo(tmp_path, monkeypatch):
     (tmp_path / "file.txt").write_text("line1\nline2\nline3\n")
 
     # Initialize abort state (needed for batch source creation)
+    from git_stage_batch.utils.paths import ensure_state_directory_exists
     ensure_state_directory_exists()
     initialize_abort_state()
 

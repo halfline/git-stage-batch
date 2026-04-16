@@ -478,6 +478,26 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_reset.set_defaults(func=lambda args: commands.command_reset_from_batch(args.from_batch, args.line_ids, args.file, args.to_batch))
 
+    # sift - Reconcile batch against current tip
+    parser_sift = subparsers.add_parser(
+        "sift",
+        help=_("Remove already-present portions from a batch"),
+    )
+    parser_sift.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        required=True,
+        help=_("Source batch to sift"),
+    )
+    parser_sift.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        required=True,
+        help=_("Destination batch (may equal source for in-place sift)"),
+    )
+    parser_sift.set_defaults(func=lambda args: commands.command_sift_batch(args.from_batch, args.to_batch))
 
     # Parse arguments, return None on failure
     try:

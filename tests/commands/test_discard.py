@@ -1,5 +1,12 @@
 """Tests for discard command."""
 
+from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
+from git_stage_batch.batch import list_batch_files, read_file_from_batch
+from git_stage_batch.commands.discard import command_discard_to_batch
+from git_stage_batch.batch.validation import batch_exists
+from git_stage_batch.batch import read_file_from_batch
+from git_stage_batch.data.hunk_tracking import fetch_next_change, recalculate_selected_hunk_for_file
+
 import subprocess
 
 import pytest
@@ -136,7 +143,6 @@ class TestCommandDiscard:
 
     def test_discard_snapshots_untracked_file(self, temp_git_repo):
         """Test that discard snapshots content of untracked files."""
-        from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
 
         # Create an untracked file
         untracked_file = temp_git_repo / "untracked.txt"
@@ -272,3 +278,126 @@ class TestCommandDiscardLine:
         # Try to discard - should fail because file doesn't exist
         with pytest.raises(CommandError):
             command_discard_line("1")
+
+
+class TestCommandDiscardToBatch:
+    """Tests for discard to batch command."""
+
+    def test_discard_to_batch_saves_and_discards(self, temp_git_repo_with_session):
+        """Test that discard to batch saves changes to batch and discards from working tree."""
+
+        # The fixture creates file.txt with changes - start session to cache hunk
+        command_start()
+
+        command_discard_to_batch("test-batch")
+
+        # Verify batch was created and contains the file
+        files = list_batch_files("test-batch")
+        assert "file.txt" in files
+
+        # Verify file content was saved to batch
+        content = read_file_from_batch("test-batch", "file.txt")
+        assert content is not None
+        assert "line1" in content
+
+        # Verify changes were discarded from working tree
+        file_txt = temp_git_repo_with_session / "file.txt"
+        assert not file_txt.exists()  # File removed after discard
+
+    def test_discard_to_batch_auto_creates_batch(self, temp_git_repo_with_session):
+        """Test that discard to batch auto-creates batch if it doesn't exist."""
+
+        # Start session to cache hunk
+        command_start()
+
+        # Batch doesn't exist yet
+        assert not batch_exists("auto-batch")
+
+        command_discard_to_batch("auto-batch")
+
+        # Batch should now exist
+        assert batch_exists("auto-batch")
+
+        # Changes should be discarded
+        file_txt = temp_git_repo_with_session / "file.txt"
+        assert not file_txt.exists()
+
+    def test_discard_lines_to_batch_saves_partial_content(self, temp_git_repo):
+        """Test that line-level discard to batch synthesizes correct partial content."""
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Discard only lines 1-2 to batch
+        command_discard_to_batch("partial-batch", line_ids="1-2")
+
+        # Verify batch contains partial content (original + lines 1-2)
+        content = read_file_from_batch("partial-batch", "README.md")
+        assert content is not None
+        assert "Line 1" in content
+        assert "Line 2" in content
+        assert "# Test" in content
+
+        # Verify only those lines were discarded from working tree
+        working_content = readme.read_text()
+        assert "Line 1" not in working_content
+        assert "Line 2" not in working_content
+        assert "Line 3" in working_content  # Not discarded
+        assert "# Test" in working_content
+
+    def test_discard_lines_to_batch_removes_from_working_tree(self, temp_git_repo):
+        """Test that discarding lines removes them from working tree."""
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Discard only line 1 to batch
+        command_discard_to_batch("discard-batch", line_ids="1")
+
+        # Verify line 1 was removed from working tree
+        working_content = readme.read_text()
+        assert "Line 1" not in working_content
+        assert "Line 2" in working_content
+        assert "Line 3" in working_content
+
+    def test_discard_lines_to_batch_accumulates(self, temp_git_repo):
+        """Test that multiple line discard operations accumulate in batch."""
+
+        # Modify README with multiple lines
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        # Cache the hunk
+        command_start()
+        fetch_next_change()
+
+        # Discard line 1
+        command_discard_to_batch("accum-batch", line_ids="1")
+
+        # Recalculate hunk after first discard
+        recalculate_selected_hunk_for_file("README.md")
+
+        # Discard line 2 (now line 1 in the renumbered hunk)
+        command_discard_to_batch("accum-batch", line_ids="1")
+
+        # Verify batch contains both lines
+        content = read_file_from_batch("accum-batch", "README.md")
+        assert content is not None
+        assert "Line 1" in content
+        assert "Line 2" in content
+
+        # Verify both lines removed from working tree
+        working_content = readme.read_text()
+        assert "Line 1" not in working_content
+        assert "Line 2" not in working_content
+        assert "Line 3" in working_content

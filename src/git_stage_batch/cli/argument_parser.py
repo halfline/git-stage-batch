@@ -100,6 +100,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_again.set_defaults(func=lambda _: commands.command_again())
 
+    # show - Show the selected hunk
+    parser_show = subparsers.add_parser(
+        "show",
+        help=_("Show the selected hunk"),
+    )
+    parser_show.set_defaults(func=lambda _: commands.command_show())
+
     # status - Show selected session status
     parser_status = subparsers.add_parser(
         "status",

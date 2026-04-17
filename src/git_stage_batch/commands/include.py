@@ -37,7 +37,7 @@ from ..output import print_line_level_changes
 from ..output.hunk import print_line_level_changes as print_line_level_changes_from_hunk
 from ..staging.operations import build_target_index_content_with_selected_lines, update_index_with_blob_content
 from ..utils.command import ExitEvent, OutputEvent, stream_command
-from ..utils.file_io import append_lines_to_file, read_text_file_contents
+from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
 from ..utils.git import require_git_repository, run_git_command, stream_git_command
 from ..utils.journal import log_journal
 from ..utils.paths import (
@@ -100,8 +100,7 @@ def command_include(*, quiet: bool = False) -> None:
         return
 
     # Text hunk - use git apply (item is LineLevelChange here)
-    patch_text = read_text_file_contents(get_selected_hunk_patch_file_path())
-    patch_bytes = patch_text.encode('utf-8')  # Convert stored text to bytes
+    patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
 
     # Extract filename for user feedback (we already have LineLevelChange in item)
     filename = item.path

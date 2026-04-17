@@ -29,7 +29,13 @@ from ..core.line_selection import write_line_ids_file
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _
 from ..output import print_line_level_changes, print_binary_file_change
-from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
+from ..utils.file_io import (
+    read_file_bytes,
+    read_file_paths_file,
+    read_text_file_contents,
+    write_file_bytes,
+    write_text_file_contents,
+)
 from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
 from ..utils.paths import (
     get_block_list_file_path,
@@ -98,8 +104,7 @@ def get_selected_change_file_path() -> Optional[str]:
     if not patch_path.exists():
         return None
 
-    patch_text = read_text_file_contents(patch_path)
-    patch_bytes = patch_text.encode("utf-8")
+    patch_bytes = read_file_bytes(patch_path)
     line_changes = build_line_changes_from_patch_bytes(patch_bytes)
     return line_changes.path
 
@@ -398,9 +403,8 @@ def cache_rendered_batch_file_display(
 
     patch_hash = compute_stable_hunk_hash(patch_bytes)
 
-    # Cache the hunk (decode with replacement for text storage)
-    patch_text = patch_bytes.decode('utf-8', errors='replace')
-    write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
+    # Cache the hunk bytes exactly; display strings are derived elsewhere.
+    write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
 
     # Save LineLevelChange for line-level operations
@@ -554,20 +558,20 @@ def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
             lines=all_line_entries
         )
 
-        # Synthesize patch text for caching (used for hashing/identity)
+        # Synthesize patch bytes for caching (used for hashing/identity)
         patch_lines = [
-            f"--- a/{file_path}",
-            f"+++ b/{file_path}",
-            f"@@ -{combined_header.old_start},{combined_header.old_len} +{combined_header.new_start},{combined_header.new_len} @@"
+            f"--- a/{file_path}\n".encode("utf-8"),
+            f"+++ b/{file_path}\n".encode("utf-8"),
+            f"@@ -{combined_header.old_start},{combined_header.old_len} +{combined_header.new_start},{combined_header.new_len} @@\n".encode("utf-8"),
         ]
         for entry in all_line_entries:
-            patch_lines.append(f"{entry.kind}{entry.text}")
-        patch_text = "\n".join(patch_lines) + "\n"
+            patch_lines.append(entry.kind.encode("utf-8") + entry.text_bytes + b"\n")
+        patch_bytes = b"".join(patch_lines)
 
-        patch_hash = compute_stable_hunk_hash(patch_text.encode('utf-8'))
+        patch_hash = compute_stable_hunk_hash(patch_bytes)
 
         # Cache the combined hunk
-        write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
+        write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
         write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
         write_text_file_contents(get_line_changes_json_file_path(),
                                 json.dumps(convert_line_changes_to_serializable_dict(combined_line_changes),
@@ -638,9 +642,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
             if line_changes.path in blocked_files:
                 continue
 
-            # Decode to text for storage (with errors='replace' for non-UTF-8)
-            patch_text = patch_bytes.decode('utf-8', errors='replace')
-            write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
+            write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
 
             write_text_file_contents(get_line_changes_json_file_path(),
@@ -692,8 +694,7 @@ def show_selected_change() -> None:
     # Otherwise, show text hunk
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
-        patch_text = read_text_file_contents(patch_path)
-        patch_bytes = patch_text.encode('utf-8')  # Convert stored text to bytes
+        patch_bytes = read_file_bytes(patch_path)
         line_changes = build_line_changes_from_patch_bytes(patch_bytes)
         print_line_level_changes(line_changes)
 
@@ -716,8 +717,7 @@ def advance_to_and_show_next_change() -> None:
     # Check if a text hunk was cached
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
-        patch_text = read_text_file_contents(patch_path)
-        patch_bytes = patch_text.encode('utf-8')  # Convert stored text to bytes
+        patch_bytes = read_file_bytes(patch_path)
         line_changes = build_line_changes_from_patch_bytes(patch_bytes)
         print_line_level_changes(line_changes)
     else:
@@ -741,16 +741,16 @@ def snapshots_are_stale(file_path: str) -> bool:
     if not snapshot_base_path.exists() or not snapshot_new_path.exists():
         return True
 
-    # Read cached snapshots
-    cached_index_content = read_text_file_contents(snapshot_base_path)
-    cached_worktree_content = read_text_file_contents(snapshot_new_path)
+    # Read cached snapshots as bytes so non-UTF-8 content compares exactly.
+    cached_index_content = read_file_bytes(snapshot_base_path)
+    cached_worktree_content = read_file_bytes(snapshot_new_path)
 
     # Get selected file content from index
     try:
-        result = run_git_command(["show", f":{file_path}"], check=False)
+        result = run_git_command(["show", f":{file_path}"], check=False, text_output=False)
         if result.returncode != 0:
             # File not in index (was deleted, or never added)
-            selected_index_content = ""
+            selected_index_content = b""
         else:
             selected_index_content = result.stdout
     except Exception:
@@ -760,7 +760,7 @@ def snapshots_are_stale(file_path: str) -> bool:
     repo_root = get_git_repository_root_path()
     file_full_path = repo_root / file_path
     try:
-        selected_worktree_content = read_text_file_contents(file_full_path)
+        selected_worktree_content = read_file_bytes(file_full_path)
     except Exception:
         return True  # Error reading means state is stale
 
@@ -810,9 +810,7 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
             if hunk_hash in blocked_hashes:
                 continue
 
-            # Cache this hunk as selected (decode to text for storage)
-            patch_text = patch_bytes.decode('utf-8', errors='replace')
-            write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
+            write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
 
             line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)

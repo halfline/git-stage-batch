@@ -18,6 +18,11 @@ def read_text_file_contents(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="surrogateescape") if path.exists() else ""
 
 
+def read_file_bytes(path: Path) -> bytes:
+    """Read a file's raw bytes, returning empty bytes if it doesn't exist."""
+    return path.read_bytes() if path.exists() else b""
+
+
 def write_text_file_contents(path: Path, data: str) -> None:
     """Write text to a file, creating parent directories as needed.
 
@@ -27,6 +32,12 @@ def write_text_file_contents(path: Path, data: str) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(data, encoding="utf-8", errors="surrogateescape")
+
+
+def write_file_bytes(path: Path, data: bytes) -> None:
+    """Write raw bytes to a file, creating parent directories as needed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
 
 
 def append_lines_to_file(path: Path, lines: Iterable[str]) -> None:

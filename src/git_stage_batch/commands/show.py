@@ -16,7 +16,7 @@ from ..data.session import require_session_started
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..output import print_line_level_changes
-from ..utils.file_io import read_text_file_contents, write_text_file_contents
+from ..utils.file_io import read_text_file_contents, write_file_bytes, write_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.paths import (
     ensure_state_directory_exists,
@@ -80,10 +80,8 @@ def command_show(file: str | None = None, *, porcelain: bool = False) -> None:
         patch_bytes = patch.to_patch_bytes()
         patch_hash = compute_stable_hunk_hash(patch_bytes)
         if patch_hash not in blocked_hashes:
-            # Cache selected hunk state for status and other commands
-            # Decode to text for storage (with errors='replace' for non-UTF-8)
-            patch_text = patch_bytes.decode('utf-8', errors='replace')
-            write_text_file_contents(get_selected_hunk_patch_file_path(), patch_text)
+            # Cache selected hunk bytes exactly; display text is derived from parsed lines.
+            write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
             write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
 
             # Parse and cache line_changes for batch filtering

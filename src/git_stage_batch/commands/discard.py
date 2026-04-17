@@ -35,7 +35,7 @@ from ..i18n import _, ngettext
 from ..output import print_line_level_changes
 from ..staging.operations import build_target_working_tree_content_with_discarded_lines
 from ..utils.command import ExitEvent, OutputEvent, stream_command
-from ..utils.file_io import append_lines_to_file, read_text_file_contents
+from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_command
 from ..utils.journal import log_journal
 from ..utils.paths import (
@@ -117,8 +117,7 @@ def command_discard(*, quiet: bool = False) -> None:
         return
 
     # Text hunk - use git apply -R
-    patch_text = read_text_file_contents(get_selected_hunk_patch_file_path())
-    patch_bytes = patch_text.encode('utf-8')  # Convert stored text to bytes
+    patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
 
     # Extract filename for user feedback and snapshotting
     line_changes = build_line_changes_from_patch_bytes(patch_bytes)
@@ -692,8 +691,7 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
 
     # Get the file path and hash from currently cached hunk
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-    patch_text = read_text_file_contents(get_selected_hunk_patch_file_path())
-    patch_bytes = patch_text.encode('utf-8')  # Convert stored text to bytes
+    patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
     line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
     file_path = line_changes.path
 

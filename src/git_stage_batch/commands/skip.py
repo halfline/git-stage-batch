@@ -4,52 +4,75 @@ from __future__ import annotations
 
 import sys
 
-from ..core.diff_parser import build_line_changes_from_patch_text, get_first_matching_file_from_diff, parse_unified_diff_streaming
+from ..core.diff_parser import get_first_matching_file_from_diff, parse_unified_diff_streaming
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
-from ..data.hunk_tracking import advance_to_and_show_next_change, advance_to_next_change, record_hunk_skipped, require_selected_hunk
+from ..core.models import BinaryFileChange
+from ..data.hunk_tracking import advance_to_and_show_next_change, advance_to_next_change, fetch_next_change, record_hunk_skipped, require_selected_hunk
 from ..data.session import require_session_started
+from ..exceptions import NoMoreHunks
 from ..i18n import _, ngettext
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
+from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_context_lines,
     get_selected_hunk_hash_file_path,
-    get_selected_hunk_patch_file_path,
     get_processed_skip_ids_file_path,
 )
 
 
 def command_skip(*, quiet: bool = False) -> None:
-    """Skip the selected hunk without staging it."""
-    from ..data.hunk_tracking import fetch_next_change
+    """Skip the selected hunk or binary file without staging it."""
+    log_journal("command_skip_start", quiet=quiet)
 
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
 
-    # Ensure cached hunk is fresh (handles case where file was modified externally)
-    if fetch_next_change() is None:
+    # Find and cache the next item
+    try:
+        item = fetch_next_change()
+    except NoMoreHunks:
         if not quiet:
             print(_("No more hunks to process."), file=sys.stderr)
         return
 
-    # Read cached hunk
+    # Read cached hash
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-    patch_text = read_text_file_contents(get_selected_hunk_patch_file_path())
 
-    # Extract filename for user feedback
-    line_changes = build_line_changes_from_patch_text(patch_text)
-    filename = line_changes.path
+    # Handle based on item type
+    if isinstance(item, BinaryFileChange):
+        # Binary file - just add to blocklist
+        file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+
+        # Add hash to blocklist (without staging)
+        blocklist_path = get_block_list_file_path()
+        append_lines_to_file(blocklist_path, [patch_hash])
+
+        # Binary files don't have line-level tracking, so skip record_hunk_skipped
+
+        if not quiet:
+            change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
+            print(_("✓ Binary file {desc} skipped: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
+
+        if quiet:
+            advance_to_next_change()
+        else:
+            advance_to_and_show_next_change()
+        return
+
+    # Text hunk - item is LineLevelChange here
+    filename = item.path
 
     # Add hash to blocklist (without staging)
     blocklist_path = get_block_list_file_path()
     append_lines_to_file(blocklist_path, [patch_hash])
 
     # Record for progress tracking
-    record_hunk_skipped(line_changes, patch_hash)
+    record_hunk_skipped(item, patch_hash)
 
     if not quiet:
         print(_("✓ Hunk skipped from {file}").format(file=filename), file=sys.stderr)
@@ -72,8 +95,8 @@ def command_skip_file() -> None:
     blocked_hashes = set(blocklist_text.splitlines())
 
     # Find first non-blocked hunk to get the target file
-    def is_unblocked(patch_text: str) -> bool:
-        return compute_stable_hunk_hash(patch_text) not in blocked_hashes
+    def is_unblocked(patch_bytes: bytes) -> bool:
+        return compute_stable_hunk_hash(patch_bytes) not in blocked_hashes
 
     target_file = get_first_matching_file_from_diff(
         context_lines=get_context_lines(),
@@ -90,8 +113,8 @@ def command_skip_file() -> None:
         if patch.new_path != target_file:
             continue
 
-        patch_text = patch.to_patch_text()
-        patch_hash = compute_stable_hunk_hash(patch_text)
+        patch_bytes = patch.to_patch_bytes()
+        patch_hash = compute_stable_hunk_hash(patch_bytes)
 
         # Skip if already blocked
         if patch_hash in blocked_hashes:

@@ -173,8 +173,15 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="BATCH",
         help=_("Include changes from batch"),
     )
+    parser_include.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        help=_("Include changes to batch"),
+    )
     parser_include.set_defaults(func=lambda args: (
         commands.command_include_from_batch(args.from_batch, args.line_ids, args.file) if args.from_batch
+        else commands.command_include_to_batch(args.to_batch, args.line_ids, args.file) if args.to_batch
         else commands.command_include_line(args.line_ids) if args.line_ids
         else commands.command_include_file(args.file) if args.file is not None
         else commands.command_include()

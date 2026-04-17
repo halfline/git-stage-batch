@@ -241,8 +241,15 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="BATCH",
         help=_("Discard changes from batch"),
     )
+    parser_discard.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        help=_("Discard changes to batch"),
+    )
     parser_discard.set_defaults(func=lambda args: (
         commands.command_discard_from_batch(args.from_batch, args.line_ids, args.file) if args.from_batch
+        else commands.command_discard_to_batch(args.to_batch, args.line_ids, args.file) if args.to_batch
         else commands.command_discard_line(args.line_ids) if args.line_ids
         else commands.command_discard_file(args.file) if args.file is not None
         else commands.command_discard()

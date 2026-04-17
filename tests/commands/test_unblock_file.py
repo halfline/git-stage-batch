@@ -153,6 +153,30 @@ class TestCommandUnblockFile:
         result = subprocess.run(["git", "status", "--porcelain", "--", "README.md"], capture_output=True, text=True, cwd=temp_git_repo)
         assert result.stdout.startswith("M  ")
 
+    def test_unblock_file_shows_next_hunk_during_session(self, temp_git_repo, capsys):
+        """Test that unblock-file shows the next hunk when a session is active."""
+        from git_stage_batch.commands.start import command_start
+
+        # Create two files: one to block/unblock, one to remain as next hunk
+        (temp_git_repo / "toggled.txt").write_text("toggle me\n")
+        (temp_git_repo / "other.txt").write_text("other content\n")
+
+        # Start session so both files are visible
+        command_start()
+        capsys.readouterr()
+
+        # Block toggled.txt (removes from session)
+        command_block_file("toggled.txt")
+        capsys.readouterr()
+
+        # Unblock it (should show next hunk since session is active)
+        command_unblock_file("toggled.txt")
+        captured = capsys.readouterr()
+
+        assert "Unblocked file: toggled.txt" in captured.err
+        # Should show a hunk after unblocking
+        assert "::" in captured.out
+
     def test_unblock_file_with_subdirectory(self, temp_git_repo):
         """Test unblocking a file in a subdirectory."""
         # Create subdirectory and file

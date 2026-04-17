@@ -63,6 +63,48 @@ def build_target_index_content_with_selected_lines(
     return "\n".join(output_lines) + ("\n" if (base_text.endswith("\n") or output_lines) else "")
 
 
+def build_target_index_content_bytes_with_selected_lines(
+    line_changes: LineLevelChange,
+    include_ids: set[int],
+    base_content: bytes
+) -> bytes:
+    """Bytes-preserving variant of build_target_index_content_with_selected_lines."""
+    base_lines = base_content.splitlines()
+    output_lines: list[bytes] = []
+
+    base_pointer = line_changes.header.old_start - 1
+    base_line_count = len(base_lines)
+
+    def push_output(line: bytes) -> None:
+        output_lines.append(line)
+
+    for index in range(0, min(base_pointer, base_line_count)):
+        push_output(base_lines[index])
+
+    for line_entry in line_changes.lines:
+        if line_entry.kind == " ":
+            if base_pointer < base_line_count:
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+        elif line_entry.kind == "-":
+            if base_pointer < base_line_count:
+                if line_entry.id in include_ids:
+                    base_pointer += 1
+                else:
+                    push_output(base_lines[base_pointer])
+                    base_pointer += 1
+        elif line_entry.kind == "+":
+            if line_entry.id in include_ids:
+                push_output(line_entry.text_bytes)
+
+    while 0 <= base_pointer < base_line_count:
+        push_output(base_lines[base_pointer])
+        base_pointer += 1
+
+    trailing_newline = base_content.endswith(b"\n") or bool(output_lines)
+    return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
+
+
 def build_target_working_tree_content_with_discarded_lines(
     line_changes: LineLevelChange,
     discard_ids: set[int],
@@ -126,6 +168,48 @@ def build_target_working_tree_content_with_discarded_lines(
         working_pointer += 1
 
     return "\n".join(output_lines) + ("\n" if (working_text.endswith("\n") or output_lines) else "")
+
+
+def build_target_working_tree_content_bytes_with_discarded_lines(
+    line_changes: LineLevelChange,
+    discard_ids: set[int],
+    working_content: bytes
+) -> bytes:
+    """Bytes-preserving variant of build_target_working_tree_content_with_discarded_lines."""
+    working_lines = working_content.splitlines()
+    output_lines: list[bytes] = []
+
+    working_pointer = line_changes.header.new_start - 1
+    working_line_count = len(working_lines)
+
+    def push_output(line: bytes) -> None:
+        output_lines.append(line)
+
+    for index in range(0, min(working_pointer, working_line_count)):
+        push_output(working_lines[index])
+
+    for line_entry in line_changes.lines:
+        if line_entry.kind == " ":
+            if working_pointer < working_line_count:
+                push_output(working_lines[working_pointer])
+                working_pointer += 1
+        elif line_entry.kind == "-":
+            if line_entry.id in discard_ids:
+                push_output(line_entry.text_bytes)
+        elif line_entry.kind == "+":
+            if working_pointer < working_line_count:
+                if line_entry.id in discard_ids:
+                    working_pointer += 1
+                else:
+                    push_output(working_lines[working_pointer])
+                    working_pointer += 1
+
+    while 0 <= working_pointer < working_line_count:
+        push_output(working_lines[working_pointer])
+        working_pointer += 1
+
+    trailing_newline = working_content.endswith(b"\n") or bool(output_lines)
+    return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
 
 
 def update_index_with_blob_content(path: str, content: bytes) -> None:

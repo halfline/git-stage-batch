@@ -35,7 +35,7 @@ from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes
 from ..output.hunk import print_line_level_changes as print_line_level_changes_from_hunk
-from ..staging.operations import build_target_index_content_with_selected_lines, update_index_with_blob_content
+from ..staging.operations import build_target_index_content_bytes_with_selected_lines, update_index_with_blob_content
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
 from ..utils.git import require_git_repository, run_git_command, stream_git_command
@@ -250,10 +250,10 @@ def command_include_line(line_id_specification: str) -> None:
     line_changes = load_line_changes_from_state()
 
     # Get base content from index snapshot (captured when hunk was loaded)
-    base_text = read_text_file_contents(get_index_snapshot_file_path())
+    base_bytes = read_file_bytes(get_index_snapshot_file_path())
 
-    target_index_content = build_target_index_content_with_selected_lines(line_changes, combined_include_ids, base_text)
-    update_index_with_blob_content(line_changes.path, target_index_content.encode('utf-8'))
+    target_index_content = build_target_index_content_bytes_with_selected_lines(line_changes, combined_include_ids, base_bytes)
+    update_index_with_blob_content(line_changes.path, target_index_content)
 
     # Update processed include IDs
     write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)

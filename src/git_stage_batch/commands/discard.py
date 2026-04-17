@@ -33,7 +33,7 @@ from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..exceptions import exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes
-from ..staging.operations import build_target_working_tree_content_with_discarded_lines
+from ..staging.operations import build_target_working_tree_content_bytes_with_discarded_lines
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_command
@@ -233,7 +233,7 @@ def command_discard_file(file: str) -> None:
             capture_output=True,
         )
     except subprocess.CalledProcessError as e:
-        print(_("Failed to discard file: {}").format(e.stderr.decode()), file=sys.stderr)
+        print(_("Failed to discard file: {}").format(e.stderr.decode("utf-8", errors="replace")), file=sys.stderr)
         return
 
     # Mark all collected hashes as processed
@@ -264,16 +264,16 @@ def command_discard_line(line_id_specification: str) -> None:
     # Get selected working tree content
     working_file_path = get_git_repository_root_path() / line_changes.path
     if working_file_path.exists():
-        working_text = working_file_path.read_text(encoding="utf-8", errors="surrogateescape")
+        working_bytes = working_file_path.read_bytes()
     else:
         exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
 
     # Build new working tree content with selected lines discarded
-    target_working_content = build_target_working_tree_content_with_discarded_lines(
-        line_changes, set(requested_ids), working_text)
+    target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
+        line_changes, set(requested_ids), working_bytes)
 
     # Write back to working tree
-    working_file_path.write_text(target_working_content, encoding="utf-8", errors="surrogateescape")
+    working_file_path.write_bytes(target_working_content)
 
     # After modifying working tree, recalculate hunk for the SAME file
     recalculate_selected_hunk_for_file(line_changes.path)
@@ -548,16 +548,16 @@ def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_i
     # Now discard selected lines from working tree
     working_file_path = get_git_repository_root_path() / file_path
     if working_file_path.exists():
-        working_text = working_file_path.read_text(encoding="utf-8", errors="surrogateescape")
+        working_bytes = working_file_path.read_bytes()
     else:
         exit_with_error(_("File not found in working tree: {file}").format(file=file_path))
 
     # Build new working tree content with selected lines discarded
-    target_working_content = build_target_working_tree_content_with_discarded_lines(
-        line_changes, requested_ids, working_text)
+    target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
+        line_changes, requested_ids, working_bytes)
 
     # Write back to working tree
-    working_file_path.write_text(target_working_content, encoding="utf-8", errors="surrogateescape")
+    working_file_path.write_bytes(target_working_content)
 
     if not quiet:
         print(_("Discarded line(s) from file '{file}' to batch '{batch}': {lines}").format(
@@ -644,17 +644,17 @@ def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str,
     # Now discard those lines from working tree
     working_file_path = get_git_repository_root_path() / line_changes.path
     if working_file_path.exists():
-        working_text = working_file_path.read_text(encoding="utf-8", errors="surrogateescape")
+        working_bytes = working_file_path.read_bytes()
     else:
         exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
 
     # Build new working tree content with selected lines discarded
-    target_working_content = build_target_working_tree_content_with_discarded_lines(
-        line_changes, requested_ids, working_text)
+    target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
+        line_changes, requested_ids, working_bytes)
 
     # Write back to working tree
     log_journal("discard_lines_to_batch_before_write", file_path=str(working_file_path))
-    working_file_path.write_text(target_working_content, encoding="utf-8", errors="surrogateescape")
+    working_file_path.write_bytes(target_working_content)
     log_journal("discard_lines_to_batch_after_write", file_path=str(working_file_path))
 
     if not quiet:

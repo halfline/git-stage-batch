@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from base64 import b64decode, b64encode
 from typing import Any, Optional
 
 from ..core.models import LineLevelChange, HunkHeader, LineEntry
@@ -34,6 +35,7 @@ def convert_line_changes_to_serializable_dict(line_changes: LineLevelChange) -> 
                 "kind": line_entry.kind,
                 "old_lineno": line_entry.old_line_number,
                 "new_lineno": line_entry.new_line_number,
+                "text_bytes_b64": b64encode(line_entry.text_bytes).decode("ascii"),
                 "text": line_entry.text,
                 "source_line": line_entry.source_line,
             }
@@ -52,14 +54,22 @@ def load_line_changes_from_state() -> Optional[LineLevelChange]:
         return None
     data = json.loads(read_text_file_contents(get_line_changes_json_file_path()))
     header = HunkHeader(**data["header"])
-    lines = [LineEntry(id=le["id"],
-                       kind=le["kind"],
-                       old_line_number=le["old_lineno"],
-                       new_line_number=le["new_lineno"],
-                       text_bytes=le["text"].encode('utf-8'),  # Encode text to bytes
-                       text=le["text"],
-                       source_line=le.get("source_line"))
-             for le in data["lines"]]
+
+    def line_text_bytes(line_entry_data: dict[str, Any]) -> bytes:
+        if "text_bytes_b64" in line_entry_data:
+            return b64decode(line_entry_data["text_bytes_b64"].encode("ascii"))
+        return line_entry_data["text"].encode("utf-8", errors="surrogateescape")
+
+    lines = []
+    for le in data["lines"]:
+        text_bytes = line_text_bytes(le)
+        lines.append(LineEntry(id=le["id"],
+                               kind=le["kind"],
+                               old_line_number=le["old_lineno"],
+                               new_line_number=le["new_lineno"],
+                               text_bytes=text_bytes,
+                               text=text_bytes.decode("utf-8", errors="replace"),
+                               source_line=le.get("source_line")))
     return LineLevelChange(path=data["path"], header=header, lines=lines)
 
 

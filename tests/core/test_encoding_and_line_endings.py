@@ -1,9 +1,12 @@
 """Tests for handling different encodings and line endings."""
 
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.include import command_include_line
+from git_stage_batch.commands.discard import command_discard_line
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.storage import get_batch_diff
+from git_stage_batch.utils.paths import get_selected_hunk_patch_file_path
 import binascii
 
 import subprocess
@@ -178,6 +181,59 @@ class TestLatin1Encoding:
         assert b"\xef" in added_line.text_bytes
         # text should have replacement character for invalid UTF-8
         assert "�" in added_line.text or "naive" in added_line.text  # May show replacement char
+
+    def test_latin1_cached_patch_bytes_are_exact(self, temp_git_repo):
+        """Selected hunk cache must not replace non-UTF-8 bytes."""
+        test_file = temp_git_repo / "latin1.txt"
+        test_file.write_bytes(b"cafe\nna\xefve\n")
+        subprocess.run(["git", "add", "latin1.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add Latin-1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_bytes(b"cafe\nna\xefve modified\n")
+        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        expected_patch = patches[0].to_patch_bytes()
+
+        command_start(quiet=True)
+
+        assert get_selected_hunk_patch_file_path().read_bytes() == expected_patch
+        assert b"\xef" in get_selected_hunk_patch_file_path().read_bytes()
+        assert b"\xef\xbf\xbd" not in get_selected_hunk_patch_file_path().read_bytes()
+
+    def test_latin1_line_include_preserves_bytes(self, temp_git_repo):
+        """Line-level include must use canonical line bytes, not display text."""
+        test_file = temp_git_repo / "latin1.txt"
+        original_content = b"keep\nold\xef\nend\n"
+        modified_content = b"keep\nnew\xef\nend\n"
+        test_file.write_bytes(original_content)
+        subprocess.run(["git", "add", "latin1.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add Latin-1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_bytes(modified_content)
+        command_start(quiet=True)
+        command_include_line("1,2")
+
+        result = subprocess.run(
+            ["git", "show", ":latin1.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        assert result.stdout == modified_content
+
+    def test_latin1_line_discard_preserves_bytes(self, temp_git_repo):
+        """Line-level discard must reinsert canonical bytes, not display text."""
+        test_file = temp_git_repo / "latin1.txt"
+        original_content = b"keep\nold\xef\nend\n"
+        modified_content = b"keep\nnew\xef\nend\n"
+        test_file.write_bytes(original_content)
+        subprocess.run(["git", "add", "latin1.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add Latin-1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_bytes(modified_content)
+        command_start(quiet=True)
+        command_discard_line("1,2")
+
+        assert test_file.read_bytes() == original_content
 
     def test_latin1_roundtrip_preserves_bytes(self, temp_git_repo):
         """Test that Latin-1 content survives discard/apply roundtrip."""

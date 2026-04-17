@@ -106,7 +106,7 @@ class TestFindAndCacheNextUnblockedHunk:
     def test_skips_blocked_hunks(self, temp_git_repo):
         """Test that blocked hunks are skipped."""
         from git_stage_batch.core.hashing import compute_stable_hunk_hash
-        from git_stage_batch.core.diff_parser import parse_unified_diff_into_single_hunk_patches
+        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
 
         # Create two files
         file1 = temp_git_repo / "file1.txt"
@@ -125,10 +125,9 @@ class TestFindAndCacheNextUnblockedHunk:
             check=True,
             cwd=temp_git_repo,
             capture_output=True,
-            text=True,
         )
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        first_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        patches = list(parse_unified_diff_streaming(result.stdout.splitlines(keepends=True)))
+        first_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         append_lines_to_file(get_block_list_file_path(), [first_hash])
 
@@ -164,15 +163,17 @@ class TestFindAndCacheNextUnblockedHunk:
         assert line_changes.path == "file2.txt"
 
     def test_returns_none_when_no_changes(self, temp_git_repo):
-        """Test that None is returned when there are no changes."""
-        line_changes = fetch_next_change()
+        """Test that NoMoreHunks is raised when there are no changes."""
+        from git_stage_batch.exceptions import NoMoreHunks
 
-        assert line_changes is None
+        with pytest.raises(NoMoreHunks):
+            fetch_next_change()
 
     def test_returns_none_when_all_blocked(self, temp_git_repo):
-        """Test that None is returned when all hunks are blocked."""
+        """Test that NoMoreHunks is raised when all hunks are blocked."""
         from git_stage_batch.core.hashing import compute_stable_hunk_hash
-        from git_stage_batch.core.diff_parser import parse_unified_diff_into_single_hunk_patches
+        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+        from git_stage_batch.exceptions import NoMoreHunks
 
         # Create a change
         test_file = temp_git_repo / "test.txt"
@@ -188,17 +189,15 @@ class TestFindAndCacheNextUnblockedHunk:
             check=True,
             cwd=temp_git_repo,
             capture_output=True,
-            text=True,
         )
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        patches = list(parse_unified_diff_streaming(result.stdout.splitlines(keepends=True)))
+        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         append_lines_to_file(get_block_list_file_path(), [hunk_hash])
 
         # Try to find next hunk
-        line_changes = fetch_next_change()
-
-        assert line_changes is None
+        with pytest.raises(NoMoreHunks):
+            fetch_next_change()
 
 
 class TestAdvanceToNextHunk:
@@ -444,11 +443,10 @@ class TestRecalculateCurrentHunkForFile:
             check=True,
             cwd=temp_git_repo,
             capture_output=True,
-            text=True,
         )
-        from git_stage_batch.core.diff_parser import parse_unified_diff_into_single_hunk_patches
-        patches = parse_unified_diff_into_single_hunk_patches(result.stdout)
-        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_text())
+        from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+        patches = list(parse_unified_diff_streaming(result.stdout.splitlines(keepends=True)))
+        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
 
         append_lines_to_file(get_block_list_file_path(), [hunk_hash])
 

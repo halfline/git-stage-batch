@@ -150,6 +150,26 @@ class TestCommandBlockFile:
         result = subprocess.run(["git", "status", "--porcelain", "--", "README.md"], capture_output=True, text=True, cwd=temp_git_repo)
         assert result.stdout.startswith(" M ")
 
+    def test_block_file_shows_next_hunk_during_session(self, temp_git_repo, capsys):
+        """Test that block-file shows the next hunk when a session is active."""
+        from git_stage_batch.commands.start import command_start
+
+        # Create two untracked files so there's a next hunk after blocking
+        (temp_git_repo / "unwanted.txt").write_text("ignore me\n")
+        (temp_git_repo / "wanted.txt").write_text("keep me\n")
+
+        # Start a session
+        command_start()
+        capsys.readouterr()
+
+        # Block whichever file is shown first
+        command_block_file("unwanted.txt")
+        captured = capsys.readouterr()
+
+        assert "Blocked file: unwanted.txt" in captured.err
+        # Should show the next hunk (wanted.txt) after blocking
+        assert "wanted.txt" in captured.out
+
     def test_block_file_with_subdirectory(self, temp_git_repo):
         """Test blocking a file in a subdirectory."""
         # Create subdirectory and file

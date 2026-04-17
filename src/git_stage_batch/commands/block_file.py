@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import sys
 
-from ..exceptions import exit_with_error
+from ..data.hunk_tracking import advance_to_and_show_next_change
+from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _
 from ..utils.file_io import append_file_path_to_file, remove_file_path_from_file
-from ..utils.paths import ensure_state_directory_exists, get_abort_head_file_path, get_auto_added_files_file_path, get_blocked_files_file_path
 from ..utils.git import add_file_to_gitignore, require_git_repository, resolve_file_path_to_repo_relative, run_git_command
+from ..utils.paths import ensure_state_directory_exists, get_abort_head_file_path, get_auto_added_files_file_path, get_blocked_files_file_path
 
 
 EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
@@ -56,3 +57,9 @@ def command_block_file(file_path_arg: str = "") -> None:
     append_file_path_to_file(get_blocked_files_file_path(), file_path)
 
     print(_("Blocked file: {}").format(file_path), file=sys.stderr)
+
+    if get_abort_head_file_path().exists():
+        try:
+            advance_to_and_show_next_change()
+        except NoMoreHunks:
+            pass

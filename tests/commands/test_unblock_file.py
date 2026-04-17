@@ -111,6 +111,48 @@ class TestCommandUnblockFile:
         captured = capsys.readouterr()
         assert "Removed from blocked list: manual.txt (was not in .gitignore)" in captured.err
 
+    def test_unblock_file_restores_intent_to_add_in_index(self, temp_git_repo):
+        """Test that unblock-file re-adds the file to the index as intent-to-add during a session."""
+        from git_stage_batch.commands.start import command_start
+
+        # Create file and start a session (auto-adds with intent-to-add)
+        (temp_git_repo / "temp.txt").write_text("content\n")
+        command_start()
+
+        # Block the file (removes from index during session)
+        command_block_file("temp.txt")
+
+        # Verify it's not in the index
+        result = subprocess.run(["git", "ls-files", "--", "temp.txt"], capture_output=True, text=True, cwd=temp_git_repo)
+        assert "temp.txt" not in result.stdout
+
+        # Unblock it
+        command_unblock_file("temp.txt")
+
+        # Should be back in the index as intent-to-add
+        result = subprocess.run(["git", "ls-files", "--", "temp.txt"], capture_output=True, text=True, cwd=temp_git_repo)
+        assert "temp.txt" in result.stdout
+
+    def test_unblock_file_preserves_staged_tracked_file_on_stop(self, temp_git_repo):
+        """Test that unblock-file does not record tracked files as auto-added."""
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.commands.stop import command_stop
+
+        # Stage a tracked file before the session starts.
+        (temp_git_repo / "README.md").write_text("# Test\n\nStaged\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        # Put the tracked file in blocked state so unblock-file can remove it.
+        get_gitignore_path().write_text("README.md\n")
+        append_file_path_to_file(get_blocked_files_file_path(), "README.md")
+
+        command_start(quiet=True)
+        command_unblock_file("README.md")
+        command_stop()
+
+        result = subprocess.run(["git", "status", "--porcelain", "--", "README.md"], capture_output=True, text=True, cwd=temp_git_repo)
+        assert result.stdout.startswith("M  ")
+
     def test_unblock_file_with_subdirectory(self, temp_git_repo):
         """Test unblocking a file in a subdirectory."""
         # Create subdirectory and file

@@ -109,6 +109,47 @@ class TestCommandBlockFile:
         blocked = read_file_paths_file(get_blocked_files_file_path())
         assert blocked.count("dup.txt") == 1
 
+    def test_block_file_removes_intent_to_add_from_index(self, temp_git_repo):
+        """Test that block-file removes an intent-to-add file from the index during a session."""
+        from git_stage_batch.commands.start import command_start
+
+        # Create untracked file
+        (temp_git_repo / "build_output.dat").write_text("binary data\n")
+
+        # Start a session (auto-adds untracked files with intent-to-add)
+        command_start()
+
+        # Verify it's in the index
+        result = subprocess.run(["git", "ls-files", "--", "build_output.dat"], capture_output=True, text=True, cwd=temp_git_repo)
+        assert "build_output.dat" in result.stdout
+
+        # Block the file
+        command_block_file("build_output.dat")
+
+        # Should be removed from index
+        result = subprocess.run(["git", "ls-files", "--", "build_output.dat"], capture_output=True, text=True, cwd=temp_git_repo)
+        assert "build_output.dat" not in result.stdout
+
+        # Should not appear in git status
+        result = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=temp_git_repo)
+        assert "build_output.dat" not in result.stdout
+
+    def test_block_file_preserves_tracked_file_in_index(self, temp_git_repo):
+        """Test that block-file does not remove tracked files from the index during a session."""
+        from git_stage_batch.commands.start import command_start
+
+        # Modify a tracked file so it appears in the session.
+        (temp_git_repo / "README.md").write_text("# Test\n\nChanged\n")
+
+        command_start()
+        command_block_file("README.md")
+
+        result = subprocess.run(["git", "ls-files", "--stage", "--", "README.md"], capture_output=True, text=True, cwd=temp_git_repo)
+        assert "README.md" in result.stdout
+
+        result = subprocess.run(["git", "status", "--porcelain", "--", "README.md"], capture_output=True, text=True, cwd=temp_git_repo)
+        assert result.stdout.startswith(" M ")
+
     def test_block_file_with_subdirectory(self, temp_git_repo):
         """Test blocking a file in a subdirectory."""
         # Create subdirectory and file

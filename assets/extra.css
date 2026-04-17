@@ -51,13 +51,13 @@
 /* Glowing effect on links and buttons */
 .md-button,
 .md-typeset a {
-  text-shadow: 0 0 5px currentColor;
+  text-shadow: 0 0 5px selectedColor;
   transition: all 0.3s ease;
 }
 
 .md-button:hover,
 .md-typeset a:hover {
-  text-shadow: 0 0 10px currentColor;
+  text-shadow: 0 0 10px selectedColor;
   transform: translateY(-1px);
 }
 
@@ -133,7 +133,7 @@ img[alt*="demo"] {
 
 /* Emoji with glow */
 .twemoji {
-  filter: drop-shadow(0 0 3px currentColor);
+  filter: drop-shadow(0 0 3px selectedColor);
 }
 
 /* Search bar terminal style - quieter until focused */
@@ -344,7 +344,7 @@ body.hide-primary-sidebar .md-sidebar--primary {
 }
 
 .md-typeset .grid.cards svg {
-  filter: drop-shadow(0 0 8px currentColor) !important;
+  filter: drop-shadow(0 0 8px selectedColor) !important;
   margin-bottom: 0.5em !important;
 }
 

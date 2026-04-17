@@ -3,237 +3,329 @@
 git-stage-batch \- hunk-by-hunk and line-by-line staging for git
 .SH SYNOPSIS
 .B git-stage-batch
-[\fB\-i\fR|\fB\-\-interactive\fR]
-[\fB\-\-version\fR]
 [\fICOMMAND\fR [\fIARGS\fR...]]
 .SH DESCRIPTION
 .B git-stage-batch
 provides a workflow for staging changes to git in a structured, reviewable way.
-Unlike \fBgit add -p\fR, it maintains state across commands, allowing you to
-pause and resume, and provides fine-grained line-level control.
-.PP
 The tool works by finding hunks in your diff, presenting them one at a time,
-and letting you include (stage), skip, or discard each hunk or individual lines
-within hunks. State is maintained in \fB.git/git-stage-batch/\fR so you can
-stop and continue later, or run git commands between operations.
-.SH WORKFLOW
-A typical workflow:
-.IP 1. 4
-\fBgit-stage-batch start\fR - Begin reviewing changes
-.IP 2.
-Review the displayed hunk
-.IP 3.
-\fBgit-stage-batch include\fR - Stage this hunk, or
+and letting you include (stage), skip, or discard each hunk.
+.PP
+State is maintained in \fB.git/git-stage-batch/\fR so you can stop and continue
+later, or run git commands between operations.
+.SH INTERACTIVE MODE
+.B git-stage-batch
+can be run in interactive mode for a continuous hunk-by-hunk workflow
+similar to
+.BR "git add -p" .
+.PP
+To start interactive mode:
+.RS
+.B git-stage-batch interactive
 .br
-\fBgit-stage-batch skip\fR - Skip for now, or
-.br
-\fBgit-stage-batch discard\fR - Remove from working tree
-.IP 4.
-Repeat until done
-.IP 5.
-\fBgit commit\fR - Commit staged changes
-.IP 6.
-\fBgit-stage-batch again\fR - Review remaining hunks for next commit
+.B git-stage-batch -i
+.RE
+.PP
+Interactive mode automatically starts a session, displays the first hunk with
+progress information, and presents a menu of actions. After each action,
+the next hunk is automatically displayed.
+.SS Actions
+.TP
+.B i, include
+Stage the selected hunk and advance to the next.
+.TP
+.B s, skip
+Mark the selected hunk as skipped and advance to the next.
+Skipped hunks can be revisited later.
+.TP
+.B d, discard
+Remove the selected hunk from the working tree and advance to the next.
+.B WARNING:
+This permanently removes changes.
+You will be prompted to confirm.
+.TP
+.B a, again
+Clear state and start a fresh pass through previously skipped hunks.
+Resets iteration to review all hunks that were marked as skipped.
+.TP
+.B l, lines
+Enter line selection submenu to include, skip, or discard specific lines
+within the selected hunk. Displays changed line IDs, prompts for action, then
+prompts for line IDs (e.g., 1,3,5-7).
+.TP
+.B f, file
+Enter file operations submenu to include or skip all hunks from the selected
+file. Advances to the next file after the operation.
+.TP
+.B q, quit
+Exit interactive mode. If changes were made during the session, prompts
+whether to keep them or undo all changes (abort).
+.TP
+.B !, command
+Run an arbitrary shell command in the repository root directory. Prompts
+for the command to execute. Uses readline for command history if available.
+.TP
+.B ?, help
+Display help text showing all available commands.
+.PP
+At any prompt, press
+.B Ctrl-C
+to cancel the selected operation and return to the main menu.
 .SH COMMANDS
+.SS Core Operations
+.TP
+.B start
+Find and display the first unprocessed hunk; cache as "selected".
+Resets state if a session is already in progress.
+.RS
+.TP
+.B \-U \fIN\fR, \-\-unified=\fIN\fR
+Number of context lines in diff output (default: 3).
+.RE
+.TP
+.B show \fR[\fB\-\-porcelain\fR]
+Reprint the cached "selected" hunk.
+.RS
+.TP
+.B \-\-porcelain
+Exit silently with status code only (0 if hunk exists, 1 if no hunk).
+Useful for scripts checking hunk availability without output.
+.RE
+.TP
+.B include
+Stage the cached hunk (entire hunk) to the index; advance to next.
+When a session is active, running
+.B git-stage-batch
+with no command defaults to
+.BR include .
+.TP
+.B skip
+Mark the cached hunk as skipped; advance to next.
+Skipped hunks can be revisited with
+.BR again .
+.TP
+.B discard
+Reverse-apply the cached hunk to the working tree; advance to next.
+.B WARNING:
+This permanently removes changes from your working tree.
+.TP
+.B status \fR[\fB\-\-porcelain\fR]
+Show session progress and remaining hunks.
+Displays iteration number, selected hunk location, progress metrics
+(included/skipped/discarded/remaining counts), and a list of skipped hunks.
+.RS
+.TP
+.B \-\-porcelain
+Output in machine-readable JSON format for script integration.
+The JSON includes: session (iteration and in_progress flag), selected
+(selected hunk location or null), progress (counts), and skipped_hunks (array).
+.RE
 .SS Session Management
 .TP
-.BR start " [" \-U \fIN\fR ]
-Find and display the first unprocessed hunk. Optionally set context lines with \fB-U\fR (default: 3).
-.TP
-.BR show ", " sh
-Reprint the current hunk with line IDs.
-.TP
-.BR again ", " a
-Clear state and start a fresh pass through all remaining hunks.
+.B again
+Clear the blocklist and restart iteration through all hunks.
+Useful for making another pass after committing some changes.
 .TP
 .B stop
-Clear all state and exit the session.
+End the selected session and remove all state.
 .TP
 .B abort
-Abort the session and undo all changes including commits and discards, restoring to the state when the session started.
-.TP
-.BR status ", " st " [" \-\-porcelain ]
-Show session progress and current state. Use \fB--porcelain\fR for JSON output.
-.SS Hunk Operations
-.TP
-.BR include ", " i
-Stage the entire current hunk to the index and advance to the next hunk.
-.TP
-.BR skip ", " s
-Mark the current hunk as skipped and advance to the next hunk.
-.TP
-.BR discard ", " d
-Remove the current hunk from the working tree (reverse-apply) and advance to the next hunk.
-.SS Line-Level Operations
-.TP
-.BR include " " \-\-line ", " il " \fILINE_IDS\fR"
-Stage only the specified lines from the current hunk. Line IDs use the format
-\fB1,3,5-7\fR.
-.TP
-.BR skip " " \-\-line ", " sl " \fILINE_IDS\fR"
-Mark the specified lines as skipped.
-.TP
-.BR discard " " \-\-line ", " dl " \fILINE_IDS\fR"
-Remove the specified lines from the working tree.
+Undo all changes made during the session, including commits and discards.
+This resets HEAD to where you started, restores your original working tree,
+restores batch state (drops created batches, restores dropped/mutated batches),
+and removes session state.
+.B WARNING:
+This will undo any commits made during the session.
 .SS File-Level Operations
 .TP
-.BR include " " \-\-file ", " if
-Stage all remaining hunks in the current file.
+.B include \-\-file
+Stage all hunks from the selected file.
+Advances to the next file after staging all hunks.
 .TP
-.BR skip " " \-\-file ", " sf
-Skip all remaining hunks in the current file.
+.B skip \-\-file
+Skip all hunks from the selected file.
+All hunks from the file are marked as skipped and can be revisited with
+.BR again .
 .TP
-.BR block-file ", " b " [\fIPATH\fR]"
-Add a file to .gitignore and permanently exclude it from review. If no path is
-provided, uses the current hunk's file.
+.B discard \-\-file
+Discard the entire selected file from the working tree.
+.B WARNING:
+This permanently removes the entire file from your working tree.
+.SS Line-Level Operations
 .TP
-.BR unblock-file ", " ub " \fIPATH\fR"
-Remove a file from permanent exclusion.
+.B include \-\-line \fILINE_IDS\fR
+Stage only specific lines from the selected hunk.
+Lines are displayed with IDs in brackets (e.g., [#1], [#2]).
+LINE_IDS syntax: single (1), multiple (1,3,5), range (5-7), or combined (1,3,5-7).
+After processing, the hunk is recalculated to show remaining changes.
+.TP
+.B skip \-\-line \fILINE_IDS\fR
+Mark specific lines as skipped without staging them.
+Useful when you want to defer certain changes to a later commit.
+.TP
+.B discard \-\-line \fILINE_IDS\fR
+Remove specific lines from the working tree.
+.B WARNING:
+This permanently removes the specified lines from your working tree.
+Allows surgical removal of debug code or unwanted modifications.
+.SS Permanent File Exclusion
+.TP
+.B block-file \fR[\fIPATH\fR]
+Permanently exclude a file from all future sessions.
+Adds the file to .gitignore, marks it as blocked in session state,
+and skips all its hunks automatically.
+When run without a selected hunk, you can specify the file path.
+.TP
+.B unblock-file \fIPATH\fR
+Remove a file from the blocked list.
+Removes the file from .gitignore and the blocked files list,
+allowing its hunks to be processed again.
 .SS Fixup Suggestions
 .TP
-.BR suggest-fixup " [\fIBOUNDARY\fR]"
-Analyze the current hunk and suggest which commit it should be fixed up to.
-Uses \fBgit log -L\fR to find commits that modified the hunk's lines.
-Default boundary is \fB@{upstream}\fR.
+.B suggest-fixup \fR[\fIOPTIONS\fR] [\fIBOUNDARY\fR]
+Suggest which commit the selected hunk should be fixed up to.
+Finds commits that previously modified the lines in the selected hunk
+and suggests them as fixup targets. Iteratively shows candidates starting
+from most recent, progressing backwards with each invocation.
+Uses git log -L to find commits that touched the affected lines.
+.RS
 .TP
-.BR suggest-fixup " " \-\-line ", " sfl " \fILINE_IDS\fR [\fIBOUNDARY\fR]"
-Suggest a fixup target for specific lines only. Useful when a hunk contains
-changes from multiple commits.
-.SH OPTIONS
+.B \-\-line \fILINE_IDS\fR
+Suggest fixup target for specific lines only.
+Useful when a hunk contains changes to multiple unrelated areas.
 .TP
-.BR \-i ", " \-\-interactive
-Enter interactive mode, similar to \fBgit add -p\fR but with state persistence.
+.B \-\-reset
+Start over from the most recent candidate.
 .TP
-.B \-\-version
-Show version information and exit.
-.SH INTERACTIVE MODE
-When invoked with \fB-i\fR or \fB--interactive\fR, the tool enters an interactive
-prompt mode where you can process hunks one-by-one without typing the full
-command each time:
-.PP
-.nf
-.RS
-\fBy\fR, \fBi\fR, \fBinclude\fR - stage this hunk
-\fBn\fR, \fBs\fR, \fBskip\fR    - skip this hunk for now
-\fBd\fR, \fBdiscard\fR  - discard this hunk from working tree
-\fBq\fR, \fBquit\fR     - quit interactive mode
-\fBa\fR, \fBall\fR      - stage all remaining hunks
-\fBl\fR, \fBlines\fR    - interactively select specific lines
-\fBf\fR, \fBfile\fR     - stage or skip entire file
-\fBb\fR, \fBblock\fR    - block current file (add to .gitignore)
-\fBx\fR, \fBsuggest-fixup\fR - suggest which commit to fixup
-\fB!\fR          - run a shell command
-\fB?\fR          - print help
+.B \-\-abort
+Clear state and exit without showing candidates.
+.TP
+.B \-\-last
+Re-show the last candidate without advancing.
+.TP
+.B \-\-porcelain
+Output in machine-readable JSON format for script integration.
+The JSON includes: candidate (hash, full_hash, subject, author, date,
+relative_date), iteration number, and boundary.
 .RE
-.fi
-.SH EXAMPLES
-.SS Basic Usage
+.SH ADVANCED FEATURES
+.SS Batch Operations
+Batches are named collections of accumulated changes that can be staged or
+discarded later as a unit. This is a power-user feature for complex workflows
+involving deferred decisions across multiple files or staging passes.
 .PP
-Stage changes for multiple commits:
-.PP
-.nf
+Most users will not need batches. They are useful when you want to:
 .RS
-$ git-stage-batch start
-# Review first hunk
-$ git-stage-batch include
-# Stage it
-$ git-stage-batch include
-# Stage next one
-$ git commit -m "First feature"
-$ git-stage-batch again
-# Continue with remaining hunks
-.RE
-.fi
-.SS Line-Level Staging
-.PP
-Stage only specific lines from a hunk:
-.PP
-.nf
-.RS
-$ git-stage-batch start
-# Hunk shows lines [#1] through [#10]
-$ git-stage-batch include --line 1,3,5-7
-# Stage just those lines
-$ git-stage-batch skip --line 2,4
-# Skip others
-.RE
-.fi
-.SS Creating Fixup Commits
-.PP
-Create fixup commits for recent changes:
-.PP
-.nf
-.RS
-$ git-stage-batch start
-# See a bug fix
-$ git-stage-batch suggest-fixup HEAD~5
-# Suggested fixup target: abc123 Add feature X
-# Run: git commit --fixup=abc123
-$ git-stage-batch include
-$ git commit --fixup=abc123
-.RE
-.fi
-.PP
-For hunks with changes from multiple commits:
-.PP
-.nf
-.RS
-$ git-stage-batch start
-# Lines #1-3 are from one commit, #4-6 from another
-$ git-stage-batch suggest-fixup --line 1-3
-# Suggested: commit abc123
-$ git-stage-batch include --line 1-3
-$ git commit --fixup=abc123
-$ git-stage-batch suggest-fixup --line 4-6
-# Suggested: commit def456
-$ git-stage-batch include --line 4-6
-$ git commit --fixup=def456
-.RE
-.fi
-.SS Interactive Mode
-.PP
-.nf
-.RS
-$ git-stage-batch -i
-# Presents each hunk with a prompt
-# Type 'i' to include, 's' to skip, etc.
-.RE
-.fi
-.SH STATE DIRECTORY
-State is maintained in \fB.git/git-stage-batch/\fR including:
 .IP \(bu 2
-Current hunk being reviewed
-.IP \(bu
-Blocklist of already-processed hunks
-.IP \(bu
-Abort state for undoing changes
-.IP \(bu
-Iteration counter and progress tracking
+Accumulate related changes across multiple hunks for review together
+.IP \(bu 2
+Defer changes without losing them while you work on other commits
+.IP \(bu 2
+Group changes by type (e.g., debugging, refactoring) for separate handling
+.RE
 .PP
-The state directory is automatically cleaned by \fBstop\fR and \fBabort\fR.
-.SH EXIT STATUS
+Batches are stored as git commits under refs/batches/<name> and persist
+across sessions until explicitly dropped.
 .TP
-.B 0
-Success
+.B new \fIBATCH_NAME\fR [\fB\-\-note\fR \fINOTE\fR]
+Create a new named batch for accumulating changes.
 .TP
-.B 1
-Error or no hunks to process
+.B list
+List all existing batches with their descriptions.
 .TP
-.B 2
-No pending hunks (after \fBstart\fR or in interactive mode)
-.SH FILES
+.B drop \fIBATCH_NAME\fR
+Delete a batch and remove its git ref.
 .TP
-.B .git/git-stage-batch/
-State directory for current session
+.B annotate \fIBATCH_NAME\fR \fINOTE\fR
+Add or update the description for a batch.
+.PP
+The following commands accept \fB\-\-from\fR flags to work with batches:
 .TP
-.B .gitignore
-Modified by \fBblock-file\fR and \fBunblock-file\fR commands
+.B show \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
+Show the accumulated changes stored in a batch.
+Use \fB\-\-line\fR to filter display to specific line IDs.
+.TP
+.B include \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+Stage the changes from a batch to the index. Fails if the batch's changes
+cannot be applied cleanly to the selected state.
+Use \fB\-\-line\fR to stage only specific lines from the batch.
+Use \fB\-\-file\fR to apply all hunks from the batch that affect the selected file.
+.TP
+.B discard \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+Remove batch changes from the working tree. Fails if the batch's changes
+cannot be reversed cleanly. Does not delete the batch.
+Use \fB\-\-line\fR to discard only specific lines from the batch.
+Use \fB\-\-file\fR to reverse all hunks from the batch that affect the selected file.
+.TP
+.B apply \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+Apply batch changes to the working tree without staging them.
+This adds the batch's changes to your working tree while keeping the index clean.
+Fails if the batch's changes cannot be applied cleanly.
+Use \fB\-\-line\fR to apply only specific lines from the batch.
+Use \fB\-\-file\fR to apply all hunks from the batch that affect the selected file.
+.TP
+.B reset \-\-from \fIBATCH\fR [\fB\-\-to\fR \fIDEST_BATCH\fR] [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR]]
+Remove claims from a batch without changing the working tree.
+Use \fB\-\-file\fR with a path to reset only that file from the batch.
+Use \fB\-\-line\fR with \fB\-\-file\fR to reset specific line claims from a file.
+Use \fB\-\-to\fR to move the reset claims into another batch before removing
+them from the source batch.
+.PP
+The following command uses both \fB\-\-from\fR and \fB\-\-to\fR for batch transformation:
+.TP
+.B sift \-\-from \fISOURCE_BATCH\fR \-\-to \fIDEST_BATCH\fR
+Reconcile a batch against the current tip by removing portions whose effect
+is already present in the current working tree state, writing the remainder
+to the destination batch.
+.RS
+.PP
+After ad hoc history surgery, some parts of a batch may already have landed
+in history while other parts are still unapplied.
+.B sift
+removes the already-present portions and writes the remaining unapplied
+portion to the destination batch.
+.PP
+Both \fB\-\-from\fR and \fB\-\-to\fR are required.
+If \fB\-\-to\fR equals \fB\-\-from\fR, performs an in-place sift.
+If \fB\-\-to\fR differs from \fB\-\-from\fR, creates a new destination batch
+(which must not already exist) and preserves the source batch unchanged.
+.PP
+This command does not modify the working tree or staging area.
+It only transforms batch ownership to reflect what is still needed.
+.PP
+Example:
+.RS
+.nf
+# Sift to a new batch
+git-stage-batch sift \-\-from feature-cleanups \-\-to feature-cleanups-pruned
+
+# In-place sift
+git-stage-batch sift \-\-from feature-cleanups \-\-to feature-cleanups
+.fi
+.RE
+.RE
+.PP
+The following commands accept \fB\-\-to\fR flags to save changes to batches:
+.TP
+.B include \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+Save the selected hunk to a batch instead of just skipping it.
+Auto-creates the batch if it doesn't exist.
+Use \fB\-\-line\fR to save only specific lines to the batch.
+Use \fB\-\-file\fR to save the entire selected file to the batch.
+.TP
+.B discard \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+Save the selected hunk to a batch, then discard it from the working tree.
+Auto-creates the batch if it doesn't exist.
+Useful for saving changes before removing them, allowing later recovery.
+Use \fB\-\-line\fR to save and discard only specific lines.
+Use \fB\-\-file\fR to save and discard the entire selected file.
+.SH AUTHOR
+Written by Ray Strode.
+.SH REPORTING BUGS
+Report bugs at: https://github.com/halfline/git-stage-batch/issues
+.SH COPYRIGHT
+Copyright \(co 2025-2026 Ray Strode.
+.br
+License: MIT
 .SH SEE ALSO
 .BR git (1),
-.BR git-add (1),
-.BR git-commit (1),
-.BR git-diff (1)
-.PP
-Full documentation: <https://github.com/halfline/git-stage-batch>
-.SH AUTHOR
-Ray Strode <rstrode@redhat.com>
+.BR git-add (1)

@@ -1,0 +1,2282 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Hunk-by-hunk and line-by-line staging for git">
+      
+      
+        <meta name="author" content="Ray Strode">
+      
+      
+        <link rel="canonical" href="https://halfline.github.io/git-stage-batch/batches/">
+      
+      
+        <link rel="prev" href="../ai-assistants/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Batch Operations - git-stage-batch</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Fira+Code:300,300i,400,400i,700,700i%7CFira+Code:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Fira Code";--md-code-font:"Fira Code"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#batch-operations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      <!-- Header with custom audio player control -->
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a
+      href=".."
+      title="git-stage-batch"
+      class="md-header__button md-logo"
+      aria-label="git-stage-batch"
+      data-md-component="logo"
+    >
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            git-stage-batch
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Batch Operations
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette toggle -->
+    
+      
+    
+
+    <!-- Audio player control button (custom) -->
+    <button
+      class="md-header__button md-icon audio-control"
+      aria-label="Toggle podcast"
+      title="Play Deep Dive podcast"
+      style="display: none;"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path class="play-icon" d="M8 5v14l11-7z"/>
+        <path class="pause-icon" style="display:none" d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+      </svg>
+    </button>
+
+    <!-- Site language selector -->
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/halfline/git-stage-batch" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    halfline/git-stage-batch
+  </div>
+</a>
+      </div>
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+  </nav>
+
+  <!-- Navigation tabs (collapsing) -->
+  
+</header>
+
+<!-- Custom CSS for audio control -->
+<style>
+  .md-header__button.audio-control svg {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+
+  body.has-audio .md-header__button.audio-control {
+    display: block !important;
+  }
+
+  .md-header__button.audio-control.playing {
+    color: var(--hacker-cyan);
+    filter: drop-shadow(0 0 5px var(--hacker-cyan));
+  }
+</style>
+
+<!-- Custom JavaScript for audio control -->
+<script>
+  (function() {
+    // Add audio control button functionality
+    function initAudioControl() {
+      const button = document.querySelector('.md-header__button.audio-control');
+      if (!button) return;
+
+      // Remove any existing click handler to avoid duplicates
+      button.onclick = null;
+
+      // Handle click using the global togglePodcast function
+      button.onclick = function() {
+        if (window.togglePodcast) {
+          window.togglePodcast();
+        }
+      };
+    }
+
+    // Initialize on page load
+    if (typeof document$ !== 'undefined') {
+      document$.subscribe(function() {
+        initAudioControl();
+      });
+    } else {
+      document.addEventListener('DOMContentLoaded', initAudioControl);
+    }
+  })();
+</script>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../commands/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../ai-assistants/" class="md-tabs__link">
+          
+  
+  
+  Integration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Advanced Features
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="git-stage-batch" class="md-nav__button md-logo" aria-label="git-stage-batch" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    git-stage-batch
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/halfline/git-stage-batch" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    halfline/git-stage-batch
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Integration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-assistants/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Assistants
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Advanced Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-batches-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Batches Work
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How Batches Work">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storage-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage Model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#application-model-includeapply-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application Model (include/apply --from)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reversal-model-discard-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reversal Model (discard --from)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bytes-based-correctness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bytes-Based Correctness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        new
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#annotate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        annotate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#show-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        show --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#include-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        include --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discard-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        discard --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#apply-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        apply --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reset-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        reset --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#include-to-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        include --to BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discard-to-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        discard --to BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-workflow-decomposing-and-recomposing-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced Workflow: Decomposing and Recomposing History
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frequently-asked-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frequently Asked Questions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Frequently Asked Questions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-are-batches-different-from-git-stashes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How are batches different from Git stashes?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-not-just-use-git-stash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not just use git stash?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-i-replace-stashes-with-batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can I replace stashes with batches?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-are-batches-different-from-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How are batches different from commits?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-not-just-commit-earlier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not just commit earlier?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#are-batches-like-temporary-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Are batches like temporary branches?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-batches-modify-my-git-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do batches modify my Git history?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-should-i-use-batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When should I use batches?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#are-batches-meant-to-be-long-lived" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Are batches meant to be long-lived?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-batches-replace-git-add-p" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do batches replace git add -p?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-use-batches-instead-of-staging-everything-immediately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why use batches instead of staging everything immediately?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-batches-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Batches Work
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How Batches Work">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storage-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage Model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#application-model-includeapply-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application Model (include/apply --from)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reversal-model-discard-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reversal Model (discard --from)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bytes-based-correctness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bytes-Based Correctness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        new
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#annotate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        annotate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#show-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        show --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#include-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        include --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discard-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        discard --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#apply-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        apply --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reset-from-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        reset --from BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#include-to-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        include --to BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discard-to-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        discard --to BATCH
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-workflow-decomposing-and-recomposing-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced Workflow: Decomposing and Recomposing History
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frequently-asked-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frequently Asked Questions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Frequently Asked Questions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-are-batches-different-from-git-stashes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How are batches different from Git stashes?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-not-just-use-git-stash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not just use git stash?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-i-replace-stashes-with-batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can I replace stashes with batches?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-are-batches-different-from-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How are batches different from commits?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-not-just-commit-earlier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not just commit earlier?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#are-batches-like-temporary-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Are batches like temporary branches?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-batches-modify-my-git-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do batches modify my Git history?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-should-i-use-batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When should I use batches?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#are-batches-meant-to-be-long-lived" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Are batches meant to be long-lived?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-batches-replace-git-add-p" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do batches replace git add -p?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-use-batches-instead-of-staging-everything-immediately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why use batches instead of staging everything immediately?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="batch-operations">Batch Operations<a class="headerlink" href="#batch-operations" title="Permanent link">&para;</a></h1>
+<div class="admonition info">
+<p class="admonition-title">Power User Feature</p>
+<p>Batches are an advanced feature for complex workflows. Most users will not need them.
+The core commands (start, include, skip, discard) handle the majority of use cases.</p>
+</div>
+<p>Batches are named collections of accumulated changes that can be staged or discarded later as a unit. They persist across sessions and are stored as git commits under <code>refs/batches/&lt;name&gt;</code>.</p>
+<p>Each batch captures not just the changes themselves, but also the working tree state at the time changes were saved (the <strong>batch source</strong>). This allows batch operations to intelligently merge or discard changes even when your code has evolved since the batch was created.</p>
+<p><strong>When to use batches:</strong>
+- Accumulating related changes across multiple hunks for review together
+- Deferring changes without losing them while working on other commits
+- Grouping changes by type (e.g., debugging, refactoring) for separate handling</p>
+<p><strong>When to avoid batches:</strong>
+- Simple linear workflows (just use skip and again for another pass)
+- One-off staging decisions (include/skip/discard are simpler)</p>
+<hr />
+<h2 id="how-batches-work">How Batches Work<a class="headerlink" href="#how-batches-work" title="Permanent link">&para;</a></h2>
+<h3 id="storage-model">Storage Model<a class="headerlink" href="#storage-model" title="Permanent link">&para;</a></h3>
+<p>When you save content to a batch (via <code>include --to</code> or <code>discard --to</code>), the tool captures:</p>
+<ol>
+<li><strong>Batch source commit</strong>: A snapshot of the working tree state at save time</li>
+<li><strong>Ownership claims</strong>: Which specific lines or line ranges are batch-owned</li>
+<li><strong>Deletion claims</strong>: Which sequences were deleted by the batch (if any)</li>
+</ol>
+<p>This information is stored in:
+- A Git commit under <code>refs/batches/&lt;name&gt;</code> containing the realized batch content
+- Metadata tracking the batch source commit and ownership structure</p>
+<h3 id="application-model-includeapply-from">Application Model (include/apply --from)<a class="headerlink" href="#application-model-includeapply-from" title="Permanent link">&para;</a></h3>
+<p>When applying a batch to your working tree or index, the tool uses <strong>structural merge</strong>:</p>
+<ol>
+<li><strong>Conservative matching</strong>: Uses longest common subsequence-based alignment to map batch source lines to current file lines</li>
+<li><strong>Presence constraints</strong>: Ensures batch-claimed lines are present in the result</li>
+<li><strong>Absence constraints</strong>: Enforces batch deletions at exact anchored boundaries</li>
+</ol>
+<p>This allows batches to be applied even when your code has evolved, as long as:
+- Batch-claimed lines can be structurally located
+- Changes have sufficient context (surrounding lines) for alignment
+- File structure hasn't changed so drastically that alignment fails</p>
+<h3 id="reversal-model-discard-from">Reversal Model (discard --from)<a class="headerlink" href="#reversal-model-discard-from" title="Permanent link">&para;</a></h3>
+<p>When discarding a batch from your working tree, the tool uses <strong>constraint-based reversal</strong>:</p>
+<ol>
+<li><strong>Region classification</strong>: Analyzes how batch source differs from baseline using difflib's SequenceMatcher</li>
+<li>EQUAL regions: unchanged lines</li>
+<li>INSERT regions: batch-added content</li>
+<li>REPLACE_LINE_BY_LINE regions: same-size changes with clear 1:1 line correspondence</li>
+<li>
+<p>REPLACE_BY_HUNK regions: different-size changes requiring atomic restoration</p>
+</li>
+<li>
+<p><strong>Presence reversal</strong>: For each batch-owned line in the working tree:</p>
+</li>
+<li>EQUAL/REPLACE_LINE_BY_LINE: restore individual baseline line</li>
+<li>INSERT: remove (batch-added content)</li>
+<li>
+<p>REPLACE_BY_HUNK: verify full ownership, then restore entire baseline block atomically</p>
+</li>
+<li>
+<p><strong>Absence restoration</strong>: Re-insert batch-deleted sequences at their original anchored boundaries</p>
+</li>
+</ol>
+<p>This allows batches to be cleanly removed even when working tree has diverged, as long as:
+- Batch-owned content can be unambiguously identified
+- Modified regions have clear correspondence OR are fully batch-owned
+- Deleted content can be re-inserted at original boundaries</p>
+<h3 id="bytes-based-correctness">Bytes-Based Correctness<a class="headerlink" href="#bytes-based-correctness" title="Permanent link">&para;</a></h3>
+<p>All batch operations work directly with bytes, not decoded text. This ensures:
+- No data corruption from encoding assumptions
+- Support for non-UTF-8 files (ISO-8859-1, Windows-1252, etc.)
+- Correct handling of mixed encodings within a repository
+- Preservation of CRLF line endings in cross-platform workflows</p>
+<hr />
+<h2 id="new"><code>new</code><a class="headerlink" href="#new" title="Permanent link">&para;</a></h2>
+<p>Create a new named batch for accumulating changes.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>❯ git-stage-batch new batch-name
+</span></code></pre></div>
+<p><strong>With description:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>❯ git-stage-batch new db-updates --note &quot;Database migration changes&quot;
+</span></code></pre></div></p>
+<p>The batch is stored as a git ref and persists until explicitly dropped.</p>
+<hr />
+<h2 id="list"><code>list</code><a class="headerlink" href="#list" title="Permanent link">&para;</a></h2>
+<p>List all existing batches with their descriptions.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>❯ git-stage-batch list
+</span></code></pre></div>
+<p><strong>Example output:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Batches:
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  db-updates: Database migration changes (created 2 hours ago)
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  refactor: Code cleanup (created yesterday)
+</span></code></pre></div></p>
+<hr />
+<h2 id="drop"><code>drop</code><a class="headerlink" href="#drop" title="Permanent link">&para;</a></h2>
+<p>Delete a batch and remove its git ref.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>❯ git-stage-batch drop batch-name
+</span></code></pre></div>
+<p>This permanently removes the batch and all changes stored in it.</p>
+<hr />
+<h2 id="annotate"><code>annotate</code><a class="headerlink" href="#annotate" title="Permanent link">&para;</a></h2>
+<p>Add or update the description for a batch.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>❯ git-stage-batch annotate batch-name &quot;New description&quot;
+</span></code></pre></div>
+<p>Useful for updating batch metadata as you accumulate changes.</p>
+<hr />
+<h2 id="show-from-batch"><code>show --from BATCH</code><a class="headerlink" href="#show-from-batch" title="Permanent link">&para;</a></h2>
+<p>Show the accumulated changes stored in a batch.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>❯ git-stage-batch show --from batch-name
+</span></code></pre></div>
+<p>Displays the diff representing all changes accumulated in the batch, showing what would be staged or discarded if you operate on the batch.</p>
+<p><strong>Line-level filtering:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>❯ git-stage-batch show --from batch-name --line 1,3,5-7
+</span></code></pre></div></p>
+<p>Filter the display to show only specific line IDs from the batch.</p>
+<hr />
+<h2 id="include-from-batch"><code>include --from BATCH</code><a class="headerlink" href="#include-from-batch" title="Permanent link">&para;</a></h2>
+<p>Stage the changes from a batch to the index.</p>
+<p><strong>Stage entire batch:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>❯ git-stage-batch include --from batch-name
+</span></code></pre></div></p>
+<p>Applies the batch's accumulated changes to the index, staging them for commit.</p>
+<p><strong>Line-level staging:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>❯ git-stage-batch include --from batch-name --line 1-5
+</span></code></pre></div></p>
+<p>Stage only specific lines from the batch, allowing partial application of batch changes.</p>
+<p><strong>File-level staging (selected file):</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>❯ git-stage-batch include --from batch-name --file
+</span></code></pre></div></p>
+<p>Stage changes from the batch for the selected hunk's file only. Use this during a staging session when you want to pull in batch changes for the file you're reviewing, without affecting other files in the batch.</p>
+<p><strong>File-level staging (specific file):</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>❯ git-stage-batch include --from batch-name --file src/config.py
+</span></code></pre></div></p>
+<p>Stage changes from the batch for <code>src/config.py</code> only, without needing a selected hunk. Useful for applying specific files from multi-file batches outside of an active staging session.</p>
+<p><strong>Example - Selective file application:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Create batch with changes from multiple files</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>new<span class="w"> </span>refactor
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>refactor<span class="w"> </span>--file<span class="w"> </span>auth.py
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>refactor<span class="w"> </span>--file<span class="w"> </span>config.py
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>refactor<span class="w"> </span>--file<span class="w"> </span>utils.py
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="c1"># Later, apply only config.py changes</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>refactor<span class="w"> </span>--file<span class="w"> </span>config.py
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="c1"># Only config.py is staged, auth.py and utils.py remain in batch</span>
+</span></code></pre></div></p>
+<div class="admonition warning">
+<p class="admonition-title">Merge-Based Application</p>
+<p><code>include --from BATCH</code> uses structural merge to intelligently apply batch changes
+to your current working tree, even if the code has evolved since the batch was created.</p>
+<p>The merge succeeds when:
+- Batch-claimed lines can be unambiguously located in the current file structure
+- Changes have context (surrounding unchanged lines) for alignment</p>
+<p>Failures occur when:
+- The file structure has changed so drastically that batch lines cannot be located
+- Claimed lines lack sufficient context for structural alignment
+- The batch attempts to delete content that no longer exists at expected positions</p>
+<p>On failure, run <code>show --from BATCH</code> to review the changes, or use <code>--line</code> or
+<code>--file</code> to apply only compatible parts.</p>
+</div>
+<hr />
+<h2 id="discard-from-batch"><code>discard --from BATCH</code><a class="headerlink" href="#discard-from-batch" title="Permanent link">&para;</a></h2>
+<p>Remove batch changes from the working tree.</p>
+<p><strong>Discard entire batch:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>❯ git-stage-batch discard --from batch-name
+</span></code></pre></div></p>
+<p>Removes the batch's changes from your working tree by applying the reverse of the batch's diff.</p>
+<p><strong>Line-level discarding:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>❯ git-stage-batch discard --from batch-name --line 2,4
+</span></code></pre></div></p>
+<p>Discard only specific lines from the batch, allowing surgical removal of batch changes.</p>
+<p><strong>File-level discarding (selected file):</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>❯ git-stage-batch discard --from batch-name --file
+</span></code></pre></div></p>
+<p>Remove batch changes from the working tree for the selected hunk's file only. Use this during a staging session when you want to discard batch changes for the file you're reviewing, without affecting other files in the batch.</p>
+<p><strong>File-level discarding (specific file):</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>❯ git-stage-batch discard --from batch-name --file src/experimental.py
+</span></code></pre></div></p>
+<p>Remove batch changes for <code>src/experimental.py</code> only, without needing a selected hunk. Useful for discarding specific files from multi-file batches.</p>
+<div class="admonition warning">
+<p class="admonition-title">Destructive Operation</p>
+<p>This permanently removes changes from your working tree.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Constraint-Based Reversal</p>
+<p><code>discard --from BATCH</code> uses structural analysis to reverse batch changes by:
+- Removing batch-added content (insertions)
+- Restoring batch-modified lines to their baseline state
+- Re-inserting batch-deleted sequences at their original boundaries</p>
+<p>The operation succeeds when:
+- Batch-owned content can be unambiguously identified in the current file
+- Modified regions have clear line-by-line correspondence with baseline, OR
+- Modified regions are fully batch-owned (allowing atomic restoration)</p>
+<p>Failures occur when:
+- Partial ownership of regions that cannot be restored line-by-line
+- File structure has changed so drastically that batch content cannot be located
+- Deleted sequences cannot be re-inserted at original anchored boundaries</p>
+<p>The batch itself persists - only the working tree is modified. Use <code>--file</code> to
+filter to a specific file, or <code>--line</code> to discard only specific lines.</p>
+</div>
+<hr />
+<h2 id="apply-from-batch"><code>apply --from BATCH</code><a class="headerlink" href="#apply-from-batch" title="Permanent link">&para;</a></h2>
+<p>Apply batch changes to the working tree without staging them.</p>
+<p><strong>Apply entire batch:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>❯ git-stage-batch apply --from batch-name
+</span></code></pre></div></p>
+<p>Applies the batch's accumulated changes to your working tree, leaving the index untouched. This is different from <code>include --from</code> which stages changes to the index.</p>
+<p><strong>Use cases:</strong>
+- Temporarily applying batched changes to test them before committing
+- Restoring changes that were saved with <code>discard --to</code>
+- Previewing batch changes in your working tree before staging</p>
+<p><strong>Line-level application:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>❯ git-stage-batch apply --from batch-name --line 1-3
+</span></code></pre></div></p>
+<p>Apply only specific lines from the batch to the working tree.</p>
+<p><strong>File-level application (selected file):</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>❯ git-stage-batch apply --from batch-name --file
+</span></code></pre></div></p>
+<p>Apply batch changes to the working tree for the selected hunk's file only. Use this during a staging session when you want to preview batch changes for the file you're reviewing, without affecting other files in the batch.</p>
+<p><strong>File-level application (specific file):</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>❯ git-stage-batch apply --from batch-name --file src/debug.py
+</span></code></pre></div></p>
+<p>Apply batch changes for <code>src/debug.py</code> only to the working tree, without needing a selected hunk. Useful for testing specific files from multi-file batches.</p>
+<div class="admonition warning">
+<p class="admonition-title">Merge-Based Application</p>
+<p><code>apply --from BATCH</code> uses the same structural merge as <code>include --from BATCH</code>,
+intelligently applying batch changes even if the working tree has evolved.</p>
+<p>See the warning under <code>include --from BATCH</code> for details on when merge succeeds
+or fails.</p>
+<p>On failure, run <code>show --from BATCH</code> to review the changes, or use <code>--file</code> to
+filter to a specific file, or <code>--line</code> to apply only specific lines.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Working Tree Only</p>
+<p>Unlike <code>include --from</code>, this command modifies only the working tree and leaves
+the index (staging area) untouched. Use this when you want to preview or test
+changes before staging them.</p>
+</div>
+<p><strong>Example workflow:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Save debugging changes to a batch</span>
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>debug
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># Later, temporarily restore them to test</span>
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>apply<span class="w"> </span>--from<span class="w"> </span>debug
+</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="c1"># Test the code with debug output...</span>
+</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>
+</span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="c1"># Remove them again when done</span>
+</span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>❯<span class="w"> </span>git<span class="w"> </span>restore<span class="w"> </span>.
+</span></code></pre></div></p>
+<p><strong>Example - Selective file preview:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="c1"># Batch has changes to auth.py, config.py, utils.py</span>
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>apply<span class="w"> </span>--from<span class="w"> </span>refactor<span class="w"> </span>--file<span class="w"> </span>auth.py
+</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="c1"># Only auth.py changes are in working tree, others remain in batch</span>
+</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
+</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="c1"># Test auth.py changes...</span>
+</span><span id="__span-22-6"><a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>
+</span><span id="__span-22-7"><a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="c1"># Restore and try a different file</span>
+</span><span id="__span-22-8"><a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>❯<span class="w"> </span>git<span class="w"> </span>restore<span class="w"> </span>auth.py
+</span><span id="__span-22-9"><a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>apply<span class="w"> </span>--from<span class="w"> </span>refactor<span class="w"> </span>--file<span class="w"> </span>config.py
+</span></code></pre></div></p>
+<hr />
+<h2 id="reset-from-batch"><code>reset --from BATCH</code><a class="headerlink" href="#reset-from-batch" title="Permanent link">&para;</a></h2>
+<p>Remove claims from a batch without changing the working tree.</p>
+<p><strong>Reset entire batch:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>❯ git-stage-batch reset --from batch-name
+</span></code></pre></div></p>
+<p>Clears all files from the batch.</p>
+<p><strong>Reset selected file:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>❯ git-stage-batch reset --from batch-name --file src/debug.py
+</span></code></pre></div></p>
+<p>Removes only <code>src/debug.py</code> from the batch. If <code>--file</code> is used without a path, the selected hunk's file is used.</p>
+<p><strong>Reset selected lines from a file:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>❯ git-stage-batch reset --from batch-name --file src/debug.py --line 1,3-5
+</span></code></pre></div></p>
+<p>Removes only those line claims from the batch. Line reset is resolved from the batch's stored source commit, not from the current working tree contents.</p>
+<p><strong>Split selected claims into another batch:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>❯ git-stage-batch reset --from batch-name --to other-batch --file src/debug.py --line 1,3-5
+</span></code></pre></div></p>
+<p>Moves the selected claims into <code>other-batch</code> and removes them from <code>batch-name</code>. If <code>other-batch</code> does not exist, it is created with the source batch's baseline so the split is independent of the current working tree or current <code>HEAD</code>.</p>
+<hr />
+<h2 id="include-to-batch"><code>include --to BATCH</code><a class="headerlink" href="#include-to-batch" title="Permanent link">&para;</a></h2>
+<p>Include the selected hunk in a batch for later staging.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>❯ git-stage-batch include --to batch-name
+</span></code></pre></div>
+<p>This captures a snapshot of the current working tree state (the <strong>batch source</strong>) along with ownership information for the selected lines, then marks the hunk as processed. The changes remain in your working tree and can be staged later using <code>include --from BATCH</code>.</p>
+<p>The batch source allows later operations to intelligently merge or discard changes even if your code has evolved since the batch was created.</p>
+<p><strong>Save specific lines only:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>❯ git-stage-batch include --to batch-name --line 1,3,5-7
+</span></code></pre></div></p>
+<p>Use <code>--line</code> to save only selected line IDs to the batch, leaving the rest for the selected session.</p>
+<p><strong>Auto-creation:</strong>
+If the batch doesn't exist, it will be automatically created with the note "Auto-created".</p>
+<p><strong>Use cases:</strong>
+- Deferring changes for later review while continuing to process other hunks
+- Grouping related changes across multiple files for a separate commit
+- Temporarily setting aside changes you're uncertain about</p>
+<p><strong>Line-level saving:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>❯ git-stage-batch include --to batch-name --line 1,3
+</span></code></pre></div></p>
+<p>Save only specific lines to the batch, allowing fine-grained accumulation of changes.</p>
+<p><strong>File-level saving:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>❯ git-stage-batch include --to batch-name --file
+</span></code></pre></div></p>
+<p>Save the entire selected file to the batch instead of just the selected hunk. Useful when you want to defer an entire file's changes as a unit.</p>
+<hr />
+<h2 id="discard-to-batch"><code>discard --to BATCH</code><a class="headerlink" href="#discard-to-batch" title="Permanent link">&para;</a></h2>
+<p>Save the selected hunk to a batch, then discard it from the working tree.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>❯ git-stage-batch discard --to batch-name
+</span></code></pre></div>
+<p>This captures a snapshot of the current working tree state (the <strong>batch source</strong>) along with ownership information for the selected lines, then removes the changes from your working tree. The batch acts as a backup allowing later recovery via <code>apply --from BATCH</code> or <code>include --from BATCH</code>.</p>
+<p><strong>Save and discard specific lines only:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>❯ git-stage-batch discard --to batch-name --line 1,3,5-7
+</span></code></pre></div></p>
+<p>Use <code>--line</code> to save and discard only selected line IDs, leaving other changes in the working tree.</p>
+<div class="admonition warning">
+<p class="admonition-title">Destructive Operation</p>
+<p>This removes changes from your working tree after saving them to the batch.</p>
+</div>
+<p><strong>Auto-creation:</strong>
+If the batch doesn't exist, it will be automatically created.</p>
+<p><strong>Use cases:</strong>
+- Removing debug code while keeping it available for later
+- Discarding experimental changes but preserving them for potential reuse
+- Cleaning up your working tree while maintaining a safety net</p>
+<p><strong>Line-level saving and discarding:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>❯ git-stage-batch discard --to batch-name --line 2,4-6
+</span></code></pre></div></p>
+<p>Save and discard only specific lines, preserving other changes in your working tree.</p>
+<p><strong>File-level saving and discarding:</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>❯ git-stage-batch discard --to batch-name --file
+</span></code></pre></div></p>
+<p>Save the entire selected file to the batch, then discard the entire file from the working tree. Useful when you want to completely remove a file while preserving it for potential recovery.</p>
+<p><strong>Example workflow:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="c1"># Accidentally included debug logging in your changes</span>
+</span><span id="__span-35-2"><a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
+</span><span id="__span-35-3"><a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>debug-logging
+</span><span id="__span-35-4"><a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>
+</span><span id="__span-35-5"><a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="c1"># Or save only the debug print statements (lines 5-7)</span>
+</span><span id="__span-35-6"><a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>debug-logging<span class="w"> </span>--line<span class="w"> </span><span class="m">5</span>-7
+</span><span id="__span-35-7"><a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a>
+</span><span id="__span-35-8"><a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a><span class="c1"># Later, if you need the debug code back:</span>
+</span><span id="__span-35-9"><a id="__codelineno-35-9" name="__codelineno-35-9" href="#__codelineno-35-9"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>debug-logging
+</span></code></pre></div></p>
+<hr />
+<h2 id="advanced-workflow-decomposing-and-recomposing-history">Advanced Workflow: Decomposing and Recomposing History<a class="headerlink" href="#advanced-workflow-decomposing-and-recomposing-history" title="Permanent link">&para;</a></h2>
+<p>When you have a messy working tree with multiple logical changes intertwined, you can use batches to decompose the changes into layers, create clean checkpoints, then recompose them as a series of well-organized commits.</p>
+<p><strong>Strategy:</strong>
+1. Use <code>discard --to</code> to peel off the topmost logical layer
+2. Edit the tree to fix dependencies (remove calls to code you just discarded)
+3. Repeat for each layer, working from outside to inside
+4. Apply batches back in reverse order with clear commit messages</p>
+<p><strong>Example workflow:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-36-1"><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="c1"># Starting state: messy working tree with authentication refactor,</span>
+</span><span id="__span-36-2"><a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="c1"># new API endpoint, and database migration all mixed together</span>
+</span><span id="__span-36-3"><a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>
+</span><span id="__span-36-4"><a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
+</span><span id="__span-36-5"><a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a>
+</span><span id="__span-36-6"><a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="c1"># Layer 1: Peel off the API endpoint (topmost layer, depends on auth changes)</span>
+</span><span id="__span-36-7"><a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>api-endpoint<span class="w"> </span>--note<span class="w"> </span><span class="s2">&quot;Layer 3: API endpoint (depends on layer 2: auth)&quot;</span>
+</span><span id="__span-36-8"><a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a><span class="c1"># Tree now has auth + database changes</span>
+</span><span id="__span-36-9"><a id="__codelineno-36-9" name="__codelineno-36-9" href="#__codelineno-36-9"></a>
+</span><span id="__span-36-10"><a id="__codelineno-36-10" name="__codelineno-36-10" href="#__codelineno-36-10"></a><span class="c1"># Fix dependencies: remove the API route registration that depended on the endpoint</span>
+</span><span id="__span-36-11"><a id="__codelineno-36-11" name="__codelineno-36-11" href="#__codelineno-36-11"></a>❯<span class="w"> </span><span class="nv">$EDITOR</span><span class="w"> </span>main.py<span class="w">  </span><span class="c1"># Remove route registration</span>
+</span><span id="__span-36-12"><a id="__codelineno-36-12" name="__codelineno-36-12" href="#__codelineno-36-12"></a>
+</span><span id="__span-36-13"><a id="__codelineno-36-13" name="__codelineno-36-13" href="#__codelineno-36-13"></a><span class="c1"># Layer 2: Peel off authentication refactor (depends on database schema)</span>
+</span><span id="__span-36-14"><a id="__codelineno-36-14" name="__codelineno-36-14" href="#__codelineno-36-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>again<span class="w">  </span><span class="c1"># Restart to see remaining hunks</span>
+</span><span id="__span-36-15"><a id="__codelineno-36-15" name="__codelineno-36-15" href="#__codelineno-36-15"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>auth-refactor<span class="w"> </span>--note<span class="w"> </span><span class="s2">&quot;Layer 2: auth refactor (depends on layer 1: database)&quot;</span>
+</span><span id="__span-36-16"><a id="__codelineno-36-16" name="__codelineno-36-16" href="#__codelineno-36-16"></a><span class="c1"># Tree now has only database changes</span>
+</span><span id="__span-36-17"><a id="__codelineno-36-17" name="__codelineno-36-17" href="#__codelineno-36-17"></a>
+</span><span id="__span-36-18"><a id="__codelineno-36-18" name="__codelineno-36-18" href="#__codelineno-36-18"></a><span class="c1"># Fix dependencies: remove auth code that depended on new DB columns</span>
+</span><span id="__span-36-19"><a id="__codelineno-36-19" name="__codelineno-36-19" href="#__codelineno-36-19"></a>❯<span class="w"> </span><span class="nv">$EDITOR</span><span class="w"> </span>auth.py<span class="w">  </span><span class="c1"># Remove references to new columns</span>
+</span><span id="__span-36-20"><a id="__codelineno-36-20" name="__codelineno-36-20" href="#__codelineno-36-20"></a>
+</span><span id="__span-36-21"><a id="__codelineno-36-21" name="__codelineno-36-21" href="#__codelineno-36-21"></a><span class="c1"># Layer 3: What remains is the foundation (database migration)</span>
+</span><span id="__span-36-22"><a id="__codelineno-36-22" name="__codelineno-36-22" href="#__codelineno-36-22"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>again
+</span><span id="__span-36-23"><a id="__codelineno-36-23" name="__codelineno-36-23" href="#__codelineno-36-23"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>database-migration<span class="w"> </span>--note<span class="w"> </span><span class="s2">&quot;Layer 1: database foundation (no dependencies)&quot;</span>
+</span><span id="__span-36-24"><a id="__codelineno-36-24" name="__codelineno-36-24" href="#__codelineno-36-24"></a><span class="c1"># Tree is now clean (or back to original state)</span>
+</span><span id="__span-36-25"><a id="__codelineno-36-25" name="__codelineno-36-25" href="#__codelineno-36-25"></a>
+</span><span id="__span-36-26"><a id="__codelineno-36-26" name="__codelineno-36-26" href="#__codelineno-36-26"></a><span class="c1"># Review the decomposition</span>
+</span><span id="__span-36-27"><a id="__codelineno-36-27" name="__codelineno-36-27" href="#__codelineno-36-27"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>list
+</span><span id="__span-36-28"><a id="__codelineno-36-28" name="__codelineno-36-28" href="#__codelineno-36-28"></a>Batches:
+</span><span id="__span-36-29"><a id="__codelineno-36-29" name="__codelineno-36-29" href="#__codelineno-36-29"></a><span class="w">  </span>database-migration:<span class="w"> </span>Layer<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>database<span class="w"> </span>foundation<span class="w"> </span><span class="o">(</span>no<span class="w"> </span>dependencies<span class="o">)</span><span class="w"> </span><span class="o">(</span>created<span class="w"> </span><span class="m">2</span><span class="w"> </span>minutes<span class="w"> </span>ago<span class="o">)</span>
+</span><span id="__span-36-30"><a id="__codelineno-36-30" name="__codelineno-36-30" href="#__codelineno-36-30"></a><span class="w">  </span>auth-refactor:<span class="w"> </span>Layer<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>auth<span class="w"> </span>refactor<span class="w"> </span><span class="o">(</span>depends<span class="w"> </span>on<span class="w"> </span>layer<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>database<span class="o">)</span><span class="w"> </span><span class="o">(</span>created<span class="w"> </span><span class="m">1</span><span class="w"> </span>minute<span class="w"> </span>ago<span class="o">)</span>
+</span><span id="__span-36-31"><a id="__codelineno-36-31" name="__codelineno-36-31" href="#__codelineno-36-31"></a><span class="w">  </span>api-endpoint:<span class="w"> </span>Layer<span class="w"> </span><span class="m">3</span>:<span class="w"> </span>API<span class="w"> </span>endpoint<span class="w"> </span><span class="o">(</span>depends<span class="w"> </span>on<span class="w"> </span>layer<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>auth<span class="o">)</span><span class="w"> </span><span class="o">(</span>created<span class="w"> </span><span class="m">30</span><span class="w"> </span>seconds<span class="w"> </span>ago<span class="o">)</span>
+</span><span id="__span-36-32"><a id="__codelineno-36-32" name="__codelineno-36-32" href="#__codelineno-36-32"></a>
+</span><span id="__span-36-33"><a id="__codelineno-36-33" name="__codelineno-36-33" href="#__codelineno-36-33"></a><span class="c1"># Now recompose in dependency order (reverse of discard order)</span>
+</span><span id="__span-36-34"><a id="__codelineno-36-34" name="__codelineno-36-34" href="#__codelineno-36-34"></a>
+</span><span id="__span-36-35"><a id="__codelineno-36-35" name="__codelineno-36-35" href="#__codelineno-36-35"></a><span class="c1"># Step 1: Apply foundation layer</span>
+</span><span id="__span-36-36"><a id="__codelineno-36-36" name="__codelineno-36-36" href="#__codelineno-36-36"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>database-migration
+</span><span id="__span-36-37"><a id="__codelineno-36-37" name="__codelineno-36-37" href="#__codelineno-36-37"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;database: Add user preferences table</span>
+</span><span id="__span-36-38"><a id="__codelineno-36-38" name="__codelineno-36-38" href="#__codelineno-36-38"></a>
+</span><span id="__span-36-39"><a id="__codelineno-36-39" name="__codelineno-36-39" href="#__codelineno-36-39"></a><span class="s2">The application stores all configuration in code, preventing users from</span>
+</span><span id="__span-36-40"><a id="__codelineno-36-40" name="__codelineno-36-40" href="#__codelineno-36-40"></a><span class="s2">customizing their experience across sessions.</span>
+</span><span id="__span-36-41"><a id="__codelineno-36-41" name="__codelineno-36-41" href="#__codelineno-36-41"></a>
+</span><span id="__span-36-42"><a id="__codelineno-36-42" name="__codelineno-36-42" href="#__codelineno-36-42"></a><span class="s2">Users need persistent storage for individual preferences like theme choice,</span>
+</span><span id="__span-36-43"><a id="__codelineno-36-43" name="__codelineno-36-43" href="#__codelineno-36-43"></a><span class="s2">language selection, and timezone settings that survive across logins.</span>
+</span><span id="__span-36-44"><a id="__codelineno-36-44" name="__codelineno-36-44" href="#__codelineno-36-44"></a>
+</span><span id="__span-36-45"><a id="__codelineno-36-45" name="__codelineno-36-45" href="#__codelineno-36-45"></a><span class="s2">This commit adds a preferences table with columns for theme, language, and</span>
+</span><span id="__span-36-46"><a id="__codelineno-36-46" name="__codelineno-36-46" href="#__codelineno-36-46"></a><span class="s2">timezone. Includes migration script and updated schema documentation.&quot;</span>
+</span><span id="__span-36-47"><a id="__codelineno-36-47" name="__codelineno-36-47" href="#__codelineno-36-47"></a>
+</span><span id="__span-36-48"><a id="__codelineno-36-48" name="__codelineno-36-48" href="#__codelineno-36-48"></a><span class="c1"># Step 2: Apply authentication layer</span>
+</span><span id="__span-36-49"><a id="__codelineno-36-49" name="__codelineno-36-49" href="#__codelineno-36-49"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>auth-refactor
+</span><span id="__span-36-50"><a id="__codelineno-36-50" name="__codelineno-36-50" href="#__codelineno-36-50"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;auth: Load user preferences during session initialization</span>
+</span><span id="__span-36-51"><a id="__codelineno-36-51" name="__codelineno-36-51" href="#__codelineno-36-51"></a>
+</span><span id="__span-36-52"><a id="__codelineno-36-52" name="__codelineno-36-52" href="#__codelineno-36-52"></a><span class="s2">The authentication module creates sessions but doesn&#39;t populate user preferences,</span>
+</span><span id="__span-36-53"><a id="__codelineno-36-53" name="__codelineno-36-53" href="#__codelineno-36-53"></a><span class="s2">requiring separate queries throughout the application to access settings.</span>
+</span><span id="__span-36-54"><a id="__codelineno-36-54" name="__codelineno-36-54" href="#__codelineno-36-54"></a>
+</span><span id="__span-36-55"><a id="__codelineno-36-55" name="__codelineno-36-55" href="#__codelineno-36-55"></a><span class="s2">Users experience slower page loads as each component independently queries for</span>
+</span><span id="__span-36-56"><a id="__codelineno-36-56" name="__codelineno-36-56" href="#__codelineno-36-56"></a><span class="s2">preference data instead of loading it once at authentication time.</span>
+</span><span id="__span-36-57"><a id="__codelineno-36-57" name="__codelineno-36-57" href="#__codelineno-36-57"></a>
+</span><span id="__span-36-58"><a id="__codelineno-36-58" name="__codelineno-36-58" href="#__codelineno-36-58"></a><span class="s2">This commit updates the auth module to read user preferences from the new table</span>
+</span><span id="__span-36-59"><a id="__codelineno-36-59" name="__codelineno-36-59" href="#__codelineno-36-59"></a><span class="s2">during session creation. Preferences are cached in the session object, eliminating</span>
+</span><span id="__span-36-60"><a id="__codelineno-36-60" name="__codelineno-36-60" href="#__codelineno-36-60"></a><span class="s2">redundant database queries.&quot;</span>
+</span><span id="__span-36-61"><a id="__codelineno-36-61" name="__codelineno-36-61" href="#__codelineno-36-61"></a>
+</span><span id="__span-36-62"><a id="__codelineno-36-62" name="__codelineno-36-62" href="#__codelineno-36-62"></a><span class="c1"># Step 3: Apply API layer</span>
+</span><span id="__span-36-63"><a id="__codelineno-36-63" name="__codelineno-36-63" href="#__codelineno-36-63"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>api-endpoint
+</span><span id="__span-36-64"><a id="__codelineno-36-64" name="__codelineno-36-64" href="#__codelineno-36-64"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;api: Add endpoint for updating user preferences</span>
+</span><span id="__span-36-65"><a id="__codelineno-36-65" name="__codelineno-36-65" href="#__codelineno-36-65"></a>
+</span><span id="__span-36-66"><a id="__codelineno-36-66" name="__codelineno-36-66" href="#__codelineno-36-66"></a><span class="s2">Users can view their preferences but have no way to modify them without direct</span>
+</span><span id="__span-36-67"><a id="__codelineno-36-67" name="__codelineno-36-67" href="#__codelineno-36-67"></a><span class="s2">database access, forcing administrators to handle routine preference changes.</span>
+</span><span id="__span-36-68"><a id="__codelineno-36-68" name="__codelineno-36-68" href="#__codelineno-36-68"></a>
+</span><span id="__span-36-69"><a id="__codelineno-36-69" name="__codelineno-36-69" href="#__codelineno-36-69"></a><span class="s2">A self-service interface is needed for users to customize their experience without</span>
+</span><span id="__span-36-70"><a id="__codelineno-36-70" name="__codelineno-36-70" href="#__codelineno-36-70"></a><span class="s2">administrative intervention.</span>
+</span><span id="__span-36-71"><a id="__codelineno-36-71" name="__codelineno-36-71" href="#__codelineno-36-71"></a>
+</span><span id="__span-36-72"><a id="__codelineno-36-72" name="__codelineno-36-72" href="#__codelineno-36-72"></a><span class="s2">This commit adds a /api/preferences endpoint accepting PUT requests with theme,</span>
+</span><span id="__span-36-73"><a id="__codelineno-36-73" name="__codelineno-36-73" href="#__codelineno-36-73"></a><span class="s2">language, and timezone fields. Integrates with the authentication system to</span>
+</span><span id="__span-36-74"><a id="__codelineno-36-74" name="__codelineno-36-74" href="#__codelineno-36-74"></a><span class="s2">validate sessions and update preferences atomically.&quot;</span>
+</span><span id="__span-36-75"><a id="__codelineno-36-75" name="__codelineno-36-75" href="#__codelineno-36-75"></a>
+</span><span id="__span-36-76"><a id="__codelineno-36-76" name="__codelineno-36-76" href="#__codelineno-36-76"></a><span class="c1"># Clean up batches</span>
+</span><span id="__span-36-77"><a id="__codelineno-36-77" name="__codelineno-36-77" href="#__codelineno-36-77"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>database-migration
+</span><span id="__span-36-78"><a id="__codelineno-36-78" name="__codelineno-36-78" href="#__codelineno-36-78"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>auth-refactor
+</span><span id="__span-36-79"><a id="__codelineno-36-79" name="__codelineno-36-79" href="#__codelineno-36-79"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>api-endpoint
+</span><span id="__span-36-80"><a id="__codelineno-36-80" name="__codelineno-36-80" href="#__codelineno-36-80"></a>
+</span><span id="__span-36-81"><a id="__codelineno-36-81" name="__codelineno-36-81" href="#__codelineno-36-81"></a><span class="c1"># Result: clean, logical commit history instead of one messy commit</span>
+</span></code></pre></div>
+<p><strong>Key insights:</strong></p>
+<ul>
+<li>Use <code>--note</code> to document layer dependencies when creating batches</li>
+<li>Update notes with <code>annotate</code> if you discover dependencies later</li>
+<li>The batches themselves are your backup - no need for checkpoint commits</li>
+<li>The decomposition order is outside-in (what depends on what)</li>
+<li>The recomposition order is inside-out (foundations first, dependents later)</li>
+<li>Edit the tree between <code>discard --to</code> operations to fix broken dependencies</li>
+<li>This pattern is powerful for untangling complex changesets into reviewable commits</li>
+</ul>
+<hr />
+<h2 id="frequently-asked-questions">Frequently Asked Questions<a class="headerlink" href="#frequently-asked-questions" title="Permanent link">&para;</a></h2>
+<h3 id="how-are-batches-different-from-git-stashes">How are batches different from Git stashes?<a class="headerlink" href="#how-are-batches-different-from-git-stashes" title="Permanent link">&para;</a></h3>
+<p>A stash saves the entire state of your working tree so you can return to it later. A batch saves a <strong>logical change</strong> so you can organize it into a clean commit later.</p>
+<p>Stashes are for temporarily setting work aside. Batches are for structuring and organizing work before committing it.</p>
+<p>With a stash, you capture everything:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-37-1"><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>git<span class="w"> </span>stash
+</span></code></pre></div>
+<p>With a batch, you capture only the parts you choose:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-38-1"><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
+</span><span id="__span-38-2"><a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>cli
+</span><span id="__span-38-3"><a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>docs
+</span></code></pre></div>
+<p>Later, you can turn each batch into a commit.</p>
+<hr />
+<h3 id="why-not-just-use-git-stash">Why not just use <code>git stash</code>?<a class="headerlink" href="#why-not-just-use-git-stash" title="Permanent link">&para;</a></h3>
+<p>Stashes are snapshots of your workspace. They are not designed to organize code changes into meaningful commits.</p>
+<p>If your working tree contains multiple logical changes, a stash will bundle them all together. Batches let you separate them as you go.</p>
+<p>For example:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-39-1"><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>working tree:
+</span><span id="__span-39-2"><a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>  parser work
+</span><span id="__span-39-3"><a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a>  CLI changes
+</span><span id="__span-39-4"><a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a>  documentation updates
+</span></code></pre></div>
+<p>With stashes, those changes are stored together.</p>
+<p>With batches, they can be separated:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-40-1"><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>parser
+</span><span id="__span-40-2"><a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>cli
+</span><span id="__span-40-3"><a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>docs
+</span></code></pre></div>
+<p>Each batch can later become its own commit.</p>
+<hr />
+<h3 id="can-i-replace-stashes-with-batches">Can I replace stashes with batches?<a class="headerlink" href="#can-i-replace-stashes-with-batches" title="Permanent link">&para;</a></h3>
+<p>No. They solve different problems.</p>
+<p>Use stashes when you need to quickly save your working state:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-41-1"><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>git<span class="w"> </span>stash
+</span><span id="__span-41-2"><a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>git<span class="w"> </span>pull
+</span><span id="__span-41-3"><a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>git<span class="w"> </span>stash<span class="w"> </span>pop
+</span></code></pre></div>
+<p>Use batches when you're organizing a messy working tree into clean commits.</p>
+<hr />
+<h3 id="how-are-batches-different-from-commits">How are batches different from commits?<a class="headerlink" href="#how-are-batches-different-from-commits" title="Permanent link">&para;</a></h3>
+<p>A commit is permanent project history. A batch is a temporary container for changes you are still organizing.</p>
+<p>You should think of a batch as a <strong>draft commit</strong>.</p>
+<p>Example workflow:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-42-1"><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
+</span><span id="__span-42-2"><a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
+</span><span id="__span-42-3"><a id="__codelineno-42-3" name="__codelineno-42-3" href="#__codelineno-42-3"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
+</span><span id="__span-42-4"><a id="__codelineno-42-4" name="__codelineno-42-4" href="#__codelineno-42-4"></a>
+</span><span id="__span-42-5"><a id="__codelineno-42-5" name="__codelineno-42-5" href="#__codelineno-42-5"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>parser
+</span><span id="__span-42-6"><a id="__codelineno-42-6" name="__codelineno-42-6" href="#__codelineno-42-6"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add parser implementation&quot;</span>
+</span></code></pre></div>
+<p>The batch helps assemble the commit, but it is not part of the repository history itself.</p>
+<hr />
+<h3 id="why-not-just-commit-earlier">Why not just commit earlier?<a class="headerlink" href="#why-not-just-commit-earlier" title="Permanent link">&para;</a></h3>
+<p>Sometimes your working tree contains changes that belong to different commits but are mixed together.</p>
+<p>For example:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-43-1"><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>working tree:
+</span><span id="__span-43-2"><a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>  parser feature
+</span><span id="__span-43-3"><a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>  CLI integration
+</span><span id="__span-43-4"><a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a>  documentation
+</span><span id="__span-43-5"><a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a>  refactor
+</span></code></pre></div>
+<p>You could commit everything at once, but that produces messy history.</p>
+<p>Batches let you reorganize changes into logical commits before publishing them.</p>
+<hr />
+<h3 id="are-batches-like-temporary-branches">Are batches like temporary branches?<a class="headerlink" href="#are-batches-like-temporary-branches" title="Permanent link">&para;</a></h3>
+<p>Not really.</p>
+<p>Branches organize commits. Batches organize <strong>uncommitted changes</strong>.</p>
+<p>A branch looks like this:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-44-1"><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>commit → commit → commit
+</span></code></pre></div>
+<p>A batch looks more like this:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-45-1"><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>selected hunks → staged later → commit
+</span></code></pre></div>
+<p>They operate at different levels of the workflow.</p>
+<hr />
+<h3 id="do-batches-modify-my-git-history">Do batches modify my Git history?<a class="headerlink" href="#do-batches-modify-my-git-history" title="Permanent link">&para;</a></h3>
+<p>No.</p>
+<p>Batches are stored separately from your commit history. They only affect how you prepare commits.</p>
+<p>Once a batch is included and committed, the batch itself can be dropped.</p>
+<hr />
+<h3 id="when-should-i-use-batches">When should I use batches?<a class="headerlink" href="#when-should-i-use-batches" title="Permanent link">&para;</a></h3>
+<p>Batches are useful when your working tree contains multiple logical changes and you want to turn them into clean commits.</p>
+<p>Typical cases include:</p>
+<ul>
+<li>splitting a large diff into logical commits</li>
+<li>organizing refactors before submitting a pull request</li>
+<li>reconstructing history for a patch series</li>
+<li>preparing changes before rebasing or squashing</li>
+</ul>
+<hr />
+<h3 id="are-batches-meant-to-be-long-lived">Are batches meant to be long-lived?<a class="headerlink" href="#are-batches-meant-to-be-long-lived" title="Permanent link">&para;</a></h3>
+<p>No. Batches are usually short-lived.</p>
+<p>They exist while you are organizing a set of commits and are typically dropped once the commits have been created.</p>
+<hr />
+<h3 id="do-batches-replace-git-add-p">Do batches replace <code>git add -p</code>?<a class="headerlink" href="#do-batches-replace-git-add-p" title="Permanent link">&para;</a></h3>
+<p>No. Batches build on the same idea.</p>
+<p><code>git add -p</code> lets you stage parts of a change.
+Batches let you <strong>defer and group those parts</strong> so they can become separate commits later.</p>
+<hr />
+<h3 id="why-use-batches-instead-of-staging-everything-immediately">Why use batches instead of staging everything immediately?<a class="headerlink" href="#why-use-batches-instead-of-staging-everything-immediately" title="Permanent link">&para;</a></h3>
+<p>Because sometimes you do not yet know which commit a change belongs in.</p>
+<p>Batches let you postpone that decision while still organizing the changes.</p>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  <form class="md-feedback" name="feedback" hidden>
+    <fieldset>
+      <legend class="md-feedback__title">
+        Was this page helpful?
+      </legend>
+      <div class="md-feedback__inner">
+        <div class="md-feedback__list">
+          
+            <button class="md-feedback__icon md-icon" type="submit" title="This page was helpful" data-md-value="1">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5 9v12H1V9zm4 12a2 2 0 0 1-2-2V9c0-.55.22-1.05.59-1.41L14.17 1l1.06 1.06c.27.27.44.64.44 1.05l-.03.32L14.69 8H21a2 2 0 0 1 2 2v2c0 .26-.05.5-.14.73l-3.02 7.05C19.54 20.5 18.83 21 18 21zm0-2h9.03L21 12v-2h-8.79l1.13-5.32L9 9.03z"/></svg>
+            </button>
+          
+            <button class="md-feedback__icon md-icon" type="submit" title="This page could be improved" data-md-value="0">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 15V3h4v12zM15 3a2 2 0 0 1 2 2v10c0 .55-.22 1.05-.59 1.41L9.83 23l-1.06-1.06c-.27-.27-.44-.64-.44-1.06l.03-.31.95-4.57H3a2 2 0 0 1-2-2v-2c0-.26.05-.5.14-.73l3.02-7.05C4.46 3.5 5.17 3 6 3zm0 2H5.97L3 12v2h8.78l-1.13 5.32L15 14.97z"/></svg>
+            </button>
+          
+        </div>
+        <div class="md-feedback__note">
+          
+            <div data-md-value="1" hidden>
+              
+              
+                
+              
+              
+              
+                
+                
+              
+              Thanks for your feedback!
+            </div>
+          
+            <div data-md-value="0" hidden>
+              
+              
+                
+              
+              
+              
+                
+                
+              
+              Thanks for your feedback!
+            </div>
+          
+        </div>
+      </div>
+    </fieldset>
+  </form>
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2025-2026 Ray Strode
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/halfline/git-stage-batch" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/git-stage-batch/" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../assets/extra.js"></script>
+      
+    
+  </body>
+</html>

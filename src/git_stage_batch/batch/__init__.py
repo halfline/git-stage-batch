@@ -14,13 +14,20 @@ from .query import (
     list_batch_names,
     read_batch_metadata,
 )
-from .storage import add_binary_file_to_batch, add_file_to_batch, get_batch_diff, read_file_from_batch
+from .storage import (
+    add_binary_file_to_batch,
+    add_file_to_batch,
+    copy_file_from_batch_to_batch,
+    get_batch_diff,
+    read_file_from_batch,
+)
 from .validation import batch_exists, validate_batch_name
 
 __all__ = [
     "add_binary_file_to_batch",
     "add_file_to_batch",
     "batch_exists",
+    "copy_file_from_batch_to_batch",
     "create_batch",
     "delete_batch",
     "get_batch_baseline_commit",

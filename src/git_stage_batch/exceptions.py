@@ -17,6 +17,11 @@ def exit_with_error(message: str, exit_code: int = 1) -> None:
     raise CommandError(message, exit_code)
 
 
+class QuitInteractive(Exception):
+    """Raised to exit the interactive mode main loop."""
+    pass
+
+
 class BypassRefresh(Exception):
     """Raised when an action should not refresh the display."""
     pass
@@ -39,10 +44,26 @@ class MissingAnchorError(MergeError):
 class AmbiguousAnchorError(MergeError):
     """Raised when an anchor line appears multiple times without clear precedence.
 
-    This is NOT recoverable: structural ambiguity means we cannot determine
+    This is not recoverable: structural ambiguity means we cannot determine
     the correct boundary for the deletion.
     """
     pass
+
+
+class AtomicUnitError(MergeError):
+    """Raised when attempting to partially select an atomic ownership unit.
+
+    Atomic units (replacements, deletion-only) must be selected completely
+    or not at all. Partial selection would produce inconsistent ownership.
+
+    Attributes:
+        required_selection_ids: Set of selection IDs that must be selected together
+        unit_kind: Kind of unit (for error messages)
+    """
+    def __init__(self, message: str, required_selection_ids: set[int] | None = None, unit_kind: str | None = None):
+        super().__init__(message)
+        self.required_selection_ids = required_selection_ids
+        self.unit_kind = unit_kind
 
 
 class NoMoreHunks(Exception):

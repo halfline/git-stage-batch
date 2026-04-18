@@ -525,12 +525,6 @@ def _command_include_lines_to_batch(batch_name: str, line_id_specification: str,
     # Recalculate and show the updated hunk for this file with batched lines filtered out
     recalculate_selected_hunk_for_file(line_changes.path)
 
-    # Show the updated hunk (or next hunk if this file is now complete)
-    if not quiet:
-        line_changes_updated = load_line_changes_from_state()
-        if line_changes_updated is not None:
-            print_line_level_changes(line_changes_updated)
-
 
 def _filter_selected_hunk_excluding_batched_lines(*, quiet: bool = False) -> None:
     """Filter the selected hunk to exclude lines that have been batched and display it."""

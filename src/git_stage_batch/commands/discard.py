@@ -32,7 +32,6 @@ from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..exceptions import exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes
 from ..staging.operations import build_target_working_tree_content_bytes_with_discarded_lines
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
@@ -662,12 +661,6 @@ def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str,
 
     # After modifying working tree, recalculate and show the updated hunk for this file
     recalculate_selected_hunk_for_file(line_changes.path)
-
-    # Show the updated hunk (or next hunk if this file is now complete)
-    if not quiet:
-        line_changes_updated = load_line_changes_from_state()
-        if line_changes_updated is not None:
-            print_line_level_changes(line_changes_updated)
 
     log_journal("discard_lines_to_batch_success", batch_name=batch_name, line_ids=line_id_specification, file_path=line_changes.path)
 

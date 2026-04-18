@@ -218,6 +218,22 @@ This:
 
 ---
 
+### `undo`
+
+Undo the most recent undoable session operation, restoring the repository
+to its state before that operation.
+
+```
+❯ git-stage-batch undo
+```
+
+**Options:**
+- `--force`: Overwrite changes made after the undo checkpoint
+
+Refuses by default if the current state has changed since the checkpoint.
+
+---
+
 ## File-Level Operations
 
 ### `include --file [PATH]`

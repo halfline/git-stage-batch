@@ -60,7 +60,8 @@ def build_target_index_content_with_selected_lines(
         push_output(base_lines[base_pointer])
         base_pointer += 1
 
-    return "\n".join(output_lines) + ("\n" if (base_text.endswith("\n") or output_lines) else "")
+    trailing_newline = base_text.endswith("\n") or (not base_text and bool(output_lines))
+    return "\n".join(output_lines) + ("\n" if trailing_newline else "")
 
 
 def build_target_index_content_bytes_with_selected_lines(
@@ -101,7 +102,7 @@ def build_target_index_content_bytes_with_selected_lines(
         push_output(base_lines[base_pointer])
         base_pointer += 1
 
-    trailing_newline = base_content.endswith(b"\n") or bool(output_lines)
+    trailing_newline = base_content.endswith(b"\n") or (not base_content and bool(output_lines))
     return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
 
 

@@ -8,6 +8,7 @@ from ..batch import add_file_to_batch, create_batch
 from ..batch.display import annotate_with_batch_source
 from ..batch.ownership import BatchOwnership
 from ..batch.query import read_batch_metadata
+from ..batch.semantic_selection import try_build_semantic_selection_for_selected_hunk
 from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
@@ -50,6 +51,7 @@ from ..utils.paths import (
     get_selected_hunk_patch_file_path,
     get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
+    get_working_tree_snapshot_file_path,
 )
 
 
@@ -251,10 +253,49 @@ def command_include_line(line_id_specification: str) -> None:
 
     line_changes = load_line_changes_from_state()
 
-    # Get base content from index snapshot (captured when hunk was loaded)
-    base_bytes = read_file_bytes(get_index_snapshot_file_path())
+    # Get the selected hunk's base/source snapshots captured when the hunk was loaded.
+    hunk_base_content = read_file_bytes(get_index_snapshot_file_path())
+    hunk_source_content = read_file_bytes(get_working_tree_snapshot_file_path())
     with undo_checkpoint(f"include --line {line_id_specification}"):
-        target_index_content = build_target_index_content_bytes_with_selected_lines(line_changes, combined_include_ids, base_bytes)
+        index_result = run_git_command(
+            ["show", f":{line_changes.path}"],
+            check=False,
+            text_output=False,
+        )
+        current_index_content = index_result.stdout if index_result.returncode == 0 else b""
+
+        semantic_attempt = try_build_semantic_selection_for_selected_hunk(
+            line_changes=line_changes,
+            selected_display_ids=combined_include_ids,
+            selected_hunk_base_content=hunk_base_content,
+            selected_hunk_source_content=hunk_source_content,
+            current_index_content=current_index_content,
+        )
+        if semantic_attempt.used_semantic_staging:
+            log_journal(
+                "include_line_semantic_staging_used",
+                file_path=line_changes.path,
+                selected_ids=sorted(combined_include_ids),
+                pairing_mode=semantic_attempt.realization.pairing_mode if semantic_attempt.realization else None,
+            )
+            target_index_content = semantic_attempt.realized_content or b""
+        else:
+            # Semantic partial staging is a best-effort enhancement over legacy line
+            # staging. If semantic interpretation is ambiguous or unsupported, fall
+            # back to the legacy raw staging path instead of failing. Staging
+            # working-tree changes into the index should remain permissive.
+            log_journal(
+                "include_line_semantic_staging_declined",
+                file_path=line_changes.path,
+                selected_ids=sorted(combined_include_ids),
+                reason=semantic_attempt.reason,
+            )
+            target_index_content = build_target_index_content_bytes_with_selected_lines(
+                line_changes,
+                combined_include_ids,
+                hunk_base_content,
+            )
+
         update_index_with_blob_content(line_changes.path, target_index_content)
 
         # Update processed include IDs

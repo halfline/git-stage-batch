@@ -1844,3 +1844,81 @@ msgstr "[{y}] tak / [{n}] następny / [{r}] resetuj: "
 #: src/git_stage_batch/utils/git.py:227
 msgid "Not inside a git repository."
 msgstr "Nie jesteś wewnątrz repozytorium git."
+
+#: src/git_stage_batch/batch/semantic_selection.py:109 src/git_stage_batch/batch/semantic_selection.py:199 src/git_stage_batch/batch/semantic_selection.py:213 src/git_stage_batch/batch/semantic_selection.py:216 src/git_stage_batch/batch/semantic_selection.py:222
+msgid "Selected lines do not form an unambiguous replacement."
+msgstr "Wybrane wiersze nie tworzą jednoznacznego zastąpienia."
+
+#: src/git_stage_batch/batch/semantic_selection.py:232
+msgid "Select the whole replacement row or broaden the selection."
+msgstr "Wybierz cały wiersz zastąpienia albo rozszerz wybór."
+
+#: src/git_stage_batch/batch/semantic_selection.py:372
+msgid "Selected semantic change cannot be merged into the current index state."
+msgstr "Wybranej zmiany semantycznej nie można scalić z bieżącym stanem indeksu."
+
+#: src/git_stage_batch/cli/argument_parser.py:134
+msgid "Undo the most recent undoable session operation"
+msgstr "Cofnij najnowszą odwracalną operację sesji"
+
+#: src/git_stage_batch/cli/argument_parser.py:139
+msgid "Overwrite changes made after the undo checkpoint"
+msgstr "Nadpisz zmiany wykonane po punkcie kontrolnym cofania"
+
+#: src/git_stage_batch/cli/argument_parser.py:147
+msgid "Redo the most recently undone session operation"
+msgstr "Ponów ostatnio cofniętą operację sesji"
+
+#: src/git_stage_batch/cli/argument_parser.py:152
+msgid "Overwrite changes made after the undo"
+msgstr "Nadpisz zmiany wykonane po cofnięciu"
+
+#: src/git_stage_batch/cli/argument_parser.py:337
+msgid "Path to the file to block (defaults to selected hunk's file)"
+msgstr "Ścieżka do pliku do zablokowania (domyślnie plik wybranego hunka)"
+
+#: src/git_stage_batch/commands/redo.py:19
+#, python-brace-format
+msgid "✓ Redid: {operation}"
+msgstr "✓ Ponowiono: {operation}"
+
+#: src/git_stage_batch/commands/undo.py:19
+#, python-brace-format
+msgid "✓ Undid: {operation}"
+msgstr "✓ Cofnięto: {operation}"
+
+#: src/git_stage_batch/data/undo.py:318
+#, python-brace-format
+msgid "Undo checkpoint is missing {path}"
+msgstr "W punkcie kontrolnym cofania brakuje {path}"
+
+#: src/git_stage_batch/data/undo.py:389
+msgid "batch refs"
+msgstr "referencje partii"
+
+#: src/git_stage_batch/data/undo.py:539
+msgid "Nothing to undo."
+msgstr "Nie ma nic do cofnięcia."
+
+#: src/git_stage_batch/data/undo.py:546 src/git_stage_batch/data/undo.py:614
+#, python-brace-format
+msgid "{preview}, and {count} more"
+msgstr "{preview} i jeszcze {count}"
+
+#: src/git_stage_batch/data/undo.py:548
+#, python-brace-format
+msgid "Cannot undo because current state has changed since the checkpoint: {items}.\nRun 'git-stage-batch undo --force' to overwrite those changes."
+msgstr "Nie można cofnąć, ponieważ bieżący stan zmienił się od punktu kontrolnego: {items}.\nUruchom 'git-stage-batch undo --force', aby nadpisać te zmiany."
+
+#: src/git_stage_batch/data/undo.py:616
+#, python-brace-format
+msgid "Cannot redo because current state has changed since the undo: {items}.\nRun 'git-stage-batch redo --force' to overwrite those changes."
+msgstr "Nie można ponowić, ponieważ bieżący stan zmienił się od cofnięcia: {items}.\nUruchom 'git-stage-batch redo --force', aby nadpisać te zmiany."
+
+#: src/git_stage_batch/tui/interactive.py:1083
+msgid "  u, undo      - Undo the most recent operation"
+msgstr "  u, undo      - Cofnij najnowszą operację"
+
+#: src/git_stage_batch/tui/interactive.py:1084
+msgid "  U, redo      - Redo the most recently undone operation"
+msgstr "  U, redo      - Ponów ostatnio cofniętą operację"

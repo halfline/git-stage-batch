@@ -900,6 +900,89 @@ def select_ownership_units_by_display_ids(units, selected_ids):
 * `apply --from BATCH --line IDs`: Apply subset of batch (future: could enforce atomicity)
 * `discard --from BATCH --line IDs`: Remove subset of batch from working tree
 
+### Ephemeral Semantic Selection for Index Staging
+
+`include --line IDs` also uses batch semantics opportunistically, but without
+creating a persisted named batch.
+
+This path starts from a live selected diff hunk rather than stored batch
+metadata:
+
+1. Read the selected hunk and requested display IDs.
+2. Try to derive temporary `BatchOwnership` in an in-memory source coordinate
+   system built from the selected hunk's base/index snapshot and source
+   snapshot.
+3. Represent selected changes as normal presence constraints (`claimed_lines`)
+   and absence constraints (`deletions`).
+4. Merge those constraints into the **current index content** with the same
+   `merge_batch()` engine used by persisted batches.
+5. Write the merged result back to the index.
+
+The temporary ownership object is only an internal vehicle for semantic
+interpretation. It is not written to `refs/batches/*`, does not appear in
+`list`, and does not update batch metadata.
+
+**Example:**
+
+```
+Selected hunk:
+[#1] - a
+[#2] - b
+[#3] + A
+[#4] + B
+
+User selects: include --line 1,3
+```
+
+For a simple same-cardinality one-to-one replacement run, the live hunk is
+interpreted as semantic rows:
+
+```
+row 1: a -> A
+row 2: b -> B
+```
+
+Selecting `1,3` builds temporary ownership equivalent to:
+
+```python
+BatchOwnership(
+    claimed_lines=["1"],  # "A" in the temporary source
+    deletions=[DeletionClaim(anchor_line=None, content_lines=[b"a\n"])]
+)
+```
+
+Merging this temporary ownership into index content produces:
+
+```
+A
+b
+```
+
+rather than the raw patch-line slice:
+
+```
+b
+A
+```
+
+**Fallback Policy:**
+
+This semantic path is best-effort. If the selected live hunk cannot be
+interpreted safely as temporary ownership, `include --line` falls back to the
+legacy raw line-level staging behavior instead of failing. This keeps the
+command's core contract intact: selecting lines from the working tree to stage
+should remain available even when semantic pairing is unclear.
+
+This means replacement pairing is permissive for simple same-cardinality
+replacement blocks, but still declines suspicious reorder-like shapes. A block
+like `-a -b +B +A` has the same normalized keys on both sides in a different
+order, so it may be a reorder rather than row-wise edits; the semantic path
+declines and the legacy staging path handles the selection.
+
+This fallback policy differs from persisted batch line selection, where partial
+selection of stored atomic ownership units may be rejected to protect batch
+metadata integrity.
+
 ---
 
 ## Stale Batch Source Detection and Repair

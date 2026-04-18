@@ -387,6 +387,20 @@ Stage only specific lines from the selected hunk.
 ❯ git-stage-batch include --line 1,3,5-7
 ```
 
+For simple replacement regions, selecting the matching deleted and added
+lines stages the semantic replacement row. For example, in a hunk like:
+
+```
+[#1] - a
+[#2] - b
+[#3] + A
+[#4] + B
+```
+
+`include --line 1,3` stages `a` -> `A` while leaving `b` unchanged.
+If git-stage-batch cannot determine a clear semantic replacement, it falls
+back to the regular line-level staging behavior.
+
 **Line ID syntax:**
 - Single: `1`
 - Multiple: `1,3,5`

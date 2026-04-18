@@ -66,6 +66,33 @@ config.py :: @@ -1,5 +1,7 @@
 
 ---
 
+## Line-Level: Stage One Replacement Row
+
+You changed two adjacent lines, but only one belongs in this commit:
+
+```
+❯ git-stage-batch start
+names.txt :: @@ -1,2 +1,2 @@
+[#1] - a
+[#2] - b
+[#3] + A
+[#4] + B
+
+# Stage only the first replacement row
+❯ git-stage-batch include --line 1,3
+
+❯ git diff --cached
+-a
++A
+ b
+```
+
+For clear one-to-one replacement rows, line selection stages the semantic
+replacement. If the row structure is not clear, git-stage-batch uses regular
+line-level staging.
+
+---
+
 ## File-Level: Stage Entire File
 
 You have multiple hunks in one file that all belong together:

@@ -117,6 +117,55 @@ def test_undo_include_to_batch_restores_batch_refs(functional_repo):
     assert _git("rev-parse", "refs/git-stage-batch/batches/undo-batch").stdout.strip() != content_ref
     assert _git("rev-parse", "refs/git-stage-batch/state/undo-batch").stdout.strip() != state_ref
 
+
+def test_undo_block_file_restores_gitignore_session_and_index(functional_repo):
+    """Undoing block-file during a session restores .gitignore, session state, and index."""
+    test_file = functional_repo / "generated.log"
+    test_file.write_text("generated\n")
+
+    git_stage_batch("start")
+    git_stage_batch("block-file", "generated.log")
+
+    assert not _git("ls-files", "--", "generated.log").stdout.strip()
+    assert "generated.log" in (functional_repo / ".gitignore").read_text()
+
+    git_stage_batch("undo")
+
+    assert _git("ls-files", "--", "generated.log").stdout.strip() == "generated.log"
+    assert not (functional_repo / ".gitignore").exists()
+
+
+def test_block_file_outside_session_does_not_create_undo_checkpoint(functional_repo):
+    """block-file is undoable only inside an active session."""
+    test_file = functional_repo / "generated.log"
+    test_file.write_text("generated\n")
+
+    git_stage_batch("block-file", "generated.log")
+    result = git_stage_batch("undo", check=False)
+
+    assert result.returncode != 0
+    assert "No session in progress" in result.stderr
+    assert "generated.log" in (functional_repo / ".gitignore").read_text()
+
+
+def test_undo_unblock_file_restores_blocked_state(functional_repo):
+    """Undoing unblock-file during a session re-blocks the file."""
+    test_file = functional_repo / "generated.log"
+    test_file.write_text("generated\n")
+
+    git_stage_batch("start")
+    git_stage_batch("block-file", "generated.log")
+    git_stage_batch("unblock-file", "generated.log")
+
+    assert _git("ls-files", "--", "generated.log").stdout.strip() == "generated.log"
+    assert "generated.log" not in (functional_repo / ".gitignore").read_text()
+
+    git_stage_batch("undo")
+
+    assert not _git("ls-files", "--", "generated.log").stdout.strip()
+    assert "generated.log" in (functional_repo / ".gitignore").read_text()
+
+
 def test_undo_with_empty_stack_fails(repo_with_changes):
     """Undo reports an error when no checkpoint exists."""
     git_stage_batch("start")

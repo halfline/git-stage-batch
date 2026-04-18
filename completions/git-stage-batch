@@ -2,7 +2,12 @@
 
 __git_stage_batch_list_batches()
 {
-    git for-each-ref --format='%(refname:short)' refs/batches/ 2>/dev/null | sed 's|^batches/||'
+    {
+        git for-each-ref --format='%(refname)' refs/git-stage-batch/batches/ 2>/dev/null |
+            sed 's|^refs/git-stage-batch/batches/||'
+        git for-each-ref --format='%(refname)' refs/batches/ 2>/dev/null |
+            sed 's|^refs/batches/||'
+    } | sort -u
 }
 
 _git_stage_batch()

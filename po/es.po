@@ -1838,3 +1838,81 @@ msgstr "[{y}]sí / [{n}]siguiente / [{r}]establecer: "
 #: src/git_stage_batch/utils/git.py:227
 msgid "Not inside a git repository."
 msgstr "No está dentro de un repositorio git."
+
+#: src/git_stage_batch/batch/semantic_selection.py:109 src/git_stage_batch/batch/semantic_selection.py:199 src/git_stage_batch/batch/semantic_selection.py:213 src/git_stage_batch/batch/semantic_selection.py:216 src/git_stage_batch/batch/semantic_selection.py:222
+msgid "Selected lines do not form an unambiguous replacement."
+msgstr "Las líneas seleccionadas no forman un reemplazo inequívoco."
+
+#: src/git_stage_batch/batch/semantic_selection.py:232
+msgid "Select the whole replacement row or broaden the selection."
+msgstr "Seleccione toda la fila de reemplazo o amplíe la selección."
+
+#: src/git_stage_batch/batch/semantic_selection.py:372
+msgid "Selected semantic change cannot be merged into the current index state."
+msgstr "El cambio semántico seleccionado no se puede fusionar con el estado actual del índice."
+
+#: src/git_stage_batch/cli/argument_parser.py:134
+msgid "Undo the most recent undoable session operation"
+msgstr "Deshacer la operación deshacible más reciente de la sesión"
+
+#: src/git_stage_batch/cli/argument_parser.py:139
+msgid "Overwrite changes made after the undo checkpoint"
+msgstr "Sobrescribir los cambios realizados después del punto de control de deshacer"
+
+#: src/git_stage_batch/cli/argument_parser.py:147
+msgid "Redo the most recently undone session operation"
+msgstr "Rehacer la operación deshecha más recientemente de la sesión"
+
+#: src/git_stage_batch/cli/argument_parser.py:152
+msgid "Overwrite changes made after the undo"
+msgstr "Sobrescribir los cambios realizados después de deshacer"
+
+#: src/git_stage_batch/cli/argument_parser.py:337
+msgid "Path to the file to block (defaults to selected hunk's file)"
+msgstr "Ruta del archivo que se bloqueará (por defecto, el archivo del fragmento seleccionado)"
+
+#: src/git_stage_batch/commands/redo.py:19
+#, python-brace-format
+msgid "✓ Redid: {operation}"
+msgstr "✓ Rehecho: {operation}"
+
+#: src/git_stage_batch/commands/undo.py:19
+#, python-brace-format
+msgid "✓ Undid: {operation}"
+msgstr "✓ Deshecho: {operation}"
+
+#: src/git_stage_batch/data/undo.py:318
+#, python-brace-format
+msgid "Undo checkpoint is missing {path}"
+msgstr "Al punto de control de deshacer le falta {path}"
+
+#: src/git_stage_batch/data/undo.py:389
+msgid "batch refs"
+msgstr "referencias de lotes"
+
+#: src/git_stage_batch/data/undo.py:539
+msgid "Nothing to undo."
+msgstr "No hay nada que deshacer."
+
+#: src/git_stage_batch/data/undo.py:546 src/git_stage_batch/data/undo.py:614
+#, python-brace-format
+msgid "{preview}, and {count} more"
+msgstr "{preview}, y {count} más"
+
+#: src/git_stage_batch/data/undo.py:548
+#, python-brace-format
+msgid "Cannot undo because current state has changed since the checkpoint: {items}.\nRun 'git-stage-batch undo --force' to overwrite those changes."
+msgstr "No se puede deshacer porque el estado actual ha cambiado desde el punto de control: {items}.\nEjecute 'git-stage-batch undo --force' para sobrescribir esos cambios."
+
+#: src/git_stage_batch/data/undo.py:616
+#, python-brace-format
+msgid "Cannot redo because current state has changed since the undo: {items}.\nRun 'git-stage-batch redo --force' to overwrite those changes."
+msgstr "No se puede rehacer porque el estado actual ha cambiado desde el deshacer: {items}.\nEjecute 'git-stage-batch redo --force' para sobrescribir esos cambios."
+
+#: src/git_stage_batch/tui/interactive.py:1083
+msgid "  u, undo      - Undo the most recent operation"
+msgstr "  u, undo      - Deshacer la operación más reciente"
+
+#: src/git_stage_batch/tui/interactive.py:1084
+msgid "  U, redo      - Redo the most recently undone operation"
+msgstr "  U, redo      - Rehacer la operación deshecha más recientemente"

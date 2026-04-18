@@ -10,6 +10,7 @@ from ..core.line_selection import parse_line_selection, read_line_ids_file, writ
 from ..core.models import BinaryFileChange
 from ..data.hunk_tracking import advance_to_and_show_next_change, advance_to_next_change, fetch_next_change, record_hunk_skipped, require_selected_hunk
 from ..data.session import require_session_started
+from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks
 from ..i18n import _, ngettext
 from ..utils.file_io import append_lines_to_file, read_text_file_contents
@@ -39,48 +40,48 @@ def command_skip(*, quiet: bool = False) -> None:
         if not quiet:
             print(_("No more hunks to process."), file=sys.stderr)
         return
+    with undo_checkpoint("skip"):
+        # Read cached hash
+        patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
-    # Read cached hash
-    patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
+        # Handle based on item type
+        if isinstance(item, BinaryFileChange):
+            # Binary file - just add to blocklist
+            file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
 
-    # Handle based on item type
-    if isinstance(item, BinaryFileChange):
-        # Binary file - just add to blocklist
-        file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+            # Add hash to blocklist (without staging)
+            blocklist_path = get_block_list_file_path()
+            append_lines_to_file(blocklist_path, [patch_hash])
+
+            # Binary files don't have line-level tracking, so skip record_hunk_skipped
+
+            if not quiet:
+                change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
+                print(_("✓ Binary file {desc} skipped: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
+
+            if quiet:
+                advance_to_next_change()
+            else:
+                advance_to_and_show_next_change()
+            return
+
+        # Text hunk - item is LineLevelChange here
+        filename = item.path
 
         # Add hash to blocklist (without staging)
         blocklist_path = get_block_list_file_path()
         append_lines_to_file(blocklist_path, [patch_hash])
 
-        # Binary files don't have line-level tracking, so skip record_hunk_skipped
+        # Record for progress tracking
+        record_hunk_skipped(item, patch_hash)
 
         if not quiet:
-            change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
-            print(_("✓ Binary file {desc} skipped: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
+            print(_("✓ Hunk skipped from {file}").format(file=filename), file=sys.stderr)
 
         if quiet:
             advance_to_next_change()
         else:
             advance_to_and_show_next_change()
-        return
-
-    # Text hunk - item is LineLevelChange here
-    filename = item.path
-
-    # Add hash to blocklist (without staging)
-    blocklist_path = get_block_list_file_path()
-    append_lines_to_file(blocklist_path, [patch_hash])
-
-    # Record for progress tracking
-    record_hunk_skipped(item, patch_hash)
-
-    if not quiet:
-        print(_("✓ Hunk skipped from {file}").format(file=filename), file=sys.stderr)
-
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
 
 
 def command_skip_file() -> None:
@@ -106,33 +107,33 @@ def command_skip_file() -> None:
     if target_file is None:
         print(_("No changes to process."), file=sys.stderr)
         return
+    with undo_checkpoint("skip --file"):
+        # Stream through hunks and skip all from target file
+        hunks_skipped = 0
+        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+            if patch.new_path != target_file:
+                continue
 
-    # Stream through hunks and skip all from target file
-    hunks_skipped = 0
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-        if patch.new_path != target_file:
-            continue
+            patch_bytes = patch.to_patch_bytes()
+            patch_hash = compute_stable_hunk_hash(patch_bytes)
 
-        patch_bytes = patch.to_patch_bytes()
-        patch_hash = compute_stable_hunk_hash(patch_bytes)
+            # Skip if already blocked
+            if patch_hash in blocked_hashes:
+                continue
 
-        # Skip if already blocked
-        if patch_hash in blocked_hashes:
-            continue
+            # Add to blocklist without staging
+            append_lines_to_file(blocklist_path, [patch_hash])
+            blocked_hashes.add(patch_hash)
+            hunks_skipped += 1
 
-        # Add to blocklist without staging
-        append_lines_to_file(blocklist_path, [patch_hash])
-        blocked_hashes.add(patch_hash)
-        hunks_skipped += 1
+        msg = ngettext(
+            "✓ Skipped {count} hunk from {file}",
+            "✓ Skipped {count} hunks from {file}",
+            hunks_skipped
+        ).format(count=hunks_skipped, file=target_file)
+        print(msg, file=sys.stderr)
 
-    msg = ngettext(
-        "✓ Skipped {count} hunk from {file}",
-        "✓ Skipped {count} hunks from {file}",
-        hunks_skipped
-    ).format(count=hunks_skipped, file=target_file)
-    print(msg, file=sys.stderr)
-
-    advance_to_and_show_next_change()
+        advance_to_and_show_next_change()
 
 
 def command_skip_line(line_id_specification: str) -> None:
@@ -149,8 +150,8 @@ def command_skip_line(line_id_specification: str) -> None:
     requested_ids = parse_line_selection(line_id_specification)
     already_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
     combined_skip_ids = already_skipped_ids | set(requested_ids)
-
-    # Update processed skip IDs
-    write_line_ids_file(get_processed_skip_ids_file_path(), combined_skip_ids)
+    with undo_checkpoint(f"skip --line {line_id_specification}"):
+        # Update processed skip IDs
+        write_line_ids_file(get_processed_skip_ids_file_path(), combined_skip_ids)
 
     print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)

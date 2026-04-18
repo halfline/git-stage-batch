@@ -21,7 +21,9 @@ from ..core.models import BinaryFileChange
 from ..data.hunk_tracking import (
     advance_to_and_show_next_change,
     advance_to_next_change,
+    apply_line_level_batch_filter_to_cached_hunk,
     cache_file_as_single_hunk,
+    clear_selected_change_state_files,
     fetch_next_change,
     get_selected_change_file_path,
     recalculate_selected_hunk_for_file,
@@ -31,10 +33,10 @@ from ..data.hunk_tracking import (
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started, snapshot_file_if_untracked
+from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes
-from ..output.hunk import print_line_level_changes as print_line_level_changes_from_hunk
 from ..staging.operations import build_target_index_content_bytes_with_selected_lines, update_index_with_blob_content
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
@@ -67,19 +69,58 @@ def command_include(*, quiet: bool = False) -> None:
         if not quiet:
             print(_("No more hunks to process."), file=sys.stderr)
         return
+    with undo_checkpoint("include"):
+        # Read cached hash
+        patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
-    # Read cached hash
-    patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
+        # Handle based on item type
+        if isinstance(item, BinaryFileChange):
+            # Binary file - use git add
+            file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
 
-    # Handle based on item type
-    if isinstance(item, BinaryFileChange):
-        # Binary file - use git add
-        file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+            # Stage the binary file using git add
+            result = run_git_command(["add", "--", file_path], check=False)
+            if result.returncode != 0:
+                print(_("Failed to stage binary file: {}").format(result.stderr), file=sys.stderr)
+                return
 
-        # Stage the binary file using git add
-        result = run_git_command(["add", "--", file_path], check=False)
-        if result.returncode != 0:
-            print(_("Failed to stage binary file: {}").format(result.stderr), file=sys.stderr)
+            # Add hash to blocklist
+            blocklist_path = get_block_list_file_path()
+            append_lines_to_file(blocklist_path, [patch_hash])
+
+            # Record for progress tracking
+            record_hunk_included(patch_hash)
+
+            if not quiet:
+                change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
+                print(_("✓ Binary file {desc}: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
+
+            if quiet:
+                advance_to_next_change()
+            else:
+                advance_to_and_show_next_change()
+            return
+
+        # Text hunk - use git apply (item is LineLevelChange here)
+        patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
+
+        # Extract filename for user feedback (we already have LineLevelChange in item)
+        filename = item.path
+
+        # Apply the hunk to the index using streaming
+        stderr_chunks = []
+        exit_code = 0
+
+        for event in stream_command(["git", "apply", "--cached"], [patch_bytes]):
+            if isinstance(event, ExitEvent):
+                exit_code = event.exit_code
+            elif isinstance(event, OutputEvent):
+                if event.fd == 2:  # stderr
+                    stderr_chunks.append(event.data)
+
+        if exit_code != 0:
+            stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
+            print(_("Failed to apply hunk: {}").format(stderr_text), file=sys.stderr)
             return
 
         # Add hash to blocklist
@@ -90,51 +131,12 @@ def command_include(*, quiet: bool = False) -> None:
         record_hunk_included(patch_hash)
 
         if not quiet:
-            change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
-            print(_("✓ Binary file {desc}: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
+            print(_("✓ Hunk staged from {file}").format(file=filename), file=sys.stderr)
 
         if quiet:
             advance_to_next_change()
         else:
             advance_to_and_show_next_change()
-        return
-
-    # Text hunk - use git apply (item is LineLevelChange here)
-    patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
-
-    # Extract filename for user feedback (we already have LineLevelChange in item)
-    filename = item.path
-
-    # Apply the hunk to the index using streaming
-    stderr_chunks = []
-    exit_code = 0
-
-    for event in stream_command(["git", "apply", "--cached"], [patch_bytes]):
-        if isinstance(event, ExitEvent):
-            exit_code = event.exit_code
-        elif isinstance(event, OutputEvent):
-            if event.fd == 2:  # stderr
-                stderr_chunks.append(event.data)
-
-    if exit_code != 0:
-        stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
-        print(_("Failed to apply hunk: {}").format(stderr_text), file=sys.stderr)
-        return
-
-    # Add hash to blocklist
-    blocklist_path = get_block_list_file_path()
-    append_lines_to_file(blocklist_path, [patch_hash])
-
-    # Record for progress tracking
-    record_hunk_included(patch_hash)
-
-    if not quiet:
-        print(_("✓ Hunk staged from {file}").format(file=filename), file=sys.stderr)
-
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
 
 
 def command_include_file(file: str) -> None:
@@ -172,49 +174,49 @@ def command_include_file(file: str) -> None:
     else:
         # Explicit path provided
         target_file = file
+    with undo_checkpoint(f"include --file {file}".rstrip()):
+        # Load blocklist
+        blocklist_path = get_block_list_file_path()
+        blocklist_text = read_text_file_contents(blocklist_path)
+        blocked_hashes = set(blocklist_text.splitlines())
 
-    # Load blocklist
-    blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines())
+        # Stream through hunks and stage all from target file
+        hunks_staged = 0
+        for patch in parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])):
+            if patch.new_path != target_file:
+                continue
 
-    # Stream through hunks and stage all from target file
-    hunks_staged = 0
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])):
-        if patch.new_path != target_file:
-            continue
+            patch_bytes = patch.to_patch_bytes()
+            patch_hash = compute_stable_hunk_hash(patch_bytes)
 
-        patch_bytes = patch.to_patch_bytes()
-        patch_hash = compute_stable_hunk_hash(patch_bytes)
+            # Skip if already blocked
+            if patch_hash in blocked_hashes:
+                continue
 
-        # Skip if already blocked
-        if patch_hash in blocked_hashes:
-            continue
+            # Apply the hunk to the index using streaming
+            stderr_chunks = []
+            exit_code = 0
 
-        # Apply the hunk to the index using streaming
-        stderr_chunks = []
-        exit_code = 0
+            for event in stream_command(["git", "apply", "--cached"], [patch_bytes]):
+                if isinstance(event, ExitEvent):
+                    exit_code = event.exit_code
+                elif isinstance(event, OutputEvent):
+                    if event.fd == 2:  # stderr
+                        stderr_chunks.append(event.data)
 
-        for event in stream_command(["git", "apply", "--cached"], [patch_bytes]):
-            if isinstance(event, ExitEvent):
-                exit_code = event.exit_code
-            elif isinstance(event, OutputEvent):
-                if event.fd == 2:  # stderr
-                    stderr_chunks.append(event.data)
+            if exit_code == 0:
+                # Add to blocklist so we don't try to stage it again
+                append_lines_to_file(blocklist_path, [patch_hash])
+                blocked_hashes.add(patch_hash)
 
-        if exit_code == 0:
-            # Add to blocklist so we don't try to stage it again
-            append_lines_to_file(blocklist_path, [patch_hash])
-            blocked_hashes.add(patch_hash)
+                # Record for progress tracking
+                record_hunk_included(patch_hash)
 
-            # Record for progress tracking
-            record_hunk_included(patch_hash)
-
-            hunks_staged += 1
-        else:
-            stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
-            print(_("Failed to apply hunk: {error}").format(error=stderr_text), file=sys.stderr)
-            break
+                hunks_staged += 1
+            else:
+                stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
+                print(_("Failed to apply hunk: {error}").format(error=stderr_text), file=sys.stderr)
+                break
 
     if hunks_staged == 0:
         print(_("No hunks staged from {file}").format(file=target_file), file=sys.stderr)
@@ -251,15 +253,15 @@ def command_include_line(line_id_specification: str) -> None:
 
     # Get base content from index snapshot (captured when hunk was loaded)
     base_bytes = read_file_bytes(get_index_snapshot_file_path())
+    with undo_checkpoint(f"include --line {line_id_specification}"):
+        target_index_content = build_target_index_content_bytes_with_selected_lines(line_changes, combined_include_ids, base_bytes)
+        update_index_with_blob_content(line_changes.path, target_index_content)
 
-    target_index_content = build_target_index_content_bytes_with_selected_lines(line_changes, combined_include_ids, base_bytes)
-    update_index_with_blob_content(line_changes.path, target_index_content)
+        # Update processed include IDs
+        write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
 
-    # Update processed include IDs
-    write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
-
-    # After modifying index, recalculate hunk for the SAME file
-    recalculate_selected_hunk_for_file(line_changes.path)
+        # After modifying index, recalculate hunk for the SAME file
+        recalculate_selected_hunk_for_file(line_changes.path)
 
     print(_("✓ Included line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
 
@@ -277,32 +279,37 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
     """
     require_git_repository()
     ensure_state_directory_exists()
-
+    operation_parts = ["include", "--to", batch_name]
+    if line_ids is not None:
+        operation_parts.extend(["--line", line_ids])
     if file is not None:
-        # File-scoped operation
+        operation_parts.extend(["--file", file])
+    with undo_checkpoint(" ".join(operation_parts)):
+        if file is not None:
+            # File-scoped operation
 
-        # Determine target file
-        if file == "":
-            # --file with no arg: use selected hunk's file
-            target_file = get_selected_change_file_path()
-            if target_file is None:
-                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-        else:
-            target_file = file
+            # Determine target file
+            if file == "":
+                # --file with no arg: use selected hunk's file
+                target_file = get_selected_change_file_path()
+                if target_file is None:
+                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+            else:
+                target_file = file
 
-        if line_ids is None:
-            # --file without --line: include entire file
-            _command_include_file_to_batch(batch_name, target_file, quiet=quiet)
+            if line_ids is None:
+                # --file without --line: include entire file
+                _command_include_file_to_batch(batch_name, target_file, quiet=quiet)
+            else:
+                # --file with --line: include specific lines from file
+                _command_include_file_lines_to_batch(batch_name, target_file, line_ids, quiet=quiet)
         else:
-            # --file with --line: include specific lines from file
-            _command_include_file_lines_to_batch(batch_name, target_file, line_ids, quiet=quiet)
-    else:
-        # Hunk-scoped operation (selected behavior)
-        if line_ids is not None:
-            _command_include_lines_to_batch(batch_name, line_ids, quiet=quiet)
-        else:
-            # Include entire selected hunk
-            _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+            # Hunk-scoped operation (selected behavior)
+            if line_ids is not None:
+                _command_include_lines_to_batch(batch_name, line_ids, quiet=quiet)
+            else:
+                # Include entire selected hunk
+                _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
 
 
 def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:

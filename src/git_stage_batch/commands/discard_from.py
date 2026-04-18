@@ -15,6 +15,7 @@ from ..batch.selection import (
 from ..batch.validation import batch_exists
 from ..data.hunk_tracking import render_batch_file_display
 from ..data.session import snapshot_file_if_untracked
+from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, BatchMetadataError
 from ..i18n import _
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command
@@ -119,75 +120,80 @@ def command_discard_from_batch(batch_name: str, line_ids: Optional[str] = None, 
         baseline_commit = get_validated_baseline_commit(batch_name)
     except BatchMetadataError as e:
         exit_with_error(str(e))
+    operation_parts = ["discard", "--from", batch_name]
+    if line_ids is not None:
+        operation_parts.extend(["--line", line_ids])
+    if file is not None:
+        operation_parts.extend(["--file", file])
+    with undo_checkpoint(" ".join(operation_parts)):
+        # Discard all files in batch
+        repo_root = get_git_repository_root_path()
+        failed_files = []
 
-    # Discard all files in batch
-    repo_root = get_git_repository_root_path()
-    failed_files = []
+        for file_path, file_meta in files.items():
+            try:
+                # Snapshot file before modifying
+                snapshot_file_if_untracked(file_path)
 
-    for file_path, file_meta in files.items():
-        try:
-            # Snapshot file before modifying
-            snapshot_file_if_untracked(file_path)
+                # Binary files are atomic units - handle separately without ownership/merge logic
+                if file_meta.get("file_type") == "binary":
+                    _discard_binary_file_from_batch(file_path, baseline_commit)
+                    continue
 
-            # Binary files are atomic units - handle separately without ownership/merge logic
-            if file_meta.get("file_type") == "binary":
-                _discard_binary_file_from_batch(file_path, baseline_commit)
-                continue
+                # Get batch source commit content (as bytes)
+                batch_source_commit = file_meta["batch_source_commit"]
+                batch_source_result = run_git_command(
+                    ["show", f"{batch_source_commit}:{file_path}"],
+                    check=False,
+                    text_output=False
+                )
+                if batch_source_result.returncode != 0:
+                    failed_files.append(file_path)
+                    continue
+                batch_source_content = batch_source_result.stdout
 
-            # Get batch source commit content (as bytes)
-            batch_source_commit = file_meta["batch_source_commit"]
-            batch_source_result = run_git_command(
-                ["show", f"{batch_source_commit}:{file_path}"],
-                check=False,
-                text_output=False
-            )
-            if batch_source_result.returncode != 0:
+                # Get baseline content (as bytes)
+                baseline_result = run_git_command(
+                    ["show", f"{baseline_commit}:{file_path}"],
+                    check=False,
+                    text_output=False
+                )
+                baseline_content = baseline_result.stdout if baseline_result.returncode == 0 else b""
+
+                # Get selected working tree content (as bytes)
+                full_path = repo_root / file_path
+                if full_path.exists():
+                    working_content = full_path.read_bytes()
+                else:
+                    working_content = b""
+
+                # Get ownership from metadata, filtered by selected selection IDs if specified
+                ownership = select_batch_ownership_for_display_ids(
+                    file_meta, batch_source_content, selection_ids_to_discard
+                )
+
+                # If nothing selected for this file, skip it
+                if ownership.is_empty():
+                    continue
+
+                # Perform structural discard (inverse of merge)
+                discarded_content = discard_batch(
+                    batch_source_content,
+                    ownership,
+                    working_content,
+                    baseline_content
+                )
+
+                # Write to working tree (bytes)
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                full_path.write_bytes(discarded_content)
+
+            except MergeError as e:
+                print(_("Error discarding {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
                 failed_files.append(file_path)
-                continue
-            batch_source_content = batch_source_result.stdout
-
-            # Get baseline content (as bytes)
-            baseline_result = run_git_command(
-                ["show", f"{baseline_commit}:{file_path}"],
-                check=False,
-                text_output=False
-            )
-            baseline_content = baseline_result.stdout if baseline_result.returncode == 0 else b""
-
-            # Get selected working tree content (as bytes)
-            full_path = repo_root / file_path
-            if full_path.exists():
-                working_content = full_path.read_bytes()
-            else:
-                working_content = b""
-
-            # Get ownership from metadata, filtered by selected selection IDs if specified
-            ownership = select_batch_ownership_for_display_ids(
-                file_meta, batch_source_content, selection_ids_to_discard
-            )
-
-            # If nothing selected for this file, skip it
-            if ownership.is_empty():
-                continue
-
-            # Perform structural discard (inverse of merge)
-            discarded_content = discard_batch(
-                batch_source_content,
-                ownership,
-                working_content,
-                baseline_content
-            )
-
-            # Write to working tree (bytes)
-            full_path.parent.mkdir(parents=True, exist_ok=True)
-            full_path.write_bytes(discarded_content)
-
-        except MergeError as e:
-            print(_("Error discarding {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
-            failed_files.append(file_path)
-        except Exception as e:
-            print(_("Error discarding {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
-            failed_files.append(file_path)
+            except Exception as e:
+                print(_("Error discarding {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
+                failed_files.append(file_path)
 
     if failed_files:
         exit_with_error(

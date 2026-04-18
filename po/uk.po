@@ -1842,3 +1842,81 @@ msgstr "[{y}]так / [{n}]аступний / [{r}]кинути: "
 #: src/git_stage_batch/utils/git.py:227
 msgid "Not inside a git repository."
 msgstr "Не всередині git-репозиторія."
+
+#: src/git_stage_batch/batch/semantic_selection.py:109 src/git_stage_batch/batch/semantic_selection.py:199 src/git_stage_batch/batch/semantic_selection.py:213 src/git_stage_batch/batch/semantic_selection.py:216 src/git_stage_batch/batch/semantic_selection.py:222
+msgid "Selected lines do not form an unambiguous replacement."
+msgstr "Вибрані рядки не утворюють однозначної заміни."
+
+#: src/git_stage_batch/batch/semantic_selection.py:232
+msgid "Select the whole replacement row or broaden the selection."
+msgstr "Виберіть увесь рядок заміни або розширте вибір."
+
+#: src/git_stage_batch/batch/semantic_selection.py:372
+msgid "Selected semantic change cannot be merged into the current index state."
+msgstr "Вибрану семантичну зміну не можна об’єднати з поточним станом індексу."
+
+#: src/git_stage_batch/cli/argument_parser.py:134
+msgid "Undo the most recent undoable session operation"
+msgstr "Скасувати останню операцію сеансу, яку можна скасувати"
+
+#: src/git_stage_batch/cli/argument_parser.py:139
+msgid "Overwrite changes made after the undo checkpoint"
+msgstr "Перезаписати зміни, зроблені після контрольної точки скасування"
+
+#: src/git_stage_batch/cli/argument_parser.py:147
+msgid "Redo the most recently undone session operation"
+msgstr "Повторити останню скасовану операцію сеансу"
+
+#: src/git_stage_batch/cli/argument_parser.py:152
+msgid "Overwrite changes made after the undo"
+msgstr "Перезаписати зміни, зроблені після скасування"
+
+#: src/git_stage_batch/cli/argument_parser.py:337
+msgid "Path to the file to block (defaults to selected hunk's file)"
+msgstr "Шлях до файлу для блокування (типово файл вибраного фрагмента)"
+
+#: src/git_stage_batch/commands/redo.py:19
+#, python-brace-format
+msgid "✓ Redid: {operation}"
+msgstr "✓ Повторено: {operation}"
+
+#: src/git_stage_batch/commands/undo.py:19
+#, python-brace-format
+msgid "✓ Undid: {operation}"
+msgstr "✓ Скасовано: {operation}"
+
+#: src/git_stage_batch/data/undo.py:318
+#, python-brace-format
+msgid "Undo checkpoint is missing {path}"
+msgstr "У контрольній точці скасування бракує {path}"
+
+#: src/git_stage_batch/data/undo.py:389
+msgid "batch refs"
+msgstr "посилання пакетів"
+
+#: src/git_stage_batch/data/undo.py:539
+msgid "Nothing to undo."
+msgstr "Немає чого скасовувати."
+
+#: src/git_stage_batch/data/undo.py:546 src/git_stage_batch/data/undo.py:614
+#, python-brace-format
+msgid "{preview}, and {count} more"
+msgstr "{preview} і ще {count}"
+
+#: src/git_stage_batch/data/undo.py:548
+#, python-brace-format
+msgid "Cannot undo because current state has changed since the checkpoint: {items}.\nRun 'git-stage-batch undo --force' to overwrite those changes."
+msgstr "Неможливо скасувати, бо поточний стан змінився після контрольної точки: {items}.\nЗапустіть 'git-stage-batch undo --force', щоб перезаписати ці зміни."
+
+#: src/git_stage_batch/data/undo.py:616
+#, python-brace-format
+msgid "Cannot redo because current state has changed since the undo: {items}.\nRun 'git-stage-batch redo --force' to overwrite those changes."
+msgstr "Неможливо повторити, бо поточний стан змінився після скасування: {items}.\nЗапустіть 'git-stage-batch redo --force', щоб перезаписати ці зміни."
+
+#: src/git_stage_batch/tui/interactive.py:1083
+msgid "  u, undo      - Undo the most recent operation"
+msgstr "  u, undo      - Скасувати останню операцію"
+
+#: src/git_stage_batch/tui/interactive.py:1084
+msgid "  U, redo      - Redo the most recently undone operation"
+msgstr "  U, redo      - Повторити останню скасовану операцію"

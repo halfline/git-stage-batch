@@ -97,6 +97,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         more_options = [
             ("again", "a", ""),
             ("undo", "u", ""),
+            ("redo", "U", ""),
             ("batch", "b", ""),
             ("fixup", "x", ""),
             ("cmd", "!", ""),
@@ -121,6 +122,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         # More options - limited set
         more_options = [
             ("undo", "u", ""),
+            ("redo", "U", ""),
             ("batch", "b", ""),
             ("cmd", "!", ""),
         ]
@@ -204,6 +206,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         "quit": "q",
         "again": "a",
         "undo": "u",
+        "redo": "U",
         "lines": "l",
         "file": "f",
         "batch": "b",

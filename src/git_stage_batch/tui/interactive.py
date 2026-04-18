@@ -130,6 +130,12 @@ def _handle_undo(flow_state: FlowState) -> None:
     command_undo()
 
 
+def _handle_redo(flow_state: FlowState) -> None:
+    """Handle redo action."""
+    from ..commands.redo import command_redo
+    command_redo()
+
+
 def _handle_line_selection(flow_state: FlowState) -> None:
     """Handle line selection submenu."""
     handle_line_selection(flow_state)
@@ -535,6 +541,7 @@ ACTION_HANDLERS = {
     "x": ActionHandler(needs_hunk=True, handler=_handle_fixup),
     "a": ActionHandler(needs_hunk=False, handler=_handle_again),
     "u": ActionHandler(needs_hunk=False, handler=_handle_undo),
+    "U": ActionHandler(needs_hunk=False, handler=_handle_redo),
     "b": ActionHandler(needs_hunk=False, handler=_handle_batch),
     "?": ActionHandler(needs_hunk=False, handler=_handle_help),
     "q": ActionHandler(needs_hunk=False, handler=_handle_quit),
@@ -1074,6 +1081,7 @@ def print_help() -> None:
     print(_("More options:"))
     print(_("  a, again     - Clear state and start fresh pass through skipped hunks"))
     print(_("  u, undo      - Undo the most recent operation"))
+    print(_("  U, redo      - Redo the most recently undone operation"))
     print(_("  l, lines     - Select specific lines from this hunk"))
     print(_("  f, file      - Include or skip all hunks in this file"))
     print(_("  x, fixup     - Suggest which commit to fixup (iterative)"))

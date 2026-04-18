@@ -135,7 +135,7 @@ restores batch state (drops created batches, restores dropped/mutated batches),
 and removes session state.
 .B WARNING:
 This will undo any commits made during the session.
-.SS Undo
+.SS Undo and Redo
 .TP
 .B undo \fR[\fB\-\-force\fR]
 Undo the most recent undoable session operation. Restores the repository
@@ -146,6 +146,17 @@ checkpoint.
 .TP
 .B \-\-force
 Overwrite changes made after the undo checkpoint.
+.RE
+.TP
+.B redo \fR[\fB\-\-force\fR]
+Redo the most recently undone session operation. Restores the state that
+was in effect before the undo. Multiple undo/redo cycles work in standard
+editor order. A new undoable operation after undo clears the redo stack.
+Refuses by default if the current state has changed since the undo.
+.RS
+.TP
+.B \-\-force
+Overwrite changes made after the undo.
 .RE
 .SS File-Level Operations
 .TP

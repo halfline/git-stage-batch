@@ -50,10 +50,16 @@ class TestPromptAction:
         with patch("builtins.input", return_value="quit"):
             assert prompt_action(use_color=False) == "q"
 
+        with patch("builtins.input", return_value="undo"):
+            assert prompt_action(use_color=False) == "u"
+
     def test_prompt_action_secondary_options(self):
         """Test selecting secondary options."""
         with patch("builtins.input", return_value="a"):
             assert prompt_action(use_color=False) == "a"
+
+        with patch("builtins.input", return_value="u"):
+            assert prompt_action(use_color=False) == "u"
 
         with patch("builtins.input", return_value="l"):
             assert prompt_action(use_color=False) == "l"
@@ -111,6 +117,17 @@ class TestPromptAction:
         assert result == "i"
         assert "from" in output.lower() or "<" in output
         assert "to" in output.lower() or ">" in output
+
+    def test_prompt_action_without_hunk_shows_undo(self):
+        """Test undo appears even when no hunk is selected."""
+        with patch("builtins.input", return_value="u"):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                with patch("sys.stdout.isatty", return_value=False):
+                    result = prompt_action(use_color=False, has_hunk=False)
+                    output = fake_out.getvalue()
+
+        assert result == "u"
+        assert "[u]ndo" in output
 
     def test_prompt_action_from_normalized(self):
         """Test that 'from' normalizes to '<'."""

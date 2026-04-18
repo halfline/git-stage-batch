@@ -357,6 +357,53 @@ def test_parse_command_line_annotate():
     assert callable(args.func)
 
 
+def test_parse_command_line_undo():
+    """Test parsing undo command."""
+    args = parse_command_line(["undo"], quiet=True)
+    assert args is not None
+    assert args.command == "undo"
+    assert args.force is False
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_undo_force():
+    """Test parsing undo --force command."""
+    args = parse_command_line(["undo", "--force"], quiet=True)
+    assert args is not None
+    assert args.force is True
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_redo():
+    """Test parsing redo command."""
+    args = parse_command_line(["redo"], quiet=True)
+    assert args is not None
+    assert args.command == "redo"
+    assert args.force is False
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_redo_force():
+    """Test parsing redo --force command."""
+    args = parse_command_line(["redo", "--force"], quiet=True)
+    assert args is not None
+    assert args.force is True
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_redo_forward_alias():
+    """Test parsing redo command alias 'forward'."""
+    args = parse_command_line(["forward"], quiet=True)
+    assert args is not None
+    assert args.command == "forward"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
 def test_parse_command_line_show_with_from():
     """Test parsing show command with --from flag."""
     args = parse_command_line(["show", "--from", "my-batch"], quiet=True)

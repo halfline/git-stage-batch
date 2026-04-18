@@ -56,6 +56,7 @@ class TestPrintHelp:
         assert "i, include" in captured.out
         assert "s, skip" in captured.out
         assert "d, discard" in captured.out
+        assert "u, undo" in captured.out
         assert "q, quit" in captured.out
         assert "?, help" in captured.out
 

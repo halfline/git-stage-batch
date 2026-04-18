@@ -7,8 +7,8 @@ import pytest
 
 from git_stage_batch.batch.operations import create_batch, delete_batch, update_batch_note
 from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.state_refs import get_batch_content_ref_name, get_batch_state_ref_name
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.git import run_git_command
 from git_stage_batch.utils.paths import get_batch_metadata_file_path
 
@@ -29,16 +29,14 @@ def temp_git_repo(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_create_batch_creates_metadata(temp_git_repo):
-    """Test that create_batch creates metadata file."""
+def test_create_batch_creates_state_metadata(temp_git_repo):
+    """Test that create_batch creates Git-backed metadata."""
     create_batch("test-batch", "Test note")
 
-    metadata_path = get_batch_metadata_file_path("test-batch")
-    assert metadata_path.exists()
-
-    metadata = json.loads(read_text_file_contents(metadata_path))
+    metadata = read_batch_metadata("test-batch")
     assert metadata["note"] == "Test note"
     assert "created_at" in metadata
+    assert not get_batch_metadata_file_path("test-batch").exists()
 
 
 def test_create_batch_creates_ref(temp_git_repo):
@@ -46,7 +44,7 @@ def test_create_batch_creates_ref(temp_git_repo):
     create_batch("test-batch", "Test note")
 
     # Verify ref exists
-    result = run_git_command(["show-ref", "--verify", "refs/batches/test-batch"], check=False)
+    result = run_git_command(["show-ref", "--verify", get_batch_content_ref_name("test-batch")], check=False)
     assert result.returncode == 0
 
 
@@ -72,14 +70,15 @@ def test_delete_batch_removes_ref(temp_git_repo):
     create_batch("test-batch", "Test")
 
     # Verify ref exists
-    result = run_git_command(["show-ref", "--verify", "refs/batches/test-batch"], check=False)
+    result = run_git_command(["show-ref", "--verify", get_batch_content_ref_name("test-batch")], check=False)
     assert result.returncode == 0
 
     delete_batch("test-batch")
 
     # Verify ref is gone
-    result = run_git_command(["show-ref", "--verify", "refs/batches/test-batch"], check=False)
-    assert result.returncode != 0
+    for refname in (get_batch_content_ref_name("test-batch"), get_batch_state_ref_name("test-batch")):
+        result = run_git_command(["show-ref", "--verify", refname], check=False)
+        assert result.returncode != 0
 
 
 def test_delete_batch_removes_metadata(temp_git_repo):
@@ -87,7 +86,8 @@ def test_delete_batch_removes_metadata(temp_git_repo):
     create_batch("test-batch", "Test")
 
     metadata_path = get_batch_metadata_file_path("test-batch")
-    assert metadata_path.exists()
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text(json.dumps({"note": "legacy"}))
 
     delete_batch("test-batch")
 

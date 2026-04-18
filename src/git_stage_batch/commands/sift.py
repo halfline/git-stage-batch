@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -35,13 +34,18 @@ from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
 from ..batch.ownership import BatchOwnership, DeletionClaim
 from ..batch.query import get_batch_baseline_commit, read_batch_metadata
+from ..batch.state_refs import (
+    delete_batch_state_refs,
+    get_batch_content_ref_name,
+    sync_batch_state_refs,
+)
 from ..batch.storage import add_binary_file_to_batch, _build_realized_content, _update_batch_commit
 from ..batch.validation import batch_exists, validate_batch_name
 from ..core.line_selection import format_line_ids
 from ..core.models import BinaryFileChange
 from ..exceptions import BatchMetadataError, exit_with_error
 from ..i18n import _
-from ..utils.file_io import read_text_file_contents, write_text_file_contents
+from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
     create_git_blob,
     get_git_repository_root_path,
@@ -49,9 +53,7 @@ from ..utils.git import (
     run_git_command,
 )
 from ..utils.paths import (
-    get_batch_directory_path,
     get_batch_metadata_file_path,
-    get_batches_directory_path,
 )
 
 
@@ -60,9 +62,9 @@ def _set_batch_baseline(
     baseline_commit: str,
 ) -> None:
     """Update a batch's baseline commit in metadata."""
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    metadata = json.loads(read_text_file_contents(metadata_path))
+    metadata = read_batch_metadata(batch_name)
     metadata["baseline"] = baseline_commit
+    metadata_path = get_batch_metadata_file_path(batch_name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
 
@@ -362,36 +364,15 @@ def _perform_atomic_in_place_sift(
                     file_mode=file_meta.get("mode", "100644"),
                 )
 
-        source_dir = get_batch_directory_path(batch_name)
-        temp_dir = get_batch_directory_path(temp_batch_name)
-        batches_dir = get_batches_directory_path()
-        backup_dir = batches_dir / f"{batch_name}-sift-backup"
+        temp_commit = run_git_command(["rev-parse", get_batch_content_ref_name(temp_batch_name)], check=False)
+        if temp_commit.returncode == 0:
+            commit_sha = temp_commit.stdout.strip()
+            temp_metadata = read_batch_metadata(temp_batch_name)
+            metadata_path = get_batch_metadata_file_path(batch_name)
+            write_text_file_contents(metadata_path, json.dumps(temp_metadata, indent=2))
+            sync_batch_state_refs(batch_name, content_commit=commit_sha)
 
-        if backup_dir.exists():
-            shutil.rmtree(backup_dir)
-
-        shutil.move(str(source_dir), str(backup_dir))
-
-        try:
-            shutil.move(str(temp_dir), str(source_dir))
-            shutil.rmtree(backup_dir)
-
-            temp_commit = run_git_command(
-                ["rev-parse", f"refs/batches/{temp_batch_name}"],
-                check=False,
-            )
-            if temp_commit.returncode == 0:
-                run_git_command(
-                    ["update-ref", f"refs/batches/{batch_name}", temp_commit.stdout.strip()]
-                )
-
-            run_git_command(["update-ref", "-d", f"refs/batches/{temp_batch_name}"], check=False)
-        except Exception:
-            if backup_dir.exists():
-                if source_dir.exists():
-                    shutil.rmtree(source_dir)
-                shutil.move(str(backup_dir), str(source_dir))
-            raise
+        delete_batch_state_refs(temp_batch_name)
 
     except Exception:
         if batch_exists(temp_batch_name):

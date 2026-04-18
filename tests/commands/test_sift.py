@@ -7,6 +7,7 @@ import pytest
 
 from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.apply_from import command_apply_from_batch
@@ -531,7 +532,7 @@ class TestSiftBinaryFiles:
 
     def _batch_file_bytes(self, batch_name: str, file_path: str) -> bytes | None:
         commit = subprocess.run(
-            ["git", "rev-parse", f"refs/batches/{batch_name}"],
+            ["git", "rev-parse", get_batch_content_ref_name(batch_name)],
             capture_output=True,
             text=True,
         )
@@ -693,7 +694,7 @@ class TestSiftPersistenceModel:
 
         # Read the batch commit to verify it contains realized target, not working tree
         result = subprocess.run(
-            ["git", "rev-parse", "refs/batches/sifted-batch"],
+            ["git", "rev-parse", get_batch_content_ref_name("sifted-batch")],
             cwd=temp_git_repo,
             capture_output=True,
             text=True
@@ -736,7 +737,7 @@ class TestSiftPersistenceModel:
 
         # Verify batch commit exists and can be read with git
         result = subprocess.run(
-            ["git", "rev-parse", "refs/batches/sifted-batch"],
+            ["git", "rev-parse", get_batch_content_ref_name("sifted-batch")],
             cwd=temp_git_repo,
             capture_output=True,
             text=True

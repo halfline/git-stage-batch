@@ -19,9 +19,11 @@ from git_stage_batch.utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
+    get_block_list_file_path,
     get_batch_claimed_hunks_file_path,
     get_batch_directory_path,
     get_batches_directory_path,
+    get_session_batch_sources_file_path,
     get_state_directory_path,
 )
 
@@ -57,13 +59,13 @@ class TestCommandAgain:
         state_dir = get_state_directory_path()
 
         # Create iteration-specific files
-        blocklist = state_dir / "blocklist"
+        blocklist = get_block_list_file_path()
         blocklist.write_text("test")
 
         # Create permanent files
         journal = state_dir / "journal.jsonl"
         journal.write_text("test")
-        abort_head = state_dir / "abort-head"
+        abort_head = get_abort_head_file_path()
         abort_head.write_text("test")
 
         assert blocklist.exists()
@@ -112,7 +114,7 @@ class TestCommandAgain:
 
         # Add claimed lines to metadata (JSON format)
         metadata_path = batch_dir / "metadata.json"
-        metadata = json.loads(read_text_file_contents(metadata_path))
+        metadata = {"note": "Test batch", "created_at": "", "baseline": None}
         metadata["files"] = {
             "README.md": {
                 "batch_source_commit": "dummy",
@@ -253,7 +255,7 @@ class TestCommandAgain:
 
         # Create iteration-specific file to verify it was cleared
         state_dir = get_state_directory_path()
-        blocklist = state_dir / "blocklist"
+        blocklist = get_block_list_file_path()
         blocklist.write_text("test")
 
         # Run again (no batches exist)
@@ -296,8 +298,7 @@ class TestCommandAgain:
         fetch_next_change()
         command_discard_to_batch("test-batch", quiet=True)
 
-        state_dir = get_state_directory_path()
-        batch_sources_file = state_dir / "session-batch-sources.json"
+        batch_sources_file = get_session_batch_sources_file_path()
 
         assert batch_sources_file.exists(), "session-batch-sources.json should exist"
         content_before = read_text_file_contents(batch_sources_file)

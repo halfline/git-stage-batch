@@ -2,7 +2,12 @@
 
 __git_stage_batch_list_batches()
 {
-    git for-each-ref --format='%(refname:short)' refs/batches/ 2>/dev/null | sed 's|^batches/||'
+    {
+        git for-each-ref --format='%(refname)' refs/git-stage-batch/batches/ 2>/dev/null |
+            sed 's|^refs/git-stage-batch/batches/||'
+        git for-each-ref --format='%(refname)' refs/batches/ 2>/dev/null |
+            sed 's|^refs/batches/||'
+    } | sort -u
 }
 
 _git_stage_batch()
@@ -10,7 +15,7 @@ _git_stage_batch()
     local cur prev words cword
     _init_completion || return
 
-    local commands="start show include skip discard status again stop abort block-file unblock-file suggest-fixup new list drop annotate apply reset"
+    local commands="start show include skip discard status again stop abort block-file unblock-file suggest-fixup new list drop annotate apply reset undo redo"
 
     # Handle subcommands
     if [[ $cword -eq 1 ]]; then
@@ -114,6 +119,9 @@ _git_stage_batch()
             ;;
         status)
             COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
+            ;;
+        undo|redo)
+            COMPREPLY=($(compgen -W "--force" -- "$cur"))
             ;;
         block-file|unblock-file)
             _filedir

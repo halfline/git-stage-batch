@@ -1,9 +1,8 @@
 """Test that batch source commits capture content at session start, not at first discard."""
 
-import json
-from pathlib import Path
-
 import subprocess
+
+from git_stage_batch.batch.query import read_batch_metadata
 
 from .conftest import git_stage_batch
 
@@ -48,13 +47,7 @@ def my_function():
     assert not new_file.exists(), "File should be removed from working tree"
 
     # Now verify the batch source commit contains the ORIGINAL content
-    # Read the batch metadata to get batch source commit
-
-    state_dir = Path(".git/git-stage-batch")
-    metadata_file = state_dir / "batches" / "test-batch" / "metadata.json"
-    assert metadata_file.exists(), "Batch metadata should exist"
-
-    metadata = json.loads(metadata_file.read_text())
+    metadata = read_batch_metadata("test-batch")
     assert "files" in metadata, "Metadata should have files key"
     assert "test_module.py" in metadata["files"], "File should be in metadata"
 

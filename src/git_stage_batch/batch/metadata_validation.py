@@ -6,12 +6,12 @@ metadata early and produce clear error messages.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
+from .query import read_batch_metadata
+from .state_refs import get_batch_state_ref_name, get_legacy_batch_ref_name
 from ..exceptions import BatchMetadataError
 from ..i18n import _
-from ..utils.file_io import read_text_file_contents
 from ..utils.git import run_git_command
 from ..utils.paths import (
     get_batch_metadata_file_path,
@@ -44,7 +44,7 @@ def validate_state_directory_exists() -> None:
 
 
 def validate_batch_metadata_file_exists(batch_name: str) -> None:
-    """Verify that metadata file exists for a batch.
+    """Verify that compatibility metadata exists when only legacy refs exist.
 
     Args:
         batch_name: Name of the batch
@@ -52,9 +52,15 @@ def validate_batch_metadata_file_exists(batch_name: str) -> None:
     Raises:
         BatchMetadataError: If metadata file is missing for an existing batch
     """
-    # First check if batch ref exists
+    state_result = run_git_command(
+        ["show-ref", "--verify", "--quiet", get_batch_state_ref_name(batch_name)],
+        check=False
+    )
+    if state_result.returncode == 0:
+        return
+
     result = run_git_command(
-        ["show-ref", "--verify", "--quiet", f"refs/batches/{batch_name}"],
+        ["show-ref", "--verify", "--quiet", get_legacy_batch_ref_name(batch_name)],
         check=False
     )
     batch_ref_exists = result.returncode == 0
@@ -66,7 +72,7 @@ def validate_batch_metadata_file_exists(batch_name: str) -> None:
     if batch_ref_exists and not metadata_exists:
         raise BatchMetadataError(
             _("Batch metadata is missing or corrupted for '{name}'.\n"
-              "The batch ref exists (refs/batches/{name}) but metadata file is missing.\n"
+              "The legacy batch ref exists (refs/batches/{name}) but metadata file is missing.\n"
               "Expected metadata file: {file}\n"
               "The batch may not be recoverable automatically.").format(
                 name=batch_name,
@@ -192,28 +198,19 @@ def load_and_validate_batch_metadata(batch_name: str) -> dict[str, Any]:
     Raises:
         BatchMetadataError: If metadata is missing, corrupted, or structurally invalid
     """
-    # Check if batch ref exists first
-    result = run_git_command(
-        ["show-ref", "--verify", "--quiet", f"refs/batches/{batch_name}"],
+    state_result = run_git_command(
+        ["show-ref", "--verify", "--quiet", get_batch_state_ref_name(batch_name)],
         check=False
     )
-    batch_ref_exists = result.returncode == 0
+    state_ref_exists = state_result.returncode == 0
 
-    # Only validate metadata file if batch ref exists
-    if batch_ref_exists:
-        # Ensure metadata file exists for this batch
-        validate_batch_metadata_file_exists(batch_name)
+    legacy_result = run_git_command(
+        ["show-ref", "--verify", "--quiet", get_legacy_batch_ref_name(batch_name)],
+        check=False
+    )
+    batch_ref_exists = state_ref_exists or legacy_result.returncode == 0
 
-    # Load metadata
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    if not metadata_path.exists():
-        # If batch ref exists but metadata doesn't, that's corruption
-        if batch_ref_exists:
-            # State directory check is done above if ref exists
-            pass  # Error already raised by validate_batch_metadata_file_exists
-
-        # Return minimal valid structure for non-existent batches
-        # (batch_exists should be checked before calling this)
+    if not batch_ref_exists:
         return {
             "note": "",
             "created_at": "",
@@ -221,25 +218,17 @@ def load_and_validate_batch_metadata(batch_name: str) -> dict[str, Any]:
             "files": {}
         }
 
+    if batch_ref_exists and not state_ref_exists:
+        # Ensure metadata file exists for this batch
+        validate_batch_metadata_file_exists(batch_name)
+
     try:
-        metadata = json.loads(read_text_file_contents(metadata_path))
-    except json.JSONDecodeError as e:
-        raise BatchMetadataError(
-            _("Batch metadata for '{name}' is corrupted (invalid JSON).\n"
-              "Metadata file: {file}\n"
-              "Error: {error}").format(
-                name=batch_name,
-                file=str(metadata_path),
-                error=str(e)
-            )
-        )
+        metadata = read_batch_metadata(batch_name)
     except Exception as e:
         raise BatchMetadataError(
             _("Failed to read batch metadata for '{name}'.\n"
-              "Metadata file: {file}\n"
               "Error: {error}").format(
                 name=batch_name,
-                file=str(metadata_path),
                 error=str(e)
             )
         )

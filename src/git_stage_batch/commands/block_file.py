@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import sys
+from contextlib import nullcontext
 
 from ..data.hunk_tracking import advance_to_and_show_next_change
+from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _
 from ..utils.file_io import append_file_path_to_file, remove_file_path_from_file
@@ -44,21 +46,27 @@ def command_block_file(file_path_arg: str = "") -> None:
 
     # Resolve to repo-relative path
     file_path = resolve_file_path_to_repo_relative(file_path_arg)
+    session_active = get_abort_head_file_path().exists()
+    checkpoint = (
+        undo_checkpoint(f"block-file {file_path}", worktree_paths=[".gitignore"])
+        if session_active else nullcontext()
+    )
 
-    # Add to .gitignore
-    add_file_to_gitignore(file_path)
+    with checkpoint:
+        # Add to .gitignore
+        add_file_to_gitignore(file_path)
 
-    # Remove from index if session is active and the file is a new intent-to-add entry
-    if get_abort_head_file_path().exists() and _is_new_intent_to_add_file(file_path):
-        run_git_command(["rm", "--cached", "--quiet", "--ignore-unmatch", "--", file_path], check=False)
-        remove_file_path_from_file(get_auto_added_files_file_path(), file_path)
+        # Remove from index if session is active and the file is a new intent-to-add entry
+        if session_active and _is_new_intent_to_add_file(file_path):
+            run_git_command(["rm", "--cached", "--quiet", "--ignore-unmatch", "--", file_path], check=False)
+            remove_file_path_from_file(get_auto_added_files_file_path(), file_path)
 
-    # Add to blocked-files state
-    append_file_path_to_file(get_blocked_files_file_path(), file_path)
+        # Add to blocked-files state
+        append_file_path_to_file(get_blocked_files_file_path(), file_path)
 
     print(_("Blocked file: {}").format(file_path), file=sys.stderr)
 
-    if get_abort_head_file_path().exists():
+    if session_active:
         try:
             advance_to_and_show_next_change()
         except NoMoreHunks:

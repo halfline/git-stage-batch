@@ -4,7 +4,7 @@
     Batches are an advanced feature for complex workflows. Most users will not need them.
     The core commands (start, include, skip, discard) handle the majority of use cases.
 
-Batches are named collections of accumulated changes that can be staged or discarded later as a unit. They persist across sessions and are stored as git commits under `refs/batches/<name>`.
+Batches are named collections of accumulated changes that can be staged or discarded later as a unit. They persist across sessions and are stored as git commits under `refs/git-stage-batch/batches/<name>`.
 
 Each batch captures not just the changes themselves, but also the working tree state at the time changes were saved (the **batch source**). This allows batch operations to intelligently merge or discard changes even when your code has evolved since the batch was created.
 
@@ -30,8 +30,10 @@ When you save content to a batch (via `include --to` or `discard --to`), the too
 3. **Deletion claims**: Which sequences were deleted by the batch (if any)
 
 This information is stored in:
-- A Git commit under `refs/batches/<name>` containing the realized batch content
-- Metadata tracking the batch source commit and ownership structure
+- A Git commit under `refs/git-stage-batch/batches/<name>` containing the realized batch content
+- A state commit under `refs/git-stage-batch/state/<name>` tracking the batch source commit and ownership structure
+
+Legacy batches under `refs/batches/<name>` are read as migration inputs. Once a batch is written by the current version, the legacy ref and file-backed metadata for that batch are removed.
 
 ### Application Model (include/apply --from)
 

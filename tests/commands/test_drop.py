@@ -4,6 +4,7 @@ import subprocess
 
 import pytest
 
+from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.commands.drop import command_drop_batch
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.exceptions import CommandError
@@ -38,7 +39,7 @@ class TestCommandDropBatch:
 
         # Verify batch exists
         result = subprocess.run(
-            ["git", "show-ref", "refs/batches/test-batch"],
+            ["git", "show-ref", get_batch_content_ref_name("test-batch")],
             capture_output=True,
         )
         assert result.returncode == 0
@@ -48,7 +49,7 @@ class TestCommandDropBatch:
 
         # Verify batch ref is gone
         result = subprocess.run(
-            ["git", "show-ref", "refs/batches/test-batch"],
+            ["git", "show-ref", get_batch_content_ref_name("test-batch")],
             capture_output=True,
         )
         assert result.returncode != 0
@@ -84,20 +85,20 @@ class TestCommandDropBatch:
 
         # Verify batch-b is gone
         result = subprocess.run(
-            ["git", "show-ref", "refs/batches/batch-b"],
+            ["git", "show-ref", get_batch_content_ref_name("batch-b")],
             capture_output=True,
         )
         assert result.returncode != 0
 
         # Verify other batches still exist
         result = subprocess.run(
-            ["git", "show-ref", "refs/batches/batch-a"],
+            ["git", "show-ref", get_batch_content_ref_name("batch-a")],
             capture_output=True,
         )
         assert result.returncode == 0
 
         result = subprocess.run(
-            ["git", "show-ref", "refs/batches/batch-c"],
+            ["git", "show-ref", get_batch_content_ref_name("batch-c")],
             capture_output=True,
         )
         assert result.returncode == 0

@@ -57,7 +57,7 @@ def _handle_include(flow_state: FlowState) -> None:
             raise ValueError(f"Unknown target role: {flow_state.target.role}")
     elif flow_state.source.role is LocationRole.BATCH:
         # Include from batch
-        if not flow_state.target.role is LocationRole.STAGING_AREA:
+        if flow_state.target.role is not LocationRole.STAGING_AREA:
             print(_("Batch-to-batch transfers not yet supported. Target must be staging."), file=sys.stderr)
             raise BypassRefresh()
         from ..commands.include_from import command_include_from_batch
@@ -101,7 +101,7 @@ def _handle_discard(flow_state: FlowState) -> None:
             raise ValueError(f"Unknown target role: {flow_state.target.role}")
     elif flow_state.source.role is LocationRole.BATCH:
         # Discard from batch
-        if not flow_state.target.role is LocationRole.STAGING_AREA:
+        if flow_state.target.role is not LocationRole.STAGING_AREA:
             print(_("Batch-to-batch transfers not yet supported. Target must be staging."), file=sys.stderr)
             raise BypassRefresh()
         from ..commands.discard_from import command_discard_from_batch
@@ -122,6 +122,18 @@ def _handle_again(flow_state: FlowState) -> None:
     auto_add_untracked_files()
 
     fetch_next_change()
+
+
+def _handle_undo(flow_state: FlowState) -> None:
+    """Handle undo action."""
+    from ..commands.undo import command_undo
+    command_undo()
+
+
+def _handle_redo(flow_state: FlowState) -> None:
+    """Handle redo action."""
+    from ..commands.redo import command_redo
+    command_redo()
 
 
 def _handle_line_selection(flow_state: FlowState) -> None:
@@ -528,6 +540,8 @@ ACTION_HANDLERS = {
     "f": ActionHandler(needs_hunk=True, handler=_handle_file_selection),
     "x": ActionHandler(needs_hunk=True, handler=_handle_fixup),
     "a": ActionHandler(needs_hunk=False, handler=_handle_again),
+    "u": ActionHandler(needs_hunk=False, handler=_handle_undo),
+    "U": ActionHandler(needs_hunk=False, handler=_handle_redo),
     "b": ActionHandler(needs_hunk=False, handler=_handle_batch),
     "?": ActionHandler(needs_hunk=False, handler=_handle_help),
     "q": ActionHandler(needs_hunk=False, handler=_handle_quit),
@@ -759,7 +773,7 @@ def handle_file_selection(flow_state: FlowState) -> None:
             else:
                 raise ValueError(f"Unknown target role: {flow_state.target.role}")
         elif flow_state.source.role is LocationRole.BATCH:
-            if not flow_state.target.role is LocationRole.STAGING_AREA:
+            if flow_state.target.role is not LocationRole.STAGING_AREA:
                 print(_("Batch-to-batch transfers not yet supported."), file=sys.stderr)
                 return
             from ..commands.include_from import command_include_from_batch
@@ -791,7 +805,7 @@ def handle_file_selection(flow_state: FlowState) -> None:
             else:
                 raise ValueError(f"Unknown target role: {flow_state.target.role}")
         elif flow_state.source.role is LocationRole.BATCH:
-            if not flow_state.target.role is LocationRole.STAGING_AREA:
+            if flow_state.target.role is not LocationRole.STAGING_AREA:
                 print(_("Batch-to-batch transfers not yet supported."), file=sys.stderr)
                 return
             from ..commands.discard_from import command_discard_from_batch
@@ -892,7 +906,7 @@ def handle_line_selection(flow_state: FlowState) -> None:
                 else:
                     raise ValueError(f"Unknown target role: {flow_state.target.role}")
             elif flow_state.source.role is LocationRole.BATCH:
-                if not flow_state.target.role is LocationRole.STAGING_AREA:
+                if flow_state.target.role is not LocationRole.STAGING_AREA:
                     print(_("Batch-to-batch transfers not yet supported."), file=sys.stderr)
                     return
                 from ..commands.include_from import command_include_from_batch
@@ -922,7 +936,7 @@ def handle_line_selection(flow_state: FlowState) -> None:
                 else:
                     raise ValueError(f"Unknown target role: {flow_state.target.role}")
             elif flow_state.source.role is LocationRole.BATCH:
-                if not flow_state.target.role is LocationRole.STAGING_AREA:
+                if flow_state.target.role is not LocationRole.STAGING_AREA:
                     print(_("Batch-to-batch transfers not yet supported."), file=sys.stderr)
                     return
                 from ..commands.discard_from import command_discard_from_batch
@@ -1066,6 +1080,8 @@ def print_help() -> None:
     print()
     print(_("More options:"))
     print(_("  a, again     - Clear state and start fresh pass through skipped hunks"))
+    print(_("  u, undo      - Undo the most recent operation"))
+    print(_("  U, redo      - Redo the most recently undone operation"))
     print(_("  l, lines     - Select specific lines from this hunk"))
     print(_("  f, file      - Include or skip all hunks in this file"))
     print(_("  x, fixup     - Suggest which commit to fixup (iterative)"))

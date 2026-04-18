@@ -6,10 +6,11 @@ import json
 import shutil
 from datetime import datetime, timezone
 
+from .query import read_batch_metadata
 from .validation import batch_exists, validate_batch_name
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.file_io import read_text_file_contents, write_text_file_contents
+from ..utils.file_io import write_text_file_contents
 from ..utils.git import run_git_command
 from ..utils.paths import get_batch_directory_path, get_batch_metadata_file_path
 
@@ -65,7 +66,8 @@ def create_batch(name: str, note: str = "", baseline_commit: str | None = None) 
 
     commit_sha = commit_result.stdout.strip()
 
-    run_git_command(["update-ref", f"refs/batches/{name}", commit_sha])
+    from .state_refs import sync_batch_state_refs
+    sync_batch_state_refs(name, content_commit=commit_sha)
 
 
 def delete_batch(name: str) -> None:
@@ -75,8 +77,8 @@ def delete_batch(name: str) -> None:
     if not batch_exists(name):
         exit_with_error(_("Batch '{name}' does not exist").format(name=name))
 
-    # Delete git ref
-    run_git_command(["update-ref", "-d", f"refs/batches/{name}"])
+    from .state_refs import delete_batch_state_refs
+    delete_batch_state_refs(name)
 
     # Delete metadata directory
     metadata_dir = get_batch_directory_path(name)
@@ -91,15 +93,12 @@ def update_batch_note(name: str, note: str) -> None:
     if not batch_exists(name):
         exit_with_error(_("Batch '{name}' does not exist").format(name=name))
 
-    # Read existing metadata
     metadata_path = get_batch_metadata_file_path(name)
-    metadata = {}
-    if metadata_path.exists():
-        try:
-            metadata = json.loads(read_text_file_contents(metadata_path))
-        except (json.JSONDecodeError, KeyError):
-            pass
+    metadata = read_batch_metadata(name)
 
     # Update note
     metadata["note"] = note
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+
+    from .state_refs import sync_batch_state_refs
+    sync_batch_state_refs(name)

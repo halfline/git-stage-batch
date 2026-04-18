@@ -24,9 +24,11 @@ from ..batch.storage import (
     copy_file_from_batch_to_batch,
     remove_file_from_batch,
 )
+from ..batch.state_refs import sync_batch_state_refs
 from ..batch.validation import batch_exists, validate_batch_name
 from ..exceptions import MergeError, exit_with_error
 from ..i18n import _
+from ..data.undo import undo_checkpoint
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import require_git_repository, run_git_command
 from ..utils.paths import (
@@ -61,13 +63,22 @@ def command_reset_from_batch(
         validate_batch_name(to_batch)
         if to_batch == batch_name:
             exit_with_error(_("--to must name a different batch"))
-        _move_claims_between_batches(batch_name, to_batch, file, line_ids)
-    elif file is not None:
-        _reset_file_claims_from_batch(batch_name, file, line_ids)
-    elif line_ids is not None:
-        _reset_line_claims_from_batch(batch_name, line_ids)
-    else:
-        _reset_all_claims_from_batch(batch_name)
+    operation_parts = ["reset", "--from", batch_name]
+    if to_batch is not None:
+        operation_parts.extend(["--to", to_batch])
+    if line_ids is not None:
+        operation_parts.extend(["--line", line_ids])
+    if file is not None:
+        operation_parts.extend(["--file", file])
+    with undo_checkpoint(" ".join(operation_parts)):
+        if to_batch is not None:
+            _move_claims_between_batches(batch_name, to_batch, file, line_ids)
+        elif file is not None:
+            _reset_file_claims_from_batch(batch_name, file, line_ids)
+        elif line_ids is not None:
+            _reset_line_claims_from_batch(batch_name, line_ids)
+        else:
+            _reset_all_claims_from_batch(batch_name)
 
     if to_batch is not None and line_ids:
         print(_("✓ Moved line(s) {lines} from batch '{source}' to '{dest}'").format(
@@ -333,3 +344,4 @@ def _reset_all_claims_from_batch(batch_name: str) -> None:
     metadata["files"] = {}
     metadata_path = get_batch_metadata_file_path(batch_name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    sync_batch_state_refs(batch_name)

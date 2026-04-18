@@ -218,6 +218,49 @@ This:
 
 ---
 
+### `undo`
+
+Undo the most recent undoable session operation, restoring the repository
+to its state before that operation.
+
+```
+❯ git-stage-batch undo
+```
+
+**Options:**
+- `--force`: Overwrite changes made after the undo checkpoint
+
+Refuses by default if the current state has changed since the checkpoint.
+
+---
+
+### `redo`
+
+Redo the most recently undone session operation.
+
+```
+❯ git-stage-batch redo
+```
+
+**Options:**
+- `--force`: Overwrite changes made after the undo
+
+Refuses by default if the current state has changed since the undo.
+
+Multiple undo/redo works in editor order:
+
+```bash
+# do A, do B, do C
+❯ git-stage-batch undo      # removes C, redo stack: C
+❯ git-stage-batch undo      # removes B, redo stack: B, C
+❯ git-stage-batch redo      # reapplies B, redo stack: C
+❯ git-stage-batch redo      # reapplies C, redo stack empty
+```
+
+A new undoable operation after undo clears the redo stack.
+
+---
+
 ## File-Level Operations
 
 ### `include --file [PATH]`

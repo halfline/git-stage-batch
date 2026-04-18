@@ -30,6 +30,7 @@ from ..data.hunk_tracking import (
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started, snapshot_file_if_untracked
+from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
 from ..staging.operations import build_target_working_tree_content_bytes_with_discarded_lines
@@ -62,41 +63,99 @@ def command_discard(*, quiet: bool = False) -> None:
         if not quiet:
             print(_("No more hunks to process."), file=sys.stderr)
         return
+    with undo_checkpoint("discard"):
+        # Read cached hash
+        patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
-    # Read cached hash
-    patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
+        # Handle based on item type
+        if isinstance(item, BinaryFileChange):
+            # Binary file - restore from HEAD or delete
+            file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
 
-    # Handle based on item type
-    if isinstance(item, BinaryFileChange):
-        # Binary file - restore from HEAD or delete
-        file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+            # Snapshot file if untracked before discarding
+            if file_path != "/dev/null":
+                snapshot_file_if_untracked(file_path)
+
+            log_journal("command_discard_binary_file", file_path=file_path, change_type=item.change_type)
+
+            if item.is_new_file():
+                # New file: delete from working tree
+                absolute_path = get_git_repository_root_path() / file_path
+                if absolute_path.exists():
+                    absolute_path.unlink()
+                    log_journal("command_discard_binary_deleted", file_path=file_path)
+            elif item.is_deleted_file():
+                # Deleted file: restore from HEAD
+                result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+                if result.returncode != 0:
+                    print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
+                    return
+                log_journal("command_discard_binary_restored", file_path=file_path)
+            else:
+                # Modified file: restore from HEAD
+                result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+                if result.returncode != 0:
+                    print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
+                    return
+                log_journal("command_discard_binary_restored", file_path=file_path)
+
+            # Add hash to blocklist
+            blocklist_path = get_block_list_file_path()
+            append_lines_to_file(blocklist_path, [patch_hash])
+
+            # Record for progress tracking
+            record_hunk_discarded(patch_hash)
+
+            if not quiet:
+                change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
+                print(_("✓ Binary file {desc} discarded: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
+
+            if quiet:
+                advance_to_next_change()
+            else:
+                advance_to_and_show_next_change()
+            return
+
+        # Text hunk - use git apply -R
+        patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
+
+        # Extract filename for user feedback and snapshotting
+        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        filename = line_changes.path
 
         # Snapshot file if untracked before discarding
-        if file_path != "/dev/null":
-            snapshot_file_if_untracked(file_path)
+        if filename != "/dev/null":
+            snapshot_file_if_untracked(filename)
 
-        log_journal("command_discard_binary_file", file_path=file_path, change_type=item.change_type)
+        # Apply the hunk in reverse to discard from working tree using streaming
+        log_journal("command_discard_before_git_apply", filename=filename, patch_hash=patch_hash)
+        stderr_chunks = []
+        exit_code = 0
 
-        if item.is_new_file():
-            # New file: delete from working tree
-            absolute_path = get_git_repository_root_path() / file_path
+        for event in stream_command(["git", "apply", "--reverse"], [patch_bytes]):
+            if isinstance(event, ExitEvent):
+                exit_code = event.exit_code
+            elif isinstance(event, OutputEvent):
+                if event.fd == 2:  # stderr
+                    stderr_chunks.append(event.data)
+
+        stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace') if stderr_chunks else ""
+        log_journal("command_discard_after_git_apply", exit_code=exit_code, stderr_len=len(stderr_text), filename=filename)
+
+        if exit_code != 0:
+            log_journal("command_discard_git_apply_failed", exit_code=exit_code, stderr=stderr_text, filename=filename)
+            print(_("Failed to discard hunk: {}").format(stderr_text), file=sys.stderr)
+            return
+
+        # After reverse-applying a new file, delete it if it became empty
+        # (git apply -R on new files empties them but doesn't delete them)
+        is_new_file = b"--- /dev/null" in patch_bytes
+        if is_new_file:
+            absolute_path = get_git_repository_root_path() / filename
             if absolute_path.exists():
-                absolute_path.unlink()
-                log_journal("command_discard_binary_deleted", file_path=file_path)
-        elif item.is_deleted_file():
-            # Deleted file: restore from HEAD
-            result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
-            if result.returncode != 0:
-                print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
-                return
-            log_journal("command_discard_binary_restored", file_path=file_path)
-        else:
-            # Modified file: restore from HEAD
-            result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
-            if result.returncode != 0:
-                print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
-                return
-            log_journal("command_discard_binary_restored", file_path=file_path)
+                content = read_text_file_contents(absolute_path)
+                if not content.strip():  # File is empty
+                    absolute_path.unlink()
 
         # Add hash to blocklist
         blocklist_path = get_block_list_file_path()
@@ -105,73 +164,15 @@ def command_discard(*, quiet: bool = False) -> None:
         # Record for progress tracking
         record_hunk_discarded(patch_hash)
 
+        log_journal("command_discard_success", filename=filename, patch_hash=patch_hash)
+
         if not quiet:
-            change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
-            print(_("✓ Binary file {desc} discarded: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
+            print(_("✓ Hunk discarded from {file}").format(file=filename), file=sys.stderr)
 
         if quiet:
             advance_to_next_change()
         else:
             advance_to_and_show_next_change()
-        return
-
-    # Text hunk - use git apply -R
-    patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
-
-    # Extract filename for user feedback and snapshotting
-    line_changes = build_line_changes_from_patch_bytes(patch_bytes)
-    filename = line_changes.path
-
-    # Snapshot file if untracked before discarding
-    if filename != "/dev/null":
-        snapshot_file_if_untracked(filename)
-
-    # Apply the hunk in reverse to discard from working tree using streaming
-    log_journal("command_discard_before_git_apply", filename=filename, patch_hash=patch_hash)
-    stderr_chunks = []
-    exit_code = 0
-
-    for event in stream_command(["git", "apply", "--reverse"], [patch_bytes]):
-        if isinstance(event, ExitEvent):
-            exit_code = event.exit_code
-        elif isinstance(event, OutputEvent):
-            if event.fd == 2:  # stderr
-                stderr_chunks.append(event.data)
-
-    stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace') if stderr_chunks else ""
-    log_journal("command_discard_after_git_apply", exit_code=exit_code, stderr_len=len(stderr_text), filename=filename)
-
-    if exit_code != 0:
-        log_journal("command_discard_git_apply_failed", exit_code=exit_code, stderr=stderr_text, filename=filename)
-        print(_("Failed to discard hunk: {}").format(stderr_text), file=sys.stderr)
-        return
-
-    # After reverse-applying a new file, delete it if it became empty
-    # (git apply -R on new files empties them but doesn't delete them)
-    is_new_file = b"--- /dev/null" in patch_bytes
-    if is_new_file:
-        absolute_path = get_git_repository_root_path() / filename
-        if absolute_path.exists():
-            content = read_text_file_contents(absolute_path)
-            if not content.strip():  # File is empty
-                absolute_path.unlink()
-
-    # Add hash to blocklist
-    blocklist_path = get_block_list_file_path()
-    append_lines_to_file(blocklist_path, [patch_hash])
-
-    # Record for progress tracking
-    record_hunk_discarded(patch_hash)
-
-    log_journal("command_discard_success", filename=filename, patch_hash=patch_hash)
-
-    if not quiet:
-        print(_("✓ Hunk discarded from {file}").format(file=filename), file=sys.stderr)
-
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
 
 
 def command_discard_file(file: str) -> None:
@@ -202,48 +203,48 @@ def command_discard_file(file: str) -> None:
     else:
         # Explicit path provided
         target_file = file
+    with undo_checkpoint(f"discard --file {file}".rstrip()):
+        # Load blocklist
+        blocklist_path = get_block_list_file_path()
+        blocklist_text = read_text_file_contents(blocklist_path)
+        blocked_hashes = set(blocklist_text.splitlines())
 
-    # Load blocklist
-    blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines())
+        # Snapshot the file if it's untracked (for abort functionality)
+        snapshot_file_if_untracked(target_file)
 
-    # Snapshot the file if it's untracked (for abort functionality)
-    snapshot_file_if_untracked(target_file)
+        # Stream through hunks and collect hashes from target file BEFORE removing it
+        # (git rm -f will stage the deletion, making hunks disappear from git diff)
+        hashes_to_block = []
+        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+            if patch.new_path != target_file:
+                continue
 
-    # Stream through hunks and collect hashes from target file BEFORE removing it
-    # (git rm -f will stage the deletion, making hunks disappear from git diff)
-    hashes_to_block = []
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-        if patch.new_path != target_file:
-            continue
+            patch_bytes = patch.to_patch_bytes()
+            patch_hash = compute_stable_hunk_hash(patch_bytes)
 
-        patch_bytes = patch.to_patch_bytes()
-        patch_hash = compute_stable_hunk_hash(patch_bytes)
+            if patch_hash not in blocked_hashes:
+                hashes_to_block.append(patch_hash)
 
-        if patch_hash not in blocked_hashes:
-            hashes_to_block.append(patch_hash)
+        # Remove the file from working tree
+        try:
+            subprocess.run(
+                ["git", "rm", "-f", target_file],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print(_("Failed to discard file: {}").format(e.stderr.decode("utf-8", errors="replace")), file=sys.stderr)
+            return
 
-    # Remove the file from working tree
-    try:
-        subprocess.run(
-            ["git", "rm", "-f", target_file],
-            check=True,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError as e:
-        print(_("Failed to discard file: {}").format(e.stderr.decode("utf-8", errors="replace")), file=sys.stderr)
-        return
+        # Mark all collected hashes as processed
+        for patch_hash in hashes_to_block:
+            append_lines_to_file(blocklist_path, [patch_hash])
+            # Record for progress tracking
+            record_hunk_discarded(patch_hash)
 
-    # Mark all collected hashes as processed
-    for patch_hash in hashes_to_block:
-        append_lines_to_file(blocklist_path, [patch_hash])
-        # Record for progress tracking
-        record_hunk_discarded(patch_hash)
+        print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
 
-    print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
-
-    advance_to_and_show_next_change()
+        advance_to_and_show_next_change()
 
 
 def command_discard_line(line_id_specification: str) -> None:
@@ -266,16 +267,16 @@ def command_discard_line(line_id_specification: str) -> None:
         working_bytes = working_file_path.read_bytes()
     else:
         exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
+    with undo_checkpoint(f"discard --line {line_id_specification}"):
+        # Build new working tree content with selected lines discarded
+        target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
+            line_changes, set(requested_ids), working_bytes)
 
-    # Build new working tree content with selected lines discarded
-    target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
-        line_changes, set(requested_ids), working_bytes)
+        # Write back to working tree
+        working_file_path.write_bytes(target_working_content)
 
-    # Write back to working tree
-    working_file_path.write_bytes(target_working_content)
-
-    # After modifying working tree, recalculate hunk for the SAME file
-    recalculate_selected_hunk_for_file(line_changes.path)
+        # After modifying working tree, recalculate hunk for the SAME file
+        recalculate_selected_hunk_for_file(line_changes.path)
 
     print(_("✓ Discarded line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
 
@@ -293,32 +294,37 @@ def command_discard_to_batch(batch_name: str, line_ids: str | None = None, file:
     """
     require_git_repository()
     ensure_state_directory_exists()
-
+    operation_parts = ["discard", "--to", batch_name]
+    if line_ids is not None:
+        operation_parts.extend(["--line", line_ids])
     if file is not None:
-        # File-scoped operation
+        operation_parts.extend(["--file", file])
+    with undo_checkpoint(" ".join(operation_parts)):
+        if file is not None:
+            # File-scoped operation
 
-        # Determine target file
-        if file == "":
-            # --file with no arg: use selected hunk's file
-            target_file = get_selected_change_file_path()
-            if target_file is None:
-                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-        else:
-            target_file = file
+            # Determine target file
+            if file == "":
+                # --file with no arg: use selected hunk's file
+                target_file = get_selected_change_file_path()
+                if target_file is None:
+                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+            else:
+                target_file = file
 
-        if line_ids is None:
-            # --file without --line: discard entire file
-            _command_discard_file_to_batch(batch_name, target_file, quiet=quiet)
+            if line_ids is None:
+                # --file without --line: discard entire file
+                _command_discard_file_to_batch(batch_name, target_file, quiet=quiet)
+            else:
+                # --file with --line: discard specific lines from file
+                _command_discard_file_lines_to_batch(batch_name, target_file, line_ids, quiet=quiet)
         else:
-            # --file with --line: discard specific lines from file
-            _command_discard_file_lines_to_batch(batch_name, target_file, line_ids, quiet=quiet)
-    else:
-        # Hunk-scoped operation (selected behavior)
-        if line_ids is not None:
-            _command_discard_lines_to_batch(batch_name, line_ids, quiet=quiet)
-        else:
-            # Discard entire selected hunk
-            _command_discard_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+            # Hunk-scoped operation (selected behavior)
+            if line_ids is not None:
+                _command_discard_lines_to_batch(batch_name, line_ids, quiet=quiet)
+            else:
+                # Discard entire selected hunk
+                _command_discard_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
 
 
 def _command_discard_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:

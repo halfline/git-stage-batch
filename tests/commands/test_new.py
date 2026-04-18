@@ -1,6 +1,7 @@
 """Tests for new batch command."""
 
 from git_stage_batch.batch import read_batch_metadata
+from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 
 import subprocess
 
@@ -36,9 +37,9 @@ class TestCommandNewBatch:
         """Test creating a new batch."""
         command_new_batch("test-batch")
 
-        # Verify batch ref exists
+        # Verify authoritative batch ref exists
         result = subprocess.run(
-            ["git", "show-ref", "refs/batches/test-batch"],
+            ["git", "show-ref", get_batch_content_ref_name("test-batch")],
             capture_output=True,
             text=True,
         )
@@ -52,9 +53,9 @@ class TestCommandNewBatch:
         """Test creating a batch with a note."""
         command_new_batch("test-batch", note="Test description")
 
-        # Verify batch ref exists
+        # Verify authoritative batch ref exists
         result = subprocess.run(
-            ["git", "show-ref", "refs/batches/test-batch"],
+            ["git", "show-ref", get_batch_content_ref_name("test-batch")],
             capture_output=True,
             text=True,
         )

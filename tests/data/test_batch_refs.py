@@ -8,6 +8,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.data.batch_refs import restore_batch_refs, snapshot_batch_refs
+from git_stage_batch.batch.operations import create_batch, update_batch_note
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.git import run_git_command
@@ -175,3 +176,31 @@ class TestRestoreBatchRefs:
         assert result.stdout.strip() == original_sha
         result = run_git_command(["show-ref", f"refs/batches/{batch_name}"], check=False)
         assert result.returncode != 0
+
+    def test_restore_reverts_git_backed_state_ref_exactly(self, temp_git_repo):
+        """Test restore moves authoritative state ref back to its snapshot SHA."""
+        batch_name = "test-batch"
+        create_batch(batch_name, "before")
+        original_content_sha = run_git_command(
+            ["rev-parse", f"refs/git-stage-batch/batches/{batch_name}"]
+        ).stdout.strip()
+        original_state_sha = run_git_command(
+            ["rev-parse", f"refs/git-stage-batch/state/{batch_name}"]
+        ).stdout.strip()
+
+        snapshot_batch_refs()
+        update_batch_note(batch_name, "after")
+        assert run_git_command(
+            ["rev-parse", f"refs/git-stage-batch/state/{batch_name}"]
+        ).stdout.strip() != original_state_sha
+
+        restore_batch_refs()
+
+        restored_content_sha = run_git_command(
+            ["rev-parse", f"refs/git-stage-batch/batches/{batch_name}"]
+        ).stdout.strip()
+        restored_state_sha = run_git_command(
+            ["rev-parse", f"refs/git-stage-batch/state/{batch_name}"]
+        ).stdout.strip()
+        assert restored_content_sha == original_content_sha
+        assert restored_state_sha == original_state_sha

@@ -15,7 +15,7 @@ _git_stage_batch()
     local cur prev words cword
     _init_completion || return
 
-    local commands="start show include skip discard status again stop abort block-file unblock-file suggest-fixup new list drop annotate apply reset undo"
+    local commands="start show include skip discard status again stop abort block-file unblock-file suggest-fixup new list drop annotate apply reset undo redo"
 
     # Handle subcommands
     if [[ $cword -eq 1 ]]; then
@@ -120,7 +120,7 @@ _git_stage_batch()
         status)
             COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
             ;;
-        undo)
+        undo|redo)
             COMPREPLY=($(compgen -W "--force" -- "$cur"))
             ;;
         block-file|unblock-file)

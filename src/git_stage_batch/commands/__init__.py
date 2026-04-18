@@ -25,6 +25,7 @@ from .status import command_status
 from .stop import command_stop
 from .suggest_fixup import command_suggest_fixup, command_suggest_fixup_line
 from .unblock_file import command_unblock_file
+from .undo import command_undo
 
 __all__ = [
     "command_abort",
@@ -59,4 +60,5 @@ __all__ = [
     "command_suggest_fixup",
     "command_suggest_fixup_line",
     "command_unblock_file",
+    "command_undo",
 ]

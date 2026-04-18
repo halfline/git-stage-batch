@@ -240,6 +240,9 @@ def clear_session_state() -> None:
     """
     state_dir = get_state_directory_path()
 
+    from .undo import clear_undo_history
+    clear_undo_history()
+
     # Clear session state files
     for filename in SESSION_STATE_FILES:
         file_path = state_dir / filename

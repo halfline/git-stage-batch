@@ -127,6 +127,19 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_again.set_defaults(func=lambda _: commands.command_again())
 
+    # undo - Undo the most recent undoable session operation
+    parser_undo = subparsers.add_parser(
+        "undo",
+        aliases=["u", "back"],
+        help=_("Undo the most recent undoable session operation"),
+    )
+    parser_undo.add_argument(
+        "--force",
+        action="store_true",
+        help=_("Overwrite changes made after the undo checkpoint"),
+    )
+    parser_undo.set_defaults(func=lambda args: commands.command_undo(force=args.force))
+
     # show - Show the selected hunk
     parser_show = subparsers.add_parser(
         "show",

@@ -9,6 +9,7 @@ from typing import Iterable, Iterator, Optional, Union
 from .models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, SingleHunkPatch
 from ..exceptions import exit_with_error
 from ..i18n import _
+from ..utils.file_io import write_file_bytes
 from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
 from ..utils.journal import log_journal
 from ..utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
@@ -282,8 +283,8 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
                 index_version = head_version
 
     # Write snapshots as bytes
-    get_index_snapshot_file_path().write_bytes(index_version)
-    get_working_tree_snapshot_file_path().write_bytes(working_tree_version)
+    write_file_bytes(get_index_snapshot_file_path(), index_version)
+    write_file_bytes(get_working_tree_snapshot_file_path(), working_tree_version)
 
     log_journal(
         "write_snapshots_for_selected_file",

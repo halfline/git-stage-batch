@@ -5,6 +5,12 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+from .ref_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
+from .state_refs import (
+    get_authoritative_batch_commit_sha,
+    get_legacy_batch_ref_name,
+    read_batch_state_metadata,
+)
 from .validation import validate_batch_name
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import run_git_command
@@ -30,6 +36,10 @@ def read_batch_metadata(name: str) -> dict:
     }
     """
     validate_batch_name(name)
+
+    state_metadata = read_batch_state_metadata(name)
+    if state_metadata is not None:
+        return state_metadata
 
     metadata_path = get_batch_metadata_file_path(name)
     if not metadata_path.exists():
@@ -58,11 +68,15 @@ def read_batch_metadata(name: str) -> dict:
 
 
 def get_batch_commit_sha(name: str) -> Optional[str]:
-    """Get the commit SHA for a batch from its git ref."""
+    """Get the commit SHA for a batch from its authoritative git ref."""
     validate_batch_name(name)
 
+    commit_sha = get_authoritative_batch_commit_sha(name)
+    if commit_sha:
+        return commit_sha
+
     result = run_git_command(
-        ["rev-parse", "--verify", f"refs/batches/{name}"],
+        ["rev-parse", "--verify", get_legacy_batch_ref_name(name)],
         check=False
     )
     if result.returncode != 0:
@@ -72,18 +86,15 @@ def get_batch_commit_sha(name: str) -> Optional[str]:
 
 
 def list_batch_names() -> list[str]:
-    """List all batch names by querying refs/batches/* refs."""
-    result = run_git_command(["for-each-ref", "--format=%(refname)", "refs/batches/"], check=False)
-    if result.returncode != 0:
-        return []
-
-    batch_names = []
-    for line in result.stdout.strip().splitlines():
-        if not line:
+    """List all batch names by querying authoritative refs and legacy imports."""
+    batch_names: set[str] = set()
+    for prefix in (BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX):
+        result = run_git_command(["for-each-ref", "--format=%(refname)", prefix], check=False)
+        if result.returncode != 0:
             continue
-        if line.startswith("refs/batches/"):
-            batch_name = line[len("refs/batches/"):]
-            batch_names.append(batch_name)
+        for line in result.stdout.strip().splitlines():
+            if line.startswith(prefix):
+                batch_names.add(line[len(prefix):])
 
     return sorted(batch_names)
 

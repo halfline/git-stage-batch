@@ -22,13 +22,62 @@ def ensure_state_directory_exists() -> None:
     get_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
+def get_session_directory_path() -> Path:
+    """Get the directory containing active session scratch state."""
+    path = get_state_directory_path() / "session"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_selected_state_directory_path() -> Path:
+    """Get the directory containing the selected change cache."""
+    path = get_session_directory_path() / "selected"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_progress_state_directory_path() -> Path:
+    """Get the directory containing hunk progress state."""
+    path = get_session_directory_path() / "progress"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_processed_state_directory_path() -> Path:
+    """Get the directory containing processed line-id state."""
+    path = get_session_directory_path() / "processed"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_config_state_directory_path() -> Path:
+    """Get the directory containing session configuration state."""
+    path = get_session_directory_path() / "config"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_abort_state_directory_path() -> Path:
+    """Get the directory containing abort/recovery state."""
+    path = get_session_directory_path() / "abort"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_fixup_state_directory_path() -> Path:
+    """Get the directory containing suggest-fixup state."""
+    path = get_session_directory_path() / "fixup"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def get_processed_include_ids_file_path() -> Path:
     """Get the path to the processed include IDs file.
 
     Returns:
         Path to processed include IDs file
     """
-    return get_state_directory_path() / "processed.include"
+    return get_processed_state_directory_path() / "included-lines.json"
 
 
 def get_processed_skip_ids_file_path() -> Path:
@@ -37,7 +86,7 @@ def get_processed_skip_ids_file_path() -> Path:
     Returns:
         Path to processed skip IDs file
     """
-    return get_state_directory_path() / "processed.skip"
+    return get_processed_state_directory_path() / "skipped-lines.json"
 
 
 def get_processed_batch_ids_file_path() -> Path:
@@ -46,7 +95,7 @@ def get_processed_batch_ids_file_path() -> Path:
     Returns:
         Path to processed batch IDs file
     """
-    return get_state_directory_path() / "processed.batch"
+    return get_processed_state_directory_path() / "batched-lines.json"
 
 
 def get_line_changes_json_file_path() -> Path:
@@ -55,7 +104,7 @@ def get_line_changes_json_file_path() -> Path:
     Returns:
         Path to selected lines JSON file
     """
-    return get_state_directory_path() / "selected-lines.json"
+    return get_selected_state_directory_path() / "hunk.lines.json"
 
 
 def get_index_snapshot_file_path() -> Path:
@@ -64,7 +113,7 @@ def get_index_snapshot_file_path() -> Path:
     Returns:
         Path to index snapshot file
     """
-    return get_state_directory_path() / "index-snapshot"
+    return get_selected_state_directory_path() / "index.snapshot"
 
 
 def get_working_tree_snapshot_file_path() -> Path:
@@ -73,7 +122,7 @@ def get_working_tree_snapshot_file_path() -> Path:
     Returns:
         Path to working tree snapshot file
     """
-    return get_state_directory_path() / "working-tree-snapshot"
+    return get_selected_state_directory_path() / "working-tree.snapshot"
 
 
 def get_block_list_file_path() -> Path:
@@ -82,7 +131,7 @@ def get_block_list_file_path() -> Path:
     Returns:
         Path to blocklist file
     """
-    return get_state_directory_path() / "blocklist"
+    return get_progress_state_directory_path() / "blocked-hunks.txt"
 
 
 def get_selected_hunk_patch_file_path() -> Path:
@@ -91,7 +140,7 @@ def get_selected_hunk_patch_file_path() -> Path:
     Returns:
         Path to selected hunk patch file
     """
-    return get_state_directory_path() / "selected-hunk-patch"
+    return get_selected_state_directory_path() / "hunk.patch"
 
 
 def get_selected_hunk_hash_file_path() -> Path:
@@ -100,7 +149,7 @@ def get_selected_hunk_hash_file_path() -> Path:
     Returns:
         Path to selected hunk hash file
     """
-    return get_state_directory_path() / "selected-hunk-hash"
+    return get_selected_state_directory_path() / "hunk.hash.txt"
 
 
 def get_selected_binary_file_json_path() -> Path:
@@ -112,7 +161,7 @@ def get_selected_binary_file_json_path() -> Path:
     Returns:
         Path to selected binary file JSON file
     """
-    return get_state_directory_path() / "selected-binary-file.json"
+    return get_selected_state_directory_path() / "binary-file.json"
 
 
 def get_abort_head_file_path() -> Path:
@@ -121,7 +170,7 @@ def get_abort_head_file_path() -> Path:
     Returns:
         Path to abort HEAD file
     """
-    return get_state_directory_path() / "abort-head"
+    return get_abort_state_directory_path() / "head.txt"
 
 
 def get_abort_stash_file_path() -> Path:
@@ -130,7 +179,7 @@ def get_abort_stash_file_path() -> Path:
     Returns:
         Path to abort stash file
     """
-    return get_state_directory_path() / "abort-stash"
+    return get_abort_state_directory_path() / "stash.txt"
 
 
 def get_abort_snapshots_directory_path() -> Path:
@@ -139,7 +188,7 @@ def get_abort_snapshots_directory_path() -> Path:
     Returns:
         Path to snapshots directory
     """
-    return get_state_directory_path() / "snapshots"
+    return get_abort_state_directory_path() / "untracked"
 
 
 def get_abort_snapshot_list_file_path() -> Path:
@@ -148,7 +197,7 @@ def get_abort_snapshot_list_file_path() -> Path:
     Returns:
         Path to snapshot list file
     """
-    return get_state_directory_path() / "snapshot-list"
+    return get_abort_state_directory_path() / "untracked-paths.txt"
 
 
 def get_session_batch_sources_file_path() -> Path:
@@ -157,7 +206,7 @@ def get_session_batch_sources_file_path() -> Path:
     Returns:
         Path to session-batch-sources.json file
     """
-    return get_state_directory_path() / "session-batch-sources.json"
+    return get_session_directory_path() / "batch-sources.json"
 
 
 def get_auto_added_files_file_path() -> Path:
@@ -166,7 +215,7 @@ def get_auto_added_files_file_path() -> Path:
     Returns:
         Path to auto-added files list file
     """
-    return get_state_directory_path() / "auto-added-files"
+    return get_abort_state_directory_path() / "auto-added-files.txt"
 
 
 def get_blocked_files_file_path() -> Path:
@@ -175,7 +224,7 @@ def get_blocked_files_file_path() -> Path:
     Returns:
         Path to blocked files list file
     """
-    return get_state_directory_path() / "blocked-files"
+    return get_progress_state_directory_path() / "blocked-files.txt"
 
 
 def get_iteration_count_file_path() -> Path:
@@ -184,7 +233,7 @@ def get_iteration_count_file_path() -> Path:
     Returns:
         Path to iteration count file
     """
-    return get_state_directory_path() / "iteration-count"
+    return get_config_state_directory_path() / "iteration-count.txt"
 
 
 def get_start_head_file_path() -> Path:
@@ -193,7 +242,7 @@ def get_start_head_file_path() -> Path:
     Returns:
         Path to start HEAD file
     """
-    return get_state_directory_path() / "start-head"
+    return get_session_directory_path() / "start-head.txt"
 
 
 def get_start_index_tree_file_path() -> Path:
@@ -202,7 +251,7 @@ def get_start_index_tree_file_path() -> Path:
     Returns:
         Path to start index tree file
     """
-    return get_state_directory_path() / "start-index-tree"
+    return get_session_directory_path() / "start-index-tree.txt"
 
 
 def get_start_batch_refs_file_path() -> Path:
@@ -211,7 +260,7 @@ def get_start_batch_refs_file_path() -> Path:
     Returns:
         Path to start batch refs file (JSON format: {batch_name: commit_sha})
     """
-    return get_state_directory_path() / "start-batch-refs.json"
+    return get_session_directory_path() / "start-batch-refs.json"
 
 
 def get_context_lines_file_path() -> Path:
@@ -220,7 +269,7 @@ def get_context_lines_file_path() -> Path:
     Returns:
         Path to context lines file
     """
-    return get_state_directory_path() / "context-lines"
+    return get_config_state_directory_path() / "context-lines.txt"
 
 
 def get_context_lines() -> int:
@@ -244,7 +293,7 @@ def get_suggest_fixup_state_file_path() -> Path:
     Returns:
         Path to suggest-fixup state JSON file
     """
-    return get_state_directory_path() / "suggest-fixup-state.json"
+    return get_fixup_state_directory_path() / "state.json"
 
 
 def get_included_hunks_file_path() -> Path:
@@ -253,7 +302,7 @@ def get_included_hunks_file_path() -> Path:
     Returns:
         Path to included hunks file
     """
-    return get_state_directory_path() / "included-hunks"
+    return get_progress_state_directory_path() / "included-hunks.txt"
 
 
 def get_skipped_hunks_jsonl_file_path() -> Path:
@@ -262,7 +311,7 @@ def get_skipped_hunks_jsonl_file_path() -> Path:
     Returns:
         Path to skipped hunks JSONL file
     """
-    return get_state_directory_path() / "skipped-hunks.jsonl"
+    return get_progress_state_directory_path() / "skipped-hunks.jsonl"
 
 
 def get_discarded_hunks_file_path() -> Path:
@@ -271,7 +320,7 @@ def get_discarded_hunks_file_path() -> Path:
     Returns:
         Path to discarded hunks file
     """
-    return get_state_directory_path() / "discarded-hunks"
+    return get_progress_state_directory_path() / "discarded-hunks.txt"
 
 
 def get_batched_hunks_file_path() -> Path:
@@ -280,7 +329,7 @@ def get_batched_hunks_file_path() -> Path:
     Returns:
         Path to batched hunks file
     """
-    return get_state_directory_path() / "batched-hunks"
+    return get_progress_state_directory_path() / "batched-hunks.txt"
 
 
 def get_batches_directory_path() -> Path:
@@ -346,4 +395,4 @@ def get_batch_refs_snapshot_file_path() -> Path:
     Returns:
         Path to batch refs snapshot JSON file
     """
-    return get_state_directory_path() / "batch-refs-snapshot.json"
+    return get_abort_state_directory_path() / "batch-refs.json"

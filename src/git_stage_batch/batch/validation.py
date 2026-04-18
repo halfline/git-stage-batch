@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .ref_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.git import run_git_command
@@ -24,9 +25,16 @@ def validate_batch_name(name: str) -> None:
 
 
 def batch_exists(batch_name: str) -> bool:
-    """Check if a batch exists by checking for its git ref."""
+    """Check if a batch exists by checking its authoritative git ref."""
     result = run_git_command(
-        ["show-ref", "--verify", "--quiet", f"refs/batches/{batch_name}"],
+        ["show-ref", "--verify", "--quiet", f"{BATCH_CONTENT_REF_PREFIX}{batch_name}"],
+        check=False
+    )
+    if result.returncode == 0:
+        return True
+
+    result = run_git_command(
+        ["show-ref", "--verify", "--quiet", f"{LEGACY_BATCH_REF_PREFIX}{batch_name}"],
         check=False
     )
     return result.returncode == 0

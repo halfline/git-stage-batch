@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Optional
 from .metadata_validation import get_validated_baseline_commit
 from .operations import create_batch
 from .query import get_batch_baseline_commit, get_batch_commit_sha, read_batch_metadata
+from .state_refs import read_file_backed_batch_metadata
 from .validation import batch_exists, validate_batch_name
 from ..core.models import BinaryFileChange
 from ..data.batch_sources import (
@@ -427,7 +428,7 @@ def _remove_file_from_batch_commit(batch_name: str, file_path: str) -> None:
 
         # Collect parent commits: baseline + batch sources
         baseline = get_batch_baseline_commit(batch_name)
-        metadata = read_batch_metadata(batch_name)
+        metadata = read_file_backed_batch_metadata(batch_name)
 
         parents = []
         if baseline:
@@ -463,8 +464,8 @@ def _remove_file_from_batch_commit(batch_name: str, file_path: str) -> None:
 
         commit_sha = commit_result.stdout.strip()
 
-        # Update batch ref
-        run_git_command(["update-ref", f"refs/batches/{batch_name}", commit_sha])
+        from .state_refs import sync_batch_state_refs
+        sync_batch_state_refs(batch_name, content_commit=commit_sha)
 
     finally:
         if temp_index_path.exists():
@@ -518,7 +519,7 @@ def _update_batch_commit(batch_name: str, file_path: str, blob_sha: str, file_mo
 
         # Collect parent commits: baseline + batch sources
         baseline = get_batch_baseline_commit(batch_name)
-        metadata = read_batch_metadata(batch_name)
+        metadata = read_file_backed_batch_metadata(batch_name)
 
         parents = []
         if baseline:
@@ -554,8 +555,8 @@ def _update_batch_commit(batch_name: str, file_path: str, blob_sha: str, file_mo
 
         commit_sha = commit_result.stdout.strip()
 
-        # Update batch ref
-        run_git_command(["update-ref", f"refs/batches/{batch_name}", commit_sha])
+        from .state_refs import sync_batch_state_refs
+        sync_batch_state_refs(batch_name, content_commit=commit_sha)
 
     finally:
         if temp_index_path.exists():

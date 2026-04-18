@@ -31,39 +31,14 @@ PERMANENT_DIRS = frozenset({"batches", "batch-sources"})
 
 # Iteration-specific state (cleared by again, stop, abort)
 ITERATION_STATE_FILES = [
-    "selected-hunk-hash",
-    "selected-hunk-patch",
-    "selected-lines.json",
-    "selected-binary-file.json",
-    "index-snapshot",
-    "working-tree-snapshot",
-    "blocklist",
-    "discarded-hunks",
-    "included-hunks",
-    "skipped-hunks.jsonl",
-    "batched-hunks",
-    "blocked-files",
-    "processed.skip",
-    "processed.include",
-    "processed.batch",
+    "session/selected",
+    "session/progress",
+    "session/processed",
 ]
 
 # Session-level state (cleared by stop and abort, preserved by again)
 SESSION_STATE_FILES = [
-    "abort-head",
-    "abort-stash",
-    "snapshot-list",
-    "snapshots",  # directory
-    "auto-added-files",
-    "intent-to-add-files",
-    "iteration-count",
-    "start-head",
-    "start-index-tree",
-    "start-batch-refs.json",
-    "context-lines",
-    "suggest-fixup-state.json",
-    "session-batch-sources.json",
-    "batch-refs-snapshot.json",
+    "session",
     "journal.jsonl",
 ]
 
@@ -109,7 +84,7 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
 
     # Save list of intent-to-add files for abort restoration
     if all_intent_to_add_files:
-        intent_to_add_file = get_state_directory_path() / "intent-to-add-files"
+        intent_to_add_file = get_state_directory_path() / "session" / "abort" / "intent-to-add-files.txt"
         write_file_paths_file(intent_to_add_file, all_intent_to_add_files)
 
     return (all_intent_to_add_files, new_intent_to_add_files)

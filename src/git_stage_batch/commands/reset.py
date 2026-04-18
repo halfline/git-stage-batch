@@ -24,6 +24,7 @@ from ..batch.storage import (
     copy_file_from_batch_to_batch,
     remove_file_from_batch,
 )
+from ..batch.state_refs import sync_batch_state_refs
 from ..batch.validation import batch_exists, validate_batch_name
 from ..exceptions import MergeError, exit_with_error
 from ..i18n import _
@@ -333,3 +334,4 @@ def _reset_all_claims_from_batch(batch_name: str) -> None:
     metadata["files"] = {}
     metadata_path = get_batch_metadata_file_path(batch_name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    sync_batch_state_refs(batch_name)

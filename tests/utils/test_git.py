@@ -3,15 +3,10 @@
 from git_stage_batch.utils.git import stream_git_command
 from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
 from git_stage_batch.utils.git import read_gitignore_lines
-from git_stage_batch.utils.git import get_gitignore_path, read_gitignore_lines
-from git_stage_batch.utils.git import get_gitignore_path, write_gitignore_lines
-from git_stage_batch.utils.git import add_file_to_gitignore, read_gitignore_lines
-from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path, read_gitignore_lines
-from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path
-from git_stage_batch.utils.git import add_file_to_gitignore, read_gitignore_lines, remove_file_from_gitignore
-from git_stage_batch.utils.git import get_gitignore_path, read_gitignore_lines, remove_file_from_gitignore
-from git_stage_batch.utils.git import add_file_to_gitignore, get_gitignore_path, read_gitignore_lines, remove_file_from_gitignore
-from git_stage_batch.utils.git import get_gitignore_path, remove_file_from_gitignore
+from git_stage_batch.utils.git import get_gitignore_path
+from git_stage_batch.utils.git import write_gitignore_lines
+from git_stage_batch.utils.git import add_file_to_gitignore
+from git_stage_batch.utils.git import remove_file_from_gitignore
 
 import subprocess
 from pathlib import Path

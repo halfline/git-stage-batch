@@ -5,14 +5,11 @@ from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
 from git_stage_batch.utils.git import stream_git_command
 from git_stage_batch.utils.paths import get_block_list_file_path, get_context_lines
 from git_stage_batch.data.session import initialize_abort_state
-from git_stage_batch.utils.paths import ensure_state_directory_exists, get_block_list_file_path, get_context_lines
+from git_stage_batch.utils.paths import ensure_state_directory_exists
 from git_stage_batch.utils.paths import (
-    ensure_state_directory_exists,
-    get_context_lines,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
-from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 import subprocess
 

@@ -9,7 +9,6 @@ Tests for handling:
 """
 
 from git_stage_batch.core.models import BinaryFileChange, SingleHunkPatch
-from git_stage_batch.core.models import BinaryFileChange
 
 from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
 

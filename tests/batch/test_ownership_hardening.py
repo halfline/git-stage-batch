@@ -14,7 +14,6 @@ from git_stage_batch.batch.attribution import (
 )
 from git_stage_batch.core.diff_parser import (
     build_line_changes_from_patch_bytes,
-    parse_unified_diff_streaming,
 )
 from git_stage_batch.utils.git import stream_git_command
 

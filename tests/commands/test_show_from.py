@@ -4,7 +4,7 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.storage import add_file_to_batch
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.ownership import DeletionClaim
 from git_stage_batch.data.hunk_tracking import render_batch_file_display
 import git_stage_batch.batch.merge as merge_module
 import git_stage_batch.batch.display as display_module

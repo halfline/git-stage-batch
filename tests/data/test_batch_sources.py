@@ -11,19 +11,15 @@ from git_stage_batch.utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
 )
-from git_stage_batch.utils.file_io import write_file_paths_file, write_text_file_contents
 from git_stage_batch.utils.file_io import write_file_paths_file
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.data.batch_sources import create_batch_source_commit
-from git_stage_batch.utils.paths import get_abort_head_file_path
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.data.batch_sources import load_session_batch_sources
-from git_stage_batch.data.batch_sources import load_session_batch_sources, save_session_batch_sources
+from git_stage_batch.data.batch_sources import save_session_batch_sources
 from git_stage_batch.data.batch_sources import (
-    get_batch_source_for_file,
-    save_session_batch_sources
+    get_batch_source_for_file
 )
-from git_stage_batch.data.batch_sources import get_batch_source_for_file
 
 import subprocess
 

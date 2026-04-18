@@ -19,7 +19,7 @@ from ..utils.paths import (
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
     get_auto_added_files_file_path,
-    get_state_directory_path,  # Still used for intent-to-add-files path construction
+    get_abort_state_directory_path,
 )
 
 
@@ -84,7 +84,7 @@ def command_abort() -> None:
                 print(_("Restored: {}").format(file_path), file=sys.stderr)
 
     # Restore intent-to-add status for files that had it before session
-    intent_to_add_path = get_state_directory_path() / "intent-to-add-files"
+    intent_to_add_path = get_abort_state_directory_path() / "intent-to-add-files.txt"
     if intent_to_add_path.exists():
         intent_to_add_files = read_file_paths_file(intent_to_add_path)
         for file_path in intent_to_add_files:

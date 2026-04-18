@@ -1,7 +1,7 @@
 project('git-stage-batch',
   version: files('VERSION'),
   license: 'MIT',
-  meson_version: '>=1.2.0',
+  meson_version: '>=1.10.0',
 )
 
 python = import('python').find_installation('python3', pure: true)

@@ -1,28 +1,21 @@
 """Tests for reset command."""
 
-import json
-from git_stage_batch.core.line_selection import parse_line_selection
-from git_stage_batch.exceptions import NoMoreHunks
-from git_stage_batch.commands.again import command_again
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
-from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
-from git_stage_batch.commands.new import command_new_batch
-from git_stage_batch.batch.ownership import BatchOwnership
-from git_stage_batch.data.batch_sources import create_batch_source_commit, save_session_batch_sources
-
 import subprocess
 
 import pytest
 
+from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
+from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.include import command_include_to_batch
+from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.reset import command_reset_from_batch
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.core.line_selection import parse_line_selection
+from git_stage_batch.data.batch_sources import create_batch_source_commit, save_session_batch_sources
 from git_stage_batch.data.hunk_tracking import fetch_next_change
-from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.file_io import read_text_file_contents
-from git_stage_batch.utils.paths import (
-    get_batch_metadata_file_path,
-)
+from git_stage_batch.exceptions import CommandError, NoMoreHunks
 
 
 @pytest.fixture
@@ -78,9 +71,7 @@ class TestResetFromBatch:
         command_include_to_batch("mybatch", quiet=True)
 
         # Verify batch has claims in metadata
-        metadata_path = get_batch_metadata_file_path("mybatch")
-        assert metadata_path.exists()
-        metadata = json.loads(read_text_file_contents(metadata_path))
+        metadata = read_batch_metadata("mybatch")
         assert "test.py" in metadata["files"]
         assert len(metadata["files"]["test.py"]["claimed_lines"]) > 0
 
@@ -88,7 +79,7 @@ class TestResetFromBatch:
         command_reset_from_batch("mybatch")
 
         # Verify batch metadata files section is cleared
-        metadata_after = json.loads(read_text_file_contents(metadata_path))
+        metadata_after = read_batch_metadata("mybatch")
         assert metadata_after["files"] == {}
 
     def test_reset_line_claims(self, temp_git_repo):
@@ -108,10 +99,8 @@ class TestResetFromBatch:
         fetch_next_change()
         command_include_to_batch("mybatch", line_ids="4,5,6", quiet=True)
 
-        # Verify line claims exist in metadata JSON
-        metadata_path = get_batch_metadata_file_path("mybatch")
-        assert metadata_path.exists()
-        metadata = json.loads(read_text_file_contents(metadata_path))
+        # Verify line claims exist in metadata
+        metadata = read_batch_metadata("mybatch")
         batch_ownership = metadata["files"]["test.py"]
         batch_line_ids = set()
         for range_str in batch_ownership.get("claimed_lines", []):
@@ -122,7 +111,7 @@ class TestResetFromBatch:
         command_reset_from_batch("mybatch", line_ids="2")
 
         # Verify line 2 is removed from batch claims
-        metadata_after = json.loads(read_text_file_contents(metadata_path))
+        metadata_after = read_batch_metadata("mybatch")
         batch_ownership_after = metadata_after["files"]["test.py"]
         batch_line_ids_after = set()
         for range_str in batch_ownership_after.get("claimed_lines", []):
@@ -150,19 +139,17 @@ class TestResetFromBatch:
         command_include_to_batch("batch-b", quiet=True)
 
         # Verify both batches have the file
-        metadata_a_path = get_batch_metadata_file_path("batch-a")
-        metadata_a = json.loads(read_text_file_contents(metadata_a_path))
+        metadata_a = read_batch_metadata("batch-a")
         assert "test.py" in metadata_a["files"]
 
-        metadata_b_path = get_batch_metadata_file_path("batch-b")
-        metadata_b = json.loads(read_text_file_contents(metadata_b_path))
+        metadata_b = read_batch_metadata("batch-b")
         assert "test.py" in metadata_b["files"]
 
         # Reset batch-a
         command_reset_from_batch("batch-a")
 
         # Verify batch-a no longer claims the file
-        metadata_a_after = json.loads(read_text_file_contents(metadata_a_path))
+        metadata_a_after = read_batch_metadata("batch-a")
         assert "test.py" not in metadata_a_after["files"]
 
         # Verify hunk is STILL filtered (because batch-b still claims it)
@@ -207,7 +194,7 @@ class TestResetFromBatch:
 
         command_reset_from_batch("mybatch", file="file1.txt")
 
-        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        metadata_after = read_batch_metadata("mybatch")
         assert "file1.txt" not in metadata_after["files"]
         assert "file2.txt" in metadata_after["files"]
         assert read_file_from_batch("mybatch", "file1.txt") is None
@@ -232,7 +219,7 @@ class TestResetFromBatch:
             "100644",
         )
 
-        metadata_before = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        metadata_before = read_batch_metadata("mybatch")
         original_source = metadata_before["files"]["test.py"]["batch_source_commit"]
 
         wrong_source = create_batch_source_commit(
@@ -243,7 +230,7 @@ class TestResetFromBatch:
 
         command_reset_from_batch("mybatch", line_ids="1", file="test.py")
 
-        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        metadata_after = read_batch_metadata("mybatch")
         file_meta = metadata_after["files"]["test.py"]
         assert file_meta["batch_source_commit"] == original_source
 
@@ -271,14 +258,14 @@ class TestResetFromBatch:
             "100644",
         )
 
-        source_before = json.loads(read_text_file_contents(get_batch_metadata_file_path("source")))
+        source_before = read_batch_metadata("source")
         original_source = source_before["files"]["test.py"]["batch_source_commit"]
         source_baseline = source_before["baseline"]
 
         command_reset_from_batch("source", line_ids="1", file="test.py", to_batch="dest")
 
-        source_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("source")))
-        dest_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("dest")))
+        source_after = read_batch_metadata("source")
+        dest_after = read_batch_metadata("dest")
 
         assert dest_after["baseline"] == source_baseline
         assert dest_after["files"]["test.py"]["batch_source_commit"] == original_source
@@ -321,8 +308,8 @@ class TestResetFromBatch:
 
         command_reset_from_batch("source", file="file1.txt", to_batch="dest")
 
-        source_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("source")))
-        dest_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("dest")))
+        source_after = read_batch_metadata("source")
+        dest_after = read_batch_metadata("dest")
 
         assert "file1.txt" not in source_after["files"]
         assert "file2.txt" in source_after["files"]
@@ -395,7 +382,7 @@ class TestResetFromBatch:
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Verify initial ownership has both claimed line and deletion
-        metadata = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        metadata = read_batch_metadata("mybatch")
         file_ownership = BatchOwnership.from_metadata_dict(metadata["files"]["test.py"])
         assert "1" in ",".join(file_ownership.claimed_lines)
         assert len(file_ownership.deletions) == 1
@@ -406,7 +393,7 @@ class TestResetFromBatch:
         command_reset_from_batch("mybatch", line_ids="1,2")
 
         # Verify file is removed from batch (no ownership remains)
-        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        metadata_after = read_batch_metadata("mybatch")
         assert "test.py" not in metadata_after.get("files", {}), \
             "Expected file to be removed from batch when all ownership is reset"
 
@@ -480,7 +467,7 @@ class TestResetFromBatch:
         command_reset_from_batch("mybatch", line_ids="2")
 
         # Verify line 3 is removed but lines 1, 5 and deletion remain
-        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        metadata_after = read_batch_metadata("mybatch")
         file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
         claimed_ids = set()
         for range_str in file_ownership.claimed_lines:
@@ -526,7 +513,7 @@ class TestResetFromBatch:
         command_reset_from_batch("mybatch", line_ids="1,2")
 
         # Verify line 1 AND its deletion are removed, but line 2 remains
-        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        metadata_after = read_batch_metadata("mybatch")
         file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
         claimed_ids = set()
         for range_str in file_ownership.claimed_lines:
@@ -572,7 +559,7 @@ class TestResetFromBatch:
         command_reset_from_batch("mybatch", line_ids="2")
 
         # Verify only source line 2 is removed, lines 1 and 3 remain
-        metadata_after = json.loads(read_text_file_contents(get_batch_metadata_file_path("mybatch")))
+        metadata_after = read_batch_metadata("mybatch")
         file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
         claimed_ids = set()
         for range_str in file_ownership.claimed_lines:

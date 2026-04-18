@@ -17,6 +17,7 @@ from git_stage_batch.batch.metadata_validation import (
     validate_state_directory_exists,
 )
 from git_stage_batch.batch.operations import create_batch
+from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import BatchMetadataError
 from git_stage_batch.utils.file_io import write_text_file_contents
@@ -26,6 +27,48 @@ from git_stage_batch.utils.paths import (
     get_batch_metadata_file_path,
     get_state_directory_path,
 )
+
+
+def _write_state_batch_json(batch_name: str, content: str) -> None:
+    blob = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        input=content,
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+    tree = subprocess.run(
+        ["git", "mktree"],
+        input=f"100644 blob {blob}\tbatch.json\n",
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+    commit = subprocess.run(
+        ["git", "commit-tree", tree, "-m", f"Test batch state: {batch_name}"],
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+    subprocess.run(["git", "update-ref", f"refs/git-stage-batch/state/{batch_name}", commit], check=True)
+
+
+def _write_state_metadata(batch_name: str, metadata: dict) -> None:
+    state_metadata = {
+        "batch": batch_name,
+        "note": metadata.get("note", ""),
+        "created_at": metadata.get("created_at", ""),
+        "baseline_commit": metadata.get("baseline"),
+        "content_ref": f"refs/git-stage-batch/batches/{batch_name}",
+        "content_commit": subprocess.run(
+            ["git", "rev-parse", f"refs/git-stage-batch/batches/{batch_name}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip(),
+        "files": metadata.get("files", {}),
+    }
+    _write_state_batch_json(batch_name, json.dumps(state_metadata))
 
 
 @pytest.fixture
@@ -99,13 +142,9 @@ def test_load_and_validate_without_batch_ref(temp_git_repo):
 
 
 def test_validate_batch_metadata_file_missing_for_existing_ref(temp_git_repo):
-    """Metadata file validation fails when ref exists but metadata missing."""
-    # Create a batch normally
-    create_batch("test-batch", "Test note")
-
-    # Delete metadata file but keep ref
+    """Metadata file validation fails for legacy refs without state refs."""
+    run_git_command(["update-ref", "refs/batches/test-batch", "HEAD"])
     metadata_path = get_batch_metadata_file_path("test-batch")
-    metadata_path.unlink()
 
     with pytest.raises(BatchMetadataError) as exc_info:
         validate_batch_metadata_file_exists("test-batch")
@@ -318,19 +357,16 @@ def test_load_and_validate_batch_metadata_success(temp_git_repo):
 
 
 def test_load_and_validate_batch_metadata_malformed_json(temp_git_repo):
-    """Loading batch metadata fails with clear error for malformed JSON."""
+    """Loading batch metadata fails for malformed authoritative state JSON."""
     create_batch("test-batch", "Test note")
 
-    # Write malformed JSON
-    metadata_path = get_batch_metadata_file_path("test-batch")
-    write_text_file_contents(metadata_path, "{ invalid json")
+    _write_state_batch_json("test-batch", "{ invalid json")
 
     with pytest.raises(BatchMetadataError) as exc_info:
         load_and_validate_batch_metadata("test-batch")
 
     error_msg = str(exc_info.value)
-    assert "corrupted (invalid JSON)" in error_msg
-    assert str(metadata_path) in error_msg
+    assert "failed to read batch metadata" in error_msg.lower()
 
 
 def test_load_and_validate_batch_metadata_missing_file(temp_git_repo):
@@ -357,11 +393,9 @@ def test_get_validated_baseline_commit_missing(temp_git_repo):
     """Getting validated baseline commit fails when baseline is missing."""
     create_batch("test-batch", "Test note")
 
-    # Corrupt metadata by removing baseline
-    metadata_path = get_batch_metadata_file_path("test-batch")
-    metadata = json.loads(metadata_path.read_text())
+    metadata = read_batch_metadata("test-batch")
     metadata["baseline"] = None
-    write_text_file_contents(metadata_path, json.dumps(metadata))
+    _write_state_metadata("test-batch", metadata)
 
     with pytest.raises(BatchMetadataError) as exc_info:
         get_validated_baseline_commit("test-batch")
@@ -385,15 +419,13 @@ def test_read_validated_batch_metadata_corrupted(temp_git_repo):
     """Reading validated batch metadata fails for corrupted metadata."""
     create_batch("test-batch", "Test note")
 
-    # Corrupt metadata
-    metadata_path = get_batch_metadata_file_path("test-batch")
-    write_text_file_contents(metadata_path, "corrupted")
+    _write_state_batch_json("test-batch", "corrupted")
 
     with pytest.raises(BatchMetadataError) as exc_info:
         read_validated_batch_metadata("test-batch")
 
     error_msg = str(exc_info.value)
-    assert "corrupted" in error_msg.lower()
+    assert "failed to read batch metadata" in error_msg.lower()
 
 
 def test_require_batch_metadata_sane_success(temp_git_repo):
@@ -405,12 +437,8 @@ def test_require_batch_metadata_sane_success(temp_git_repo):
 
 
 def test_require_batch_metadata_sane_corrupted(temp_git_repo):
-    """Requiring sane metadata fails for corrupted batch."""
-    create_batch("test-batch", "Test note")
-
-    # Delete metadata file but keep ref
-    metadata_path = get_batch_metadata_file_path("test-batch")
-    metadata_path.unlink()
+    """Requiring sane metadata fails for legacy ref missing metadata."""
+    run_git_command(["update-ref", "refs/batches/test-batch", "HEAD"])
 
     with pytest.raises(BatchMetadataError) as exc_info:
         require_batch_metadata_sane("test-batch")

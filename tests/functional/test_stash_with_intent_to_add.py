@@ -1,9 +1,9 @@
 """Test that stash creation works even with intent-to-add files in index."""
 
-from pathlib import Path
-import json
-
 import subprocess
+
+from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.utils.paths import get_abort_snapshot_list_file_path, get_abort_stash_file_path
 
 from .conftest import git_stage_batch
 
@@ -37,10 +37,10 @@ def test_stash_created_despite_intent_to_add_files(repo_with_changes):
     git_stage_batch("start")
 
     # Verify stash was created by checking if abort-stash file exists
-    stash_file = Path(".git/git-stage-batch/abort-stash")
+    stash_file = get_abort_stash_file_path()
 
     if not stash_file.exists():
-        snapshot_list = Path(".git/git-stage-batch/abort-snapshot-list")
+        snapshot_list = get_abort_snapshot_list_file_path()
         if snapshot_list.exists():
             snapshots = snapshot_list.read_text().strip().split('\n')
             print(f"Snapshots created: {snapshots}")
@@ -110,10 +110,7 @@ def test_batch_source_from_stashed_tracked_file(repo_with_changes):
     git_stage_batch("discard", "--file", "--to", "test-batch")
 
     # Check batch source commit has the modified content (from stash)
-
-    metadata_file = Path(".git/git-stage-batch/batches/test-batch/metadata.json")
-    metadata = json.loads(metadata_file.read_text())
-
+    metadata = read_batch_metadata("test-batch")
     batch_source_sha = metadata["files"]["module.py"]["batch_source_commit"]
 
     # Read batch source content

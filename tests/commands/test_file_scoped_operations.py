@@ -11,6 +11,7 @@ from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.core.hashing import compute_stable_hunk_hash
 from git_stage_batch.utils.paths import (
+    get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
@@ -433,13 +434,9 @@ class TestErrorHandling:
         command_include_to_batch("batch", file="alpha.txt")
 
         # Remove the cached hunk state
-        state_dir = multi_file_repo / ".git" / "git-stage-batch"
-        if (state_dir / "selected-lines.json").exists():
-            (state_dir / "selected-lines.json").unlink()
-        if (state_dir / "selected-hunk-patch").exists():
-            (state_dir / "selected-hunk-patch").unlink()
-        if (state_dir / "selected-hunk-hash").exists():
-            (state_dir / "selected-hunk-hash").unlink()
+        get_line_changes_json_file_path().unlink(missing_ok=True)
+        get_selected_hunk_patch_file_path().unlink(missing_ok=True)
+        get_selected_hunk_hash_file_path().unlink(missing_ok=True)
 
         # No selected hunk cached
         with pytest.raises(CommandError, match="No selected hunk"):

@@ -60,17 +60,18 @@ def test_read_batch_metadata_nonexistent(temp_git_repo):
     assert metadata["created_at"] == ""
 
 
-def test_read_batch_metadata_corrupted_file(temp_git_repo):
-    """Test reading corrupted metadata file returns empty."""
+def test_read_batch_metadata_ignores_corrupted_compat_file(temp_git_repo):
+    """Test authoritative state ref wins over corrupted compatibility metadata."""
     create_batch("test-batch", "Original")
 
     # Corrupt the metadata file
     metadata_path = get_batch_metadata_file_path("test-batch")
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
     metadata_path.write_text("invalid json{")
 
     metadata = read_batch_metadata("test-batch")
-    assert metadata["note"] == ""
-    assert metadata["created_at"] == ""
+    assert metadata["note"] == "Original"
+    assert metadata["created_at"] != ""
 
 
 def test_get_batch_commit_sha_existing(temp_git_repo):

@@ -564,7 +564,7 @@ class TestFileAndLineIDCombinations:
 
         non_context = [line for line in line_changes.lines if line.kind != " "]
         # Should have exactly 2 non-context lines (renumbered to 1,2 in batch display)
-        assert len([l for l in non_context if l.id is not None]) == 2
+        assert len([line for line in non_context if line.id is not None]) == 2
         # Verify content
         assert any("beta2-modified" in line.text for line in non_context)
         assert any("beta4-new" in line.text for line in non_context)

@@ -32,7 +32,7 @@ git-stage-batch = "git_stage_batch.cli.main:main"
 dev = [
     "pytest>=8.0.0",
     "meson-python>=0.17.0",
-    "meson>=1.2.0",
+    "meson>=1.10.0",
     "ninja>=1.11.0"
 ]
 docs = [
@@ -42,7 +42,7 @@ docs = [
 [build-system]
 requires = [
     "meson-python>=0.17.0",
-    "meson>=1.2.0",
+    "meson>=1.10.0",
     "ninja>=1.11.0"
 ]
 build-backend = "mesonpy"
@@ -57,6 +57,6 @@ preview = true
 [tool.uv.extra-build-dependencies]
 git-stage-batch = [
     "meson-python>=0.17.0",
-    "meson>=1.2.0",
+    "meson>=1.10.0",
     "ninja>=1.11.0",
 ]

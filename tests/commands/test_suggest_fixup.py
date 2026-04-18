@@ -15,8 +15,6 @@ from git_stage_batch.commands.suggest_fixup import (
     _reset_suggest_fixup_state,
     _save_suggest_fixup_state,
     _should_reset_suggest_fixup_state,
-    command_suggest_fixup,
-    command_suggest_fixup_line,
 )
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change

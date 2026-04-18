@@ -113,7 +113,7 @@ def test_discard_file_does_not_create_empty_hunks(repo_with_new_files):
     # A real hunk should have at least: file line, hunk header, and some content lines
     if len(lines) >= 2 and lines[0].endswith('::') and lines[1].startswith('@@'):
         # This looks like a hunk. Check if there's content after the header
-        content_lines = [l for l in lines[2:] if l.strip()]
+        content_lines = [line for line in lines[2:] if line.strip()]
         assert len(content_lines) > 0, (
             f"hunk has header but no content lines\n"
             f"Show output:\n{show_result.stdout[:500]}"

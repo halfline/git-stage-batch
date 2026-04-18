@@ -3,9 +3,9 @@
 
 
 from git_stage_batch.utils.file_io import read_file_paths_file
-from git_stage_batch.utils.file_io import read_file_paths_file, write_file_paths_file
-from git_stage_batch.utils.file_io import append_file_path_to_file, read_file_paths_file
-from git_stage_batch.utils.file_io import read_file_paths_file, remove_file_path_from_file, write_file_paths_file
+from git_stage_batch.utils.file_io import write_file_paths_file
+from git_stage_batch.utils.file_io import append_file_path_to_file
+from git_stage_batch.utils.file_io import remove_file_path_from_file
 
 from git_stage_batch.utils.file_io import (
     append_lines_to_file,

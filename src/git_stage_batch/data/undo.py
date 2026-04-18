@@ -554,8 +554,8 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
     redo_target = _snapshot_current_state(redo_paths)
     redo_worktree_entries = _snapshot_worktree_paths(redo_paths)
 
-    redo_session_dir = tempfile.mkdtemp(dir="/var/tmp", prefix="gsb-redo-session-")
-    redo_batches_dir = tempfile.mkdtemp(dir="/var/tmp", prefix="gsb-redo-batches-")
+    redo_session_dir = tempfile.mkdtemp(prefix="gsb-redo-session-")
+    redo_batches_dir = tempfile.mkdtemp(prefix="gsb-redo-batches-")
     try:
         live_session_dir = get_session_directory_path()
         live_batches_dir = get_batches_directory_path()

@@ -7,7 +7,7 @@ from typing import Optional
 from .again import command_again
 from ..data.hunk_tracking import fetch_next_change, show_selected_change
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.session import initialize_abort_state, clear_iteration_state
+from ..data.session import initialize_abort_state
 from ..exceptions import CommandError, NoMoreHunks
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents

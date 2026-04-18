@@ -118,6 +118,25 @@ class TestDiscardToBatch:
         get_unstaged_diff()
         # Should have fewer changes
 
+    def test_discard_replacement_lines_to_batch_reapplies(self, functional_repo):
+        """Discarding selected replacement lines to a batch can be applied back."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("a\nb\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=functional_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=functional_repo, capture_output=True)
+
+        file_path.write_text("A\nB\n")
+
+        git_stage_batch("start")
+        discard_result = git_stage_batch("discard", "--to", "test", "--line", "1,3")
+
+        assert discard_result.stdout.count("file.txt ::") == 1
+        assert file_path.read_text() == "a\nB\n"
+
+        git_stage_batch("apply", "--from", "test")
+
+        assert file_path.read_text() == "A\nB\n"
+
 
 class TestShowFromBatch:
     """Test showing changes from a batch."""

@@ -4,7 +4,7 @@ from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
 from git_stage_batch.batch import list_batch_files, read_file_from_batch
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.batch.validation import batch_exists
-from git_stage_batch.batch import read_file_from_batch
+from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.data.hunk_tracking import fetch_next_change, recalculate_selected_hunk_for_file
 
 import subprocess
@@ -14,7 +14,6 @@ import pytest
 from git_stage_batch.commands.discard import command_discard, command_discard_line
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.exceptions import CommandError
 
 
@@ -401,3 +400,26 @@ class TestCommandDiscardToBatch:
         assert "Line 1" not in working_content
         assert "Line 2" not in working_content
         assert "Line 3" in working_content
+
+    def test_discard_replacement_lines_to_batch_displays_once_and_reapplies(self, temp_git_repo, capsys):
+        """Discarding part of a replacement hunk to a batch can be applied back."""
+
+        file_path = temp_git_repo / "file.txt"
+        file_path.write_text("a\nb\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file_path.write_text("A\nB\n")
+
+        command_start()
+        capsys.readouterr()
+
+        command_discard_to_batch("test", line_ids="1,3")
+
+        captured = capsys.readouterr()
+        assert captured.out.count("file.txt ::") == 1
+        assert file_path.read_text() == "a\nB\n"
+
+        command_apply_from_batch("test")
+
+        assert file_path.read_text() == "A\nB\n"

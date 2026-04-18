@@ -1,7 +1,6 @@
 """Tests for include to batch command."""
 
 from git_stage_batch.commands.include import command_include_to_batch
-from git_stage_batch.batch import read_file_from_batch
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.batch import list_batch_files, read_file_from_batch
 from git_stage_batch.batch.validation import batch_exists
@@ -51,18 +50,32 @@ class TestCommandIncludeToBatch:
 
         # Verify we have 3 changed lines
         line_changes = load_line_changes_from_state()
-        assert len([l for l in line_changes.lines if l.kind != " "]) == 3
+        assert len([line for line in line_changes.lines if line.kind != " "]) == 3
 
         # Include only line 1 to batch
         command_include_to_batch("filter-batch", line_ids="1")
 
         # Verify filtered hunk now shows only lines 2-3
         filtered_lines = load_line_changes_from_state()
-        changed_lines = [l for l in filtered_lines.lines if l.kind != " "]
+        changed_lines = [line for line in filtered_lines.lines if line.kind != " "]
         assert len(changed_lines) == 2
         # Line IDs should be renumbered: was [1,2,3], after filtering [1] should be [1,2]
         assert changed_lines[0].id == 1
         assert changed_lines[1].id == 2
+
+    def test_include_lines_to_batch_displays_filtered_hunk_once(self, temp_git_repo, capsys):
+        """Line-level include to batch prints the remaining hunk only once."""
+
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
+
+        command_start()
+        capsys.readouterr()
+
+        command_include_to_batch("filter-batch", line_ids="1")
+
+        captured = capsys.readouterr()
+        assert captured.out.count("README.md ::") == 1
 
     def test_batched_lines_survive_again(self, temp_git_repo):
         """Test that line-level batched lines are filtered out after again.
@@ -88,7 +101,7 @@ class TestCommandIncludeToBatch:
         assert "Line 1" in content
         # Line 2 should not be in batch yet (only line 1 was included)
         lines_in_batch = content.strip().split("\n")
-        assert len([l for l in lines_in_batch if l.startswith("Line")]) == 1
+        assert len([line for line in lines_in_batch if line.startswith("Line")]) == 1
 
         # Run again - line-level filtering should reapply
         command_again()
@@ -97,7 +110,7 @@ class TestCommandIncludeToBatch:
         # Verify filtered hunk shows only line 2 (line 1 was batched)
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
-        changed_lines = [l for l in line_changes.lines if l.kind != " "]
+        changed_lines = [line for line in line_changes.lines if line.kind != " "]
         # Should only show line 2 (line 1 was filtered out as batched)
         assert len(changed_lines) == 1
         assert "Line 2" in changed_lines[0].text

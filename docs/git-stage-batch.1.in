@@ -223,8 +223,10 @@ Defer changes without losing them while you work on other commits
 Group changes by type (e.g., debugging, refactoring) for separate handling
 .RE
 .PP
-Batches are stored as git commits under refs/batches/<name> and persist
-across sessions until explicitly dropped.
+Batches are stored as git commits under refs/git-stage-batch/batches/<name>
+and persist across sessions until explicitly dropped. Legacy batches under
+refs/batches/<name> are read as migration inputs and removed after the batch
+is written in the Git-backed namespace.
 .TP
 .B new \fIBATCH_NAME\fR [\fB\-\-note\fR \fINOTE\fR]
 Create a new named batch for accumulating changes.

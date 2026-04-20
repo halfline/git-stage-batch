@@ -1,20 +1,16 @@
+<p align="center">
+  <img src="https://halfline.github.io/git-stage-batch/assets/batch-of-patches.png" alt="git-stage-batch banner" width="600">
+</p>
+
 # git-stage-batch
 
 Hunk-by-hunk and line-by-line staging for git, designed for building clean commit history.
 
-```
-   ┌─────────────────┐
-   │ git-stage-batch │
-   └─────────────────┘
-
-       o───o
-      /
-  o───o───o
-
- stage patches in batches
-```
-
 **Writing code is messy. Git history doesn't have to be.**
+
+<p align="center">
+  <img src="https://github.com/halfline/git-stage-batch/releases/download/v0.5.0/demo.gif" alt="git-stage-batch demo" width="700">
+</p>
 
 During development we experiment, refactor, backtrack, and fix mistakes. If every step ends up as a commit, the history becomes noise. A curated history turns that process into a clear sequence of logical changes.
 

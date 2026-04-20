@@ -4,6 +4,11 @@
 
 # git-stage-batch
 
+[![PyPI version](https://img.shields.io/pypi/v/git-stage-batch)](https://pypi.org/project/git-stage-batch/)
+[![Python 3.13+](https://img.shields.io/pypi/pyversions/git-stage-batch)](https://pypi.org/project/git-stage-batch/)
+[![CI](https://github.com/halfline/git-stage-batch/actions/workflows/ci.yml/badge.svg)](https://github.com/halfline/git-stage-batch/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Hunk-by-hunk and line-by-line staging for git, designed for building clean commit history.
 
 **Writing code is messy. Git history doesn't have to be.**

@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from ..batch import add_file_to_batch, create_batch
-from ..batch.display import annotate_with_batch_source
+from ..batch.display import annotate_with_batch_source, annotate_with_batch_source_content
 from ..batch.ownership import BatchOwnership
 from ..batch.query import read_batch_metadata
 from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
@@ -21,6 +21,7 @@ from ..core.models import BinaryFileChange
 from ..data.hunk_tracking import (
     advance_to_and_show_next_change,
     advance_to_next_change,
+    build_file_hunk_from_content,
     cache_file_as_single_hunk,
     fetch_next_change,
     get_selected_change_file_path,
@@ -29,11 +30,13 @@ from ..data.hunk_tracking import (
     require_selected_hunk,
 )
 from ..data.line_state import load_line_changes_from_state
+from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
 from ..staging.operations import build_target_working_tree_content_bytes_with_discarded_lines
+from ..staging.operations import build_target_working_tree_content_bytes_with_replaced_lines
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_command
@@ -44,6 +47,11 @@ from ..utils.paths import (
     get_context_lines,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
+)
+from .include import (
+    _expand_replacement_selection_ids,
+    _restore_selected_change_state,
+    _snapshot_selected_change_state,
 )
 
 
@@ -344,6 +352,222 @@ def command_discard_to_batch(batch_name: str, line_ids: str | None = None, file:
             else:
                 # Discard entire selected hunk
                 _command_discard_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+
+
+def command_discard_line_as_to_batch(
+    batch_name: str,
+    line_id_specification: str,
+    replacement_text: str,
+    file: str | None = None,
+    *,
+    quiet: bool = False,
+) -> None:
+    """Save replacement text to batch, then discard the original selection locally."""
+    require_git_repository()
+    require_session_started()
+    ensure_state_directory_exists()
+
+    operation_parts = [
+        "discard",
+        "--to", batch_name,
+        "--line", line_id_specification,
+        "--as", replacement_text,
+    ]
+    if file is not None:
+        operation_parts.extend(["--file", file])
+    with undo_checkpoint(" ".join(operation_parts)):
+        saved_selected_state = _snapshot_selected_change_state()
+        preserve_selected_state = file is not None
+
+        try:
+            if file is None:
+                require_selected_hunk()
+            else:
+                if file == "":
+                    target_file = get_selected_change_file_path()
+                    if target_file is None:
+                        exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+                else:
+                    target_file = file
+
+                cached_lines = cache_file_as_single_hunk(target_file)
+                if cached_lines is None:
+                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+
+            _command_discard_lines_to_batch_as(
+                batch_name,
+                line_id_specification,
+                replacement_text,
+                quiet=quiet,
+            )
+
+            if preserve_selected_state:
+                _restore_selected_change_state(saved_selected_state)
+        except Exception:
+            _restore_selected_change_state(saved_selected_state)
+            raise
+
+
+def _command_discard_lines_to_batch_as(
+    batch_name: str,
+    line_id_specification: str,
+    replacement_text: str,
+    *,
+    quiet: bool = False,
+) -> None:
+    """Persist replacement text to batch and discard original selected lines."""
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
+
+    requested_ids = set(parse_line_selection(line_id_specification))
+    line_changes = load_line_changes_from_state()
+    effective_ids = _expand_replacement_selection_ids(line_changes, requested_ids)
+    selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
+    if not selected_lines:
+        exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
+
+    working_file_path = get_git_repository_root_path() / line_changes.path
+    if not working_file_path.exists():
+        exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
+    working_bytes = working_file_path.read_bytes()
+
+    try:
+        rewritten_working_content = build_target_working_tree_content_bytes_with_replaced_lines(
+            line_changes,
+            effective_ids,
+            replacement_text,
+            working_bytes,
+        )
+    except ValueError as e:
+        exit_with_error(str(e))
+
+    try:
+        rewritten_cached_lines = build_file_hunk_from_content(line_changes.path, rewritten_working_content)
+        if rewritten_cached_lines is None:
+            exit_with_error(_("No changes in file '{file}'.").format(file=line_changes.path))
+        rewritten_line_changes = annotate_with_batch_source_content(
+            line_changes.path,
+            rewritten_cached_lines,
+            rewritten_working_content.decode("utf-8", errors="replace"),
+        )
+        rewritten_selected_lines = _select_rewritten_replacement_lines(
+            selected_lines,
+            rewritten_line_changes,
+        )
+
+        metadata = read_batch_metadata(batch_name)
+        existing_ownership = None
+        current_batch_source = None
+        if line_changes.path in metadata.get("files", {}):
+            file_metadata = metadata["files"][line_changes.path]
+            existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
+            current_batch_source = file_metadata.get("batch_source_commit")
+
+        try:
+            update = prepare_batch_ownership_update_for_selection(
+                batch_name=batch_name,
+                file_path=line_changes.path,
+                current_batch_source_commit=current_batch_source,
+                existing_ownership=existing_ownership,
+                selected_lines=rewritten_selected_lines,
+            )
+            ownership = update.ownership_after
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\n"
+                  "Batch: {batch}\n"
+                  "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
+            )
+
+        ls_result = run_git_command(["ls-files", "-s", "--", line_changes.path], check=False)
+        file_mode = "100644"
+        if ls_result.returncode == 0 and ls_result.stdout.strip():
+            parts = ls_result.stdout.strip().split()
+            if parts:
+                file_mode = parts[0]
+
+        batch_source_commit = current_batch_source
+        if batch_source_commit is None:
+            batch_source_commit = create_batch_source_commit(
+                line_changes.path,
+                file_content_override=rewritten_working_content,
+            )
+            batch_sources = load_session_batch_sources()
+            batch_sources[line_changes.path] = batch_source_commit
+            save_session_batch_sources(batch_sources)
+
+        snapshot_file_if_untracked(line_changes.path)
+        add_file_to_batch(
+            batch_name,
+            line_changes.path,
+            ownership,
+            file_mode,
+            batch_source_commit=batch_source_commit,
+        )
+
+        rewritten_selected_ids = {
+            line.id for line in rewritten_selected_lines if line.id is not None
+        }
+        target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
+            rewritten_line_changes,
+            rewritten_selected_ids,
+            rewritten_working_content,
+        )
+
+    except Exception:
+        working_file_path.write_bytes(working_bytes)
+        raise
+
+    working_file_path.write_bytes(target_working_content)
+
+    if not quiet:
+        print(
+            _("✓ Discarded line(s) as replacement to batch '{name}': {lines}").format(
+                name=batch_name,
+                lines=line_id_specification,
+            ),
+            file=sys.stderr,
+        )
+
+    recalculate_selected_hunk_for_file(line_changes.path)
+
+
+def _select_rewritten_replacement_lines(
+    original_selected_lines: list,
+    rewritten_line_changes,
+) -> list:
+    """Find the contiguous rewritten changed run that overlaps the original selection."""
+    original_old_lines = {
+        line.old_line_number
+        for line in original_selected_lines
+        if line.old_line_number is not None
+    }
+    original_new_lines = {
+        line.new_line_number
+        for line in original_selected_lines
+        if line.new_line_number is not None
+    }
+
+    runs: list[list] = []
+    current_run: list = []
+    for line in rewritten_line_changes.lines:
+        if line.kind == " ":
+            if current_run:
+                runs.append(current_run)
+                current_run = []
+            continue
+        current_run.append(line)
+    if current_run:
+        runs.append(current_run)
+
+    for run in runs:
+        run_old_lines = {line.old_line_number for line in run if line.old_line_number is not None}
+        run_new_lines = {line.new_line_number for line in run if line.new_line_number is not None}
+        if run_old_lines & original_old_lines or run_new_lines & original_new_lines:
+            return run
+
+    exit_with_error(_("Replacement selection could not be located after rewriting the file."))
 
 
 def _command_discard_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:

@@ -175,8 +175,6 @@ def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(mon
     assert args is not None
     args.func(args)
     mock_command.assert_called_once_with("2-3", file="path.txt")
-
-
 def test_parse_command_line_include_from_with_as():
     """Test parsing include --from with replacement text."""
     args = parse_command_line(
@@ -242,6 +240,21 @@ def test_parse_command_line_discard_to_with_as():
     )
     assert args is not None
     assert args.to_batch == "batch"
+    assert args.line_ids == "2-3"
+    assert args.as_text == "replacement"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_discard_to_with_file_and_as():
+    """Test parsing discard --to --file with replacement text."""
+    args = parse_command_line(
+        ["discard", "--to", "batch", "--file", "path.txt", "--line", "2-3", "--as", "replacement"],
+        quiet=True,
+    )
+    assert args is not None
+    assert args.to_batch == "batch"
+    assert args.file == "path.txt"
     assert args.line_ids == "2-3"
     assert args.as_text == "replacement"
     assert hasattr(args, "func")

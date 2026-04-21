@@ -17,6 +17,7 @@ from ..batch.match import match_lines
 from ..batch.query import list_batch_names, read_batch_metadata
 from ..core.line_selection import parse_line_selection
 from ..core.models import LineLevelChange
+from ..data.consumed_selections import read_consumed_file_metadata
 from ..utils.git import (
     read_git_blob_as_bytes,
     read_git_object_as_lines,
@@ -308,6 +309,14 @@ def build_file_attribution(file_path: str) -> FileAttribution:
         metadata = read_batch_metadata(batch_name)
         if file_path in metadata.get("files", {}):
             all_batch_metadata[batch_name] = metadata
+
+    consumed_file_metadata = read_consumed_file_metadata(file_path)
+    if consumed_file_metadata is not None:
+        all_batch_metadata["__consumed__"] = {
+            "files": {
+                file_path: consumed_file_metadata,
+            }
+        }
 
     comparison = compare_baseline_to_working_tree(file_path)
     all_units_map: dict[str, AttributionUnit] = {}

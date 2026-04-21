@@ -209,6 +209,15 @@ def get_session_batch_sources_file_path() -> Path:
     return get_session_directory_path() / "batch-sources.json"
 
 
+def get_session_consumed_selections_file_path() -> Path:
+    """Get the path to the hidden consumed-selection ownership cache.
+
+    Returns:
+        Path to session-consumed-selections.json file
+    """
+    return get_session_directory_path() / "consumed-selections.json"
+
+
 def get_auto_added_files_file_path() -> Path:
     """Get the path to the auto-added files list file.
 

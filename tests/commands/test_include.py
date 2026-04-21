@@ -4,10 +4,12 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands.include import command_include, command_include_line
+from git_stage_batch.commands.include import command_include, command_include_line, command_include_line_as
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
-from git_stage_batch.exceptions import CommandError
+from git_stage_batch.data.line_state import load_line_changes_from_state
+from git_stage_batch.exceptions import CommandError, NoMoreHunks
+from git_stage_batch.commands.again import command_again
 
 
 @pytest.fixture
@@ -281,3 +283,78 @@ class TestCommandIncludeLine:
         )
         assert "remove" not in result.stdout
         assert result.stdout == "keep1\nkeep2\n"
+
+    def test_include_line_as_replaces_staged_content_and_masks_hunk(self, temp_git_repo):
+        """Test include --line --as stages replacement text and hides the line."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("old value\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("working value\n")
+
+        command_start()
+        fetch_next_change()
+        command_include_line_as("1", "staged value")
+
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == "staged value\n"
+
+        command_again()
+        with pytest.raises(NoMoreHunks):
+            fetch_next_change()
+
+    def test_include_line_as_replaces_selected_range(self, temp_git_repo):
+        """Test include --line --as replaces a contiguous selected range."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("header\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("header\nline1\nline2\nline3\n")
+
+        command_start()
+        fetch_next_change()
+        command_include_line_as("1-2", "replacement1\nreplacement2")
+
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == "header\nreplacement1\nreplacement2\n"
+
+    def test_include_line_as_selected_file_recalculates_remaining_lines(self, temp_git_repo):
+        """Test include --file --line --as on the selected file recalculates that file."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("keep\nold value\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("keep\nworking value\nextra line\n")
+
+        command_start()
+        fetch_next_change()
+        command_include_line_as("2", "staged value", file="")
+
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == "keep\nstaged value\n"
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        changed_lines = [line for line in line_changes.lines if line.kind != " "]
+        assert any("extra line" in line.text for line in changed_lines)

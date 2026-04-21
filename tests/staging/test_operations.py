@@ -6,6 +6,7 @@ import pytest
 
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 from git_stage_batch.staging.operations import (
+    build_target_index_content_bytes_with_replaced_lines,
     build_target_index_content_with_selected_lines,
     build_target_working_tree_content_with_discarded_lines,
     update_index_with_blob_content,
@@ -213,6 +214,27 @@ class TestBuildTargetIndexContent:
 
         # No changes should be applied
         assert result == "line1\nline2\n"
+
+    def test_replace_selection_does_not_consume_trailing_additions(self):
+        """Replacement staging should not absorb adjacent pure insertions."""
+        header = HunkHeader(1, 2, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old value", text="old value"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working value", text="working value"),
+            LineEntry(3, "+", None, 3, text_bytes=b"extra line", text="extra line"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"keep\nold value\n"
+
+        result = build_target_index_content_bytes_with_replaced_lines(
+            line_changes,
+            {1, 2},
+            "staged value",
+            base_content,
+        )
+
+        assert result == b"keep\nstaged value\n"
 
 
 class TestBuildTargetWorkingTreeContent:

@@ -1,5 +1,7 @@
 """Tests for discard command."""
 
+from unittest.mock import patch
+
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
 from git_stage_batch.batch import list_batch_files, read_file_from_batch
 from git_stage_batch.commands.discard import command_discard_to_batch
@@ -11,7 +13,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands.discard import command_discard, command_discard_line
+from git_stage_batch.commands.discard import command_discard, command_discard_line, command_discard_line_as_to_batch
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.exceptions import CommandError
@@ -423,3 +425,40 @@ class TestCommandDiscardToBatch:
         command_apply_from_batch("test")
 
         assert file_path.read_text() == "A\nB\n"
+
+    def test_discard_line_as_to_batch_stores_replacement_and_discards_original(self, temp_git_repo):
+        """Discard --to --as should batch edited text but remove the local change."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nprint('debug')\n")
+
+        command_start()
+        fetch_next_change()
+
+        command_discard_line_as_to_batch(
+            "feature-batch",
+            "1",
+            'log("log worthy message that was debug print() before");',
+        )
+
+        assert readme.read_text() == "# Test\n"
+
+        command_apply_from_batch("feature-batch")
+        assert readme.read_text() == '# Test\nlog("log worthy message that was debug print() before");\n'
+
+    def test_discard_line_as_to_batch_restores_working_tree_on_batch_error(self, temp_git_repo):
+        """Batch persistence errors should not leave the rewritten file behind."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nprint('debug')\n")
+
+        command_start()
+        fetch_next_change()
+
+        with patch("git_stage_batch.commands.discard.add_file_to_batch", side_effect=RuntimeError("boom")):
+            with pytest.raises(RuntimeError, match="boom"):
+                command_discard_line_as_to_batch(
+                    "feature-batch",
+                    "1",
+                    'log("log worthy message that was debug print() before");',
+                )
+
+        assert readme.read_text() == "# Test\nprint('debug')\n"

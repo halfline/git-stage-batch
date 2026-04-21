@@ -672,6 +672,27 @@ class TestExplicitFilePath:
         result = run_git_command(["diff", "gamma.txt"])
         assert "gamma2-modified" in result.stdout
 
+    def test_include_file_line_as_with_explicit_path(self, multi_file_repo):
+        """Include --file PATH --line IDS --as should preserve selected position."""
+        command_start()
+
+        line_changes_before = load_line_changes_from_state()
+        assert line_changes_before.path == "alpha.txt"
+
+        command_include_line_as("2", "beta2-edited", file="beta.txt")
+
+        line_changes_after = load_line_changes_from_state()
+        assert line_changes_after.path == "alpha.txt"
+        assert line_changes_after.lines == line_changes_before.lines
+
+        staged_content = run_git_command(["show", ":beta.txt"]).stdout
+        assert staged_content == "beta1\nbeta2-edited\nbeta3\n"
+
+        working_diff = run_git_command(["diff", "beta.txt"]).stdout
+        assert "beta4-new" in working_diff
+        assert "beta2-modified" in working_diff
+        assert "beta2-edited" in working_diff
+
     def test_discard_file_with_explicit_path(self, multi_file_repo):
         """Discard --file PATH should discard all hunks from specified file."""
 
@@ -703,6 +724,34 @@ class TestExplicitFilePath:
         # Verify beta.txt is untouched
         beta_content = (multi_file_repo / "beta.txt").read_text()
         assert "beta2-modified" in beta_content
+
+    def test_discard_file_line_as_to_batch_with_explicit_path(self, multi_file_repo):
+        """Discard --to BATCH --file PATH --line --as should preserve selected position."""
+        command_start()
+
+        line_changes_before = load_line_changes_from_state()
+        assert line_changes_before.path == "alpha.txt"
+
+        from git_stage_batch.commands.discard import command_discard_line_as_to_batch
+
+        command_discard_line_as_to_batch(
+            "feature-batch",
+            "2",
+            "beta2-edited",
+            file="beta.txt",
+        )
+
+        line_changes_after = load_line_changes_from_state()
+        assert line_changes_after.path == "alpha.txt"
+        assert line_changes_after.lines == line_changes_before.lines
+
+        beta_content = (multi_file_repo / "beta.txt").read_text()
+        assert beta_content == "beta1\nbeta2\nbeta3\nbeta4-new\n"
+
+        command_apply_from_batch("feature-batch")
+
+        applied_content = (multi_file_repo / "beta.txt").read_text()
+        assert applied_content == "beta1\nbeta2-edited\nbeta3\nbeta4-new\n"
 
     def test_include_file_explicit_path_multiple_hunks(self, tmp_path, monkeypatch):
         """Include --file PATH should stage all hunks from multi-hunk file."""

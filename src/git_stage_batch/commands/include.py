@@ -6,7 +6,7 @@ import sys
 
 from ..batch import add_file_to_batch, create_batch
 from ..batch.display import annotate_with_batch_source
-from ..batch.ownership import BatchOwnership
+from ..batch.ownership import BatchOwnership, translate_lines_to_batch_ownership
 from ..batch.query import read_batch_metadata
 from ..batch.semantic_selection import try_build_semantic_selection_for_selected_hunk
 from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
@@ -32,23 +32,30 @@ from ..data.hunk_tracking import (
     record_hunk_skipped,
     require_selected_hunk,
 )
+from ..data.consumed_selections import record_consumed_selection
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes
-from ..staging.operations import build_target_index_content_bytes_with_selected_lines, update_index_with_blob_content
+from ..staging.operations import (
+    build_target_index_content_bytes_with_replaced_lines,
+    build_target_index_content_bytes_with_selected_lines,
+    update_index_with_blob_content,
+)
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
-from ..utils.git import require_git_repository, run_git_command, stream_git_command
+from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_command
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_context_lines,
+    get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
+    get_selected_binary_file_json_path,
     get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
     get_working_tree_snapshot_file_path,
@@ -333,6 +340,198 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             recalculate_selected_hunk_for_file(line_changes.path)
 
     print(_("✓ Included line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+
+
+def _expand_replacement_selection_ids(line_changes, requested_ids: set[int]) -> set[int]:
+    """Expand a selection to the smallest adjacent mixed replacement run."""
+    selected_indices = [
+        index for index, line in enumerate(line_changes.lines)
+        if line.id in requested_ids
+    ]
+    if not selected_indices:
+        return requested_ids
+
+    run_start = min(selected_indices)
+    run_end = max(selected_indices)
+
+    run_entries = line_changes.lines[run_start:run_end + 1]
+    run_kinds = {line.kind for line in run_entries if line.kind in ("+", "-")}
+
+    if run_kinds != {"+", "-"}:
+        selected_kind = next(iter(run_kinds), None)
+        opposite_kind = "-" if selected_kind == "+" else "+"
+
+        left_index = run_start - 1
+        while left_index >= 0 and line_changes.lines[left_index].kind == selected_kind:
+            left_index -= 1
+        if left_index >= 0 and line_changes.lines[left_index].kind == opposite_kind:
+            run_start = left_index
+
+        right_index = run_end + 1
+        while right_index < len(line_changes.lines) and line_changes.lines[right_index].kind == selected_kind:
+            right_index += 1
+        if right_index < len(line_changes.lines) and line_changes.lines[right_index].kind == opposite_kind:
+            run_end = right_index
+
+        run_entries = line_changes.lines[run_start:run_end + 1]
+        run_kinds = {line.kind for line in run_entries if line.kind in ("+", "-")}
+        if run_kinds != {"+", "-"}:
+            return requested_ids
+
+    return {
+        line.id
+        for line in run_entries
+        if line.id is not None
+    }
+
+
+def _apply_include_line_replacement(
+    line_changes,
+    *,
+    line_id_specification: str,
+    replacement_text: str,
+    hunk_base_content: bytes,
+    hunk_source_content: bytes,
+) -> None:
+    """Stage replacement text for selected lines and record session masking."""
+    requested_ids = set(parse_line_selection(line_id_specification))
+    effective_ids = _expand_replacement_selection_ids(line_changes, requested_ids)
+
+    selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
+    if not selected_lines:
+        exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
+
+    ownership = translate_lines_to_batch_ownership(selected_lines)
+
+    try:
+        target_index_content = build_target_index_content_bytes_with_replaced_lines(
+            line_changes,
+            effective_ids,
+            replacement_text,
+            hunk_base_content,
+        )
+    except ValueError as error:
+        exit_with_error(str(error))
+
+    update_index_with_blob_content(line_changes.path, target_index_content)
+    record_consumed_selection(
+        line_changes.path,
+        source_content=hunk_source_content,
+        ownership=ownership,
+        replacement_mask={
+            "deleted_lines": replacement_text.splitlines(),
+            "added_lines": [line.text for line in selected_lines if line.kind == "+"],
+        },
+    )
+
+
+def _snapshot_selected_change_state() -> dict[str, bytes | None]:
+    """Capture the current selected change cache so explicit file ops can restore it."""
+    paths = {
+        "patch": get_selected_hunk_patch_file_path(),
+        "hash": get_selected_hunk_hash_file_path(),
+        "line_state": get_line_changes_json_file_path(),
+        "binary": get_selected_binary_file_json_path(),
+        "index_snapshot": get_index_snapshot_file_path(),
+        "working_snapshot": get_working_tree_snapshot_file_path(),
+        "processed_include_ids": get_processed_include_ids_file_path(),
+    }
+    return {
+        name: (read_file_bytes(path) if path.exists() else None)
+        for name, path in paths.items()
+    }
+
+
+def _restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
+    """Restore a previously captured selected change cache."""
+    paths = {
+        "patch": get_selected_hunk_patch_file_path(),
+        "hash": get_selected_hunk_hash_file_path(),
+        "line_state": get_line_changes_json_file_path(),
+        "binary": get_selected_binary_file_json_path(),
+        "index_snapshot": get_index_snapshot_file_path(),
+        "working_snapshot": get_working_tree_snapshot_file_path(),
+        "processed_include_ids": get_processed_include_ids_file_path(),
+    }
+    for name, path in paths.items():
+        data = snapshot.get(name)
+        if data is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+
+
+def command_include_line_as(line_id_specification: str, replacement_text: str, file: str | None = None) -> None:
+    """Stage a replacement for one contiguous selected line range and mask it."""
+    require_git_repository()
+    require_session_started()
+    ensure_state_directory_exists()
+
+    operation_parts = ["include", "--line", line_id_specification, "--as", replacement_text]
+    if file is not None:
+        operation_parts.extend(["--file", file])
+
+    with undo_checkpoint(" ".join(operation_parts)):
+        if file is None:
+            require_selected_hunk()
+            line_changes = load_line_changes_from_state()
+            hunk_base_content = read_file_bytes(get_index_snapshot_file_path())
+            hunk_source_content = read_file_bytes(get_working_tree_snapshot_file_path())
+
+            _apply_include_line_replacement(
+                line_changes,
+                line_id_specification=line_id_specification,
+                replacement_text=replacement_text,
+                hunk_base_content=hunk_base_content,
+                hunk_source_content=hunk_source_content,
+            )
+
+            write_line_ids_file(get_processed_include_ids_file_path(), set())
+            recalculate_selected_hunk_for_file(line_changes.path)
+        else:
+            if file == "":
+                target_file = get_selected_change_file_path()
+                if target_file is None:
+                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+                preserve_selected_state = False
+            else:
+                target_file = file
+                preserve_selected_state = True
+
+            saved_selected_state = _snapshot_selected_change_state() if preserve_selected_state else None
+
+            cached_lines = cache_file_as_single_hunk(target_file)
+            if cached_lines is None:
+                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+
+            annotated_changes = annotate_with_batch_source(target_file, cached_lines)
+            hunk_base_result = run_git_command(
+                ["show", f":{target_file}"],
+                check=False,
+                text_output=False,
+            )
+            hunk_base_content = hunk_base_result.stdout if hunk_base_result.returncode == 0 else b""
+            hunk_source_content = read_file_bytes(get_git_repository_root_path() / target_file)
+
+            _apply_include_line_replacement(
+                annotated_changes,
+                line_id_specification=line_id_specification,
+                replacement_text=replacement_text,
+                hunk_base_content=hunk_base_content,
+                hunk_source_content=hunk_source_content,
+            )
+
+            if preserve_selected_state:
+                _restore_selected_change_state(saved_selected_state)
+            else:
+                write_line_ids_file(get_processed_include_ids_file_path(), set())
+                recalculate_selected_hunk_for_file(target_file)
+
+    print(
+        _("✓ Included line(s) as replacement: {lines}").format(lines=line_id_specification),
+        file=sys.stderr,
+    )
 
 
 def command_include_to_batch(batch_name: str, line_ids: str | None = None, file: str | None = None, *, quiet: bool = False) -> None:

@@ -191,3 +191,14 @@ def test_semantic_partial_staging_fallback_preserves_unrelated_index_state(funct
     git_stage_batch("include", "--line", "1")
 
     assert _index_content(functional_repo, "file.txt") == "X\nb\ny\n"
+
+
+def test_semantic_partial_staging_falls_back_for_replacement_plus_trailing_insertion(functional_repo):
+    _commit_file(functional_repo, "file.txt", "keep\nold value\n")
+    (functional_repo / "file.txt").write_text("keep\nworking value\nextra line\n")
+
+    git_stage_batch("start")
+    result = git_stage_batch("include", "--line", "1,2")
+
+    assert result.returncode == 0
+    assert _index_content(functional_repo, "file.txt") == "keep\nworking value\n"

@@ -11,6 +11,7 @@ import pytest
 
 from git_stage_batch.batch import create_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
+from git_stage_batch.data.hunk_tracking import render_batch_file_display
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git import run_git_command
@@ -141,3 +142,65 @@ class TestCommandIncludeFromBatch:
         # Try to use --file without cached hunk (no fetch_next_change call after command_start)
         with pytest.raises(CommandError):
             command_include_from_batch("test-batch", file="")
+
+    def test_include_from_batch_as_replaces_presence_only_selection(self, temp_git_repo):
+        """Test include --from --line --as replaces claimed batch content before staging."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("keep\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("keep\nbatch value\n")
+        command_start()
+        command_include_to_batch("test-batch", quiet=True)
+
+        test_file.write_text("keep\n")
+        run_git_command(["reset", "HEAD", "test.txt"], check=False)
+
+        rendered = render_batch_file_display("test-batch", "test.txt")
+        batch_value_gutter = next(
+            rendered.selection_id_to_gutter[line.id]
+            for line in rendered.line_changes.lines
+            if line.id is not None and line.text == "batch value"
+        )
+
+        command_include_from_batch(
+            "test-batch",
+            line_ids=str(batch_value_gutter),
+            file="test.txt",
+            replacement_text="edited value",
+        )
+
+        result = run_git_command(["show", ":test.txt"])
+        assert result.stdout == "keep\nedited value\n"
+
+    def test_include_from_batch_as_replaces_atomic_replacement_unit(self, temp_git_repo):
+        """Test include --from --line --as preserves batch deletion semantics."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("keep\nold value\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("keep\nbatch value\n")
+        command_start()
+        command_include_to_batch("test-batch", quiet=True)
+
+        test_file.write_text("keep\nold value\n")
+        run_git_command(["reset", "HEAD", "test.txt"], check=False)
+
+        rendered = render_batch_file_display("test-batch", "test.txt")
+        replacement_gutters = sorted(
+            rendered.selection_id_to_gutter[line.id]
+            for line in rendered.line_changes.lines
+            if line.id is not None and line.text in {"old value", "batch value"}
+        )
+
+        command_include_from_batch(
+            "test-batch",
+            line_ids=f"{replacement_gutters[0]}-{replacement_gutters[-1]}",
+            file="test.txt",
+            replacement_text="edited value",
+        )
+
+        result = run_git_command(["show", ":test.txt"])
+        assert result.stdout == "keep\nedited value\n"

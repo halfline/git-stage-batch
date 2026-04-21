@@ -247,27 +247,46 @@ def command_discard_file(file: str) -> None:
         advance_to_and_show_next_change()
 
 
-def command_discard_line(line_id_specification: str) -> None:
+def command_discard_line(line_id_specification: str, file: str | None = None) -> None:
     """Discard only the specified lines from the working tree.
 
     Args:
         line_id_specification: Line ID specification (e.g., "1,3,5-7")
+        file: Optional file path for file-scoped operation.
+              If empty string, uses selected hunk's file.
+              If None, uses selected hunk (cached state).
     """
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
-    require_selected_hunk()
+    operation_parts = ["discard", "--line", line_id_specification]
+    if file is not None:
+        operation_parts.extend(["--file", file])
+    with undo_checkpoint(" ".join(operation_parts)):
+        if file is None:
+            require_selected_hunk()
+            line_changes = load_line_changes_from_state()
+        else:
+            if file == "":
+                target_file = get_selected_change_file_path()
+                if target_file is None:
+                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+            else:
+                target_file = file
 
-    requested_ids = parse_line_selection(line_id_specification)
-    line_changes = load_line_changes_from_state()
+            line_changes = cache_file_as_single_hunk(target_file)
+            if line_changes is None:
+                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
-    # Get selected working tree content
-    working_file_path = get_git_repository_root_path() / line_changes.path
-    if working_file_path.exists():
-        working_bytes = working_file_path.read_bytes()
-    else:
-        exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
-    with undo_checkpoint(f"discard --line {line_id_specification}"):
+        requested_ids = parse_line_selection(line_id_specification)
+
+        # Get selected working tree content
+        working_file_path = get_git_repository_root_path() / line_changes.path
+        if working_file_path.exists():
+            working_bytes = working_file_path.read_bytes()
+        else:
+            exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
+
         # Build new working tree content with selected lines discarded
         target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
             line_changes, set(requested_ids), working_bytes)

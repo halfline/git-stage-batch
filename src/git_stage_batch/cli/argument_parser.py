@@ -241,13 +241,41 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="BATCH",
         help=_("Include changes to batch"),
     )
-    parser_include.set_defaults(func=lambda args: (
-        commands.command_include_from_batch(args.from_batch, args.line_ids, args.file) if args.from_batch
-        else commands.command_include_to_batch(args.to_batch, args.line_ids, args.file) if args.to_batch
-        else commands.command_include_line(args.line_ids) if args.line_ids
-        else commands.command_include_file(args.file) if args.file is not None
-        else commands.command_include()
-    ))
+    parser_include.add_argument(
+        "--as",
+        dest="as_text",
+        metavar="TEXT",
+        help=_("Replace selected lines with TEXT before staging them"),
+    )
+
+    def dispatch_include(args: argparse.Namespace) -> None:
+        if args.as_text is not None:
+            if args.line_ids and args.from_batch and not args.to_batch:
+                commands.command_include_from_batch(
+                    args.from_batch,
+                    args.line_ids,
+                    args.file,
+                    replacement_text=args.as_text,
+                )
+                return
+            if args.line_ids and not args.from_batch and not args.to_batch:
+                commands.command_include_line_as(args.line_ids, args.as_text, file=args.file)
+                return
+            raise CommandError(
+                _("`include --as` requires `--line` and does not support `--to`.")
+            )
+        if args.from_batch:
+            commands.command_include_from_batch(args.from_batch, args.line_ids, args.file)
+        elif args.to_batch:
+            commands.command_include_to_batch(args.to_batch, args.line_ids, args.file)
+        elif args.line_ids:
+            commands.command_include_line(args.line_ids, file=args.file)
+        elif args.file is not None:
+            commands.command_include_file(args.file)
+        else:
+            commands.command_include()
+
+    parser_include.set_defaults(func=dispatch_include)
 
     # skip - Skip the selected hunk without staging
     parser_skip = subparsers.add_parser(
@@ -309,6 +337,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="BATCH",
         help=_("Discard changes to batch"),
     )
+<<<<<<< HEAD
     parser_discard.set_defaults(func=lambda args: (
         commands.command_discard_from_batch(args.from_batch, args.line_ids, args.file) if args.from_batch
         else commands.command_discard_to_batch(args.to_batch, args.line_ids, args.file) if args.to_batch
@@ -316,6 +345,39 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         else commands.command_discard_file(args.file) if args.file is not None
         else commands.command_discard()
     ))
+=======
+    parser_discard.add_argument(
+        "--as",
+        dest="as_text",
+        metavar="TEXT",
+        help=_("Replace selected lines with TEXT before saving them to batch"),
+    )
+
+    def dispatch_discard(args: argparse.Namespace) -> None:
+        if args.as_text is not None:
+            if args.to_batch and args.line_ids and args.file is None and not args.from_batch:
+                commands.command_discard_line_as_to_batch(
+                    args.to_batch,
+                    args.line_ids,
+                    args.as_text,
+                )
+                return
+            raise CommandError(
+                _("`discard --as` requires `--to`, `--line`, and selected-hunk scope.")
+            )
+        if args.from_batch:
+            commands.command_discard_from_batch(args.from_batch, args.line_ids, args.file)
+        elif args.to_batch:
+            commands.command_discard_to_batch(args.to_batch, args.line_ids, args.file)
+        elif args.line_ids:
+            commands.command_discard_line(args.line_ids, file=args.file)
+        elif args.file is not None:
+            commands.command_discard_file(args.file)
+        else:
+            commands.command_discard()
+
+    parser_discard.set_defaults(func=dispatch_discard)
+>>>>>>> 23ab95ce (commands: Fix file-scoped live line workflows)
 
     # abort - Restore repository to pre-session state
     parser_abort = subparsers.add_parser(

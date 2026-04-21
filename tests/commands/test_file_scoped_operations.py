@@ -23,8 +23,13 @@ import pytest
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.show import command_show
-from git_stage_batch.commands.include import command_include_to_batch, command_include_file
-from git_stage_batch.commands.discard import command_discard_to_batch, command_discard_file
+from git_stage_batch.commands.include import (
+    command_include_to_batch,
+    command_include_file,
+    command_include_line,
+    command_include_line_as,
+)
+from git_stage_batch.commands.discard import command_discard_to_batch, command_discard_file, command_discard_line
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
@@ -117,6 +122,25 @@ class TestShowFileFlag:
 
         captured = capsys.readouterr()
         assert "No changes" in captured.err
+
+    def test_show_file_selection_can_feed_include_line(self, multi_file_repo):
+        """Show --file should cache a usable selection for later include --line."""
+        command_start()
+        command_show(file="beta.txt")
+
+        command_include_line("3")
+
+        result = run_git_command(["show", ":beta.txt"])
+        assert result.stdout == "beta1\nbeta2\nbeta3\nbeta4-new\n"
+
+    def test_show_file_selection_can_feed_discard_line(self, multi_file_repo):
+        """Show --file should cache a usable selection for later discard --line."""
+        command_start()
+        command_show(file="beta.txt")
+
+        command_discard_line("3")
+
+        assert (multi_file_repo / "beta.txt").read_text() == "beta1\nbeta2-modified\nbeta3\n"
 
 
 class TestIncludeToBatchWithFile:

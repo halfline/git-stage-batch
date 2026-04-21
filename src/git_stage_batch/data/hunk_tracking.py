@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import subprocess
 import sys
+from dataclasses import replace
 from typing import Generator, Optional, Union
 
 from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
@@ -29,6 +31,7 @@ from ..core.line_selection import write_line_ids_file
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _
 from ..output import print_line_level_changes, print_binary_file_change
+from .consumed_selections import read_consumed_file_metadata
 from ..utils.file_io import (
     read_file_bytes,
     read_file_paths_file,
@@ -137,6 +140,10 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     if should_skip:
         return True
 
+    filtered_line_changes = _filter_consumed_replacement_masks(filtered_line_changes)
+    if filtered_line_changes is None:
+        return True
+
     # Update cached hunk with filtered version
     write_text_file_contents(
         get_line_changes_json_file_path(),
@@ -145,6 +152,68 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     )
 
     return False
+
+
+def _filter_consumed_replacement_masks(
+    line_changes: LineLevelChange,
+) -> LineLevelChange | None:
+    """Hide synthetic replacement runs created by `include --line --as`."""
+    file_metadata = read_consumed_file_metadata(line_changes.path)
+    replacement_masks = file_metadata.get("replacement_masks", []) if file_metadata else []
+    if not replacement_masks:
+        return line_changes
+
+    normalized_masks: set[tuple[tuple[str, str], ...]] = set()
+    for mask in replacement_masks:
+        deleted_signature = tuple(("-", text) for text in mask.get("deleted_lines", []))
+        added_signature = tuple(("+", text) for text in mask.get("added_lines", []))
+        full_signature = deleted_signature + added_signature
+        if full_signature:
+            normalized_masks.add(full_signature)
+        if deleted_signature:
+            normalized_masks.add(deleted_signature)
+        if added_signature:
+            normalized_masks.add(added_signature)
+
+    filtered_lines = []
+    changed_run: list[LineEntry] = []
+
+    def flush_changed_run() -> None:
+        nonlocal changed_run
+        if not changed_run:
+            return
+        run_signature = tuple((line.kind, line.text) for line in changed_run if line.kind in ("+", "-"))
+        if run_signature not in normalized_masks:
+            filtered_lines.extend(changed_run)
+        changed_run = []
+
+    for line_entry in line_changes.lines:
+        if line_entry.kind in ("+", "-"):
+            changed_run.append(line_entry)
+            continue
+        flush_changed_run()
+        filtered_lines.append(line_entry)
+
+    flush_changed_run()
+
+    new_id = 1
+    renumbered_lines = []
+    for line_entry in filtered_lines:
+        renumbered_lines.append(
+            replace(line_entry, id=new_id if line_entry.kind != " " else None)
+        )
+        if line_entry.kind != " ":
+            new_id += 1
+
+    has_changes_after_filter = any(line.kind in ("+", "-") for line in renumbered_lines)
+    if not has_changes_after_filter:
+        return None
+
+    return LineLevelChange(
+        path=line_changes.path,
+        header=line_changes.header,
+        lines=renumbered_lines,
+    )
 
 
 def render_batch_file_display(
@@ -489,82 +558,26 @@ def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     Returns:
         LineLevelChange with all file changes, or None if no changes
     """
-    # Get diff for entire file from selected working tree
-    # Using git diff HEAD -- file_path to get live state
     try:
-        all_line_entries = []
-        line_id_counter = 1
-        min_old_start = None
-        max_old_end = None
-        min_new_start = None
-        max_new_end = None
-
-        for single_hunk in parse_unified_diff_streaming(
-            stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])
-        ):
-            # Build LineLevelChange from this hunk
-            patch_bytes = single_hunk.to_patch_bytes()
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes)
-
-            # Track bounds for combined header
-            if min_old_start is None:
-                min_old_start = line_changes.header.old_start
-                min_new_start = line_changes.header.new_start
-
-            max_old_end = line_changes.header.old_start + line_changes.header.old_len
-            max_new_end = line_changes.header.new_start + line_changes.header.new_len
-
-            # Renumber line IDs to be continuous across all hunks
-            for line_entry in line_changes.lines:
-                if line_entry.kind != " ":
-                    # Changed line: assign new continuous ID
-                    new_entry = LineEntry(
-                        id=line_id_counter,
-                        kind=line_entry.kind,
-                        old_line_number=line_entry.old_line_number,
-                        new_line_number=line_entry.new_line_number,
-                        text_bytes=line_entry.text_bytes,
-                        text=line_entry.text,
-                        source_line=line_entry.source_line
-                    )
-                    line_id_counter += 1
-                else:
-                    # Context line: keep None
-                    new_entry = LineEntry(
-                        id=None,
-                        kind=line_entry.kind,
-                        old_line_number=line_entry.old_line_number,
-                        new_line_number=line_entry.new_line_number,
-                        text_bytes=line_entry.text_bytes,
-                        text=line_entry.text,
-                        source_line=line_entry.source_line
-                    )
-                all_line_entries.append(new_entry)
-
-        if not all_line_entries:
+        combined_line_changes = _build_combined_file_line_changes(
+            file_path,
+            parse_unified_diff_streaming(
+                stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])
+            ),
+        )
+        if combined_line_changes is None:
             return None
-
-        # Create combined header spanning all hunks
-        combined_header = HunkHeader(
-            old_start=min_old_start,
-            old_len=max_old_end - min_old_start,
-            new_start=min_new_start,
-            new_len=max_new_end - min_new_start
-        )
-
-        combined_line_changes = LineLevelChange(
-            path=file_path,
-            header=combined_header,
-            lines=all_line_entries
-        )
 
         # Synthesize patch bytes for caching (used for hashing/identity)
         patch_lines = [
             f"--- a/{file_path}\n".encode("utf-8"),
             f"+++ b/{file_path}\n".encode("utf-8"),
-            f"@@ -{combined_header.old_start},{combined_header.old_len} +{combined_header.new_start},{combined_header.new_len} @@\n".encode("utf-8"),
+            (
+                f"@@ -{combined_line_changes.header.old_start},{combined_line_changes.header.old_len} "
+                f"+{combined_line_changes.header.new_start},{combined_line_changes.header.new_len} @@\n"
+            ).encode("utf-8"),
         ]
-        for entry in all_line_entries:
+        for entry in combined_line_changes.lines:
             patch_lines.append(entry.kind.encode("utf-8") + entry.text_bytes + b"\n")
         patch_bytes = b"".join(patch_lines)
 
@@ -586,6 +599,125 @@ def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes in file)
         return None
+
+
+def build_file_hunk_from_content(file_path: str, file_content: bytes) -> Optional[LineLevelChange]:
+    """Build a file-scoped line view for hypothetical file content without writing it."""
+    head_result = run_git_command(["show", f"HEAD:{file_path}"], check=False, text_output=False)
+    head_content = head_result.stdout if head_result.returncode == 0 else b""
+
+    with tempfile.NamedTemporaryFile(delete=False) as old_tmp:
+        old_tmp.write(head_content)
+        old_path = old_tmp.name
+    with tempfile.NamedTemporaryFile(delete=False) as new_tmp:
+        new_tmp.write(file_content)
+        new_path = new_tmp.name
+
+    try:
+        diff_result = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--no-index",
+                f"-U{get_context_lines()}",
+                "--no-color",
+                old_path,
+                new_path,
+            ],
+            check=False,
+            capture_output=True,
+        )
+        if diff_result.returncode not in (0, 1):
+            raise subprocess.CalledProcessError(
+                diff_result.returncode,
+                diff_result.args,
+                output=diff_result.stdout,
+                stderr=diff_result.stderr,
+            )
+
+        patch_bytes = diff_result.stdout.replace(
+            f"a{old_path}".encode("utf-8"),
+            f"a/{file_path}".encode("utf-8"),
+        ).replace(
+            f"b{new_path}".encode("utf-8"),
+            f"b/{file_path}".encode("utf-8"),
+        )
+
+        return _build_combined_file_line_changes(
+            file_path,
+            parse_unified_diff_streaming(patch_bytes.splitlines(keepends=True)),
+        )
+    finally:
+        try:
+            import os
+            os.unlink(old_path)
+            os.unlink(new_path)
+        except OSError:
+            pass
+
+
+def _build_combined_file_line_changes(
+    file_path: str,
+    patches,
+) -> Optional[LineLevelChange]:
+    """Combine file diff hunks into one file-scoped LineLevelChange."""
+    all_line_entries = []
+    line_id_counter = 1
+    min_old_start = None
+    max_old_end = None
+    min_new_start = None
+    max_new_end = None
+
+    for single_hunk in patches:
+        patch_bytes = single_hunk.to_patch_bytes()
+        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+
+        if min_old_start is None:
+            min_old_start = line_changes.header.old_start
+            min_new_start = line_changes.header.new_start
+
+        max_old_end = line_changes.header.old_start + line_changes.header.old_len
+        max_new_end = line_changes.header.new_start + line_changes.header.new_len
+
+        for line_entry in line_changes.lines:
+            if line_entry.kind != " ":
+                new_entry = LineEntry(
+                    id=line_id_counter,
+                    kind=line_entry.kind,
+                    old_line_number=line_entry.old_line_number,
+                    new_line_number=line_entry.new_line_number,
+                    text_bytes=line_entry.text_bytes,
+                    text=line_entry.text,
+                    source_line=line_entry.source_line,
+                )
+                line_id_counter += 1
+            else:
+                new_entry = LineEntry(
+                    id=None,
+                    kind=line_entry.kind,
+                    old_line_number=line_entry.old_line_number,
+                    new_line_number=line_entry.new_line_number,
+                    text_bytes=line_entry.text_bytes,
+                    text=line_entry.text,
+                    source_line=line_entry.source_line,
+                )
+            all_line_entries.append(new_entry)
+
+    if not all_line_entries:
+        return None
+
+    combined_header = HunkHeader(
+        old_start=min_old_start,
+        old_len=max_old_end - min_old_start,
+        new_start=min_new_start,
+        new_len=max_new_end - min_new_start,
+    )
+
+    return LineLevelChange(
+        path=file_path,
+        header=combined_header,
+        lines=all_line_entries,
+    )
 
 
 def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:

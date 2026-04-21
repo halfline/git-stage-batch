@@ -106,6 +106,79 @@ def build_target_index_content_bytes_with_selected_lines(
     return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
 
 
+def build_target_index_content_bytes_with_replaced_lines(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    replacement_text: str,
+    base_content: bytes,
+) -> bytes:
+    """Build target index content by replacing one contiguous changed region."""
+    if not replace_ids:
+        return base_content
+
+    changed_ids = sorted(line_changes.changed_line_ids())
+    selected_ids = sorted(replace_ids)
+    if any(line_id not in changed_ids for line_id in selected_ids):
+        raise ValueError("Replacement selection contains line IDs outside the current hunk")
+
+    expected_range = list(range(selected_ids[0], selected_ids[-1] + 1))
+    if selected_ids != expected_range:
+        raise ValueError("Replacement selection must be one contiguous line range")
+
+    base_lines = base_content.splitlines()
+    replacement_bytes = replacement_text.encode("utf-8", errors="surrogateescape")
+    replacement_lines = replacement_bytes.splitlines()
+    output_lines: list[bytes] = []
+
+    base_pointer = line_changes.header.old_start - 1
+    base_line_count = len(base_lines)
+    inserted_replacement = False
+
+    def push_output(line: bytes) -> None:
+        output_lines.append(line)
+
+    def push_replacement_once() -> None:
+        nonlocal inserted_replacement
+        if inserted_replacement:
+            return
+        output_lines.extend(replacement_lines)
+        inserted_replacement = True
+
+    for index in range(0, min(base_pointer, base_line_count)):
+        push_output(base_lines[index])
+
+    for line_entry in line_changes.lines:
+        is_selected = line_entry.id in replace_ids if line_entry.id is not None else False
+
+        if is_selected:
+            push_replacement_once()
+            if line_entry.kind in (" ", "-") and base_pointer < base_line_count:
+                base_pointer += 1
+            continue
+
+        if line_entry.kind == " ":
+            if base_pointer < base_line_count:
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+        elif line_entry.kind == "-":
+            if base_pointer < base_line_count:
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+        elif line_entry.kind == "+":
+            continue
+
+    while 0 <= base_pointer < base_line_count:
+        push_output(base_lines[base_pointer])
+        base_pointer += 1
+
+    trailing_newline = (
+        replacement_text.endswith("\n")
+        or base_content.endswith(b"\n")
+        or (not base_content and bool(output_lines))
+    )
+    return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
+
+
 def build_target_working_tree_content_with_discarded_lines(
     line_changes: LineLevelChange,
     discard_ids: set[int],
@@ -210,6 +283,79 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
         working_pointer += 1
 
     trailing_newline = working_content.endswith(b"\n") or bool(output_lines)
+    return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
+
+
+def build_target_working_tree_content_bytes_with_replaced_lines(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    replacement_text: str,
+    working_content: bytes,
+) -> bytes:
+    """Build working tree content by replacing one contiguous changed region."""
+    if not replace_ids:
+        return working_content
+
+    changed_ids = sorted(line_changes.changed_line_ids())
+    selected_ids = sorted(replace_ids)
+    if any(line_id not in changed_ids for line_id in selected_ids):
+        raise ValueError("Replacement selection contains line IDs outside the current hunk")
+
+    expected_range = list(range(selected_ids[0], selected_ids[-1] + 1))
+    if selected_ids != expected_range:
+        raise ValueError("Replacement selection must be one contiguous line range")
+
+    working_lines = working_content.splitlines()
+    output_lines: list[bytes] = []
+
+    working_pointer = line_changes.header.new_start - 1
+    working_line_count = len(working_lines)
+    replacement_bytes = replacement_text.encode("utf-8", errors="surrogateescape")
+    replacement_lines = replacement_bytes.splitlines()
+    inserted_replacement = False
+
+    def push_output(line: bytes) -> None:
+        output_lines.append(line)
+
+    def push_replacement_once() -> None:
+        nonlocal inserted_replacement
+        if inserted_replacement:
+            return
+        output_lines.extend(replacement_lines)
+        inserted_replacement = True
+
+    for index in range(0, min(working_pointer, working_line_count)):
+        push_output(working_lines[index])
+
+    for line_entry in line_changes.lines:
+        is_selected = line_entry.id in replace_ids if line_entry.id is not None else False
+
+        if is_selected:
+            push_replacement_once()
+            if line_entry.kind in (" ", "+") and working_pointer < working_line_count:
+                working_pointer += 1
+            continue
+
+        if line_entry.kind == " ":
+            if working_pointer < working_line_count:
+                push_output(working_lines[working_pointer])
+                working_pointer += 1
+        elif line_entry.kind == "-":
+            continue
+        elif line_entry.kind == "+":
+            if working_pointer < working_line_count:
+                push_output(working_lines[working_pointer])
+                working_pointer += 1
+
+    while 0 <= working_pointer < working_line_count:
+        push_output(working_lines[working_pointer])
+        working_pointer += 1
+
+    trailing_newline = (
+        replacement_text.endswith("\n")
+        or working_content.endswith(b"\n")
+        or bool(output_lines)
+    )
     return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
 
 

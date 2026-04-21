@@ -298,29 +298,33 @@ def annotate_with_batch_source(
     Use as annotator parameter to build_line_changes_from_patch_text when
     you need batch source mapping for saving changes to a batch.
     """
-    batch_source_commit = get_batch_source_for_file(path_value)
-    if not batch_source_commit:
-        # No batch source yet - working tree will become batch source
-        return _fill_source_from_working_tree(line_changes)
-
     repo_root = get_git_repository_root_path()
     file_full_path = repo_root / path_value
     if not file_full_path.exists():
-        # File doesn't exist - can't compute mapping
         return _fill_source_from_working_tree(line_changes)
 
     working_content = read_text_file_contents(file_full_path)
-    working_lines = working_content.splitlines(keepends=True)
+    return annotate_with_batch_source_content(path_value, line_changes, working_content)
+
+
+def annotate_with_batch_source_content(
+    path_value: str,
+    line_changes: LineLevelChange,
+    working_content: str,
+) -> LineLevelChange:
+    """Annotate LineLevelChange with batch source lines for arbitrary content."""
+    batch_source_commit = get_batch_source_for_file(path_value)
+    if not batch_source_commit:
+        return _fill_source_from_working_tree(line_changes)
 
     batch_source_result = run_git_command(
         ["show", f"{batch_source_commit}:{path_value}"],
         check=False,
     )
     if batch_source_result.returncode != 0:
-        # Use working tree as source when batch source unavailable
         return _fill_source_from_working_tree(line_changes)
 
     source_lines = batch_source_result.stdout.splitlines(keepends=True)
+    working_lines = working_content.splitlines(keepends=True)
     mapping = match_lines(source_lines, working_lines)
-
     return _apply_batch_source_mapping(line_changes, mapping)

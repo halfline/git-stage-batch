@@ -260,6 +260,12 @@ This decomposition is intentional:
 * it avoids introducing a special-case operation type
 * it keeps all behavior expressible in terms of constraints
 
+At the UI level, the program now exposes explicit replacement entry points such
+as `include --line --as`, `include --file --line --as`, and
+`include --from BATCH --line --as`. Those commands do not introduce a new
+storage primitive. They synthesize new claimed content while continuing to
+express the result in terms of presence and absence constraints.
+
 ### Ownership Model
 
 ```python
@@ -695,11 +701,16 @@ Both `merge_batch()` and `discard_batch()` correctly handle deletion-only owners
 * **Merge**: Suppresses forbidden sequences at their anchored positions
 * **Discard**: Re-inserts deleted sequences at their original boundaries
 
-However, the **current UI behavior** excludes deletions from line-level selection because:
+However, the **current UI behavior** is more specific than "deletions are never
+selectable." Different commands interpret batch display lines differently:
 
-* Line-level selection (`--line 5`) focuses on content to include, not suppressions to apply
-* For replacement changes, the deletion is contextual metadata for the claimed line
-* For pure removals, users select the entire hunk/file scope, not individual deletion display lines
+* Plain line-level inclusion from a batch still treats claimed lines as the
+  primary selectable content.
+* Replacement-oriented inclusion (`include --from BATCH --line ... --as`) can
+  consume a visible replacement span that includes both deletion and claimed
+  display lines.
+* Pure removal selections are still handled conservatively and are not exposed
+  as an arbitrary deletion-editing interface.
 
 This is a **product choice**, not an architectural limitation. The underlying merge/discard implementation fully supports deletion-only selections. The UI could be extended to distinguish "select this deletion claim" from "select this claimed content line" if desired.
 
@@ -733,6 +744,13 @@ They represent:
 * not how changes appear in the working tree
 
 This is distinct from attribution units, which operate in working tree space.
+
+One batch-facing replacement path now uses that model in a slightly different
+way. `include --from BATCH --line IDS --as TEXT` still starts from batch
+display, but it requires one contiguous visible selection range and rewrites a
+temporary batch-source view for that span before merging to the index. It does
+not add a new persisted batch primitive; it realizes edited content through the
+existing ownership and merge machinery.
 
 ### The Problem: Coupled Changes
 

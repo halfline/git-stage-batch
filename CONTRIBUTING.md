@@ -43,6 +43,7 @@ We follow strict commit message conventions to maintain a clear and understandab
 - **Do not describe secondary effects as the primary problem.** Code organization, maintainability, or cleanliness are rarely the main reason for a change.
 - **Be precise about scope.** If a change only improves one aspect of a problem, do not imply it fully solves it.
 - **If the commit is a step toward a larger feature, say so explicitly.** Describe the end goal briefly, then explain how this commit moves toward it.
+- **Name the feature goal in early groundwork commits.** If a commit mainly exists to enable a later user-facing feature, say what that feature is and why it matters instead of presenting the commit as isolated infrastructure work.
 - **Prefer concrete limitations over vague judgments.** Avoid words like "cumbersome", "better", or "improved" without explaining why.
 - **Do not use `Co-Authored-By` for contributions produced from AI.** Only use it for human co-authors.
 - **Only use the word `this` when referring to the commit itself.** Use `that` or similar for other contexts.
@@ -77,6 +78,11 @@ earlier commits added Spanish and French translations, this paragraph should
 state "The program has Spanish and French translations" not "The program only
 has English messages."
 
+If this is the opening groundwork commit in a feature series, the later
+paragraphs should name the feature goal directly. Do not describe the commit
+as generic cleanup or infrastructure when it is really the first step toward a
+specific user-facing capability.
+
 Do not describe the diff, the change itself, or future goals.
 
 #### Second Paragraph
@@ -96,6 +102,12 @@ Prefer the broadest accurate framing of the problem.
 Useful tests:
 - Would this problem still exist even if the specific file being edited were perfect?
 - Is this something users would notice, or only maintainers?
+
+For opening groundwork commits in a feature series, prefer framing the problem
+around the missing user-facing capability instead of the missing internal
+helper. For example, "Users cannot replace selected lines with different
+text during include or discard workflows" is usually stronger than "The
+project does not provide generic helpers for transformed selections."
 
 #### Third Paragraph
 
@@ -132,6 +144,7 @@ Before finalizing a commit message, check:
 - Does the second paragraph describe the real user-visible or maintainer-visible problem?
 - Is the problem broader than just the file being edited?
 - Does the message focus on a missing capability rather than a symptom?
+- If this is the first groundwork commit in a feature series, does the message name the eventual user-facing feature rather than only the internal machinery?
 - Does the third paragraph clearly state what this commit does without overstating its impact?
 - If this is part of a series, does it show progression (e.g., "begins", "continues", "completes")?
 - If this is an incremental step, does it clearly say so?

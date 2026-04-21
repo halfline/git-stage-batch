@@ -577,9 +577,9 @@ def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
                                 json.dumps(convert_line_changes_to_serializable_dict(combined_line_changes),
                                           ensure_ascii=False, indent=0))
 
-        # No snapshots for file-scoped hunks (they use live state)
-        get_index_snapshot_file_path().unlink(missing_ok=True)
-        get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+        # Cache live snapshots so later line-level operations can reuse the
+        # file-scoped selection the same way they reuse ordinary selected hunks.
+        write_snapshots_for_selected_file_path(file_path)
 
         return combined_line_changes
 

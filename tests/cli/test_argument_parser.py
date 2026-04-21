@@ -1,7 +1,10 @@
 """Tests for CLI argument parsing."""
 
+from unittest.mock import Mock
+
 import pytest
 
+from git_stage_batch.cli import argument_parser
 from git_stage_batch.cli.argument_parser import parse_command_line
 
 
@@ -135,6 +138,57 @@ def test_parse_command_line_include_with_line():
     assert callable(args.func)
 
 
+def test_parse_command_line_include_with_as():
+    """Test parsing include command with --as replacement text."""
+    args = parse_command_line(["include", "--line", "2-3", "--as", "replacement"], quiet=True)
+    assert args is not None
+    assert args.line_ids == "2-3"
+    assert args.as_text == "replacement"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_include_with_file_and_as():
+    """Test parsing include command with --file, --line, and --as."""
+    args = parse_command_line(
+        ["include", "--file", "path.txt", "--line", "2-3", "--as", "replacement"],
+        quiet=True,
+    )
+    assert args is not None
+    assert args.file == "path.txt"
+    assert args.line_ids == "2-3"
+    assert args.as_text == "replacement"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(monkeypatch):
+    """Include --file --line should dispatch to file-scoped line staging."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_include_line", mock_command)
+
+    args = parse_command_line(
+        ["include", "--file", "path.txt", "--line", "2-3"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("2-3", file="path.txt")
+
+
+def test_parse_command_line_include_from_with_as():
+    """Test parsing include --from with replacement text."""
+    args = parse_command_line(
+        ["include", "--from", "batch", "--line", "2-3", "--as", "replacement"],
+        quiet=True,
+    )
+    assert args is not None
+    assert args.from_batch == "batch"
+    assert args.line_ids == "2-3"
+    assert args.as_text == "replacement"
+    assert hasattr(args, "func")
+    assert callable(args.func)
 def test_parse_command_line_skip():
     """Test parsing skip command."""
     args = parse_command_line(["skip"], quiet=True)
@@ -180,6 +234,33 @@ def test_parse_command_line_discard():
     assert callable(args.func)
 
 
+def test_parse_command_line_discard_to_with_as():
+    """Test parsing discard --to with replacement text."""
+    args = parse_command_line(
+        ["discard", "--to", "batch", "--line", "2-3", "--as", "replacement"],
+        quiet=True,
+    )
+    assert args is not None
+    assert args.to_batch == "batch"
+    assert args.line_ids == "2-3"
+    assert args.as_text == "replacement"
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_discard_with_file_and_line_dispatches_file_scope(monkeypatch):
+    """Discard --file --line should dispatch to file-scoped line discard."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_discard_line", mock_command)
+
+    args = parse_command_line(
+        ["discard", "--file", "path.txt", "--line", "2-3"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("2-3", file="path.txt")
 def test_parse_command_line_discard_alias():
     """Test parsing discard command alias 'd'."""
     args = parse_command_line(["d"], quiet=True)

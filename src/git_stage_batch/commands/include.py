@@ -236,27 +236,53 @@ def command_include_file(file: str) -> None:
     advance_to_and_show_next_change()
 
 
-def command_include_line(line_id_specification: str) -> None:
+def command_include_line(line_id_specification: str, file: str | None = None) -> None:
     """Stage only the specified lines to the index.
 
     Args:
         line_id_specification: Line ID specification (e.g., "1,3,5-7")
+        file: Optional file path for file-scoped operation.
+              If empty string, uses selected hunk's file.
+              If None, uses selected hunk (cached state).
     """
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
-    require_selected_hunk()
 
-    requested_ids = parse_line_selection(line_id_specification)
-    already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
-    combined_include_ids = already_included_ids | set(requested_ids)
+    operation_parts = ["include", "--line", line_id_specification]
+    if file is not None:
+        operation_parts.extend(["--file", file])
 
-    line_changes = load_line_changes_from_state()
+    with undo_checkpoint(" ".join(operation_parts)):
+        preserve_selected_state = False
+        saved_selected_state = None
 
-    # Get the selected hunk's base/source snapshots captured when the hunk was loaded.
-    hunk_base_content = read_file_bytes(get_index_snapshot_file_path())
-    hunk_source_content = read_file_bytes(get_working_tree_snapshot_file_path())
-    with undo_checkpoint(f"include --line {line_id_specification}"):
+        if file is None:
+            require_selected_hunk()
+            line_changes = load_line_changes_from_state()
+        else:
+            if file == "":
+                target_file = get_selected_change_file_path()
+                if target_file is None:
+                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+            else:
+                target_file = file
+                preserve_selected_state = True
+                saved_selected_state = _snapshot_selected_change_state()
+
+            line_changes = cache_file_as_single_hunk(target_file)
+            if line_changes is None:
+                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+            line_changes = annotate_with_batch_source(target_file, line_changes)
+
+        requested_ids = parse_line_selection(line_id_specification)
+        already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
+        combined_include_ids = already_included_ids | set(requested_ids)
+
+        # Get the selected hunk's base/source snapshots captured when the hunk was loaded.
+        hunk_base_content = read_file_bytes(get_index_snapshot_file_path())
+        hunk_source_content = read_file_bytes(get_working_tree_snapshot_file_path())
+
         index_result = run_git_command(
             ["show", f":{line_changes.path}"],
             check=False,
@@ -298,11 +324,13 @@ def command_include_line(line_id_specification: str) -> None:
 
         update_index_with_blob_content(line_changes.path, target_index_content)
 
-        # Update processed include IDs
-        write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
-
-        # After modifying index, recalculate hunk for the SAME file
-        recalculate_selected_hunk_for_file(line_changes.path)
+        if preserve_selected_state:
+            _restore_selected_change_state(saved_selected_state)
+        else:
+            # Update processed include IDs only when the selected display remains
+            # current for incremental line inclusion.
+            write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
+            recalculate_selected_hunk_for_file(line_changes.path)
 
     print(_("✓ Included line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
 

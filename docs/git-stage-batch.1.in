@@ -164,8 +164,9 @@ Overwrite changes made after the undo.
 Stage all hunks from the selected file.
 Advances to the next file after staging all hunks.
 .TP
-.B skip \-\-file
-Skip all hunks from the selected file.
+.B skip \-\-file \fR[\fIPATH\fR]
+Skip all hunks from a file.
+If PATH is omitted, uses the selected hunk's file.
 All hunks from the file are marked as skipped and can be revisited with
 .BR again .
 .TP

@@ -298,12 +298,18 @@ Stages all hunks from the specified file and advances to the next file. When a p
 
 ---
 
-### `skip --file`
+### `skip --file [PATH]`
 
-Skip all hunks from the selected file.
+Skip all hunks from a file.
 
+**Skip selected hunk's file:**
 ```
 ❯ git-stage-batch skip --file
+```
+
+**Skip specific file by path:**
+```
+❯ git-stage-batch skip --file src/debug.py
 ```
 
 All hunks from the file are marked as skipped and can be revisited with `again`.

@@ -106,3 +106,35 @@ class TestCommandSkipFile:
         )
         assert "file2.txt" in result.stdout
         assert "file1.txt" not in result.stdout
+
+    def test_skip_file_with_explicit_path(self, temp_git_repo, capsys):
+        """Test that skip-file can target an explicit path."""
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        command_start()
+
+        command_skip_file("file2.txt")
+        captured = capsys.readouterr()
+        assert "file2.txt" in captured.err
+
+        command_include()
+        captured = capsys.readouterr()
+        assert "file1.txt" in captured.err
+
+        result = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "file1.txt" in result.stdout
+        assert "file2.txt" not in result.stdout

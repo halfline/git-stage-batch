@@ -533,10 +533,37 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
   }
 }
 
-/* Show GitHub widget on mobile (Material hides it below 76.25em) */
+/* Mobile-only GitHub widget (header widget is hidden below 76.25em) */
+.mobile-github-widget {
+  display: none;
+  text-align: center;
+  margin: 0.5em 0 0;
+}
+
+.mobile-github-widget a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  color: rgba(255, 255, 255, 0.5) !important;
+  font-size: 0.85em;
+  text-decoration: none !important;
+  text-shadow: none !important;
+  transition: color 0.3s ease;
+}
+
+.mobile-github-widget a:hover {
+  color: var(--hacker-cyan) !important;
+  transform: none;
+}
+
+.mobile-github-widget svg {
+  width: 1.1em;
+  height: 1.1em;
+  fill: currentColor;
+}
+
 @media screen and (max-width: 76.1875em) {
-  .md-header__source {
+  .mobile-github-widget {
     display: block;
-    max-width: 8rem;
   }
 }

@@ -532,3 +532,43 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
     padding: 1em;
   }
 }
+
+/* Mobile-only GitHub widget (header widget is hidden below 76.25em) */
+.mobile-github-widget {
+  display: none;
+  text-align: center;
+  margin: 1em 0 0;
+}
+
+.mobile-github-widget a {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.5em !important;
+  color: rgba(255, 255, 255, 0.45) !important;
+  font-size: 0.8rem !important;
+  font-family: 'Fira Code', monospace !important;
+  text-decoration: none !important;
+  text-shadow: none !important;
+  border: none !important;
+  background: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+
+.mobile-github-widget a:hover {
+  color: var(--hacker-cyan) !important;
+  transform: none !important;
+}
+
+.mobile-github-widget svg {
+  width: 1.2em !important;
+  height: 1.2em !important;
+  flex-shrink: 0;
+}
+
+@media screen and (max-width: 76.1875em) {
+  .mobile-github-widget {
+    display: block;
+  }
+}

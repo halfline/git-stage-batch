@@ -293,12 +293,17 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_skip.add_argument(
         "--file",
-        action="store_true",
-        help=_("Skip all hunks from the selected file"),
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=_("Operate on entire file (live working tree state). "
+               "If PATH omitted, uses selected hunk's file. "
+               "Without --line, skips all hunks from the file."),
     )
     parser_skip.set_defaults(func=lambda args: (
         commands.command_skip_line(args.line_ids) if args.line_ids
-        else commands.command_skip_file() if args.file
+        else commands.command_skip_file(args.file) if args.file is not None
         else commands.command_skip()
     ))
 

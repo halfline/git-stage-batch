@@ -84,31 +84,46 @@ def command_skip(*, quiet: bool = False) -> None:
             advance_to_and_show_next_change()
 
 
-def command_skip_file() -> None:
-    """Skip all remaining hunks from the selected file."""
+def command_skip_file(file: str = "") -> None:
+    """Skip all remaining hunks from the specified file.
+
+    Args:
+        file: File path for file-scoped operation.
+              If empty string, uses selected hunk's file.
+              If explicit path, uses that file.
+    """
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
 
-    # Load blocklist
-    blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines())
+    # Determine target file
+    if file == "":
+        # --file with no arg: use selected hunk's file by finding first unblocked hunk
+        blocklist_path = get_block_list_file_path()
+        blocklist_text = read_text_file_contents(blocklist_path)
+        blocked_hashes = set(blocklist_text.splitlines())
 
-    # Find first non-blocked hunk to get the target file
-    def is_unblocked(patch_bytes: bytes) -> bool:
-        return compute_stable_hunk_hash(patch_bytes) not in blocked_hashes
+        def is_unblocked(patch_bytes: bytes) -> bool:
+            return compute_stable_hunk_hash(patch_bytes) not in blocked_hashes
 
-    target_file = get_first_matching_file_from_diff(
-        context_lines=get_context_lines(),
-        predicate=is_unblocked
-    )
+        target_file = get_first_matching_file_from_diff(
+            context_lines=get_context_lines(),
+            predicate=is_unblocked
+        )
 
-    if target_file is None:
-        print(_("No changes to process."), file=sys.stderr)
-        return
-    with undo_checkpoint("skip --file"):
+        if target_file is None:
+            print(_("No changes to process."), file=sys.stderr)
+            return
+    else:
+        target_file = file
+
+    with undo_checkpoint(f"skip --file {file}".rstrip()):
+        # Load blocklist
         # Stream through hunks and skip all from target file
+        blocklist_path = get_block_list_file_path()
+        blocklist_text = read_text_file_contents(blocklist_path)
+        blocked_hashes = set(blocklist_text.splitlines())
+
         hunks_skipped = 0
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
             if patch.new_path != target_file:

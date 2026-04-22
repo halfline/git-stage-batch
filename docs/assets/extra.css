@@ -524,6 +524,17 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
     opacity: 0.1;
   }
 
+  .md-header__title {
+    font-size: 0.7rem !important;
+    margin-left: 0.4rem !important;
+    margin-right: 0.2rem !important;
+  }
+
+  .md-header__button {
+    margin: 0.1rem !important;
+    padding: 0.3rem !important;
+  }
+
   .hero-tagline {
     font-size: 1.3em !important;
   }

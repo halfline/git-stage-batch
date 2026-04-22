@@ -268,8 +268,10 @@ img[alt*="demo"] {
   transition: none !important;
 }
 
-body.hide-primary-sidebar .md-sidebar--primary {
-  display: none !important;
+@media screen and (min-width: 76.25em) {
+  body.hide-primary-sidebar .md-sidebar--primary {
+    display: none !important;
+  }
 }
 
 /* Prevent GitHub repo name from being ellipsized */

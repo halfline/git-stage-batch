@@ -524,8 +524,8 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
     opacity: 0.1;
   }
 
-  .md-header__topic {
-    font-size: 0.85rem;
+  .md-header__title {
+    font-size: 0.7rem !important;
   }
 
   .hero-tagline {

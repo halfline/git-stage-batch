@@ -209,7 +209,16 @@ def test_parse_command_line_skip_with_file():
     """Test parsing skip command with --file flag."""
     args = parse_command_line(["skip", "--file"], quiet=True)
     assert args is not None
-    assert args.file is True
+    assert args.file == ""
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_skip_with_file_path():
+    """Test parsing skip command with --file PATH."""
+    args = parse_command_line(["skip", "--file", "src/debug.py"], quiet=True)
+    assert args is not None
+    assert args.file == "src/debug.py"
     assert hasattr(args, "func")
     assert callable(args.func)
 

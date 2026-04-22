@@ -93,15 +93,16 @@ Useful for scripts checking hunk availability without output.
 .TP
 .B include
 Stage the cached hunk (entire hunk) to the index; advance to next.
-When a session is active, running
-.B git-stage-batch
-with no command defaults to
-.BR include .
 .TP
 .B skip
 Mark the cached hunk as skipped; advance to next.
 Skipped hunks can be revisited with
 .BR again .
+.TP
+.B git-stage-batch
+When a session is active, running
+.B git-stage-batch
+with no command shows the selected hunk.
 .TP
 .B discard
 Reverse-apply the cached hunk to the working tree; advance to next.
@@ -164,8 +165,9 @@ Overwrite changes made after the undo.
 Stage all hunks from the selected file.
 Advances to the next file after staging all hunks.
 .TP
-.B skip \-\-file
-Skip all hunks from the selected file.
+.B skip \-\-file \fR[\fIPATH\fR]
+Skip all hunks from a file.
+If PATH is omitted, uses the selected hunk's file.
 All hunks from the file are marked as skipped and can be revisited with
 .BR again .
 .TP

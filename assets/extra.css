@@ -524,6 +524,10 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
     opacity: 0.1;
   }
 
+  .md-header__topic {
+    font-size: 0.85rem;
+  }
+
   .hero-tagline {
     font-size: 1.3em !important;
   }

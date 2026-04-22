@@ -146,6 +146,16 @@ class TestDiscardWorkflow:
 class TestShowCommand:
     """Test show command."""
 
+    def test_bare_command_displays_selected_hunk_when_session_active(self, repo_with_changes):
+        """Test bare git-stage-batch behaves like show during an active session."""
+        git_stage_batch("start")
+
+        expected = git_stage_batch("show")
+        result = git_stage_batch()
+
+        assert result.returncode == 0
+        assert result.stdout == expected.stdout
+
     def test_show_displays_selected_hunk(self, repo_with_changes):
         """Test show displays selected hunk with line IDs."""
         git_stage_batch("start")

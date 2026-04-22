@@ -532,3 +532,11 @@ body.hide-primary-sidebar .md-content h1:first-of-type {
     padding: 1em;
   }
 }
+
+/* Show GitHub widget on mobile (Material hides it below 76.25em) */
+@media screen and (max-width: 76.1875em) {
+  .md-header__source {
+    display: block;
+    max-width: 8rem;
+  }
+}

@@ -135,6 +135,29 @@ restores batch state (drops created batches, restores dropped/mutated batches),
 and removes session state.
 .B WARNING:
 This will undo any commits made during the session.
+.SS Undo and Redo
+.TP
+.B undo \fR[\fB\-\-force\fR]
+Undo the most recent undoable session operation. Restores the repository
+state to the point before that operation (index, worktree, session files,
+batch refs). Refuses by default if the current state has changed since the
+checkpoint.
+.RS
+.TP
+.B \-\-force
+Overwrite changes made after the undo checkpoint.
+.RE
+.TP
+.B redo \fR[\fB\-\-force\fR]
+Redo the most recently undone session operation. Restores the state that
+was in effect before the undo. Multiple undo/redo cycles work in standard
+editor order. A new undoable operation after undo clears the redo stack.
+Refuses by default if the current state has changed since the undo.
+.RS
+.TP
+.B \-\-force
+Overwrite changes made after the undo.
+.RE
 .SS File-Level Operations
 .TP
 .B include \-\-file
@@ -156,6 +179,9 @@ This permanently removes the entire file from your working tree.
 Stage only specific lines from the selected hunk.
 Lines are displayed with IDs in brackets (e.g., [#1], [#2]).
 LINE_IDS syntax: single (1), multiple (1,3,5), range (5-7), or combined (1,3,5-7).
+For clear one-to-one replacement regions, selecting the matching deleted and
+added lines stages that semantic replacement row; if no clear semantic row can
+be determined, regular line-level staging is used.
 After processing, the hunk is recalculated to show remaining changes.
 .TP
 .B skip \-\-line \fILINE_IDS\fR
@@ -223,8 +249,10 @@ Defer changes without losing them while you work on other commits
 Group changes by type (e.g., debugging, refactoring) for separate handling
 .RE
 .PP
-Batches are stored as git commits under refs/batches/<name> and persist
-across sessions until explicitly dropped.
+Batches are stored as git commits under refs/git-stage-batch/batches/<name>
+and persist across sessions until explicitly dropped. Legacy batches under
+refs/batches/<name> are read as migration inputs and removed after the batch
+is written in the Git-backed namespace.
 .TP
 .B new \fIBATCH_NAME\fR [\fB\-\-note\fR \fINOTE\fR]
 Create a new named batch for accumulating changes.

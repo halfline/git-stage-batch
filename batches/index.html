@@ -1622,7 +1622,7 @@
 <p>Batches are an advanced feature for complex workflows. Most users will not need them.
 The core commands (start, include, skip, discard) handle the majority of use cases.</p>
 </div>
-<p>Batches are named collections of accumulated changes that can be staged or discarded later as a unit. They persist across sessions and are stored as git commits under <code>refs/batches/&lt;name&gt;</code>.</p>
+<p>Batches are named collections of accumulated changes that can be staged or discarded later as a unit. They persist across sessions and are stored as git commits under <code>refs/git-stage-batch/batches/&lt;name&gt;</code>.</p>
 <p>Each batch captures not just the changes themselves, but also the working tree state at the time changes were saved (the <strong>batch source</strong>). This allows batch operations to intelligently merge or discard changes even when your code has evolved since the batch was created.</p>
 <p><strong>When to use batches:</strong>
 - Accumulating related changes across multiple hunks for review together
@@ -1641,8 +1641,9 @@ The core commands (start, include, skip, discard) handle the majority of use cas
 <li><strong>Deletion claims</strong>: Which sequences were deleted by the batch (if any)</li>
 </ol>
 <p>This information is stored in:
-- A Git commit under <code>refs/batches/&lt;name&gt;</code> containing the realized batch content
-- Metadata tracking the batch source commit and ownership structure</p>
+- A Git commit under <code>refs/git-stage-batch/batches/&lt;name&gt;</code> containing the realized batch content
+- A state commit under <code>refs/git-stage-batch/state/&lt;name&gt;</code> tracking the batch source commit and ownership structure</p>
+<p>Legacy batches under <code>refs/batches/&lt;name&gt;</code> are read as migration inputs. Once a batch is written by the current version, the legacy ref and file-backed metadata for that batch are removed.</p>
 <h3 id="application-model-includeapply-from">Application Model (include/apply --from)<a class="headerlink" href="#application-model-includeapply-from" title="Permanent link">&para;</a></h3>
 <p>When applying a batch to your working tree or index, the tool uses <strong>structural merge</strong>:</p>
 <ol>

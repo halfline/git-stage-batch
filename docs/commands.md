@@ -79,12 +79,12 @@ Stage the cached hunk (entire hunk) to the index; advance to next.
 ❯ git-stage-batch include
 ```
 
-Or use the bare command when session is active:
+---
+
+When a session is active, the bare command shows the selected hunk:
 ```
 ❯ git-stage-batch
 ```
-
----
 
 ### `skip`
 

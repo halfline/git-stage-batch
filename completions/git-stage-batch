@@ -67,6 +67,10 @@ _git_stage_batch()
             ;;
         skip)
             case "$prev" in
+                --file)
+                    _filedir
+                    return
+                    ;;
                 --line)
                     # Line IDs - no completion
                     return

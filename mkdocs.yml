@@ -88,6 +88,8 @@ extra:
       link: https://pypi.org/project/git-stage-batch/
 
   analytics:
+    provider: google
+    property: G-RHW5Q6F532
     feedback:
       title: Was this page helpful?
       ratings:

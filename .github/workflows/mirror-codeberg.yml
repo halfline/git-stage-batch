@@ -1,0 +1,21 @@
+name: Mirror to Codeberg
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+  delete:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Codeberg
+        run: |
+          git remote add codeberg https://halfline:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/halfline/git-stage-batch.git
+          git push codeberg --all --force --prune
+          git push codeberg --tags --force

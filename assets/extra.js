@@ -79,27 +79,14 @@ function initPersistentAudio() {
 	}
 }
 
-function initMobileGithubWidget() {
-	var target = document.querySelector(".mobile-github-widget");
-	if (!target) return;
-	if (target.querySelector(".md-source")) return;
-
-	var source = document.querySelector(".md-header__source .md-source");
-	if (!source) return;
-
-	target.appendChild(source.cloneNode(true));
-}
-
 if (typeof document$ !== "undefined") {
 	document$.subscribe(function () {
 		updateSidebarVisibility();
 		initPersistentAudio();
-		initMobileGithubWidget();
 	});
 } else {
 	document.addEventListener("DOMContentLoaded", function () {
 		updateSidebarVisibility();
 		initPersistentAudio();
-		initMobileGithubWidget();
 	});
 }

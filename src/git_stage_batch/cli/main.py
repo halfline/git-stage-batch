@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import nullcontext
 
 from ..exceptions import CommandError
 from .argument_parser import parse_command_line
 from .dispatch import dispatch_args
+from .pager import pager_output, should_page_output
 
 
 def main() -> None:
@@ -17,7 +19,9 @@ def main() -> None:
         if args is not None:
             if args.working_directory is not None:
                 os.chdir(args.working_directory)
-            dispatch_args(args)
+            pager_context = pager_output() if should_page_output(args) else nullcontext()
+            with pager_context:
+                dispatch_args(args)
         else:
             # Parsing failed
             sys.exit(2)

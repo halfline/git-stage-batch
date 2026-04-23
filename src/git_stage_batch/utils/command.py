@@ -442,16 +442,21 @@ def start_command(
     arguments: list[str],
     *,
     stdin: bool = False,
+    stdin_fd: int | None = None,
     extra_fds: list[CapturedFd] | None = None,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
 ) -> StreamingProcess:
     """Start a subprocess with streaming I/O using fork/exec.
 
-    Stdout and stderr are always captured.
+    Stdout and stderr are captured by default.
     """
     if extra_fds is None:
         extra_fds = []
+    if stdin and stdin_fd is not None:
+        raise ValueError("stdin and stdin_fd are mutually exclusive")
 
     child_fds_seen = {1, 2}
     for captured in extra_fds:
@@ -467,8 +472,15 @@ def start_command(
     else:
         stdin_read_fd, stdin_write_fd = None, None
 
-    stdout_read_fd, stdout_write_fd = os.pipe()
-    stderr_read_fd, stderr_write_fd = os.pipe()
+    if capture_stdout:
+        stdout_read_fd, stdout_write_fd = os.pipe()
+    else:
+        stdout_read_fd, stdout_write_fd = None, None
+
+    if capture_stderr:
+        stderr_read_fd, stderr_write_fd = os.pipe()
+    else:
+        stderr_read_fd, stderr_write_fd = None, None
 
     # Create pipes for extra fds
     extra_pipes: dict[int, tuple[int, int]] = {}
@@ -484,10 +496,12 @@ def start_command(
         if stdin:
             os.close(stdin_read_fd)
             os.close(stdin_write_fd)
-        os.close(stdout_read_fd)
-        os.close(stdout_write_fd)
-        os.close(stderr_read_fd)
-        os.close(stderr_write_fd)
+        if capture_stdout:
+            os.close(stdout_read_fd)
+            os.close(stdout_write_fd)
+        if capture_stderr:
+            os.close(stderr_read_fd)
+            os.close(stderr_write_fd)
         for read_fd, write_fd in extra_pipes.values():
             os.close(read_fd)
             os.close(write_fd)
@@ -499,8 +513,10 @@ def start_command(
             # Close parent-side fds
             if stdin:
                 os.close(stdin_write_fd)
-            os.close(stdout_read_fd)
-            os.close(stderr_read_fd)
+            if capture_stdout:
+                os.close(stdout_read_fd)
+            if capture_stderr:
+                os.close(stderr_read_fd)
             for read_fd, _ in extra_pipes.values():
                 os.close(read_fd)
 
@@ -508,14 +524,19 @@ def start_command(
             if stdin:
                 os.dup2(stdin_read_fd, 0)
                 os.close(stdin_read_fd)
+            elif stdin_fd is not None:
+                os.dup2(stdin_fd, 0)
+                os.close(stdin_fd)
 
             # Set up stdout (fd 1)
-            os.dup2(stdout_write_fd, 1)
-            os.close(stdout_write_fd)
+            if capture_stdout:
+                os.dup2(stdout_write_fd, 1)
+                os.close(stdout_write_fd)
 
             # Set up stderr (fd 2)
-            os.dup2(stderr_write_fd, 2)
-            os.close(stderr_write_fd)
+            if capture_stderr:
+                os.dup2(stderr_write_fd, 2)
+                os.close(stderr_write_fd)
 
             # Set up extra fds
             for child_fd, (_, write_fd) in extra_pipes.items():
@@ -539,15 +560,21 @@ def start_command(
     # Close child-side fds
     if stdin:
         os.close(stdin_read_fd)
-    os.close(stdout_write_fd)
-    os.close(stderr_write_fd)
+    elif stdin_fd is not None:
+        os.close(stdin_fd)
+    if capture_stdout:
+        os.close(stdout_write_fd)
+    if capture_stderr:
+        os.close(stderr_write_fd)
     for _, write_fd in extra_pipes.values():
         os.close(write_fd)
 
     # Build fd maps
     output_fds: dict[int, int] = {}
-    output_fds[stdout_read_fd] = 1
-    output_fds[stderr_read_fd] = 2
+    if capture_stdout and stdout_read_fd is not None:
+        output_fds[stdout_read_fd] = 1
+    if capture_stderr and stderr_read_fd is not None:
+        output_fds[stderr_read_fd] = 2
 
     for child_fd, (read_fd, _) in extra_pipes.items():
         output_fds[read_fd] = child_fd
@@ -573,9 +600,12 @@ def stream_command(
     arguments: list[str],
     stdin_chunks: Iterable[bytes] | None = None,
     *,
+    stdin_fd: int | None = None,
     extra_fds: list[CapturedFd] | None = None,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
 ) -> Iterator[CommandEvent]:
     """One-shot convenience wrapper for streaming a command.
 
@@ -590,9 +620,12 @@ def stream_command(
     proc = start_command(
         arguments,
         stdin=stdin_chunks is not None,
+        stdin_fd=stdin_fd,
         extra_fds=extra_fds,
         cwd=cwd,
         env=env,
+        capture_stdout=capture_stdout,
+        capture_stderr=capture_stderr,
     )
 
     try:

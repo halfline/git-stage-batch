@@ -341,6 +341,21 @@ class TestEdgeCases:
         assert len(exit_events) == 1
         assert exit_events[0].exit_code == 0
 
+    def test_no_captured_output_fds_exits_cleanly(self):
+        """Test commands can run without capturing stdout, stderr, or extra fds."""
+        events = list(stream_command(
+            ["printf", "hello"],
+            capture_stdout=False,
+            capture_stderr=False,
+        ))
+
+        output_events = [e for e in events if isinstance(e, OutputEvent)]
+        exit_events = [e for e in events if isinstance(e, ExitEvent)]
+
+        assert output_events == []
+        assert len(exit_events) == 1
+        assert exit_events[0].exit_code == 0
+
     def test_events_can_only_be_called_once(self):
         """Test that events() can only be called once on a StreamingProcess."""
         proc = start_command(["printf", "hello"])

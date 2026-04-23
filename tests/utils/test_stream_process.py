@@ -1,5 +1,6 @@
 """Tests for POSIX subprocess streaming."""
 
+import os
 import time
 
 import sys
@@ -102,6 +103,25 @@ class TestStdinHandling:
         stdin_closed_events = [e for e in events if isinstance(e, StdinClosedEvent)]
         assert len(stdin_closed_events) == 0
 
+    def test_external_stdin_fd_round_trip(self):
+        """Test providing an externally-owned stdin pipe to the child."""
+        read_fd, write_fd = os.pipe()
+        try:
+            proc = start_command(["cat"], stdin_fd=read_fd)
+            os.write(write_fd, b"hello\nworld\n")
+            os.close(write_fd)
+            write_fd = None
+
+            events = list(proc.stream())
+        finally:
+            if write_fd is not None:
+                os.close(write_fd)
+
+        output_events = [e for e in events if isinstance(e, OutputEvent) and e.fd == 1]
+        output_data = b"".join(e.data for e in output_events)
+
+        assert output_data == b"hello\nworld\n"
+
 
 
 
@@ -190,6 +210,16 @@ class TestExtraFdCapture:
                 ["printf", "hello"],
                 extra_fds=[CapturedFd(2)]
             )
+
+    def test_stdin_and_stdin_fd_are_mutually_exclusive(self):
+        """Test that stdin pipe modes cannot be combined."""
+        read_fd, write_fd = os.pipe()
+        try:
+            with pytest.raises(ValueError, match="mutually exclusive"):
+                start_command(["cat"], stdin=True, stdin_fd=read_fd)
+        finally:
+            os.close(read_fd)
+            os.close(write_fd)
 
 
 class TestEventOrdering:

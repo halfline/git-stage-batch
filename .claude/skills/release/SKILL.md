@@ -2,7 +2,7 @@
 name: release
 description: Cut a new release — bump VERSION, build, open a PR, merge, tag, push, upload to GitHub and PyPI.
 whenToUse: Use this when the user wants to cut, publish, or ship a new release of the project.
-allowed-tools: Bash(git *), Bash(gh *), Bash(uv build), Bash(uv run twine *), Bash(cat VERSION), Bash(ls dist/), Bash(rm -rf dist/), Read, Write, Edit
+allowed-tools: Bash(git *), Bash(gh *), Bash(uv build), Bash(uv publish), Bash(cat VERSION), Bash(ls dist/), Bash(rm -rf dist/), Read, Write, Edit
 user-invocable: true
 ---
 
@@ -94,13 +94,7 @@ The release notes should match the PR body changelog section. Do not attach whee
 ### 9. Upload to PyPI
 
 ```
-uv run twine upload dist/*
-```
-
-If twine is not available, try:
-
-```
-uv run python -m twine upload dist/*
+uv publish
 ```
 
 If credentials are not configured or upload fails, report the error and tell the user what command to run manually.

@@ -58,6 +58,14 @@ def _resolve_git_pager() -> str | None:
     return pager or None
 
 
+def _build_pager_environment() -> dict[str, str]:
+    """Build the pager environment with Git-compatible defaults."""
+    env = os.environ.copy()
+    env.setdefault("LESS", "FRX")
+    env.setdefault("LV", "-c")
+    return env
+
+
 class _PagerStdout(io.TextIOBase):
     """Text stream proxy that preserves tty detection while writing to a pager."""
 
@@ -129,6 +137,7 @@ def pager_output() -> Iterator[None]:
         pager_process = start_command(
             ["sh", "-c", pager],
             stdin_fd=read_fd,
+            env=_build_pager_environment(),
             capture_stdout=False,
             capture_stderr=False,
         )

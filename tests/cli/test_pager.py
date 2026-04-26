@@ -62,6 +62,55 @@ def test_resolve_git_pager_treats_cat_as_disabled(monkeypatch):
     assert pager_module._resolve_git_pager() is None
 
 
+def test_build_pager_environment_sets_git_compatible_defaults(monkeypatch):
+    """Pager environment should include Git-style defaults when unset."""
+    monkeypatch.delenv("LESS", raising=False)
+    monkeypatch.delenv("LV", raising=False)
+
+    env = pager_module._build_pager_environment()
+
+    assert env["LESS"] == "FRX"
+    assert env["LV"] == "-c"
+
+
+def test_build_pager_environment_preserves_user_overrides(monkeypatch):
+    """Pager environment should not override explicit user settings."""
+    monkeypatch.setenv("LESS", "SX")
+    monkeypatch.setenv("LV", "-abc")
+
+    env = pager_module._build_pager_environment()
+
+    assert env["LESS"] == "SX"
+    assert env["LV"] == "-abc"
+
+
+def test_pager_output_starts_pager_with_git_compatible_environment(monkeypatch):
+    """Pager startup should pass the environment needed for less color/quit behavior."""
+    captured: dict[str, object] = {}
+
+    class DummyProcess:
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.delenv("LESS", raising=False)
+    monkeypatch.delenv("LV", raising=False)
+    monkeypatch.setattr(pager_module, "_resolve_git_pager", lambda: "less")
+
+    def fake_start_command(arguments, **kwargs):
+        captured["arguments"] = arguments
+        captured["env"] = kwargs.get("env")
+        return DummyProcess()
+
+    monkeypatch.setattr(pager_module, "start_command", fake_start_command)
+
+    with pager_module.pager_output():
+        pass
+
+    assert captured["arguments"] == ["sh", "-c", "less"]
+    assert captured["env"]["LESS"] == "FRX"
+    assert captured["env"]["LV"] == "-c"
+
+
 def test_main_wraps_dispatch_with_pager(monkeypatch):
     """Main should activate the pager for pageable commands."""
     events: list[str] = []

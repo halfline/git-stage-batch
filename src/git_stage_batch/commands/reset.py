@@ -41,6 +41,7 @@ def command_reset_from_batch(
     batch_name: str,
     line_ids: str | None = None,
     file: str | None = None,
+    patterns: list[str] | None = None,
     to_batch: str | None = None,
 ) -> None:
     """Remove claims from a batch, making changes visible again if not claimed elsewhere.
@@ -50,6 +51,7 @@ def command_reset_from_batch(
         line_ids: Optional line ID specification (e.g., "1,3,5-7")
         file: Optional file path to reset from batch.
               If None and line_ids is None, resets all claims in the batch.
+        patterns: Optional gitignore-style file patterns to filter batch files.
         to_batch: Optional destination batch to receive the reset claims.
     """
     require_git_repository()
@@ -72,9 +74,11 @@ def command_reset_from_batch(
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
         if to_batch is not None:
-            _move_claims_between_batches(batch_name, to_batch, file, line_ids)
+            _move_claims_between_batches(batch_name, to_batch, file, patterns, line_ids)
         elif file is not None:
             _reset_file_claims_from_batch(batch_name, file, line_ids)
+        elif patterns is not None:
+            _reset_pattern_claims_from_batch(batch_name, patterns, line_ids)
         elif line_ids is not None:
             _reset_line_claims_from_batch(batch_name, line_ids)
         else:
@@ -120,11 +124,12 @@ def _move_claims_between_batches(
     source_batch: str,
     dest_batch: str,
     file: str | None,
+    patterns: list[str] | None,
     line_id_specification: str | None,
 ) -> None:
     """Move selected claims from one batch to another."""
     source_metadata = read_batch_metadata(source_batch)
-    files = resolve_batch_file_scope(source_batch, source_metadata.get("files", {}), file)
+    files = resolve_batch_file_scope(source_batch, source_metadata.get("files", {}), file, patterns)
     _ensure_destination_batch(source_batch, dest_batch, source_metadata)
 
     if line_id_specification is not None:
@@ -199,6 +204,30 @@ def _reset_file_claims_from_batch(
     if line_id_specification is None:
         file_path = list(files.keys())[0]
         remove_file_from_batch(batch_name, file_path)
+        return
+
+    selected_ids = require_single_file_context_for_line_selection(
+        batch_name, files, line_id_specification, "reset"
+    )
+    if selected_ids is None:
+        return
+
+    file_path = list(files.keys())[0]
+    _reset_line_claims_for_file(batch_name, file_path, selected_ids)
+
+
+def _reset_pattern_claims_from_batch(
+    batch_name: str,
+    patterns: list[str],
+    line_id_specification: str | None = None,
+) -> None:
+    """Remove claims for files selected by gitignore-style patterns."""
+    metadata = read_batch_metadata(batch_name)
+    files = resolve_batch_file_scope(batch_name, metadata.get("files", {}), None, patterns)
+
+    if line_id_specification is None:
+        for file_path in files:
+            remove_file_from_batch(batch_name, file_path)
         return
 
     selected_ids = require_single_file_context_for_line_selection(

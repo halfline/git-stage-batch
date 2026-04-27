@@ -81,6 +81,7 @@ def command_include_from_batch(
     batch_name: str,
     line_ids: Optional[str] = None,
     file: Optional[str] = None,
+    patterns: Optional[list[str]] = None,
     replacement_text: Optional[str] = None,
 ) -> None:
     """Stage batch changes to index using structural merge.
@@ -90,6 +91,7 @@ def command_include_from_batch(
         line_ids: Optional line IDs to include (requires single-file context)
         file: Optional file path to select from batch.
               If None, includes all files in batch.
+        patterns: Optional gitignore-style file patterns to filter batch files.
         replacement_text: Optional replacement text for selected batch lines.
     """
     require_git_repository()
@@ -113,7 +115,7 @@ def command_include_from_batch(
         exit_with_error(_("Batch '{name}' is empty").format(name=batch_name))
 
     # Determine which files to operate on
-    files = resolve_batch_file_scope(batch_name, all_files, file)
+    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
 
     # Parse line selection and enforce single-file context
     selected_ids = require_single_file_context_for_line_selection(

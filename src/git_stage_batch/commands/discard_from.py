@@ -60,7 +60,12 @@ def _discard_binary_file_from_batch(file_path: str, baseline_commit: str) -> Non
             pass
 
 
-def command_discard_from_batch(batch_name: str, line_ids: Optional[str] = None, file: Optional[str] = None) -> None:
+def command_discard_from_batch(
+    batch_name: str,
+    line_ids: Optional[str] = None,
+    file: Optional[str] = None,
+    patterns: Optional[list[str]] = None,
+) -> None:
     """Remove batch changes from working tree using structural merge.
 
     Args:
@@ -68,6 +73,7 @@ def command_discard_from_batch(batch_name: str, line_ids: Optional[str] = None, 
         line_ids: Optional line IDs to discard (requires single-file context)
         file: Optional file path to select from batch.
               If None, discards all files in batch.
+        patterns: Optional gitignore-style file patterns to filter batch files.
     """
     require_git_repository()
 
@@ -87,7 +93,7 @@ def command_discard_from_batch(batch_name: str, line_ids: Optional[str] = None, 
         exit_with_error(_("Batch '{name}' is empty").format(name=batch_name))
 
     # Determine which files to operate on
-    files = resolve_batch_file_scope(batch_name, all_files, file)
+    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
 
     # Parse line selection and enforce single-file context
     selected_ids = require_single_file_context_for_line_selection(

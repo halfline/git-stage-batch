@@ -14,6 +14,7 @@ from ..batch.query import read_batch_metadata
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
+from .completion import command_complete_files
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -775,6 +776,24 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Destination batch (may equal source for in-place sift)"),
     )
     parser_sift.set_defaults(func=lambda args: commands.command_sift_batch(args.from_batch, args.to_batch))
+
+    parser_complete_files = subparsers.add_parser(
+        "__complete-files",
+        help=argparse.SUPPRESS,
+    )
+    parser_complete_files.add_argument(
+        "current_token",
+        nargs="?",
+        default="",
+    )
+    parser_complete_files.add_argument(
+        "--from",
+        dest="from_batch",
+        default=None,
+    )
+    parser_complete_files.set_defaults(
+        func=lambda args: command_complete_files(args.current_token, from_batch=args.from_batch)
+    )
 
     # Parse arguments, return None on failure
     try:

@@ -11,7 +11,12 @@ from ..batch.selection import (
     require_single_file_context_for_line_selection,
 )
 from ..batch.validation import batch_exists
-from ..data.hunk_tracking import cache_batch_as_single_hunk, cache_batch_files_generator, cache_rendered_batch_file_display
+from ..data.hunk_tracking import (
+    cache_batch_as_single_hunk,
+    cache_batch_files_generator,
+    cache_rendered_batch_file_display,
+    render_batch_file_display,
+)
 from ..output import print_line_level_changes
 from ..exceptions import exit_with_error, BatchMetadataError
 from ..i18n import _
@@ -19,7 +24,13 @@ from ..core.models import LineLevelChange
 from ..utils.git import require_git_repository
 
 
-def command_show_from_batch(batch_name: str, line_ids: Optional[str] = None, file: Optional[str] = None) -> None:
+def command_show_from_batch(
+    batch_name: str,
+    line_ids: Optional[str] = None,
+    file: Optional[str] = None,
+    patterns: Optional[list[str]] = None,
+    selectable: bool = True,
+) -> None:
     """Show changes from a batch.
 
     Args:
@@ -27,6 +38,8 @@ def command_show_from_batch(batch_name: str, line_ids: Optional[str] = None, fil
         line_ids: Optional line IDs to filter (requires single-file context)
         file: Optional file path to show from batch.
               If None, shows all files in batch.
+        patterns: Optional gitignore-style file patterns to filter batch files.
+        selectable: If True, cache the displayed file for later line operations.
     """
     require_git_repository()
 
@@ -43,7 +56,7 @@ def command_show_from_batch(batch_name: str, line_ids: Optional[str] = None, fil
     all_files = metadata.get("files", {})
 
     # Resolve file scope (for consistent --file handling across commands)
-    files = resolve_batch_file_scope(batch_name, all_files, file)
+    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
 
     # Parse line selection and enforce single-file context
     selected_ids = require_single_file_context_for_line_selection(
@@ -60,7 +73,11 @@ def command_show_from_batch(batch_name: str, line_ids: Optional[str] = None, fil
         file_path = list(files.keys())[0]
 
         # Cache that file from batch
-        rendered = cache_batch_as_single_hunk(batch_name, file_path=file_path, metadata=metadata)
+        rendered = (
+            cache_batch_as_single_hunk(batch_name, file_path=file_path, metadata=metadata)
+            if selectable else
+            render_batch_file_display(batch_name, file_path, metadata=metadata)
+        )
         if rendered is None:
             print(_("No changes for file '{file}' in batch '{name}'.").format(file=file_path, name=batch_name), file=sys.stderr)
             return
@@ -85,7 +102,10 @@ def command_show_from_batch(batch_name: str, line_ids: Optional[str] = None, fil
                 )
                 print_line_level_changes(filtered_line_changes, gutter_to_selection_id=rendered.gutter_to_selection_id)
         else:
-            print_line_level_changes(rendered.line_changes, gutter_to_selection_id=rendered.gutter_to_selection_id)
+            print_line_level_changes(
+                rendered.line_changes,
+                gutter_to_selection_id=rendered.gutter_to_selection_id if selectable else {},
+            )
 
         return
 

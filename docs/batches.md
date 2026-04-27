@@ -155,6 +155,13 @@ Displays the diff representing all changes accumulated in the batch, showing wha
 
 Filter the display to show only specific line IDs from the batch.
 
+**Pattern-based filtering:**
+```bash
+❯ git-stage-batch show --from batch-name --files "src/**/*.py" "!src/vendor/**"
+```
+
+When `--files` resolves to multiple files, only the final displayed file remains selected for later `--line` operations.
+
 ---
 
 ## `include --from BATCH`
@@ -188,6 +195,11 @@ Stage changes from the batch for the selected hunk's file only. Use this during 
 ```
 
 Stage changes from the batch for `src/config.py` only, without needing a selected hunk. Useful for applying specific files from multi-file batches outside of an active staging session.
+
+**Pattern-based staging:**
+```bash
+❯ git-stage-batch include --from batch-name --files "src/**/*.py" "!src/vendor/**"
+```
 
 **Example - Selective file application:**
 ```bash
@@ -252,6 +264,11 @@ Remove batch changes from the working tree for the selected hunk's file only. Us
 
 Remove batch changes for `src/experimental.py` only, without needing a selected hunk. Useful for discarding specific files from multi-file batches.
 
+**Pattern-based discarding:**
+```bash
+❯ git-stage-batch discard --from batch-name --files "src/**/*.py" "!src/vendor/**"
+```
+
 !!! warning "Destructive Operation"
     This permanently removes changes from your working tree.
 
@@ -312,6 +329,11 @@ Apply batch changes to the working tree for the selected hunk's file only. Use t
 ```
 
 Apply batch changes for `src/debug.py` only to the working tree, without needing a selected hunk. Useful for testing specific files from multi-file batches.
+
+**Pattern-based application:**
+```bash
+❯ git-stage-batch apply --from batch-name --files "src/**/*.py" "!src/vendor/**"
+```
 
 !!! warning "Merge-Based Application"
     `apply --from BATCH` uses the same structural merge as `include --from BATCH`,
@@ -374,6 +396,11 @@ Clears all files from the batch.
 ```
 
 Removes only `src/debug.py` from the batch. If `--file` is used without a path, the selected hunk's file is used.
+
+**Reset files by pattern:**
+```bash
+❯ git-stage-batch reset --from batch-name --files "src/**/*.py" "!src/vendor/**"
+```
 
 **Reset selected lines from a file:**
 ```

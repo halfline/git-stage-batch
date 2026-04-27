@@ -111,6 +111,20 @@ auth.py :: @@ -10,5 +10,5 @@
 
 ---
 
+## Pattern-Based: Skip a Set of Files
+
+Use Git-style patterns to operate on a group of files without repeating `--file`:
+
+```bash
+❯ git-stage-batch skip --files "docs/**/*.md" "!docs/release-notes.md"
+✓ Skipped 2 hunks from docs/usage.md
+✓ Skipped 1 hunk from docs/tutorial.md
+```
+
+Patterns use Git's matcher semantics, so ordered exclusions work the same way they do in `.gitignore`.
+
+---
+
 ## Block Build Artifacts
 
 Permanently exclude generated files:

@@ -10,6 +10,40 @@ __git_stage_batch_list_batches()
     } | sort -u
 }
 
+__git_stage_batch_find_from_batch()
+{
+    local i
+    for ((i=1; i < ${#words[@]}; i++)); do
+        if [[ "${words[i]}" == "--from" && $((i + 1)) -lt ${#words[@]} ]]; then
+            printf '%s\n' "${words[i + 1]}"
+            return
+        fi
+    done
+}
+
+__git_stage_batch_complete_files()
+{
+    local from_batch
+    from_batch="$(__git_stage_batch_find_from_batch)"
+
+    if [[ -n "$from_batch" ]]; then
+        git-stage-batch __complete-files --from "$from_batch" "$cur" 2>/dev/null
+    else
+        git-stage-batch __complete-files "$cur" 2>/dev/null
+    fi
+}
+
+__git_stage_batch_set_nospace_for_dirs()
+{
+    local reply
+    for reply in "${COMPREPLY[@]}"; do
+        if [[ "$reply" == */ ]]; then
+            compopt -o nospace 2>/dev/null
+            return
+        fi
+    done
+}
+
 _git_stage_batch()
 {
     local cur prev words cword
@@ -41,12 +75,17 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --file|--files)
+                    mapfile -t COMPREPLY < <(__git_stage_batch_complete_files)
+                    __git_stage_batch_set_nospace_for_dirs
+                    return
+                    ;;
                 --line)
                     # Line IDs - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--porcelain --from --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--porcelain --from --file --files --line" -- "$cur"))
             ;;
         include)
             case "$prev" in
@@ -58,17 +97,23 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --file|--files)
+                    mapfile -t COMPREPLY < <(__git_stage_batch_complete_files)
+                    __git_stage_batch_set_nospace_for_dirs
+                    return
+                    ;;
                 --line)
                     # Line IDs - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --from --to --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --files --from --to --line" -- "$cur"))
             ;;
         skip)
             case "$prev" in
-                --file)
-                    _filedir
+                --file|--files)
+                    mapfile -t COMPREPLY < <(__git_stage_batch_complete_files)
+                    __git_stage_batch_set_nospace_for_dirs
                     return
                     ;;
                 --line)
@@ -76,7 +121,7 @@ _git_stage_batch()
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --files --line" -- "$cur"))
             ;;
         discard)
             case "$prev" in
@@ -88,12 +133,17 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --file|--files)
+                    mapfile -t COMPREPLY < <(__git_stage_batch_complete_files)
+                    __git_stage_batch_set_nospace_for_dirs
+                    return
+                    ;;
                 --line)
                     # Line IDs - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --from --to --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --files --from --to --line" -- "$cur"))
             ;;
         apply)
             case "$prev" in
@@ -101,12 +151,17 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --file|--files)
+                    mapfile -t COMPREPLY < <(__git_stage_batch_complete_files)
+                    __git_stage_batch_set_nospace_for_dirs
+                    return
+                    ;;
                 --line)
                     # Line IDs - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--from --line --file" -- "$cur"))
+            COMPREPLY=($(compgen -W "--from --line --file --files" -- "$cur"))
             ;;
         reset)
             case "$prev" in
@@ -114,12 +169,17 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "$(__git_stage_batch_list_batches)" -- "$cur"))
                     return
                     ;;
+                --file|--files)
+                    mapfile -t COMPREPLY < <(__git_stage_batch_complete_files)
+                    __git_stage_batch_set_nospace_for_dirs
+                    return
+                    ;;
                 --line)
                     # Line IDs - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--from --to --line --file" -- "$cur"))
+            COMPREPLY=($(compgen -W "--from --to --line --file --files" -- "$cur"))
             ;;
         status)
             COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))

@@ -6,7 +6,9 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
+from contextlib import nullcontext
 from importlib import resources
 from pathlib import Path
 
@@ -78,6 +80,27 @@ def _try_git_help_with_environment(env: dict[str, str] | None = None) -> bool:
     return result.returncode == 0
 
 
+def _with_real_manpath_root(manpage_path: Path):
+    """Yield a manpath root that contains man1/git-stage-batch.1."""
+    if manpage_path.parent.name == "man1":
+        return nullcontext(manpage_path.parent.parent)
+
+    class _TemporaryManRoot:
+        def __enter__(self):
+            self._temp_dir = tempfile.TemporaryDirectory(prefix="git-stage-batch-help-")
+            temp_root = Path(self._temp_dir.name)
+            temp_manpage = temp_root / "man1" / "git-stage-batch.1"
+            temp_manpage.parent.mkdir(parents=True, exist_ok=True)
+            temp_manpage.write_bytes(manpage_path.read_bytes())
+            return temp_root
+
+        def __exit__(self, exc_type, exc, tb):
+            self._temp_dir.cleanup()
+            return False
+
+    return _TemporaryManRoot()
+
+
 def _show_git_stage_batch_help() -> bool:
     """Show git-stage-batch help from packaged or system man pages."""
     try:
@@ -91,13 +114,14 @@ def _show_git_stage_batch_help() -> bool:
         try:
             with resources.as_file(packaged_manpage) as packaged_manpage_path:
                 if packaged_manpage_path.exists():
-                    env = os.environ.copy()
-                    env["MANPATH"] = _build_manpath_with_packaged_page(
-                        packaged_manpage_path.parent.parent,
-                        env,
-                    )
-                    if _try_git_help_with_environment(env):
-                        return True
+                    with _with_real_manpath_root(packaged_manpage_path) as man_root:
+                        env = os.environ.copy()
+                        env["MANPATH"] = _build_manpath_with_packaged_page(
+                            Path(man_root),
+                            env,
+                        )
+                        if _try_git_help_with_environment(env):
+                            return True
         except FileNotFoundError:
             pass
 

@@ -1,11 +1,104 @@
 """Tests for CLI argument parsing."""
 
+import os
 from unittest.mock import Mock, call
 
 import pytest
 
 from git_stage_batch.cli import argument_parser
 from git_stage_batch.cli.argument_parser import parse_command_line
+
+
+def test_build_manpath_with_existing_environment(monkeypatch):
+    """Existing MANPATH should be preserved after the packaged root."""
+    monkeypatch.setattr(argument_parser, "_resolve_default_manpath", lambda: "/ignored")
+
+    result = argument_parser._build_manpath_with_packaged_page(
+        argument_parser.Path("/tmp/pkg-man"),
+        {"MANPATH": "/custom/man"},
+    )
+
+    assert result == f"/tmp/pkg-man{os.pathsep}/custom/man"
+
+
+def test_build_manpath_uses_computed_default(monkeypatch):
+    """Unset MANPATH should use the computed default search path."""
+    monkeypatch.setattr(argument_parser, "_resolve_default_manpath", lambda: "/usr/share/man:/usr/local/share/man")
+
+    result = argument_parser._build_manpath_with_packaged_page(
+        argument_parser.Path("/tmp/pkg-man"),
+        {},
+    )
+
+    assert result == f"/tmp/pkg-man{os.pathsep}/usr/share/man:/usr/local/share/man"
+
+
+def test_build_manpath_falls_back_to_double_colon(monkeypatch):
+    """Unset MANPATH should preserve default lookup semantics as a fallback."""
+    monkeypatch.setattr(argument_parser, "_resolve_default_manpath", lambda: None)
+
+    result = argument_parser._build_manpath_with_packaged_page(
+        argument_parser.Path("/tmp/pkg-man"),
+        {},
+    )
+
+    assert result == f"/tmp/pkg-man{os.pathsep}{os.pathsep}"
+
+
+def test_resolve_default_manpath_unsets_manpath(monkeypatch):
+    """Default manpath discovery should ignore the current MANPATH override."""
+    captured_env = {}
+
+    def fake_run(*_args, **kwargs):
+        nonlocal captured_env
+        captured_env = kwargs["env"]
+        return Mock(returncode=0, stdout="/usr/share/man\n")
+
+    monkeypatch.setattr(argument_parser.subprocess, "run", fake_run)
+    monkeypatch.setenv("MANPATH", "/custom/man")
+
+    result = argument_parser._resolve_default_manpath()
+
+    assert result == "/usr/share/man"
+    assert "MANPATH" not in captured_env
+
+
+def test_show_git_stage_batch_help_uses_packaged_page_first(monkeypatch, tmp_path):
+    """Packaged man pages should be added to MANPATH before invoking git help."""
+    manpage = tmp_path / "assets" / "man" / "man1" / "git-stage-batch.1"
+    manpage.parent.mkdir(parents=True)
+    manpage.write_text("test", encoding="utf-8")
+
+    monkeypatch.setattr(
+        argument_parser.resources,
+        "files",
+        lambda _package: tmp_path,
+    )
+
+    class _AsFile:
+        def __init__(self, path):
+            self.path = path
+
+        def __enter__(self):
+            return self.path
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(argument_parser.resources, "as_file", lambda path: _AsFile(path))
+    monkeypatch.setattr(argument_parser, "_resolve_default_manpath", lambda: "/usr/share/man")
+
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs.get("env")))
+        return Mock(returncode=0)
+
+    monkeypatch.setattr(argument_parser.subprocess, "run", fake_run)
+
+    assert argument_parser._show_git_stage_batch_help() is True
+    assert calls[0][0] == ["git", "help", "stage-batch"]
+    assert calls[0][1]["MANPATH"] == f"{manpage.parent.parent}{os.pathsep}/usr/share/man"
 
 
 def test_parse_command_line_version():

@@ -6,6 +6,7 @@ project('git-stage-batch',
 
 python = import('python').find_installation('python3', pure: true)
 i18n = import('i18n')
+package_dir = python.get_install_dir() / 'git_stage_batch'
 
 # Generate POTFILES.in by scanning for translatable strings
 run_command(
@@ -33,6 +34,13 @@ manpage = configure_file(
   output: 'git-stage-batch.1',
   configuration: {'VERSION': meson.project_version()},
 )
+if get_option('python_wheel')
+  install_data(
+    manpage,
+    install_dir: package_dir / 'assets' / 'man' / 'man1',
+    install_tag: 'python-runtime',
+  )
+endif
 if not get_option('python_wheel')
   install_man(manpage)
 endif

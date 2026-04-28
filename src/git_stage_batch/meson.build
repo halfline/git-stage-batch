@@ -1,5 +1,3 @@
-package_dir = python.get_install_dir() / 'git_stage_batch'
-
 configure_file(
   input: '_version.py.in',
   output: '_version.py',

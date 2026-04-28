@@ -65,6 +65,16 @@ class TestWheelContents:
         for expected in expected_files:
             assert any(expected in f for f in files), f"Missing {expected}"
 
+    def test_wheel_contains_packaged_man_page(self, build_wheel):
+        """Test that wheel contains the packaged man page fallback."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/man/man1/git-stage-batch.1' in f
+            for f in files
+        ), "Missing packaged man page asset"
+
     def test_wheel_contains_entry_point_script(self, build_wheel):
         """Test that wheel contains the executable entry point."""
         with zipfile.ZipFile(build_wheel, 'r') as whl:

@@ -34,6 +34,13 @@ manpage = configure_file(
   output: 'git-stage-batch.1',
   configuration: {'VERSION': meson.project_version()},
 )
+if get_option('python_wheel')
+  install_data(
+    manpage,
+    install_dir: package_dir / 'assets' / 'man' / 'man1',
+    install_tag: 'python-runtime',
+  )
+endif
 if not get_option('python_wheel')
   install_man(manpage)
 endif

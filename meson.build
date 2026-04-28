@@ -6,6 +6,7 @@ project('git-stage-batch',
 
 python = import('python').find_installation('python3', pure: true)
 i18n = import('i18n')
+package_dir = python.get_install_dir() / 'git_stage_batch'
 
 # Generate POTFILES.in by scanning for translatable strings
 run_command(

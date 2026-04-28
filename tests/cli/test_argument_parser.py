@@ -101,6 +101,48 @@ def test_show_git_stage_batch_help_uses_packaged_page_first(monkeypatch, tmp_pat
     assert calls[0][1]["MANPATH"] == f"{manpage.parent.parent}{os.pathsep}/usr/share/man"
 
 
+def test_show_git_stage_batch_help_materializes_editable_manpage(monkeypatch, tmp_path):
+    """Editable installs should copy the man page into a real man1 tree."""
+    editable_manpage = tmp_path / "build" / "cp313" / "git-stage-batch.1"
+    editable_manpage.parent.mkdir(parents=True)
+    editable_manpage.write_text("test", encoding="utf-8")
+
+    class _EditableRoot:
+        def joinpath(self, *segments):
+            assert segments == ("assets", "man", "man1", "git-stage-batch.1")
+            return editable_manpage
+
+    monkeypatch.setattr(argument_parser.resources, "files", lambda _package: _EditableRoot())
+
+    class _AsFile:
+        def __init__(self, path):
+            self.path = path
+
+        def __enter__(self):
+            return self.path
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(argument_parser.resources, "as_file", lambda path: _AsFile(path))
+    monkeypatch.setattr(argument_parser, "_resolve_default_manpath", lambda: "/usr/share/man")
+
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs.get("env")))
+        manpath_root = kwargs["env"]["MANPATH"].split(os.pathsep, 1)[0]
+        staged_manpage = argument_parser.Path(manpath_root) / "man1" / "git-stage-batch.1"
+        assert staged_manpage.exists()
+        assert staged_manpage.read_text(encoding="utf-8") == "test"
+        return Mock(returncode=0)
+
+    monkeypatch.setattr(argument_parser.subprocess, "run", fake_run)
+
+    assert argument_parser._show_git_stage_batch_help() is True
+    assert calls[0][1]["MANPATH"].endswith(f"{os.pathsep}/usr/share/man")
+
+
 def test_parse_command_line_version():
     """Test parsing --version flag."""
     # --version causes argparse to exit, which is expected

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from collections.abc import Callable
+from importlib import resources
+from pathlib import Path
 
 from .. import __version__
 from ..batch.validation import batch_exists
@@ -22,19 +25,83 @@ class GitHelpArgumentParser(argparse.ArgumentParser):
 
     def print_help(self, file=None):
         """Try to use git help, fall back to argparse help."""
-        try:
-            result = subprocess.run(
-                ["git", "help", "stage-batch"],
-                check=False,
-                stderr=subprocess.DEVNULL,
-            )
-            if result.returncode == 0:
-                return
-        except (FileNotFoundError, OSError):
-            pass
+        if _show_git_stage_batch_help():
+            return
 
         # Fall back to standard argparse help
         super().print_help(file)
+
+
+def _resolve_default_manpath() -> str | None:
+    """Return the default manpath as if MANPATH were unset."""
+    env = os.environ.copy()
+    env.pop("MANPATH", None)
+    try:
+        result = subprocess.run(
+            ["manpath", "-q"],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            env=env,
+        )
+    except (FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _build_manpath_with_packaged_page(man_root: Path, env: dict[str, str]) -> str:
+    """Build a MANPATH preferring the packaged man page when available."""
+    if env.get("MANPATH"):
+        return f"{man_root}{os.pathsep}{env['MANPATH']}"
+
+    default_manpath = _resolve_default_manpath()
+    if default_manpath:
+        return f"{man_root}{os.pathsep}{default_manpath}"
+
+    return f"{man_root}{os.pathsep}{os.pathsep}"
+
+
+def _try_git_help_with_environment(env: dict[str, str] | None = None) -> bool:
+    """Run git help for git-stage-batch."""
+    try:
+        result = subprocess.run(
+            ["git", "help", "stage-batch"],
+            check=False,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
+    except (FileNotFoundError, OSError):
+        return False
+    return result.returncode == 0
+
+
+def _show_git_stage_batch_help() -> bool:
+    """Show git-stage-batch help from packaged or system man pages."""
+    try:
+        packaged_manpage = resources.files("git_stage_batch").joinpath(
+            "assets", "man", "man1", "git-stage-batch.1"
+        )
+    except (ModuleNotFoundError, FileNotFoundError):
+        packaged_manpage = None
+
+    if packaged_manpage is not None:
+        try:
+            with resources.as_file(packaged_manpage) as packaged_manpage_path:
+                if packaged_manpage_path.exists():
+                    env = os.environ.copy()
+                    env["MANPATH"] = _build_manpath_with_packaged_page(
+                        packaged_manpage_path.parent.parent,
+                        env,
+                    )
+                    if _try_git_help_with_environment(env):
+                        return True
+        except FileNotFoundError:
+            pass
+
+    return _try_git_help_with_environment()
 
 
 def _add_file_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
@@ -802,3 +869,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         if not quiet:
             parser.print_usage(sys.stderr)
         return None
+    except SystemExit as e:
+        if quiet and e.code != 0:
+            return None
+        raise

@@ -17,6 +17,7 @@ import pytest
 
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.data.line_state import load_line_changes_from_state
 
 
 @pytest.fixture
@@ -236,3 +237,32 @@ class TestCommandShow:
             command_show(porcelain=True)
 
         assert exc_info.value.code == 1
+
+    def test_show_file_preview_hides_gutter_ids_without_replacing_selection(self, temp_git_repo, capsys):
+        """Non-selectable file previews should hide gutter IDs and preserve cached selection."""
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("one\n")
+        file2.write_text("two\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file1.write_text("one changed\n")
+        file2.write_text("two changed\n")
+
+        command_start()
+        capsys.readouterr()
+
+        command_show(file="file1.txt", selectable=False)
+        preview = capsys.readouterr()
+        assert "file1.txt" in preview.out
+        assert "[#1]" not in preview.out
+
+        command_show(file="file2.txt")
+        selected = capsys.readouterr()
+        assert "file2.txt" in selected.out
+        assert "[#1]" in selected.out
+
+        cached = load_line_changes_from_state()
+        assert cached is not None
+        assert cached.path == "file2.txt"

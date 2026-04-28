@@ -25,6 +25,7 @@ _PAGEABLE_COMMANDS = {
     "start",
     "status",
     "unblock-file",
+    "__complete-files",
 }
 
 

@@ -1,6 +1,6 @@
 """Tests for CLI argument parsing."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -175,6 +175,22 @@ def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(mon
     assert args is not None
     args.func(args)
     mock_command.assert_called_once_with("2-3", file="path.txt")
+
+
+def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
+    """Include should dispatch once per file resolved from --files."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_include_file", mock_command)
+    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "dir/bar.py", "baz.txt"])
+
+    args = parse_command_line(["include", "--files", "*.py"], quiet=True)
+
+    assert args is not None
+    assert args.file_patterns == ["*.py"]
+    args.func(args)
+    assert mock_command.call_args_list == [call("foo.py"), call("dir/bar.py")]
+
+
 def test_parse_command_line_include_from_with_as():
     """Test parsing include --from with replacement text."""
     args = parse_command_line(
@@ -230,6 +246,94 @@ def test_parse_command_line_skip_with_line():
     assert args.line_ids == "1,3,5-7"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_skip_with_files():
+    """Skip should parse --files patterns."""
+    args = parse_command_line(["skip", "--files", "*.py", "docs/*.md"], quiet=True)
+    assert args is not None
+    assert args.file_patterns == ["*.py", "docs/*.md"]
+
+
+def test_parse_command_line_skip_files_dispatches_per_file(monkeypatch):
+    """Skip should dispatch once per file resolved from --files."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_skip_file", mock_command)
+    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py", "notes.txt"])
+
+    args = parse_command_line(["skip", "--files", "*.py"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    assert mock_command.call_args_list == [call("foo.py"), call("bar.py")]
+
+
+def test_parse_command_line_skip_rejects_lines_with_multiple_files(monkeypatch):
+    """Skip should reject --line/--lines when --files resolves to multiple files."""
+    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py"])
+    args = parse_command_line(["skip", "--files", "*.py", "--lines", "1"], quiet=True)
+    assert args is not None
+
+    with pytest.raises(argument_parser.CommandError, match="Cannot use --lines with multiple files"):
+        args.func(args)
+
+
+def test_parse_command_line_skip_rejects_mixed_file_and_files():
+    """Skip should reject mixing --file and --files."""
+    args = parse_command_line(["skip", "--file", "foo.py", "--files", "*.py"], quiet=True)
+    assert args is not None
+
+    with pytest.raises(argument_parser.CommandError, match="Cannot use --file together with --files"):
+        args.func(args)
+
+
+def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
+    """Discard should dispatch once per file resolved from --files."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_discard_file", mock_command)
+    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py", "notes.txt"])
+
+    args = parse_command_line(["discard", "--files", "*.py"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    assert mock_command.call_args_list == [call("foo.py"), call("bar.py")]
+
+
+def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
+    """Apply should dispatch once per file resolved from --files."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_apply_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
+    monkeypatch.setattr(argument_parser, "read_batch_metadata", lambda name: {"files": {"foo.py": {}, "bar.py": {}, "notes.txt": {}}})
+
+    args = parse_command_line(
+        ["apply", "--from", "batch", "--files", "*.py"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    assert mock_command.call_args_list == [
+        call("batch", line_ids=None, file="foo.py"),
+        call("batch", line_ids=None, file="bar.py"),
+    ]
+
+
+def test_parse_command_line_show_with_files_only_last_result_is_selectable(monkeypatch):
+    """Show should hide gutters for earlier files resolved from --files."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
+    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py", "notes.txt"])
+
+    args = parse_command_line(["show", "--files", "*.py"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    assert mock_command.call_args_list == [
+        call(file="foo.py", porcelain=False, selectable=False),
+        call(file="bar.py", porcelain=False, selectable=True),
+    ]
 
 
 def test_parse_command_line_discard():

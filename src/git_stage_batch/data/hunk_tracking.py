@@ -559,12 +559,7 @@ def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
         LineLevelChange with all file changes, or None if no changes
     """
     try:
-        combined_line_changes = _build_combined_file_line_changes(
-            file_path,
-            parse_unified_diff_streaming(
-                stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])
-            ),
-        )
+        combined_line_changes = render_file_as_single_hunk(file_path)
         if combined_line_changes is None:
             return None
 
@@ -599,6 +594,16 @@ def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes in file)
         return None
+
+
+def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
+    """Render all changes for a file as a single hunk without caching state."""
+    return _build_combined_file_line_changes(
+        file_path,
+        parse_unified_diff_streaming(
+            stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])
+        ),
+    )
 
 
 def build_file_hunk_from_content(file_path: str, file_content: bytes) -> Optional[LineLevelChange]:

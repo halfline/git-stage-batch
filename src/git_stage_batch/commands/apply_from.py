@@ -75,7 +75,12 @@ def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: di
             pass
 
 
-def command_apply_from_batch(batch_name: str, line_ids: Optional[str] = None, file: Optional[str] = None) -> None:
+def command_apply_from_batch(
+    batch_name: str,
+    line_ids: Optional[str] = None,
+    file: Optional[str] = None,
+    patterns: Optional[list[str]] = None,
+) -> None:
     """Apply batch changes to working tree using structural merge.
 
     Args:
@@ -83,6 +88,7 @@ def command_apply_from_batch(batch_name: str, line_ids: Optional[str] = None, fi
         line_ids: Optional line IDs to apply (requires single-file context)
         file: Optional file path to select from batch.
               If None, applies all files in batch.
+        patterns: Optional gitignore-style file patterns to filter batch files.
     """
     require_git_repository()
 
@@ -102,7 +108,7 @@ def command_apply_from_batch(batch_name: str, line_ids: Optional[str] = None, fi
         exit_with_error(_("Batch '{name}' is empty").format(name=batch_name))
 
     # Determine which files to operate on
-    files = resolve_batch_file_scope(batch_name, all_files, file)
+    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
 
     # Parse line selection and enforce single-file context
     selected_ids = require_single_file_context_for_line_selection(

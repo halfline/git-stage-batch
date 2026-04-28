@@ -14,6 +14,7 @@ from .ownership import (
 from ..core.line_selection import parse_line_selection
 from ..exceptions import exit_with_error
 from ..i18n import _
+from ..utils.file_patterns import resolve_gitignore_style_patterns
 
 if TYPE_CHECKING:
     from ..exceptions import AtomicUnitError
@@ -24,6 +25,7 @@ def resolve_batch_file_scope(
     batch_name: str,
     all_files: dict[str, dict],
     file: Optional[str] = None,
+    patterns: Optional[list[str]] = None,
 ) -> dict[str, dict]:
     """Resolve which files from a batch to operate on.
 
@@ -34,6 +36,7 @@ def resolve_batch_file_scope(
             - None: operate on all files in batch
             - "": use currently selected hunk's file
             - path: specific file path
+        patterns: Optional gitignore-style file patterns to resolve against batch files
 
     Returns:
         Dictionary of file paths to file metadata for selected files
@@ -57,6 +60,16 @@ def resolve_batch_file_scope(
 
         target_file = get_batch_file_for_line_operation(batch_name, file_to_use)
         return {target_file: all_files[target_file]}
+    if patterns is not None:
+        resolved_files = resolve_gitignore_style_patterns(all_files.keys(), patterns)
+        if not resolved_files:
+            exit_with_error(
+                _("No files in batch '{name}' matched: {patterns}").format(
+                    name=batch_name,
+                    patterns=", ".join(patterns),
+                )
+            )
+        return {file_path: all_files[file_path] for file_path in resolved_files}
     else:
         # All files in batch (default)
         return all_files

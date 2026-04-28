@@ -23,7 +23,7 @@ Resets state if a session is already in progress.
 
 ---
 
-### `show [--file [PATH]]`
+### `show [--file [PATH] | --files PATTERN...]`
 
 Display the cached "selected" hunk or an entire file's changes.
 
@@ -42,13 +42,24 @@ Display the cached "selected" hunk or an entire file's changes.
 ❯ git-stage-batch show --file src/config.py
 ```
 
-When `--file` is used, displays all changes from the entire file (all hunks merged into a unified view), rather than just the selected hunk. This is useful for reviewing all changes in a file before staging or discarding them.
+**Show all changes from files matched by Git-style patterns:**
+```bash
+❯ git-stage-batch show --files "src/**/*.py" "!src/vendor/**"
+```
+
+When `--file` or `--files` is used, `show` displays all changes from the resolved file or files (all hunks merged into a unified view), rather than just the selected hunk. This is useful for reviewing all changes in a file before staging or discarding them.
 
 **Options:**
 - `--file [PATH]`: Display entire file instead of single hunk
   - Without PATH: uses selected hunk's file
   - With PATH: displays specified file
+- `--files PATTERN...`: Resolve one or more Git-style patterns to files
+  - Patterns follow Git's ignore matcher semantics, including `*`, `**`, `?`, character classes, and ordered `!` exclusions
+  - Resolution is performed against the current changed-file set
+  - `--file` and `--files` are mutually exclusive
 - `--porcelain`: Exit silently with status code only (no output)
+
+When `--files` resolves to multiple files, `show` displays each file in order. Only the final displayed file remains selected for later `--line` operations, so earlier files are shown without selectable gutter IDs.
 
 **Exit codes:**
 - `0` if hunk/file has changes
@@ -282,6 +293,7 @@ Stages all hunks from the specified file and advances to the next file. When a p
 **Use cases:**
 - `--file` (no path): Stage all hunks from the file of the selected hunk
 - `--file PATH`: Stage all hunks from the specified file, even if it's not the selected file
+- `--files PATTERN...`: Stage all hunks from files matched by Git-style patterns
 
 **Example workflow:**
 ```bash
@@ -294,6 +306,11 @@ Stages all hunks from the specified file and advances to the next file. When a p
 
 # Continue with selected file
 ❯ git-stage-batch include
+```
+
+**Pattern-based staging:**
+```bash
+❯ git-stage-batch include --files "src/**/*.py" "!src/vendor/**"
 ```
 
 ---
@@ -313,6 +330,11 @@ Skip all hunks from a file.
 ```
 
 All hunks from the file are marked as skipped and can be revisited with `again`.
+
+**Skip files by pattern:**
+```bash
+❯ git-stage-batch skip --files "docs/**/*.md" "scripts/*.sh"
+```
 
 ---
 
@@ -335,6 +357,7 @@ Removes all changes from the specified file. When a path is provided, you can di
 **Use cases:**
 - `--file` (no path): Discard the entire file of the selected hunk
 - `--file PATH`: Discard the specified file, even if it's not the selected file
+- `--files PATTERN...`: Discard all matched files as complete units
 
 !!! warning "Destructive Operation"
     This permanently removes the entire file from your working tree.

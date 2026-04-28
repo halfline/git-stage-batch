@@ -86,6 +86,15 @@ Number of context lines in diff output (default: 3).
 Reprint the cached "selected" hunk.
 .RS
 .TP
+.B \-\-file \fR[\fIPATH\fR]
+Show all changes from one file. Without PATH, uses the selected hunk's file.
+.TP
+.B \-\-files \fIPATTERN\fR...
+Show all changes from files matched by Git-style patterns.
+Patterns use Git's ignore matcher semantics, including ordered \fB!\fR exclusions.
+When multiple files are shown, only the final displayed file remains selected
+for later \fB\-\-line\fR operations.
+.TP
 .B \-\-porcelain
 Exit silently with status code only (0 if hunk exists, 1 if no hunk).
 Useful for scripts checking hunk availability without output.
@@ -165,16 +174,25 @@ Overwrite changes made after the undo.
 Stage all hunks from the selected file.
 Advances to the next file after staging all hunks.
 .TP
+.B include \-\-files \fIPATTERN\fR...
+Stage all hunks from files matched by Git-style patterns.
+.TP
 .B skip \-\-file \fR[\fIPATH\fR]
 Skip all hunks from a file.
 If PATH is omitted, uses the selected hunk's file.
 All hunks from the file are marked as skipped and can be revisited with
 .BR again .
 .TP
+.B skip \-\-files \fIPATTERN\fR...
+Skip all hunks from files matched by Git-style patterns.
+.TP
 .B discard \-\-file
 Discard the entire selected file from the working tree.
 .B WARNING:
 This permanently removes the entire file from your working tree.
+.TP
+.B discard \-\-files \fIPATTERN\fR...
+Discard all matched files from the working tree as complete units.
 .SS Line-Level Operations
 .TP
 .B include \-\-line \fILINE_IDS\fR
@@ -270,32 +288,37 @@ Add or update the description for a batch.
 .PP
 The following commands accept \fB\-\-from\fR flags to work with batches:
 .TP
-.B show \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR]
+.B show \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
 Show the accumulated changes stored in a batch.
 Use \fB\-\-line\fR to filter display to specific line IDs.
+Use \fB\-\-file\fR or \fB\-\-files\fR to limit display to specific batch files.
 .TP
-.B include \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+.B include \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
 Stage the changes from a batch to the index. Fails if the batch's changes
 cannot be applied cleanly to the selected state.
 Use \fB\-\-line\fR to stage only specific lines from the batch.
-Use \fB\-\-file\fR to apply all hunks from the batch that affect the selected file.
+Use \fB\-\-file\fR to apply one file from the batch.
+Use \fB\-\-files\fR to apply all batch files matched by Git-style patterns.
 .TP
-.B discard \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+.B discard \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
 Remove batch changes from the working tree. Fails if the batch's changes
 cannot be reversed cleanly. Does not delete the batch.
 Use \fB\-\-line\fR to discard only specific lines from the batch.
-Use \fB\-\-file\fR to reverse all hunks from the batch that affect the selected file.
+Use \fB\-\-file\fR to reverse one file from the batch.
+Use \fB\-\-files\fR to reverse all batch files matched by Git-style patterns.
 .TP
-.B apply \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+.B apply \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
 Apply batch changes to the working tree without staging them.
 This adds the batch's changes to your working tree while keeping the index clean.
 Fails if the batch's changes cannot be applied cleanly.
 Use \fB\-\-line\fR to apply only specific lines from the batch.
-Use \fB\-\-file\fR to apply all hunks from the batch that affect the selected file.
+Use \fB\-\-file\fR to apply one file from the batch.
+Use \fB\-\-files\fR to apply all batch files matched by Git-style patterns.
 .TP
-.B reset \-\-from \fIBATCH\fR [\fB\-\-to\fR \fIDEST_BATCH\fR] [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR]]
+.B reset \-\-from \fIBATCH\fR [\fB\-\-to\fR \fIDEST_BATCH\fR] [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
 Remove claims from a batch without changing the working tree.
 Use \fB\-\-file\fR with a path to reset only that file from the batch.
+Use \fB\-\-files\fR to reset all matched batch files.
 Use \fB\-\-line\fR with \fB\-\-file\fR to reset specific line claims from a file.
 Use \fB\-\-to\fR to move the reset claims into another batch before removing
 them from the source batch.
@@ -336,18 +359,20 @@ git-stage-batch sift \-\-from feature-cleanups \-\-to feature-cleanups
 .PP
 The following commands accept \fB\-\-to\fR flags to save changes to batches:
 .TP
-.B include \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+.B include \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
 Save the selected hunk to a batch instead of just skipping it.
 Auto-creates the batch if it doesn't exist.
 Use \fB\-\-line\fR to save only specific lines to the batch.
-Use \fB\-\-file\fR to save the entire selected file to the batch.
+Use \fB\-\-file\fR to save one file to the batch.
+Use \fB\-\-files\fR to save all matched files to the batch.
 .TP
-.B discard \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR]
+.B discard \-\-to \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
 Save the selected hunk to a batch, then discard it from the working tree.
 Auto-creates the batch if it doesn't exist.
 Useful for saving changes before removing them, allowing later recovery.
 Use \fB\-\-line\fR to save and discard only specific lines.
-Use \fB\-\-file\fR to save and discard the entire selected file.
+Use \fB\-\-file\fR to save and discard one file.
+Use \fB\-\-files\fR to save and discard all matched files.
 .SH AUTHOR
 Written by Ray Strode.
 .SH REPORTING BUGS

@@ -5,11 +5,16 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from collections.abc import Callable
 
 from .. import __version__
+from ..batch.validation import batch_exists
 from .. import commands
+from ..batch.query import read_batch_metadata
 from ..exceptions import CommandError
 from ..i18n import _
+from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
+from .completion import command_complete_files
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -30,6 +35,98 @@ class GitHelpArgumentParser(argparse.ArgumentParser):
 
         # Fall back to standard argparse help
         super().print_help(file)
+
+
+def _add_file_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
+    """Add a single-file argument that supports omitted values."""
+    parser.add_argument(
+        "--file",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help=help_text,
+    )
+    parser.add_argument(
+        "--files",
+        dest="file_patterns",
+        nargs="+",
+        default=None,
+        metavar="PATTERN",
+        help=_("Resolve one or more gitignore-style PATTERNs to files."),
+    )
+
+
+def _validate_file_inputs(
+    file_arg: str | None,
+    file_patterns: list[str] | None,
+) -> None:
+    """Validate cross-argument rules for file-scoped operations."""
+    if file_arg is not None and file_patterns is not None:
+        raise CommandError(_("Cannot use --file together with --files."))
+
+
+def _run_for_each_file(
+    file_arg: str | list[str] | None,
+    callback: Callable[[str | None], None],
+    *,
+    line_ids: str | None = None,
+) -> None:
+    """Run a callback once per resolved file argument."""
+    if isinstance(file_arg, list) and line_ids is not None:
+        raise CommandError(_("Cannot use --lines with multiple files."))
+    if isinstance(file_arg, list):
+        for file in file_arg:
+            callback(file)
+        return
+    callback(file_arg)
+
+
+def _resolve_live_file_scope(
+    file_arg: str | None,
+    file_patterns: list[str] | None,
+) -> str | list[str] | None:
+    """Resolve single-file or pattern-based live file scope."""
+    _validate_file_inputs(file_arg, file_patterns)
+    if file_patterns is None:
+        return file_arg
+
+    resolved_files = resolve_gitignore_style_patterns(list_changed_files(), file_patterns)
+    if not resolved_files:
+        raise CommandError(
+            _("No changed files matched: {patterns}").format(
+                patterns=", ".join(file_patterns),
+            )
+        )
+    if len(resolved_files) == 1:
+        return resolved_files[0]
+    return resolved_files
+
+
+def _resolve_batch_file_scope(
+    batch_name: str,
+    file_arg: str | None,
+    file_patterns: list[str] | None,
+) -> str | list[str] | None:
+    """Resolve single-file or pattern-based batch file scope."""
+    _validate_file_inputs(file_arg, file_patterns)
+    if file_patterns is None:
+        return file_arg
+    if not batch_exists(batch_name):
+        raise CommandError(_("Batch '{name}' does not exist").format(name=batch_name))
+
+    metadata = read_batch_metadata(batch_name)
+    resolved_files = resolve_gitignore_style_patterns(metadata.get("files", {}).keys(), file_patterns)
+    if not resolved_files:
+        raise CommandError(
+            _("No files in batch '{name}' matched: {patterns}").format(
+                name=batch_name,
+                patterns=", ".join(file_patterns),
+            )
+        )
+    if len(resolved_files) == 1:
+        return resolved_files[0]
+    return resolved_files
 
 
 def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Namespace | None:
@@ -172,26 +269,57 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Show only specific line IDs (e.g., '1,3,5-7')"),
     )
-    parser_show.add_argument(
-        "--file",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="PATH",
-        help=_("Operate on entire file (live working tree state). "
-               "If PATH omitted, uses selected hunk's file. "
-               "With --line, operates on line IDs from entire file."),
+    _add_file_argument(
+        parser_show,
+        _("Operate on entire file (live working tree state). "
+          "If PATH omitted, uses selected hunk's file. "
+          "With --line, operates on line IDs from entire file."),
     )
     parser_show.add_argument(
         "--porcelain",
         action="store_true",
         help=_("Output JSON for scripting instead of human-readable text"),
     )
-    parser_show.set_defaults(func=lambda args: (
-        commands.command_show_from_batch(args.from_batch, args.line_ids, args.file) if args.from_batch
-        else commands.command_show(file=args.file, porcelain=args.porcelain) if args.line_ids or args.file is not None
-        else commands.command_show(porcelain=args.porcelain)
-    ))
+    def dispatch_show(args: argparse.Namespace) -> None:
+        resolved_file_scope = (
+            _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+            if args.from_batch
+            else _resolve_live_file_scope(args.file, args.file_patterns)
+        )
+        if args.from_batch:
+            if isinstance(resolved_file_scope, list):
+                if args.line_ids:
+                    raise CommandError(_("Cannot use --lines with multiple files."))
+                last_index = len(resolved_file_scope) - 1
+                for index, file in enumerate(resolved_file_scope):
+                    commands.command_show_from_batch(
+                        args.from_batch,
+                        args.line_ids,
+                        file,
+                        selectable=(index == last_index),
+                    )
+            else:
+                commands.command_show_from_batch(args.from_batch, args.line_ids, resolved_file_scope)
+            return
+        if args.line_ids or resolved_file_scope is not None:
+            if isinstance(resolved_file_scope, list) and args.porcelain:
+                raise CommandError(_("Cannot use --porcelain with multiple files."))
+            if isinstance(resolved_file_scope, list):
+                if args.line_ids:
+                    raise CommandError(_("Cannot use --lines with multiple files."))
+                last_index = len(resolved_file_scope) - 1
+                for index, file in enumerate(resolved_file_scope):
+                    commands.command_show(
+                        file=file,
+                        porcelain=args.porcelain,
+                        selectable=(index == last_index),
+                    )
+            else:
+                commands.command_show(file=resolved_file_scope, porcelain=args.porcelain)
+            return
+        commands.command_show(porcelain=args.porcelain)
+
+    parser_show.set_defaults(func=dispatch_show)
 
     # status - Show selected session status
     parser_status = subparsers.add_parser(
@@ -219,16 +347,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Stage only specific line IDs (e.g., '1,3,5-7')"),
     )
-    parser_include.add_argument(
-        "--file",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="PATH",
-        help=_("Operate on entire file (live working tree state). "
-               "If PATH omitted, uses selected hunk's file. "
-               "Without --line, stages entire file. "
-               "With --line, operates on line IDs from entire file."),
+    _add_file_argument(
+        parser_include,
+        _("Operate on entire file (live working tree state). "
+          "If PATH omitted, uses selected hunk's file. "
+          "Without --line, stages entire file. "
+          "With --line, operates on line IDs from entire file."),
     )
     parser_include.add_argument(
         "--from",
@@ -250,29 +374,48 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     def dispatch_include(args: argparse.Namespace) -> None:
+        resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_batch_scope = (
+            _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+            if args.from_batch else None
+        )
         if args.as_text is not None:
             if args.line_ids and args.from_batch and not args.to_batch:
+                if isinstance(resolved_batch_scope, list):
+                    raise CommandError(_("Cannot use --lines with multiple files."))
                 commands.command_include_from_batch(
                     args.from_batch,
                     args.line_ids,
-                    args.file,
+                    file=resolved_batch_scope,
                     replacement_text=args.as_text,
                 )
                 return
             if args.line_ids and not args.from_batch and not args.to_batch:
-                commands.command_include_line_as(args.line_ids, args.as_text, file=args.file)
+                if isinstance(resolved_live_scope, list):
+                    raise CommandError(_("Cannot use --lines with multiple files."))
+                commands.command_include_line_as(args.line_ids, args.as_text, file=resolved_live_scope)
                 return
             raise CommandError(
                 _("`include --as` requires `--line` and does not support `--to`.")
             )
         if args.from_batch:
-            commands.command_include_from_batch(args.from_batch, args.line_ids, args.file)
+            _run_for_each_file(
+                resolved_batch_scope,
+                lambda file: commands.command_include_from_batch(args.from_batch, args.line_ids, file),
+                line_ids=args.line_ids,
+            )
         elif args.to_batch:
-            commands.command_include_to_batch(args.to_batch, args.line_ids, args.file)
+            _run_for_each_file(
+                resolved_live_scope,
+                lambda file: commands.command_include_to_batch(args.to_batch, args.line_ids, file),
+                line_ids=args.line_ids,
+            )
         elif args.line_ids:
-            commands.command_include_line(args.line_ids, file=args.file)
-        elif args.file is not None:
-            commands.command_include_file(args.file)
+            if isinstance(resolved_live_scope, list):
+                raise CommandError(_("Cannot use --lines with multiple files."))
+            commands.command_include_line(args.line_ids, file=resolved_live_scope)
+        elif resolved_live_scope is not None:
+            _run_for_each_file(resolved_live_scope, commands.command_include_file)
         else:
             commands.command_include()
 
@@ -291,21 +434,25 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Skip only specific line IDs (e.g., '1,3,5-7')"),
     )
-    parser_skip.add_argument(
-        "--file",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="PATH",
-        help=_("Operate on entire file (live working tree state). "
-               "If PATH omitted, uses selected hunk's file. "
-               "Without --line, skips all hunks from the file."),
+    _add_file_argument(
+        parser_skip,
+        _("Operate on entire file (live working tree state). "
+          "If PATH omitted, uses selected hunk's file. "
+          "Without --line, skips all hunks from the file."),
     )
-    parser_skip.set_defaults(func=lambda args: (
-        commands.command_skip_line(args.line_ids) if args.line_ids
-        else commands.command_skip_file(args.file) if args.file is not None
-        else commands.command_skip()
-    ))
+
+    def dispatch_skip(args: argparse.Namespace) -> None:
+        resolved_file_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+        if args.line_ids:
+            if isinstance(resolved_file_scope, list):
+                raise CommandError(_("Cannot use --lines with multiple files."))
+            commands.command_skip_line(args.line_ids)
+        elif resolved_file_scope is not None:
+            _run_for_each_file(resolved_file_scope, commands.command_skip_file)
+        else:
+            commands.command_skip()
+
+    parser_skip.set_defaults(func=dispatch_skip)
 
     # discard - Remove the selected hunk from working tree
     parser_discard = subparsers.add_parser(
@@ -320,16 +467,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Discard only specific line IDs (e.g., '1,3,5-7')"),
     )
-    parser_discard.add_argument(
-        "--file",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="PATH",
-        help=_("Operate on entire file (live working tree state). "
-               "If PATH omitted, uses selected hunk's file. "
-               "Without --line, discards entire file. "
-               "With --line, operates on line IDs from entire file."),
+    _add_file_argument(
+        parser_discard,
+        _("Operate on entire file (live working tree state). "
+          "If PATH omitted, uses selected hunk's file. "
+          "Without --line, discards entire file. "
+          "With --line, operates on line IDs from entire file."),
     )
     parser_discard.add_argument(
         "--from",
@@ -351,26 +494,43 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     def dispatch_discard(args: argparse.Namespace) -> None:
+        resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_batch_scope = (
+            _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+            if args.from_batch else None
+        )
         if args.as_text is not None:
             if args.to_batch and args.line_ids and not args.from_batch:
+                if isinstance(resolved_live_scope, list):
+                    raise CommandError(_("Cannot use --lines with multiple files."))
                 commands.command_discard_line_as_to_batch(
                     args.to_batch,
                     args.line_ids,
                     args.as_text,
-                    file=args.file,
+                    file=resolved_live_scope,
                 )
                 return
             raise CommandError(
                 _("`discard --as` requires `--to` and `--line`.")
             )
         if args.from_batch:
-            commands.command_discard_from_batch(args.from_batch, args.line_ids, args.file)
+            _run_for_each_file(
+                resolved_batch_scope,
+                lambda file: commands.command_discard_from_batch(args.from_batch, args.line_ids, file),
+                line_ids=args.line_ids,
+            )
         elif args.to_batch:
-            commands.command_discard_to_batch(args.to_batch, args.line_ids, args.file)
+            _run_for_each_file(
+                resolved_live_scope,
+                lambda file: commands.command_discard_to_batch(args.to_batch, args.line_ids, file),
+                line_ids=args.line_ids,
+            )
         elif args.line_ids:
-            commands.command_discard_line(args.line_ids, file=args.file)
-        elif args.file is not None:
-            commands.command_discard_file(args.file)
+            if isinstance(resolved_live_scope, list):
+                raise CommandError(_("Cannot use --lines with multiple files."))
+            commands.command_discard_line(args.line_ids, file=resolved_live_scope)
+        elif resolved_live_scope is not None:
+            _run_for_each_file(resolved_live_scope, commands.command_discard_file)
         else:
             commands.command_discard()
 
@@ -527,17 +687,26 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Apply only specific line IDs (e.g., '1,3,5-7')"),
     )
-    parser_apply.add_argument(
-        "--file",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="PATH",
-        help=_("Operate on entire file from batch. "
-               "If PATH omitted, uses first file in batch (sorted order). "
-               "With --line, operates on line IDs from entire file."),
+    _add_file_argument(
+        parser_apply,
+        _("Operate on entire file from batch. "
+          "If PATH omitted, uses first file in batch (sorted order). "
+          "With --line, operates on line IDs from entire file."),
     )
-    parser_apply.set_defaults(func=lambda args: commands.command_apply_from_batch(args.from_batch, line_ids=args.line_ids if hasattr(args, 'line_ids') else None, file=args.file if hasattr(args, 'file') else None))
+
+    def dispatch_apply(args: argparse.Namespace) -> None:
+        resolved_file_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+        _run_for_each_file(
+            resolved_file_scope,
+            lambda file: commands.command_apply_from_batch(
+                args.from_batch,
+                line_ids=args.line_ids if hasattr(args, "line_ids") else None,
+                file=file,
+            ),
+            line_ids=args.line_ids if hasattr(args, "line_ids") else None,
+        )
+
+    parser_apply.set_defaults(func=dispatch_apply)
 
     # reset - Remove claims from batch
     parser_reset = subparsers.add_parser(
@@ -564,17 +733,28 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Reset only specific line IDs (e.g., '1,3,5-7')"),
     )
-    parser_reset.add_argument(
-        "--file",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="PATH",
-        help=_("Operate on entire file from batch. "
-               "If PATH omitted, uses selected hunk's file. "
-               "With --line, operates on line IDs from entire file."),
+    _add_file_argument(
+        parser_reset,
+        _("Operate on entire file from batch. "
+          "If PATH omitted, uses selected hunk's file. "
+          "With --line, operates on line IDs from entire file."),
     )
-    parser_reset.set_defaults(func=lambda args: commands.command_reset_from_batch(args.from_batch, args.line_ids, args.file, args.to_batch))
+
+    def dispatch_reset(args: argparse.Namespace) -> None:
+        resolved_file_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+        _run_for_each_file(
+            resolved_file_scope,
+            lambda file: commands.command_reset_from_batch(
+                args.from_batch,
+                args.line_ids,
+                file,
+                None,
+                args.to_batch,
+            ),
+            line_ids=args.line_ids,
+        )
+
+    parser_reset.set_defaults(func=dispatch_reset)
 
     # sift - Reconcile batch against current tip
     parser_sift = subparsers.add_parser(
@@ -596,6 +776,24 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Destination batch (may equal source for in-place sift)"),
     )
     parser_sift.set_defaults(func=lambda args: commands.command_sift_batch(args.from_batch, args.to_batch))
+
+    parser_complete_files = subparsers.add_parser(
+        "__complete-files",
+        help=argparse.SUPPRESS,
+    )
+    parser_complete_files.add_argument(
+        "current_token",
+        nargs="?",
+        default="",
+    )
+    parser_complete_files.add_argument(
+        "--from",
+        dest="from_batch",
+        default=None,
+    )
+    parser_complete_files.set_defaults(
+        func=lambda args: command_complete_files(args.current_token, from_batch=args.from_batch)
+    )
 
     # Parse arguments, return None on failure
     try:

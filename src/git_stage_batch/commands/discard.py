@@ -7,9 +7,16 @@ import sys
 
 from ..batch import add_file_to_batch, create_batch
 from ..batch.display import annotate_with_batch_source, annotate_with_batch_source_content
-from ..batch.ownership import BatchOwnership
+from ..batch.ownership import (
+    BatchOwnership,
+    _advance_source_content_preserving_existing_presence,
+    _remap_batch_ownership_with_source_line_map,
+    merge_batch_ownership,
+    translate_lines_to_batch_ownership,
+)
 from ..batch.query import read_batch_metadata
 from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
+from ..batch.source_refresh import _refresh_selected_lines_against_source_content
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
@@ -520,20 +527,59 @@ def _command_discard_lines_to_batch_as(
         metadata = read_batch_metadata(batch_name)
         existing_ownership = None
         current_batch_source = None
+        batch_source_commit = None
         if line_changes.path in metadata.get("files", {}):
             file_metadata = metadata["files"][line_changes.path]
             existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
             current_batch_source = file_metadata.get("batch_source_commit")
 
         try:
-            update = prepare_batch_ownership_update_for_selection(
-                batch_name=batch_name,
-                file_path=line_changes.path,
-                current_batch_source_commit=current_batch_source,
-                existing_ownership=existing_ownership,
-                selected_lines=rewritten_selected_lines,
-            )
-            ownership = update.ownership_after
+            if existing_ownership is None:
+                update = prepare_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=line_changes.path,
+                    current_batch_source_commit=current_batch_source,
+                    existing_ownership=existing_ownership,
+                    selected_lines=rewritten_selected_lines,
+                )
+                ownership = update.ownership_after
+                batch_source_commit = update.batch_source_commit
+            else:
+                old_source_result = run_git_command(
+                    ["show", f"{current_batch_source}:{line_changes.path}"],
+                    text_output=False,
+                    check=False,
+                )
+                if old_source_result.returncode != 0:
+                    exit_with_error(
+                        _("Cannot discard lines to batch: failed to read batch source for '{file}'.").format(
+                            file=line_changes.path
+                        )
+                    )
+
+                new_source_content, source_line_map = _advance_source_content_preserving_existing_presence(
+                    old_source_content=old_source_result.stdout,
+                    working_content=rewritten_working_content,
+                    ownership=existing_ownership,
+                )
+                remapped_existing_ownership = _remap_batch_ownership_with_source_line_map(
+                    ownership=existing_ownership,
+                    source_line_map=source_line_map,
+                )
+                refreshed_selected_lines = _refresh_selected_lines_against_source_content(
+                    rewritten_selected_lines,
+                    source_content=new_source_content,
+                    working_content=rewritten_working_content,
+                )
+                new_ownership = translate_lines_to_batch_ownership(refreshed_selected_lines)
+                ownership = merge_batch_ownership(remapped_existing_ownership, new_ownership)
+                batch_source_commit = create_batch_source_commit(
+                    line_changes.path,
+                    file_content_override=new_source_content,
+                )
+                batch_sources = load_session_batch_sources()
+                batch_sources[line_changes.path] = batch_source_commit
+                save_session_batch_sources(batch_sources)
         except ValueError as e:
             exit_with_error(
                 _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
@@ -549,7 +595,6 @@ def _command_discard_lines_to_batch_as(
             if parts:
                 file_mode = parts[0]
 
-        batch_source_commit = current_batch_source
         if batch_source_commit is None:
             batch_source_commit = create_batch_source_commit(
                 line_changes.path,
@@ -599,7 +644,7 @@ def _select_rewritten_replacement_lines(
     original_selected_lines: list,
     rewritten_line_changes,
 ) -> list:
-    """Find the contiguous rewritten changed run that overlaps the original selection."""
+    """Find the rewritten changed span that overlaps the original selection."""
     original_old_lines = {
         line.old_line_number
         for line in original_selected_lines
@@ -611,23 +656,22 @@ def _select_rewritten_replacement_lines(
         if line.new_line_number is not None
     }
 
-    runs: list[list] = []
-    current_run: list = []
-    for line in rewritten_line_changes.lines:
-        if line.kind == " ":
-            if current_run:
-                runs.append(current_run)
-                current_run = []
-            continue
-        current_run.append(line)
-    if current_run:
-        runs.append(current_run)
-
-    for run in runs:
-        run_old_lines = {line.old_line_number for line in run if line.old_line_number is not None}
-        run_new_lines = {line.new_line_number for line in run if line.new_line_number is not None}
-        if run_old_lines & original_old_lines or run_new_lines & original_new_lines:
-            return run
+    matching_indices = [
+        index
+        for index, line in enumerate(rewritten_line_changes.lines)
+        if line.kind != " " and (
+            line.old_line_number in original_old_lines
+            or line.new_line_number in original_new_lines
+        )
+    ]
+    if matching_indices:
+        start_index = min(matching_indices)
+        end_index = max(matching_indices)
+        return [
+            line
+            for line in rewritten_line_changes.lines[start_index:end_index + 1]
+            if line.kind != " "
+        ]
 
     exit_with_error(_("Replacement selection could not be located after rewriting the file."))
 

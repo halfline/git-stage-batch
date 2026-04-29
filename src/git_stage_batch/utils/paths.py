@@ -161,6 +161,11 @@ def get_selected_hunk_hash_file_path() -> Path:
     return get_selected_state_directory_path() / "hunk.hash.txt"
 
 
+def get_selected_change_kind_file_path() -> Path:
+    """Get the path to the selected change kind marker file."""
+    return get_selected_state_directory_path() / "change-kind.txt"
+
+
 def get_selected_binary_file_json_path() -> Path:
     """Get the path to the selected binary file JSON file.
 

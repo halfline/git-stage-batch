@@ -7,6 +7,7 @@ import tempfile
 import subprocess
 import sys
 from dataclasses import replace
+from enum import Enum
 from typing import Generator, Optional, Union
 
 from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
@@ -44,6 +45,7 @@ from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
     get_context_lines,
+    get_selected_change_kind_file_path,
     get_selected_binary_file_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
@@ -52,21 +54,33 @@ from ..utils.paths import (
     get_included_hunks_file_path,
     get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
+    get_processed_skip_ids_file_path,
     get_skipped_hunks_jsonl_file_path,
     get_working_tree_snapshot_file_path,
 )
 from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 
 
+class SelectedChangeKind(str, Enum):
+    """Kinds of selected changes cached in session state."""
+
+    HUNK = "hunk"
+    FILE = "file"
+    BINARY = "binary"
+    BATCH_FILE = "batch-file"
+
+
 def clear_selected_change_state_files() -> None:
     """Clear all cached selected hunk state files."""
     get_selected_hunk_patch_file_path().unlink(missing_ok=True)
     get_selected_hunk_hash_file_path().unlink(missing_ok=True)
+    get_selected_change_kind_file_path().unlink(missing_ok=True)
     get_line_changes_json_file_path().unlink(missing_ok=True)
     get_selected_binary_file_json_path().unlink(missing_ok=True)
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
+    get_processed_skip_ids_file_path().unlink(missing_ok=True)
     # processed_batch_ids is global state (union of all batches), not per-hunk state
 
 
@@ -89,6 +103,47 @@ def load_selected_binary_file() -> Optional[BinaryFileChange]:
         )
     except (json.JSONDecodeError, KeyError):
         return None
+
+
+def write_selected_change_kind(kind: SelectedChangeKind) -> None:
+    """Persist the kind of selected change cached in session state."""
+    write_text_file_contents(get_selected_change_kind_file_path(), kind)
+
+
+def read_selected_change_kind() -> Optional[SelectedChangeKind]:
+    """Return the kind of selected change cached in session state."""
+    path = get_selected_change_kind_file_path()
+    if not path.exists():
+        return None
+
+    raw_kind = read_text_file_contents(path).strip()
+    if not raw_kind:
+        return None
+
+    try:
+        return SelectedChangeKind(raw_kind)
+    except ValueError:
+        return None
+
+
+def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange]]:
+    """Load the currently cached selected change, if any."""
+    binary_file = load_selected_binary_file()
+    if binary_file is not None:
+        return binary_file
+
+    patch_path = get_selected_hunk_patch_file_path()
+    if not patch_path.exists():
+        return None
+
+    require_selected_hunk()
+
+    line_changes = load_line_changes_from_state()
+    if line_changes is not None:
+        return line_changes
+
+    patch_bytes = read_file_bytes(patch_path)
+    return build_line_changes_from_patch_bytes(patch_bytes)
 
 
 def get_selected_change_file_path() -> Optional[str]:
@@ -475,6 +530,7 @@ def cache_rendered_batch_file_display(
     # Cache the hunk bytes exactly; display strings are derived elsewhere.
     write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
+    write_selected_change_kind(SelectedChangeKind.BATCH_FILE)
 
     # Save LineLevelChange for line-level operations
     write_text_file_contents(get_line_changes_json_file_path(),
@@ -560,40 +616,48 @@ def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     """
     try:
         combined_line_changes = render_file_as_single_hunk(file_path)
-        if combined_line_changes is None:
-            return None
-
-        # Synthesize patch bytes for caching (used for hashing/identity)
-        patch_lines = [
-            f"--- a/{file_path}\n".encode("utf-8"),
-            f"+++ b/{file_path}\n".encode("utf-8"),
-            (
-                f"@@ -{combined_line_changes.header.old_start},{combined_line_changes.header.old_len} "
-                f"+{combined_line_changes.header.new_start},{combined_line_changes.header.new_len} @@\n"
-            ).encode("utf-8"),
-        ]
-        for entry in combined_line_changes.lines:
-            patch_lines.append(entry.kind.encode("utf-8") + entry.text_bytes + b"\n")
-        patch_bytes = b"".join(patch_lines)
-
-        patch_hash = compute_stable_hunk_hash(patch_bytes)
-
-        # Cache the combined hunk
-        write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
-        write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
-        write_text_file_contents(get_line_changes_json_file_path(),
-                                json.dumps(convert_line_changes_to_serializable_dict(combined_line_changes),
-                                          ensure_ascii=False, indent=0))
-
-        # Cache live snapshots so later line-level operations can reuse the
-        # file-scoped selection the same way they reuse ordinary selected hunks.
-        write_snapshots_for_selected_file_path(file_path)
-
-        return combined_line_changes
-
+        return _cache_combined_file_line_changes(file_path, combined_line_changes)
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes in file)
         return None
+
+
+def _cache_combined_file_line_changes(
+    file_path: str,
+    combined_line_changes: Optional[LineLevelChange],
+) -> Optional[LineLevelChange]:
+    """Persist a combined file-scoped view as the current selection."""
+    if combined_line_changes is None:
+        return None
+
+    # Synthesize patch bytes for caching (used for hashing/identity)
+    patch_lines = [
+        f"--- a/{file_path}\n".encode("utf-8"),
+        f"+++ b/{file_path}\n".encode("utf-8"),
+        (
+            f"@@ -{combined_line_changes.header.old_start},{combined_line_changes.header.old_len} "
+            f"+{combined_line_changes.header.new_start},{combined_line_changes.header.new_len} @@\n"
+        ).encode("utf-8"),
+    ]
+    for entry in combined_line_changes.lines:
+        patch_lines.append(entry.kind.encode("utf-8") + entry.text_bytes + b"\n")
+    patch_bytes = b"".join(patch_lines)
+
+    patch_hash = compute_stable_hunk_hash(patch_bytes)
+
+    # Cache the combined hunk
+    write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
+    write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
+    write_selected_change_kind(SelectedChangeKind.FILE)
+    write_text_file_contents(get_line_changes_json_file_path(),
+                            json.dumps(convert_line_changes_to_serializable_dict(combined_line_changes),
+                                      ensure_ascii=False, indent=0))
+
+    # Cache live snapshots so later line-level operations can reuse the
+    # file-scoped selection the same way they reuse ordinary selected hunks.
+    write_snapshots_for_selected_file_path(file_path)
+
+    return combined_line_changes
 
 
 def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
@@ -764,6 +828,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
                 write_text_file_contents(get_selected_binary_file_json_path(),
                                        json.dumps(binary_data, ensure_ascii=False, indent=0))
                 write_text_file_contents(get_selected_hunk_hash_file_path(), binary_hash)
+                write_selected_change_kind(SelectedChangeKind.BINARY)
 
                 # Return the BinaryFileChange object directly
                 return item
@@ -781,6 +846,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
 
             write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
+            write_selected_change_kind(SelectedChangeKind.HUNK)
 
             write_text_file_contents(get_line_changes_json_file_path(),
                                      json.dumps(convert_line_changes_to_serializable_dict(line_changes),

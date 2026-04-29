@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 from ..batch.match import match_lines
+from ..core.models import LineLevelChange
 
 
 class SemanticChangeKind(Enum):
@@ -243,3 +244,46 @@ def derive_semantic_change_runs(
 
     # Return in logical order: replacements, then deletions, then presences
     return replacements + deletions + presences
+
+
+def derive_display_id_run_sets(
+    line_changes: LineLevelChange,
+    *,
+    source_content: bytes,
+    target_content: bytes,
+) -> list[set[int]]:
+    """Map semantic change runs onto display IDs in one rendered selection."""
+    semantic_runs = derive_semantic_change_runs(
+        source_content.splitlines(keepends=True),
+        target_content.splitlines(keepends=True),
+    )
+
+    run_sets: list[set[int]] = []
+    for run in semantic_runs:
+        display_ids = {
+            line.id
+            for line in line_changes.lines
+            if line.id is not None and (
+                (
+                    run.kind == SemanticChangeKind.REPLACEMENT
+                    and (
+                        (line.kind == "-" and line.old_line_number in (run.source_run or []))
+                        or (line.kind == "+" and line.new_line_number in (run.target_run or []))
+                    )
+                )
+                or (
+                    run.kind == SemanticChangeKind.DELETION
+                    and line.kind == "-"
+                    and line.old_line_number in (run.source_run or [])
+                )
+                or (
+                    run.kind == SemanticChangeKind.PRESENCE
+                    and line.kind == "+"
+                    and line.new_line_number in (run.target_run or [])
+                )
+            )
+        }
+        if display_ids:
+            run_sets.append(display_ids)
+
+    return run_sets

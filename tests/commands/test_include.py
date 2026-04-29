@@ -358,3 +358,45 @@ class TestCommandIncludeLine:
         assert line_changes is not None
         changed_lines = [line for line in line_changes.lines if line.kind != " "]
         assert any("extra line" in line.text for line in changed_lines)
+
+    def test_include_line_as_replaces_disjoint_file_scoped_regions(self, temp_git_repo):
+        """File-scoped replacement should accept one contiguous range across regions."""
+        test_file = temp_git_repo / "multi.txt"
+        base_lines = [f"line{i}\n" for i in range(1, 41)]
+        test_file.write_text("".join(base_lines))
+        subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add multi file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        rewritten_lines = (
+            base_lines[:5]
+            + ["change-one-a\n", "change-one-b\n"]
+            + base_lines[5:20]
+            + ["change-two-a\n", "change-two-b\n"]
+            + base_lines[20:35]
+            + ["change-three-a\n", "change-three-b\n"]
+            + base_lines[35:]
+        )
+        test_file.write_text("".join(rewritten_lines))
+
+        command_start()
+        staged_span = (
+            ["stage-one-a\n", "stage-one-b\n"]
+            + base_lines[5:20]
+            + ["stage-two-a\n", "stage-two-b\n"]
+            + base_lines[20:35]
+            + ["stage-three-a\n", "stage-three-b\n"]
+        )
+        command_include_line_as("1-6", "".join(staged_span), file="multi.txt")
+
+        result = subprocess.run(
+            ["git", "show", ":multi.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == (
+            "".join(base_lines[:5])
+            + "".join(staged_span)
+            + "".join(base_lines[35:])
+        )

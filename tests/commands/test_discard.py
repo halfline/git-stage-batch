@@ -511,3 +511,93 @@ class TestCommandDiscardToBatch:
 
         command_apply_from_batch("feature-batch")
         assert readme.read_text() == "# Test\nstaged1\nline2\nline3\nline4\nline5\nline6\nline7\nstaged8\n"
+
+    def test_discard_line_as_to_batch_replaces_disjoint_file_scoped_regions(self, temp_git_repo):
+        """Discard replacement should accept one contiguous range across regions."""
+        readme = temp_git_repo / "multi.txt"
+        base_lines = [f"line{i}\n" for i in range(1, 41)]
+        readme.write_text("".join(base_lines))
+        subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add multi file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        rewritten_lines = (
+            base_lines[:5]
+            + ["change-one-a\n", "change-one-b\n"]
+            + base_lines[5:20]
+            + ["change-two-a\n", "change-two-b\n"]
+            + base_lines[20:35]
+            + ["change-three-a\n", "change-three-b\n"]
+            + base_lines[35:]
+        )
+        readme.write_text("".join(rewritten_lines))
+
+        command_start()
+        staged_span = (
+            ["stage-one-a\n", "stage-one-b\n"]
+            + base_lines[5:20]
+            + ["stage-two-a\n", "stage-two-b\n"]
+            + base_lines[20:35]
+            + ["stage-three-a\n", "stage-three-b\n"]
+        )
+        command_discard_line_as_to_batch(
+            "feature-batch",
+            "1-6",
+            "".join(staged_span),
+            file="multi.txt",
+        )
+        assert readme.read_text() == "".join(base_lines)
+        assert batch_exists("feature-batch")
+
+        command_apply_from_batch("feature-batch")
+        assert readme.read_text() == (
+            "".join(base_lines[:5])
+            + "".join(staged_span)
+            + "".join(base_lines[35:])
+        )
+
+    def test_discard_line_as_to_batch_trims_matching_edge_anchors(self, temp_git_repo):
+        """Discard --to --line --as should accept unchanged edge anchors by default."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("keep1\nold\nkeep3\nkeep4\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Seed readme"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        readme.write_text("keep1\nworking\nkeep3\nkeep4\n")
+
+        command_start()
+        fetch_next_change()
+
+        command_discard_line_as_to_batch(
+            "feature-batch",
+            "1-2",
+            "keep1\nstaged\nkeep3\nkeep4\n",
+        )
+
+        assert readme.read_text() == "keep1\nold\nkeep3\nkeep4\n"
+
+        command_apply_from_batch("feature-batch")
+        assert readme.read_text() == "keep1\nstaged\nkeep3\nkeep4\n"
+
+    def test_discard_line_as_to_batch_no_anchor_keeps_matching_edge_anchors(self, temp_git_repo):
+        """Discard --to --line --as --no-anchor should preserve duplicate anchors."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("keep1\nold\nkeep3\nkeep4\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Seed readme"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        readme.write_text("keep1\nworking\nkeep3\nkeep4\n")
+
+        command_start()
+        fetch_next_change()
+
+        command_discard_line_as_to_batch(
+            "feature-batch",
+            "1-2",
+            "keep1\nstaged\nkeep3\nkeep4\n",
+            no_anchor=True,
+        )
+
+        assert readme.read_text() == "keep1\nold\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"
+
+        command_apply_from_batch("feature-batch")
+        assert readme.read_text() == "keep1\nkeep1\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"

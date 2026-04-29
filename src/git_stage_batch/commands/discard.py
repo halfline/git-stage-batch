@@ -64,13 +64,25 @@ def command_discard(*, quiet: bool = False) -> None:
     require_session_started()
     ensure_state_directory_exists()
 
-    # Find and cache the next item
-    try:
-        item = fetch_next_change()
-    except NoMoreHunks:
-        if not quiet:
-            print(_("No more hunks to process."), file=sys.stderr)
+    if read_selected_change_kind() == SelectedChangeKind.FILE:
+        _command_discard_selected_file(quiet=quiet)
         return
+
+    try:
+        item = load_selected_change()
+    except CommandError as error:
+        if error.message == _("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."):
+            item = None
+        else:
+            raise
+
+    if item is None:
+        try:
+            item = fetch_next_change()
+        except NoMoreHunks:
+            if not quiet:
+                print(_("No more hunks to process."), file=sys.stderr)
+            return
     with undo_checkpoint("discard"):
         # Read cached hash
         patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()

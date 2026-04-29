@@ -30,7 +30,7 @@ from ..core.diff_parser import (
 )
 from ..core.line_selection import write_line_ids_file
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
-from ..i18n import _
+from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_binary_file_change
 from .consumed_selections import read_consumed_file_metadata
 from ..utils.file_io import (
@@ -736,10 +736,34 @@ def _build_combined_file_line_changes(
     max_old_end = None
     min_new_start = None
     max_new_end = None
+    previous_old_end = None
+    previous_new_end = None
 
     for single_hunk in patches:
         patch_bytes = single_hunk.to_patch_bytes()
         line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+
+        if previous_old_end is not None and previous_new_end is not None:
+            omitted_old_lines = line_changes.header.old_start - previous_old_end
+            omitted_new_lines = line_changes.header.new_start - previous_new_end
+            omitted_line_count = max(omitted_old_lines, omitted_new_lines)
+            if omitted_line_count > 0:
+                gap_text = ngettext(
+                    "... {count} more line ...",
+                    "... {count} more lines ...",
+                    omitted_line_count,
+                ).format(count=omitted_line_count)
+                all_line_entries.append(
+                    LineEntry(
+                        id=None,
+                        kind=" ",
+                        old_line_number=None,
+                        new_line_number=None,
+                        text_bytes=gap_text.encode("utf-8"),
+                        text=gap_text,
+                        source_line=None,
+                    )
+                )
 
         if min_old_start is None:
             min_old_start = line_changes.header.old_start
@@ -747,6 +771,8 @@ def _build_combined_file_line_changes(
 
         max_old_end = line_changes.header.old_start + line_changes.header.old_len
         max_new_end = line_changes.header.new_start + line_changes.header.new_len
+        previous_old_end = max_old_end
+        previous_new_end = max_new_end
 
         for line_entry in line_changes.lines:
             if line_entry.kind != " ":

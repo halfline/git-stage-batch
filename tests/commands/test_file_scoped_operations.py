@@ -29,7 +29,7 @@ from git_stage_batch.commands.include import (
     command_include_line,
     command_include_line_as,
 )
-from git_stage_batch.commands.discard import command_discard_to_batch, command_discard_file, command_discard_line
+from git_stage_batch.commands.discard import command_discard, command_discard_to_batch, command_discard_file, command_discard_file_as, command_discard_line
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
@@ -752,6 +752,25 @@ class TestExplicitFilePath:
 
         applied_content = (multi_file_repo / "beta.txt").read_text()
         assert applied_content == "beta1\nbeta2-edited\nbeta3\nbeta4-new\n"
+
+    def test_discard_file_as_with_explicit_path_preserves_selected_position(self, multi_file_repo):
+        """Discard --file PATH --as should rewrite the working tree and preserve selection."""
+        command_start()
+
+        line_changes_before = load_line_changes_from_state()
+        assert line_changes_before.path == "alpha.txt"
+
+        command_discard_file_as("beta1\nbeta2-rewritten\nbeta3\n", file="beta.txt")
+
+        line_changes_after = load_line_changes_from_state()
+        assert line_changes_after.path == "alpha.txt"
+        assert line_changes_after.lines == line_changes_before.lines
+
+        beta_content = (multi_file_repo / "beta.txt").read_text()
+        assert beta_content == "beta1\nbeta2-rewritten\nbeta3\n"
+
+        result = run_git_command(["diff", "--cached", "--name-only"])
+        assert result.stdout.strip() == ""
 
     def test_include_file_explicit_path_multiple_hunks(self, tmp_path, monkeypatch):
         """Include --file PATH should stage all hunks from multi-hunk file."""

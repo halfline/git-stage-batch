@@ -179,6 +179,25 @@ Similar to `git add -p` but **more granular and flexible**:
 ❯ git-stage-batch include --line 1,3,5-7  # or: il 1,3,5-7
 ❯ git-stage-batch skip --line 2,4         # or: sl 2,4
 
+# Replacement text must use one contiguous displayed line-ID span
+❯ git-stage-batch include --line 1-2 --as 'replacement'
+
+# Exact unchanged edge anchors are stripped by default for line-scoped --as
+❯ git-stage-batch include --line 1-2 --as 'keep1\nreplacement\nkeep4'
+
+# Keep those anchors literally with --no-anchor
+❯ git-stage-batch include --line 1-2 --as 'keep1\nreplacement\nkeep4' --no-anchor
+
+# Or stage full replacement text for one file-scoped path
+❯ git-stage-batch include --file path.txt --as 'full staged file text'
+
+# Or replace one file-scoped working-tree path without staging it
+❯ git-stage-batch discard --file path.txt --as 'full working tree text'
+
+# Or preserve exact stdin text, including trailing newlines
+❯ git-stage-batch include --file path.txt --as-stdin < replacement.txt
+❯ git-stage-batch discard --file path.txt --as-stdin < replacement.txt
+
 # Check status
 ❯ git-stage-batch status  # or: st
 
@@ -190,6 +209,7 @@ Similar to `git add -p` but **more granular and flexible**:
 ```
 
 See [batch operations](batches.md) for advanced patch-series organization.
+See [commands reference](commands.md) for the `--as` contiguous-range rules.
 
 ## Example Workflow
 

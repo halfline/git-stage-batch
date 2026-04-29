@@ -482,6 +482,67 @@ Line-level discard allows surgical removal of debug code, experimental changes, 
 
 ---
 
+### Replacement text with `--as`
+
+`include --line ... --as TEXT` stages replacement text for the selected line
+region instead of staging the working-tree text directly.
+`include --file PATH --as TEXT` stages `TEXT` as the full index content for
+that file while leaving the working tree unchanged.
+`discard --file PATH --as TEXT` replaces the working-tree content for that
+file-scoped path with `TEXT` without staging it.
+`discard --to BATCH --line ... --as TEXT` saves replacement text to the batch
+and removes the original selected lines from the working tree.
+
+For line-scoped replacement workflows, `--as` now trims exact unchanged edge
+anchor lines by default when the provided text includes surrounding preserved
+context from the selected file span. Pass `--no-anchor` to keep those edge
+anchors literally.
+
+If the replacement text should come from a file or another command exactly,
+use `--as-stdin` instead of shell command substitution. For example:
+
+```bash
+❯ git-stage-batch include --file path.txt --as-stdin < replacement.txt
+❯ some-command | git-stage-batch include --line 1-3 --as-stdin
+❯ git-stage-batch discard --file path.txt --as-stdin < replacement.txt
+❯ some-command | git-stage-batch discard --to batch --line 1-3 --as-stdin
+❯ git-stage-batch include --line 1-3 --as 'keep1\nstaged\nkeep4' --no-anchor
+```
+
+Unlike `--as "$(cat replacement.txt)"`, `--as-stdin` preserves trailing
+newlines exactly.
+
+These replacement workflows require one contiguous selected line-ID span.
+Selections such as `1-4` or `2,3,4` are accepted because they resolve to one
+continuous gutter-ID range. Selections such as `1-2,5-6` are rejected because
+they pick multiple disjoint ranges.
+
+In ordinary hunk views, that usually means replacing one displayed changed
+region. File-scoped views are more nuanced: they can concatenate multiple real
+hunks into one display and insert omitted gap markers between them. In that
+mode, one contiguous gutter-ID span may cross those omitted gaps and replace
+the full underlying file span from the first selected changed line to the last
+selected changed line.
+
+For example, if a file-scoped view shows three changed regions with IDs
+`1-2`, `3-4`, and `5-6`, then this is allowed:
+
+```bash
+❯ git-stage-batch include --line 1-6 --as '...'
+```
+
+But this still requires separate commands because the selected IDs are not one
+contiguous span:
+
+```bash
+❯ git-stage-batch include --line 1-2 --as '...'
+❯ git-stage-batch include --line 5-6 --as '...'
+```
+
+The same rule applies to `discard --to BATCH --line ... --as TEXT`.
+
+---
+
 ## Fixup Suggestions
 
 ### `suggest-fixup`

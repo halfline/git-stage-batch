@@ -2,6 +2,7 @@
 
 from git_stage_batch.utils.paths import get_processed_include_ids_file_path
 from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
+from git_stage_batch.utils.paths import get_session_lock_file_path
 from git_stage_batch.utils.paths import get_line_changes_json_file_path
 from git_stage_batch.utils.paths import get_index_snapshot_file_path
 from git_stage_batch.utils.paths import get_working_tree_snapshot_file_path
@@ -124,6 +125,13 @@ class TestLineLevelOperationPaths:
         working_tree_path = get_working_tree_snapshot_file_path()
         state_dir = get_state_directory_path()
         assert working_tree_path == state_dir / "session" / "selected" / "working-tree.snapshot"
+
+    def test_get_session_lock_file_path(self, temp_git_repo):
+        """Test getting the session lock file path."""
+
+        lock_path = get_session_lock_file_path()
+        state_dir = get_state_directory_path()
+        assert lock_path == state_dir / "session.lock"
 
 
 class TestGetContextLines:

@@ -7,6 +7,7 @@ import pytest
 from git_stage_batch.commands.skip import command_skip, command_skip_line
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
@@ -118,55 +119,46 @@ class TestCommandSkipLine:
             command_skip_line("1")
 
     def test_skip_line_marks_single_addition(self, temp_git_repo):
-        """Test skipping a single added line."""
+        """Test skipping a single added line advances past that selection."""
         readme = temp_git_repo / "README.md"
         readme.write_text("# Test\nNew line\n")
 
-        # Cache the hunk
         command_start()
         fetch_next_change()
 
-        # Skip line 1
         command_skip_line("1")
 
-        # Check that skip IDs were recorded
         skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
-        skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
-        assert skip_ids == ["1"]
+        assert skip_ids_content == ""
+        assert load_line_changes_from_state() is None
 
     def test_skip_line_marks_single_deletion(self, temp_git_repo):
-        """Test skipping a single deleted line."""
+        """Test skipping a single deleted line advances past that selection."""
         readme = temp_git_repo / "README.md"
         readme.write_text("")
 
-        # Cache the hunk
         command_start()
         fetch_next_change()
 
-        # Skip line 1
         command_skip_line("1")
 
-        # Check that skip IDs were recorded
         skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
-        skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
-        assert skip_ids == ["1"]
+        assert skip_ids_content == ""
+        assert load_line_changes_from_state() is None
 
     def test_skip_line_with_range(self, temp_git_repo):
-        """Test skipping a range of lines."""
+        """Test skipping a full range advances past that selection."""
         readme = temp_git_repo / "README.md"
         readme.write_text("# Test\nLine 1\nLine 2\nLine 3\n")
 
-        # Cache the hunk
         command_start()
         fetch_next_change()
 
-        # Skip lines 1-3
         command_skip_line("1-3")
 
-        # Check that all IDs were recorded
         skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
-        skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
-        assert skip_ids == ["1", "2", "3"]
+        assert skip_ids_content == ""
+        assert load_line_changes_from_state() is None
 
     def test_skip_line_partial_selection(self, temp_git_repo):
         """Test skipping only some lines from a hunk."""
@@ -184,6 +176,32 @@ class TestCommandSkipLine:
         skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
         skip_ids = skip_ids_content.split("\n") if skip_ids_content else []
         assert skip_ids == ["1"]
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        visible_ids = [line.id for line in line_changes.lines if line.id is not None]
+        assert visible_ids == [2, 3]
+
+    def test_skip_line_advances_when_selection_is_fully_skipped(self, temp_git_repo):
+        """Skipping every shown line should advance to the next hunk."""
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("original 1\n")
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        command_start()
+        fetch_next_change()
+
+        command_skip_line("1-2")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        assert line_changes.path == "file2.txt"
 
     def test_skip_line_accumulates_ids(self, temp_git_repo):
         """Test that multiple skip --line calls accumulate."""

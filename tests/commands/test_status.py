@@ -11,7 +11,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands.include import command_include
-from git_stage_batch.commands.skip import command_skip
+from git_stage_batch.commands.skip import command_skip, command_skip_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.status import command_status
 
@@ -119,6 +119,25 @@ class TestCommandStatus:
         assert "Remaining:" in captured.out
         # When all hunks are processed, should show completion message
         assert "complete" in captured.out or "Remaining: 0" in captured.out or "Remaining:  0" in captured.out
+
+    def test_status_counts_hunks_skipped_by_file_scope(self, temp_git_repo, capsys):
+        """File-scoped skip should update skipped progress metrics."""
+        test_file = temp_git_repo / "multi.txt"
+        test_file.write_text("line 1\nline 2\nline 3\nline 4\nline 5\n")
+        subprocess.run(["git", "add", "multi.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add multi"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2\nline 3\nline 4\nline 5 modified\n")
+
+        command_start()
+        command_skip_file()
+        capsys.readouterr()
+
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "Skipped:   1 hunks" in captured.out
+        assert "multi.txt:1 [#1-4]" in captured.out
 
     def test_status_shows_line_range_when_cached(self, temp_git_repo, capsys):
         """Test that status shows line range when cached state is available."""

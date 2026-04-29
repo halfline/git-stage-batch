@@ -198,8 +198,9 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
             if source_line is not None:
                 last_source_line = source_line
         elif line.kind == '-':
-            # Deletion: use last known source line (anchor point)
             source_line = last_source_line
+            if source_line is None and line.old_line_number is not None and line.old_line_number > 1:
+                source_line = line.old_line_number - 1
         else:
             source_line = None
 
@@ -241,6 +242,10 @@ def _refresh_selected_lines_against_source_content(
                 last_source_line = source_line
         elif line.kind == '-':
             source_line = last_source_line
+            if source_line is None and line.old_line_number is not None and line.old_line_number > 1:
+                source_line = mapping.get_source_line_from_target_line(
+                    line.old_line_number - 1
+                )
         else:
             source_line = None
 

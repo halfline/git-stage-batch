@@ -682,14 +682,20 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
 def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_id_specification: str, *, quiet: bool = False) -> None:
     """Include specific lines from a file to batch (file-scoped with line IDs)."""
 
-    # Cache entire file as a single hunk
-    cached_lines = cache_file_as_single_hunk(file_path)
+    reuse_selected_file_view = (
+        read_selected_change_kind() == SelectedChangeKind.FILE
+        and get_selected_change_file_path() == file_path
+    )
+    if reuse_selected_file_view:
+        cached_lines = load_line_changes_from_state()
+    else:
+        cached_lines = cache_unstaged_file_as_single_hunk(file_path)
+
     if cached_lines is None:
         exit_with_error(_("No changes in file '{file}'.").format(file=file_path))
 
     # Annotate with batch source line numbers
     line_changes = annotate_with_batch_source(file_path, cached_lines)
-
     # Auto-create batch if it doesn't exist
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")

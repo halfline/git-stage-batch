@@ -392,6 +392,7 @@ def _apply_include_line_replacement(
     replacement_text: str,
     hunk_base_content: bytes,
     hunk_source_content: bytes,
+    trim_unchanged_edge_anchors: bool,
 ) -> None:
     """Stage replacement text for selected lines and record session masking."""
     requested_ids = set(parse_line_selection(line_id_specification))
@@ -401,14 +402,13 @@ def _apply_include_line_replacement(
     if not selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
-    ownership = translate_lines_to_batch_ownership(selected_lines)
-
     try:
         target_index_content = build_target_index_content_bytes_with_replaced_lines(
             line_changes,
             effective_ids,
             replacement_text,
             hunk_base_content,
+            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
         )
     except ValueError as error:
         exit_with_error(str(error))
@@ -417,7 +417,7 @@ def _apply_include_line_replacement(
     record_consumed_selection(
         line_changes.path,
         source_content=hunk_source_content,
-        ownership=ownership,
+        selected_lines=selected_lines,
         replacement_mask={
             "deleted_lines": replacement_text.splitlines(),
             "added_lines": [line.text for line in selected_lines if line.kind == "+"],
@@ -430,6 +430,7 @@ def _snapshot_selected_change_state() -> dict[str, bytes | None]:
     paths = {
         "patch": get_selected_hunk_patch_file_path(),
         "hash": get_selected_hunk_hash_file_path(),
+        "kind": get_selected_change_kind_file_path(),
         "line_state": get_line_changes_json_file_path(),
         "binary": get_selected_binary_file_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
@@ -447,6 +448,7 @@ def _restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
     paths = {
         "patch": get_selected_hunk_patch_file_path(),
         "hash": get_selected_hunk_hash_file_path(),
+        "kind": get_selected_change_kind_file_path(),
         "line_state": get_line_changes_json_file_path(),
         "binary": get_selected_binary_file_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
@@ -462,17 +464,28 @@ def _restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
             path.write_bytes(data)
 
 
-def command_include_line_as(line_id_specification: str, replacement_text: str, file: str | None = None) -> None:
-    """Stage a replacement for one contiguous selected line range and mask it."""
+def command_include_line_as(
+    line_id_specification: str,
+    replacement_text: str,
+    file: str | None = None,
+    *,
+    no_anchor: bool = False,
+) -> None:
+    """Stage a replacement for one contiguous selected line span and mask it."""
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
 
     operation_parts = ["include", "--line", line_id_specification, "--as", replacement_text]
+    if no_anchor:
+        operation_parts.append("--no-anchor")
     if file is not None:
         operation_parts.extend(["--file", file])
 
     with undo_checkpoint(" ".join(operation_parts)):
+        preserve_selected_state = False
+        saved_selected_state = None
+
         if file is None:
             require_selected_hunk()
             line_changes = load_line_changes_from_state()
@@ -485,6 +498,7 @@ def command_include_line_as(line_id_specification: str, replacement_text: str, f
                 replacement_text=replacement_text,
                 hunk_base_content=hunk_base_content,
                 hunk_source_content=hunk_source_content,
+                trim_unchanged_edge_anchors=not no_anchor,
             )
 
             write_line_ids_file(get_processed_include_ids_file_path(), set())
@@ -497,15 +511,25 @@ def command_include_line_as(line_id_specification: str, replacement_text: str, f
                 preserve_selected_state = False
             else:
                 target_file = file
-                preserve_selected_state = True
+            reuse_selected_file_view = (
+                read_selected_change_kind() == SelectedChangeKind.FILE
+                and get_selected_change_file_path() == target_file
+            )
+            if reuse_selected_file_view:
+                cached_lines = load_line_changes_from_state()
+                if cached_lines is None:
+                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+                annotated_changes = annotate_with_batch_source(target_file, cached_lines)
+            else:
+                if file != "":
+                    preserve_selected_state = True
+                saved_selected_state = _snapshot_selected_change_state() if preserve_selected_state else None
 
-            saved_selected_state = _snapshot_selected_change_state() if preserve_selected_state else None
+                cached_lines = cache_unstaged_file_as_single_hunk(target_file)
+                if cached_lines is None:
+                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
-            cached_lines = cache_file_as_single_hunk(target_file)
-            if cached_lines is None:
-                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-
-            annotated_changes = annotate_with_batch_source(target_file, cached_lines)
+                annotated_changes = annotate_with_batch_source(target_file, cached_lines)
             hunk_base_result = run_git_command(
                 ["show", f":{target_file}"],
                 check=False,
@@ -520,6 +544,7 @@ def command_include_line_as(line_id_specification: str, replacement_text: str, f
                 replacement_text=replacement_text,
                 hunk_base_content=hunk_base_content,
                 hunk_source_content=hunk_source_content,
+                trim_unchanged_edge_anchors=not no_anchor,
             )
 
             if preserve_selected_state:

@@ -26,12 +26,16 @@ from ..core.hashing import compute_stable_hunk_hash
 from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange
 from ..data.hunk_tracking import (
+    SelectedChangeKind,
     advance_to_and_show_next_change,
     advance_to_next_change,
     build_file_hunk_from_content,
     cache_file_as_single_hunk,
+    cache_unstaged_file_as_single_hunk,
     fetch_next_change,
     get_selected_change_file_path,
+    load_selected_change,
+    read_selected_change_kind,
     recalculate_selected_hunk_for_file,
     record_hunk_discarded,
     require_selected_hunk,
@@ -40,7 +44,7 @@ from ..data.line_state import load_line_changes_from_state
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
-from ..exceptions import exit_with_error, NoMoreHunks
+from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
 from ..staging.operations import build_target_working_tree_content_bytes_with_discarded_lines
 from ..staging.operations import build_target_working_tree_content_bytes_with_replaced_lines
@@ -76,6 +80,8 @@ def _load_explicit_file_selection(file_path: str):
     if line_changes is None:
         exit_with_error(_("No changes in file '{file}'.").format(file=file_path))
     return line_changes
+
+
 def command_discard(*, quiet: bool = False) -> None:
     """Discard the selected hunk or binary file from the working tree."""
 
@@ -216,6 +222,40 @@ def command_discard(*, quiet: bool = False) -> None:
             advance_to_and_show_next_change()
 
 
+def _command_discard_selected_file(*, quiet: bool = False) -> None:
+    """Discard all changes from the currently selected file-scoped view."""
+    target_file = get_selected_change_file_path()
+    if target_file is None:
+        if not quiet:
+            print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
+        return
+
+    with undo_checkpoint("discard"):
+        snapshot_file_if_untracked(target_file)
+
+        head_result = run_git_command(
+            ["show", f"HEAD:{target_file}"],
+            check=False,
+            text_output=False,
+        )
+        if head_result.returncode == 0:
+            result = run_git_command(["checkout", "HEAD", "--", target_file], check=False)
+            if result.returncode != 0:
+                if not quiet:
+                    print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
+                return
+        else:
+            absolute_path = get_git_repository_root_path() / target_file
+            if absolute_path.exists():
+                absolute_path.unlink()
+
+        if quiet:
+            advance_to_next_change()
+        else:
+            print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
+            advance_to_and_show_next_change()
+
+
 def command_discard_file(file: str) -> None:
     """Discard the entire specified file from the working tree.
 
@@ -231,16 +271,14 @@ def command_discard_file(file: str) -> None:
 
     # Determine target file
     if file == "":
-        # --file with no arg: use selected hunk's file
-        try:
-            fetch_next_change()
-        except NoMoreHunks:
-            print(_("No more hunks to process."), file=sys.stderr)
+        target_file = get_selected_change_file_path()
+        if target_file is None:
+            diff_result = run_git_command(["diff", "--quiet"], check=False)
+            if diff_result.returncode == 0:
+                print(_("No more hunks to process."), file=sys.stderr)
+            else:
+                print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
             return
-
-        # Get the target file from currently cached hunk
-        line_changes = load_line_changes_from_state()
-        target_file = line_changes.path
     else:
         # Explicit path provided
         target_file = file
@@ -324,6 +362,8 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
             recalculate_selected_hunk_for_file(line_changes.path)
 
     print(_("✓ Discarded file as replacement: {file}").format(file=target_file), file=sys.stderr)
+
+
 def command_discard_line(line_id_specification: str, file: str | None = None) -> None:
     """Discard only the specified lines from the working tree.
 
@@ -351,9 +391,7 @@ def command_discard_line(line_id_specification: str, file: str | None = None) ->
             else:
                 target_file = file
 
-            line_changes = cache_file_as_single_hunk(target_file)
-            if line_changes is None:
-                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+            line_changes = _load_explicit_file_selection(target_file)
 
         requested_ids = parse_line_selection(line_id_specification)
 
@@ -429,6 +467,7 @@ def command_discard_line_as_to_batch(
     replacement_text: str,
     file: str | None = None,
     *,
+    no_anchor: bool = False,
     quiet: bool = False,
 ) -> None:
     """Save replacement text to batch, then discard the original selection locally."""
@@ -442,6 +481,8 @@ def command_discard_line_as_to_batch(
         "--line", line_id_specification,
         "--as", replacement_text,
     ]
+    if no_anchor:
+        operation_parts.append("--no-anchor")
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
@@ -459,14 +500,13 @@ def command_discard_line_as_to_batch(
                 else:
                     target_file = file
 
-                cached_lines = cache_file_as_single_hunk(target_file)
-                if cached_lines is None:
-                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+                cached_lines = _load_explicit_file_selection(target_file)
 
             _command_discard_lines_to_batch_as(
                 batch_name,
                 line_id_specification,
                 replacement_text,
+                no_anchor=no_anchor,
                 quiet=quiet,
             )
 
@@ -482,15 +522,17 @@ def _command_discard_lines_to_batch_as(
     line_id_specification: str,
     replacement_text: str,
     *,
+    no_anchor: bool = False,
     quiet: bool = False,
 ) -> None:
     """Persist replacement text to batch and discard original selected lines."""
+    line_changes = load_line_changes_from_state()
+    requested_ids = set(parse_line_selection(line_id_specification))
+    effective_ids = _expand_replacement_selection_ids(line_changes, requested_ids)
+
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
-    requested_ids = set(parse_line_selection(line_id_specification))
-    line_changes = load_line_changes_from_state()
-    effective_ids = _expand_replacement_selection_ids(line_changes, requested_ids)
     selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
     if not selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
@@ -506,6 +548,7 @@ def _command_discard_lines_to_batch_as(
             effective_ids,
             replacement_text,
             working_bytes,
+            trim_unchanged_edge_anchors=not no_anchor,
         )
     except ValueError as e:
         exit_with_error(str(e))
@@ -833,14 +876,10 @@ def _command_discard_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
 def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_id_specification: str, *, quiet: bool = False) -> None:
     """Discard specific lines from a file to batch (file-scoped with line IDs)."""
 
-    # Cache entire file as a single hunk
-    cached_lines = cache_file_as_single_hunk(file_path)
-    if cached_lines is None:
-        exit_with_error(_("No changes in file '{file}'.").format(file=file_path))
+    cached_lines = _load_explicit_file_selection(file_path)
 
     # Annotate with batch source line numbers
     line_changes = annotate_with_batch_source(file_path, cached_lines)
-
     # Auto-create batch if it doesn't exist
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")

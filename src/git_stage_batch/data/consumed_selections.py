@@ -5,7 +5,17 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..batch.ownership import BatchOwnership, merge_batch_ownership
+from ..batch.ownership import (
+    BatchOwnership,
+    advance_batch_source_for_file,
+    detect_stale_batch_source_for_selection,
+    merge_batch_ownership,
+    translate_lines_to_batch_ownership,
+)
+from ..batch.source_refresh import (
+    _refresh_selected_lines_against_new_source,
+    _refresh_selected_lines_against_source_content,
+)
 from .batch_sources import create_batch_source_commit
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.paths import get_session_consumed_selections_file_path
@@ -39,7 +49,7 @@ def record_consumed_selection(
     file_path: str,
     *,
     source_content: bytes,
-    ownership: BatchOwnership,
+    selected_lines: list,
     replacement_mask: dict[str, list[str]] | None = None,
 ) -> None:
     """Persist consumed selection ownership for masking across `again`."""
@@ -49,10 +59,30 @@ def record_consumed_selection(
 
     if existing_file_metadata is not None:
         existing_ownership = BatchOwnership.from_metadata_dict(existing_file_metadata)
-        merged_ownership = merge_batch_ownership(existing_ownership, ownership)
         batch_source_commit = existing_file_metadata["batch_source_commit"]
+        if detect_stale_batch_source_for_selection(selected_lines):
+            (
+                batch_source_commit,
+                existing_ownership,
+                refreshed_source_content,
+                working_content,
+            ) = advance_batch_source_for_file(
+                batch_name="consumed-selections",
+                file_path=file_path,
+                old_batch_source_commit=batch_source_commit,
+                existing_ownership=existing_ownership,
+            )
+            selected_lines = _refresh_selected_lines_against_source_content(
+                selected_lines,
+                source_content=refreshed_source_content,
+                working_content=working_content,
+            )
+        new_ownership = translate_lines_to_batch_ownership(selected_lines)
+        merged_ownership = merge_batch_ownership(existing_ownership, new_ownership)
     else:
-        merged_ownership = ownership
+        if detect_stale_batch_source_for_selection(selected_lines):
+            selected_lines = _refresh_selected_lines_against_new_source(selected_lines)
+        merged_ownership = translate_lines_to_batch_ownership(selected_lines)
         batch_source_commit = create_batch_source_commit(
             file_path,
             file_content_override=source_content,

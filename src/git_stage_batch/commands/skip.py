@@ -2,24 +2,33 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+import json
 import sys
 
-from ..core.diff_parser import get_first_matching_file_from_diff, parse_unified_diff_streaming
+from ..core.diff_parser import build_line_changes_from_patch_bytes, parse_unified_diff_streaming
 from ..core.hashing import compute_stable_hunk_hash
-from ..core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
+from ..core.line_selection import (
+    parse_line_selection,
+    read_line_ids_file,
+    write_line_ids_file,
+)
 from ..core.models import BinaryFileChange
-from ..data.hunk_tracking import advance_to_and_show_next_change, advance_to_next_change, fetch_next_change, record_hunk_skipped, require_selected_hunk
+from ..data.hunk_tracking import SelectedChangeKind, advance_to_and_show_next_change, advance_to_next_change, fetch_next_change, get_selected_change_file_path, load_selected_change, read_selected_change_kind, record_hunk_skipped, require_selected_hunk
+from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks
 from ..i18n import _, ngettext
-from ..utils.file_io import append_lines_to_file, read_text_file_contents
+from ..output import print_line_level_changes
+from ..utils.file_io import append_lines_to_file, read_text_file_contents, write_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_context_lines,
+    get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
     get_processed_skip_ids_file_path,
 )
@@ -33,13 +42,18 @@ def command_skip(*, quiet: bool = False) -> None:
     require_session_started()
     ensure_state_directory_exists()
 
-    # Find and cache the next item
-    try:
-        item = fetch_next_change()
-    except NoMoreHunks:
-        if not quiet:
-            print(_("No more hunks to process."), file=sys.stderr)
+    if read_selected_change_kind() == SelectedChangeKind.FILE:
+        command_skip_file("")
         return
+
+    item = load_selected_change()
+    if item is None:
+        try:
+            item = fetch_next_change()
+        except NoMoreHunks:
+            if not quiet:
+                print(_("No more hunks to process."), file=sys.stderr)
+            return
     with undo_checkpoint("skip"):
         # Read cached hash
         patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
@@ -84,13 +98,24 @@ def command_skip(*, quiet: bool = False) -> None:
             advance_to_and_show_next_change()
 
 
-def command_skip_file(file: str = "") -> None:
+def command_skip_file(
+    file: str = "",
+    *,
+    quiet: bool = False,
+    advance: bool = True,
+) -> int:
     """Skip all remaining hunks from the specified file.
 
     Args:
         file: File path for file-scoped operation.
               If empty string, uses selected hunk's file.
               If explicit path, uses that file.
+
+        quiet: Suppress per-file status output while preserving selection state.
+        advance: When quiet, advance the selection after skipping this file.
+
+    Returns:
+        Number of hunks skipped from the requested file.
     """
     require_git_repository()
     require_session_started()
@@ -98,28 +123,16 @@ def command_skip_file(file: str = "") -> None:
 
     # Determine target file
     if file == "":
-        # --file with no arg: use selected hunk's file by finding first unblocked hunk
-        blocklist_path = get_block_list_file_path()
-        blocklist_text = read_text_file_contents(blocklist_path)
-        blocked_hashes = set(blocklist_text.splitlines())
-
-        def is_unblocked(patch_bytes: bytes) -> bool:
-            return compute_stable_hunk_hash(patch_bytes) not in blocked_hashes
-
-        target_file = get_first_matching_file_from_diff(
-            context_lines=get_context_lines(),
-            predicate=is_unblocked
-        )
-
+        target_file = get_selected_change_file_path()
         if target_file is None:
-            print(_("No changes to process."), file=sys.stderr)
-            return
+            if not quiet:
+                print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
+            return 0
     else:
         target_file = file
 
     with undo_checkpoint(f"skip --file {file}".rstrip()):
-        # Load blocklist
-        # Stream through hunks and skip all from target file
+        # Stream through hunks and skip all from target file.
         blocklist_path = get_block_list_file_path()
         blocklist_text = read_text_file_contents(blocklist_path)
         blocked_hashes = set(blocklist_text.splitlines())
@@ -139,7 +152,16 @@ def command_skip_file(file: str = "") -> None:
             # Add to blocklist without staging
             append_lines_to_file(blocklist_path, [patch_hash])
             blocked_hashes.add(patch_hash)
+            record_hunk_skipped(
+                build_line_changes_from_patch_bytes(patch_bytes),
+                patch_hash,
+            )
             hunks_skipped += 1
+
+        if quiet and advance:
+            advance_to_next_change()
+        if quiet:
+            return hunks_skipped
 
         msg = ngettext(
             "✓ Skipped {count} hunk from {file}",
@@ -149,6 +171,7 @@ def command_skip_file(file: str = "") -> None:
         print(msg, file=sys.stderr)
 
         advance_to_and_show_next_change()
+        return hunks_skipped
 
 
 def command_skip_line(line_id_specification: str) -> None:
@@ -162,6 +185,10 @@ def command_skip_line(line_id_specification: str) -> None:
     ensure_state_directory_exists()
     require_selected_hunk()
 
+    line_changes = load_line_changes_from_state()
+    if line_changes is None:
+        raise NoMoreHunks()
+
     requested_ids = parse_line_selection(line_id_specification)
     already_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
     combined_skip_ids = already_skipped_ids | set(requested_ids)
@@ -169,4 +196,41 @@ def command_skip_line(line_id_specification: str) -> None:
         # Update processed skip IDs
         write_line_ids_file(get_processed_skip_ids_file_path(), combined_skip_ids)
 
+        visible_changed_ids = [
+            changed_id
+            for changed_id in line_changes.changed_line_ids()
+            if changed_id not in combined_skip_ids
+        ]
+
+        if not visible_changed_ids:
+            if read_selected_change_kind() == SelectedChangeKind.FILE:
+                print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+                command_skip_file("")
+                return
+
+            patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
+            blocklist_path = get_block_list_file_path()
+            append_lines_to_file(blocklist_path, [patch_hash])
+            record_hunk_skipped(line_changes, patch_hash)
+            print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+            advance_to_and_show_next_change()
+            return
+
+        filtered_lines = [
+            replace(line_entry, id=None)
+            if line_entry.id in combined_skip_ids
+            else line_entry
+            for line_entry in line_changes.lines
+        ]
+        filtered_line_changes = replace(line_changes, lines=filtered_lines)
+        write_text_file_contents(
+            get_line_changes_json_file_path(),
+            json.dumps(
+                convert_line_changes_to_serializable_dict(filtered_line_changes),
+                ensure_ascii=False,
+                indent=0,
+            ),
+        )
+
     print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+    print_line_level_changes(filtered_line_changes)

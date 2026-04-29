@@ -462,3 +462,52 @@ class TestCommandDiscardToBatch:
                 )
 
         assert readme.read_text() == "# Test\nprint('debug')\n"
+
+    def test_discard_line_as_to_batch_handles_followup_replacement_in_same_session(self, temp_git_repo):
+        """A second discard --as should refresh stale batch source state."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text(
+            "# Test\n"
+            "line1\n"
+            "line2\n"
+            "line3\n"
+            "line4\n"
+            "line5\n"
+            "line6\n"
+            "line7\n"
+            "line8\n"
+        )
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Expand readme"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        readme.write_text(
+            "# Test\n"
+            "line1-edited\n"
+            "line2\n"
+            "line3\n"
+            "line4\n"
+            "line5\n"
+            "line6\n"
+            "line7\n"
+            "line8-edited\n"
+        )
+
+        command_start()
+        fetch_next_change()
+
+        command_discard_line_as_to_batch(
+            "feature-batch",
+            "1",
+            "staged1",
+        )
+        command_discard_line_as_to_batch(
+            "feature-batch",
+            "1",
+            "staged8",
+            file="README.md",
+        )
+
+        assert readme.read_text() == "# Test\nline1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\n"
+
+        command_apply_from_batch("feature-batch")
+        assert readme.read_text() == "# Test\nstaged1\nline2\nline3\nline4\nline5\nline6\nline7\nstaged8\n"

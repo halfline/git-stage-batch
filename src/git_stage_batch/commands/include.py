@@ -24,6 +24,7 @@ from ..data.hunk_tracking import (
     advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
     cache_file_as_single_hunk,
+    cache_unstaged_file_as_single_hunk,
     clear_selected_change_state_files,
     fetch_next_change,
     get_selected_change_file_path,
@@ -243,6 +244,52 @@ def command_include_file(file: str) -> None:
     advance_to_and_show_next_change()
 
 
+def command_include_file_as(replacement_text: str, file: str | None = None) -> None:
+    """Stage full-file replacement text for a live file-scoped selection."""
+    require_git_repository()
+    require_session_started()
+    ensure_state_directory_exists()
+
+    operation_parts = ["include", "--as", replacement_text]
+    if file is not None:
+        operation_parts.extend(["--file", file])
+
+    with undo_checkpoint(" ".join(operation_parts)):
+        preserve_selected_state = False
+        saved_selected_state = None
+
+        if file is None or file == "":
+            target_file = get_selected_change_file_path()
+            if target_file is None:
+                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+        else:
+            target_file = file
+            preserve_selected_state = True
+            saved_selected_state = _snapshot_selected_change_state()
+
+        if preserve_selected_state:
+            line_changes = cache_unstaged_file_as_single_hunk(target_file)
+            if line_changes is None:
+                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+        else:
+            line_changes = load_line_changes_from_state()
+            if line_changes is None or line_changes.path != target_file:
+                line_changes = cache_unstaged_file_as_single_hunk(target_file)
+                if line_changes is None:
+                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+
+        update_index_with_blob_content(
+            target_file,
+            replacement_text.encode("utf-8", errors="surrogateescape"),
+        )
+
+        if preserve_selected_state:
+            _restore_selected_change_state(saved_selected_state)
+        else:
+            write_line_ids_file(get_processed_include_ids_file_path(), set())
+            recalculate_selected_hunk_for_file(target_file)
+
+    print(_("✓ Included file as replacement: {file}").format(file=target_file), file=sys.stderr)
 def command_include_line(line_id_specification: str, file: str | None = None) -> None:
     """Stage only the specified lines to the index.
 

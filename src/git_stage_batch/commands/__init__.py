@@ -44,6 +44,7 @@ __all__ = [
     "command_drop_batch",
     "command_include",
     "command_include_file",
+    "command_include_file_as",
     "command_include_line",
     "command_include_line_as",
     "command_include_from_batch",

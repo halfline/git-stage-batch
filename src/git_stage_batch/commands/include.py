@@ -5,21 +5,31 @@ from __future__ import annotations
 import sys
 
 from ..batch import add_file_to_batch, create_batch
+from ..batch.comparison import (
+    SemanticChangeKind,
+    derive_display_id_run_sets,
+    derive_semantic_change_runs,
+)
 from ..batch.display import annotate_with_batch_source
-from ..batch.ownership import BatchOwnership, translate_lines_to_batch_ownership
+from ..batch.ownership import BatchOwnership
 from ..batch.query import read_batch_metadata
 from ..batch.semantic_selection import try_build_semantic_selection_for_selected_hunk
 from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
-    get_first_matching_file_from_diff,
     parse_unified_diff_streaming,
 )
 from ..core.hashing import compute_stable_hunk_hash
-from ..core.line_selection import parse_line_selection, read_line_ids_file, write_line_ids_file
+from ..core.line_selection import (
+    format_line_ids,
+    parse_line_selection,
+    read_line_ids_file,
+    write_line_ids_file,
+)
 from ..core.models import BinaryFileChange
 from ..data.hunk_tracking import (
+    SelectedChangeKind,
     advance_to_and_show_next_change,
     advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
@@ -28,6 +38,8 @@ from ..data.hunk_tracking import (
     clear_selected_change_state_files,
     fetch_next_change,
     get_selected_change_file_path,
+    load_selected_change,
+    read_selected_change_kind,
     recalculate_selected_hunk_for_file,
     record_hunk_included,
     record_hunk_skipped,
@@ -54,6 +66,7 @@ from ..utils.paths import (
     get_block_list_file_path,
     get_context_lines,
     get_line_changes_json_file_path,
+    get_selected_change_kind_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_selected_binary_file_json_path,
@@ -72,13 +85,18 @@ def command_include(*, quiet: bool = False) -> None:
     require_session_started()
     ensure_state_directory_exists()
 
-    # Find and cache the next item
-    try:
-        item = fetch_next_change()
-    except NoMoreHunks:
-        if not quiet:
-            print(_("No more hunks to process."), file=sys.stderr)
-        return
+    if read_selected_change_kind() == SelectedChangeKind.FILE:
+        command_include_file("")
+        return 0
+
+    item = load_selected_change()
+    if item is None:
+        try:
+            item = fetch_next_change()
+        except NoMoreHunks:
+            if not quiet:
+                print(_("No more hunks to process."), file=sys.stderr)
+            return 0
     with undo_checkpoint("include"):
         # Read cached hash
         patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
@@ -93,10 +111,6 @@ def command_include(*, quiet: bool = False) -> None:
             if result.returncode != 0:
                 print(_("Failed to stage binary file: {}").format(result.stderr), file=sys.stderr)
                 return
-
-            # Add hash to blocklist
-            blocklist_path = get_block_list_file_path()
-            append_lines_to_file(blocklist_path, [patch_hash])
 
             # Record for progress tracking
             record_hunk_included(patch_hash)
@@ -133,10 +147,6 @@ def command_include(*, quiet: bool = False) -> None:
             print(_("Failed to apply hunk: {}").format(stderr_text), file=sys.stderr)
             return
 
-        # Add hash to blocklist
-        blocklist_path = get_block_list_file_path()
-        append_lines_to_file(blocklist_path, [patch_hash])
-
         # Record for progress tracking
         record_hunk_included(patch_hash)
 
@@ -149,13 +159,23 @@ def command_include(*, quiet: bool = False) -> None:
             advance_to_and_show_next_change()
 
 
-def command_include_file(file: str) -> None:
+def command_include_file(
+    file: str,
+    *,
+    quiet: bool = False,
+    advance: bool = True,
+) -> int:
     """Include (stage) all hunks from the specified file.
 
     Args:
         file: File path for file-scoped operation.
               If empty string, uses selected hunk's file.
               If explicit path, uses that file.
+        quiet: Suppress per-file status output while preserving selection state.
+        advance: When quiet, advance the selection after staging this file.
+
+    Returns:
+        Number of hunks staged from the requested file.
     """
     require_git_repository()
     require_session_started()
@@ -163,34 +183,24 @@ def command_include_file(file: str) -> None:
 
     # Determine target file
     if file == "":
-        # --file with no arg: use selected hunk's file by finding first unblocked hunk
-        # Load blocklist
-        blocklist_path = get_block_list_file_path()
-        blocklist_text = read_text_file_contents(blocklist_path)
-        blocked_hashes = set(blocklist_text.splitlines())
-
-        # Find first non-blocked hunk to get the target file
-        def is_unblocked(patch_bytes: bytes) -> bool:
-            return compute_stable_hunk_hash(patch_bytes) not in blocked_hashes
-
-        target_file = get_first_matching_file_from_diff(
-            context_lines=get_context_lines(),
-            predicate=is_unblocked
-        )
-
+        target_file = get_selected_change_file_path()
         if target_file is None:
-            print(_("No changes to stage."), file=sys.stderr)
-            return
+            diff_result = run_git_command(["diff", "--quiet"], check=False)
+            if diff_result.returncode == 0:
+                print(_("No changes to stage."), file=sys.stderr)
+            else:
+                print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
+            return 0
     else:
         # Explicit path provided
         target_file = file
     with undo_checkpoint(f"include --file {file}".rstrip()):
-        # Load blocklist
-        blocklist_path = get_block_list_file_path()
-        blocklist_text = read_text_file_contents(blocklist_path)
-        blocked_hashes = set(blocklist_text.splitlines())
-
-        # Stream through hunks and stage all from target file
+        # Stream through the remaining unstaged hunks for this file.
+        #
+        # Included hunks do not need blocklist entries because staging removes
+        # them from `git diff` naturally. Keeping them in the processed blocklist
+        # makes later manual unstaging look like stale skipped work, which breaks
+        # follow-up `show --files` / `include --files` passes in the same session.
         hunks_staged = 0
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])):
             if patch.new_path != target_file:
@@ -198,10 +208,6 @@ def command_include_file(file: str) -> None:
 
             patch_bytes = patch.to_patch_bytes()
             patch_hash = compute_stable_hunk_hash(patch_bytes)
-
-            # Skip if already blocked
-            if patch_hash in blocked_hashes:
-                continue
 
             # Apply the hunk to the index using streaming
             stderr_chunks = []
@@ -215,10 +221,6 @@ def command_include_file(file: str) -> None:
                         stderr_chunks.append(event.data)
 
             if exit_code == 0:
-                # Add to blocklist so we don't try to stage it again
-                append_lines_to_file(blocklist_path, [patch_hash])
-                blocked_hashes.add(patch_hash)
-
                 # Record for progress tracking
                 record_hunk_included(patch_hash)
 
@@ -229,8 +231,14 @@ def command_include_file(file: str) -> None:
                 break
 
     if hunks_staged == 0:
-        print(_("No hunks staged from {file}").format(file=target_file), file=sys.stderr)
-        return
+        if not quiet:
+            print(_("No hunks staged from {file}").format(file=target_file), file=sys.stderr)
+        return 0
+
+    if quiet and advance:
+        advance_to_next_change()
+    if quiet:
+        return hunks_staged
 
     # Print summary message
     msg = ngettext(
@@ -242,6 +250,7 @@ def command_include_file(file: str) -> None:
 
     # Advance to next file's hunk
     advance_to_and_show_next_change()
+    return hunks_staged
 
 
 def command_include_file_as(replacement_text: str, file: str | None = None) -> None:
@@ -290,6 +299,8 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
             recalculate_selected_hunk_for_file(target_file)
 
     print(_("✓ Included file as replacement: {file}").format(file=target_file), file=sys.stderr)
+
+
 def command_include_line(line_id_specification: str, file: str | None = None) -> None:
     """Stage only the specified lines to the index.
 
@@ -321,16 +332,27 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
                     exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
             else:
                 target_file = file
-                preserve_selected_state = True
-                saved_selected_state = _snapshot_selected_change_state()
+            reuse_selected_file_view = (
+                read_selected_change_kind() == SelectedChangeKind.FILE
+                and get_selected_change_file_path() == target_file
+            )
+            if reuse_selected_file_view:
+                line_changes = load_line_changes_from_state()
+            else:
+                if file != "":
+                    preserve_selected_state = True
+                    saved_selected_state = _snapshot_selected_change_state()
 
-            line_changes = cache_file_as_single_hunk(target_file)
-            if line_changes is None:
-                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-            line_changes = annotate_with_batch_source(target_file, line_changes)
+                line_changes = cache_unstaged_file_as_single_hunk(target_file)
+                if line_changes is None:
+                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+                line_changes = annotate_with_batch_source(target_file, line_changes)
 
         requested_ids = parse_line_selection(line_id_specification)
-        already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
+        if preserve_selected_state:
+            already_included_ids = set()
+        else:
+            already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
         combined_include_ids = already_included_ids | set(requested_ids)
 
         # Get the selected hunk's base/source snapshots captured when the hunk was loaded.
@@ -343,6 +365,24 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             text_output=False,
         )
         current_index_content = index_result.stdout if index_result.returncode == 0 else b""
+
+        if read_selected_change_kind() == SelectedChangeKind.FILE:
+            partial_replacement_error = _build_partial_replacement_selection_error(
+                line_changes,
+                combined_include_ids,
+                hunk_base_content=hunk_base_content,
+                hunk_source_content=hunk_source_content,
+            )
+            if partial_replacement_error is not None:
+                exit_with_error(partial_replacement_error)
+            partial_structural_run_error = _build_partial_structural_run_selection_error(
+                line_changes,
+                combined_include_ids,
+                hunk_base_content=hunk_base_content,
+                hunk_source_content=hunk_source_content,
+            )
+            if partial_structural_run_error is not None:
+                exit_with_error(partial_structural_run_error)
 
         semantic_attempt = try_build_semantic_selection_for_selected_hunk(
             line_changes=line_changes,
@@ -387,6 +427,112 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             recalculate_selected_hunk_for_file(line_changes.path)
 
     print(_("✓ Included line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+
+
+def _derive_replacement_unit_display_ids(
+    line_changes,
+    *,
+    hunk_base_content: bytes,
+    hunk_source_content: bytes,
+) -> list[set[int]]:
+    """Map semantic replacement runs onto display IDs in the current selection."""
+    replacement_units: list[set[int]] = []
+    semantic_runs = derive_semantic_change_runs(
+        hunk_base_content.splitlines(keepends=True),
+        hunk_source_content.splitlines(keepends=True),
+    )
+
+    for run in semantic_runs:
+        if run.kind != SemanticChangeKind.REPLACEMENT:
+            continue
+
+        source_run = set(run.source_run or [])
+        target_run = set(run.target_run or [])
+        display_ids = {
+            line.id
+            for line in line_changes.lines
+            if line.id is not None and (
+                (line.kind == "-" and line.old_line_number in source_run)
+                or (line.kind == "+" and line.new_line_number in target_run)
+            )
+        }
+        if display_ids:
+            replacement_units.append(display_ids)
+
+    return replacement_units
+
+
+def _build_partial_replacement_selection_error(
+    line_changes,
+    selected_ids: set[int],
+    *,
+    hunk_base_content: bytes,
+    hunk_source_content: bytes,
+) -> str | None:
+    """Reject contiguous interval selections that tear a replacement unit."""
+    if len(selected_ids) <= 1:
+        return None
+
+    sorted_ids = sorted(selected_ids)
+    is_contiguous_interval = sorted_ids == list(range(sorted_ids[0], sorted_ids[-1] + 1))
+    if not is_contiguous_interval:
+        return None
+
+    replacement_units = _derive_replacement_unit_display_ids(
+        line_changes,
+        hunk_base_content=hunk_base_content,
+        hunk_source_content=hunk_source_content,
+    )
+    for replacement_unit in replacement_units:
+        selected_in_unit = selected_ids & replacement_unit
+        if selected_in_unit and selected_in_unit != replacement_unit:
+            return _(
+                "Contiguous line selections cannot split one replacement. "
+                "Select --lines {lines} instead, pick "
+                "individual lines one at a time, or use --as."
+            ).format(lines=format_line_ids(sorted(replacement_unit)))
+
+    return None
+
+
+def _build_partial_structural_run_selection_error(
+    line_changes,
+    selected_ids: set[int],
+    *,
+    hunk_base_content: bytes,
+    hunk_source_content: bytes,
+) -> str | None:
+    """Reject contiguous file-scoped selections that only partly include later runs."""
+    if len(selected_ids) <= 1:
+        return None
+
+    sorted_ids = sorted(selected_ids)
+    is_contiguous_interval = sorted_ids == list(range(sorted_ids[0], sorted_ids[-1] + 1))
+    if not is_contiguous_interval:
+        return None
+
+    run_sets = derive_display_id_run_sets(
+        line_changes,
+        source_content=hunk_base_content,
+        target_content=hunk_source_content,
+    )
+    intersected_runs = [run_set for run_set in run_sets if selected_ids & run_set]
+    if len(intersected_runs) <= 1:
+        return None
+
+    partially_selected_runs = [
+        run_set
+        for run_set in intersected_runs
+        if (selected_ids & run_set) != run_set
+    ]
+    if not partially_selected_runs:
+        return None
+
+    return _(
+        "Contiguous file-scoped selections cannot span multiple structural change runs "
+        "while selecting only part of one run. Select one run at a time, fully include "
+        "each spanned run, or use --as."
+    )
 
 
 def _expand_replacement_selection_ids(line_changes, requested_ids: set[int]) -> set[int]:

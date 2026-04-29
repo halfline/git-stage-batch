@@ -15,7 +15,9 @@ from git_stage_batch.utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
-from git_stage_batch.commands.skip import command_skip
+from git_stage_batch.data.hunk_tracking import render_unstaged_file_as_single_hunk
+from git_stage_batch.commands.skip import command_skip, command_skip_line
+from git_stage_batch.cli.argument_parser import parse_command_line
 
 import subprocess
 
@@ -24,8 +26,10 @@ import pytest
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.include import (
+    command_include,
     command_include_to_batch,
     command_include_file,
+    command_include_file_as,
     command_include_line,
     command_include_line_as,
 )
@@ -141,6 +145,525 @@ class TestShowFileFlag:
         command_discard_line("3")
 
         assert (multi_file_repo / "beta.txt").read_text() == "beta1\nbeta2-modified\nbeta3\n"
+
+    def test_show_file_include_line_keeps_file_selection_for_multi_hunk_file(self, tmp_path, monkeypatch):
+        """Include --line from a file selection should keep the remaining file view."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 121)]
+        (repo / "multi.txt").write_text("".join(lines))
+        subprocess.run(["git", "add", "multi.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        content = lines[:]
+        content.insert(5, "change-one\n")
+        content.insert(55, "change-two\n")
+        content.insert(105, "change-three\n")
+        (repo / "multi.txt").write_text("".join(content))
+
+        command_start()
+        command_show(file="multi.txt")
+
+        command_include_line("1")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        changed_texts = [line.text for line in line_changes.lines if line.kind != " "]
+        assert "change-one" not in changed_texts
+        assert "change-two" in changed_texts
+        assert "change-three" in changed_texts
+
+    def test_explicit_file_include_line_uses_remaining_unstaged_diff(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line should not rebase on HEAD after partial staging."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 81)]
+        lines[0] = "from old_alpha import thing\n"
+        lines[10] = "from old_beta import helper\n"
+        lines[60] = "body_call_old()\n"
+        file_path = repo / "module.py"
+        file_path.write_text("".join(lines))
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        rewritten = lines[:]
+        rewritten[0] = "from new_alpha import thing\n"
+        rewritten[10] = "from new_beta import helper\n"
+        rewritten[60] = "body_call_new()\n"
+        file_path.write_text("".join(rewritten))
+
+        command_start()
+
+        def ids_for_texts(*texts: str) -> str:
+            command_show(file="module.py")
+            line_changes = load_line_changes_from_state()
+            assert line_changes is not None
+            selected_ids = [
+                str(line.id)
+                for line in line_changes.lines
+                if line.id is not None and line.text in texts
+            ]
+            assert len(selected_ids) == len(texts)
+            return ",".join(selected_ids)
+
+        body_ids = ids_for_texts("body_call_old()", "body_call_new()")
+        command_include_line(body_ids, file="module.py")
+
+        alpha_ids = ids_for_texts(
+            "from old_alpha import thing",
+            "from new_alpha import thing",
+        )
+        command_include_line(alpha_ids, file="module.py")
+
+        beta_ids = ids_for_texts(
+            "from old_beta import helper",
+            "from new_beta import helper",
+        )
+        command_include_line(beta_ids, file="module.py")
+
+        result = run_git_command(["show", ":module.py"])
+        assert result.stdout == "".join(rewritten)
+
+    def test_explicit_file_include_line_refreshes_the_selected_file_view(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line should advance the selected file view."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 81)]
+        lines[0] = "from old_alpha import thing\n"
+        lines[10] = "from old_beta import helper\n"
+        lines[60] = "body_call_old()\n"
+        file_path = repo / "module.py"
+        file_path.write_text("".join(lines))
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        rewritten = (
+            ["from new_alpha import (\n", "    thing,\n", "    helper,\n", ")\n"]
+            + lines[1:10]
+            + ["from new_beta import helper\n"]
+            + lines[11:60]
+            + ["body_call_new()\n"]
+            + lines[61:]
+        )
+        file_path.write_text("".join(rewritten))
+
+        command_start()
+        command_show(file="module.py")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+
+        def ids_for_texts(*texts: str) -> str:
+            selected_ids = [
+                str(line.id)
+                for line in line_changes.lines
+                if line.id is not None and line.text in texts
+            ]
+            assert len(selected_ids) == len(texts)
+            return ",".join(selected_ids)
+
+        alpha_ids = ids_for_texts(
+            "from old_alpha import thing",
+            "from new_alpha import (",
+            "    thing,",
+            "    helper,",
+            ")",
+        )
+        beta_ids = ids_for_texts(
+            "from old_beta import helper",
+            "from new_beta import helper",
+        )
+        body_ids = ids_for_texts("body_call_old()", "body_call_new()")
+
+        command_include_line(body_ids, file="module.py")
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        remaining_texts = [line.text for line in line_changes.lines if line.id is not None]
+        assert "body_call_old()" not in remaining_texts
+        assert "body_call_new()" not in remaining_texts
+        assert "from old_beta import helper" in remaining_texts
+
+        command_include_line(alpha_ids, file="module.py")
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        remaining_ids = [line.id for line in line_changes.lines if line.id is not None]
+        remaining_texts = [line.text for line in line_changes.lines if line.id is not None]
+        assert remaining_ids == [1, 2]
+        assert remaining_texts == [
+            "from old_beta import helper",
+            "from new_beta import helper",
+        ]
+
+        command_include_line("1,2", file="module.py")
+
+        result = run_git_command(["show", ":module.py"])
+        assert result.stdout == "".join(rewritten)
+
+    def test_show_file_displays_gap_markers_between_real_hunks(self, tmp_path, monkeypatch, capsys):
+        """File-scoped displays should show omitted unchanged regions explicitly."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 121)]
+        (repo / "multi.txt").write_text("".join(lines))
+        subprocess.run(["git", "add", "multi.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        content = lines[:]
+        content.insert(5, "change-one\n")
+        content.insert(55, "change-two\n")
+        content.insert(105, "change-three\n")
+        (repo / "multi.txt").write_text("".join(content))
+
+        command_start()
+        capsys.readouterr()
+        command_show(file="multi.txt")
+
+        captured = capsys.readouterr()
+        assert captured.out.count("... 43 more lines ...") == 2
+
+    def test_show_file_discard_line_keeps_file_selection_for_multi_hunk_file(self, tmp_path, monkeypatch):
+        """Discard --line from a file selection should keep the remaining file view."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 121)]
+        (repo / "multi.txt").write_text("".join(lines))
+        subprocess.run(["git", "add", "multi.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        content = lines[:]
+        content.insert(5, "change-one\n")
+        content.insert(55, "change-two\n")
+        content.insert(105, "change-three\n")
+        (repo / "multi.txt").write_text("".join(content))
+
+        command_start()
+        command_show(file="multi.txt")
+
+        command_discard_line("1")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        changed_texts = [line.text for line in line_changes.lines if line.kind != " "]
+        assert "change-one" not in changed_texts
+        assert "change-two" in changed_texts
+        assert "change-three" in changed_texts
+
+    def test_explicit_file_discard_line_uses_the_refreshed_file_view(self, tmp_path, monkeypatch):
+        """Explicit file-scoped discard --line should follow the refreshed file view."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 81)]
+        lines[0] = "from old_alpha import thing\n"
+        lines[10] = "from old_beta import helper\n"
+        lines[60] = "body_call_old()\n"
+        file_path = repo / "module.py"
+        file_path.write_text("".join(lines))
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        rewritten = lines[:]
+        rewritten[0] = "from new_alpha import thing\n"
+        rewritten[10] = "from new_beta import helper\n"
+        rewritten[60] = "body_call_new()\n"
+        file_path.write_text("".join(rewritten))
+
+        command_start()
+        command_show(file="module.py")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+
+        def ids_for_texts(*texts: str) -> str:
+            selected_ids = [
+                str(line.id)
+                for line in line_changes.lines
+                if line.id is not None and line.text in texts
+            ]
+            assert len(selected_ids) == len(texts)
+            return ",".join(selected_ids)
+
+        alpha_ids = ids_for_texts(
+            "from old_alpha import thing",
+            "from new_alpha import thing",
+        )
+        body_ids = ids_for_texts("body_call_old()", "body_call_new()")
+
+        command_include_line(alpha_ids, file="module.py")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        remaining_texts = [line.text for line in line_changes.lines if line.id is not None]
+        assert "from old_beta import helper" in remaining_texts
+        assert "from new_beta import helper" in remaining_texts
+        assert "body_call_old()" in remaining_texts
+        assert "body_call_new()" in remaining_texts
+
+        body_ids = ",".join(
+            str(line.id)
+            for line in line_changes.lines
+            if line.id is not None and line.text in {
+                "body_call_old()",
+                "body_call_new()",
+            }
+        )
+        command_discard_line(body_ids, file="module.py")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        remaining_texts = [line.text for line in line_changes.lines if line.id is not None]
+        assert "body_call_old()" not in remaining_texts
+        assert "body_call_new()" not in remaining_texts
+
+        beta_ids = ",".join(
+            str(line.id)
+            for line in line_changes.lines
+            if line.id is not None and line.text in {
+                "from old_beta import helper",
+                "from new_beta import helper",
+            }
+        )
+        command_discard_line(beta_ids, file="module.py")
+
+        assert file_path.read_text() == (
+            "from new_alpha import thing\n"
+            + "".join(lines[1:10])
+            + "from old_beta import helper\n"
+            + "".join(lines[11:60])
+            + "body_call_old()\n"
+            + "".join(lines[61:])
+        )
+
+    def test_explicit_file_include_to_batch_line_uses_the_refreshed_file_view(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --to --line should follow the refreshed file view."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 81)]
+        lines[0] = "from old_alpha import thing\n"
+        lines[10] = "from old_beta import helper\n"
+        lines[60] = "body_call_old()\n"
+        file_path = repo / "module.py"
+        file_path.write_text("".join(lines))
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        rewritten = lines[:]
+        rewritten[0] = "from new_alpha import thing\n"
+        rewritten[10] = "from new_beta import helper\n"
+        rewritten[60] = "body_call_new()\n"
+        file_path.write_text("".join(rewritten))
+
+        command_start()
+        command_show(file="module.py")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+
+        alpha_ids = ",".join(
+            str(line.id)
+            for line in line_changes.lines
+            if line.id is not None and line.text in {
+                "from old_alpha import thing",
+                "from new_alpha import thing",
+            }
+        )
+        command_include_line(alpha_ids, file="module.py")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        body_ids = ",".join(
+            str(line.id)
+            for line in line_changes.lines
+            if line.id is not None and line.text in {
+                "body_call_old()",
+                "body_call_new()",
+            }
+        )
+
+        command_include_to_batch("body-only", line_ids=body_ids, file="module.py")
+
+        metadata = read_batch_metadata("body-only")
+        file_metadata = metadata["files"]["module.py"]
+        assert file_metadata["claimed_lines"] == ["61"]
+        assert file_metadata["deletions"][0]["after_source_line"] == 60
+
+        command_show_from_batch("body-only")
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        non_context_texts = [line.text for line in line_changes.lines if line.id is not None]
+        assert "body_call_old()" in non_context_texts
+        assert "body_call_new()" in non_context_texts
+        assert "from old_beta import helper" not in non_context_texts
+        assert "from new_beta import helper" not in non_context_texts
+
+    def test_show_file_skip_line_keeps_file_selection_for_multi_hunk_file(self, tmp_path, monkeypatch):
+        """Skip --line from a file selection should keep the remaining file view."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 121)]
+        (repo / "multi.txt").write_text("".join(lines))
+        subprocess.run(["git", "add", "multi.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        content = lines[:]
+        content.insert(5, "change-one\n")
+        content.insert(55, "change-two\n")
+        content.insert(105, "change-three\n")
+        (repo / "multi.txt").write_text("".join(content))
+
+        command_start()
+        command_show(file="multi.txt")
+
+        command_skip_line("1")
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        visible_ids = [line.id for line in line_changes.lines if line.id is not None]
+        changed_texts = [line.text for line in line_changes.lines if line.id is not None]
+        assert 1 not in visible_ids
+        assert "change-one" not in changed_texts
+        assert "change-two" in changed_texts
+        assert "change-three" in changed_texts
+
+    def test_show_files_selection_can_feed_include(self, multi_file_repo):
+        """Show --files should leave the final displayed file selected for include."""
+        command_start()
+
+        args = parse_command_line(["show", "--files", "*.txt"], quiet=True)
+        assert args is not None
+        args.func(args)
+
+        command_include(quiet=True)
+
+        result = run_git_command(["diff", "--cached", "--name-only"])
+        assert result.stdout.strip() == "gamma.txt"
+
+    def test_include_files_reports_aggregate_staged_scope(self, multi_file_repo, capsys):
+        """Include --files should report the full staged scope once."""
+        command_start()
+        capsys.readouterr()
+
+        args = parse_command_line(["include", "--files", "*.txt"], quiet=True)
+        assert args is not None
+        args.func(args)
+
+        captured = capsys.readouterr()
+        assert "✓ Staged 3 hunks from 3 files" in captured.err
+        assert "alpha.txt" not in captured.err
+        assert "beta.txt" not in captured.err
+        assert "gamma.txt" not in captured.err
+
+        result = run_git_command(["diff", "--cached", "--name-only"])
+        assert result.stdout.splitlines() == ["alpha.txt", "beta.txt", "gamma.txt"]
+
+    def test_include_files_can_restage_manually_unstaged_file_in_same_session(self, multi_file_repo, capsys):
+        """Manual unstaging should not leave file-scoped include blocked in-session."""
+        command_start()
+        capsys.readouterr()
+
+        args = parse_command_line(["include", "--files", "*.txt"], quiet=True)
+        assert args is not None
+        args.func(args)
+        capsys.readouterr()
+
+        subprocess.run(
+            ["git", "restore", "--staged", "gamma.txt"],
+            check=True,
+            cwd=multi_file_repo,
+            capture_output=True,
+        )
+
+        args = parse_command_line(["show", "--files", "gamma.txt"], quiet=True)
+        assert args is not None
+        args.func(args)
+        captured = capsys.readouterr()
+        assert "gamma2-modified" in captured.out
+        assert "gamma4-new" in captured.out
+
+        args = parse_command_line(["include", "--files", "gamma.txt"], quiet=True)
+        assert args is not None
+        args.func(args)
+
+        captured = capsys.readouterr()
+        assert "✓ Staged 1 hunk from gamma.txt" in captured.err
+
+        result = run_git_command(["diff", "--cached", "--name-only"])
+        assert result.stdout.splitlines() == ["alpha.txt", "beta.txt", "gamma.txt"]
+
+    def test_show_files_selection_can_feed_discard(self, multi_file_repo):
+        """Show --files should leave the final displayed file selected for discard."""
+        command_start()
+
+        args = parse_command_line(["show", "--files", "*.txt"], quiet=True)
+        assert args is not None
+        args.func(args)
+
+        command_discard(quiet=True)
+
+        assert (multi_file_repo / "alpha.txt").read_text() == "alpha1\nalpha2-modified\nalpha3\nalpha4-new\n"
+        assert (multi_file_repo / "beta.txt").read_text() == "beta1\nbeta2-modified\nbeta3\nbeta4-new\n"
+        assert (multi_file_repo / "gamma.txt").read_text() == "gamma1\ngamma2\ngamma3\n"
+
+    def test_show_files_selection_can_feed_skip(self, multi_file_repo):
+        """Show --files should leave the final displayed file selected for skip."""
+        command_start()
+
+        args = parse_command_line(["show", "--files", "*.txt"], quiet=True)
+        assert args is not None
+        args.func(args)
+
+        command_skip(quiet=True)
+        command_include(quiet=True)
+
+        result = run_git_command(["diff", "--cached", "--name-only"])
+        assert result.stdout.strip() == "alpha.txt"
 
 
 class TestIncludeToBatchWithFile:
@@ -692,6 +1215,367 @@ class TestExplicitFilePath:
         assert "beta4-new" in working_diff
         assert "beta2-modified" in working_diff
         assert "beta2-edited" in working_diff
+
+    def test_include_line_with_explicit_path_does_not_reuse_other_file_ids(self, multi_file_repo):
+        """Explicit file-scoped include --line should not inherit IDs from another file view."""
+        command_start()
+        command_show(file="alpha.txt")
+
+        command_include_line("3", file="alpha.txt")
+        command_include_line("1,2", file="beta.txt")
+
+        line_changes_after = load_line_changes_from_state()
+        assert line_changes_after.path == "alpha.txt"
+
+        staged_content = run_git_command(["show", ":beta.txt"]).stdout
+        assert staged_content == "beta1\nbeta2-modified\nbeta3\n"
+
+        working_diff = run_git_command(["diff", "beta.txt"]).stdout
+        assert "beta4-new" in working_diff
+        assert "beta2-modified" in working_diff
+
+    def test_include_line_with_explicit_path_preserves_gap_context_between_regions(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line should keep unchanged lines between added regions."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        base_lines = [
+            'from dataclasses import dataclass\n',
+            'from importlib import resources\n',
+            'from pathlib import Path\n',
+            'from typing import Protocol\n',
+            'import sys\n',
+            '\n',
+            '@dataclass(frozen=True)\n',
+            'class AssetGroup:\n',
+            '    source_segments: tuple[str, ...]\n',
+            '    target_segments: tuple[str, ...]\n',
+            '    display_name_singular: str\n',
+            '    display_name_plural: str\n',
+            '    required_entry: str\n',
+            '\n',
+        ]
+        base_lines.extend(f"filler{i}\n" for i in range(1, 33))
+        base_lines.extend([
+            'ASSET_GROUPS: dict[str, AssetGroup] = {\n',
+            '    "claude-skills": AssetGroup(\n',
+            '        source_segments=("assets", "claude-skills"),\n',
+            '        target_segments=(".claude", "skills"),\n',
+            '        display_name_singular="Claude skill",\n',
+            '        display_name_plural="Claude skills",\n',
+            '        required_entry="SKILL.md",\n',
+            '    ),\n',
+            '}\n',
+        ])
+        file_path = repo / "assets_module.py"
+        file_path.write_text("".join(base_lines))
+        subprocess.run(["git", "add", "assets_module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        rewritten = base_lines[:]
+        rewritten.insert(3, "import subprocess\n")
+        rewritten.insert(8, "from .patterns import resolve_gitignore_style_patterns\n")
+
+        helper_insert_at = 12
+        helper_lines = [
+            '\n',
+            '@dataclass(frozen=True)\n',
+            'class CompanionAsset:\n',
+            '    source_segments: tuple[str, ...]\n',
+            '    target_segments: tuple[str, ...]\n',
+            '    display_name: str\n',
+        ]
+        for offset, line in enumerate(helper_lines):
+            rewritten.insert(helper_insert_at + offset, line)
+
+        asset_insert_at = len(rewritten) - 1
+        codex_lines = [
+            '    "codex-skills": AssetGroup(\n',
+            '        source_segments=("assets", "codex-skills"),\n',
+            '        target_segments=(".agents", "skills"),\n',
+            '        display_name_singular="Codex skill",\n',
+            '        display_name_plural="Codex skills",\n',
+            '        required_entry="SKILL.md",\n',
+            '        companion_assets=(\n',
+            '            CompanionAsset(\n',
+            '                source_segments=("assets", "codex-skills", "config", "config.toml"),\n',
+            '                target_segments=(".codex", "config.toml"),\n',
+            '                display_name="Codex config",\n',
+            '            ),\n',
+            '        ),\n',
+            '    ),\n',
+        ]
+        for offset, line in enumerate(codex_lines):
+            rewritten.insert(asset_insert_at + offset, line)
+
+        file_path.write_text("".join(rewritten))
+
+        command_start()
+
+        def ids_for_texts(*texts: str) -> str:
+            line_changes = render_unstaged_file_as_single_hunk("assets_module.py")
+            assert line_changes is not None
+            selected_ids = [
+                str(line.id)
+                for line in line_changes.lines
+                if line.id is not None and line.text in texts
+            ]
+            assert len(selected_ids) == len(texts)
+            return ",".join(selected_ids)
+
+        helper_ids = ids_for_texts(
+            "import subprocess",
+            "from .patterns import resolve_gitignore_style_patterns",
+            "@dataclass(frozen=True)",
+            "class CompanionAsset:",
+            "    source_segments: tuple[str, ...]",
+            "    target_segments: tuple[str, ...]",
+            "    display_name: str",
+        )
+        command_include_line(helper_ids, file="assets_module.py")
+
+        remaining_line_changes = render_unstaged_file_as_single_hunk("assets_module.py")
+        assert remaining_line_changes is not None
+        codex_ids = ",".join(
+            str(line.id)
+            for line in remaining_line_changes.lines
+            if line.id is not None
+        )
+        command_include_line(codex_ids, file="assets_module.py")
+
+        staged_content = run_git_command(["show", ":assets_module.py"]).stdout
+        assert "@dataclass(frozen=True)" in staged_content
+        assert 'class CompanionAsset:' in staged_content
+        assert (
+            '        required_entry="SKILL.md",\n'
+            '    ),\n'
+            '    "codex-skills": AssetGroup(\n'
+        ) in staged_content
+
+    def test_include_line_as_with_explicit_path_preserves_gap_context_between_regions(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line --as should replace the selected region only."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 41)]
+        file_path = repo / "multi.txt"
+        file_path.write_text("".join(lines))
+        subprocess.run(["git", "add", "multi.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        rewritten = lines[:]
+        rewritten[5] = "first working\n"
+        rewritten[20] = "middle working\n"
+        rewritten[35] = "last working\n"
+        file_path.write_text("".join(rewritten))
+
+        command_start()
+
+        line_changes = render_unstaged_file_as_single_hunk("multi.txt")
+        assert line_changes is not None
+        middle_ids = ",".join(
+            str(line.id)
+            for line in line_changes.lines
+            if line.id is not None and line.text in {"line21", "middle working"}
+        )
+        assert middle_ids == "3,4"
+
+        command_include_line_as(middle_ids, "middle staged", file="multi.txt")
+
+        staged_content = run_git_command(["show", ":multi.txt"]).stdout
+        expected = lines[:]
+        expected[20] = "middle staged\n"
+        assert staged_content == "".join(expected)
+
+        working_diff = run_git_command(["diff", "multi.txt"]).stdout
+        assert "-line6" in working_diff
+        assert "+first working" in working_diff
+        assert "-middle staged" in working_diff
+        assert "+middle working" in working_diff
+        assert "-line36" in working_diff
+        assert "+last working" in working_diff
+
+    def test_include_line_as_with_explicit_path_trims_matching_edge_anchors(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line --as should accept unchanged edge anchors."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        file_path = repo / "module.py"
+        file_path.write_text("keep1\nkeep2\nold\nkeep4\n")
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        file_path.write_text("keep1\nkeep2\nnew\nkeep4\n")
+
+        command_start()
+        command_include_line_as("1-2", "keep1\nkeep2\nstaged\nkeep4\n", file="module.py")
+
+        staged_content = run_git_command(["show", ":module.py"]).stdout
+        assert staged_content == "keep1\nkeep2\nstaged\nkeep4\n"
+
+    def test_include_line_as_with_explicit_path_no_anchor_keeps_edge_anchors(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line --as --no-anchor should preserve duplicate anchors."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        file_path = repo / "module.py"
+        file_path.write_text("keep1\nkeep2\nold\nkeep4\n")
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        file_path.write_text("keep1\nkeep2\nnew\nkeep4\n")
+
+        command_start()
+        command_include_line_as(
+            "1-2",
+            "keep1\nkeep2\nstaged\nkeep4\n",
+            file="module.py",
+            no_anchor=True,
+        )
+
+        staged_content = run_git_command(["show", ":module.py"]).stdout
+        assert staged_content == "keep1\nkeep2\nkeep1\nkeep2\nstaged\nkeep4\nkeep4\n"
+
+    def test_include_file_as_with_explicit_path_stages_full_file_text(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --as should stage the full replacement file text."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        file_path = repo / "module.py"
+        file_path.write_text("keep1\nkeep2\nold\nkeep4\n")
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        file_path.write_text("keep1\nkeep2\nnew\nkeep4\n")
+
+        command_start()
+        command_include_file_as("keep1\nkeep2\nstaged\nkeep4\n", file="module.py")
+
+        staged_content = run_git_command(["show", ":module.py"]).stdout
+        assert staged_content == "keep1\nkeep2\nstaged\nkeep4\n"
+        assert file_path.read_text() == "keep1\nkeep2\nnew\nkeep4\n"
+
+    def test_include_line_with_explicit_path_rejects_partial_replacement_range(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line should refuse a partial replacement range."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        file_path = repo / "module.py"
+        file_path.write_text("keep\nold value\n")
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        file_path.write_text("keep\nnew value 1\nnew value 2\nnew value 3\n")
+
+        command_start()
+
+        with pytest.raises(CommandError) as exc_info:
+            command_include_line("1-2", file="module.py")
+
+        assert (
+            str(exc_info.value)
+            == "Contiguous line selections cannot split one replacement. "
+            "Select --lines 1-4 instead, pick individual "
+            "lines one at a time, or use --as."
+        )
+
+        result = run_git_command(["diff", "--cached", "--name-only"])
+        assert result.stdout == ""
+
+    def test_include_line_with_explicit_path_rejects_partial_later_structural_run(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line should reject a partial later run."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        file_path = repo / "module.py"
+        file_path.write_text(
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            "def omega():\n"
+            "    return 2\n"
+        )
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        file_path.write_text(
+            "def alpha():\n"
+            "    value = 1\n"
+            "    return value\n"
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            "def omega():\n"
+            "    return 2\n"
+            "\n"
+            "def helper():\n"
+            "    if True:\n"
+            "        return 3\n"
+        )
+
+        command_start()
+
+        line_changes = render_unstaged_file_as_single_hunk("module.py")
+        assert line_changes is not None
+        helper_def_id = next(
+            line.id
+            for line in line_changes.lines
+            if line.id is not None and line.text == "def helper():"
+        )
+        first_changed_id = min(line_changes.changed_line_ids())
+        selection = f"{first_changed_id}-{helper_def_id}"
+
+        with pytest.raises(CommandError) as exc_info:
+            command_include_line(selection, file="module.py")
+
+        assert (
+            str(exc_info.value)
+            == "Contiguous file-scoped selections cannot span multiple structural change runs "
+            "while selecting only part of one run. Select one run at a time, fully include "
+            "each spanned run, or use --as."
+        )
+
+        result = run_git_command(["diff", "--cached", "--name-only"])
+        assert result.stdout == ""
 
     def test_discard_file_with_explicit_path(self, multi_file_repo):
         """Discard --file PATH should discard all hunks from specified file."""

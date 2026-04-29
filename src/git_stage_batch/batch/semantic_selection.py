@@ -277,6 +277,9 @@ def _build_temporary_ownership_for_selected_hunk(
             pairing_modes.add("addition")
             for line in additions:
                 if line.id in selected_display_ids:
+                    anchor = previous_source_line()
+                    if anchor is not None:
+                        claimed_source_lines.add(anchor)
                     source_lines.append(
                         _line_content_from_snapshot(
                             hunk_source_lines,
@@ -334,8 +337,14 @@ def _build_temporary_ownership_for_selected_hunk(
     run: list[LineEntry] = []
     for line in line_changes.lines:
         if line.kind == " ":
+            is_gap_line = (
+                line.old_line_number is None
+                and line.new_line_number is None
+            )
             flush_run(run)
             run = []
+            if is_gap_line:
+                continue
             copy_remaining_baseline_until(max(old_pointer, (line.old_line_number or 1) - 1))
             if old_pointer < len(hunk_base_lines):
                 source_lines.append(hunk_base_lines[old_pointer])

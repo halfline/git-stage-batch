@@ -91,3 +91,13 @@ def test_resolve_gitignore_style_patterns_supports_escaped_negation_marker():
     )
 
     assert resolved == ["!literal"]
+
+
+def test_resolve_gitignore_style_patterns_returns_empty_list_for_no_matches():
+    """Unmatched patterns should return an empty list instead of raising."""
+    resolved = resolve_gitignore_style_patterns(
+        ["foo.py", "bar.txt"],
+        ["*.md"],
+    )
+
+    assert resolved == []

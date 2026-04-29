@@ -55,6 +55,20 @@ from .include import (
 )
 
 
+def _load_explicit_file_selection(file_path: str):
+    """Return the active file-scoped view for an explicit discard target."""
+    reuse_selected_file_view = (
+        read_selected_change_kind() == SelectedChangeKind.FILE
+        and get_selected_change_file_path() == file_path
+    )
+    if reuse_selected_file_view:
+        line_changes = load_line_changes_from_state()
+    else:
+        line_changes = cache_unstaged_file_as_single_hunk(file_path)
+
+    if line_changes is None:
+        exit_with_error(_("No changes in file '{file}'.").format(file=file_path))
+    return line_changes
 def command_discard(*, quiet: bool = False) -> None:
     """Discard the selected hunk or binary file from the working tree."""
 
@@ -267,6 +281,42 @@ def command_discard_file(file: str) -> None:
         advance_to_and_show_next_change()
 
 
+def command_discard_file_as(replacement_text: str, file: str | None = None) -> None:
+    """Replace one live file-scoped working-tree file with explicit text."""
+    require_git_repository()
+    require_session_started()
+    ensure_state_directory_exists()
+
+    operation_parts = ["discard", "--as", replacement_text]
+    if file is not None:
+        operation_parts.extend(["--file", file])
+
+    with undo_checkpoint(" ".join(operation_parts)):
+        preserve_selected_state = False
+        saved_selected_state = None
+
+        if file is None or file == "":
+            target_file = get_selected_change_file_path()
+            if target_file is None:
+                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+        else:
+            target_file = file
+            preserve_selected_state = True
+            saved_selected_state = _snapshot_selected_change_state()
+
+        line_changes = _load_explicit_file_selection(target_file)
+        snapshot_file_if_untracked(target_file)
+
+        absolute_path = get_git_repository_root_path() / target_file
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+        absolute_path.write_text(replacement_text, encoding="utf-8", errors="surrogateescape")
+
+        if preserve_selected_state:
+            _restore_selected_change_state(saved_selected_state)
+        else:
+            recalculate_selected_hunk_for_file(line_changes.path)
+
+    print(_("✓ Discarded file as replacement: {file}").format(file=target_file), file=sys.stderr)
 def command_discard_line(line_id_specification: str, file: str | None = None) -> None:
     """Discard only the specified lines from the working tree.
 

@@ -24,38 +24,65 @@ def build_target_index_content_with_selected_lines(
     """
     base_lines = base_text.splitlines()
     output_lines: list[str] = []
+    pending_additions: list[str] = []
 
-    base_pointer = line_changes.header.old_start - 1  # 0-based
+    base_pointer = 0
     base_line_count = len(base_lines)
 
     def push_output(line: str) -> None:
         output_lines.append(line)
 
-    # Copy lines before the hunk
-    for index in range(0, min(base_pointer, base_line_count)):
-        push_output(base_lines[index])
+    def flush_pending_additions() -> None:
+        if pending_additions:
+            output_lines.extend(pending_additions)
+            pending_additions.clear()
 
-    # Process hunk lines
+    def base_line_matches(text: str) -> bool:
+        return base_pointer < base_line_count and base_lines[base_pointer] == text
+
+    def copy_unchanged_lines_before(old_line_number: int | None) -> None:
+        nonlocal base_pointer
+        if old_line_number is None:
+            return
+        target_index = max(old_line_number - 1, 0)
+        while base_pointer < min(target_index, base_line_count):
+            push_output(base_lines[base_pointer])
+            base_pointer += 1
+
     for line_entry in line_changes.lines:
+        is_gap_line = (
+            line_entry.kind == " "
+            and line_entry.old_line_number is None
+            and line_entry.new_line_number is None
+        )
+        if is_gap_line:
+            flush_pending_additions()
+            continue
+
         if line_entry.kind == " ":
-            # Context line: always include
+            copy_unchanged_lines_before(line_entry.old_line_number)
+            flush_pending_additions()
             if base_pointer < base_line_count:
                 push_output(base_lines[base_pointer])
                 base_pointer += 1
         elif line_entry.kind == "-":
-            # Deletion: remove from base if included
-            if base_pointer < base_line_count:
-                if line_entry.id in include_ids:
-                    base_pointer += 1      # drop deletion target
-                else:
-                    push_output(base_lines[base_pointer])
-                    base_pointer += 1
-        elif line_entry.kind == "+":
-            # Addition: insert if included
+            copy_unchanged_lines_before(line_entry.old_line_number)
+            flush_pending_additions()
             if line_entry.id in include_ids:
-                push_output(line_entry.text)
+                if base_line_matches(line_entry.text):
+                    base_pointer += 1
+            elif base_line_matches(line_entry.text):
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+        elif line_entry.kind == "+":
+            if base_line_matches(line_entry.text):
+                flush_pending_additions()
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+            elif line_entry.id in include_ids:
+                pending_additions.append(line_entry.text)
 
-    # Copy remaining lines after the hunk
+    flush_pending_additions()
     while 0 <= base_pointer < base_line_count:
         push_output(base_lines[base_pointer])
         base_pointer += 1
@@ -72,32 +99,65 @@ def build_target_index_content_bytes_with_selected_lines(
     """Bytes-preserving variant of build_target_index_content_with_selected_lines."""
     base_lines = base_content.splitlines()
     output_lines: list[bytes] = []
+    pending_additions: list[bytes] = []
 
-    base_pointer = line_changes.header.old_start - 1
+    base_pointer = 0
     base_line_count = len(base_lines)
 
     def push_output(line: bytes) -> None:
         output_lines.append(line)
 
-    for index in range(0, min(base_pointer, base_line_count)):
-        push_output(base_lines[index])
+    def flush_pending_additions() -> None:
+        if pending_additions:
+            output_lines.extend(pending_additions)
+            pending_additions.clear()
+
+    def base_line_matches(text: bytes) -> bool:
+        return base_pointer < base_line_count and base_lines[base_pointer] == text
+
+    def copy_unchanged_lines_before(old_line_number: int | None) -> None:
+        nonlocal base_pointer
+        if old_line_number is None:
+            return
+        target_index = max(old_line_number - 1, 0)
+        while base_pointer < min(target_index, base_line_count):
+            push_output(base_lines[base_pointer])
+            base_pointer += 1
 
     for line_entry in line_changes.lines:
+        is_gap_line = (
+            line_entry.kind == " "
+            and line_entry.old_line_number is None
+            and line_entry.new_line_number is None
+        )
+        if is_gap_line:
+            flush_pending_additions()
+            continue
+
         if line_entry.kind == " ":
+            copy_unchanged_lines_before(line_entry.old_line_number)
+            flush_pending_additions()
             if base_pointer < base_line_count:
                 push_output(base_lines[base_pointer])
                 base_pointer += 1
         elif line_entry.kind == "-":
-            if base_pointer < base_line_count:
-                if line_entry.id in include_ids:
-                    base_pointer += 1
-                else:
-                    push_output(base_lines[base_pointer])
-                    base_pointer += 1
-        elif line_entry.kind == "+":
+            copy_unchanged_lines_before(line_entry.old_line_number)
+            flush_pending_additions()
             if line_entry.id in include_ids:
-                push_output(line_entry.text_bytes)
+                if base_line_matches(line_entry.text_bytes):
+                    base_pointer += 1
+            elif base_line_matches(line_entry.text_bytes):
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+        elif line_entry.kind == "+":
+            if base_line_matches(line_entry.text_bytes):
+                flush_pending_additions()
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+            elif line_entry.id in include_ids:
+                pending_additions.append(line_entry.text_bytes)
 
+    flush_pending_additions()
     while 0 <= base_pointer < base_line_count:
         push_output(base_lines[base_pointer])
         base_pointer += 1

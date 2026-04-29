@@ -622,6 +622,16 @@ def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
         return None
 
 
+def cache_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
+    """Cache the remaining unstaged changes for a file as a single hunk."""
+    try:
+        combined_line_changes = render_unstaged_file_as_single_hunk(file_path)
+        return _cache_combined_file_line_changes(file_path, combined_line_changes)
+    except subprocess.CalledProcessError:
+        # Git diff failed (e.g., no changes in file)
+        return None
+
+
 def _cache_combined_file_line_changes(
     file_path: str,
     combined_line_changes: Optional[LineLevelChange],
@@ -666,6 +676,16 @@ def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
         file_path,
         parse_unified_diff_streaming(
             stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])
+        ),
+    )
+
+
+def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
+    """Render the remaining unstaged changes for a file as a single hunk."""
+    return _build_combined_file_line_changes(
+        file_path,
+        parse_unified_diff_streaming(
+            stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "--", file_path])
         ),
     )
 
@@ -1020,8 +1040,22 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
     Args:
         file_path: Repository-relative path to recalculate hunk for
     """
+    selected_kind = read_selected_change_kind()
+
     # Clear processed IDs since old line numbers don't apply to fresh hunk
     write_line_ids_file(get_processed_include_ids_file_path(), set())
+    write_line_ids_file(get_processed_skip_ids_file_path(), set())
+
+    if selected_kind == SelectedChangeKind.FILE:
+        line_changes = cache_unstaged_file_as_single_hunk(file_path)
+        if line_changes is None:
+            clear_selected_change_state_files()
+            from ..commands.show import command_show
+            command_show()
+            return
+
+        print_line_level_changes(line_changes)
+        return
 
     # Load blocklist
     blocklist_content = read_text_file_contents(get_block_list_file_path())
@@ -1041,6 +1075,7 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
 
             write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
+            write_selected_change_kind(SelectedChangeKind.HUNK)
 
             line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
             write_text_file_contents(get_line_changes_json_file_path(),

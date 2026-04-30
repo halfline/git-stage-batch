@@ -18,6 +18,12 @@ run_command(
 subdir('src/git_stage_batch')
 subdir('po')
 
+install_subdir(
+  'assets',
+  install_dir: package_dir,
+  install_tag: 'python-runtime',
+)
+
 configure_file(
   input: 'scripts/git-stage-batch.in',
   output: 'git-stage-batch',

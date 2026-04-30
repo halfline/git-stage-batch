@@ -609,6 +609,83 @@ def test_parse_command_line_discard():
     assert callable(args.func)
 
 
+def test_parse_command_line_install_assets():
+    """Test parsing install-assets for Claude skills."""
+    args = parse_command_line(["install-assets", "claude-skills"], quiet=True)
+    assert args is not None
+    assert args.command == "install-assets"
+    assert args.asset_group == "claude-skills"
+    assert args.filters is None
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_install_assets_without_group():
+    """Test parsing install-assets with no asset group."""
+    args = parse_command_line(["install-assets"], quiet=True)
+    assert args is not None
+    assert args.command == "install-assets"
+    assert args.asset_group is None
+    assert args.filters is None
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_install_claude_agents():
+    """Test parsing install-assets for Claude agents."""
+    args = parse_command_line(["install-assets", "claude-agents"], quiet=True)
+    assert args is not None
+    assert args.command == "install-assets"
+    assert args.asset_group == "claude-agents"
+    assert args.filters is None
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_install_codex_assets():
+    """Test parsing install-assets for Codex skills."""
+    args = parse_command_line(["install-assets", "codex-skills"], quiet=True)
+    assert args is not None
+    assert args.command == "install-assets"
+    assert args.asset_group == "codex-skills"
+    assert args.filters is None
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_install_assets_with_filter():
+    """Test parsing install-assets with --filter."""
+    args = parse_command_line(
+        ["install-assets", "claude-skills", "--filter", "commit-unstaged-changes"],
+        quiet=True,
+    )
+    assert args is not None
+    assert args.asset_group == "claude-skills"
+    assert args.filters == ["commit-unstaged-changes"]
+
+
+def test_parse_command_line_install_assets_with_force():
+    """Test parsing install-assets with --force."""
+    args = parse_command_line(
+        ["install-assets", "claude-agents", "--force"],
+        quiet=True,
+    )
+    assert args is not None
+    assert args.asset_group == "claude-agents"
+    assert args.force is True
+
+
+def test_parse_command_line_install_codex_assets_with_filter():
+    """Test parsing install-assets for Codex skills with --filter."""
+    args = parse_command_line(
+        ["install-assets", "codex-skills", "--filter", "commit-unstaged-changes"],
+        quiet=True,
+    )
+    assert args is not None
+    assert args.asset_group == "codex-skills"
+    assert args.filters == ["commit-unstaged-changes"]
+
+
 def test_parse_command_line_discard_to_with_as():
     """Test parsing discard --to with replacement text."""
     args = parse_command_line(

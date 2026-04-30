@@ -75,6 +75,15 @@ class TestWheelContents:
             for f in files
         ), "Missing packaged man page asset"
 
+    def test_wheel_contains_claude_agent_asset(self, build_wheel):
+        """Test that wheel contains the bundled Claude agent asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/claude-agents/commit-message-drafter.md' in f
+            for f in files
+        ), "Missing bundled Claude agent asset"
     def test_wheel_contains_entry_point_script(self, build_wheel):
         """Test that wheel contains the executable entry point."""
         with zipfile.ZipFile(build_wheel, 'r') as whl:

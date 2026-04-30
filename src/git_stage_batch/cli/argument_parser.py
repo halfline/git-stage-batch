@@ -1028,6 +1028,36 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_sift.set_defaults(func=lambda args: commands.command_sift_batch(args.from_batch, args.to_batch))
 
+    parser_install_assets = subparsers.add_parser(
+        "install-assets",
+        help=_("Install bundled assistant assets into the repository"),
+    )
+    parser_install_assets.add_argument(
+        "asset_group",
+        choices=["claude-agents", "claude-skills", "codex-skills"],
+        nargs="?",
+        help=_("Bundled asset group to install"),
+    )
+    parser_install_assets.add_argument(
+        "--filter",
+        dest="filters",
+        metavar="PATTERN",
+        nargs="+",
+        help=_("Install only bundled assets whose names match one or more gitignore-style PATTERNs"),
+    )
+    parser_install_assets.add_argument(
+        "--force",
+        action="store_true",
+        help=_("Overwrite an existing installed asset"),
+    )
+    parser_install_assets.set_defaults(
+        func=lambda args: commands.command_install_assets(
+            args.asset_group,
+            args.filters,
+            force=args.force,
+        )
+    )
+
     parser_complete_files = subparsers.add_parser(
         "__complete-files",
         help=argparse.SUPPRESS,

@@ -14,6 +14,7 @@ from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.paths import (
+    get_abort_head_file_path,
     get_block_list_file_path,
     get_blocked_files_file_path,
     get_context_lines,
@@ -22,7 +23,6 @@ from ..utils.paths import (
     get_discarded_hunks_file_path,
     get_included_hunks_file_path,
     get_skipped_hunks_jsonl_file_path,
-    get_state_directory_path,
 )
 
 
@@ -62,9 +62,9 @@ def command_status(*, porcelain: bool = False) -> None:
     """
     require_git_repository()
 
-    # Check if session is active
-    state_dir = get_state_directory_path()
-    if not state_dir.exists():
+    # Only treat an active abort marker as a live session. The state directory
+    # can persist after cleanup because batch metadata is intentionally kept.
+    if not get_abort_head_file_path().exists():
         if porcelain:
             print(json.dumps({"session_active": False}))
         else:

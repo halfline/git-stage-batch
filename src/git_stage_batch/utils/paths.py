@@ -17,6 +17,15 @@ def get_state_directory_path() -> Path:
     return get_git_repository_root_path() / ".git" / "git-stage-batch"
 
 
+def get_session_lock_file_path() -> Path:
+    """Get the path to the session lock file.
+
+    Returns:
+        Path to session lock file
+    """
+    return get_state_directory_path() / "session.lock"
+
+
 def ensure_state_directory_exists() -> None:
     """Create the state directory if it doesn't exist."""
     get_state_directory_path().mkdir(parents=True, exist_ok=True)

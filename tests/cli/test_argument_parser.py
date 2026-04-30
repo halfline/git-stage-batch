@@ -1,5 +1,6 @@
 """Tests for CLI argument parsing."""
 
+import io
 import os
 from unittest.mock import Mock, call
 
@@ -7,6 +8,11 @@ import pytest
 
 from git_stage_batch.cli import argument_parser
 from git_stage_batch.cli.argument_parser import parse_command_line
+
+
+def _stdin_with_bytes(data: bytes) -> io.TextIOWrapper:
+    """Build stdin carrying exact bytes for `--as-stdin` tests."""
+    return io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="surrogateescape")
 
 
 def test_build_manpath_with_existing_environment(monkeypatch):
@@ -297,6 +303,58 @@ def test_parse_command_line_include_with_file_and_as():
     assert callable(args.func)
 
 
+def test_parse_command_line_include_with_file_and_as_dispatches_file_replacement(monkeypatch):
+    """Include --file --as without --line should dispatch file replacement staging."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_include_file_as", mock_command)
+
+    args = parse_command_line(
+        ["include", "--file", "path.txt", "--as", "replacement"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("replacement", file="path.txt")
+
+
+def test_parse_command_line_include_with_file_and_as_stdin_dispatches_file_replacement(monkeypatch):
+    """Include --file --as-stdin should preserve trailing newlines."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_include_file_as", mock_command)
+    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
+
+    args = parse_command_line(
+        ["include", "--file", "path.txt", "--as-stdin"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("replacement\n", file="path.txt")
+
+
+def test_parse_command_line_include_with_line_range_and_as_stdin_dispatches_line_replacement(monkeypatch):
+    """Include --line range --as-stdin should forward exact replacement text."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_include_line_as", mock_command)
+    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
+
+    args = parse_command_line(
+        ["include", "--file", "path.txt", "--line", "2-3", "--as-stdin"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "2-3",
+        "replacement one\nreplacement two\n",
+        file="path.txt",
+        no_anchor=False,
+    )
+
+
 def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(monkeypatch):
     """Include --file --line should dispatch to file-scoped line staging."""
     mock_command = Mock()
@@ -314,8 +372,12 @@ def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(mon
 
 def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     """Include should dispatch once per file resolved from --files."""
-    mock_command = Mock()
+    mock_command = Mock(return_value=1)
     monkeypatch.setattr(argument_parser.commands, "command_include_file", mock_command)
+    mock_advance_to_next_change = Mock()
+    monkeypatch.setattr(argument_parser, "advance_to_next_change", mock_advance_to_next_change)
+    mock_show_selected_change = Mock()
+    monkeypatch.setattr(argument_parser, "show_selected_change", mock_show_selected_change)
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "dir/bar.py", "baz.txt"])
 
     args = parse_command_line(["include", "--files", "*.py"], quiet=True)
@@ -323,7 +385,12 @@ def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     assert args is not None
     assert args.file_patterns == ["*.py"]
     args.func(args)
-    assert mock_command.call_args_list == [call("foo.py"), call("dir/bar.py")]
+    assert mock_command.call_args_list == [
+        call("foo.py", quiet=True, advance=False),
+        call("dir/bar.py", quiet=True, advance=False),
+    ]
+    mock_advance_to_next_change.assert_called_once_with()
+    mock_show_selected_change.assert_called_once_with()
 
 
 def test_parse_command_line_include_from_with_as():
@@ -338,6 +405,48 @@ def test_parse_command_line_include_from_with_as():
     assert args.as_text == "replacement"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_include_rejects_as_and_as_stdin_together(monkeypatch):
+    """Include should reject mixing literal and stdin replacement sources."""
+    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
+    args = parse_command_line(
+        ["include", "--file", "path.txt", "--as", "replacement", "--as-stdin"],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(argument_parser.CommandError, match="Cannot use `--as` and `--as-stdin` together"):
+        args.func(args)
+
+
+def test_parse_command_line_include_with_no_anchor_dispatches_line_replacement(monkeypatch):
+    """Include --line --as --no-anchor should forward the no-anchor flag."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_include_line_as", mock_command)
+
+    args = parse_command_line(
+        ["include", "--file", "path.txt", "--line", "2-3", "--as", "replacement", "--no-anchor"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("2-3", "replacement", file="path.txt", no_anchor=True)
+
+
+def test_parse_command_line_include_rejects_no_anchor_without_line_as():
+    """Include should reject --no-anchor outside live include --line --as."""
+    args = parse_command_line(
+        ["include", "--file", "path.txt", "--no-anchor"],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(argument_parser.CommandError, match="`--no-anchor` requires `include --line --as`"):
+        args.func(args)
+
+
 def test_parse_command_line_skip():
     """Test parsing skip command."""
     args = parse_command_line(["skip"], quiet=True)
@@ -392,15 +501,24 @@ def test_parse_command_line_skip_with_files():
 
 def test_parse_command_line_skip_files_dispatches_per_file(monkeypatch):
     """Skip should dispatch once per file resolved from --files."""
-    mock_command = Mock()
+    mock_command = Mock(side_effect=[1, 2])
     monkeypatch.setattr(argument_parser.commands, "command_skip_file", mock_command)
+    mock_advance_to_next_change = Mock()
+    monkeypatch.setattr(argument_parser, "advance_to_next_change", mock_advance_to_next_change)
+    mock_show_selected_change = Mock()
+    monkeypatch.setattr(argument_parser, "show_selected_change", mock_show_selected_change)
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["skip", "--files", "*.py"], quiet=True)
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [call("foo.py"), call("bar.py")]
+    assert mock_command.call_args_list == [
+        call("foo.py", quiet=True, advance=False),
+        call("bar.py", quiet=True, advance=False),
+    ]
+    mock_advance_to_next_change.assert_called_once_with()
+    mock_show_selected_change.assert_called_once_with()
 
 
 def test_parse_command_line_skip_rejects_lines_with_multiple_files(monkeypatch):
@@ -471,6 +589,17 @@ def test_parse_command_line_show_with_files_only_last_result_is_selectable(monke
     ]
 
 
+def test_parse_command_line_show_with_files_raises_command_error_for_no_matches(monkeypatch):
+    """Show should report unmatched --files patterns without a traceback."""
+    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py"])
+
+    args = parse_command_line(["show", "--files", "*.md"], quiet=True)
+
+    assert args is not None
+    with pytest.raises(argument_parser.CommandError, match="No changed files matched: \\*.md"):
+        args.func(args)
+
+
 def test_parse_command_line_discard():
     """Test parsing discard command."""
     args = parse_command_line(["discard"], quiet=True)
@@ -507,6 +636,105 @@ def test_parse_command_line_discard_to_with_file_and_as():
     assert args.as_text == "replacement"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_discard_with_file_and_as_dispatches_file_replacement(monkeypatch):
+    """Discard --file --as without --line should dispatch file replacement."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_discard_file_as", mock_command)
+
+    args = parse_command_line(
+        ["discard", "--file", "path.txt", "--as", "replacement"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("replacement", file="path.txt")
+
+
+def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_replacement(monkeypatch):
+    """Discard --file --as-stdin should preserve trailing newlines."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_discard_file_as", mock_command)
+    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
+
+    args = parse_command_line(
+        ["discard", "--file", "path.txt", "--as-stdin"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("replacement\n", file="path.txt")
+
+
+def test_parse_command_line_discard_to_line_range_and_as_stdin_dispatches_replacement(monkeypatch):
+    """Discard --to --line range --as-stdin should forward exact replacement text."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_discard_line_as_to_batch", mock_command)
+    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
+
+    args = parse_command_line(
+        ["discard", "--to", "batch", "--file", "path.txt", "--line", "2-3", "--as-stdin"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "batch",
+        "2-3",
+        "replacement one\nreplacement two\n",
+        file="path.txt",
+        no_anchor=False,
+    )
+
+
+def test_parse_command_line_discard_rejects_as_and_as_stdin_together(monkeypatch):
+    """Discard should reject mixing literal and stdin replacement sources."""
+    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
+    args = parse_command_line(
+        ["discard", "--file", "path.txt", "--as", "replacement", "--as-stdin"],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(argument_parser.CommandError, match="Cannot use `--as` and `--as-stdin` together"):
+        args.func(args)
+
+
+def test_parse_command_line_discard_with_no_anchor_dispatches_line_replacement(monkeypatch):
+    """Discard --to --line --as --no-anchor should forward the no-anchor flag."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_discard_line_as_to_batch", mock_command)
+
+    args = parse_command_line(
+        ["discard", "--to", "batch", "--file", "path.txt", "--line", "2-3", "--as", "replacement", "--no-anchor"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "batch",
+        "2-3",
+        "replacement",
+        file="path.txt",
+        no_anchor=True,
+    )
+
+
+def test_parse_command_line_discard_rejects_no_anchor_without_to_line_as():
+    """Discard should reject --no-anchor outside discard --to --line --as."""
+    args = parse_command_line(
+        ["discard", "--file", "path.txt", "--no-anchor"],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(argument_parser.CommandError, match="`--no-anchor` requires `discard --to --line --as`"):
+        args.func(args)
 
 
 def test_parse_command_line_discard_with_file_and_line_dispatches_file_scope(monkeypatch):

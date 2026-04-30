@@ -24,38 +24,65 @@ def build_target_index_content_with_selected_lines(
     """
     base_lines = base_text.splitlines()
     output_lines: list[str] = []
+    pending_additions: list[str] = []
 
-    base_pointer = line_changes.header.old_start - 1  # 0-based
+    base_pointer = 0
     base_line_count = len(base_lines)
 
     def push_output(line: str) -> None:
         output_lines.append(line)
 
-    # Copy lines before the hunk
-    for index in range(0, min(base_pointer, base_line_count)):
-        push_output(base_lines[index])
+    def flush_pending_additions() -> None:
+        if pending_additions:
+            output_lines.extend(pending_additions)
+            pending_additions.clear()
 
-    # Process hunk lines
+    def base_line_matches(text: str) -> bool:
+        return base_pointer < base_line_count and base_lines[base_pointer] == text
+
+    def copy_unchanged_lines_before(old_line_number: int | None) -> None:
+        nonlocal base_pointer
+        if old_line_number is None:
+            return
+        target_index = max(old_line_number - 1, 0)
+        while base_pointer < min(target_index, base_line_count):
+            push_output(base_lines[base_pointer])
+            base_pointer += 1
+
     for line_entry in line_changes.lines:
+        is_gap_line = (
+            line_entry.kind == " "
+            and line_entry.old_line_number is None
+            and line_entry.new_line_number is None
+        )
+        if is_gap_line:
+            flush_pending_additions()
+            continue
+
         if line_entry.kind == " ":
-            # Context line: always include
+            copy_unchanged_lines_before(line_entry.old_line_number)
+            flush_pending_additions()
             if base_pointer < base_line_count:
                 push_output(base_lines[base_pointer])
                 base_pointer += 1
         elif line_entry.kind == "-":
-            # Deletion: remove from base if included
-            if base_pointer < base_line_count:
-                if line_entry.id in include_ids:
-                    base_pointer += 1      # drop deletion target
-                else:
-                    push_output(base_lines[base_pointer])
-                    base_pointer += 1
-        elif line_entry.kind == "+":
-            # Addition: insert if included
+            copy_unchanged_lines_before(line_entry.old_line_number)
+            flush_pending_additions()
             if line_entry.id in include_ids:
-                push_output(line_entry.text)
+                if base_line_matches(line_entry.text):
+                    base_pointer += 1
+            elif base_line_matches(line_entry.text):
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+        elif line_entry.kind == "+":
+            if base_line_matches(line_entry.text):
+                flush_pending_additions()
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+            elif line_entry.id in include_ids:
+                pending_additions.append(line_entry.text)
 
-    # Copy remaining lines after the hunk
+    flush_pending_additions()
     while 0 <= base_pointer < base_line_count:
         push_output(base_lines[base_pointer])
         base_pointer += 1
@@ -72,32 +99,65 @@ def build_target_index_content_bytes_with_selected_lines(
     """Bytes-preserving variant of build_target_index_content_with_selected_lines."""
     base_lines = base_content.splitlines()
     output_lines: list[bytes] = []
+    pending_additions: list[bytes] = []
 
-    base_pointer = line_changes.header.old_start - 1
+    base_pointer = 0
     base_line_count = len(base_lines)
 
     def push_output(line: bytes) -> None:
         output_lines.append(line)
 
-    for index in range(0, min(base_pointer, base_line_count)):
-        push_output(base_lines[index])
+    def flush_pending_additions() -> None:
+        if pending_additions:
+            output_lines.extend(pending_additions)
+            pending_additions.clear()
+
+    def base_line_matches(text: bytes) -> bool:
+        return base_pointer < base_line_count and base_lines[base_pointer] == text
+
+    def copy_unchanged_lines_before(old_line_number: int | None) -> None:
+        nonlocal base_pointer
+        if old_line_number is None:
+            return
+        target_index = max(old_line_number - 1, 0)
+        while base_pointer < min(target_index, base_line_count):
+            push_output(base_lines[base_pointer])
+            base_pointer += 1
 
     for line_entry in line_changes.lines:
+        is_gap_line = (
+            line_entry.kind == " "
+            and line_entry.old_line_number is None
+            and line_entry.new_line_number is None
+        )
+        if is_gap_line:
+            flush_pending_additions()
+            continue
+
         if line_entry.kind == " ":
+            copy_unchanged_lines_before(line_entry.old_line_number)
+            flush_pending_additions()
             if base_pointer < base_line_count:
                 push_output(base_lines[base_pointer])
                 base_pointer += 1
         elif line_entry.kind == "-":
-            if base_pointer < base_line_count:
-                if line_entry.id in include_ids:
-                    base_pointer += 1
-                else:
-                    push_output(base_lines[base_pointer])
-                    base_pointer += 1
-        elif line_entry.kind == "+":
+            copy_unchanged_lines_before(line_entry.old_line_number)
+            flush_pending_additions()
             if line_entry.id in include_ids:
-                push_output(line_entry.text_bytes)
+                if base_line_matches(line_entry.text_bytes):
+                    base_pointer += 1
+            elif base_line_matches(line_entry.text_bytes):
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+        elif line_entry.kind == "+":
+            if base_line_matches(line_entry.text_bytes):
+                flush_pending_additions()
+                push_output(base_lines[base_pointer])
+                base_pointer += 1
+            elif line_entry.id in include_ids:
+                pending_additions.append(line_entry.text_bytes)
 
+    flush_pending_additions()
     while 0 <= base_pointer < base_line_count:
         push_output(base_lines[base_pointer])
         base_pointer += 1
@@ -111,8 +171,37 @@ def build_target_index_content_bytes_with_replaced_lines(
     replace_ids: set[int],
     replacement_text: str,
     base_content: bytes,
+    *,
+    trim_unchanged_edge_anchors: bool = True,
 ) -> bytes:
-    """Build target index content by replacing one contiguous changed region."""
+    """Build target index content by replacing one contiguous selected span.
+
+    Unlike ordinary single-hunk views, file-scoped displays can concatenate
+    multiple real hunks and insert synthetic gap markers between them. This
+    implementation therefore replaces the underlying file span from the first
+    selected changed line to the last selected changed line, even when the
+    displayed selection crosses omitted gap markers.
+    """
+    def longest_prefix_context_match(
+        candidate_lines: list[bytes],
+        context_lines: list[bytes],
+    ) -> int:
+        max_count = min(len(candidate_lines), len(context_lines))
+        for count in range(max_count, 0, -1):
+            if candidate_lines[:count] == context_lines[-count:]:
+                return count
+        return 0
+
+    def longest_suffix_context_match(
+        candidate_lines: list[bytes],
+        context_lines: list[bytes],
+    ) -> int:
+        max_count = min(len(candidate_lines), len(context_lines))
+        for count in range(max_count, 0, -1):
+            if candidate_lines[-count:] == context_lines[:count]:
+                return count
+        return 0
+
     if not replace_ids:
         return base_content
 
@@ -128,48 +217,76 @@ def build_target_index_content_bytes_with_replaced_lines(
     base_lines = base_content.splitlines()
     replacement_bytes = replacement_text.encode("utf-8", errors="surrogateescape")
     replacement_lines = replacement_bytes.splitlines()
-    output_lines: list[bytes] = []
-
-    base_pointer = line_changes.header.old_start - 1
     base_line_count = len(base_lines)
-    inserted_replacement = False
+    selected_indices = [
+        index
+        for index, line in enumerate(line_changes.lines)
+        if line.id in replace_ids
+    ]
+    span_start_index = min(selected_indices)
+    span_end_index = max(selected_indices)
 
-    def push_output(line: bytes) -> None:
-        output_lines.append(line)
+    def find_next_old_line_number(start_index: int) -> int | None:
+        for line_entry in line_changes.lines[start_index:]:
+            if line_entry.old_line_number is not None:
+                return line_entry.old_line_number
+        return None
 
-    def push_replacement_once() -> None:
-        nonlocal inserted_replacement
-        if inserted_replacement:
-            return
-        output_lines.extend(replacement_lines)
-        inserted_replacement = True
+    first_selected_line = line_changes.lines[span_start_index]
+    if first_selected_line.old_line_number is not None:
+        replace_start = max(first_selected_line.old_line_number - 1, 0)
+    else:
+        next_old_line_number = find_next_old_line_number(span_start_index + 1)
+        replace_start = (
+            max(next_old_line_number - 1, 0)
+            if next_old_line_number is not None
+            else base_line_count
+        )
 
-    for index in range(0, min(base_pointer, base_line_count)):
-        push_output(base_lines[index])
+    replace_end = base_line_count
+    for line_entry in reversed(line_changes.lines[span_start_index:span_end_index + 1]):
+        if line_entry.old_line_number is not None:
+            replace_end = line_entry.old_line_number
+            break
+    else:
+        next_old_line_number = find_next_old_line_number(span_end_index + 1)
+        replace_end = (
+            max(next_old_line_number - 1, 0)
+            if next_old_line_number is not None
+            else base_line_count
+        )
 
-    for line_entry in line_changes.lines:
-        is_selected = line_entry.id in replace_ids if line_entry.id is not None else False
+    if trim_unchanged_edge_anchors:
+        before_context = base_lines[:replace_start]
+        after_context = base_lines[replace_end:]
 
-        if is_selected:
-            push_replacement_once()
-            if line_entry.kind in (" ", "-") and base_pointer < base_line_count:
-                base_pointer += 1
-            continue
+        prefix_trim = longest_prefix_context_match(replacement_lines, before_context)
+        if prefix_trim:
+            replacement_lines = replacement_lines[prefix_trim:]
 
-        if line_entry.kind == " ":
-            if base_pointer < base_line_count:
-                push_output(base_lines[base_pointer])
-                base_pointer += 1
-        elif line_entry.kind == "-":
-            if base_pointer < base_line_count:
-                push_output(base_lines[base_pointer])
-                base_pointer += 1
-        elif line_entry.kind == "+":
-            continue
+        suffix_trim = longest_suffix_context_match(replacement_lines, after_context)
+        if suffix_trim:
+            replacement_lines = replacement_lines[:-suffix_trim]
 
-    while 0 <= base_pointer < base_line_count:
-        push_output(base_lines[base_pointer])
-        base_pointer += 1
+        if longest_prefix_context_match(replacement_lines, before_context) >= 2:
+            raise ValueError(
+                "Replacement text still includes unchanged anchor lines before the selected span. "
+                "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
+                "or pass --no-anchor to keep the anchor text."
+            )
+
+        if longest_suffix_context_match(replacement_lines, after_context) >= 2:
+            raise ValueError(
+                "Replacement text still includes unchanged anchor lines after the selected span. "
+                "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
+                "or pass --no-anchor to keep the anchor text."
+            )
+
+    output_lines = (
+        base_lines[:replace_start]
+        + replacement_lines
+        + base_lines[replace_end:]
+    )
 
     trailing_newline = (
         replacement_text.endswith("\n")
@@ -200,43 +317,46 @@ def build_target_working_tree_content_with_discarded_lines(
     def push_output(line: str) -> None:
         output_lines.append(line)
 
+    def copy_unchanged_lines_before(new_line_number: int | None) -> None:
+        nonlocal working_pointer
+        if new_line_number is None:
+            return
+        target_index = max(new_line_number - 1, 0)
+        while working_pointer < min(target_index, working_line_count):
+            push_output(working_lines[working_pointer])
+            working_pointer += 1
+
     # Copy lines before the hunk
     for index in range(0, min(working_pointer, working_line_count)):
         push_output(working_lines[index])
 
     # Process hunk lines
     for line_entry in line_changes.lines:
+        is_gap_line = (
+            line_entry.kind == " "
+            and line_entry.old_line_number is None
+            and line_entry.new_line_number is None
+        )
+        if is_gap_line:
+            continue
+
         if line_entry.kind == " ":
-            # Context line: always include
+            copy_unchanged_lines_before(line_entry.new_line_number)
             if working_pointer < working_line_count:
                 push_output(working_lines[working_pointer])
                 working_pointer += 1
         elif line_entry.kind == "-":
-            # Deletion: reinsert if discarding
             if line_entry.id in discard_ids:
-                push_output(line_entry.text)   # reinsert deleted line
-            else:
-                # keep deletion as-is (no output, no pointer advance)
-                pass
+                push_output(line_entry.text)
         elif line_entry.kind == "+":
-            # Addition: remove if discarding
+            copy_unchanged_lines_before(line_entry.new_line_number)
             if working_pointer < working_line_count:
                 if line_entry.id in discard_ids:
-                    working_pointer += 1       # drop inserted line
+                    working_pointer += 1
                 else:
                     push_output(working_lines[working_pointer])
                     working_pointer += 1
-            else:
-                # addition beyond EOF
-                if line_entry.id in discard_ids:
-                    # nothing to drop
-                    pass
-                else:
-                    # addition kept would already be in file if beyond EOF was materialized;
-                    # nothing to emit here
-                    pass
 
-    # Copy remaining lines after the hunk
     while 0 <= working_pointer < working_line_count:
         push_output(working_lines[working_pointer])
         working_pointer += 1
@@ -259,11 +379,29 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
     def push_output(line: bytes) -> None:
         output_lines.append(line)
 
+    def copy_unchanged_lines_before(new_line_number: int | None) -> None:
+        nonlocal working_pointer
+        if new_line_number is None:
+            return
+        target_index = max(new_line_number - 1, 0)
+        while working_pointer < min(target_index, working_line_count):
+            push_output(working_lines[working_pointer])
+            working_pointer += 1
+
     for index in range(0, min(working_pointer, working_line_count)):
         push_output(working_lines[index])
 
     for line_entry in line_changes.lines:
+        is_gap_line = (
+            line_entry.kind == " "
+            and line_entry.old_line_number is None
+            and line_entry.new_line_number is None
+        )
+        if is_gap_line:
+            continue
+
         if line_entry.kind == " ":
+            copy_unchanged_lines_before(line_entry.new_line_number)
             if working_pointer < working_line_count:
                 push_output(working_lines[working_pointer])
                 working_pointer += 1
@@ -271,6 +409,7 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
             if line_entry.id in discard_ids:
                 push_output(line_entry.text_bytes)
         elif line_entry.kind == "+":
+            copy_unchanged_lines_before(line_entry.new_line_number)
             if working_pointer < working_line_count:
                 if line_entry.id in discard_ids:
                     working_pointer += 1
@@ -291,8 +430,30 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
     replace_ids: set[int],
     replacement_text: str,
     working_content: bytes,
+    *,
+    trim_unchanged_edge_anchors: bool = True,
 ) -> bytes:
-    """Build working tree content by replacing one contiguous changed region."""
+    """Build working tree content by replacing one contiguous selected span."""
+    def longest_prefix_context_match(
+        candidate_lines: list[bytes],
+        context_lines: list[bytes],
+    ) -> int:
+        max_count = min(len(candidate_lines), len(context_lines))
+        for count in range(max_count, 0, -1):
+            if candidate_lines[:count] == context_lines[-count:]:
+                return count
+        return 0
+
+    def longest_suffix_context_match(
+        candidate_lines: list[bytes],
+        context_lines: list[bytes],
+    ) -> int:
+        max_count = min(len(candidate_lines), len(context_lines))
+        for count in range(max_count, 0, -1):
+            if candidate_lines[-count:] == context_lines[:count]:
+                return count
+        return 0
+
     if not replace_ids:
         return working_content
 
@@ -306,50 +467,78 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
         raise ValueError("Replacement selection must be one contiguous line range")
 
     working_lines = working_content.splitlines()
-    output_lines: list[bytes] = []
-
-    working_pointer = line_changes.header.new_start - 1
     working_line_count = len(working_lines)
     replacement_bytes = replacement_text.encode("utf-8", errors="surrogateescape")
     replacement_lines = replacement_bytes.splitlines()
-    inserted_replacement = False
+    selected_indices = [
+        index
+        for index, line in enumerate(line_changes.lines)
+        if line.id in replace_ids
+    ]
+    span_start_index = min(selected_indices)
+    span_end_index = max(selected_indices)
 
-    def push_output(line: bytes) -> None:
-        output_lines.append(line)
+    def find_next_new_line_number(start_index: int) -> int | None:
+        for line_entry in line_changes.lines[start_index:]:
+            if line_entry.new_line_number is not None:
+                return line_entry.new_line_number
+        return None
 
-    def push_replacement_once() -> None:
-        nonlocal inserted_replacement
-        if inserted_replacement:
-            return
-        output_lines.extend(replacement_lines)
-        inserted_replacement = True
+    first_selected_line = line_changes.lines[span_start_index]
+    if first_selected_line.new_line_number is not None:
+        replace_start = max(first_selected_line.new_line_number - 1, 0)
+    else:
+        next_new_line_number = find_next_new_line_number(span_start_index + 1)
+        replace_start = (
+            max(next_new_line_number - 1, 0)
+            if next_new_line_number is not None
+            else working_line_count
+        )
 
-    for index in range(0, min(working_pointer, working_line_count)):
-        push_output(working_lines[index])
+    replace_end = working_line_count
+    for line_entry in reversed(line_changes.lines[span_start_index:span_end_index + 1]):
+        if line_entry.new_line_number is not None:
+            replace_end = line_entry.new_line_number
+            break
+    else:
+        next_new_line_number = find_next_new_line_number(span_end_index + 1)
+        replace_end = (
+            max(next_new_line_number - 1, 0)
+            if next_new_line_number is not None
+            else working_line_count
+        )
 
-    for line_entry in line_changes.lines:
-        is_selected = line_entry.id in replace_ids if line_entry.id is not None else False
+    if trim_unchanged_edge_anchors:
+        before_context = working_lines[:replace_start]
+        after_context = working_lines[replace_end:]
 
-        if is_selected:
-            push_replacement_once()
-            if line_entry.kind in (" ", "+") and working_pointer < working_line_count:
-                working_pointer += 1
-            continue
+        prefix_trim = longest_prefix_context_match(replacement_lines, before_context)
+        if prefix_trim:
+            replacement_lines = replacement_lines[prefix_trim:]
 
-        if line_entry.kind == " ":
-            if working_pointer < working_line_count:
-                push_output(working_lines[working_pointer])
-                working_pointer += 1
-        elif line_entry.kind == "-":
-            continue
-        elif line_entry.kind == "+":
-            if working_pointer < working_line_count:
-                push_output(working_lines[working_pointer])
-                working_pointer += 1
+        suffix_trim = longest_suffix_context_match(replacement_lines, after_context)
+        if suffix_trim:
+            replacement_lines = replacement_lines[:-suffix_trim]
 
-    while 0 <= working_pointer < working_line_count:
-        push_output(working_lines[working_pointer])
-        working_pointer += 1
+        if longest_prefix_context_match(replacement_lines, before_context) >= 2:
+            raise ValueError(
+                "Replacement text still includes unchanged anchor lines before the selected span. "
+                "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
+                "or pass --no-anchor to keep the anchor text."
+            )
+
+        if longest_suffix_context_match(replacement_lines, after_context) >= 2:
+            raise ValueError(
+                "Replacement text still includes unchanged anchor lines after the selected span. "
+                "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
+                "or pass --no-anchor to keep the anchor text."
+            )
+
+    output_lines = (
+        working_lines[:replace_start]
+        + replacement_lines
+        + working_lines[replace_end:]
+    )
 
     trailing_newline = (
         replacement_text.endswith("\n")

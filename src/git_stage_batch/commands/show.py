@@ -11,10 +11,12 @@ from ..core.diff_parser import write_snapshots_for_selected_file_path
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.models import BinaryFileChange
 from ..data.hunk_tracking import (
+    SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
     cache_file_as_single_hunk,
     get_selected_change_file_path,
     render_file_as_single_hunk,
+    write_selected_change_kind,
 )
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.session import require_session_started
@@ -94,6 +96,7 @@ def command_show(file: str | None = None, *, porcelain: bool = False, selectable
             # Cache selected hunk bytes exactly; display text is derived from parsed lines.
             write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
             write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
+            write_selected_change_kind(SelectedChangeKind.HUNK)
 
             # Parse and cache line_changes for batch filtering
             line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)

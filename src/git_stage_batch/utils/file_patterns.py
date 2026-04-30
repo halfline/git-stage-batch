@@ -68,11 +68,18 @@ def resolve_gitignore_style_patterns(
         payload = b"".join(candidate.encode("utf-8") + b"\0" for candidate in normalized_candidates)
         result = subprocess.run(
             ["git", "check-ignore", "--no-index", "--stdin", "-z", "-v", "-n"],
-            check=True,
+            check=False,
             cwd=temp_root,
             input=payload,
             capture_output=True,
         )
+        if result.returncode not in (0, 1):
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                result.args,
+                output=result.stdout,
+                stderr=result.stderr,
+            )
 
     fields = result.stdout.split(b"\0")
     resolved_status: dict[str, bool] = {}

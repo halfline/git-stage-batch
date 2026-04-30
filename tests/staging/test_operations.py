@@ -6,8 +6,10 @@ import pytest
 
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 from git_stage_batch.staging.operations import (
+    build_target_index_content_bytes_with_selected_lines,
     build_target_index_content_bytes_with_replaced_lines,
     build_target_index_content_with_selected_lines,
+    build_target_working_tree_content_bytes_with_replaced_lines,
     build_target_working_tree_content_with_discarded_lines,
     update_index_with_blob_content,
 )
@@ -215,6 +217,165 @@ class TestBuildTargetIndexContent:
         # No changes should be applied
         assert result == "line1\nline2\n"
 
+    def test_include_combined_file_hunk_preserves_gaps_between_real_hunks(self):
+        """Combined file-scoped views should keep untouched lines between hunks."""
+        header = HunkHeader(1, 15, 1, 13)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"from old import a", text="from old import a"),
+            LineEntry(2, "+", None, 2, text_bytes=b"from new import a", text="from new import a"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"line3", text="line3"),
+            LineEntry(None, " ", 4, 4, text_bytes=b"line4", text="line4"),
+            LineEntry(None, " ", 5, 5, text_bytes=b"line5", text="line5"),
+            LineEntry(None, " ", 11, 11, text_bytes=b"line11", text="line11"),
+            LineEntry(None, " ", 12, 12, text_bytes=b"line12", text="line12"),
+            LineEntry(3, "-", 13, None, text_bytes=b"ownership = old_value", text="ownership = old_value"),
+            LineEntry(4, "-", 14, None, text_bytes=b"", text=""),
+            LineEntry(5, "+", None, 13, text_bytes=b"selected_lines = selected_lines", text="selected_lines = selected_lines"),
+            LineEntry(None, " ", 15, 14, text_bytes=b"if binary:", text="if binary:"),
+        ]
+        line_changes = LineLevelChange(path="test.py", header=header, lines=lines)
+        base_content = (
+            b"line1\n"
+            b"from old import a\n"
+            b"line3\n"
+            b"line4\n"
+            b"line5\n"
+            b"line6\n"
+            b"line7\n"
+            b"line8\n"
+            b"line9\n"
+            b"line10\n"
+            b"line11\n"
+            b"line12\n"
+            b"ownership = old_value\n"
+            b"\n"
+            b"if binary:\n"
+        )
+
+        result = build_target_index_content_bytes_with_selected_lines(
+            line_changes,
+            {1, 2, 3, 4, 5},
+            base_content,
+        )
+
+        assert result == (
+            b"line1\n"
+            b"from new import a\n"
+            b"line3\n"
+            b"line4\n"
+            b"line5\n"
+            b"line6\n"
+            b"line7\n"
+            b"line8\n"
+            b"line9\n"
+            b"line10\n"
+            b"line11\n"
+            b"line12\n"
+            b"selected_lines = selected_lines\n"
+            b"if binary:\n"
+        )
+
+    def test_include_combined_file_hunk_keeps_insertions_with_their_anchor(self):
+        """Combined file-scoped views should not move insertions to the file start."""
+        header = HunkHeader(10, 3, 10, 4)
+        lines = [
+            LineEntry(1, "+", None, 10, text_bytes=b"inserted", text="inserted"),
+            LineEntry(None, " ", 10, 11, text_bytes=b"line10", text="line10"),
+            LineEntry(None, " ", 11, 12, text_bytes=b"line11", text="line11"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = (
+            b"line1\n"
+            b"line2\n"
+            b"line3\n"
+            b"line4\n"
+            b"line5\n"
+            b"line6\n"
+            b"line7\n"
+            b"line8\n"
+            b"line9\n"
+            b"line10\n"
+            b"line11\n"
+            b"line12\n"
+        )
+
+        result = build_target_index_content_bytes_with_selected_lines(
+            line_changes,
+            {1},
+            base_content,
+        )
+
+        assert result == (
+            b"line1\n"
+            b"line2\n"
+            b"line3\n"
+            b"line4\n"
+            b"line5\n"
+            b"line6\n"
+            b"line7\n"
+            b"line8\n"
+            b"line9\n"
+            b"inserted\n"
+            b"line10\n"
+            b"line11\n"
+            b"line12\n"
+        )
+
+    def test_include_combined_file_hunk_ignores_gap_markers_between_regions(self):
+        """Synthetic gap markers should not consume real file content."""
+        header = HunkHeader(1, 15, 1, 15)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old-a", text="old-a"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new-a", text="new-a"),
+            LineEntry(
+                None,
+                " ",
+                None,
+                None,
+                text_bytes=b"... 7 more lines ...",
+                text="... 7 more lines ...",
+            ),
+            LineEntry(None, " ", 10, 10, text_bytes=b"line10", text="line10"),
+            LineEntry(3, "-", 11, None, text_bytes=b"old-b", text="old-b"),
+            LineEntry(4, "+", None, 11, text_bytes=b"new-b", text="new-b"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = (
+            b"line1\n"
+            b"old-a\n"
+            b"line3\n"
+            b"line4\n"
+            b"line5\n"
+            b"line6\n"
+            b"line7\n"
+            b"line8\n"
+            b"line9\n"
+            b"line10\n"
+            b"old-b\n"
+        )
+
+        result = build_target_index_content_bytes_with_selected_lines(
+            line_changes,
+            {1, 2, 3, 4},
+            base_content,
+        )
+
+        assert result == (
+            b"line1\n"
+            b"new-a\n"
+            b"line3\n"
+            b"line4\n"
+            b"line5\n"
+            b"line6\n"
+            b"line7\n"
+            b"line8\n"
+            b"line9\n"
+            b"line10\n"
+            b"new-b\n"
+        )
+
     def test_replace_selection_does_not_consume_trailing_additions(self):
         """Replacement staging should not absorb adjacent pure insertions."""
         header = HunkHeader(1, 2, 1, 4)
@@ -235,6 +396,202 @@ class TestBuildTargetIndexContent:
         )
 
         assert result == b"keep\nstaged value\n"
+
+    def test_replace_selection_honors_old_line_numbers_after_gap_markers(self):
+        """File-scoped replacement staging should stay anchored after omitted regions."""
+        header = HunkHeader(2, 12, 2, 12)
+        lines = [
+            LineEntry(None, " ", 2, 2, text_bytes=b"line2", text="line2"),
+            LineEntry(
+                None,
+                " ",
+                None,
+                None,
+                text_bytes=b"... 7 more lines ...",
+                text="... 7 more lines ...",
+            ),
+            LineEntry(1, "-", 10, None, text_bytes=b"line10", text="line10"),
+            LineEntry(2, "+", None, 10, text_bytes=b"working10", text="working10"),
+            LineEntry(None, " ", 11, 11, text_bytes=b"line11", text="line11"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"".join(f"line{i}\n".encode("utf-8") for i in range(1, 21))
+
+        result = build_target_index_content_bytes_with_replaced_lines(
+            line_changes,
+            {1, 2},
+            "staged10",
+            base_content,
+        )
+
+        assert result == (
+            b"line1\n"
+            b"line2\n"
+            b"line3\n"
+            b"line4\n"
+            b"line5\n"
+            b"line6\n"
+            b"line7\n"
+            b"line8\n"
+            b"line9\n"
+            b"staged10\n"
+            b"line11\n"
+            b"line12\n"
+            b"line13\n"
+            b"line14\n"
+            b"line15\n"
+            b"line16\n"
+            b"line17\n"
+            b"line18\n"
+            b"line19\n"
+            b"line20\n"
+        )
+
+    def test_replace_selection_spans_multiple_file_scoped_regions(self):
+        """File-scoped replacement staging should replace the full selected span."""
+        header = HunkHeader(5, 32, 5, 38)
+        lines = [
+            LineEntry(None, " ", 5, 5, text_bytes=b"line5", text="line5"),
+            LineEntry(1, "+", None, 6, text_bytes=b"change-one-a", text="change-one-a"),
+            LineEntry(2, "+", None, 7, text_bytes=b"change-one-b", text="change-one-b"),
+            LineEntry(None, " ", 6, 8, text_bytes=b"line6", text="line6"),
+            LineEntry(
+                None,
+                " ",
+                None,
+                None,
+                text_bytes=b"... 14 more lines ...",
+                text="... 14 more lines ...",
+            ),
+            LineEntry(None, " ", 20, 22, text_bytes=b"line20", text="line20"),
+            LineEntry(3, "+", None, 23, text_bytes=b"change-two-a", text="change-two-a"),
+            LineEntry(4, "+", None, 24, text_bytes=b"change-two-b", text="change-two-b"),
+            LineEntry(None, " ", 21, 25, text_bytes=b"line21", text="line21"),
+            LineEntry(
+                None,
+                " ",
+                None,
+                None,
+                text_bytes=b"... 14 more lines ...",
+                text="... 14 more lines ...",
+            ),
+            LineEntry(None, " ", 35, 39, text_bytes=b"line35", text="line35"),
+            LineEntry(5, "+", None, 40, text_bytes=b"change-three-a", text="change-three-a"),
+            LineEntry(6, "+", None, 41, text_bytes=b"change-three-b", text="change-three-b"),
+            LineEntry(None, " ", 36, 42, text_bytes=b"line36", text="line36"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"".join(f"line{i}\n".encode("utf-8") for i in range(1, 41))
+        replacement_text = "".join(
+            ["stage-one-a\n", "stage-one-b\n"]
+            + [f"line{i}\n" for i in range(6, 21)]
+            + ["stage-two-a\n", "stage-two-b\n"]
+            + [f"line{i}\n" for i in range(21, 36)]
+            + ["stage-three-a\n", "stage-three-b\n"]
+        )
+
+        result = build_target_index_content_bytes_with_replaced_lines(
+            line_changes,
+            {1, 2, 3, 4, 5, 6},
+            replacement_text,
+            base_content,
+        )
+
+        assert result == (
+            b"".join(f"line{i}\n".encode("utf-8") for i in range(1, 6))
+            + replacement_text.encode("utf-8")
+            + b"".join(f"line{i}\n".encode("utf-8") for i in range(36, 41))
+        )
+
+    def test_replace_selection_trims_matching_edge_anchors(self):
+        """Replacement staging should ignore unchanged edge anchors by default."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep1", text="keep1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"keep3", text="keep3"),
+            LineEntry(None, " ", 4, 4, text_bytes=b"keep4", text="keep4"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"keep1\nold\nkeep3\nkeep4\n"
+
+        result = build_target_index_content_bytes_with_replaced_lines(
+            line_changes,
+            {1, 2},
+            "keep1\nstaged\nkeep3\nkeep4\n",
+            base_content,
+        )
+
+        assert result == b"keep1\nstaged\nkeep3\nkeep4\n"
+
+    def test_replace_selection_keeps_matching_edge_anchors_with_no_anchor(self):
+        """Replacement staging should preserve duplicated anchors when requested."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep1", text="keep1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"keep3", text="keep3"),
+            LineEntry(None, " ", 4, 4, text_bytes=b"keep4", text="keep4"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"keep1\nold\nkeep3\nkeep4\n"
+
+        result = build_target_index_content_bytes_with_replaced_lines(
+            line_changes,
+            {1, 2},
+            "keep1\nstaged\nkeep3\nkeep4\n",
+            base_content,
+            trim_unchanged_edge_anchors=False,
+        )
+
+        assert result == b"keep1\nkeep1\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"
+
+    def test_working_tree_replace_selection_trims_matching_edge_anchors(self):
+        """Working-tree replacement should ignore unchanged edge anchors by default."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep1", text="keep1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"keep3", text="keep3"),
+            LineEntry(None, " ", 4, 4, text_bytes=b"keep4", text="keep4"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"keep1\nworking\nkeep3\nkeep4\n"
+
+        result = build_target_working_tree_content_bytes_with_replaced_lines(
+            line_changes,
+            {1, 2},
+            "keep1\nstaged\nkeep3\nkeep4\n",
+            working_content,
+        )
+
+        assert result == b"keep1\nstaged\nkeep3\nkeep4\n"
+
+    def test_working_tree_replace_selection_keeps_matching_edge_anchors_with_no_anchor(self):
+        """Working-tree replacement should preserve duplicated anchors when requested."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep1", text="keep1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"keep3", text="keep3"),
+            LineEntry(None, " ", 4, 4, text_bytes=b"keep4", text="keep4"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"keep1\nworking\nkeep3\nkeep4\n"
+
+        result = build_target_working_tree_content_bytes_with_replaced_lines(
+            line_changes,
+            {1, 2},
+            "keep1\nstaged\nkeep3\nkeep4\n",
+            working_content,
+            trim_unchanged_edge_anchors=False,
+        )
+
+        assert result == b"keep1\nkeep1\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"
 
 
 class TestBuildTargetWorkingTreeContent:

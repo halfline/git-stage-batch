@@ -16,8 +16,9 @@ from .. import __version__
 from ..batch.validation import batch_exists
 from .. import commands
 from ..batch.query import read_batch_metadata
+from ..data.hunk_tracking import advance_to_next_change, show_selected_change
 from ..exceptions import CommandError
-from ..i18n import _
+from ..i18n import _, ngettext
 from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
 from .completion import command_complete_files
 
@@ -173,6 +174,88 @@ def _run_for_each_file(
     callback(file_arg)
 
 
+def _include_each_resolved_file(files: list[str]) -> None:
+    """Stage a multi-file live scope and report one aggregate summary."""
+    total_hunks = 0
+    staged_files: list[str] = []
+
+    for file_path in files:
+        staged_hunks = commands.command_include_file(
+            file_path,
+            quiet=True,
+            advance=False,
+        )
+        if staged_hunks > 0:
+            total_hunks += staged_hunks
+            staged_files.append(file_path)
+
+    if total_hunks == 0:
+        print(_("No hunks staged from matched files."), file=sys.stderr)
+        return
+
+    advance_to_next_change()
+
+    if len(staged_files) == 1:
+        file_summary = staged_files[0]
+    else:
+        file_summary = ngettext(
+            "{count} file",
+            "{count} files",
+            len(staged_files),
+        ).format(count=len(staged_files))
+
+    print(
+        ngettext(
+            "✓ Staged {count} hunk from {files}",
+            "✓ Staged {count} hunks from {files}",
+            total_hunks,
+        ).format(count=total_hunks, files=file_summary),
+        file=sys.stderr,
+    )
+    show_selected_change()
+
+
+def _skip_each_resolved_file(files: list[str]) -> None:
+    """Skip a multi-file live scope and report one aggregate summary."""
+    total_hunks = 0
+    skipped_files: list[str] = []
+
+    for file_path in files:
+        skipped_hunks = commands.command_skip_file(
+            file_path,
+            quiet=True,
+            advance=False,
+        )
+        if skipped_hunks > 0:
+            total_hunks += skipped_hunks
+            skipped_files.append(file_path)
+
+    if total_hunks == 0:
+        print(_("No hunks skipped from matched files."), file=sys.stderr)
+        return
+
+    advance_to_next_change()
+
+    if len(skipped_files) == 1:
+        file_summary = skipped_files[0]
+    else:
+        file_summary = ngettext(
+            "{count} file",
+            "{count} files",
+            len(skipped_files),
+        ).format(count=len(skipped_files))
+
+    print(
+        ngettext(
+            "✓ Skipped {count} hunk from {files}",
+            "✓ Skipped {count} hunks from {files}",
+            total_hunks,
+        ).format(count=total_hunks, files=file_summary),
+        file=sys.stderr,
+    )
+    show_selected_change()
+
+
 def _resolve_live_file_scope(
     file_arg: str | None,
     file_patterns: list[str] | None,
@@ -218,6 +301,15 @@ def _resolve_batch_file_scope(
     if len(resolved_files) == 1:
         return resolved_files[0]
     return resolved_files
+
+
+def _resolve_replacement_text(args: argparse.Namespace) -> str | None:
+    """Return replacement text from `--as` or exact stdin content."""
+    if getattr(args, "as_text", None) is not None and getattr(args, "as_stdin", False):
+        raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
+    if getattr(args, "as_stdin", False):
+        return sys.stdin.buffer.read().decode("utf-8", errors="surrogateescape")
+    return getattr(args, "as_text", None)
 
 
 def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Namespace | None:
@@ -461,34 +553,68 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "--as",
         dest="as_text",
         metavar="TEXT",
-        help=_("Replace selected lines with TEXT before staging them"),
+        help=_("Replace selected lines, or full file with --file, using TEXT before staging"),
+    )
+    parser_include.add_argument(
+        "--as-stdin",
+        dest="as_stdin",
+        action="store_true",
+        help=_("Read replacement text from standard input exactly, preserving trailing newlines"),
+    )
+    parser_include.add_argument(
+        "--no-anchor",
+        dest="no_anchor",
+        action="store_true",
+        help=_("Do not strip unchanged edge anchor lines from replacement text used with --as"),
     )
 
     def dispatch_include(args: argparse.Namespace) -> None:
+        replacement_text = _resolve_replacement_text(args)
         resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
         resolved_batch_scope = (
             _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
             if args.from_batch else None
         )
-        if args.as_text is not None:
+        if replacement_text is not None:
             if args.line_ids and args.from_batch and not args.to_batch:
+                if args.no_anchor:
+                    raise CommandError(_("`--no-anchor` only applies to live `include --line --as` operations."))
                 if isinstance(resolved_batch_scope, list):
                     raise CommandError(_("Cannot use --lines with multiple files."))
                 commands.command_include_from_batch(
                     args.from_batch,
                     args.line_ids,
                     file=resolved_batch_scope,
-                    replacement_text=args.as_text,
+                    replacement_text=replacement_text,
                 )
                 return
             if args.line_ids and not args.from_batch and not args.to_batch:
                 if isinstance(resolved_live_scope, list):
                     raise CommandError(_("Cannot use --lines with multiple files."))
-                commands.command_include_line_as(args.line_ids, args.as_text, file=resolved_live_scope)
+                commands.command_include_line_as(
+                    args.line_ids,
+                    replacement_text,
+                    file=resolved_live_scope,
+                    no_anchor=args.no_anchor,
+                )
+                return
+            if (
+                args.line_ids is None
+                and args.from_batch is None
+                and args.to_batch is None
+                and resolved_live_scope is not None
+            ):
+                if args.no_anchor:
+                    raise CommandError(_("`--no-anchor` requires `include --line --as`."))
+                if isinstance(resolved_live_scope, list):
+                    raise CommandError(_("Cannot use --as with multiple files."))
+                commands.command_include_file_as(replacement_text, file=resolved_live_scope)
                 return
             raise CommandError(
-                _("`include --as` requires `--line` and does not support `--to`.")
+                _("`include --as` requires `--file` or `--line` and does not support `--to`.")
             )
+        if args.no_anchor:
+            raise CommandError(_("`--no-anchor` requires `include --line --as`."))
         if args.from_batch:
             _run_for_each_file(
                 resolved_batch_scope,
@@ -506,7 +632,10 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 raise CommandError(_("Cannot use --lines with multiple files."))
             commands.command_include_line(args.line_ids, file=resolved_live_scope)
         elif resolved_live_scope is not None:
-            _run_for_each_file(resolved_live_scope, commands.command_include_file)
+            if isinstance(resolved_live_scope, list):
+                _include_each_resolved_file(resolved_live_scope)
+            else:
+                commands.command_include_file(resolved_live_scope)
         else:
             commands.command_include()
 
@@ -539,7 +668,10 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 raise CommandError(_("Cannot use --lines with multiple files."))
             commands.command_skip_line(args.line_ids)
         elif resolved_file_scope is not None:
-            _run_for_each_file(resolved_file_scope, commands.command_skip_file)
+            if isinstance(resolved_file_scope, list):
+                _skip_each_resolved_file(resolved_file_scope)
+            else:
+                commands.command_skip_file(resolved_file_scope)
         else:
             commands.command_skip()
 
@@ -581,29 +713,57 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "--as",
         dest="as_text",
         metavar="TEXT",
-        help=_("Replace selected lines with TEXT before saving them to batch"),
+        help=_("Replace selected lines, or full file with --file, using TEXT"),
+    )
+    parser_discard.add_argument(
+        "--as-stdin",
+        dest="as_stdin",
+        action="store_true",
+        help=_("Read replacement text from standard input exactly, preserving trailing newlines"),
+    )
+    parser_discard.add_argument(
+        "--no-anchor",
+        dest="no_anchor",
+        action="store_true",
+        help=_("Do not strip unchanged edge anchor lines from replacement text used with --as"),
     )
 
     def dispatch_discard(args: argparse.Namespace) -> None:
+        replacement_text = _resolve_replacement_text(args)
         resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
         resolved_batch_scope = (
             _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
             if args.from_batch else None
         )
-        if args.as_text is not None:
+        if replacement_text is not None:
             if args.to_batch and args.line_ids and not args.from_batch:
                 if isinstance(resolved_live_scope, list):
                     raise CommandError(_("Cannot use --lines with multiple files."))
                 commands.command_discard_line_as_to_batch(
                     args.to_batch,
                     args.line_ids,
-                    args.as_text,
+                    replacement_text,
                     file=resolved_live_scope,
+                    no_anchor=args.no_anchor,
                 )
                 return
+            if (
+                args.to_batch is None
+                and args.from_batch is None
+                and args.line_ids is None
+                and resolved_live_scope is not None
+            ):
+                if args.no_anchor:
+                    raise CommandError(_("`--no-anchor` requires `discard --to --line --as`."))
+                if isinstance(resolved_live_scope, list):
+                    raise CommandError(_("Cannot use --as with multiple files."))
+                commands.command_discard_file_as(replacement_text, file=resolved_live_scope)
+                return
             raise CommandError(
-                _("`discard --as` requires `--to` and `--line`.")
+                _("`discard --as` requires `--file`, or `--to` with `--line`.")
             )
+        if args.no_anchor:
+            raise CommandError(_("`--no-anchor` requires `discard --to --line --as`."))
         if args.from_batch:
             _run_for_each_file(
                 resolved_batch_scope,

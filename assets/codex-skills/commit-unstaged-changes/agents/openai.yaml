@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commit Unstaged Changes"
+  short_description: "Split unstaged edits into atomic commits"
+  default_prompt: "Turn the current unstaged working tree into one or more atomic commits with git-stage-batch."

@@ -3,7 +3,7 @@
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import get_iteration_count_file_path
-from git_stage_batch.utils.paths import ensure_state_directory_exists
+from git_stage_batch.utils.paths import ensure_state_directory_exists, get_state_directory_path
 
 import json
 import subprocess
@@ -210,6 +210,16 @@ class TestCommandStatus:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
         assert output == {"session_active": False}
+
+    def test_status_ignores_persistent_batch_state_without_session(self, temp_git_repo, capsys):
+        """Persistent batch metadata alone should not count as an active session."""
+        state_dir = get_state_directory_path()
+        (state_dir / "batches").mkdir(parents=True, exist_ok=True)
+
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "No batch staging session in progress" in captured.err
 
     def test_status_porcelain_with_session(self, temp_git_repo, capsys):
         """Test status --porcelain outputs JSON with session data."""

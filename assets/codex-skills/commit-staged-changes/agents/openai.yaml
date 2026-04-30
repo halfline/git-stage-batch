@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commit Staged Changes"
+  short_description: "Commit the current staged index"
+  default_prompt: "Inspect the current staged index, draft a compliant commit message, and create the commit without touching unstaged changes."

@@ -75,6 +75,85 @@ class TestWheelContents:
             for f in files
         ), "Missing packaged man page asset"
 
+    def test_wheel_contains_claude_skill_asset(self, build_wheel):
+        """Test that wheel contains the bundled Claude skill asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/claude-skills/commit-unstaged-changes/SKILL.md' in f
+            for f in files
+        ), "Missing bundled Claude skill asset"
+
+    def test_wheel_contains_claude_staged_skill_asset(self, build_wheel):
+        """Test that wheel contains the bundled staged Claude skill asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/claude-skills/commit-staged-changes/SKILL.md' in f
+            for f in files
+        ), "Missing bundled staged Claude skill asset"
+
+    def test_wheel_contains_claude_agent_asset(self, build_wheel):
+        """Test that wheel contains the bundled Claude agent asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/claude-agents/commit-message-drafter.md' in f
+            for f in files
+        ), "Missing bundled Claude agent asset"
+
+    def test_wheel_contains_codex_skill_asset(self, build_wheel):
+        """Test that wheel contains the bundled Codex skill asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/codex-skills/commit-unstaged-changes/SKILL.md' in f
+            for f in files
+        ), "Missing bundled Codex skill asset"
+
+    def test_wheel_contains_codex_drafter_internal_asset(self, build_wheel):
+        """Test that wheel contains the bundled internal Codex drafter asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/codex-skills/internal/commit-message-drafter.md' in f
+            for f in files
+        ), "Missing bundled internal Codex drafter asset"
+
+    def test_wheel_contains_codex_staged_skill_asset(self, build_wheel):
+        """Test that wheel contains the bundled staged Codex skill asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/codex-skills/commit-staged-changes/SKILL.md' in f
+            for f in files
+        ), "Missing bundled staged Codex skill asset"
+
+    def test_wheel_contains_codex_staged_openai_yaml_asset(self, build_wheel):
+        """Test that wheel contains the staged Codex UI metadata asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/codex-skills/commit-staged-changes/agents/openai.yaml' in f
+            for f in files
+        ), "Missing bundled staged Codex UI metadata asset"
+
+    def test_wheel_contains_codex_config_asset(self, build_wheel):
+        """Test that wheel contains the bundled Codex config asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/codex-skills/config/config.toml' in f
+            for f in files
+        ), "Missing bundled Codex config asset"
     def test_wheel_contains_entry_point_script(self, build_wheel):
         """Test that wheel contains the executable entry point."""
         with zipfile.ZipFile(build_wheel, 'r') as whl:

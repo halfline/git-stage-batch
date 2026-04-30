@@ -1,0 +1,2 @@
+# Allow bundled repo-local Codex skills to stage changes and write git metadata.
+sandbox_mode = "workspace-write"

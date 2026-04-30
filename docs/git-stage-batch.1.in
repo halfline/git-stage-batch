@@ -284,6 +284,42 @@ Output in machine-readable JSON format for script integration.
 The JSON includes: candidate (hash, full_hash, subject, author, date,
 relative_date), iteration number, and boundary.
 .RE
+.SS Assistant Assets
+.TP
+.B install-assets [\fBclaude-agents\fR|\fBclaude-skills\fR|\fBcodex-skills\fR] \fR[\fB\-\-filter\fR \fIPATTERN\fR...] [\fB\-\-force\fR]
+Install bundled assistant assets into the current repository.
+.RS
+.IP \(bu 2
+\fBclaude-agents\fR installs into \fB.claude/agents/\fR
+.IP \(bu 2
+\fBclaude-skills\fR installs into \fB.claude/skills/\fR
+.RS
+.IP \(bu 2
+required bundled Claude agents for those skills are installed too
+.RE
+.IP \(bu 2
+\fBcodex-skills\fR installs into \fB.agents/skills/\fR
+.TP
+.B GROUP
+Optionally restrict installation to one bundled asset group.
+.TP
+.B \-\-filter \fIPATTERN\fR...
+Install only bundled assets whose entry names match one or more
+gitignore-style patterns. When omitted, all bundled assets from the selected
+group are installed, or all bundled assets from every group if no group is
+provided.
+.TP
+.B \-\-force
+Overwrite an existing installed skill directory.
+.PP
+Bundled assistant assets currently include the Claude agent
+\fBcommit-message-drafter\fR plus the Claude skills
+\fBcommit-staged-changes\fR and \fBcommit-unstaged-changes\fR, and the Codex
+skills \fBcommit-staged-changes\fR and \fBcommit-unstaged-changes\fR.
+.PP
+Installing \fBcodex-skills\fR also writes the shared internal drafter brief at
+\fB.agents/internal/commit-message-drafter.md\fR.
+.RE
 .SH ADVANCED FEATURES
 .SS Batch Operations
 Batches are named collections of accumulated changes that can be staged or

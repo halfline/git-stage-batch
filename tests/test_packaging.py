@@ -75,6 +75,15 @@ class TestWheelContents:
             for f in files
         ), "Missing packaged man page asset"
 
+    def test_wheel_contains_claude_skill_asset(self, build_wheel):
+        """Test that wheel contains the bundled Claude skill asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/claude-skills/commit-unstaged-changes/SKILL.md' in f
+            for f in files
+        ), "Missing bundled Claude skill asset"
     def test_wheel_contains_claude_staged_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled staged Claude skill asset."""
         with zipfile.ZipFile(build_wheel, 'r') as whl:

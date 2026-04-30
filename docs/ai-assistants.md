@@ -13,6 +13,21 @@ AI coding assistants often make multiple changes across many files. git-stage-ba
 
 ## Claude Code
 
+If `git-stage-batch` is available in your environment, you can install the
+bundled Claude commit skills into the current repository:
+
+```bash
+git-stage-batch install-assets claude-skills --filter 'commit-*'
+```
+
+Omit `--filter` to install all bundled Claude skills.
+Use `--force` to replace an existing repo-local copy.
+
+The bundled Claude skills currently include:
+
+- `commit-staged-changes` for turning the current staged index into one commit
+- `commit-unstaged-changes` for splitting unstaged work into one or more commits
+
 Create or update `CLAUDE.md` in your repository root:
 
 ```markdown
@@ -110,6 +125,32 @@ This commit solves the discoverability problem.
 This commit improves discoverability through the man page by...
 ```
 ```
+
+## Codex
+
+If `git-stage-batch` is available in your environment, you can install the
+bundled Codex commit skills into the current repository:
+
+```bash
+git-stage-batch install-assets codex-skills --filter 'commit-*'
+```
+
+Omit `--filter` to install all bundled Codex skills.
+Use `--force` to replace an existing repo-local copy.
+
+This writes the skills into `.agents/skills/` and installs
+`.codex/config.toml` with `sandbox_mode = "workspace-write"` so trusted
+project config can grant the skills write access in local Codex sessions.
+Codex scans the skills automatically from the repository root.
+
+The bundled Codex skills currently include:
+
+- `commit-staged-changes` for turning the current staged index into one commit
+- `commit-unstaged-changes` for splitting unstaged work into one or more commits
+
+Installing `codex-skills` also writes a shared internal drafter brief to
+`.agents/internal/commit-message-drafter.md` for those skills to use when
+they spawn a fresh-context subagent.
 
 ## Cursor
 

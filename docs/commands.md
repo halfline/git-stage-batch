@@ -639,6 +639,48 @@ Useful when a hunk contains changes to multiple unrelated areas. You can get sep
 
 ---
 
+## Assistant Assets
+
+### `install-assets [{claude-agents|claude-skills|codex-skills}] [--filter PATTERN...] [--force]`
+
+Install bundled assistant assets into the current repository.
+
+```bash
+❯ git-stage-batch install-assets
+❯ git-stage-batch install-assets claude-skills
+```
+
+This writes bundled assistant assets into the repository root so the target
+assistant can discover them automatically.
+
+- `claude-agents` installs into `.claude/agents/`
+- `claude-skills` installs into `.claude/skills/`
+  - required bundled Claude agents for those skills are installed too
+- `codex-skills` installs into `.agents/skills/` and `.codex/config.toml`
+
+**Install matching assets only:**
+```bash
+❯ git-stage-batch install-assets --filter 'commit-*'
+❯ git-stage-batch install-assets claude-agents --filter 'commit-*'
+❯ git-stage-batch install-assets claude-skills --filter 'commit-*'
+❯ git-stage-batch install-assets codex-skills --filter 'commit-*' 'squash-*'
+```
+
+**Options:**
+- `GROUP`: Optionally restrict installation to one bundled asset group
+- `--filter PATTERN...`: Install only bundled assets whose entry names match one or more gitignore-style patterns
+  - When omitted, installs every bundled asset in the selected group, or in every group if no group is provided
+- `--force`: Overwrite an existing installed asset
+  - For `codex-skills`, this also replaces the bundled repo-local Codex config
+
+Bundled assets currently include the Claude agent
+`commit-message-drafter` plus the Claude skills
+`commit-staged-changes` and `commit-unstaged-changes`, and the Codex skills
+`commit-staged-changes` and `commit-unstaged-changes`.
+
+Installing `codex-skills` also writes the shared internal drafter brief at
+`.agents/internal/commit-message-drafter.md`.
+
 ---
 
 ## Batch Operations

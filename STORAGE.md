@@ -334,6 +334,7 @@ Example:
       "batch_source_commit": "def456...",
       "claimed_lines": ["10-12"],
       "deletions": [],
+      "replacement_units": [],
       "mode": "100644"
     }
   }
@@ -349,6 +350,8 @@ model used to reconstruct and validate a batch:
 * `batch_source_commit` defines the coordinate space for ownership.
 * `claimed_lines` define source lines that must be present.
 * `deletions` define anchored absence constraints.
+* `replacement_units` optionally links claimed ranges to deletion indexes for
+  explicit replacement atomicity.
 * `mode` defines the file mode for realized content.
 
 ### Limitations
@@ -445,6 +448,7 @@ information:
       "source_path": "sources/src/main.py",
       "claimed_lines": ["10-12"],
       "deletions": [],
+      "replacement_units": [],
       "mode": "100644"
     }
   }

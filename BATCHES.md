@@ -176,6 +176,7 @@ Per text file:
 - `batch_source_commit`
 - `claimed_lines`
 - `deletions`
+- `replacement_units`
 - `mode`
 
 Per binary file:
@@ -186,6 +187,9 @@ Per binary file:
 - `mode`
 
 `deletions` are serialized as anchored blobs, not inline text.
+`replacement_units` is optional and records explicit coupling between claimed
+source ranges and deletion indexes so replacement atomicity does not need to be
+rediscovered from display adjacency.
 
 ---
 
@@ -234,7 +238,7 @@ snapshot even if the user keeps editing.
 With the session model in place, ownership can be stated precisely.
 Ownership is defined in `src/git_stage_batch/batch/ownership.py`.
 
-`BatchOwnership` has two parts:
+`BatchOwnership` has three persistent fields:
 
 - `claimed_lines`
   Source-space line ranges like `["3-7", "10"]`
@@ -242,6 +246,11 @@ Ownership is defined in `src/git_stage_batch/batch/ownership.py`.
   `DeletionClaim(anchor_line, content_lines)` records that a specific baseline
   sequence must be absent after a given source line, or at start-of-file if the
   anchor is `None`
+- `replacement_units`
+  Optional metadata linking claimed line ranges to entries in `deletions` when
+  the capture path knows they form one replacement. These persisted units are
+  selected atomically as a whole; display-adjacency grouping is only the fallback
+  for ownership without explicit replacement metadata.
 
 This distinction is central:
 

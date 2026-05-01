@@ -449,6 +449,7 @@ class OwnershipUnit:
         display_line_ids: Display line IDs that map to this unit (from reconstructed display)
         is_atomic: If True, partial removal is not allowed
         atomic_reason: Explanation for why unit is atomic (for debugging/errors)
+        preserves_replacement_unit: True when this unit came from persisted replacement metadata
     """
     kind: OwnershipUnitKind
     claimed_source_lines: set[int]
@@ -456,6 +457,7 @@ class OwnershipUnit:
     display_line_ids: set[int]
     is_atomic: bool = False
     atomic_reason: str | None = None
+    preserves_replacement_unit: bool = False
 
 
 def build_ownership_units_from_display(
@@ -519,19 +521,45 @@ def build_ownership_units_from_display_lines(
     rendering.  It preserves the same grouping rules as
     build_ownership_units_from_display() without rebuilding the display model.
     """
-    units = []
+    units, consumed_claimed_lines, consumed_deletion_indices = (
+        _build_explicit_replacement_units_from_display_lines(
+            ownership,
+            display_lines,
+        )
+    )
     i = 0
 
     while i < len(display_lines):
         line = display_lines[i]
+        if _display_line_is_consumed(
+            line,
+            consumed_claimed_lines,
+            consumed_deletion_indices,
+        ):
+            i += 1
+            continue
 
         if line["type"] == "deletion":
             # Collect consecutive deletion block
-            deletion_run = _collect_display_run(display_lines, i, "deletion")
+            deletion_run = _collect_display_run(
+                display_lines,
+                i,
+                "deletion",
+                consumed_claimed_lines,
+                consumed_deletion_indices,
+            )
             i = deletion_run["next_index"]
 
             # Check if immediately followed by claimed line (display adjacency)
-            if i < len(display_lines) and display_lines[i]["type"] == "claimed":
+            if (
+                i < len(display_lines)
+                and display_lines[i]["type"] == "claimed"
+                and not _display_line_is_consumed(
+                    display_lines[i],
+                    consumed_claimed_lines,
+                    consumed_deletion_indices,
+                )
+            ):
                 # Collect single claimed line (to preserve fine-grained reset)
                 claimed_display_id = display_lines[i]["id"]
                 claimed_source_line = display_lines[i]["source_line"]
@@ -561,9 +589,23 @@ def build_ownership_units_from_display_lines(
             i += 1
 
             # Check if immediately followed by deletion block (display adjacency)
-            if i < len(display_lines) and display_lines[i]["type"] == "deletion":
+            if (
+                i < len(display_lines)
+                and display_lines[i]["type"] == "deletion"
+                and not _display_line_is_consumed(
+                    display_lines[i],
+                    consumed_claimed_lines,
+                    consumed_deletion_indices,
+                )
+            ):
                 # Collect consecutive deletion block
-                deletion_run = _collect_display_run(display_lines, i, "deletion")
+                deletion_run = _collect_display_run(
+                    display_lines,
+                    i,
+                    "deletion",
+                    consumed_claimed_lines,
+                    consumed_deletion_indices,
+                )
                 i = deletion_run["next_index"]
 
                 # Replacement unit: claimed line adjacent to deletion block
@@ -591,10 +633,96 @@ def build_ownership_units_from_display_lines(
             # Unknown type - skip
             i += 1
 
-    return units
+    return sorted(units, key=_ownership_unit_display_order_key)
 
 
-def _collect_display_run(display_lines: list, start_index: int, expected_type: str) -> dict:
+def _ownership_unit_display_order_key(unit: OwnershipUnit) -> int:
+    """Return the first visible display line covered by a semantic unit."""
+    if not unit.display_line_ids:
+        return 10**12
+    return min(unit.display_line_ids)
+
+
+def _build_explicit_replacement_units_from_display_lines(
+    ownership: BatchOwnership,
+    display_lines: list[dict],
+) -> tuple[list[OwnershipUnit], set[int], set[int]]:
+    """Build units from persisted replacement metadata."""
+    units: list[OwnershipUnit] = []
+    consumed_claimed_lines: set[int] = set()
+    consumed_deletion_indices: set[int] = set()
+
+    replacement_units = _normalize_replacement_units(
+        ownership.replacement_units,
+        deletion_count=len(ownership.deletions),
+    )
+    if not replacement_units:
+        return units, consumed_claimed_lines, consumed_deletion_indices
+
+    for replacement_unit in replacement_units:
+        claimed_source_lines = _parse_claimed_ranges(replacement_unit.claimed_lines)
+        deletion_indices = set(replacement_unit.deletion_indices)
+        claimed_display_ids: set[int] = set()
+        deletion_display_ids: set[int] = set()
+
+        for display_line in display_lines:
+            display_id = display_line.get("id")
+            if display_id is None:
+                continue
+
+            if (
+                display_line["type"] == "claimed"
+                and display_line["source_line"] in claimed_source_lines
+            ):
+                claimed_display_ids.add(display_id)
+            elif (
+                display_line["type"] == "deletion"
+                and display_line["deletion_index"] in deletion_indices
+            ):
+                deletion_display_ids.add(display_id)
+
+        if not claimed_display_ids or not deletion_display_ids:
+            continue
+
+        deletion_claims = [
+            ownership.deletions[index]
+            for index in sorted(deletion_indices)
+        ]
+        units.append(OwnershipUnit(
+            kind=OwnershipUnitKind.REPLACEMENT,
+            claimed_source_lines=claimed_source_lines,
+            deletion_claims=deletion_claims,
+            display_line_ids=claimed_display_ids | deletion_display_ids,
+            is_atomic=True,
+            atomic_reason="explicit_replacement",
+            preserves_replacement_unit=True,
+        ))
+        consumed_claimed_lines.update(claimed_source_lines)
+        consumed_deletion_indices.update(deletion_indices)
+
+    return units, consumed_claimed_lines, consumed_deletion_indices
+
+
+def _display_line_is_consumed(
+    display_line: dict,
+    consumed_claimed_lines: set[int],
+    consumed_deletion_indices: set[int],
+) -> bool:
+    """Return True when a display line is already covered by an explicit unit."""
+    if display_line["type"] == "claimed":
+        return display_line["source_line"] in consumed_claimed_lines
+    if display_line["type"] == "deletion":
+        return display_line["deletion_index"] in consumed_deletion_indices
+    return False
+
+
+def _collect_display_run(
+    display_lines: list,
+    start_index: int,
+    expected_type: str,
+    consumed_claimed_lines: set[int],
+    consumed_deletion_indices: set[int],
+) -> dict:
     """Collect a consecutive run of display lines of the same type.
 
     Args:
@@ -614,7 +742,15 @@ def _collect_display_run(display_lines: list, start_index: int, expected_type: s
     deletion_indices = [] if expected_type == "deletion" else None
 
     i = start_index
-    while i < len(display_lines) and display_lines[i]["type"] == expected_type:
+    while (
+        i < len(display_lines)
+        and display_lines[i]["type"] == expected_type
+        and not _display_line_is_consumed(
+            display_lines[i],
+            consumed_claimed_lines,
+            consumed_deletion_indices,
+        )
+    ):
         display_ids.append(display_lines[i]["id"])
 
         if expected_type == "claimed":
@@ -815,20 +951,31 @@ def rebuild_ownership_from_units(units: list[OwnershipUnit]) -> BatchOwnership:
     """
     all_claimed_lines = set()
     all_deletions = []
+    replacement_units: list[ReplacementUnit] = []
 
     for unit in units:
         all_claimed_lines.update(unit.claimed_source_lines)
-        all_deletions.extend(unit.deletion_claims)
+        deletion_indices = []
+        for deletion in unit.deletion_claims:
+            all_deletions.append(deletion)
+            deletion_indices.append(len(all_deletions) - 1)
+        if unit.kind == OwnershipUnitKind.REPLACEMENT and unit.preserves_replacement_unit:
+            replacement_units.append(ReplacementUnit(
+                claimed_lines=_format_claimed_set(unit.claimed_source_lines),
+                deletion_indices=deletion_indices,
+            ))
 
     # Format claimed lines as range strings
-    if all_claimed_lines:
-        claimed_lines_formatted = [format_line_ids(sorted(all_claimed_lines))]
-    else:
-        claimed_lines_formatted = []
+    claimed_lines_formatted = _format_claimed_set(all_claimed_lines)
 
     return BatchOwnership(
         claimed_lines=claimed_lines_formatted,
-        deletions=all_deletions
+        deletions=all_deletions,
+        replacement_units=_normalize_replacement_units(
+            replacement_units,
+            deletion_count=len(all_deletions),
+        ),
+    )
 
 
 def _remap_replacement_units(

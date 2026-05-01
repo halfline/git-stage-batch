@@ -9,6 +9,7 @@ from git_stage_batch.batch.ownership import (
     DeletionClaim,
     ReplacementUnit,
     _advance_source_content_preserving_existing_presence,
+    _advance_source_content_preserving_existing_presence_with_provenance,
     _remap_batch_ownership_with_source_line_map,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
@@ -315,3 +316,29 @@ def test_advance_source_preserves_claimed_lines_missing_from_working_tree():
 
     assert new_source == b"owned one\nowned two\nremaining change\nnew later change\n"
     assert remapped.claimed_lines == ["1-2"]
+
+
+def test_advance_source_tracks_working_line_provenance_for_ambiguous_duplicates():
+    """Synthesized source should remember working-line identity."""
+    old_source = b"owned before\nsame\nsame\nowned after\n"
+    working_tree = b"same\nsame\n"
+    ownership = BatchOwnership(
+        claimed_lines=["1,4"],
+        deletions=[],
+    )
+
+    advanced = _advance_source_content_preserving_existing_presence_with_provenance(
+        old_source_content=old_source,
+        working_content=working_tree,
+        ownership=ownership,
+    )
+
+    assert advanced.content == b"owned before\nowned after\nsame\nsame\n"
+    assert advanced.source_line_map == {
+        1: 1,
+        4: 2,
+    }
+    assert advanced.working_line_map == {
+        1: 3,
+        2: 4,
+    }

@@ -7,9 +7,11 @@ import pytest
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
     DeletionClaim,
+    ReplacementUnit,
     _advance_source_content_preserving_existing_presence,
     _remap_batch_ownership_with_source_line_map,
     detect_stale_batch_source_for_selection,
+    merge_batch_ownership,
     remap_batch_ownership_to_new_source,
     translate_lines_to_batch_ownership,
 )
@@ -212,6 +214,84 @@ def test_remap_preserves_deletion_content():
 
     # Content should be preserved exactly
     assert new_ownership.deletions[0].content_lines == deletion_content
+
+
+def test_remap_preserves_explicit_replacement_units():
+    """Replacement metadata should follow claimed-line source remapping."""
+    old_source = b"new value\nanchor\n"
+    new_source = b"prefix\nnew value\nanchor\n"
+
+    old_ownership = BatchOwnership(
+        claimed_lines=["1"],
+        deletions=[
+            DeletionClaim(anchor_line=2, content_lines=[b"old value\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+        ],
+    )
+
+    new_ownership = remap_batch_ownership_to_new_source(
+        ownership=old_ownership,
+        old_source_content=old_source,
+        new_source_content=new_source,
+    )
+
+    assert new_ownership.claimed_lines == ["2"]
+    assert new_ownership.deletions[0].anchor_line == 3
+    assert new_ownership.replacement_units == [
+        ReplacementUnit(claimed_lines=["2"], deletion_indices=[0]),
+    ]
+
+
+def test_merge_coalesces_overlapping_replacement_units_after_deduplication():
+    """Deduplicated deletion claims should keep replacement metadata disjoint."""
+    deletion = DeletionClaim(anchor_line=None, content_lines=[b"old value\n"])
+    existing = BatchOwnership(
+        claimed_lines=["1"],
+        deletions=[deletion],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+        ],
+    )
+    new = BatchOwnership(
+        claimed_lines=["2"],
+        deletions=[
+            DeletionClaim(anchor_line=None, content_lines=[b"old value\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    merged = merge_batch_ownership(existing, new)
+
+    assert merged.claimed_lines == ["1-2"]
+    assert merged.deletions == [deletion]
+    assert merged.replacement_units == [
+        ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+    ]
+
+
+def test_merge_ignores_boolean_replacement_unit_deletion_indices():
+    """JSON booleans should not be accepted as deletion indexes."""
+    new = BatchOwnership(
+        claimed_lines=["1"],
+        deletions=[
+            DeletionClaim(anchor_line=None, content_lines=[b"old one\n"]),
+            DeletionClaim(anchor_line=None, content_lines=[b"old two\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1"], deletion_indices=[True]),
+        ],
+    )
+
+    merged = merge_batch_ownership(
+        BatchOwnership(claimed_lines=[], deletions=[]),
+        new,
+    )
+
+    assert merged.replacement_units == []
 
 
 def test_advance_source_preserves_claimed_lines_missing_from_working_tree():

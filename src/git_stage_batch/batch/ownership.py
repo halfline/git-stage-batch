@@ -341,12 +341,14 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
 
     claimed_source_lines: list[int] = []
     deletion_claims: list[DeletionClaim] = []
+    replacement_units: list[ReplacementUnit] = []
 
     # Track current deletion run
     current_deletion_anchor: int | None = None
     current_deletion_lines: list[bytes] = []
+    active_replacement_unit: ReplacementUnit | None = None
 
-    def flush_deletion_run():
+    def flush_deletion_run() -> list[int]:
         """Finalize current deletion run as a DeletionClaim."""
         nonlocal current_deletion_anchor, current_deletion_lines
         if current_deletion_lines:
@@ -356,13 +358,16 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
                     content_lines=current_deletion_lines[:]
                 )
             )
+            deletion_index = len(deletion_claims) - 1
             current_deletion_lines = []
+            return [deletion_index]
+        return []
 
     for line in selected_lines:
         if line.kind in (' ', '+'):
             # Context or addition: exists in batch source (working tree)
             # Flush any pending deletion run
-            flush_deletion_run()
+            flushed_deletion_indices = flush_deletion_run()
 
             if line.source_line is None:
                 raise ValueError(
@@ -372,10 +377,26 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
                 )
 
             claimed_source_lines.append(line.source_line)
+            if line.kind == '+':
+                if flushed_deletion_indices:
+                    active_replacement_unit = ReplacementUnit(
+                        claimed_lines=[],
+                        deletion_indices=flushed_deletion_indices,
+                    )
+                    replacement_units.append(active_replacement_unit)
+
+                if active_replacement_unit is not None:
+                    claimed = _parse_claimed_ranges(active_replacement_unit.claimed_lines)
+                    claimed.add(line.source_line)
+                    active_replacement_unit.claimed_lines = _format_claimed_set(claimed)
+            else:
+                active_replacement_unit = None
+
             # Update anchor for next deletion run
             current_deletion_anchor = line.source_line
 
         elif line.kind == '-':
+            active_replacement_unit = None
             # Deletion: suppression constraint
             # Use deletion's source_line as anchor if we haven't set one yet
             # (This handles deletion-only selections where no context lines precede)
@@ -389,11 +410,16 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     flush_deletion_run()
 
     # Normalize claimed lines into range strings
-    claimed_lines = []
-    if claimed_source_lines:
-        claimed_lines = [format_line_ids(claimed_source_lines)]
+    claimed_lines = [format_line_ids(claimed_source_lines)] if claimed_source_lines else []
 
-    return BatchOwnership(claimed_lines=claimed_lines, deletions=deletion_claims)
+    return BatchOwnership(
+        claimed_lines=claimed_lines,
+        deletions=deletion_claims,
+        replacement_units=_normalize_replacement_units(
+            replacement_units,
+            deletion_count=len(deletion_claims),
+        ),
+    )
 
 
 class OwnershipUnitKind(Enum):

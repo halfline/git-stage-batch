@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..core.line_selection import format_line_ids, parse_line_selection
-from .ownership import BatchOwnership, DeletionClaim
+from .ownership import BatchOwnership, DeletionClaim, ReplacementUnit
 
 
 def _format_claimed_lines(line_numbers: list[int]) -> list[str]:
@@ -71,6 +71,12 @@ def build_replacement_batch_view(
             BatchOwnership(
                 claimed_lines=_format_claimed_lines(new_claimed_lines),
                 deletions=new_deletions,
+                replacement_units=[
+                    ReplacementUnit(
+                        claimed_lines=_format_claimed_lines(new_claimed_lines),
+                        deletion_indices=list(range(len(new_deletions))),
+                    )
+                ] if new_claimed_lines and new_deletions else [],
             ),
         )
 
@@ -115,5 +121,11 @@ def build_replacement_batch_view(
         BatchOwnership(
             claimed_lines=_format_claimed_lines(new_claimed_lines),
             deletions=new_deletions,
+            replacement_units=[
+                ReplacementUnit(
+                    claimed_lines=_format_claimed_lines(new_claimed_lines),
+                    deletion_indices=list(range(len(new_deletions))),
+                )
+            ] if new_claimed_lines and new_deletions else [],
         ),
     )

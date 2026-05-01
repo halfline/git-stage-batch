@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from git_stage_batch.batch.ownership import translate_lines_to_batch_ownership, DeletionClaim
+from git_stage_batch.batch.ownership import (
+    DeletionClaim,
+    ReplacementUnit,
+    translate_lines_to_batch_ownership,
+)
 from git_stage_batch.core.models import LineEntry
 
 
@@ -24,6 +28,29 @@ def test_translate_lines_creates_deletion_constraints():
     assert len(ownership.deletions) == 1
     assert isinstance(ownership.deletions[0], DeletionClaim)
     assert ownership.deletions[0].content_lines == [b'old_version\n']
+    assert len(ownership.replacement_units) == 1
+    assert ownership.replacement_units[0].claimed_lines == ["1"]
+    assert ownership.replacement_units[0].deletion_indices == [0]
+
+
+def test_translate_lines_records_multi_line_replacement_unit():
+    """Captured multi-line replacements should remain one atomic unit."""
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'old one', text='old one', source_line=None),
+        LineEntry(id=2, kind='-', old_line_number=2, new_line_number=None,
+                  text_bytes=b'old two', text='old two', source_line=None),
+        LineEntry(id=3, kind='+', old_line_number=None, new_line_number=1,
+                  text_bytes=b'new one', text='new one', source_line=1),
+        LineEntry(id=4, kind='+', old_line_number=None, new_line_number=2,
+                  text_bytes=b'new two', text='new two', source_line=2),
+    ]
+
+    ownership = translate_lines_to_batch_ownership(lines)
+
+    assert ownership.replacement_units == [
+        ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+    ]
 
 
 def test_translate_lines_preserves_deletion_structure():
@@ -50,3 +77,4 @@ def test_translate_lines_preserves_deletion_structure():
     assert ownership.deletions[0].anchor_line is None  # before any source line
     assert ownership.deletions[1].content_lines == [b'del3\n']
     assert ownership.deletions[1].anchor_line == 1  # after source line 1
+    assert ownership.replacement_units == []

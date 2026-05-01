@@ -183,7 +183,8 @@ They are not mirrors; they are the selected checkpoint storage.
 ```
 
 This directory stores active sessions, abort state, file-backed metadata, the
-debug journal, and permanent batch metadata.
+debug journal, and compatibility batch metadata when a batch has not yet been
+published entirely through the Git-backed state refs.
 
 ### Git Object Database
 
@@ -500,13 +501,20 @@ per-file source commit has:
 * A tree based on the baseline tree
 * One path replaced by the file's source bytes
 
-The source commit SHA is stored in:
+The source commit SHA is part of the per-file batch metadata. In the selected
+model it is persisted authoritatively in:
+
+```text
+refs/git-stage-batch/state/<batch>:batch.json
+```
+
+and may also transiently appear in:
 
 ```text
 .git/git-stage-batch/batches/<batch>/metadata.json
 ```
 
-under:
+under the same field:
 
 ```json
 "batch_source_commit": "..."
@@ -575,9 +583,7 @@ session/
   progress/
   selected/
   batch-sources.json
-  start-head.txt
-  start-index-tree.txt
-  start-batch-refs.json
+  consumed-selections.json
 ```
 
 ### Lifecycle
@@ -591,14 +597,14 @@ Iteration-specific parts are cleared by:
 
 * `git-stage-batch again`
 
-Permanent batch metadata under:
+Compatibility batch metadata under:
 
 ```text
 .git/git-stage-batch/batches/
 ```
 
 is not cleared by `again`, `stop`, or `abort` except when abort restores batch
-refs and metadata to their session-start state.
+refs and compatibility metadata to their session-start state.
 
 ### Scratch vs Durable State
 
@@ -708,6 +714,7 @@ Abort uses it to:
 hunk.hash.txt
 hunk.patch
 hunk.lines.json
+change-kind.txt
 binary-file.json
 index.snapshot
 working-tree.snapshot
@@ -735,6 +742,12 @@ lines.
 
 Stores selected binary-file metadata when the selected change is binary rather
 than a text hunk.
+
+### `change-kind.txt`
+
+Stores whether the selected cached item is a text hunk, a file-scoped view, a
+binary file, or a batch-file view. Commands use it to decide how to interpret
+the rest of the selected-state cache.
 
 ### `index.snapshot`
 
@@ -854,16 +867,15 @@ iteration-count.txt
 
 `iteration-count.txt` stores the current pass number. `again` increments it.
 
-### Start State
+### TUI Start State
 
 ```text
 .git/git-stage-batch/session/start-head.txt
 .git/git-stage-batch/session/start-index-tree.txt
-.git/git-stage-batch/session/start-batch-refs.json
 ```
 
-Interactive mode uses start state to decide whether quitting should prompt to
-keep or undo staged changes.
+These files are written by interactive mode to decide whether quitting should
+prompt to keep or undo staged changes.
 
 ### Suggest-Fixup State
 
@@ -901,6 +913,7 @@ This file stores the batch state at session start. Its selected format is:
 {
   "batch-name": {
     "commit_sha": "...",
+    "state_commit_sha": "...",
     "metadata": {}
   }
 }
@@ -929,9 +942,9 @@ Git-backed state from the restored content ref and metadata.
 
 ### Selected Batch Source Commits
 
-Batch source commits are made reachable by using them as parents of batch
-commits. The file-backed metadata also stores their SHAs, but metadata alone is
-not a Git reachability root.
+Batch source commits are made reachable by using them as parents of realized
+batch commits. Compatibility metadata can mention their SHAs, but metadata alone
+is not a Git reachability root.
 
 ### Git-Backed Source Entries
 

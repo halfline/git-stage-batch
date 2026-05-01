@@ -151,6 +151,26 @@ class ResolvedBatchOwnership:
     deletion_claims: list[DeletionClaim]  # Separate constraints, not collapsed
 
 
+@dataclass
+class AdvancedSourceContent:
+    """Synthesized source content with line provenance from its inputs."""
+
+    content: bytes
+    source_line_map: dict[int, int]
+    working_line_map: dict[int, int]
+
+
+@dataclass
+class BatchSourceAdvanceResult:
+    """Result of advancing one file's batch source."""
+
+    batch_source_commit: str
+    ownership: BatchOwnership
+    source_content: bytes
+    working_content: bytes
+    working_line_map: dict[int, int]
+
+
 def _deletion_signature(deletion: DeletionClaim) -> tuple[int | None, bytes]:
     """Return a stable signature for a deletion claim."""
     return deletion.anchor_line, b"".join(deletion.content_lines)
@@ -1111,6 +1131,20 @@ def _advance_source_content_preserving_existing_presence(
     Returns:
         Tuple of (new source bytes, old source line -> new source line map).
     """
+    advanced = _advance_source_content_preserving_existing_presence_with_provenance(
+        old_source_content=old_source_content,
+        working_content=working_content,
+        ownership=ownership,
+    )
+    return advanced.content, advanced.source_line_map
+
+
+def _advance_source_content_preserving_existing_presence_with_provenance(
+    old_source_content: bytes,
+    working_content: bytes,
+    ownership: BatchOwnership,
+) -> AdvancedSourceContent:
+    """Build advanced source content and preserve input line provenance."""
     old_lines = old_source_content.splitlines(keepends=True)
     working_lines = working_content.splitlines(keepends=True)
     claimed_lines = (
@@ -1126,11 +1160,18 @@ def _advance_source_content_preserving_existing_presence(
     )
 
     source_line_map = {}
+    working_line_map = {}
     for index, entry in enumerate(entries, start=1):
         if entry.source_line is not None:
             source_line_map[entry.source_line] = index
+        if entry.target_line is not None:
+            working_line_map[entry.target_line] = index
 
-    return b"".join(entry.content for entry in entries), source_line_map
+    return AdvancedSourceContent(
+        content=b"".join(entry.content for entry in entries),
+        source_line_map=source_line_map,
+        working_line_map=working_line_map,
+    )
 
 
 def _remap_batch_ownership_with_source_line_map(
@@ -1213,6 +1254,27 @@ def advance_batch_source_for_file(
     Raises:
         ValueError: If remapping is ambiguous or working tree content unavailable
     """
+    result = advance_batch_source_for_file_with_provenance(
+        batch_name=batch_name,
+        file_path=file_path,
+        old_batch_source_commit=old_batch_source_commit,
+        existing_ownership=existing_ownership,
+    )
+    return (
+        result.batch_source_commit,
+        result.ownership,
+        result.source_content,
+        result.working_content,
+    )
+
+
+def advance_batch_source_for_file_with_provenance(
+    batch_name: str,
+    file_path: str,
+    old_batch_source_commit: str,
+    existing_ownership: BatchOwnership,
+) -> BatchSourceAdvanceResult:
+    """Advance batch source and expose provenance for re-annotation."""
     # Read old batch source content
     old_source_result = run_git_command(
         ["show", f"{old_batch_source_commit}:{file_path}"],
@@ -1236,7 +1298,7 @@ def advance_batch_source_for_file(
         )
     working_content = working_file_path.read_bytes()
 
-    new_source_content, source_line_map = _advance_source_content_preserving_existing_presence(
+    advanced_source = _advance_source_content_preserving_existing_presence_with_provenance(
         old_source_content=old_source_content,
         working_content=working_content,
         ownership=existing_ownership,
@@ -1247,7 +1309,7 @@ def advance_batch_source_for_file(
     # session-start snapshot for abort/discard correctness.
     new_batch_source_commit = create_batch_source_commit(
         file_path,
-        file_content_override=new_source_content
+        file_content_override=advanced_source.content
     )
 
     # Remap ownership using provenance produced while constructing the advanced
@@ -1255,12 +1317,13 @@ def advance_batch_source_for_file(
     # working tree after earlier discard operations.
     remapped_ownership = _remap_batch_ownership_with_source_line_map(
         ownership=existing_ownership,
-        source_line_map=source_line_map,
+        source_line_map=advanced_source.source_line_map,
     )
 
-    return (
-        new_batch_source_commit,
-        remapped_ownership,
-        new_source_content,
-        working_content,
+    return BatchSourceAdvanceResult(
+        batch_source_commit=new_batch_source_commit,
+        ownership=remapped_ownership,
+        source_content=advanced_source.content,
+        working_content=working_content,
+        working_line_map=advanced_source.working_line_map,
     )

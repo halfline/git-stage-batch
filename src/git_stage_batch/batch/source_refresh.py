@@ -220,7 +220,12 @@ def _refresh_selected_lines_against_source_content(
     working_content: bytes,
     working_line_map: dict[int, int] | None = None,
 ) -> list:
-    """Re-annotate selected lines against a concrete source snapshot."""
+    """Re-annotate selected lines against a concrete source snapshot.
+
+    If a working-line provenance map is supplied, it describes how the source
+    content was synthesized and is treated as authoritative. Text matching is
+    used only when no provenance map is available.
+    """
     mapping = None
     if working_line_map is None:
         source_lines = source_content.splitlines(keepends=True)

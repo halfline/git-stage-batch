@@ -190,6 +190,50 @@ class TestExtraFdCapture:
         assert fd10_data == b"fd10"
         assert fd11_data == b"fd11"
 
+    def test_extra_fd_capture_handles_pipe_fd_collision(self):
+        """Test extra fd capture when pipe fds collide with child fd targets."""
+        probe_fds = []
+        try:
+            for _ in range(8):
+                probe_fds.append(os.open(os.devnull, os.O_RDONLY))
+            first_child_fd = probe_fds[6]
+            second_child_fd = probe_fds[7]
+
+            for fd in probe_fds:
+                os.close(fd)
+            probe_fds = []
+
+            events = list(stream_command(
+                [
+                    sys.executable,
+                    "-c",
+                    f"import os, sys; "
+                    f"os.write({first_child_fd}, b'fd1'); "
+                    f"os.close({first_child_fd}); "
+                    f"os.write({second_child_fd}, b'fd2'); "
+                    f"os.close({second_child_fd}); "
+                    "sys.exit(0)",
+                ],
+                extra_fds=[
+                    CapturedFd(first_child_fd),
+                    CapturedFd(second_child_fd),
+                ],
+            ))
+        finally:
+            for fd in probe_fds:
+                os.close(fd)
+
+        output_events = [e for e in events if isinstance(e, OutputEvent)]
+        exit_events = [e for e in events if isinstance(e, ExitEvent)]
+
+        fd1_data = b"".join(e.data for e in output_events if e.fd == first_child_fd)
+        fd2_data = b"".join(e.data for e in output_events if e.fd == second_child_fd)
+        stderr_data = b"".join(e.data for e in output_events if e.fd == 2)
+
+        assert exit_events[0].exit_code == 0, stderr_data.decode(errors="replace")
+        assert fd1_data == b"fd1"
+        assert fd2_data == b"fd2"
+
     def test_duplicate_captured_fd_rejected(self):
         """Test that duplicate CapturedFd entries are rejected."""
         with pytest.raises(ValueError, match="duplicate"):
@@ -440,6 +484,147 @@ class TestCwdAndEnv:
 
         assert output_data == b"content"
 
+    def test_cwd_parameter_does_not_use_fork(self, tmp_path, monkeypatch):
+        """Test cwd execution stays on the posix_spawn path."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("content")
+
+        def fail_fork():
+            raise AssertionError("fork should not be called")
+
+        monkeypatch.setattr(os, "fork", fail_fork)
+
+        events = list(stream_command(["cat", "test.txt"], cwd=str(tmp_path)))
+        output = b"".join(
+            event.data
+            for event in events
+            if isinstance(event, OutputEvent) and event.fd == 1
+        )
+
+        assert output == b"content"
+
+    def test_cwd_parameter_preserves_arguments(self, tmp_path):
+        """Test cwd shell wrapper does not reinterpret command arguments."""
+        events = list(stream_command(
+            [
+                sys.executable,
+                "-c",
+                "import os, sys; print(os.getcwd()); print('\\n'.join(sys.argv[1:]))",
+                "has space",
+                "*.txt",
+                "$HOME",
+                "semi;colon",
+            ],
+            cwd=str(tmp_path),
+        ))
+        output = b"".join(
+            event.data
+            for event in events
+            if isinstance(event, OutputEvent) and event.fd == 1
+        )
+
+        assert output.splitlines() == [
+            str(tmp_path).encode(),
+            b"has space",
+            b"*.txt",
+            b"$HOME",
+            b"semi;colon",
+        ]
+
+    def test_cwd_parameter_preserves_leading_dash_directory(self, tmp_path, monkeypatch):
+        """Test cwd shell wrapper does not reinterpret leading-dash paths."""
+        dashed_dir = tmp_path / "-"
+        dashed_dir.mkdir()
+        monkeypatch.chdir(tmp_path)
+
+        events = list(stream_command(
+            [
+                sys.executable,
+                "-c",
+                "import os; print(os.path.basename(os.getcwd()))",
+            ],
+            cwd="-",
+        ))
+        output = b"".join(
+            event.data
+            for event in events
+            if isinstance(event, OutputEvent) and event.fd == 1
+        )
+
+        assert output == b"-\n"
+
+    def test_cwd_parameter_with_extra_fd_capture(self, tmp_path):
+        """Test extra child fds remain available when cwd is set."""
+        events = list(stream_command(
+            [
+                sys.executable,
+                "-c",
+                "import os, sys; os.write(10, os.getcwd().encode()); sys.exit(0)",
+            ],
+            cwd=str(tmp_path),
+            extra_fds=[CapturedFd(10)],
+        ))
+
+        fd10_data = b"".join(
+            e.data for e in events
+            if isinstance(e, OutputEvent) and e.fd == 10
+        )
+
+        assert fd10_data == str(tmp_path).encode()
+
+    def test_cwd_shell_lookup_ignores_env_path(self, tmp_path):
+        """Test cwd shell wrapper lookup does not use the child PATH."""
+        marker = tmp_path / "used-sh"
+        shell = tmp_path / "sh"
+        shell.write_text(
+            "#!/bin/sh\n"
+            "printf used > \"$SH_MARKER\"\n"
+            "exec /bin/sh \"$@\"\n"
+        )
+        shell.chmod(0o755)
+
+        events = list(stream_command(
+            [sys.executable, "-c", "print('ok')"],
+            cwd=str(tmp_path),
+            env={"PATH": str(tmp_path), "SH_MARKER": str(marker)},
+        ))
+
+        output_events = [e for e in events if isinstance(e, OutputEvent) and e.fd == 1]
+        output_data = b"".join(e.data for e in output_events)
+
+        assert output_data == b"ok\n"
+        assert not marker.exists()
+
+    def test_cwd_restricted_path_finds_target_command(self, tmp_path):
+        """Test cwd execution can find the target in a restricted PATH."""
+        command = tmp_path / "hello"
+        command.write_text("#!/bin/sh\nprintf cwd-target\n")
+        command.chmod(0o755)
+
+        events = list(stream_command(
+            ["hello"],
+            cwd=str(tmp_path),
+            env={"PATH": str(tmp_path)},
+        ))
+
+        output_events = [e for e in events if isinstance(e, OutputEvent) and e.fd == 1]
+        output_data = b"".join(e.data for e in output_events)
+
+        assert output_data == b"cwd-target"
+
+    def test_cwd_absolute_command_allows_empty_env_path(self, tmp_path):
+        """Test cwd execution of absolute commands does not require PATH."""
+        events = list(stream_command(
+            [sys.executable, "-c", "print('absolute')"],
+            cwd=str(tmp_path),
+            env={"PATH": ""},
+        ))
+
+        output_events = [e for e in events if isinstance(e, OutputEvent) and e.fd == 1]
+        output_data = b"".join(e.data for e in output_events)
+
+        assert output_data == b"absolute\n"
+
     def test_env_parameter(self):
         """Test that env parameter works."""
         events = list(stream_command(
@@ -451,3 +636,41 @@ class TestCwdAndEnv:
         output_data = b"".join(e.data for e in output_events)
 
         assert b"test_value" in output_data
+
+    def test_env_path_controls_command_lookup(self, tmp_path):
+        """Test executable lookup uses PATH from the child environment."""
+        command = tmp_path / "hello-cmd"
+        command.write_text("#!/bin/sh\nprintf custom-path\n")
+        command.chmod(0o755)
+
+        events = list(stream_command(
+            ["hello-cmd"],
+            env={"PATH": str(tmp_path)},
+        ))
+
+        output_events = [e for e in events if isinstance(e, OutputEvent) and e.fd == 1]
+        output_data = b"".join(e.data for e in output_events)
+
+        assert output_data == b"custom-path"
+
+    def test_env_path_can_make_parent_path_commands_unavailable(self):
+        """Test command lookup does not fall back to the parent PATH."""
+        with pytest.raises(FileNotFoundError):
+            start_command(["true"], env={"PATH": ""})
+
+    def test_empty_env_path_searches_current_directory(self, tmp_path, monkeypatch):
+        """Test an empty PATH entry searches the current directory."""
+        command = tmp_path / "hello-current"
+        command.write_text("#!/bin/sh\nprintf current-dir\n")
+        command.chmod(0o755)
+        monkeypatch.chdir(tmp_path)
+
+        events = list(stream_command(
+            ["hello-current"],
+            env={"PATH": ""},
+        ))
+
+        output_events = [e for e in events if isinstance(e, OutputEvent) and e.fd == 1]
+        output_data = b"".join(e.data for e in output_events)
+
+        assert output_data == b"current-dir"

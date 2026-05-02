@@ -1,7 +1,8 @@
-"""Tests for ownership unit grouping based on display adjacency.
+"""Tests for ownership unit grouping based on replacement metadata and display.
 
-These tests verify that replacement units are formed based on adjacency
-in reconstructed display order, not source-line proximity.
+These tests verify that explicit replacement metadata is honored first, and
+remaining replacement units are formed based on adjacency in reconstructed
+display order, not source-line proximity.
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ from git_stage_batch.batch.ownership import (
     DeletionClaim,
     build_ownership_units_from_display,
     OwnershipUnitKind,
+    ReplacementUnit,
+    rebuild_ownership_from_units,
 )
 from git_stage_batch.batch.display import build_display_lines_from_batch_source
 
@@ -366,9 +369,10 @@ def test_multiple_presence_only_lines_remain_independently_selectable():
 
 
 def test_multiple_consecutive_deletions_and_claims_form_single_replacement():
-    """Test that deletion block couples with first claimed line, rest are separate.
+    """Test legacy display-adjacency fallback for replacement grouping.
 
-    This preserves fine-grained reset: each claimed line can be independently reset.
+    Without persisted replacement metadata, a deletion block couples with the
+    first claimed line and the remaining claimed lines stay independent.
     """
     # Source content:
     # 1: old line 1
@@ -418,3 +422,154 @@ def test_multiple_consecutive_deletions_and_claims_form_single_replacement():
     # Second claimed line is PRESENCE_ONLY (independently selectable)
     assert presence_units[0].claimed_source_lines == {2}
     assert presence_units[0].is_atomic is False
+
+
+def test_rebuild_does_not_promote_display_adjacency_to_explicit_metadata():
+    """Inferred display adjacency should not become persisted replacement intent."""
+    batch_source = b"new line\n"
+    ownership = BatchOwnership(
+        claimed_lines=["1"],
+        deletions=[
+            DeletionClaim(anchor_line=None, content_lines=[b"old line\n"])
+        ],
+    )
+
+    rebuilt = rebuild_ownership_from_units(
+        build_ownership_units_from_display(ownership, batch_source)
+    )
+
+    assert rebuilt.claimed_lines == ["1"]
+    assert len(rebuilt.deletions) == 1
+    assert rebuilt.replacement_units == []
+
+
+def test_explicit_replacement_unit_overrides_display_adjacency():
+    """Persisted replacement metadata should couple non-adjacent display lines."""
+    batch_source = b"new first\ncontext\nanchor\n"
+    ownership = BatchOwnership(
+        claimed_lines=["1"],
+        deletions=[
+            DeletionClaim(anchor_line=3, content_lines=[b"old later\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+        ],
+    )
+
+    units = build_ownership_units_from_display(ownership, batch_source)
+
+    assert len(units) == 1
+    assert units[0].kind == OwnershipUnitKind.REPLACEMENT
+    assert units[0].atomic_reason == "explicit_replacement"
+    assert units[0].preserves_replacement_unit is True
+    assert units[0].claimed_source_lines == {1}
+    assert units[0].deletion_claims == ownership.deletions
+
+
+def test_explicit_replacement_unit_can_group_multiple_claimed_lines():
+    """Explicit metadata can preserve a whole multi-line replacement unit."""
+    batch_source = b"new one\nnew two\nkeep\n"
+    ownership = BatchOwnership(
+        claimed_lines=["1-2"],
+        deletions=[
+            DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+        ],
+    )
+
+    units = build_ownership_units_from_display(ownership, batch_source)
+
+    assert len(units) == 1
+    assert units[0].kind == OwnershipUnitKind.REPLACEMENT
+    assert units[0].claimed_source_lines == {1, 2}
+    assert units[0].display_line_ids == {1, 2, 3, 4}
+
+
+def test_rebuild_preserves_explicit_replacement_units():
+    """Filtering/rebuilding ownership should persist replacement couplings."""
+    batch_source = b"new one\nnew two\nkeep\n"
+    ownership = BatchOwnership(
+        claimed_lines=["1-2"],
+        deletions=[
+            DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+        ],
+    )
+
+    rebuilt = rebuild_ownership_from_units(
+        build_ownership_units_from_display(ownership, batch_source)
+    )
+
+    assert rebuilt.claimed_lines == ["1-2"]
+    assert len(rebuilt.deletions) == 1
+    assert rebuilt.replacement_units == [
+        ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+    ]
+
+
+def test_rebuild_preserves_mixed_same_anchor_deletion_order():
+    """Same-anchor explicit and inferred deletions should keep stable indexes."""
+    batch_source = b"new explicit\nnew inferred\nkeep\n"
+    explicit_deletion = DeletionClaim(
+        anchor_line=None,
+        content_lines=[b"old explicit\n"],
+    )
+    inferred_deletion = DeletionClaim(
+        anchor_line=None,
+        content_lines=[b"old inferred\n"],
+    )
+    ownership = BatchOwnership(
+        claimed_lines=["1-2"],
+        deletions=[
+            explicit_deletion,
+            inferred_deletion,
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+        ],
+    )
+
+    rebuilt = rebuild_ownership_from_units(
+        build_ownership_units_from_display(ownership, batch_source)
+    )
+
+    assert rebuilt.deletions == [explicit_deletion, inferred_deletion]
+    assert rebuilt.replacement_units == [
+        ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+    ]
+
+
+def test_rebuild_preserves_mixed_same_anchor_order_when_explicit_is_later():
+    """Later explicit replacements should not reorder earlier inferred deletions."""
+    batch_source = b"new explicit\nkeep\n"
+    inferred_deletion = DeletionClaim(
+        anchor_line=None,
+        content_lines=[b"old inferred\n"],
+    )
+    explicit_deletion = DeletionClaim(
+        anchor_line=None,
+        content_lines=[b"old explicit\n"],
+    )
+    ownership = BatchOwnership(
+        claimed_lines=["1"],
+        deletions=[
+            inferred_deletion,
+            explicit_deletion,
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1"], deletion_indices=[1]),
+        ],
+    )
+
+    rebuilt = rebuild_ownership_from_units(
+        build_ownership_units_from_display(ownership, batch_source)
+    )
+
+    assert rebuilt.deletions == [inferred_deletion, explicit_deletion]
+    assert rebuilt.replacement_units == [
+        ReplacementUnit(claimed_lines=["1"], deletion_indices=[1]),
+    ]

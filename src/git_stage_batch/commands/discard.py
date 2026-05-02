@@ -9,7 +9,7 @@ from ..batch import add_file_to_batch, create_batch
 from ..batch.display import annotate_with_batch_source, annotate_with_batch_source_content
 from ..batch.ownership import (
     BatchOwnership,
-    _advance_source_content_preserving_existing_presence,
+    _advance_source_content_preserving_existing_presence_with_provenance,
     _remap_batch_ownership_with_source_line_map,
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
@@ -30,7 +30,6 @@ from ..data.hunk_tracking import (
     advance_to_and_show_next_change,
     advance_to_next_change,
     build_file_hunk_from_content,
-    cache_file_as_single_hunk,
     cache_unstaged_file_as_single_hunk,
     fetch_next_change,
     get_selected_change_file_path,
@@ -500,7 +499,7 @@ def command_discard_line_as_to_batch(
                 else:
                     target_file = file
 
-                cached_lines = _load_explicit_file_selection(target_file)
+                _load_explicit_file_selection(target_file)
 
             _command_discard_lines_to_batch_as(
                 batch_name,
@@ -600,25 +599,26 @@ def _command_discard_lines_to_batch_as(
                         )
                     )
 
-                new_source_content, source_line_map = _advance_source_content_preserving_existing_presence(
+                advanced_source = _advance_source_content_preserving_existing_presence_with_provenance(
                     old_source_content=old_source_result.stdout,
                     working_content=rewritten_working_content,
                     ownership=existing_ownership,
                 )
                 remapped_existing_ownership = _remap_batch_ownership_with_source_line_map(
                     ownership=existing_ownership,
-                    source_line_map=source_line_map,
+                    source_line_map=advanced_source.source_line_map,
                 )
                 refreshed_selected_lines = _refresh_selected_lines_against_source_content(
                     rewritten_selected_lines,
-                    source_content=new_source_content,
+                    source_content=advanced_source.content,
                     working_content=rewritten_working_content,
+                    working_line_map=advanced_source.working_line_map,
                 )
                 new_ownership = translate_lines_to_batch_ownership(refreshed_selected_lines)
                 ownership = merge_batch_ownership(remapped_existing_ownership, new_ownership)
                 batch_source_commit = create_batch_source_commit(
                     line_changes.path,
-                    file_content_override=new_source_content,
+                    file_content_override=advanced_source.content,
                 )
                 batch_sources = load_session_batch_sources()
                 batch_sources[line_changes.path] = batch_source_commit

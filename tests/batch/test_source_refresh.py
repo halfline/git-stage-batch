@@ -13,10 +13,14 @@ from git_stage_batch.commands import include, discard
 from git_stage_batch.batch.source_refresh import (
     RefreshedBatchSelection,
     PreparedBatchUpdate,
+    _refresh_selected_lines_against_source_content,
     ensure_batch_source_current_for_selection,
     prepare_batch_ownership_update_for_selection,
 )
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership import (
+    BatchOwnership,
+    _advance_source_content_preserving_existing_presence_with_provenance,
+)
 from git_stage_batch.core.models import LineEntry
 
 
@@ -186,6 +190,35 @@ def test_prepare_batch_ownership_update_with_existing():
     assert result.ownership_after is not None
     # Should merge 1-2 with 3-4
     assert "1-4" in ",".join(result.ownership_after.claimed_lines)
+
+
+def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
+    """Repeated working lines should use known synthesis identity."""
+    ownership = BatchOwnership(claimed_lines=["1,4"], deletions=[])
+    advanced = _advance_source_content_preserving_existing_presence_with_provenance(
+        old_source_content=b"owned before\nsame\nsame\nowned after\n",
+        working_content=b"same\nsame\n",
+        ownership=ownership,
+    )
+    selected_lines = [
+        LineEntry(
+            id=1, kind='+', old_line_number=None, new_line_number=1,
+            text_bytes=b"same", text="same", source_line=None
+        ),
+        LineEntry(
+            id=2, kind='+', old_line_number=None, new_line_number=2,
+            text_bytes=b"same", text="same", source_line=None
+        ),
+    ]
+
+    refreshed = _refresh_selected_lines_against_source_content(
+        selected_lines,
+        source_content=advanced.content,
+        working_content=b"same\nsame\n",
+        working_line_map=advanced.working_line_map,
+    )
+
+    assert [line.source_line for line in refreshed] == [3, 4]
 
 
 def test_both_commands_use_same_helper_interface():

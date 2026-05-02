@@ -40,6 +40,7 @@ class RealizedEntry:
     """
     content: bytes  # Line content with newline
     source_line: int | None  # Batch-source line number (1-indexed), or None for working-tree extras
+    target_line: int | None = None  # Working-tree line number (1-indexed), when known
     is_claimed: bool = False  # True if from a claimed source line (presence constraint)
 
 
@@ -530,7 +531,12 @@ def _apply_presence_constraints(
         result: list[RealizedEntry] = []
         for working_idx, working_line in enumerate(working_lines):
             source_line = mapping.get_source_line_from_target_line(working_idx + 1)
-            result.append(RealizedEntry(content=working_line, source_line=source_line, is_claimed=False))
+            result.append(RealizedEntry(
+                content=working_line,
+                source_line=source_line,
+                target_line=working_idx + 1,
+                is_claimed=False,
+            ))
         return result
 
     mapping = match_lines(source_lines, working_lines)
@@ -551,7 +557,12 @@ def _apply_presence_constraints(
         for working_idx, working_line in enumerate(working_lines):
             source_line = mapping.get_source_line_from_target_line(working_idx + 1)
             is_claimed = source_line in claimed_line_set if source_line else False
-            result.append(RealizedEntry(content=working_line, source_line=source_line, is_claimed=is_claimed))
+            result.append(RealizedEntry(
+                content=working_line,
+                source_line=source_line,
+                target_line=working_idx + 1,
+                is_claimed=is_claimed,
+            ))
         return result
 
     result: list[RealizedEntry] = []
@@ -565,6 +576,7 @@ def _apply_presence_constraints(
                 result.append(RealizedEntry(
                     content=working_lines[working_idx],
                     source_line=None,
+                    target_line=working_idx + 1,
                     is_claimed=False
                 ))
                 working_idx += 1
@@ -574,12 +586,14 @@ def _apply_presence_constraints(
                 result.append(RealizedEntry(
                     content=source_lines[source_line - 1],
                     source_line=source_line,
+                    target_line=working_idx + 1,
                     is_claimed=True
                 ))
             else:
                 result.append(RealizedEntry(
                     content=working_lines[working_idx],
                     source_line=source_line,
+                    target_line=working_idx + 1,
                     is_claimed=False
                 ))
             working_idx += 1
@@ -595,6 +609,7 @@ def _apply_presence_constraints(
         result.append(RealizedEntry(
             content=working_lines[working_idx],
             source_line=None,
+            target_line=working_idx + 1,
             is_claimed=False
         ))
         working_idx += 1
@@ -1357,6 +1372,7 @@ def _build_realized_entries_for_discard(
         result.append(RealizedEntry(
             content=working_line,
             source_line=source_line,
+            target_line=working_idx + 1,
             is_claimed=False
         ))
 

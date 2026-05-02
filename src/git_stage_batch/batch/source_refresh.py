@@ -14,7 +14,7 @@ from ..data.batch_sources import load_session_batch_sources, save_session_batch_
 from .match import match_lines
 from .ownership import (
     BatchOwnership,
-    advance_batch_source_for_file,
+    advance_batch_source_for_file_with_provenance,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
@@ -101,12 +101,7 @@ def ensure_batch_source_current_for_selection(
 
     if is_stale and current_batch_source_commit and existing_ownership:
         # Batch source is stale - advance it and remap existing ownership
-        (
-            new_batch_source_commit,
-            remapped_ownership,
-            new_source_content,
-            working_content,
-        ) = advance_batch_source_for_file(
+        advance_result = advance_batch_source_for_file_with_provenance(
             batch_name=batch_name,
             file_path=file_path,
             old_batch_source_commit=current_batch_source_commit,
@@ -115,7 +110,7 @@ def ensure_batch_source_current_for_selection(
 
         # Update session cache so add_file_to_batch uses the new source.
         batch_sources = load_session_batch_sources()
-        batch_sources[file_path] = new_batch_source_commit
+        batch_sources[file_path] = advance_result.batch_source_commit
         save_session_batch_sources(batch_sources)
 
         # Re-annotate lines against the actual advanced source. The advanced
@@ -123,13 +118,14 @@ def ensure_batch_source_current_for_selection(
         # working tree after earlier discard operations.
         reannotated_lines = _refresh_selected_lines_against_source_content(
             selected_lines,
-            source_content=new_source_content,
-            working_content=working_content,
+            source_content=advance_result.source_content,
+            working_content=advance_result.working_content,
+            working_line_map=advance_result.working_line_map,
         )
 
         return RefreshedBatchSelection(
-            batch_source_commit=new_batch_source_commit,
-            ownership=remapped_ownership,
+            batch_source_commit=advance_result.batch_source_commit,
+            ownership=advance_result.ownership,
             selected_lines=reannotated_lines,
             source_was_advanced=True
         )
@@ -222,30 +218,40 @@ def _refresh_selected_lines_against_source_content(
     *,
     source_content: bytes,
     working_content: bytes,
+    working_line_map: dict[int, int] | None = None,
 ) -> list:
-    """Re-annotate selected lines against a concrete source snapshot."""
-    source_lines = source_content.splitlines(keepends=True)
-    working_lines = working_content.splitlines(keepends=True)
-    mapping = match_lines(source_lines, working_lines)
+    """Re-annotate selected lines against a concrete source snapshot.
+
+    If a working-line provenance map is supplied, it describes how the source
+    content was synthesized and is treated as authoritative. Text matching is
+    used only when no provenance map is available.
+    """
+    mapping = None
+    if working_line_map is None:
+        source_lines = source_content.splitlines(keepends=True)
+        working_lines = working_content.splitlines(keepends=True)
+        mapping = match_lines(source_lines, working_lines)
+
+    def map_working_line(line_number: int | None) -> int | None:
+        if line_number is None:
+            return None
+        if working_line_map is not None:
+            return working_line_map.get(line_number)
+        assert mapping is not None
+        return mapping.get_source_line_from_target_line(line_number)
 
     last_source_line = None
     reannotated_lines = []
 
     for line in selected_lines:
         if line.kind in (' ', '+'):
-            source_line = None
-            if line.new_line_number is not None:
-                source_line = mapping.get_source_line_from_target_line(
-                    line.new_line_number
-                )
+            source_line = map_working_line(line.new_line_number)
             if source_line is not None:
                 last_source_line = source_line
         elif line.kind == '-':
             source_line = last_source_line
             if source_line is None and line.old_line_number is not None and line.old_line_number > 1:
-                source_line = mapping.get_source_line_from_target_line(
-                    line.old_line_number - 1
-                )
+                source_line = map_working_line(line.old_line_number - 1)
         else:
             source_line = None
 

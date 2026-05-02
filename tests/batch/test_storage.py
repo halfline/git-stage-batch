@@ -7,8 +7,9 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch.operations import create_batch
+from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_file_to_batch, get_batch_diff, read_file_from_batch
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim, ReplacementUnit
 from git_stage_batch.data.session import initialize_abort_state
 
 
@@ -58,6 +59,62 @@ def test_add_file_to_batch_existing_batch(temp_git_repo):
     content = read_file_from_batch("test-batch", "file.txt")
     assert content is not None
     assert "line1" in content
+
+
+def test_add_file_to_batch_persists_replacement_units(temp_git_repo):
+    """Text metadata should round-trip explicit replacement-unit references."""
+    create_batch("test-batch", "Test")
+
+    ownership = BatchOwnership(
+        claimed_lines=["1"],
+        deletions=[
+            DeletionClaim(anchor_line=None, content_lines=[b"old\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+        ],
+    )
+
+    add_file_to_batch("test-batch", "file.txt", ownership)
+
+    file_meta = read_batch_metadata("test-batch")["files"]["file.txt"]
+    assert file_meta["replacement_units"] == [
+        {"claimed_lines": ["1"], "deletion_indices": [0]},
+    ]
+
+    round_tripped = BatchOwnership.from_metadata_dict(file_meta)
+    assert round_tripped.replacement_units == [
+        ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+    ]
+
+
+def test_empty_replacement_units_are_omitted_from_metadata():
+    """Empty replacement-unit references should not serialize an empty key."""
+    ownership = BatchOwnership(
+        claimed_lines=[],
+        deletions=[],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=[], deletion_indices=[]),
+        ],
+    )
+
+    assert "replacement_units" not in ownership.to_metadata_dict()
+
+
+def test_boolean_replacement_unit_indices_are_omitted_from_metadata(temp_git_repo):
+    """JSON booleans should not serialize as replacement deletion indexes."""
+    ownership = BatchOwnership(
+        claimed_lines=["1"],
+        deletions=[
+            DeletionClaim(anchor_line=None, content_lines=[b"old one\n"]),
+            DeletionClaim(anchor_line=None, content_lines=[b"old two\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(claimed_lines=["1"], deletion_indices=[True]),
+        ],
+    )
+
+    assert "replacement_units" not in ownership.to_metadata_dict()
 
 
 def test_add_file_to_batch_update_file(temp_git_repo):

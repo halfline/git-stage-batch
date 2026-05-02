@@ -7,7 +7,7 @@ from typing import Any
 
 from ..batch.ownership import (
     BatchOwnership,
-    advance_batch_source_for_file,
+    advance_batch_source_for_file_with_provenance,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
@@ -61,21 +61,19 @@ def record_consumed_selection(
         existing_ownership = BatchOwnership.from_metadata_dict(existing_file_metadata)
         batch_source_commit = existing_file_metadata["batch_source_commit"]
         if detect_stale_batch_source_for_selection(selected_lines):
-            (
-                batch_source_commit,
-                existing_ownership,
-                refreshed_source_content,
-                working_content,
-            ) = advance_batch_source_for_file(
+            advance_result = advance_batch_source_for_file_with_provenance(
                 batch_name="consumed-selections",
                 file_path=file_path,
                 old_batch_source_commit=batch_source_commit,
                 existing_ownership=existing_ownership,
             )
+            batch_source_commit = advance_result.batch_source_commit
+            existing_ownership = advance_result.ownership
             selected_lines = _refresh_selected_lines_against_source_content(
                 selected_lines,
-                source_content=refreshed_source_content,
-                working_content=working_content,
+                source_content=advance_result.source_content,
+                working_content=advance_result.working_content,
+                working_line_map=advance_result.working_line_map,
             )
         new_ownership = translate_lines_to_batch_ownership(selected_lines)
         merged_ownership = merge_batch_ownership(existing_ownership, new_ownership)

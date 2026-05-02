@@ -204,3 +204,35 @@ class TestCommandIncludeFromBatch:
 
         result = run_git_command(["show", ":test.txt"])
         assert result.stdout == "keep\nedited value\n"
+
+    def test_include_from_batch_as_rejects_partial_replacement_unit(self, temp_git_repo):
+        """Test include --from --line --as honors explicit replacement atomicity."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("old one\nold two\nkeep\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("new one\nnew two\nkeep\n")
+        command_start()
+        command_include_to_batch("test-batch", quiet=True)
+
+        test_file.write_text("old one\nold two\nkeep\n")
+        run_git_command(["reset", "HEAD", "test.txt"], check=False)
+
+        rendered = render_batch_file_display("test-batch", "test.txt")
+        new_one_gutter = next(
+            rendered.selection_id_to_gutter[line.id]
+            for line in rendered.line_changes.lines
+            if line.id is not None and line.text == "new one"
+        )
+
+        with pytest.raises(CommandError, match="must be selected together"):
+            command_include_from_batch(
+                "test-batch",
+                line_ids=str(new_one_gutter),
+                file="test.txt",
+                replacement_text="edited value",
+            )
+
+        result = run_git_command(["show", ":test.txt"])
+        assert result.stdout == "old one\nold two\nkeep\n"

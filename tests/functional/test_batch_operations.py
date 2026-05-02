@@ -195,8 +195,9 @@ class TestApplyFromBatch:
     def test_apply_from_batch_with_line_selection(self, repo_with_changes):
         """Test applying specific lines from a batch.
 
-        Note: Lines 1,2,3 form an atomic replacement unit (deletion + coupled additions),
-        so we select all three to respect the semantic boundary.
+        Note: Lines 1,2,3,4 form an explicit atomic replacement unit
+        (deletion + coupled additions), so we select all four to respect the
+        semantic boundary.
         """
         git_stage_batch("new", "test-batch")
         git_stage_batch("start")
@@ -205,8 +206,8 @@ class TestApplyFromBatch:
         subprocess.run(["git", "restore", "."], check=True, capture_output=True)
 
         # Apply only specific lines (must respect atomic unit boundaries)
-        # Lines 1,2,3 form one atomic replacement unit
-        result = git_stage_batch("apply", "--from", "test-batch", "--line", "1,2,3")
+        # Lines 1,2,3,4 form one explicit atomic replacement unit
+        result = git_stage_batch("apply", "--from", "test-batch", "--line", "1,2,3,4")
         assert result.returncode == 0
 
         unstaged = get_unstaged_diff()

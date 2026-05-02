@@ -349,6 +349,8 @@ model used to reconstruct and validate a batch:
 * `batch_source_commit` defines the coordinate space for ownership.
 * `claimed_lines` define source lines that must be present.
 * `deletions` define anchored absence constraints.
+* `replacement_units` optionally links claimed ranges to deletion indexes for
+  explicit replacement atomicity. It is omitted when empty.
 * `mode` defines the file mode for realized content.
 
 ### Limitations

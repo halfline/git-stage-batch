@@ -176,6 +176,7 @@ Per text file:
 - `batch_source_commit`
 - `claimed_lines`
 - `deletions`
+- `replacement_units` (optional; omitted when empty)
 - `mode`
 
 Per binary file:
@@ -186,6 +187,10 @@ Per binary file:
 - `mode`
 
 `deletions` are serialized as anchored blobs, not inline text.
+`replacement_units` records explicit coupling between claimed source ranges and
+deletion indexes so replacement atomicity does not need to be rediscovered from
+display adjacency. The field is omitted when no explicit replacement units are
+stored.
 
 ---
 
@@ -234,7 +239,7 @@ snapshot even if the user keeps editing.
 With the session model in place, ownership can be stated precisely.
 Ownership is defined in `src/git_stage_batch/batch/ownership.py`.
 
-`BatchOwnership` has two parts:
+`BatchOwnership` has three persistent fields:
 
 - `claimed_lines`
   Source-space line ranges like `["3-7", "10"]`
@@ -242,6 +247,11 @@ Ownership is defined in `src/git_stage_batch/batch/ownership.py`.
   `DeletionClaim(anchor_line, content_lines)` records that a specific baseline
   sequence must be absent after a given source line, or at start-of-file if the
   anchor is `None`
+- `replacement_units`
+  Optional metadata linking claimed line ranges to entries in `deletions` when
+  the capture path knows they form one replacement. These persisted units are
+  selected atomically as a whole; display-adjacency grouping is only the fallback
+  for ownership without explicit replacement metadata.
 
 This distinction is central:
 
@@ -443,19 +453,33 @@ context or addition line cannot be expressed in source space, meaning its
 
 ### How source advancement works
 
-`advance_batch_source_for_file()` in `src/git_stage_batch/batch/ownership.py`:
+The stale-source repair path coordinates
+`advance_batch_source_for_file_with_provenance()` in
+`src/git_stage_batch/batch/ownership.py` with selection refresh in
+`src/git_stage_batch/batch/source_refresh.py`:
 
 1. reads the old source content
 2. reads the current working-tree content
 3. builds a new synthetic source that preserves already-owned presence lines,
    even if they have been removed from the working tree by earlier discard-to-
    batch operations
-4. creates a new batch source commit from that advanced content
-5. remaps existing ownership into the new source coordinate space
+4. records provenance maps while building that source:
+   - old source line -> advanced source line
+   - working-tree line -> advanced source line
+5. creates a new batch source commit from that advanced content
+6. remaps existing ownership into the new source coordinate space
+7. returns the working-tree provenance map so the selected lines can be
+   re-annotated without matching synthesized source text again
 
 This is a major detail the old document missed: advanced sources are not
 necessarily equal to the live working tree. They can intentionally carry forward
 already-owned lines that are absent from the current file.
+
+The provenance maps are part of the safety model. Existing ownership is remapped
+through the old-source map, while newly selected lines are re-annotated through
+the working-tree map when that map is available. That avoids rediscovering line
+identity from text in synthesized sources, especially when repeated lines would
+make structural matching ambiguous.
 
 ### Session cache
 
@@ -652,11 +676,15 @@ The current implementation relies on these invariants:
    start use their current working-tree content.
 3. Advanced batch sources may preserve already-owned lines that are absent from
    the live working tree.
-4. The content ref and state ref must stay in sync.
-5. Deletion claims are anchored structural constraints, not generic search and
+4. When source content is synthesized with known provenance, remapping and
+   selected-line re-annotation should treat those provenance maps as
+   authoritative. Text matching is a fallback only when no provenance map is
+   available.
+5. The content ref and state ref must stay in sync.
+6. Deletion claims are anchored structural constraints, not generic search and
    delete instructions.
-6. Line-level batch operations must preserve semantic atomicity.
-7. Merge and discard favor refusal over ambiguous structural guesses.
+7. Line-level batch operations must preserve semantic atomicity.
+8. Merge and discard favor refusal over ambiguous structural guesses.
 
 If any of these change, the command behavior and the safety model change with
 them.

@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 from copy import deepcopy
 from typing import TYPE_CHECKING, Optional
 
@@ -21,8 +19,16 @@ from ..data.batch_sources import (
     save_session_batch_sources,
 )
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import create_git_blob, run_git_command
-from ..utils.paths import get_batch_metadata_file_path, get_state_directory_path
+from ..utils.git import (
+    create_git_blob,
+    git_commit_tree,
+    git_read_tree,
+    git_update_index,
+    git_write_tree,
+    run_git_command,
+    temp_git_index,
+)
+from ..utils.paths import get_batch_metadata_file_path
 from .merge import _satisfy_constraints
 
 if TYPE_CHECKING:
@@ -379,6 +385,23 @@ def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path:
         _remove_file_from_batch_commit(dest_batch, file_path)
 
 
+def _batch_commit_parents(batch_name: str) -> list[str]:
+    """Return parent commits for a batch content commit."""
+    parents = []
+    baseline = get_batch_baseline_commit(batch_name)
+    if baseline:
+        parents.append(baseline)
+
+    metadata = read_file_backed_batch_metadata(batch_name)
+    batch_source_commits = {
+        file_meta["batch_source_commit"]
+        for file_meta in metadata.get("files", {}).values()
+        if "batch_source_commit" in file_meta
+    }
+    parents.extend(sorted(batch_source_commits))
+    return parents
+
+
 def _remove_file_from_batch_commit(batch_name: str, file_path: str) -> None:
     """Remove a file from batch commit tree (for deletions).
 
@@ -389,87 +412,26 @@ def _remove_file_from_batch_commit(batch_name: str, file_path: str) -> None:
         batch_name: Name of the batch
         file_path: Repository-relative path to the file to remove
     """
-    # Create temporary index
-    temp_index_path = get_state_directory_path() / f".batch_index_{batch_name}"
-    env = os.environ.copy()
-    env["GIT_INDEX_FILE"] = str(temp_index_path)
-
-    try:
-        # Load existing batch tree if exists
+    with temp_git_index() as env:
         existing_commit = get_batch_commit_sha(batch_name)
         if existing_commit:
-            subprocess.run(
-                ["git", "read-tree", existing_commit],
-                env=env,
-                check=True,
-                capture_output=True
-            )
+            git_read_tree(existing_commit, env=env)
 
         # Remove file from the temporary index regardless of the working tree.
         # `--remove` consults worktree state and can leave a baseline blob in
         # the batch tree when the file exists locally; stored deletions need the
         # path absent from the batch commit unconditionally.
-        subprocess.run(
-            ["git", "update-index", "--force-remove", "--", file_path],
-            env=env,
-            check=False,  # Don't fail if file not in index
-            capture_output=True
-        )
+        git_update_index(file_path=file_path, force_remove=True, check=False, env=env)
+        tree_sha = git_write_tree(env=env)
 
-        # Write tree
-        tree_result = subprocess.run(
-            ["git", "write-tree"],
-            env=env,
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        tree_sha = tree_result.stdout.strip()
+    commit_sha = git_commit_tree(
+        tree_sha,
+        parents=_batch_commit_parents(batch_name),
+        message=f"Batch: {batch_name}",
+    )
 
-        # Collect parent commits: baseline + batch sources
-        baseline = get_batch_baseline_commit(batch_name)
-        metadata = read_file_backed_batch_metadata(batch_name)
-
-        parents = []
-        if baseline:
-            parents.append(baseline)
-
-        # Add batch source commits as parents
-        batch_source_commits = set()
-        for file_meta in metadata.get("files", {}).values():
-            if "batch_source_commit" in file_meta:
-                batch_source_commits.add(file_meta["batch_source_commit"])
-
-        parents.extend(sorted(batch_source_commits))
-
-        # Create commit with multi-parent
-        parent_args = []
-        for parent in parents:
-            parent_args.extend(["-p", parent])
-
-        if parent_args:
-            commit_result = subprocess.run(
-                ["git", "commit-tree", tree_sha] + parent_args + ["-m", f"Batch: {batch_name}"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-        else:
-            commit_result = subprocess.run(
-                ["git", "commit-tree", tree_sha, "-m", f"Batch: {batch_name}"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-
-        commit_sha = commit_result.stdout.strip()
-
-        from .state_refs import sync_batch_state_refs
-        sync_batch_state_refs(batch_name, content_commit=commit_sha)
-
-    finally:
-        if temp_index_path.exists():
-            temp_index_path.unlink(missing_ok=True)
+    from .state_refs import sync_batch_state_refs
+    sync_batch_state_refs(batch_name, content_commit=commit_sha)
 
 
 def _update_batch_commit(batch_name: str, file_path: str, blob_sha: str, file_mode: str) -> None:
@@ -483,84 +445,22 @@ def _update_batch_commit(batch_name: str, file_path: str, blob_sha: str, file_mo
         blob_sha: Blob SHA for the file content
         file_mode: File mode
     """
-    # Create temporary index
-    temp_index_path = get_state_directory_path() / f".batch_index_{batch_name}"
-    env = os.environ.copy()
-    env["GIT_INDEX_FILE"] = str(temp_index_path)
-
-    try:
-        # Load existing batch tree if exists
+    with temp_git_index() as env:
         existing_commit = get_batch_commit_sha(batch_name)
         if existing_commit:
-            subprocess.run(
-                ["git", "read-tree", existing_commit],
-                env=env,
-                check=True,
-                capture_output=True
-            )
+            git_read_tree(existing_commit, env=env)
 
-        # Update index with new blob
-        subprocess.run(
-            ["git", "update-index", "--add", "--cacheinfo", f"{file_mode},{blob_sha},{file_path}"],
-            env=env,
-            check=True,
-            capture_output=True
-        )
+        git_update_index(mode=file_mode, blob_sha=blob_sha, file_path=file_path, env=env)
+        tree_sha = git_write_tree(env=env)
 
-        # Write tree
-        tree_result = subprocess.run(
-            ["git", "write-tree"],
-            env=env,
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        tree_sha = tree_result.stdout.strip()
+    commit_sha = git_commit_tree(
+        tree_sha,
+        parents=_batch_commit_parents(batch_name),
+        message=f"Batch: {batch_name}",
+    )
 
-        # Collect parent commits: baseline + batch sources
-        baseline = get_batch_baseline_commit(batch_name)
-        metadata = read_file_backed_batch_metadata(batch_name)
-
-        parents = []
-        if baseline:
-            parents.append(baseline)
-
-        # Add batch source commits as parents
-        batch_source_commits = set()
-        for file_meta in metadata.get("files", {}).values():
-            if "batch_source_commit" in file_meta:
-                batch_source_commits.add(file_meta["batch_source_commit"])
-
-        parents.extend(sorted(batch_source_commits))
-
-        # Create commit with multi-parent
-        parent_args = []
-        for parent in parents:
-            parent_args.extend(["-p", parent])
-
-        if parent_args:
-            commit_result = subprocess.run(
-                ["git", "commit-tree", tree_sha] + parent_args + ["-m", f"Batch: {batch_name}"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-        else:
-            commit_result = subprocess.run(
-                ["git", "commit-tree", tree_sha, "-m", f"Batch: {batch_name}"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-
-        commit_sha = commit_result.stdout.strip()
-
-        from .state_refs import sync_batch_state_refs
-        sync_batch_state_refs(batch_name, content_commit=commit_sha)
-
-    finally:
-        if temp_index_path.exists():
-            temp_index_path.unlink(missing_ok=True)
+    from .state_refs import sync_batch_state_refs
+    sync_batch_state_refs(batch_name, content_commit=commit_sha)
 
 
 def read_file_from_batch(batch_name: str, file_path: str) -> Optional[str]:

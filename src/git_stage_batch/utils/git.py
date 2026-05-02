@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+import tempfile
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from ..exceptions import exit_with_error
 from ..i18n import _
-from .command import ExitEvent, OutputEvent, stream_command
+from .command import ExitEvent, OutputEvent, run_command, stream_command
 from .file_io import read_text_file_contents, write_text_file_contents
 from .text import bytes_to_lines
 
@@ -100,7 +103,10 @@ def update_git_refs(
 def run_git_command(
     arguments: list[str],
     check: bool = True,
-    text_output: bool = True
+    text_output: bool = True,
+    *,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
     """Execute a git command with error handling.
 
@@ -108,6 +114,8 @@ def run_git_command(
         arguments: Git command arguments (e.g., ["status", "--short"])
         check: Whether to raise CalledProcessError on non-zero exit
         text_output: Whether to decode stdout/stderr as text
+        cwd: Working directory for the command
+        env: Environment variables
 
     Returns:
         CompletedProcess with returncode, stdout, stderr
@@ -115,12 +123,81 @@ def run_git_command(
     Raises:
         subprocess.CalledProcessError: If check=True and command fails
     """
-    return subprocess.run(
+    return run_command(
         ["git", *arguments],
         check=check,
-        text=text_output,
-        capture_output=True
+        text_output=text_output,
+        cwd=cwd,
+        env=env,
     )
+
+
+@contextmanager
+def temp_git_index() -> Iterator[dict[str, str]]:
+    """Create a temporary Git index and yield an environment that uses it."""
+    temp_index = tempfile.NamedTemporaryFile(delete=False, suffix=".index")
+    temp_index_path = temp_index.name
+    temp_index.close()
+    os.unlink(temp_index_path)
+
+    env = os.environ.copy()
+    env["GIT_INDEX_FILE"] = temp_index_path
+    try:
+        yield env
+    finally:
+        if os.path.exists(temp_index_path):
+            os.unlink(temp_index_path)
+
+
+def git_read_tree(treeish: str, *, env: dict[str, str] | None = None) -> None:
+    """Read a Git tree into the current or provided index."""
+    run_git_command(["read-tree", treeish], env=env)
+
+
+def git_update_index(
+    *,
+    file_path: str,
+    mode: str | None = None,
+    blob_sha: str | None = None,
+    force_remove: bool = False,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
+    """Update one index entry from a blob, or force-remove it."""
+    if force_remove:
+        if mode is not None or blob_sha is not None:
+            raise ValueError("mode and blob_sha cannot be used with force_remove=True")
+        arguments = ["update-index", "--force-remove", "--", file_path]
+    else:
+        if mode is None or blob_sha is None:
+            raise ValueError("mode and blob_sha are required unless force_remove=True")
+        arguments = ["update-index", "--add", "--cacheinfo", mode, blob_sha, file_path]
+
+    return run_git_command(
+        arguments,
+        check=check,
+        env=env,
+    )
+
+
+def git_write_tree(*, env: dict[str, str] | None = None) -> str:
+    """Write the current or provided index as a Git tree."""
+    return run_git_command(["write-tree"], env=env).stdout.strip()
+
+
+def git_commit_tree(
+    tree_sha: str,
+    *,
+    parents: Iterable[str] = (),
+    message: str,
+    env: dict[str, str] | None = None,
+) -> str:
+    """Create a commit object from a tree and optional parents."""
+    arguments = ["commit-tree", tree_sha]
+    for parent in parents:
+        arguments.extend(["-p", parent])
+    arguments.extend(["-m", message])
+    return run_git_command(arguments, env=env).stdout.strip()
 
 
 def create_git_blob(content_chunks: Iterable[bytes]) -> str:

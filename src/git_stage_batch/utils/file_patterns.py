@@ -7,8 +7,9 @@ import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
-from .git import run_git_command
+from .command import run_command
 from .file_io import write_text_file_contents
+from .git import run_git_command
 
 
 def _normalize_path(path: str) -> str:
@@ -56,22 +57,21 @@ def resolve_gitignore_style_patterns(
 
     with tempfile.TemporaryDirectory(prefix="git-stage-batch-patterns-") as temp_dir:
         temp_root = Path(temp_dir)
-        subprocess.run(
+        run_command(
             ["git", "init", "-q"],
-            check=True,
-            cwd=temp_root,
-            capture_output=True,
+            cwd=str(temp_root),
+            text_output=False,
         )
         write_text_file_contents(temp_root / ".gitignore", "".join(f"{pattern}\n" for pattern in normalized_patterns))
         _materialize_candidates(temp_root, normalized_candidates)
 
         payload = b"".join(candidate.encode("utf-8") + b"\0" for candidate in normalized_candidates)
-        result = subprocess.run(
+        result = run_command(
             ["git", "check-ignore", "--no-index", "--stdin", "-z", "-v", "-n"],
+            [payload],
+            cwd=str(temp_root),
             check=False,
-            cwd=temp_root,
-            input=payload,
-            capture_output=True,
+            text_output=False,
         )
         if result.returncode not in (0, 1):
             raise subprocess.CalledProcessError(

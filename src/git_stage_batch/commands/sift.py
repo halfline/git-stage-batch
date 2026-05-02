@@ -20,10 +20,7 @@ produce the intended target content.
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -49,8 +46,13 @@ from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
     create_git_blob,
     get_git_repository_root_path,
+    git_commit_tree,
+    git_read_tree,
+    git_update_index,
+    git_write_tree,
     require_git_repository,
     run_git_command,
+    temp_git_index,
 )
 from ..utils.paths import (
     get_batch_metadata_file_path,
@@ -84,52 +86,16 @@ def create_synthetic_batch_source_commit(
     """
     blob_sha = create_git_blob([file_content])
 
-    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".index") as tmp:
-        temp_index = tmp.name
+    with temp_git_index() as env:
+        git_read_tree(baseline_commit, env=env)
+        git_update_index(mode=file_mode, blob_sha=blob_sha, file_path=file_path, env=env)
+        new_tree = git_write_tree(env=env)
 
-    try:
-        env = os.environ.copy()
-        env["GIT_INDEX_FILE"] = temp_index
-
-        subprocess.run(
-            ["git", "read-tree", baseline_commit],
-            env=env,
-            capture_output=True,
-            check=True,
-        )
-
-        subprocess.run(
-            [
-                "git",
-                "update-index",
-                "--add",
-                "--cacheinfo",
-                f"{file_mode},{blob_sha},{file_path}",
-            ],
-            env=env,
-            capture_output=True,
-            check=True,
-        )
-
-        tree_result = subprocess.run(
-            ["git", "write-tree"],
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        new_tree = tree_result.stdout.strip()
-    finally:
-        if os.path.exists(temp_index):
-            os.unlink(temp_index)
-
-    commit_result = subprocess.run(
-        ["git", "commit-tree", new_tree, "-p", baseline_commit, "-m", f"Sift batch source for {file_path}"],
-        capture_output=True,
-        text=True,
-        check=True,
+    return git_commit_tree(
+        new_tree,
+        parents=[baseline_commit],
+        message=f"Sift batch source for {file_path}",
     )
-    return commit_result.stdout.strip()
 
 
 

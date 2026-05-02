@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import stat
-import subprocess
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -16,7 +14,17 @@ from ..batch.ref_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, 
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
-from ..utils.git import create_git_blob, get_git_repository_root_path, run_git_command, update_git_refs
+from ..utils.git import (
+    create_git_blob,
+    get_git_repository_root_path,
+    git_commit_tree,
+    git_read_tree,
+    git_update_index,
+    git_write_tree,
+    run_git_command,
+    temp_git_index,
+    update_git_refs,
+)
 from ..utils.paths import (
     get_auto_added_files_file_path,
     get_batches_directory_path,
@@ -97,12 +105,7 @@ def _snapshot_current_state(paths: list[str]) -> dict[str, Any]:
 
 
 def _run_update_index(env: dict[str, str], mode: str, blob_sha: str, path: str) -> None:
-    subprocess.run(
-        ["git", "update-index", "--add", "--cacheinfo", mode, blob_sha, path],
-        env=env,
-        capture_output=True,
-        check=True,
-    )
+    git_update_index(mode=mode, blob_sha=blob_sha, file_path=path, env=env)
 
 
 def _add_blob_to_index(env: dict[str, str], path: str, data: bytes, mode: str = "100644") -> None:
@@ -174,15 +177,7 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
         "tracked_worktree_paths": tracked_worktree_paths,
     }
 
-    temp_index = tempfile.NamedTemporaryFile(delete=False, suffix=".index")
-    temp_index_path = temp_index.name
-    temp_index.close()
-    os.unlink(temp_index_path)
-
-    env = os.environ.copy()
-    env["GIT_INDEX_FILE"] = temp_index_path
-
-    try:
+    with temp_git_index() as env:
         _add_blob_to_index(env, "manifest.json", json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"))
         _add_directory_to_index(env, source_dir=session_dir, tree_prefix="session")
         _add_directory_to_index(env, source_dir=get_batches_directory_path(), tree_prefix="batches")
@@ -200,30 +195,17 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
                     entry["mode"],
                 )
 
-        tree_result = subprocess.run(
-            ["git", "write-tree"],
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        tree_sha = tree_result.stdout.strip()
+        tree_sha = git_write_tree(env=env)
 
-        parent = _current_undo_commit()
-        parent_args = ["-p", parent] if parent else []
-        commit_result = subprocess.run(
-            ["git", "commit-tree", tree_sha, *parent_args, "-m", f"Undo checkpoint: {operation}"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        checkpoint_commit = commit_result.stdout.strip()
-        run_git_command(["update-ref", SESSION_UNDO_STACK_REF, checkpoint_commit])
-        _PENDING_CHECKPOINT = checkpoint_commit
-        return checkpoint_commit
-    finally:
-        if os.path.exists(temp_index_path):
-            os.unlink(temp_index_path)
+    parent = _current_undo_commit()
+    checkpoint_commit = git_commit_tree(
+        tree_sha,
+        parents=[parent] if parent else [],
+        message=f"Undo checkpoint: {operation}",
+    )
+    run_git_command(["update-ref", SESSION_UNDO_STACK_REF, checkpoint_commit])
+    _PENDING_CHECKPOINT = checkpoint_commit
+    return checkpoint_commit
 
 
 @contextmanager
@@ -258,36 +240,18 @@ def finalize_pending_checkpoint() -> None:
     manifest["after"] = _snapshot_current_state(paths)
     manifest["after"]["worktree_paths"] = manifest["after"]["worktree_paths"]
 
-    temp_index = tempfile.NamedTemporaryFile(delete=False, suffix=".index")
-    temp_index_path = temp_index.name
-    temp_index.close()
-    os.unlink(temp_index_path)
-
-    env = os.environ.copy()
-    env["GIT_INDEX_FILE"] = temp_index_path
-    try:
-        subprocess.run(["git", "read-tree", checkpoint], env=env, capture_output=True, check=True)
+    with temp_git_index() as env:
+        git_read_tree(checkpoint, env=env)
         _add_blob_to_index(env, "manifest.json", json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"))
-        tree_result = subprocess.run(
-            ["git", "write-tree"],
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        tree_sha = tree_result.stdout.strip()
-        parent = _checkpoint_parent(checkpoint)
-        parent_args = ["-p", parent] if parent else []
-        commit_result = subprocess.run(
-            ["git", "commit-tree", tree_sha, *parent_args, "-m", f"Undo checkpoint: {manifest.get('operation', 'operation')}"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        run_git_command(["update-ref", SESSION_UNDO_STACK_REF, commit_result.stdout.strip()])
-    finally:
-        if os.path.exists(temp_index_path):
-            os.unlink(temp_index_path)
+        tree_sha = git_write_tree(env=env)
+
+    parent = _checkpoint_parent(checkpoint)
+    checkpoint_commit = git_commit_tree(
+        tree_sha,
+        parents=[parent] if parent else [],
+        message=f"Undo checkpoint: {manifest.get('operation', 'operation')}",
+    )
+    run_git_command(["update-ref", SESSION_UNDO_STACK_REF, checkpoint_commit])
 
 
 def _cat_blob(blob_sha: str) -> bytes:
@@ -442,15 +406,7 @@ def _write_snapshot_commit(
     worktree_entries: list[dict[str, Any]],
     parent: str | None,
 ) -> str:
-    temp_index = tempfile.NamedTemporaryFile(delete=False, suffix=".index")
-    temp_index_path = temp_index.name
-    temp_index.close()
-    os.unlink(temp_index_path)
-
-    env = os.environ.copy()
-    env["GIT_INDEX_FILE"] = temp_index_path
-
-    try:
+    with temp_git_index() as env:
         _add_blob_to_index(env, "manifest.json", json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"))
         _add_directory_to_index(env, source_dir=session_dir, tree_prefix="session")
         _add_directory_to_index(env, source_dir=batches_dir, tree_prefix="batches")
@@ -472,28 +428,15 @@ def _write_snapshot_commit(
                         entry.get("mode", "100644"),
                     )
 
-        tree_result = subprocess.run(
-            ["git", "write-tree"],
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        tree_sha = tree_result.stdout.strip()
+        tree_sha = git_write_tree(env=env)
 
-        parent_args = ["-p", parent] if parent else []
-        commit_result = subprocess.run(
-            ["git", "commit-tree", tree_sha, *parent_args, "-m", message],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        commit_sha = commit_result.stdout.strip()
-        run_git_command(["update-ref", ref_name, commit_sha])
-        return commit_sha
-    finally:
-        if os.path.exists(temp_index_path):
-            os.unlink(temp_index_path)
+    commit_sha = git_commit_tree(
+        tree_sha,
+        parents=[parent] if parent else [],
+        message=message,
+    )
+    run_git_command(["update-ref", ref_name, commit_sha])
+    return commit_sha
 
 
 def _push_redo_node(
@@ -570,7 +513,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
 
         index_tree = manifest.get("index_tree")
         if index_tree:
-            run_git_command(["read-tree", index_tree])
+            git_read_tree(index_tree)
 
         _restore_worktree(checkpoint, manifest)
         _restore_intent_to_add_entries()
@@ -623,7 +566,7 @@ def redo_last_checkpoint(*, force: bool = False) -> str:
 
     index_tree = manifest.get("index_tree")
     if index_tree:
-        run_git_command(["read-tree", index_tree])
+        git_read_tree(index_tree)
 
     _restore_worktree(redo_node, manifest)
     _restore_intent_to_add_entries()

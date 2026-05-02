@@ -15,9 +15,15 @@ import pytest
 
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git import (
+    create_git_blob,
     get_git_repository_root_path,
+    git_commit_tree,
+    git_read_tree,
+    git_update_index,
+    git_write_tree,
     require_git_repository,
     run_git_command,
+    temp_git_index,
 )
 
 
@@ -68,6 +74,13 @@ class TestRunGitCommand:
         assert isinstance(result.stdout, str)
         assert isinstance(result.stderr, str)
 
+    def test_binary_output_returns_bytes(self, temp_git_repo):
+        """Test that text_output=False returns bytes output."""
+        result = run_git_command(["show", "HEAD:README.md"], text_output=False)
+
+        assert result.stdout == b"# Test\n"
+        assert isinstance(result.stderr, bytes)
+
     def test_captures_stdout(self, temp_git_repo):
         """Test that stdout is captured."""
         result = run_git_command(["rev-parse", "--git-dir"])
@@ -117,6 +130,91 @@ class TestStreamGitCommand:
         with pytest.raises(subprocess.CalledProcessError):
             # Consume the entire stream to trigger error check
             list(stream_git_command(["invalid-command"]))
+
+
+class TestGitIndexPlumbing:
+    """Tests for temporary index plumbing helpers."""
+
+    def test_temp_index_builds_commit_without_touching_main_index(self, temp_git_repo):
+        """Test creating a commit from a temporary index."""
+        blob_sha = create_git_blob([b"from temp index\n"])
+
+        with temp_git_index() as env:
+            temp_index_path = Path(env["GIT_INDEX_FILE"])
+            git_read_tree("HEAD", env=env)
+            git_update_index(
+                mode="100644",
+                blob_sha=blob_sha,
+                file_path="nested/file.txt",
+                env=env,
+            )
+            tree_sha = git_write_tree(env=env)
+
+        assert not temp_index_path.exists()
+
+        commit_sha = git_commit_tree(
+            tree_sha,
+            parents=["HEAD"],
+            message="Temporary index commit",
+        )
+        result = run_git_command(["show", f"{commit_sha}:nested/file.txt"])
+
+        assert result.stdout == "from temp index\n"
+        assert run_git_command(["status", "--short"]).stdout == ""
+
+    def test_update_index_cacheinfo_handles_comma_paths(self, temp_git_repo):
+        """Test that cacheinfo paths are passed as separate arguments."""
+        blob_sha = create_git_blob([b"comma path\n"])
+        file_path = "dir/name,with,commas.txt"
+
+        with temp_git_index() as env:
+            git_read_tree("HEAD", env=env)
+            git_update_index(
+                mode="100644",
+                blob_sha=blob_sha,
+                file_path=file_path,
+                env=env,
+            )
+            tree_sha = git_write_tree(env=env)
+
+        commit_sha = git_commit_tree(
+            tree_sha,
+            parents=["HEAD"],
+            message="Comma path commit",
+        )
+        result = run_git_command(["show", f"{commit_sha}:{file_path}"])
+
+        assert result.stdout == "comma path\n"
+
+    def test_update_index_force_remove_deletes_index_entry(self, temp_git_repo):
+        """Test force-removing a path from a temporary index."""
+        with temp_git_index() as env:
+            git_read_tree("HEAD", env=env)
+            git_update_index(file_path="README.md", force_remove=True, env=env)
+            tree_sha = git_write_tree(env=env)
+
+        commit_sha = git_commit_tree(
+            tree_sha,
+            parents=["HEAD"],
+            message="Remove file from temp index",
+        )
+        result = run_git_command(["show", f"{commit_sha}:README.md"], check=False)
+
+        assert result.returncode != 0
+        assert run_git_command(["status", "--short"]).stdout == ""
+
+    def test_update_index_rejects_ambiguous_modes(self, temp_git_repo):
+        """Test that update-index helper modes are explicit."""
+        with pytest.raises(ValueError, match="mode and blob_sha are required"):
+            git_update_index(file_path="README.md")
+
+        with pytest.raises(ValueError, match="cannot be used with force_remove"):
+            git_update_index(
+                file_path="README.md",
+                mode="100644",
+                blob_sha="0" * 40,
+                force_remove=True,
+            )
 
 
 class TestRequireGitRepository:

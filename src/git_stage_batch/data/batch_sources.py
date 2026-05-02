@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import json
-import os
 import stat
-import subprocess
-import tempfile
 
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
-from ..utils.git import create_git_blob, get_git_repository_root_path, run_git_command
+from ..utils.git import (
+    create_git_blob,
+    get_git_repository_root_path,
+    git_commit_tree,
+    git_read_tree,
+    git_update_index,
+    git_write_tree,
+    run_git_command,
+    temp_git_index,
+)
 from ..utils.journal import log_journal
 from ..utils.paths import (
     get_abort_head_file_path,
@@ -147,55 +153,16 @@ def create_batch_source_commit(
     else:
         mode = "100644"
 
-    # Create new tree by modifying baseline tree
-    # Use a temporary index to build the tree
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.index') as tmp:
-        temp_index = tmp.name
+    with temp_git_index() as env:
+        git_read_tree(baseline_commit, env=env)
+        git_update_index(mode=mode, blob_sha=blob_sha, file_path=file_path, env=env)
+        new_tree = git_write_tree(env=env)
 
-    try:
-        # Set up environment to use temp index
-        env = os.environ.copy()
-        env['GIT_INDEX_FILE'] = temp_index
-
-        # Read baseline tree into temp index
-        subprocess.run(
-            ["git", "read-tree", baseline_commit],
-            env=env,
-            capture_output=True,
-            check=True
-        )
-
-        # Update the file in the index
-        subprocess.run(
-            ["git", "update-index", "--add", "--cacheinfo", f"{mode},{blob_sha},{file_path}"],
-            env=env,
-            capture_output=True,
-            check=True
-        )
-
-        # Write tree from the index
-        tree_result = subprocess.run(
-            ["git", "write-tree"],
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        new_tree = tree_result.stdout.strip()
-    finally:
-        # Clean up temp index
-        if os.path.exists(temp_index):
-            os.unlink(temp_index)
-
-    # Create commit with baseline as parent
-    commit_message = f"Batch source for {file_path}"
-    commit_result = subprocess.run(
-        ["git", "commit-tree", new_tree, "-p", baseline_commit, "-m", commit_message],
-        capture_output=True,
-        text=True,
-        check=True
+    batch_source_commit = git_commit_tree(
+        new_tree,
+        parents=[baseline_commit],
+        message=f"Batch source for {file_path}",
     )
-    batch_source_commit = commit_result.stdout.strip()
 
     # Verify the content in the batch source commit
     verify_result = run_git_command(["show", f"{batch_source_commit}:{file_path}"], check=False, text_output=False)

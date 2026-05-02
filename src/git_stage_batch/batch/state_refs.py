@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
-import subprocess
-import tempfile
 from typing import Any
 
 from .ref_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from .validation import validate_batch_name
 from ..utils.file_io import read_text_file_contents
-from ..utils.git import create_git_blob, run_git_command, update_git_refs
+from ..utils.git import (
+    create_git_blob,
+    git_commit_tree,
+    git_update_index,
+    git_write_tree,
+    run_git_command,
+    temp_git_index,
+    update_git_refs,
+)
 from ..utils.paths import get_batch_metadata_file_path
 
 
@@ -131,15 +136,7 @@ def sync_batch_state_refs(batch_name: str, *, content_commit: str | None = None)
         "files": {},
     }
 
-    temp_index = tempfile.NamedTemporaryFile(delete=False, suffix=".index")
-    temp_index_path = temp_index.name
-    temp_index.close()
-    os.unlink(temp_index_path)
-
-    env = os.environ.copy()
-    env["GIT_INDEX_FILE"] = temp_index_path
-
-    try:
+    with temp_git_index() as env:
         for file_path, file_meta in metadata.get("files", {}).items():
             state_file_meta = dict(file_meta)
 
@@ -153,17 +150,11 @@ def sync_batch_state_refs(batch_name: str, *, content_commit: str | None = None)
                 if source_result.returncode == 0:
                     source_blob = create_git_blob([source_result.stdout])
                     source_path = f"sources/{file_path}"
-                    subprocess.run(
-                        [
-                            "git",
-                            "update-index",
-                            "--add",
-                            "--cacheinfo",
-                            f"{file_meta.get('mode', '100644')},{source_blob},{source_path}",
-                        ],
+                    git_update_index(
+                        mode=file_meta.get("mode", "100644"),
+                        blob_sha=source_blob,
+                        file_path=source_path,
                         env=env,
-                        capture_output=True,
-                        check=True,
                     )
                     state_file_meta["source_path"] = source_path
 
@@ -171,52 +162,34 @@ def sync_batch_state_refs(batch_name: str, *, content_commit: str | None = None)
 
         state_json = json.dumps(state_metadata, indent=2).encode("utf-8")
         state_blob = create_git_blob([state_json])
-        subprocess.run(
-            [
-                "git",
-                "update-index",
-                "--add",
-                "--cacheinfo",
-                f"100644,{state_blob},batch.json",
-            ],
+        git_update_index(
+            mode="100644",
+            blob_sha=state_blob,
+            file_path="batch.json",
             env=env,
-            capture_output=True,
-            check=True,
         )
 
-        tree_result = subprocess.run(
-            ["git", "write-tree"],
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        tree_sha = tree_result.stdout.strip()
+        tree_sha = git_write_tree(env=env)
 
-        existing_state = run_git_command(
-            ["rev-parse", "--verify", get_batch_state_ref_name(batch_name)],
-            check=False,
-        )
-        parent_args: list[str] = []
-        if existing_state.returncode == 0 and existing_state.stdout.strip():
-            parent_args = ["-p", existing_state.stdout.strip()]
+    existing_state = run_git_command(
+        ["rev-parse", "--verify", get_batch_state_ref_name(batch_name)],
+        check=False,
+    )
+    parents = []
+    if existing_state.returncode == 0 and existing_state.stdout.strip():
+        parents.append(existing_state.stdout.strip())
 
-        commit_result = subprocess.run(
-            ["git", "commit-tree", tree_sha, *parent_args, "-m", f"Batch state: {batch_name}"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        state_commit = commit_result.stdout.strip()
+    state_commit = git_commit_tree(
+        tree_sha,
+        parents=parents,
+        message=f"Batch state: {batch_name}",
+    )
 
-        update_git_refs(
-            updates=[
-                (get_batch_content_ref_name(batch_name), content_commit),
-                (get_batch_state_ref_name(batch_name), state_commit),
-            ],
-            deletes=[get_legacy_batch_ref_name(batch_name)],
-        )
-        remove_file_backed_batch_metadata(batch_name)
-    finally:
-        if os.path.exists(temp_index_path):
-            os.unlink(temp_index_path)
+    update_git_refs(
+        updates=[
+            (get_batch_content_ref_name(batch_name), content_commit),
+            (get_batch_state_ref_name(batch_name), state_commit),
+        ],
+        deletes=[get_legacy_batch_ref_name(batch_name)],
+    )
+    remove_file_backed_batch_metadata(batch_name)

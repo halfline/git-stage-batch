@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ..exceptions import exit_with_error
 from ..i18n import _
-from .command import ExitEvent, OutputEvent, stream_command
+from .command import ExitEvent, OutputEvent, run_command, stream_command
 from .file_io import read_text_file_contents, write_text_file_contents
 from .text import bytes_to_lines
 
@@ -100,7 +100,10 @@ def update_git_refs(
 def run_git_command(
     arguments: list[str],
     check: bool = True,
-    text_output: bool = True
+    text_output: bool = True,
+    *,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
     """Execute a git command with error handling.
 
@@ -108,6 +111,8 @@ def run_git_command(
         arguments: Git command arguments (e.g., ["status", "--short"])
         check: Whether to raise CalledProcessError on non-zero exit
         text_output: Whether to decode stdout/stderr as text
+        cwd: Working directory for the command
+        env: Environment variables
 
     Returns:
         CompletedProcess with returncode, stdout, stderr
@@ -115,11 +120,12 @@ def run_git_command(
     Raises:
         subprocess.CalledProcessError: If check=True and command fails
     """
-    return subprocess.run(
+    return run_command(
         ["git", *arguments],
         check=check,
-        text=text_output,
-        capture_output=True
+        text_output=text_output,
+        cwd=cwd,
+        env=env,
     )
 
 

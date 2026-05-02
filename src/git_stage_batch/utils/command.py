@@ -163,6 +163,104 @@ class CapturedFd:
     child_fd: int
 
 
+def _close_fd_if_present(fd: int | None) -> None:
+    if fd is None:
+        return
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def _prepare_spawn_dup_source(
+    source_fd: int,
+    target_fds: set[int],
+    cleanup_fds: list[int],
+) -> int:
+    if source_fd not in target_fds:
+        return source_fd
+
+    while True:
+        duplicate_fd = os.dup(source_fd)
+        cleanup_fds.append(duplicate_fd)
+        if duplicate_fd not in target_fds:
+            return duplicate_fd
+
+
+def _add_spawn_dup2_action(
+    file_actions: list[tuple[int, int] | tuple[int, int, int]],
+    source_fd: int,
+    target_fd: int,
+    target_fds: set[int],
+    cleanup_fds: list[int],
+) -> None:
+    spawn_source_fd = _prepare_spawn_dup_source(
+        source_fd,
+        target_fds,
+        cleanup_fds,
+    )
+    file_actions.append((os.POSIX_SPAWN_DUP2, spawn_source_fd, target_fd))
+    if spawn_source_fd != source_fd or source_fd not in target_fds:
+        file_actions.append((os.POSIX_SPAWN_CLOSE, spawn_source_fd))
+
+
+def _spawn_arguments_for_cwd(arguments: list[str], cwd: str | None) -> tuple[str, list[str]]:
+    if cwd is None:
+        return arguments[0], arguments
+
+    shell = _resolve_spawn_executable_from_paths("sh", os.defpath.split(os.pathsep))
+    shell_cwd = _cwd_argument_for_shell(cwd)
+    script = 'cd "$1" || exit 127; shift; exec "$@"'
+    return shell, [shell, "-c", script, "sh", shell_cwd, *arguments]
+
+
+def _cwd_argument_for_shell(cwd: str) -> str:
+    if cwd.startswith("-") and not os.path.isabs(cwd):
+        return os.path.join(".", cwd)
+    return cwd
+
+
+def _close_fds(fds: Iterable[int | None]) -> None:
+    for fd in fds:
+        _close_fd_if_present(fd)
+
+
+def _resolve_spawn_executable_from_paths(
+    executable: str,
+    paths: Iterable[str],
+) -> str:
+    if os.path.dirname(executable):
+        return executable
+
+    permission_denied = False
+    for directory in paths:
+        candidate = os.path.join(directory, executable) if directory else executable
+        if os.path.isdir(candidate):
+            permission_denied = True
+            continue
+        if os.access(candidate, os.X_OK):
+            return candidate
+        if os.path.exists(candidate):
+            permission_denied = True
+
+    if permission_denied:
+        raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), executable)
+    raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), executable)
+
+
+def _resolve_spawn_executable(executable: str, env: dict[str, str]) -> str:
+    return _resolve_spawn_executable_from_paths(executable, os.get_exec_path(env))
+
+
+def _add_spawn_close_action(
+    file_actions: list[tuple[int, int] | tuple[int, int, int]],
+    fd: int,
+    target_fds: set[int],
+) -> None:
+    if fd not in target_fds:
+        file_actions.append((os.POSIX_SPAWN_CLOSE, fd))
+
+
 class StreamingProcess:
     """A running subprocess with streaming I/O.
 
@@ -463,7 +561,7 @@ def start_command(
     capture_stdout: bool = True,
     capture_stderr: bool = True,
 ) -> StreamingProcess:
-    """Start a subprocess with streaming I/O using fork/exec.
+    """Start a subprocess with streaming I/O using posix_spawn.
 
     Stdout and stderr are captured by default.
     """
@@ -481,6 +579,10 @@ def start_command(
         if captured.child_fd in child_fds_seen:
             raise ValueError(f"duplicate or reserved child_fd: {captured.child_fd}")
         child_fds_seen.add(captured.child_fd)
+
+    executable, spawn_arguments = _spawn_arguments_for_cwd(arguments, cwd)
+    spawn_env = os.environ.copy() if env is None else env
+    executable_path = _resolve_spawn_executable(executable, spawn_env)
 
     # Create pipes for stdin/stdout/stderr
     if stdin:
@@ -504,86 +606,74 @@ def start_command(
         read_fd, write_fd = os.pipe()
         extra_pipes[captured.child_fd] = (read_fd, write_fd)
 
-    # Fork the process
+    cleanup_fds: list[int] = []
+    file_actions: list[tuple[int, int] | tuple[int, int, int]] = []
+    target_fds = set(extra_pipes)
+    if stdin or stdin_fd is not None:
+        target_fds.add(0)
+    if capture_stdout:
+        target_fds.add(1)
+    if capture_stderr:
+        target_fds.add(2)
+
+    if stdin:
+        assert stdin_read_fd is not None
+        assert stdin_write_fd is not None
+        _add_spawn_close_action(file_actions, stdin_write_fd, target_fds)
+        _add_spawn_dup2_action(file_actions, stdin_read_fd, 0, target_fds, cleanup_fds)
+    elif stdin_fd is not None:
+        _add_spawn_dup2_action(file_actions, stdin_fd, 0, target_fds, cleanup_fds)
+
+    if capture_stdout:
+        assert stdout_read_fd is not None
+        assert stdout_write_fd is not None
+        _add_spawn_close_action(file_actions, stdout_read_fd, target_fds)
+        _add_spawn_dup2_action(file_actions, stdout_write_fd, 1, target_fds, cleanup_fds)
+
+    if capture_stderr:
+        assert stderr_read_fd is not None
+        assert stderr_write_fd is not None
+        _add_spawn_close_action(file_actions, stderr_read_fd, target_fds)
+        _add_spawn_dup2_action(file_actions, stderr_write_fd, 2, target_fds, cleanup_fds)
+
+    for child_fd, (read_fd, write_fd) in extra_pipes.items():
+        _add_spawn_close_action(file_actions, read_fd, target_fds)
+        _add_spawn_dup2_action(file_actions, write_fd, child_fd, target_fds, cleanup_fds)
+
     try:
-        pid = os.fork()
+        pid = os.posix_spawn(
+            executable_path,
+            spawn_arguments,
+            spawn_env,
+            file_actions=file_actions,
+        )
     except Exception:
-        # Clean up pipes on fork failure
-        if stdin:
-            os.close(stdin_read_fd)
-            os.close(stdin_write_fd)
-        if capture_stdout:
-            os.close(stdout_read_fd)
-            os.close(stdout_write_fd)
-        if capture_stderr:
-            os.close(stderr_read_fd)
-            os.close(stderr_write_fd)
-        for read_fd, write_fd in extra_pipes.values():
-            os.close(read_fd)
-            os.close(write_fd)
+        _close_fds([
+            stdin_read_fd,
+            stdin_write_fd,
+            stdout_read_fd,
+            stdout_write_fd,
+            stderr_read_fd,
+            stderr_write_fd,
+            *cleanup_fds,
+        ])
+        for pipe_fds in extra_pipes.values():
+            _close_fds(pipe_fds)
         raise
-
-    if pid == 0:
-        # Child process
-        try:
-            # Close parent-side fds
-            if stdin:
-                os.close(stdin_write_fd)
-            if capture_stdout:
-                os.close(stdout_read_fd)
-            if capture_stderr:
-                os.close(stderr_read_fd)
-            for read_fd, _ in extra_pipes.values():
-                os.close(read_fd)
-
-            # Set up stdin (fd 0)
-            if stdin:
-                os.dup2(stdin_read_fd, 0)
-                os.close(stdin_read_fd)
-            elif stdin_fd is not None:
-                os.dup2(stdin_fd, 0)
-                os.close(stdin_fd)
-
-            # Set up stdout (fd 1)
-            if capture_stdout:
-                os.dup2(stdout_write_fd, 1)
-                os.close(stdout_write_fd)
-
-            # Set up stderr (fd 2)
-            if capture_stderr:
-                os.dup2(stderr_write_fd, 2)
-                os.close(stderr_write_fd)
-
-            # Set up extra fds
-            for child_fd, (_, write_fd) in extra_pipes.items():
-                os.dup2(write_fd, child_fd)
-                os.close(write_fd)
-
-            # Change working directory if requested
-            if cwd is not None:
-                os.chdir(cwd)
-
-            # Execute the command
-            if env is not None:
-                os.execvpe(arguments[0], arguments, env)
-            else:
-                os.execvp(arguments[0], arguments)
-        except Exception:
-            # If anything fails in the child, exit immediately
-            os._exit(127)
 
     # Parent process
     # Close child-side fds
     if stdin:
-        os.close(stdin_read_fd)
+        _close_fd_if_present(stdin_read_fd)
     elif stdin_fd is not None:
-        os.close(stdin_fd)
+        _close_fd_if_present(stdin_fd)
     if capture_stdout:
-        os.close(stdout_write_fd)
+        _close_fd_if_present(stdout_write_fd)
     if capture_stderr:
-        os.close(stderr_write_fd)
+        _close_fd_if_present(stderr_write_fd)
+    _close_fds(cleanup_fds)
     for _, write_fd in extra_pipes.values():
-        os.close(write_fd)
+        _close_fd_if_present(write_fd)
 
     # Build fd maps
     output_fds: dict[int, int] = {}

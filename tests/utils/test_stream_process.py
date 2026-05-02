@@ -1,5 +1,6 @@
 """Tests for POSIX subprocess streaming."""
 
+import errno
 import os
 import time
 
@@ -346,6 +347,24 @@ class TestProcessControl:
 
         exit_code = proc.wait()
         assert exit_code == 17
+
+    def test_wait_closes_captured_fds(self):
+        """Test wait() closes captured pipe fds when stream() is unused."""
+        proc = start_command([
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write('out'); sys.stderr.write('err')",
+        ])
+        captured_fds = list(proc._output_fds)
+
+        exit_code = proc.wait()
+
+        assert exit_code == 0
+        assert proc._output_fds == {}
+        for fd in captured_fds:
+            with pytest.raises(OSError) as exc_info:
+                os.fstat(fd)
+            assert exc_info.value.errno == errno.EBADF
 
 
 class TestEdgeCases:

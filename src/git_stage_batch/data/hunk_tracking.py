@@ -703,9 +703,8 @@ def build_file_hunk_from_content(file_path: str, file_content: bytes) -> Optiona
         new_path = new_tmp.name
 
     try:
-        diff_result = subprocess.run(
+        diff_result = run_git_command(
             [
-                "git",
                 "diff",
                 "--no-index",
                 f"-U{get_context_lines()}",
@@ -714,7 +713,7 @@ def build_file_hunk_from_content(file_path: str, file_content: bytes) -> Optiona
                 new_path,
             ],
             check=False,
-            capture_output=True,
+            text_output=False,
         )
         if diff_result.returncode not in (0, 1):
             raise subprocess.CalledProcessError(

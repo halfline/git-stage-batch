@@ -60,7 +60,7 @@ def test_resolve_default_manpath_unsets_manpath(monkeypatch):
         captured_env = kwargs["env"]
         return Mock(returncode=0, stdout="/usr/share/man\n")
 
-    monkeypatch.setattr(argument_parser.subprocess, "run", fake_run)
+    monkeypatch.setattr(argument_parser, "run_command", fake_run)
     monkeypatch.setenv("MANPATH", "/custom/man")
 
     result = argument_parser._resolve_default_manpath()
@@ -100,7 +100,7 @@ def test_show_git_stage_batch_help_uses_packaged_page_first(monkeypatch, tmp_pat
         calls.append((cmd, kwargs.get("env")))
         return Mock(returncode=0)
 
-    monkeypatch.setattr(argument_parser.subprocess, "run", fake_run)
+    monkeypatch.setattr(argument_parser, "run_command", fake_run)
 
     assert argument_parser._show_git_stage_batch_help() is True
     assert calls[0][0] == ["git", "help", "stage-batch"]
@@ -143,7 +143,7 @@ def test_show_git_stage_batch_help_materializes_editable_manpage(monkeypatch, tm
         assert staged_manpage.read_text(encoding="utf-8") == "test"
         return Mock(returncode=0)
 
-    monkeypatch.setattr(argument_parser.subprocess, "run", fake_run)
+    monkeypatch.setattr(argument_parser, "run_command", fake_run)
 
     assert argument_parser._show_git_stage_batch_help() is True
     assert calls[0][1]["MANPATH"].endswith(f"{os.pathsep}/usr/share/man")

@@ -68,6 +68,13 @@ class TestRunGitCommand:
         assert isinstance(result.stdout, str)
         assert isinstance(result.stderr, str)
 
+    def test_binary_output_returns_bytes(self, temp_git_repo):
+        """Test that text_output=False returns bytes output."""
+        result = run_git_command(["show", "HEAD:README.md"], text_output=False)
+
+        assert result.stdout == b"# Test\n"
+        assert isinstance(result.stderr, bytes)
+
     def test_captures_stdout(self, temp_git_repo):
         """Test that stdout is captured."""
         result = run_git_command(["rev-parse", "--git-dir"])

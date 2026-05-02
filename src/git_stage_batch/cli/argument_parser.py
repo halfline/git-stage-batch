@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
@@ -19,6 +18,7 @@ from ..batch.query import read_batch_metadata
 from ..data.hunk_tracking import advance_to_next_change, show_selected_change
 from ..exceptions import CommandError
 from ..i18n import _, ngettext
+from ..utils.command import run_command
 from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
 from .completion import command_complete_files
 
@@ -40,12 +40,9 @@ def _resolve_default_manpath() -> str | None:
     env = os.environ.copy()
     env.pop("MANPATH", None)
     try:
-        result = subprocess.run(
+        result = run_command(
             ["manpath", "-q"],
             check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
             env=env,
         )
     except (FileNotFoundError, OSError):
@@ -70,10 +67,10 @@ def _build_manpath_with_packaged_page(man_root: Path, env: dict[str, str]) -> st
 def _try_git_help_with_environment(env: dict[str, str] | None = None) -> bool:
     """Run git help for git-stage-batch."""
     try:
-        result = subprocess.run(
+        result = run_command(
             ["git", "help", "stage-batch"],
             check=False,
-            stderr=subprocess.DEVNULL,
+            capture_stdout=False,
             env=env,
         )
     except (FileNotFoundError, OSError):

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 import sys
 
 from ..data.batch_refs import restore_batch_refs
@@ -48,22 +47,18 @@ def command_abort() -> None:
     env["GIT_REFLOG_ACTION"] = "stage-batch abort"
 
     print(_("Resetting to {}...").format(abort_head[:7]), file=sys.stderr)
-    subprocess.run(
-        ["git", "reset", "--hard", abort_head],
+    run_git_command(
+        ["reset", "--hard", abort_head],
         env=env,
-        check=True,
-        capture_output=True,
-        text=True
     )
 
     # Apply original stash if it exists (with --index to restore staged state)
     if abort_stash:
         print(_("Applying original changes..."), file=sys.stderr)
-        result = subprocess.run(
-            ["git", "stash", "apply", "--index", abort_stash],
+        result = run_git_command(
+            ["stash", "apply", "--index", abort_stash],
             env=env,
-            capture_output=True,
-            text=True
+            check=False,
         )
         if result.returncode != 0:
             print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)

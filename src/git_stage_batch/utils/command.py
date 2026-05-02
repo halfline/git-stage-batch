@@ -29,6 +29,7 @@ Example usage:
 from __future__ import annotations
 
 import errno
+import locale
 import os
 import selectors
 import signal
@@ -322,8 +323,9 @@ class StreamingProcess:
     def stream(self, stdin_chunks: Iterable[bytes] | None = None) -> Iterator[CommandEvent]:
         """Stream I/O with the child process.
 
-        Iteration continues until all captured output file descriptors reach EOF.
-        After that, the child is waited for and a final ExitEvent is emitted.
+        Iteration continues until all captured output file descriptors reach EOF
+        and any managed stdin pipe has been closed. After that, the child is
+        waited for and a final ExitEvent is emitted.
 
         Args:
             stdin_chunks: Optional iterator of bytes to write to stdin. If provided,
@@ -356,13 +358,16 @@ class StreamingProcess:
             for parent_fd in self._output_fds:
                 self._selector.register(parent_fd, selectors.EVENT_READ)
 
-            # Stream until all output fds are closed
-            while self._output_fds:
+            while self._output_fds or self._has_pending_stdin():
                 self._update_stdin_registration()
 
                 if self._should_close_stdin_now():
                     self._close_stdin_now()
                     yield StdinClosedEvent(CommandEventRole.STDIN_CLOSED)
+                    continue
+
+                if not self._selector.get_map():
+                    break
 
                 events_list = self._selector.select()
 
@@ -388,6 +393,17 @@ class StreamingProcess:
             raise
         finally:
             self._close_resources()
+
+    def _has_pending_stdin(self) -> bool:
+        return (
+            self._stdin_fd is not None
+            and not self._stdin_closed_emitted
+            and (
+                self._stdin_selected_chunk is not None
+                or self._stdin_iter is not None
+                or self._stdin_close_requested
+            )
+        )
 
     def _update_stdin_registration(self) -> None:
         if self._selector is None or self._stdin_fd is None:
@@ -741,3 +757,64 @@ def stream_command(
         raise
     finally:
         proc._close_resources()
+
+
+def run_command(
+    arguments: list[str],
+    stdin_chunks: Iterable[bytes] | None = None,
+    *,
+    check: bool = True,
+    text_output: bool = True,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
+) -> subprocess.CompletedProcess:
+    """Run a command to completion and capture stdout/stderr.
+
+    This is the one-shot counterpart to stream_command(). It returns a
+    subprocess.CompletedProcess-compatible object while using the same
+    streaming implementation underneath.
+    """
+    stdout_chunks: list[bytes] = []
+    stderr_chunks: list[bytes] = []
+    returncode = 0
+
+    for event in stream_command(
+        arguments,
+        stdin_chunks,
+        cwd=cwd,
+        env=env,
+        capture_stdout=capture_stdout,
+        capture_stderr=capture_stderr,
+    ):
+        if isinstance(event, ExitEvent):
+            returncode = event.exit_code
+        elif isinstance(event, OutputEvent):
+            if event.fd == 1:
+                stdout_chunks.append(event.data)
+            elif event.fd == 2:
+                stderr_chunks.append(event.data)
+
+    stdout = b"".join(stdout_chunks) if capture_stdout else None
+    stderr = b"".join(stderr_chunks) if capture_stderr else None
+
+    if text_output:
+        encoding = locale.getpreferredencoding(False)
+        stdout = stdout.decode(encoding) if stdout is not None else None
+        stderr = stderr.decode(encoding) if stderr is not None else None
+
+    result = subprocess.CompletedProcess(
+        arguments,
+        returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    if check and returncode != 0:
+        raise subprocess.CalledProcessError(
+            returncode,
+            arguments,
+            output=stdout,
+            stderr=stderr,
+        )
+    return result

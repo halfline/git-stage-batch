@@ -453,6 +453,8 @@ def start_command(
 
     Stdout and stderr are captured by default.
     """
+    if not arguments:
+        raise ValueError("arguments must not be empty")
     if extra_fds is None:
         extra_fds = []
     if stdin and stdin_fd is not None:

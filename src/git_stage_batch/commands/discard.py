@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 
 from ..batch import add_file_to_batch, create_batch
@@ -304,14 +303,9 @@ def command_discard_file(file: str) -> None:
                 hashes_to_block.append(patch_hash)
 
         # Remove the file from working tree
-        try:
-            subprocess.run(
-                ["git", "rm", "-f", target_file],
-                check=True,
-                capture_output=True,
-            )
-        except subprocess.CalledProcessError as e:
-            print(_("Failed to discard file: {}").format(e.stderr.decode("utf-8", errors="replace")), file=sys.stderr)
+        result = run_git_command(["rm", "-f", target_file], check=False)
+        if result.returncode != 0:
+            print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
             return
 
         # Mark all collected hashes as processed

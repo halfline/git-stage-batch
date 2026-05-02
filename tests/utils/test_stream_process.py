@@ -2,6 +2,7 @@
 
 import errno
 import os
+import subprocess
 import time
 
 import sys
@@ -12,6 +13,7 @@ from git_stage_batch.utils.command import (
     CapturedFd,
     ExitEvent,
     OutputEvent,
+    run_command,
     StdinClosedEvent,
     start_command,
     stream_command,
@@ -70,6 +72,77 @@ class TestBasicStreaming:
 
         assert stdout_data == b"out"
         assert stderr_data == b"err"
+
+
+class TestRunCommand:
+    """Tests for one-shot command execution."""
+
+    def test_returns_completed_process_with_text_output(self):
+        """Test run_command captures text stdout and stderr."""
+        result = run_command([
+            sys.executable,
+            "-c",
+            "import sys; print('out'); print('err', file=sys.stderr)",
+        ])
+
+        assert result.returncode == 0
+        assert result.stdout == "out\n"
+        assert result.stderr == "err\n"
+
+    def test_returns_binary_output(self):
+        """Test run_command can capture bytes output."""
+        result = run_command(
+            [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'\\xff')"],
+            text_output=False,
+        )
+
+        assert result.stdout == b"\xff"
+        assert result.stderr == b""
+
+    def test_failed_command_with_check_raises_with_output(self):
+        """Test check=True raises CalledProcessError with captured output."""
+        with pytest.raises(subprocess.CalledProcessError) as exc_info:
+            run_command([
+                sys.executable,
+                "-c",
+                "import sys; print('out'); print('err', file=sys.stderr); sys.exit(3)",
+            ])
+
+        assert exc_info.value.returncode == 3
+        assert exc_info.value.stdout == "out\n"
+        assert exc_info.value.stderr == "err\n"
+
+    def test_failed_command_without_check_returns_result(self):
+        """Test check=False returns a CompletedProcess for nonzero exits."""
+        result = run_command(
+            [sys.executable, "-c", "import sys; sys.exit(4)"],
+            check=False,
+        )
+
+        assert result.returncode == 4
+
+    def test_stdin_chunks(self):
+        """Test run_command feeds stdin chunks."""
+        result = run_command(["cat"], stdin_chunks=[b"hello", b" world"])
+
+        assert result.stdout == "hello world"
+
+    def test_stdin_chunks_without_captured_output(self):
+        """Test run_command feeds stdin without captured output fds."""
+        result = run_command(
+            [
+                sys.executable,
+                "-c",
+                "import sys; assert sys.stdin.buffer.read() == b'hi'",
+            ],
+            stdin_chunks=[b"hi"],
+            capture_stdout=False,
+            capture_stderr=False,
+        )
+
+        assert result.returncode == 0
+        assert result.stdout is None
+        assert result.stderr is None
 
 
 class TestStdinHandling:

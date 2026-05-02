@@ -351,6 +351,11 @@ class TestProcessControl:
 class TestEdgeCases:
     """Tests for edge cases."""
 
+    def test_empty_arguments_rejected(self):
+        """Test command launch rejects an empty argument list."""
+        with pytest.raises(ValueError, match="arguments"):
+            start_command([])
+
     def test_zero_length_chunks(self):
         """Test that zero-length chunks are handled safely."""
         events = list(stream_command(

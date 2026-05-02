@@ -202,10 +202,24 @@ class StreamingProcess:
     def wait(self) -> int:
         """Wait for process exit and return exit code.
 
-        Safe to call before or after stream() iteration.
-        Returns the process exit code.
+        If stream() has not started, captured output is drained and
+        discarded so pipe resources are closed.
         """
-        return self._process.wait()
+        if self._events_started:
+            try:
+                return self._process.wait()
+            finally:
+                self._close_resources()
+
+        stdin_chunks: Iterable[bytes] | None = None
+        if self._stdin_fd is not None:
+            stdin_chunks = ()
+
+        exit_code = 0
+        for event in self.stream(stdin_chunks):
+            if isinstance(event, ExitEvent):
+                exit_code = event.exit_code
+        return exit_code
 
     def stream(self, stdin_chunks: Iterable[bytes] | None = None) -> Iterator[CommandEvent]:
         """Stream I/O with the child process.

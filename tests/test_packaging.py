@@ -6,7 +6,6 @@ and that translations work after installation.
 The wheel is automatically built as part of the test setup.
 """
 
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,34 +16,38 @@ import pytest
 
 
 @pytest.fixture(scope="session")
-def build_wheel():
-    """Build the wheel once for all tests in this module."""
+def build_wheel(tmp_path_factory):
+    """Build the wheel once per worker for all tests in this module."""
     project_root = Path(__file__).parent.parent
-    dist_dir = project_root / "dist"
-    build_dir = project_root / "build-wheel"
+    package_root = tmp_path_factory.mktemp("package")
+    dist_dir = package_root / "dist"
+    build_dir = package_root / "build-wheel"
 
-    try:
-        # Build the wheel using a dedicated build directory
-        result = subprocess.run(
-            ["uv", "build", "--wheel", f"-Cbuild-dir={build_dir}"],
-            cwd=project_root,
-            capture_output=True,
-            text=True
-        )
+    # xdist creates session-scoped fixtures once per worker. Keep build output
+    # under the worker temp root so packaging tests never share build state.
+    result = subprocess.run(
+        [
+            "uv",
+            "build",
+            "--wheel",
+            "--out-dir",
+            str(dist_dir),
+            f"-Cbuild-dir={build_dir}",
+        ],
+        cwd=project_root,
+        capture_output=True,
+        text=True
+    )
 
-        if result.returncode != 0:
-            pytest.fail(f"Failed to build wheel: {result.stderr}")
+    if result.returncode != 0:
+        pytest.fail(f"Failed to build wheel: {result.stderr}")
 
-        # Find the built wheel
-        wheels = list(dist_dir.glob("*.whl"))
-        if not wheels:
-            pytest.fail("No wheel file found after build")
+    # Find the built wheel
+    wheels = list(dist_dir.glob("*.whl"))
+    if not wheels:
+        pytest.fail("No wheel file found after build")
 
-        return max(wheels, key=lambda p: p.stat().st_mtime)
-    finally:
-        # Clean up the build directory
-        if build_dir.exists():
-            shutil.rmtree(build_dir)
+    return max(wheels, key=lambda p: p.stat().st_mtime)
 
 
 class TestWheelContents:

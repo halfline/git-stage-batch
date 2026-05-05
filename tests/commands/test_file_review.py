@@ -944,3 +944,683 @@ def test_explicit_discard_line_on_different_file_clears_previous_review_state(
     command_discard_line("1", file="other.txt")
 
     assert read_last_file_review_state() is None
+def test_non_selectable_batch_preview_preserves_partial_review_guard(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    assert state.entire_file_shown is False
+
+    command_show_from_batch("cleanup", file="other.txt", selectable=False)
+    capsys.readouterr()
+
+    preserved_state = read_last_file_review_state()
+    assert preserved_state is not None
+    assert preserved_state.file_path == "file.txt"
+    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+        command_include_from_batch("cleanup")
+
+def test_show_from_batch_invalid_page_does_not_select_batch_file(paged_batch_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    capsys.readouterr()
+    before_kind = read_selected_change_kind()
+    before_file = get_selected_change_file_path()
+
+    with pytest.raises(CommandError, match="Available pages: 1-3"):
+        command_show_from_batch("cleanup", file="file.txt", page="99")
+
+    assert read_selected_change_kind() == before_kind
+    assert get_selected_change_file_path() == before_file
+    assert read_last_file_review_state() is None
+
+def test_show_from_batch_invalid_line_does_not_select_batch_file(paged_batch_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    before_kind = read_selected_change_kind()
+    before_file = get_selected_change_file_path()
+    before_state = read_last_file_review_state()
+    assert before_kind == SelectedChangeKind.FILE
+    assert before_file == "file.txt"
+    assert before_state is not None
+
+    with pytest.raises(CommandError, match="Line ID 999 is not available"):
+        command_show_from_batch("cleanup", file="file.txt", line_ids="999")
+
+    assert read_selected_change_kind() == before_kind
+    assert get_selected_change_file_path() == before_file
+    assert read_last_file_review_state() == before_state
+
+def test_show_from_empty_batch_preserves_partial_batch_review_guard(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+
+    create_batch("empty")
+    command_show_from_batch("empty")
+    capsys.readouterr()
+
+    assert read_last_file_review_state() == state
+    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+        command_include_from_batch("cleanup")
+
+def test_include_from_batch_refuses_after_navigational_batch_file_list(paged_file_repo, capsys):
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+
+    command_show_from_batch("cleanup")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        command_include_from_batch("cleanup")
+
+    result = subprocess.run(["git", "diff", "--cached", "--quiet"], check=False)
+    assert result.returncode == 0
+
+def test_live_file_list_does_not_block_unrelated_batch_action(paged_file_repo, capsys):
+    command_start()
+    command_include_to_batch("cleanup", file="file.txt", quiet=True)
+    _add_second_changed_file(paged_file_repo)
+    capsys.readouterr()
+
+    command_show_file_list(["file.txt", "other.txt"])
+    capsys.readouterr()
+
+    command_include_from_batch("cleanup")
+
+    captured = capsys.readouterr()
+    assert "Staged changes from batch 'cleanup'" in captured.err
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.splitlines() == ["file.txt"]
+
+def test_legacy_file_list_marker_does_not_block_batch_action(paged_file_repo, capsys):
+    command_start()
+    command_include_to_batch("cleanup", file="file.txt", quiet=True)
+    capsys.readouterr()
+    get_selected_change_clear_reason_file_path().write_text("file-list")
+
+    command_include_from_batch("cleanup")
+
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.splitlines() == ["file.txt"]
+
+def test_discard_from_batch_refuses_after_navigational_batch_file_list(paged_file_repo, capsys):
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    original_file = (paged_file_repo / "file.txt").read_text()
+    original_other = (paged_file_repo / "other.txt").read_text()
+
+    command_show_from_batch("cleanup")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        command_discard_from_batch("cleanup")
+
+    assert (paged_file_repo / "file.txt").read_text() == original_file
+    assert (paged_file_repo / "other.txt").read_text() == original_other
+
+def test_apply_from_batch_refuses_after_navigational_batch_file_list(paged_file_repo, capsys):
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    original_file = (paged_file_repo / "file.txt").read_text()
+    original_other = (paged_file_repo / "other.txt").read_text()
+
+    command_show_from_batch("cleanup")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        command_apply_from_batch("cleanup")
+
+    assert (paged_file_repo / "file.txt").read_text() == original_file
+    assert (paged_file_repo / "other.txt").read_text() == original_other
+
+def test_show_from_batch_file_page_uses_gutter_ids_in_output_and_state(paged_batch_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+
+    captured = capsys.readouterr()
+    assert "Changes: batch cleanup" in captured.out
+    assert "git-stage-batch include --from cleanup --file file.txt" in captured.out
+    assert "[#1]" in captured.out
+    state = read_last_file_review_state()
+    assert state is not None
+    assert state.source == "batch"
+    assert state.batch_name == "cleanup"
+    assert state.selected_change_kind == "batch-file"
+    assert state.selections[0].display_ids
+    assert state.selections[0].selection_ids
+
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+
+    captured = capsys.readouterr()
+    assert "git-stage-batch include --from cleanup --line" in captured.out
+    assert "git-stage-batch discard --from cleanup --line" in captured.out
+
+def test_pathless_include_from_batch_accepts_same_batch_review_selection(paged_batch_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    command_include_from_batch("cleanup", line_ids=line_spec)
+
+    captured = capsys.readouterr()
+    assert "Staged selected lines from batch 'cleanup'" in captured.err
+    assert read_last_file_review_state() is not None
+
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        command_include_from_batch("cleanup", line_ids=unshown_spec)
+
+def test_pathless_include_from_batch_uses_reviewed_file_in_multi_file_batch(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_include_from_batch("cleanup", line_ids=line_spec)
+
+    captured = capsys.readouterr()
+    assert "Staged selected lines from batch 'cleanup'" in captured.err
+    assert read_last_file_review_state() is not None
+
+def test_pathless_live_line_after_full_batch_review_refuses_with_batch_help(paged_batch_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        command_include_line("1")
+
+    assert "came from batch 'cleanup', not the live working tree" in exc_info.value.message
+    assert "git-stage-batch include --from cleanup --file file.txt --line 1" in exc_info.value.message
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        lambda: command_include_line("1", file=""),
+        lambda: command_skip_line("1", file=""),
+        lambda: command_discard_line("1", file=""),
+    ],
+)
+
+def test_live_default_file_line_actions_after_batch_review_refuse(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+    action,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        action()
+
+    assert "came from batch 'cleanup', not the live working tree" in exc_info.value.message
+
+
+@pytest.mark.parametrize(
+    "file_command",
+    [command_include_file, command_skip_file, command_discard_file],
+)
+
+def test_live_default_file_actions_after_batch_review_refuse(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+    file_command,
+):
+    _force_one_change_per_page(monkeypatch)
+    original_content = (paged_batch_repo / "file.txt").read_text()
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        file_command("")
+
+    assert "came from batch 'cleanup', not the live working tree" in exc_info.value.message
+    assert (paged_batch_repo / "file.txt").read_text() == original_content
+
+
+@pytest.mark.parametrize(
+    "as_command",
+    [
+        lambda: command_include_file_as("replacement\n", file=""),
+        lambda: command_discard_file_as("replacement\n", file=""),
+    ],
+)
+
+def test_live_default_file_as_actions_after_batch_review_refuse(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+    as_command,
+):
+    _force_one_change_per_page(monkeypatch)
+    original_content = (paged_batch_repo / "file.txt").read_text()
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        as_command()
+
+    assert "came from batch 'cleanup', not the live working tree" in exc_info.value.message
+    assert (paged_batch_repo / "file.txt").read_text() == original_content
+
+def test_pathless_live_line_after_filtered_batch_show_refuses_before_stale_snapshot(
+    paged_batch_repo,
+    capsys,
+):
+    command_show_from_batch("cleanup", file="file.txt", line_ids="1")
+    capsys.readouterr()
+    assert read_last_file_review_state() is not None
+
+    with pytest.raises(CommandError) as exc_info:
+        command_include_line("1")
+
+    assert "came from batch 'cleanup', not the live working tree" in exc_info.value.message
+    assert "Cached hunk is stale" not in exc_info.value.message
+
+def test_bare_include_from_batch_after_filtered_file_show_does_not_widen_to_whole_batch(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+
+    command_show_from_batch("cleanup", file="file.txt", line_ids="1")
+    capsys.readouterr()
+
+    state = read_last_file_review_state()
+    assert state is not None
+    assert state.file_path == "file.txt"
+    assert state.entire_file_shown is False
+
+    with pytest.raises(CommandError) as exc_info:
+        command_include_from_batch("cleanup")
+
+    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    staged_files = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert staged_files == []
+
+def test_filtered_batch_show_state_only_allows_displayed_selection(
+    paged_batch_repo,
+    capsys,
+):
+    command_show_from_batch("cleanup", file="file.txt", line_ids="1")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        command_include_from_batch("cleanup", line_ids="2")
+
+    staged_files = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert staged_files == []
+
+
+@pytest.mark.parametrize(
+    "file_command",
+    [command_include_file, command_skip_file, command_discard_file],
+)
+
+def test_live_hunk_only_command_after_batch_review_refuses_without_clearing_state(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        command_suggest_fixup()
+
+    assert "came from a batch, not a live hunk" in exc_info.value.message
+    assert read_selected_change_kind() == SelectedChangeKind.BATCH_FILE
+    assert read_last_file_review_state() is not None
+
+def test_bare_include_to_batch_after_full_batch_review_refuses_with_batch_help(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        command_include_to_batch("later")
+
+    assert "came from batch 'cleanup', not the live working tree" in exc_info.value.message
+    assert "Batch reviews do not support this action" in exc_info.value.message
+
+def test_bare_discard_to_batch_after_full_batch_review_refuses_with_batch_help(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        command_discard_to_batch("later")
+
+    assert "came from batch 'cleanup', not the live working tree" in exc_info.value.message
+    assert "Batch reviews do not support this action" in exc_info.value.message
+
+def test_explicit_empty_file_discard_to_batch_after_batch_review_uses_selected_file(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    command_discard_to_batch("later", file="", quiet=True)
+
+    metadata = read_batch_metadata("later")
+    assert list(metadata.get("files", {}).keys()) == ["file.txt"]
+
+def test_bare_include_from_batch_refuses_after_partial_batch_review(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        command_include_from_batch("cleanup")
+
+    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "git-stage-batch include --from cleanup --file file.txt" in exc_info.value.message
+    result = subprocess.run(["git", "diff", "--cached", "--quiet"], check=False)
+    assert result.returncode == 0
+
+def test_bare_discard_from_batch_refuses_after_partial_batch_review(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    original_content = (paged_batch_repo / "file.txt").read_text()
+
+    with pytest.raises(CommandError) as exc_info:
+        command_discard_from_batch("cleanup")
+
+    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "git-stage-batch discard --from cleanup --file file.txt" in exc_info.value.message
+    assert (paged_batch_repo / "file.txt").read_text() == original_content
+
+
+@pytest.mark.parametrize(
+    "batch_file_action",
+    [
+        lambda: command_include_from_batch("cleanup", file=""),
+        lambda: command_discard_from_batch("cleanup", file=""),
+        lambda: command_apply_from_batch("cleanup", file=""),
+        lambda: command_reset_from_batch("cleanup", file=""),
+    ],
+)
+
+def test_bare_include_from_batch_after_full_single_file_review_uses_reviewed_file(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    command_include_from_batch("cleanup")
+
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.splitlines() == ["file.txt"]
+
+def test_bare_discard_from_batch_after_full_single_file_review_uses_reviewed_file(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    command_discard_from_batch("cleanup")
+
+    assert "line 2 changed" not in (paged_file_repo / "file.txt").read_text()
+    assert (paged_file_repo / "other.txt").read_text() == "other 1\nother changed\n"
+
+def test_bare_apply_from_batch_after_full_single_file_review_uses_reviewed_file(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    subprocess.run(["git", "restore", "file.txt", "other.txt"], check=True, capture_output=True)
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    command_apply_from_batch("cleanup")
+
+    assert "line 2 changed" in (paged_file_repo / "file.txt").read_text()
+    assert (paged_file_repo / "other.txt").read_text() == "other 1\nother 2\n"
+
+def test_pathless_include_from_batch_refuses_when_rerendered_batch_diff_changes(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    original_render = hunk_tracking_module.render_batch_file_display
+
+    def changed_render(batch_name, file_path, metadata=None):
+        rendered = original_render(batch_name, file_path, metadata=metadata)
+        assert rendered is not None
+        changed_lines = [
+            replace(
+                line,
+                text="changed after review" if line.id is not None else line.text,
+                text_bytes=b"changed after review" if line.id is not None else line.text_bytes,
+            )
+            for line in rendered.line_changes.lines
+        ]
+        return RenderedBatchDisplay(
+            line_changes=LineLevelChange(
+                path=rendered.line_changes.path,
+                header=rendered.line_changes.header,
+                lines=changed_lines,
+            ),
+            gutter_to_selection_id=rendered.gutter_to_selection_id,
+            selection_id_to_gutter=rendered.selection_id_to_gutter,
+        )
+
+    monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", changed_render)
+
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_include_from_batch("cleanup", line_ids=line_spec)
+
+def test_pathless_discard_from_batch_accepts_same_batch_review_selection(paged_batch_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_discard_from_batch("cleanup", line_ids=line_spec)
+
+    captured = capsys.readouterr()
+    assert "Discarded selected lines from batch 'cleanup'" in captured.err
+    assert read_last_file_review_state() is not None
+
+def test_pathless_discard_from_batch_uses_reviewed_file_in_multi_file_batch(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_discard_from_batch("cleanup", line_ids=line_spec)
+
+    captured = capsys.readouterr()
+    assert "Discarded selected lines from batch 'cleanup'" in captured.err
+    assert read_last_file_review_state() is not None
+
+def test_pathless_apply_from_batch_uses_reviewed_file_in_multi_file_batch(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    subprocess.run(["git", "restore", "file.txt", "other.txt"], check=True, capture_output=True)
+    capsys.readouterr()
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_apply_from_batch("cleanup", line_ids=line_spec)
+
+    captured = capsys.readouterr()
+    assert "Applied selected lines from batch 'cleanup'" in captured.err
+    assert "line 2 changed" in (paged_file_repo / "file.txt").read_text()
+    assert (paged_file_repo / "other.txt").read_text() == "other 1\nother 2\n"
+
+def test_explicit_batch_file_line_actions_reject_unshown_review_selection(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+    batch_command,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    assert len(state.selections) > 1
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        batch_command("cleanup", line_ids=unshown_spec, file="file.txt")
+
+def test_explicit_include_from_batch_file_line_as_rejects_unshown_review_selection(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    assert len(state.selections) > 1
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        command_include_from_batch(
+            "cleanup",
+            line_ids=unshown_spec,
+            file="file.txt",
+            replacement_text="replacement\n",
+        )
+
+def test_pathless_include_from_other_batch_after_batch_review_refuses(paged_batch_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_include_from_batch("other-batch", line_ids=line_spec)
+
+def test_pathless_include_from_other_batch_after_full_batch_review_refuses(paged_batch_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    assert state.entire_file_shown is True
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_include_from_batch("other-batch", line_ids=line_spec)

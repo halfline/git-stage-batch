@@ -4,7 +4,8 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands.include import command_include, command_include_line, command_include_line_as
+from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.commands.include import command_include, command_include_line, command_include_line_as, command_include_to_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
@@ -136,6 +137,40 @@ class TestCommandIncludeLine:
         """Test that include --line requires an active hunk."""
         with pytest.raises(CommandError):
             command_include_line("1")
+
+    def test_include_to_batch_line_captures_worktree_executable_mode(self, temp_git_repo):
+        """include --to --line should store chmod changes from the working tree."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o644)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.write_text("#!/bin/sh\necho base\necho added\n")
+        tool_path.chmod(0o755)
+
+        command_start()
+        command_include_to_batch("mode-batch", line_ids="1", quiet=True)
+
+        metadata = read_batch_metadata("mode-batch")
+        assert metadata["files"]["tool.sh"]["mode"] == "100755"
+
+    def test_include_to_batch_file_line_captures_worktree_executable_mode(self, temp_git_repo):
+        """include --to --file --line should store chmod changes from the working tree."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o644)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.write_text("#!/bin/sh\necho base\necho added\n")
+        tool_path.chmod(0o755)
+
+        command_start()
+        command_include_to_batch("mode-batch", file="tool.sh", line_ids="1", quiet=True)
+
+        metadata = read_batch_metadata("mode-batch")
+        assert metadata["files"]["tool.sh"]["mode"] == "100755"
 
     def test_include_line_stages_single_addition(self, temp_git_repo):
         """Test including a single added line."""

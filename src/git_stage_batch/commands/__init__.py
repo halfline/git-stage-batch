@@ -17,7 +17,7 @@ from .interactive import command_interactive
 from .list import command_list_batches
 from .new import command_new_batch
 from .reset import command_reset_from_batch
-from .show import command_show
+from .show import command_show, command_show_file_list
 from .show_from import command_show_from_batch
 from .sift import command_sift_batch
 from .skip import command_skip, command_skip_file, command_skip_line
@@ -56,6 +56,7 @@ __all__ = [
     "command_new_batch",
     "command_reset_from_batch",
     "command_show",
+    "command_show_file_list",
     "command_show_from_batch",
     "command_sift_batch",
     "command_skip",

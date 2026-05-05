@@ -15,6 +15,16 @@ def _stdin_with_bytes(data: bytes) -> io.TextIOWrapper:
     return io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="surrogateescape")
 
 
+class _UnreadableStdin:
+    """Stdin stub that fails if a command reads replacement text too early."""
+
+    class _Buffer:
+        def read(self):
+            raise AssertionError("stdin should not be read")
+
+    buffer = _Buffer()
+
+
 def test_build_manpath_with_existing_environment(monkeypatch):
     """Existing MANPATH should be preserved after the packaged root."""
     monkeypatch.setattr(argument_parser, "_resolve_default_manpath", lambda: "/ignored")
@@ -393,6 +403,32 @@ def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     mock_show_selected_change.assert_called_once_with()
 
 
+def test_parse_command_line_include_from_with_files_resolves_batch_scope_only(monkeypatch):
+    """include --from --files should match batch files, not current live changes."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_include_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
+    monkeypatch.setattr(
+        argument_parser,
+        "read_batch_metadata",
+        lambda name: {"files": {"foo.py": {}, "bar.py": {}, "notes.txt": {}}},
+    )
+    monkeypatch.setattr(
+        argument_parser,
+        "list_changed_files",
+        Mock(side_effect=AssertionError("live scope should not be resolved")),
+    )
+
+    args = parse_command_line(["include", "--from", "batch", "--files", "*.py"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    assert mock_command.call_args_list == [
+        call("batch", None, "foo.py"),
+        call("batch", None, "bar.py"),
+    ]
+
+
 def test_parse_command_line_include_from_with_as():
     """Test parsing include --from with replacement text."""
     args = parse_command_line(
@@ -444,6 +480,16 @@ def test_parse_command_line_include_rejects_no_edge_overlap_without_line_as():
     assert args is not None
 
     with pytest.raises(argument_parser.CommandError, match="`--no-edge-overlap` requires `include --line --as`"):
+        args.func(args)
+
+
+def test_parse_command_line_include_invalid_as_stdin_shape_does_not_read(monkeypatch):
+    """Invalid include --as-stdin combinations should fail before consuming stdin."""
+    monkeypatch.setattr(argument_parser.sys, "stdin", _UnreadableStdin())
+    args = parse_command_line(["include", "--to", "batch", "--as-stdin"], quiet=True)
+    assert args is not None
+
+    with pytest.raises(argument_parser.CommandError, match="`include --as` requires"):
         args.func(args)
 
 
@@ -551,6 +597,32 @@ def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
     assert args is not None
     args.func(args)
     assert mock_command.call_args_list == [call("foo.py"), call("bar.py")]
+
+
+def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(monkeypatch):
+    """discard --from --files should match batch files, not current live changes."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_discard_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
+    monkeypatch.setattr(
+        argument_parser,
+        "read_batch_metadata",
+        lambda name: {"files": {"foo.py": {}, "bar.py": {}, "notes.txt": {}}},
+    )
+    monkeypatch.setattr(
+        argument_parser,
+        "list_changed_files",
+        Mock(side_effect=AssertionError("live scope should not be resolved")),
+    )
+
+    args = parse_command_line(["discard", "--from", "batch", "--files", "*.py"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    assert mock_command.call_args_list == [
+        call("batch", None, "foo.py"),
+        call("batch", None, "bar.py"),
+    ]
 
 
 def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
@@ -811,6 +883,16 @@ def test_parse_command_line_discard_rejects_no_edge_overlap_without_to_line_as()
     assert args is not None
 
     with pytest.raises(argument_parser.CommandError, match="`--no-edge-overlap` requires `discard --to --line --as`"):
+        args.func(args)
+
+
+def test_parse_command_line_discard_invalid_as_stdin_shape_does_not_read(monkeypatch):
+    """Invalid discard --as-stdin combinations should fail before consuming stdin."""
+    monkeypatch.setattr(argument_parser.sys, "stdin", _UnreadableStdin())
+    args = parse_command_line(["discard", "--from", "batch", "--as-stdin"], quiet=True)
+    assert args is not None
+
+    with pytest.raises(argument_parser.CommandError, match="`discard --as` requires"):
         args.func(args)
 
 

@@ -71,6 +71,12 @@ class SelectedChangeKind(str, Enum):
     BATCH_FILE = "batch-file"
 
 
+class SelectedChangeClearReason(str, Enum):
+    """Reasons selected change state was intentionally cleared."""
+
+    FILE_LIST = "file-list"
+
+
 def _selected_change_state_paths():
     """Return files that make up the cached selected change state."""
     return {
@@ -114,6 +120,116 @@ def clear_selected_change_state_files() -> None:
         path.unlink(missing_ok=True)
     clear_last_file_review_state()
     # processed_batch_ids is global state (union of all batches), not per-hunk state
+
+
+def mark_selected_change_cleared_by_file_list(
+    *,
+    source: str,
+    batch_name: str | None = None,
+) -> None:
+    """Record that a navigational file list intentionally cleared selection."""
+    _write_selected_change_clear_reason(
+        reason=SelectedChangeClearReason.FILE_LIST,
+        source=source,
+        batch_name=batch_name,
+    )
+
+
+def _write_selected_change_clear_reason(
+    *,
+    reason: SelectedChangeClearReason,
+    source: str,
+    batch_name: str | None = None,
+    file_path: str | None = None,
+) -> None:
+    """Write a structured selected-change clear marker."""
+    write_text_file_contents(
+        get_selected_change_clear_reason_file_path(),
+        json.dumps(
+            {
+                "reason": reason.value,
+                "source": source,
+                "batch_name": batch_name,
+                "file_path": file_path,
+            },
+            ensure_ascii=False,
+            indent=0,
+        ),
+    )
+
+
+def _read_selected_change_clear_reason() -> dict[str, str | None] | None:
+    """Return the structured clear marker, tolerating legacy plain-text state."""
+    raw_reason = read_text_file_contents(get_selected_change_clear_reason_file_path()).strip()
+    if not raw_reason:
+        return None
+    if raw_reason == SelectedChangeClearReason.FILE_LIST.value:
+        return {
+            "reason": SelectedChangeClearReason.FILE_LIST.value,
+            "source": None,
+            "batch_name": None,
+        }
+    try:
+        data = json.loads(raw_reason)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    reason = data.get("reason")
+    if reason not in {item.value for item in SelectedChangeClearReason}:
+        return None
+    return {
+        "reason": reason,
+        "source": data.get("source") if isinstance(data.get("source"), str) else None,
+        "batch_name": data.get("batch_name") if isinstance(data.get("batch_name"), str) else None,
+        "file_path": data.get("file_path") if isinstance(data.get("file_path"), str) else None,
+    }
+
+
+def selected_change_was_cleared_by_file_list(
+    *,
+    source: str | None = None,
+    batch_name: str | None = None,
+) -> bool:
+    """Return whether the current empty selection came from a file list."""
+    if read_selected_change_kind() is not None:
+        return False
+    marker = _read_selected_change_clear_reason()
+    if marker is None:
+        return False
+    if marker["reason"] != SelectedChangeClearReason.FILE_LIST.value:
+        return False
+    marker_source = marker["source"]
+    marker_batch_name = marker["batch_name"]
+    if source is not None and marker_source != source:
+        return False
+    if batch_name is not None and marker_batch_name != batch_name:
+        return False
+    return True
+
+
+def refuse_bare_action_after_file_list(
+    action_command: str,
+    *,
+    open_command: str = "git-stage-batch show --file PATH",
+    source: str | None = None,
+    batch_name: str | None = None,
+) -> None:
+    """Refuse a bare action after a navigational file list cleared selection."""
+    if not selected_change_was_cleared_by_file_list(source=source, batch_name=batch_name):
+        return
+    raise CommandError(
+        _(
+            "No selected change.\n"
+            "The last command only showed files; it did not choose one for follow-up actions.\n\n"
+            "Run:\n"
+            "  git-stage-batch show\n"
+            "or choose a file with:\n"
+            "  {open_command}\n"
+            "before running:\n"
+            "  git-stage-batch {action}"
+        ).format(open_command=open_command, action=action_command)
+    )
 
 
 def load_selected_binary_file() -> Optional[BinaryFileChange]:

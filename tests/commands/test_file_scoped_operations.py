@@ -15,7 +15,7 @@ from git_stage_batch.utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
-from git_stage_batch.data.hunk_tracking import render_unstaged_file_as_single_hunk
+from git_stage_batch.data.hunk_tracking import read_selected_change_kind, render_unstaged_file_as_single_hunk
 from git_stage_batch.commands.skip import command_skip, command_skip_line
 from git_stage_batch.cli.argument_parser import parse_command_line
 
@@ -572,18 +572,25 @@ class TestShowFileFlag:
         assert "change-two" in changed_texts
         assert "change-three" in changed_texts
 
-    def test_show_files_selection_can_feed_include(self, multi_file_repo):
-        """Show --files should leave the final displayed file selected for include."""
+    def test_show_files_outputs_navigation_list_and_clears_selection(self, multi_file_repo, capsys):
+        """Show --files should be navigational, not a hidden selected-file action."""
         command_start()
+        capsys.readouterr()
 
         args = parse_command_line(["show", "--files", "*.txt"], quiet=True)
         assert args is not None
         args.func(args)
 
-        command_include(quiet=True)
-
+        captured = capsys.readouterr()
+        assert "── matched files" in captured.out
+        assert "Changes: file vs HEAD" in captured.out
+        assert "Open:" in captured.out
+        assert "git-stage-batch show --file alpha.txt" in captured.out
+        assert read_selected_change_kind() is None
+        with pytest.raises(CommandError, match="last command only showed files"):
+            command_include(quiet=True)
         result = run_git_command(["diff", "--cached", "--name-only"])
-        assert result.stdout.strip() == "gamma.txt"
+        assert result.stdout == ""
 
     def test_include_files_reports_aggregate_staged_scope(self, multi_file_repo, capsys):
         """Include --files should report the full staged scope once."""
@@ -637,33 +644,36 @@ class TestShowFileFlag:
         result = run_git_command(["diff", "--cached", "--name-only"])
         assert result.stdout.splitlines() == ["alpha.txt", "beta.txt", "gamma.txt"]
 
-    def test_show_files_selection_can_feed_discard(self, multi_file_repo):
-        """Show --files should leave the final displayed file selected for discard."""
+    def test_show_files_does_not_feed_bare_discard(self, multi_file_repo, capsys):
+        """A multi-file file list should not leave a selected file for discard."""
         command_start()
+        capsys.readouterr()
 
         args = parse_command_line(["show", "--files", "*.txt"], quiet=True)
         assert args is not None
         args.func(args)
+        capsys.readouterr()
 
-        command_discard(quiet=True)
-
+        assert read_selected_change_kind() is None
+        with pytest.raises(CommandError, match="last command only showed files"):
+            command_discard(quiet=True)
         assert (multi_file_repo / "alpha.txt").read_text() == "alpha1\nalpha2-modified\nalpha3\nalpha4-new\n"
         assert (multi_file_repo / "beta.txt").read_text() == "beta1\nbeta2-modified\nbeta3\nbeta4-new\n"
-        assert (multi_file_repo / "gamma.txt").read_text() == "gamma1\ngamma2\ngamma3\n"
+        assert (multi_file_repo / "gamma.txt").read_text() == "gamma1\ngamma2-modified\ngamma3\ngamma4-new\n"
 
-    def test_show_files_selection_can_feed_skip(self, multi_file_repo):
-        """Show --files should leave the final displayed file selected for skip."""
+    def test_show_files_does_not_feed_bare_skip(self, multi_file_repo, capsys):
+        """A multi-file file list should not leave a selected file for skip."""
         command_start()
+        capsys.readouterr()
 
         args = parse_command_line(["show", "--files", "*.txt"], quiet=True)
         assert args is not None
         args.func(args)
+        capsys.readouterr()
 
-        command_skip(quiet=True)
-        command_include(quiet=True)
-
-        result = run_git_command(["diff", "--cached", "--name-only"])
-        assert result.stdout.strip() == "alpha.txt"
+        assert read_selected_change_kind() is None
+        with pytest.raises(CommandError, match="last command only showed files"):
+            command_skip(quiet=True)
 
 
 class TestIncludeToBatchWithFile:

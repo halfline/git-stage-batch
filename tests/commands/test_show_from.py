@@ -2,6 +2,7 @@
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.include import command_include_to_batch
+from git_stage_batch.commands.show import command_show
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.storage import add_file_to_batch
 from git_stage_batch.batch.ownership import DeletionClaim
@@ -9,6 +10,7 @@ from git_stage_batch.data.hunk_tracking import render_batch_file_display
 import git_stage_batch.batch.merge as merge_module
 import git_stage_batch.batch.display as display_module
 import git_stage_batch.data.hunk_tracking as hunk_tracking
+import git_stage_batch.commands.show_from as show_from_module
 
 import subprocess
 
@@ -227,8 +229,8 @@ class TestCommandShowFromBatch:
         assert rendered is not None
         assert len(calls) == 1
 
-    def test_show_from_multi_file_caches_first_render_without_rerendering(self, temp_git_repo, monkeypatch, capsys):
-        """Showing all files should not render the first file twice for cache state."""
+    def test_show_from_multi_file_list_renders_each_file_once(self, temp_git_repo, monkeypatch, capsys):
+        """Showing a multi-file batch file list should render each file once."""
 
         (temp_git_repo / "file1.txt").write_text("line 1\nline 2\n")
         (temp_git_repo / "file2.txt").write_text("line A\nline B\n")
@@ -250,8 +252,39 @@ class TestCommandShowFromBatch:
             rendered_files.append(file_path)
             return original_render(batch_name, file_path, metadata=metadata)
 
-        monkeypatch.setattr(hunk_tracking, "render_batch_file_display", counting_render)
+        monkeypatch.setattr(show_from_module, "render_batch_file_display", counting_render)
 
         command_show_from_batch("multi-file-batch")
 
         assert rendered_files == ["file1.txt", "file2.txt"]
+        captured = capsys.readouterr()
+        assert "── matched files" in captured.out
+
+    def test_non_selectable_multi_file_batch_preview_preserves_selection(self, temp_git_repo, capsys):
+        """A non-selectable multi-file batch preview should not clear selected state."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nselected\n")
+        command_show()
+        capsys.readouterr()
+        assert hunk_tracking.get_selected_change_file_path() == "README.md"
+
+        (temp_git_repo / "file1.txt").write_text("one\n")
+        (temp_git_repo / "file2.txt").write_text("two\n")
+        create_batch("multi-file-batch")
+        add_file_to_batch(
+            "multi-file-batch",
+            "file1.txt",
+            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            "100644",
+        )
+        add_file_to_batch(
+            "multi-file-batch",
+            "file2.txt",
+            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            "100644",
+        )
+
+        command_show_from_batch("multi-file-batch", selectable=False)
+        capsys.readouterr()
+
+        assert hunk_tracking.get_selected_change_file_path() == "README.md"

@@ -840,16 +840,16 @@ class TestBatchSourceWithFile:
         assert "alpha.txt" not in staged
         assert "gamma.txt" not in staged
 
-    def test_include_from_batch_file_empty_string(self, multi_file_repo):
-        """Include --from BATCH --file (empty) should use first file from batch display."""
+    def test_include_from_batch_file_empty_string_uses_selected_batch_file(self, multi_file_repo):
+        """Include --from BATCH --file (empty) should use a selected batch file."""
         command_start()
         command_include_to_batch("batch", file="alpha.txt")
         command_include_to_batch("batch", file="beta.txt")
 
         subprocess.run(["git", "checkout", "HEAD", "--", "."], check=True, capture_output=True)
 
-        # Show batch to cache first file
-        command_show_from_batch("batch")
+        # Show one batch file to cache an explicit selected file.
+        command_show_from_batch("batch", file="alpha.txt")
 
         # Include with empty string
         command_include_from_batch("batch", file="")
@@ -857,6 +857,19 @@ class TestBatchSourceWithFile:
         # First file (alpha.txt) should be staged
         result = run_git_command(["diff", "--cached", "--name-only"])
         assert "alpha.txt" in result.stdout
+
+    def test_include_from_batch_file_empty_string_after_file_list_fails(self, multi_file_repo):
+        """A multi-file batch file list should not select a hidden batch file."""
+        command_start()
+        command_include_to_batch("batch", file="alpha.txt")
+        command_include_to_batch("batch", file="beta.txt")
+
+        subprocess.run(["git", "checkout", "HEAD", "--", "."], check=True, capture_output=True)
+
+        command_show_from_batch("batch")
+
+        with pytest.raises(CommandError, match="last command only showed files"):
+            command_include_from_batch("batch", file="")
 
     def test_apply_from_batch_with_file(self, multi_file_repo):
         """Apply --from BATCH --file PATH should apply only that file."""
@@ -925,8 +938,8 @@ class TestBatchSourceWithFile:
 class TestMultiFileBatchDisplay:
     """Test displaying multi-file batches with separators."""
 
-    def test_show_from_multi_file_batch_separators(self, multi_file_repo, capsys):
-        """Show --from BATCH with multiple files should show file headers."""
+    def test_show_from_multi_file_batch_list(self, multi_file_repo, capsys):
+        """Show --from BATCH with multiple files should show a navigational file list."""
         command_start()
         capsys.readouterr()  # Clear start's output
         command_include_to_batch("multi", file="alpha.txt")
@@ -936,10 +949,10 @@ class TestMultiFileBatchDisplay:
         command_show_from_batch("multi")
 
         captured = capsys.readouterr()
-        # Should have file headers in standard format
-        assert "alpha.txt :: @@" in captured.out
-        assert "beta.txt :: @@" in captured.out
-        assert "gamma.txt :: @@" in captured.out
+        assert "── matched files" in captured.out
+        assert "Changes: batch multi" in captured.out
+        assert "git-stage-batch show --from multi --file alpha.txt" in captured.out
+        assert read_selected_change_kind() is None
 
     def test_show_from_multi_file_displays_all_content(self, multi_file_repo, capsys):
         """Show --from BATCH should display content from all files."""

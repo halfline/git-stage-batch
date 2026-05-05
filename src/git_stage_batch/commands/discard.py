@@ -5,7 +5,7 @@ from __future__ import annotations
 import stat
 import sys
 
-from ..batch import add_file_to_batch, create_batch
+from ..batch import add_binary_file_to_batch, add_file_to_batch, create_batch
 from ..batch.display import annotate_with_batch_source, annotate_with_batch_source_content
 from ..batch.ownership import (
     BatchOwnership,
@@ -22,9 +22,10 @@ from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
     parse_unified_diff_streaming,
 )
-from ..core.hashing import compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
 from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange
+from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     advance_to_and_show_next_change,
@@ -37,7 +38,21 @@ from ..data.hunk_tracking import (
     read_selected_change_kind,
     recalculate_selected_hunk_for_file,
     record_hunk_discarded,
+    refuse_bare_action_after_file_list,
+    render_binary_file_change,
     require_selected_hunk,
+    restore_selected_change_state,
+    snapshot_selected_change_state,
+)
+from ..data.file_review_state import (
+    FileReviewAction,
+    clear_last_file_review_state_if_file_matches,
+    finish_review_scoped_line_action,
+    refuse_ambiguous_bare_action_after_partial_file_review,
+    refuse_live_action_for_batch_selection,
+    resolve_live_line_action_scope,
+    resolve_live_to_batch_action_scope,
+    ReviewSource,
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
@@ -45,6 +60,7 @@ from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
+from ..output import print_remaining_line_changes_header
 from ..staging.operations import build_target_working_tree_content_bytes_with_discarded_lines
 from ..staging.operations import build_target_working_tree_content_bytes_with_replaced_lines
 from ..utils.command import ExitEvent, OutputEvent, stream_command
@@ -60,8 +76,6 @@ from ..utils.paths import (
 )
 from .include import (
     _expand_replacement_selection_ids,
-    _restore_selected_change_state,
-    _snapshot_selected_change_state,
 )
 
 
@@ -89,6 +103,12 @@ def command_discard(*, quiet: bool = False) -> None:
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+
+    if refuse_live_action_for_batch_selection(FileReviewAction.DISCARD):
+        return
+    if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.DISCARD):
+        return
+    refuse_bare_action_after_file_list("discard")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
         _command_discard_selected_file(quiet=quiet)
@@ -268,6 +288,13 @@ def command_discard_file(file: str) -> None:
     require_session_started()
     ensure_state_directory_exists()
 
+    if file == "":
+        if refuse_live_action_for_batch_selection(FileReviewAction.DISCARD):
+            return
+        if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.DISCARD):
+            return
+        refuse_bare_action_after_file_list("discard --file")
+
     # Determine target file
     if file == "":
         target_file = get_selected_change_file_path()
@@ -294,6 +321,16 @@ def command_discard_file(file: str) -> None:
         # (git rm -f will stage the deletion, making hunks disappear from git diff)
         hashes_to_block = []
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+            if isinstance(patch, BinaryFileChange):
+                file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+                if file_path != target_file:
+                    continue
+
+                patch_hash = compute_binary_file_hash(patch)
+                if patch_hash not in blocked_hashes:
+                    hashes_to_block.append(patch_hash)
+                continue
+
             if patch.new_path != target_file:
                 continue
 
@@ -325,6 +362,12 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+    if file is None or file == "":
+        if refuse_live_action_for_batch_selection(FileReviewAction.DISCARD):
+            return
+        if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.DISCARD):
+            return
+        refuse_bare_action_after_file_list("discard --file --as")
 
     operation_parts = ["discard", "--as", replacement_text]
     if file is not None:
@@ -341,7 +384,7 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
         else:
             target_file = file
             preserve_selected_state = True
-            saved_selected_state = _snapshot_selected_change_state()
+            saved_selected_state = snapshot_selected_change_state()
 
         line_changes = _load_explicit_file_selection(target_file)
         snapshot_file_if_untracked(target_file)
@@ -351,9 +394,10 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
         absolute_path.write_text(replacement_text, encoding="utf-8", errors="surrogateescape")
 
         if preserve_selected_state:
-            _restore_selected_change_state(saved_selected_state)
+            restore_selected_change_state(saved_selected_state)
         else:
             recalculate_selected_hunk_for_file(line_changes.path)
+        clear_last_file_review_state_if_file_matches(target_file)
 
     print(_("✓ Discarded file as replacement: {file}").format(file=target_file), file=sys.stderr)
 
@@ -370,6 +414,16 @@ def command_discard_line(line_id_specification: str, file: str | None = None) ->
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+    scope_resolution = resolve_live_line_action_scope(
+        FileReviewAction.DISCARD,
+        action_command=f"discard --line {line_id_specification}",
+        line_id_specification=line_id_specification,
+        file=file,
+        validate_pathless_before_live_guard=True,
+    )
+    if scope_resolution.should_stop:
+        return
+    review_state = scope_resolution.review_state
     operation_parts = ["discard", "--line", line_id_specification]
     if file is not None:
         operation_parts.extend(["--file", file])
@@ -404,9 +458,16 @@ def command_discard_line(line_id_specification: str, file: str | None = None) ->
         working_file_path.write_bytes(target_working_content)
 
         # After modifying working tree, recalculate hunk for the SAME file
+        print(
+            _("✓ Discarded line(s): {lines} from {file}").format(
+                lines=line_id_specification,
+                file=line_changes.path,
+            ),
+            file=sys.stderr,
+        )
+        print_remaining_line_changes_header(line_changes.path)
         recalculate_selected_hunk_for_file(line_changes.path)
-
-    print(_("✓ Discarded line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+        finish_review_scoped_line_action(review_state)
 
 
 def command_discard_to_batch(batch_name: str, line_ids: str | None = None, file: str | None = None, *, quiet: bool = False) -> None:
@@ -422,13 +483,35 @@ def command_discard_to_batch(batch_name: str, line_ids: str | None = None, file:
     """
     require_git_repository()
     ensure_state_directory_exists()
+    original_file_scope = file
+    scope_resolution = resolve_live_to_batch_action_scope(
+        FileReviewAction.DISCARD_TO_BATCH,
+        command_name="discard",
+        batch_name=batch_name,
+        line_ids=line_ids,
+        file=file,
+    )
+    if scope_resolution.should_stop:
+        return
+    file = scope_resolution.file
+    review_state = scope_resolution.review_state
     operation_parts = ["discard", "--to", batch_name]
     if line_ids is not None:
         operation_parts.extend(["--line", line_ids])
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
-        if file is not None:
+        if (
+            file is None
+            and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.BINARY
+        ):
+            selected_change = load_selected_change()
+            if isinstance(selected_change, BinaryFileChange):
+                _command_discard_binary_to_batch(batch_name, selected_change, quiet=quiet)
+            else:
+                _command_discard_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+        elif file is not None:
             # File-scoped operation
 
             # Determine target file
@@ -453,6 +536,8 @@ def command_discard_to_batch(batch_name: str, line_ids: str | None = None, file:
             else:
                 # Discard entire selected hunk
                 _command_discard_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+    if original_file_scope in (None, "") and line_ids is not None:
+        finish_review_scoped_line_action(review_state)
 
 
 def command_discard_line_as_to_batch(
@@ -468,6 +553,16 @@ def command_discard_line_as_to_batch(
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+    scope_resolution = resolve_live_line_action_scope(
+        FileReviewAction.DISCARD_TO_BATCH,
+        action_command=f"discard --to {batch_name} --line {line_id_specification} --as",
+        line_id_specification=line_id_specification,
+        file=file,
+        source=ReviewSource.FILE_VS_HEAD,
+    )
+    if scope_resolution.should_stop:
+        return
+    review_state = scope_resolution.review_state
 
     operation_parts = [
         "discard",
@@ -480,8 +575,8 @@ def command_discard_line_as_to_batch(
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
-        saved_selected_state = _snapshot_selected_change_state()
-        preserve_selected_state = file is not None
+        saved_selected_state = snapshot_selected_change_state()
+        preserve_selected_state = file not in (None, "")
 
         try:
             if file is None:
@@ -505,10 +600,14 @@ def command_discard_line_as_to_batch(
             )
 
             if preserve_selected_state:
-                _restore_selected_change_state(saved_selected_state)
+                restore_selected_change_state(saved_selected_state)
         except Exception:
-            _restore_selected_change_state(saved_selected_state)
+            restore_selected_change_state(saved_selected_state)
             raise
+    if file is None:
+        finish_review_scoped_line_action(review_state)
+    else:
+        finish_review_scoped_line_action(review_state, file_path=target_file)
 
 
 def _command_discard_lines_to_batch_as(
@@ -723,6 +822,58 @@ def _detect_file_mode(file_path: str) -> str:
     return "100644"
 
 
+def _discard_binary_change_from_working_tree(binary_change: BinaryFileChange) -> None:
+    """Discard one live binary change from the working tree."""
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    absolute_path = get_git_repository_root_path() / file_path
+
+    if binary_change.is_new_file():
+        if absolute_path.exists():
+            absolute_path.unlink()
+        run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
+        return
+
+    result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+    if result.returncode != 0:
+        exit_with_error(_("Failed to restore binary file: {error}").format(error=result.stderr))
+
+
+def _command_discard_binary_to_batch(
+    batch_name: str,
+    binary_change: BinaryFileChange,
+    *,
+    quiet: bool = False,
+) -> None:
+    """Save one binary change to a batch, then discard it from the working tree."""
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    patch_hash = compute_binary_file_hash(binary_change)
+
+    snapshot_file_if_untracked(file_path)
+    add_binary_file_to_batch(
+        batch_name,
+        binary_change,
+        file_mode=_detect_file_mode(file_path),
+    )
+    _discard_binary_change_from_working_tree(binary_change)
+
+    append_lines_to_file(get_block_list_file_path(), [patch_hash])
+    record_hunk_discarded(patch_hash)
+
+    if not quiet:
+        print(
+            _("Discarded binary file '{file}' to batch '{batch}'").format(
+                file=file_path,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+
+    if quiet:
+        advance_to_next_change()
+    else:
+        advance_to_and_show_next_change()
+
+
 def _command_discard_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:
     """Discard entire file to batch (internal helper for file-scoped operations)."""
 
@@ -731,6 +882,11 @@ def _command_discard_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     # Auto-create batch if it doesn't exist
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
+
+    binary_change = render_binary_file_change(file_path)
+    if binary_change is not None:
+        _command_discard_binary_to_batch(batch_name, binary_change, quiet=quiet)
+        return
 
     # Load blocklist
     blocklist_path = get_block_list_file_path()
@@ -757,34 +913,34 @@ def _command_discard_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
         patches_to_discard.append((patch_bytes_loop, patch_hash))
 
     if not all_lines_to_batch:
-        # Special case: empty new file (exists in working tree but not in HEAD)
+        # Special case: empty text lifecycle changes have no hunk body.
         repo_root = get_git_repository_root_path()
         full_path = repo_root / file_path
-        if full_path.exists():
-            # Check if file exists in HEAD
-            head_result = run_git_command(["cat-file", "-e", f"HEAD:{file_path}"], check=False)
-            if head_result.returncode != 0:
-                # File doesn't exist in HEAD - it's a new empty file
-                # Save empty file metadata to batch and delete it
-                empty_ownership = BatchOwnership(claimed_lines=[], deletions=[])
+        lifecycle_change_type = detect_empty_text_lifecycle_change(file_path)
+        if lifecycle_change_type is not None:
+            snapshot_file_if_untracked(file_path)
+            add_file_to_batch(
+                batch_name,
+                file_path,
+                BatchOwnership(claimed_lines=[], deletions=[]),
+                file_mode,
+                change_type=lifecycle_change_type,
+            )
 
-                # Snapshot before deleting
-                snapshot_file_if_untracked(file_path)
-
-                # Save to batch
-                add_file_to_batch(batch_name, file_path, empty_ownership, file_mode)
-
+            if lifecycle_change_type == TextFileChangeType.ADDED:
                 # Delete from working tree
                 full_path.unlink()
 
                 # Remove from index if present (from intent-to-add)
                 run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
+            else:
+                run_git_command(["checkout", "HEAD", "--", file_path], check=False)
 
-                if not quiet:
-                    print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
+            if not quiet:
+                print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
 
-                log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
-                return
+            log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
+            return
 
         if not quiet:
             print(_("No changes in file '{file}' to discard.").format(file=file_path), file=sys.stderr)
@@ -892,7 +1048,6 @@ def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_i
             print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
         return
 
-    # Detect file mode
     file_mode = _detect_file_mode(file_path)
 
     # Prepare batch ownership update (handles stale source, translation, merge)
@@ -1010,7 +1165,6 @@ def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str,
               "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
         )
 
-    # Detect file mode
     file_mode = _detect_file_mode(line_changes.path)
 
     # add_file_to_batch creates the batch source commit from this snapshot.
@@ -1060,9 +1214,12 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
 
     # Ensure cached hunk is selected
     try:
-        fetch_next_change()
+        selected_item = fetch_next_change()
     except NoMoreHunks:
         print(_("No changes to process."), file=sys.stderr)
+        return
+    if isinstance(selected_item, BinaryFileChange):
+        _command_discard_binary_to_batch(batch_name, selected_item, quiet=quiet)
         return
 
     # Get the file path and hash from currently cached hunk
@@ -1076,7 +1233,6 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     blocklist_text = read_text_file_contents(blocklist_path)
     blocked_hashes = set(blocklist_text.splitlines())
 
-    # Detect file mode
     file_mode = _detect_file_mode(file_path)
 
     # Collect all lines to batch (either selected hunk or all hunks from file)

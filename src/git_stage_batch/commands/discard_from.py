@@ -13,6 +13,7 @@ from ..batch.selection import (
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
     select_batch_ownership_for_display_ids,
+    translate_batch_file_gutter_ids_to_selection_ids,
     translate_atomic_unit_error_to_gutter_ids,
 )
 from ..batch.validation import batch_exists
@@ -22,7 +23,10 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     selected_text_discard_change_type,
 )
-from ..data.hunk_tracking import render_batch_file_display
+from ..data.file_review_state import (
+    FileReviewAction,
+    resolve_batch_source_action_scope,
+)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, AtomicUnitError, CommandError, MergeError, BatchMetadataError
@@ -132,6 +136,15 @@ def command_discard_from_batch(
         patterns: Optional gitignore-style file patterns to filter batch files.
     """
     require_git_repository()
+    scope_resolution = resolve_batch_source_action_scope(
+        FileReviewAction.DISCARD_FROM_BATCH,
+        command_name="discard",
+        batch_name=batch_name,
+        line_ids=line_ids,
+        file=file,
+        patterns=patterns,
+    )
+    file = scope_resolution.file
 
     # Check batch exists
     if not batch_exists(batch_name):
@@ -166,17 +179,13 @@ def command_discard_from_batch(
     selection_ids_to_discard = selected_ids
     rendered = None
     if selected_ids:
-        # Use pure render helper to get gutter ID mapping (no side effects)
         file_path_for_render = list(files.keys())[0]  # Single file context enforced above
-        rendered = render_batch_file_display(batch_name, file_path_for_render)
-        if rendered:
-            # Translate gutter IDs (what user sees) to selection IDs (internal)
-            selection_ids_to_discard = set()
-            for gutter_id in selected_ids:
-                if gutter_id in rendered.gutter_to_selection_id:
-                    selection_ids_to_discard.add(rendered.gutter_to_selection_id[gutter_id])
-                else:
-                    exit_with_error(_("Line ID {id} not found or not individually mergeable").format(id=gutter_id))
+        selection_ids_to_discard, rendered = translate_batch_file_gutter_ids_to_selection_ids(
+            batch_name,
+            file_path_for_render,
+            selected_ids,
+            FileReviewAction.DISCARD_FROM_BATCH,
+        )
 
     # Get baseline commit (raises BatchMetadataError with clear message if missing)
     try:

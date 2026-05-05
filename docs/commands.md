@@ -25,7 +25,7 @@ Resets state if a session is already in progress.
 
 ### `show [--file [PATH] | --files PATTERN...]`
 
-Display the cached "selected" hunk or an entire file's changes.
+Display the cached "selected" hunk, one file review, or a matched-files list.
 
 **Show selected hunk:**
 ```
@@ -42,12 +42,30 @@ Display the cached "selected" hunk or an entire file's changes.
 ❯ git-stage-batch show --file src/config.py
 ```
 
-**Show all changes from files matched by Git-style patterns:**
+**Show a review page from a file:**
+```bash
+❯ git-stage-batch show --file src/config.py --page 2
+❯ git-stage-batch show --file src/config.py --page 3-4
+❯ git-stage-batch show --file src/config.py --page all
+❯ git-stage-batch show --file src/config.py --pages 1,3,5
+```
+
+**Show files matched by Git-style patterns:**
 ```bash
 ❯ git-stage-batch show --files "src/**/*.py" "!src/vendor/**"
 ```
 
-When `--file` or `--files` is used, `show` displays all changes from the resolved file or files (all hunks merged into a unified view), rather than just the selected hunk. This is useful for reviewing all changes in a file before staging or discarding them.
+**Show files in a batch:**
+```bash
+❯ git-stage-batch show --from cleanup-ui
+❯ git-stage-batch show --from cleanup-ui --file src/config.py --page 2
+```
+
+When `--file` is used, `show` displays a structured file review with global line IDs, page orientation, and exact follow-up commands. By default, large file reviews are bounded to the first relevant page. Use `--page all` or `--pages all` to review the whole file.
+
+When `--files` resolves to multiple files, `show` prints a matched-files list with per-file change counts, changed-line counts, review page counts, and exact `show --file PATH` commands. This list is navigational: it does not select a hidden file for later bare actions.
+
+For multi-file batches, `show --from BATCH` uses the same matched-files list and repeats `--from BATCH` in the suggested open commands.
 
 **Options:**
 - `--file [PATH]`: Display entire file instead of single hunk
@@ -57,9 +75,13 @@ When `--file` or `--files` is used, `show` displays all changes from the resolve
   - Patterns follow Git's ignore matcher semantics, including `*`, `**`, `?`, character classes, and ordered `!` exclusions
   - Resolution is performed against the current changed-file set
   - `--file` and `--files` are mutually exclusive
+- `--page PAGES`, `--pages PAGES`: Show file-review pages, such as `2`, `3-4`, `1,3,5-7`, or `all`
+  - Requires `--file`, or `--files` resolving to exactly one changed file
+  - Cannot be combined with `--line`, multiple resolved `--files` matches, or `--porcelain`
 - `--porcelain`: Exit silently with status code only (no output)
+- `--from BATCH`: Show changes from a batch instead of live file-vs-HEAD changes
 
-When `--files` resolves to multiple files, `show` displays each file in order. Only the final displayed file remains selected for later `--line` operations, so earlier files are shown without selectable gutter IDs.
+When `--files` resolves to one file, `show` opens that single file review directly. When it resolves to multiple files, open one listed file with `show --file PATH` before using pathless `--line` actions.
 
 **Exit codes:**
 - `0` if hunk/file has changes

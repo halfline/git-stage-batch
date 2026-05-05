@@ -146,7 +146,9 @@ Show the accumulated changes stored in a batch.
 ❯ git-stage-batch show --from batch-name
 ```
 
-Displays the diff representing all changes accumulated in the batch, showing what would be staged or discarded if you operate on the batch.
+Displays a matched-files list for multi-file batches. Open one listed file with
+`show --from batch-name --file PATH` to review its page-aware batch diff and
+use its line IDs.
 
 **Line-level filtering:**
 ```
@@ -160,7 +162,8 @@ Filter the display to show only specific line IDs from the batch.
 ❯ git-stage-batch show --from batch-name --files "src/**/*.py" "!src/vendor/**"
 ```
 
-When `--files` resolves to multiple files, only the final displayed file remains selected for later `--line` operations.
+When `--files` resolves to multiple files, `show --from` prints a navigational
+file list and does not leave a hidden selected batch file behind.
 
 ---
 

@@ -108,15 +108,11 @@ def restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
 
 def clear_selected_change_state_files() -> None:
     """Clear all cached selected hunk state files."""
-    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
-    get_selected_hunk_hash_file_path().unlink(missing_ok=True)
-    get_selected_change_kind_file_path().unlink(missing_ok=True)
-    get_line_changes_json_file_path().unlink(missing_ok=True)
-    get_selected_binary_file_json_path().unlink(missing_ok=True)
-    get_index_snapshot_file_path().unlink(missing_ok=True)
-    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
-    get_processed_include_ids_file_path().unlink(missing_ok=True)
-    get_processed_skip_ids_file_path().unlink(missing_ok=True)
+    from .file_review_state import clear_last_file_review_state
+
+    for path in _selected_change_state_paths().values():
+        path.unlink(missing_ok=True)
+    clear_last_file_review_state()
     # processed_batch_ids is global state (union of all batches), not per-hunk state
 
 

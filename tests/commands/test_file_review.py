@@ -218,3 +218,729 @@ def test_show_from_batch_file_defaults_to_page_review_and_persists_state(paged_b
     assert state is not None
     assert state.source == "batch"
     assert state.shown_pages == (1,)
+def test_non_selectable_live_preview_preserves_partial_review_guard(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _add_second_changed_file(paged_file_repo)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    assert state.entire_file_shown is False
+
+    command_show(file="other.txt", selectable=False)
+    capsys.readouterr()
+
+    preserved_state = read_last_file_review_state()
+    assert preserved_state is not None
+    assert preserved_state.file_path == "file.txt"
+    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+        command_include(quiet=True)
+
+def test_show_file_porcelain_clears_previous_review_state(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    assert read_last_file_review_state() is not None
+
+    command_show(file="file.txt", porcelain=True)
+
+    assert read_last_file_review_state() is None
+
+def test_bare_include_refuses_after_partial_file_review(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        command_include()
+
+    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "git-stage-batch include --file file.txt" in exc_info.value.message
+
+def test_show_unchanged_file_preserves_partial_file_review_guard(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    unchanged_file = paged_file_repo / "unchanged.txt"
+    unchanged_file.write_text("same\n")
+    subprocess.run(["git", "add", "unchanged.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Add unchanged"], check=True, capture_output=True)
+
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    assert state.entire_file_shown is False
+
+    command_show(file="unchanged.txt")
+    capsys.readouterr()
+
+    preserved_state = read_last_file_review_state()
+    assert preserved_state is not None
+    assert preserved_state.file_path == "file.txt"
+    assert preserved_state.shown_pages == (1,)
+    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+        command_include(quiet=True)
+
+def test_show_file_list_without_entries_preserves_partial_file_review_guard(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    unchanged_file = paged_file_repo / "unchanged.txt"
+    unchanged_file.write_text("same\n")
+    subprocess.run(["git", "add", "unchanged.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Add unchanged"], check=True, capture_output=True)
+
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+
+    command_show_file_list(["unchanged.txt"])
+    capsys.readouterr()
+
+    assert read_last_file_review_state() == state
+    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+        command_include(quiet=True)
+
+def test_plain_show_without_unblocked_hunk_preserves_partial_file_review_guard(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+
+    command_skip_file("file.txt", quiet=True, advance=False)
+    capsys.readouterr()
+    command_show()
+    capsys.readouterr()
+
+    assert read_last_file_review_state() == state
+    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+        command_include(quiet=True)
+
+def test_plain_show_with_only_batch_filtered_hunks_preserves_partial_file_review_guard(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+
+    monkeypatch.setattr(show_module, "apply_line_level_batch_filter_to_cached_hunk", lambda: True)
+
+    command_show()
+    capsys.readouterr()
+
+    assert read_last_file_review_state() == state
+    assert read_selected_change_kind() == SelectedChangeKind.FILE
+    assert get_selected_change_file_path() == "file.txt"
+    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+        command_include(quiet=True)
+
+def test_bare_include_to_batch_refuses_after_partial_file_review(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="2")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        command_include_to_batch("later")
+
+    assert "Only pages 2 of 3 of file.txt were shown" in exc_info.value.message
+    assert "git-stage-batch show --file file.txt --page all" in exc_info.value.message
+
+
+@pytest.mark.parametrize(
+    "to_batch_action",
+    [
+        lambda: command_include_to_batch("later", file="", quiet=True),
+        lambda: command_discard_to_batch("later", file="", quiet=True),
+    ],
+)
+
+def test_default_to_batch_file_actions_refuse_after_partial_file_review(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+    to_batch_action,
+):
+    _force_one_change_per_page(monkeypatch)
+    original_content = (paged_file_repo / "file.txt").read_text()
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        to_batch_action()
+
+    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert (paged_file_repo / "file.txt").read_text() == original_content
+
+def test_default_discard_line_as_to_batch_keeps_partial_review_guard(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    command_discard_line_as_to_batch(
+        "later",
+        line_spec,
+        "replacement\n",
+        file="",
+        quiet=True,
+    )
+    capsys.readouterr()
+
+    assert read_last_file_review_state() is not None
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_discard_line_as_to_batch(
+            "later",
+            unshown_spec,
+            "replacement\n",
+            file="",
+            quiet=True,
+        )
+
+    line_changes = load_line_changes_from_state()
+    assert line_changes is not None
+    visible_changed_texts = [
+        line.text
+        for line in line_changes.lines
+        if line.id is not None
+    ]
+    assert "line 2" not in visible_changed_texts
+    assert "line 2 changed" not in visible_changed_texts
+
+def test_include_to_batch_refuses_after_navigational_file_list(paged_file_repo, capsys):
+    _add_second_changed_file(paged_file_repo)
+
+    command_show_file_list(["file.txt", "other.txt"])
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        command_include_to_batch("later", quiet=True)
+
+
+@pytest.mark.parametrize(
+    "line_command",
+    [command_include_line, command_skip_line, command_discard_line],
+)
+
+def test_pathless_line_actions_refuse_after_navigational_file_list(
+    paged_file_repo,
+    capsys,
+    line_command,
+):
+    _add_second_changed_file(paged_file_repo)
+
+    command_show_file_list(["file.txt", "other.txt"])
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        line_command("1")
+
+def test_file_list_marker_survives_explicit_file_include_line(
+    paged_file_repo,
+    capsys,
+):
+    _add_second_changed_file(paged_file_repo)
+
+    command_show_file_list(["file.txt", "other.txt"])
+    capsys.readouterr()
+
+    command_include_line("1", file="other.txt")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        command_include_to_batch("later", quiet=True)
+
+def test_bare_include_to_batch_after_full_file_review_uses_reviewed_file(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _add_second_changed_file(paged_file_repo)
+    command_show(file="other.txt", page="all")
+    capsys.readouterr()
+
+    command_include_to_batch("reviewed", quiet=True)
+
+    metadata = read_batch_metadata("reviewed")
+    assert list(metadata.get("files", {}).keys()) == ["other.txt"]
+
+def test_pathless_include_to_batch_line_filters_file_review_selection(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, capture_output=True)
+
+    test_file = repo / "file.txt"
+    test_file.write_text("a\nb\n")
+    subprocess.run(["git", "add", "file.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+    test_file.write_text("a\nX\nb\nY\n")
+
+    ensure_state_directory_exists()
+    initialize_abort_state()
+    command_show(file="file.txt", page="all")
+    capsys.readouterr()
+
+    command_include_to_batch("first", line_ids="1", quiet=True)
+    capsys.readouterr()
+
+    filtered = load_line_changes_from_state()
+    assert filtered is not None
+    assert [line.text for line in filtered.lines if line.id is not None] == ["Y"]
+
+    command_include_to_batch("second", line_ids="1", quiet=True)
+
+    first_metadata = read_batch_metadata("first")
+    second_metadata = read_batch_metadata("second")
+    assert first_metadata["files"]["file.txt"]["claimed_lines"] != second_metadata["files"]["file.txt"]["claimed_lines"]
+    assert read_selected_change_kind() is None
+
+def test_bare_discard_to_batch_refuses_after_partial_file_review(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="2")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError) as exc_info:
+        command_discard_to_batch("later")
+
+    assert "Only pages 2 of 3 of file.txt were shown" in exc_info.value.message
+    assert "line 12 changed" in (paged_file_repo / "file.txt").read_text()
+
+def test_discard_to_batch_refuses_after_navigational_file_list(paged_file_repo, capsys):
+    _add_second_changed_file(paged_file_repo)
+    original_file = (paged_file_repo / "file.txt").read_text()
+    original_other = (paged_file_repo / "other.txt").read_text()
+
+    command_show_file_list(["file.txt", "other.txt"])
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        command_discard_to_batch("later", quiet=True)
+
+    assert (paged_file_repo / "file.txt").read_text() == original_file
+    assert (paged_file_repo / "other.txt").read_text() == original_other
+
+def test_bare_discard_to_batch_after_full_file_review_uses_reviewed_file(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _add_second_changed_file(paged_file_repo)
+    command_show(file="other.txt", page="all")
+    capsys.readouterr()
+
+    command_discard_to_batch("reviewed", quiet=True)
+
+    metadata = read_batch_metadata("reviewed")
+    assert list(metadata.get("files", {}).keys()) == ["other.txt"]
+    assert (paged_file_repo / "other.txt").read_text() == "other 1\nother 2\n"
+    assert "line 2 changed" in (paged_file_repo / "file.txt").read_text()
+
+def test_bare_include_allowed_after_entire_file_review(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="all")
+    capsys.readouterr()
+
+    command_include()
+
+    captured = capsys.readouterr()
+    assert "Staged" in captured.err
+
+def test_bare_include_after_full_file_review_refuses_when_file_changed(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="all")
+    capsys.readouterr()
+
+    file_path = paged_file_repo / "file.txt"
+    file_path.write_text(file_path.read_text() + "unreviewed change\n")
+
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_include()
+
+def test_pathless_include_line_accepts_complete_shown_change_and_keeps_partial_review_guard(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_include_line(line_spec)
+
+    captured = capsys.readouterr()
+    assert f"Included line(s): {line_spec}" in captured.err
+    assert read_last_file_review_state() is not None
+
+def test_pathless_include_line_as_keeps_partial_review_guard_for_bare_action(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_include_line_as(line_spec, "replacement\n")
+    capsys.readouterr()
+
+    assert read_last_file_review_state() is not None
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_include(quiet=True)
+
+def test_discard_line_as_to_batch_keeps_partial_review_guard_for_bare_action(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_discard_line_as_to_batch(
+        "later",
+        line_spec,
+        "replacement\n",
+        file="",
+        quiet=True,
+    )
+    capsys.readouterr()
+
+    assert read_last_file_review_state() is not None
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_include(quiet=True)
+
+def test_show_file_resets_processed_skip_ids_before_review_line_action(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+
+    (tmp_path / "a.txt").write_text("a1\na2\na3\n")
+    (tmp_path / "b.txt").write_text("b1\nb2\nb3\nb4\nb5\n")
+    subprocess.run(["git", "add", "a.txt", "b.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+    (tmp_path / "a.txt").write_text("a1 changed\na2\na3 changed\n")
+    (tmp_path / "b.txt").write_text("b1 changed\nb2\nb3 changed\nb4\nb5\n")
+
+    command_start(quiet=True)
+    command_skip_line("1")
+    capsys.readouterr()
+
+    command_show(file="b.txt", page="all")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    second_change_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    command_skip_line(second_change_spec)
+
+    line_changes = load_line_changes_from_state()
+    assert line_changes is not None
+    visible_changed_texts = [
+        line.text
+        for line in line_changes.lines
+        if line.id is not None
+    ]
+    assert "b1" in visible_changed_texts
+    assert "b1 changed" in visible_changed_texts
+    assert "b3" not in visible_changed_texts
+    assert "b3 changed" not in visible_changed_texts
+
+def test_file_review_footer_suggests_pathless_line_commands(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+
+    command_show(file="file.txt", page="1")
+
+    captured = capsys.readouterr()
+    assert "git-stage-batch include --line" in captured.out
+    assert "git-stage-batch include --file file.txt --line" not in captured.out
+
+def test_pathless_include_line_rejects_partial_replacement_selection(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    captured = capsys.readouterr()
+    assert "select together:" in captured.out
+
+    state = read_last_file_review_state()
+    assert state is not None
+    partial_id = str(state.selections[0].display_ids[0])
+
+    with pytest.raises(CommandError, match="only partly selects"):
+        command_include_line(partial_id)
+
+def test_pathless_include_line_rejects_unshown_change(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        command_include_line(unshown_spec)
+
+def test_partial_review_line_action_keeps_stale_guard_for_followup_bare_action(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    shown_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_include_line(shown_spec)
+    capsys.readouterr()
+
+    assert read_last_file_review_state() is not None
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_include()
+
+def test_partial_review_line_action_keeps_stale_guard_for_followup_line_action(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    shown_spec = format_line_ids(list(state.selections[0].display_ids))
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    command_skip_line(shown_spec)
+    capsys.readouterr()
+
+    assert read_last_file_review_state() is not None
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_skip_line(unshown_spec)
+
+
+@pytest.mark.parametrize(
+    "to_batch_command",
+    [command_include_to_batch, command_discard_to_batch],
+)
+
+def test_partial_review_to_batch_line_action_keeps_stale_guard_for_followup_line_action(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+    to_batch_command,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    shown_spec = format_line_ids(list(state.selections[0].display_ids))
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    to_batch_command("cleanup", line_ids=shown_spec)
+    capsys.readouterr()
+
+    assert read_last_file_review_state() is not None
+    with pytest.raises(CommandError, match="no longer matches"):
+        command_include_to_batch("cleanup", line_ids=unshown_spec)
+
+
+@pytest.mark.parametrize(
+    "to_batch_command",
+    [command_include_to_batch, command_discard_to_batch],
+)
+
+def test_implicit_to_batch_line_action_clears_full_review_state(
+    paged_file_repo,
+    capsys,
+    to_batch_command,
+):
+    command_show(file="file.txt", page="all")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    shown_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    to_batch_command("cleanup", line_ids=shown_spec, file="")
+
+    assert read_last_file_review_state() is None
+
+
+@pytest.mark.parametrize(
+    "line_command",
+    [command_include_line, command_skip_line, command_discard_line],
+)
+
+def test_omitted_file_line_actions_reject_unshown_change(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+    line_command,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        line_command(unshown_spec, file="")
+
+def test_explicit_include_file_line_from_review_clears_review_state(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_include_line(line_spec, file="file.txt")
+
+    assert read_last_file_review_state() is None
+
+def test_explicit_skip_file_line_from_review_clears_review_state(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_skip_line(line_spec, file="file.txt")
+
+    assert read_last_file_review_state() is None
+
+def test_explicit_discard_file_line_from_review_clears_review_state(paged_file_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_discard_line(line_spec, file="file.txt")
+
+    assert read_last_file_review_state() is None
+
+
+@pytest.mark.parametrize(
+    "replace_file",
+    [
+        lambda file_path: command_include_file_as("replacement\n", file=file_path),
+        lambda file_path: command_discard_file_as("replacement\n", file=file_path),
+    ],
+)
+
+def test_explicit_file_as_from_review_clears_matching_review_state(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+    replace_file,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="all")
+    capsys.readouterr()
+    assert read_last_file_review_state() is not None
+
+    replace_file("file.txt")
+
+    assert read_last_file_review_state() is None
+
+def test_explicit_discard_to_batch_line_as_from_review_clears_matching_review_state(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="all")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_discard_line_as_to_batch(
+        "cleanup",
+        line_spec,
+        "replacement\n",
+        file="file.txt",
+        quiet=True,
+    )
+
+    assert read_last_file_review_state() is None
+
+def test_explicit_skip_line_on_different_file_clears_previous_review_state(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _add_second_changed_file(paged_file_repo)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    assert read_last_file_review_state() is not None
+
+    command_skip_line("1", file="other.txt")
+
+    assert read_last_file_review_state() is None
+
+def test_explicit_discard_line_on_different_file_clears_previous_review_state(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _add_second_changed_file(paged_file_repo)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    assert read_last_file_review_state() is not None
+
+    command_discard_line("1", file="other.txt")
+
+    assert read_last_file_review_state() is None

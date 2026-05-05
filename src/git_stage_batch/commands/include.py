@@ -35,7 +35,6 @@ from ..data.hunk_tracking import (
     advance_to_and_show_next_change,
     advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
-    cache_file_as_single_hunk,
     cache_unstaged_file_as_single_hunk,
     clear_selected_change_state_files,
     fetch_next_change,
@@ -47,6 +46,8 @@ from ..data.hunk_tracking import (
     record_hunk_included,
     record_hunk_skipped,
     require_selected_hunk,
+    restore_selected_change_state,
+    snapshot_selected_change_state,
 )
 from ..data.consumed_selections import record_consumed_selection
 from ..data.line_state import load_line_changes_from_state
@@ -291,7 +292,7 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
         else:
             target_file = file
             preserve_selected_state = True
-            saved_selected_state = _snapshot_selected_change_state()
+            saved_selected_state = snapshot_selected_change_state()
 
         if preserve_selected_state:
             line_changes = cache_unstaged_file_as_single_hunk(target_file)
@@ -310,7 +311,7 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
         )
 
         if preserve_selected_state:
-            _restore_selected_change_state(saved_selected_state)
+            restore_selected_change_state(saved_selected_state)
         else:
             write_line_ids_file(get_processed_include_ids_file_path(), set())
             recalculate_selected_hunk_for_file(target_file)
@@ -358,7 +359,7 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             else:
                 if file != "":
                     preserve_selected_state = True
-                    saved_selected_state = _snapshot_selected_change_state()
+                    saved_selected_state = snapshot_selected_change_state()
 
                 line_changes = cache_unstaged_file_as_single_hunk(target_file)
                 if line_changes is None:
@@ -436,7 +437,7 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
         update_index_with_blob_content(line_changes.path, target_index_content)
 
         if preserve_selected_state:
-            _restore_selected_change_state(saved_selected_state)
+            restore_selected_change_state(saved_selected_state)
         else:
             # Update processed include IDs only when the selected display remains
             # current for incremental line inclusion.
@@ -635,45 +636,6 @@ def _apply_include_line_replacement(
     )
 
 
-def _snapshot_selected_change_state() -> dict[str, bytes | None]:
-    """Capture the current selected change cache so explicit file ops can restore it."""
-    paths = {
-        "patch": get_selected_hunk_patch_file_path(),
-        "hash": get_selected_hunk_hash_file_path(),
-        "kind": get_selected_change_kind_file_path(),
-        "line_state": get_line_changes_json_file_path(),
-        "binary": get_selected_binary_file_json_path(),
-        "index_snapshot": get_index_snapshot_file_path(),
-        "working_snapshot": get_working_tree_snapshot_file_path(),
-        "processed_include_ids": get_processed_include_ids_file_path(),
-    }
-    return {
-        name: (read_file_bytes(path) if path.exists() else None)
-        for name, path in paths.items()
-    }
-
-
-def _restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
-    """Restore a previously captured selected change cache."""
-    paths = {
-        "patch": get_selected_hunk_patch_file_path(),
-        "hash": get_selected_hunk_hash_file_path(),
-        "kind": get_selected_change_kind_file_path(),
-        "line_state": get_line_changes_json_file_path(),
-        "binary": get_selected_binary_file_json_path(),
-        "index_snapshot": get_index_snapshot_file_path(),
-        "working_snapshot": get_working_tree_snapshot_file_path(),
-        "processed_include_ids": get_processed_include_ids_file_path(),
-    }
-    for name, path in paths.items():
-        data = snapshot.get(name)
-        if data is None:
-            path.unlink(missing_ok=True)
-        else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
-
-
 def command_include_line_as(
     line_id_specification: str,
     replacement_text: str,
@@ -733,7 +695,7 @@ def command_include_line_as(
             else:
                 if file != "":
                     preserve_selected_state = True
-                saved_selected_state = _snapshot_selected_change_state() if preserve_selected_state else None
+                saved_selected_state = snapshot_selected_change_state() if preserve_selected_state else None
 
                 cached_lines = cache_unstaged_file_as_single_hunk(target_file)
                 if cached_lines is None:
@@ -758,7 +720,7 @@ def command_include_line_as(
             )
 
             if preserve_selected_state:
-                _restore_selected_change_state(saved_selected_state)
+                restore_selected_change_state(saved_selected_state)
             else:
                 write_line_ids_file(get_processed_include_ids_file_path(), set())
                 recalculate_selected_hunk_for_file(target_file)

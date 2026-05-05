@@ -39,6 +39,8 @@ from ..data.hunk_tracking import (
     recalculate_selected_hunk_for_file,
     record_hunk_discarded,
     require_selected_hunk,
+    restore_selected_change_state,
+    snapshot_selected_change_state,
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
@@ -61,8 +63,6 @@ from ..utils.paths import (
 )
 from .include import (
     _expand_replacement_selection_ids,
-    _restore_selected_change_state,
-    _snapshot_selected_change_state,
 )
 
 
@@ -342,7 +342,7 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
         else:
             target_file = file
             preserve_selected_state = True
-            saved_selected_state = _snapshot_selected_change_state()
+            saved_selected_state = snapshot_selected_change_state()
 
         line_changes = _load_explicit_file_selection(target_file)
         snapshot_file_if_untracked(target_file)
@@ -352,7 +352,7 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
         absolute_path.write_text(replacement_text, encoding="utf-8", errors="surrogateescape")
 
         if preserve_selected_state:
-            _restore_selected_change_state(saved_selected_state)
+            restore_selected_change_state(saved_selected_state)
         else:
             recalculate_selected_hunk_for_file(line_changes.path)
 
@@ -481,8 +481,8 @@ def command_discard_line_as_to_batch(
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
-        saved_selected_state = _snapshot_selected_change_state()
         preserve_selected_state = file is not None
+        saved_selected_state = snapshot_selected_change_state()
 
         try:
             if file is None:
@@ -506,9 +506,9 @@ def command_discard_line_as_to_batch(
             )
 
             if preserve_selected_state:
-                _restore_selected_change_state(saved_selected_state)
+                restore_selected_change_state(saved_selected_state)
         except Exception:
-            _restore_selected_change_state(saved_selected_state)
+            restore_selected_change_state(saved_selected_state)
             raise
 
 

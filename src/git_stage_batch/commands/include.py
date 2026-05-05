@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 import sys
 
 from ..batch import add_file_to_batch, create_batch
@@ -74,6 +75,20 @@ from ..utils.paths import (
     get_processed_include_ids_file_path,
     get_working_tree_snapshot_file_path,
 )
+
+
+def _detect_file_mode(file_path: str) -> str:
+    """Return the current git file mode for a path, defaulting to a regular file."""
+    absolute_path = get_git_repository_root_path() / file_path
+    if absolute_path.exists():
+        return "100755" if absolute_path.stat().st_mode & stat.S_IXUSR else "100644"
+
+    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+    if ls_result.returncode == 0 and ls_result.stdout.strip():
+        parts = ls_result.stdout.strip().split()
+        if parts:
+            return parts[0]
+    return "100644"
 
 
 def command_include(*, quiet: bool = False) -> None:
@@ -806,12 +821,7 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
         create_batch(batch_name, "Auto-created")
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(file_path)
 
     # Collect ALL hunks from this file (live working tree state)
     all_lines_to_batch = []
@@ -903,12 +913,7 @@ def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_i
         return
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(file_path)
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
@@ -1008,12 +1013,7 @@ def _command_include_lines_to_batch(batch_name: str, line_id_specification: str,
         )
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", line_changes.path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(line_changes.path)
 
     # Save to batch using batch source model
     add_file_to_batch(batch_name, line_changes.path, ownership, file_mode)
@@ -1079,12 +1079,7 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     file_path = selected_patch.new_path
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(file_path)
 
     # Collect all lines to batch (either selected hunk or all hunks from file)
     all_lines_to_batch = []

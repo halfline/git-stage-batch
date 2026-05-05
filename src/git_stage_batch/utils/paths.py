@@ -166,6 +166,16 @@ def get_selected_change_kind_file_path() -> Path:
     return get_selected_state_directory_path() / "change-kind.txt"
 
 
+def get_selected_change_clear_reason_file_path() -> Path:
+    """Get the path to the marker explaining an intentionally cleared selection."""
+    return get_selected_state_directory_path() / "clear-reason.txt"
+
+
+def get_last_file_review_state_file_path() -> Path:
+    """Get the path to the most recent file-review safety state."""
+    return get_selected_state_directory_path() / "file-review.json"
+
+
 def get_selected_binary_file_json_path() -> Path:
     """Get the path to the selected binary file JSON file.
 

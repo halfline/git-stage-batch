@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from git_stage_batch.commands.discard import command_discard
-from git_stage_batch.commands.include import command_include
+from git_stage_batch.commands.include import command_include, command_include_to_batch
 from git_stage_batch.commands.skip import command_skip
+from git_stage_batch.commands.status import command_status
 from git_stage_batch.core.models import BinaryFileChange, LineLevelChange
 from git_stage_batch.data.file_tracking import auto_add_untracked_files
 from git_stage_batch.data.hunk_tracking import fetch_next_change
@@ -115,6 +117,36 @@ def test_binary_file_deleted_include(binary_file_repo: Path, monkeypatch: pytest
     # Verify deletion was staged (D  means fully staged deletion)
     status_result = run_git_command(["status", "--porcelain"])
     assert "D  image.png" in status_result.stdout
+
+
+def test_selected_binary_include_to_batch_updates_skipped_progress(
+    binary_file_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Selected binary include --to should count as processed in status."""
+    monkeypatch.chdir(binary_file_repo)
+
+    (binary_file_repo / "image.png").write_bytes(b"\x89PNG\r\n\x1a\nBATCHED")
+
+    initialize_abort_state()
+    auto_add_untracked_files()
+
+    result = fetch_next_change()
+    assert isinstance(result, BinaryFileChange)
+
+    command_include_to_batch("bin-batch", quiet=True)
+
+    command_status(porcelain=True)
+    status_output = json.loads(capsys.readouterr().out)
+
+    assert status_output["progress"]["skipped"] == 1
+    assert len(status_output["skipped_hunks"]) == 1
+    skipped_hunk = status_output["skipped_hunks"][0]
+    assert skipped_hunk["file"] == "image.png"
+    assert skipped_hunk["line"] is None
+    assert skipped_hunk["ids"] == []
+    assert skipped_hunk["change_type"] == "modified"
 
 
 def test_binary_file_added_discard(binary_file_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:

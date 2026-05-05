@@ -80,12 +80,12 @@ _git_stage_batch()
                     __git_stage_batch_set_nospace_for_dirs
                     return
                     ;;
-                --line)
+                --line|--page|--pages)
                     # Line IDs - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--porcelain --from --file --files --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--porcelain --from --file --files --line --page --pages" -- "$cur"))
             ;;
         include)
             case "$prev" in

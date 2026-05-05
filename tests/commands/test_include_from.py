@@ -61,6 +61,7 @@ class TestCommandIncludeFromBatch:
         # Verify file is staged
         result = run_git_command(["diff", "--cached", "--name-only"])
         assert "new.txt" in result.stdout
+        assert (temp_git_repo / "new.txt").read_text() == "new content\n"
 
         captured = capsys.readouterr()
         assert "Staged changes from batch" in captured.err
@@ -127,6 +128,8 @@ class TestCommandIncludeFromBatch:
         # Verify file1 has the added line
         result = run_git_command(["show", ":file1.txt"])
         assert "file1 added" in result.stdout
+        assert (temp_git_repo / "file1.txt").read_text() == "line 1\nline 2\nfile1 added\n"
+        assert (temp_git_repo / "file2.txt").read_text() == "line A\nline B\n"
 
         captured = capsys.readouterr()
         assert "Staged changes for file1.txt from batch" in captured.err
@@ -173,6 +176,7 @@ class TestCommandIncludeFromBatch:
 
         result = run_git_command(["show", ":test.txt"])
         assert result.stdout == "keep\nedited value\n"
+        assert test_file.read_text() == "keep\nedited value\n"
 
     def test_include_from_batch_as_replaces_atomic_replacement_unit(self, temp_git_repo):
         """Test include --from --line --as preserves batch deletion semantics."""
@@ -204,6 +208,7 @@ class TestCommandIncludeFromBatch:
 
         result = run_git_command(["show", ":test.txt"])
         assert result.stdout == "keep\nedited value\n"
+        assert test_file.read_text() == "keep\nedited value\n"
 
     def test_include_from_batch_as_rejects_partial_replacement_unit(self, temp_git_repo):
         """Test include --from --line --as honors explicit replacement atomicity."""
@@ -236,3 +241,4 @@ class TestCommandIncludeFromBatch:
 
         result = run_git_command(["show", ":test.txt"])
         assert result.stdout == "old one\nold two\nkeep\n"
+        assert test_file.read_text() == "old one\nold two\nkeep\n"

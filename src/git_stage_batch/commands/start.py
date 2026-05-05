@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .again import command_again
-from ..data.hunk_tracking import fetch_next_change, show_selected_change
+from ..data.hunk_tracking import clear_selected_change_state_files, fetch_next_change, show_selected_change
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.session import initialize_abort_state
 from ..exceptions import CommandError, NoMoreHunks
@@ -29,6 +29,8 @@ def command_start(*, context_lines: Optional[int] = None, quiet: bool = False) -
     if get_abort_head_file_path().exists():
         command_again(quiet=quiet)
         return
+
+    clear_selected_change_state_files()
 
     # Initialize abort state for new session
     initialize_abort_state()

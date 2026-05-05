@@ -49,6 +49,7 @@ from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
+from ..output import print_remaining_line_changes_header
 from ..staging.operations import build_target_working_tree_content_bytes_with_discarded_lines
 from ..staging.operations import build_target_working_tree_content_bytes_with_replaced_lines
 from ..utils.command import ExitEvent, OutputEvent, stream_command
@@ -409,9 +410,15 @@ def command_discard_line(line_id_specification: str, file: str | None = None) ->
         working_file_path.write_bytes(target_working_content)
 
         # After modifying working tree, recalculate hunk for the SAME file
+        print(
+            _("✓ Discarded line(s): {lines} from {file}").format(
+                lines=line_id_specification,
+                file=line_changes.path,
+            ),
+            file=sys.stderr,
+        )
+        print_remaining_line_changes_header(line_changes.path)
         recalculate_selected_hunk_for_file(line_changes.path)
-
-    print(_("✓ Discarded line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
 
 
 def command_discard_to_batch(batch_name: str, line_ids: str | None = None, file: str | None = None, *, quiet: bool = False) -> None:

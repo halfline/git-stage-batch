@@ -31,7 +31,7 @@ from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes
+from ..output import print_line_level_changes, print_remaining_line_changes_header
 from ..utils.file_io import append_lines_to_file, read_text_file_contents, write_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.journal import log_journal
@@ -247,4 +247,5 @@ def command_skip_line(line_id_specification: str) -> None:
         )
 
     print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+    print_remaining_line_changes_header(filtered_line_changes.path)
     print_line_level_changes(filtered_line_changes)

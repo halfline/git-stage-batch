@@ -56,7 +56,7 @@ from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes
+from ..output import print_line_level_changes, print_remaining_line_changes_header
 from ..staging.operations import (
     build_target_index_content_bytes_with_replaced_lines,
     build_target_index_content_bytes_with_selected_lines,
@@ -446,9 +446,23 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             # Update processed include IDs only when the selected display remains
             # current for incremental line inclusion.
             write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
+            print(
+                _("✓ Included line(s): {lines} from {file}").format(
+                    lines=line_id_specification,
+                    file=line_changes.path,
+                ),
+                file=sys.stderr,
+            )
+            print_remaining_line_changes_header(line_changes.path)
             recalculate_selected_hunk_for_file(line_changes.path)
-
-    print(_("✓ Included line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+    if preserve_selected_state:
+        print(
+            _("✓ Included line(s): {lines} from {file}").format(
+                lines=line_id_specification,
+                file=line_changes.path,
+            ),
+            file=sys.stderr,
+        )
 
 
 def _derive_replacement_unit_display_ids(

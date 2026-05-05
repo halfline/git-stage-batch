@@ -30,6 +30,8 @@ def command_start(*, context_lines: Optional[int] = None, quiet: bool = False) -
         command_again(quiet=quiet)
         return
 
+    # Batch reviews may be shown outside an active session. A new session must
+    # not inherit that selected/review cache before selecting the first live hunk.
     clear_selected_change_state_files()
 
     # Initialize abort state for new session

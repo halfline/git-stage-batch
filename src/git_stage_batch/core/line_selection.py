@@ -7,8 +7,13 @@ from typing import Iterable
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 
 
-def parse_line_selection(selection: str) -> list[int]:
-    """Parse a line selection string into a list of line IDs.
+def parse_positive_selection(
+    selection: str,
+    *,
+    item_name: str = "Line ID",
+    reject_empty_items: bool = False,
+) -> list[int]:
+    """Parse a positive integer selection string into sorted unique IDs.
 
     Supports:
     - Individual IDs: "1,2,3" → [1, 2, 3]
@@ -16,10 +21,12 @@ def parse_line_selection(selection: str) -> list[int]:
     - Mixed: "1,3,5-7" → [1, 3, 5, 6, 7]
 
     Args:
-        selection: Comma-separated line IDs and/or ranges (e.g., "1,3,5-7")
+        selection: Comma-separated IDs and/or ranges (e.g., "1,3,5-7")
+        item_name: Name used in error messages.
+        reject_empty_items: If True, reject empty comma-separated items.
 
     Returns:
-        Sorted list of unique line IDs
+        Sorted list of unique IDs
 
     Raises:
         ValueError: If the selection string is invalid
@@ -27,12 +34,15 @@ def parse_line_selection(selection: str) -> list[int]:
     if not selection or not selection.strip():
         raise ValueError("Selection string cannot be empty")
 
-    line_ids = set()
+    selected_ids = set()
     parts = selection.split(",")
+    invalid_item_name = "line ID" if item_name == "Line ID" else item_name
 
     for part in parts:
         part = part.strip()
         if not part:
+            if reject_empty_items:
+                raise ValueError("Selection contains an empty item")
             continue
 
         # Check if this looks like a range (contains "-" that's not at the start)
@@ -51,25 +61,30 @@ def parse_line_selection(selection: str) -> list[int]:
                 raise ValueError(f"Invalid range: {part}") from e
 
             if start <= 0 or end <= 0:
-                raise ValueError(f"Line IDs must be positive: {part}")
+                raise ValueError(f"{item_name}s must be positive: {part}")
 
             if start > end:
                 raise ValueError(f"Range start must be <= end: {part}")
 
-            line_ids.update(range(start, end + 1))
+            selected_ids.update(range(start, end + 1))
         else:
             # Handle single ID (including negative numbers which we'll reject)
             try:
-                line_id = int(part)
+                selected_id = int(part)
             except ValueError as e:
-                raise ValueError(f"Invalid line ID: {part}") from e
+                raise ValueError(f"Invalid {invalid_item_name}: {part}") from e
 
-            if line_id <= 0:
-                raise ValueError(f"Line ID must be positive: {part}")
+            if selected_id <= 0:
+                raise ValueError(f"{item_name} must be positive: {part}")
 
-            line_ids.add(line_id)
+            selected_ids.add(selected_id)
 
-    return sorted(line_ids)
+    return sorted(selected_ids)
+
+
+def parse_line_selection(selection: str) -> list[int]:
+    """Parse a line selection string into a list of line IDs."""
+    return parse_positive_selection(selection, item_name="Line ID")
 
 
 def read_line_ids_file(path: Path) -> list[int]:

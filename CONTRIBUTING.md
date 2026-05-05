@@ -26,7 +26,7 @@ cd git-stage-batch
 uv sync
 
 # Run tests
-uv run pytest
+uv run pytest -n auto
 ```
 
 ## Commit Message Guidelines

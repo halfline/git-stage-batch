@@ -36,7 +36,8 @@ dev = [
     "pytest>=8.0.0",
     "meson-python>=0.17.0",
     "meson>=1.10.0",
-    "ninja>=1.11.0"
+    "ninja>=1.11.0",
+    "pytest-xdist>=3.8.0",
 ]
 docs = [
     "mkdocs-material>=9.7.4",

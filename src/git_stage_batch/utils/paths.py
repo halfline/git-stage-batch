@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .file_io import read_text_file_contents
-from .git import get_git_repository_root_path
+from .git import get_git_directory_path
 
 
 def get_state_directory_path() -> Path:
@@ -14,7 +14,7 @@ def get_state_directory_path() -> Path:
     Returns:
         Path to .git/git-stage-batch/ directory
     """
-    return get_git_repository_root_path() / ".git" / "git-stage-batch"
+    return get_git_directory_path() / "git-stage-batch"
 
 
 def get_session_lock_file_path() -> Path:

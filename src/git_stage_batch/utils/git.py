@@ -345,6 +345,12 @@ def get_git_repository_root_path() -> Path:
     return Path(output)
 
 
+def get_git_directory_path() -> Path:
+    """Get the absolute path to the repository's git directory."""
+    output = run_git_command(["rev-parse", "--absolute-git-dir"]).stdout.strip()
+    return Path(output)
+
+
 def resolve_file_path_to_repo_relative(file_path: str) -> str:
     """Convert a file path to repository-relative format.
 

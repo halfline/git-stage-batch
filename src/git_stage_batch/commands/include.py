@@ -29,12 +29,12 @@ from ..core.line_selection import (
     write_line_ids_file,
 )
 from ..core.models import BinaryFileChange
+from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     advance_to_and_show_next_change,
     advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
-    cache_file_as_single_hunk,
     cache_unstaged_file_as_single_hunk,
     clear_selected_change_state_files,
     fetch_next_change,
@@ -45,7 +45,20 @@ from ..data.hunk_tracking import (
     record_binary_hunk_skipped,
     record_hunk_included,
     record_hunk_skipped,
+    refuse_bare_action_after_file_list,
+    render_binary_file_change,
     require_selected_hunk,
+    restore_selected_change_state,
+    snapshot_selected_change_state,
+)
+from ..data.file_review_state import (
+    FileReviewAction,
+    clear_last_file_review_state_if_file_matches,
+    finish_review_scoped_line_action,
+    refuse_ambiguous_bare_action_after_partial_file_review,
+    refuse_live_action_for_batch_selection,
+    resolve_live_line_action_scope,
+    resolve_live_to_batch_action_scope,
 )
 from ..data.consumed_selections import record_consumed_selection
 from ..data.line_state import load_line_changes_from_state
@@ -53,7 +66,7 @@ from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes
+from ..output import print_line_level_changes, print_remaining_line_changes_header
 from ..staging.operations import (
     build_target_index_content_bytes_with_replaced_lines,
     build_target_index_content_bytes_with_selected_lines,
@@ -67,29 +80,12 @@ from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_context_lines,
-    get_line_changes_json_file_path,
-    get_selected_change_kind_file_path,
+    get_index_snapshot_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
-    get_selected_binary_file_json_path,
-    get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
     get_working_tree_snapshot_file_path,
 )
-
-
-def _detect_file_mode(file_path: str) -> str:
-    """Return the current git file mode for a path, defaulting to a regular file."""
-    absolute_path = get_git_repository_root_path() / file_path
-    if absolute_path.exists():
-        return "100755" if absolute_path.stat().st_mode & stat.S_IXUSR else "100644"
-
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            return parts[0]
-    return "100644"
 
 
 def command_include(*, quiet: bool = False) -> None:
@@ -100,6 +96,12 @@ def command_include(*, quiet: bool = False) -> None:
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+
+    if refuse_live_action_for_batch_selection(FileReviewAction.INCLUDE):
+        return 0
+    if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.INCLUDE):
+        return 0
+    refuse_bare_action_after_file_list("include")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
         command_include_file("")
@@ -125,7 +127,7 @@ def command_include(*, quiet: bool = False) -> None:
             # Stage the binary file using git add
             result = run_git_command(["add", "--", file_path], check=False)
             if result.returncode != 0:
-                print(_("Failed to stage binary file: {}").format(result.stderr), file=sys.stderr)
+                print(_("Failed to stage binary file: {error}").format(error=result.stderr), file=sys.stderr)
                 return
 
             # Record for progress tracking
@@ -160,7 +162,7 @@ def command_include(*, quiet: bool = False) -> None:
 
         if exit_code != 0:
             stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
-            print(_("Failed to apply hunk: {}").format(stderr_text), file=sys.stderr)
+            print(_("Failed to apply hunk: {error}").format(error=stderr_text), file=sys.stderr)
             return
 
         # Record for progress tracking
@@ -197,6 +199,13 @@ def command_include_file(
     require_session_started()
     ensure_state_directory_exists()
 
+    if file == "":
+        if refuse_live_action_for_batch_selection(FileReviewAction.INCLUDE):
+            return 0
+        if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.INCLUDE):
+            return 0
+        refuse_bare_action_after_file_list("include --file")
+
     # Determine target file
     if file == "":
         target_file = get_selected_change_file_path()
@@ -219,6 +228,20 @@ def command_include_file(
         # follow-up `show --files` / `include --files` passes in the same session.
         hunks_staged = 0
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])):
+            if isinstance(patch, BinaryFileChange):
+                file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+                if file_path != target_file:
+                    continue
+
+                result = run_git_command(["add", "--", file_path], check=False)
+                if result.returncode != 0:
+                    print(_("Failed to stage binary file: {error}").format(error=result.stderr), file=sys.stderr)
+                    break
+
+                record_hunk_included(compute_binary_file_hash(patch))
+                hunks_staged += 1
+                continue
+
             if patch.new_path != target_file:
                 continue
 
@@ -274,6 +297,12 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+    if file is None or file == "":
+        if refuse_live_action_for_batch_selection(FileReviewAction.INCLUDE):
+            return
+        if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.INCLUDE):
+            return
+        refuse_bare_action_after_file_list("include --file --as")
 
     operation_parts = ["include", "--as", replacement_text]
     if file is not None:
@@ -290,7 +319,7 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
         else:
             target_file = file
             preserve_selected_state = True
-            saved_selected_state = _snapshot_selected_change_state()
+            saved_selected_state = snapshot_selected_change_state()
 
         if preserve_selected_state:
             line_changes = cache_unstaged_file_as_single_hunk(target_file)
@@ -309,10 +338,11 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
         )
 
         if preserve_selected_state:
-            _restore_selected_change_state(saved_selected_state)
+            restore_selected_change_state(saved_selected_state)
         else:
             write_line_ids_file(get_processed_include_ids_file_path(), set())
             recalculate_selected_hunk_for_file(target_file)
+        clear_last_file_review_state_if_file_matches(target_file)
 
     print(_("✓ Included file as replacement: {file}").format(file=target_file), file=sys.stderr)
 
@@ -329,6 +359,16 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+    scope_resolution = resolve_live_line_action_scope(
+        FileReviewAction.INCLUDE,
+        action_command=f"include --line {line_id_specification}",
+        line_id_specification=line_id_specification,
+        file=file,
+        validate_pathless_before_live_guard=True,
+    )
+    if scope_resolution.should_stop:
+        return
+    review_state = scope_resolution.review_state
 
     operation_parts = ["include", "--line", line_id_specification]
     if file is not None:
@@ -357,7 +397,7 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             else:
                 if file != "":
                     preserve_selected_state = True
-                    saved_selected_state = _snapshot_selected_change_state()
+                    saved_selected_state = snapshot_selected_change_state()
 
                 line_changes = cache_unstaged_file_as_single_hunk(target_file)
                 if line_changes is None:
@@ -435,14 +475,29 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
         update_index_with_blob_content(line_changes.path, target_index_content)
 
         if preserve_selected_state:
-            _restore_selected_change_state(saved_selected_state)
+            restore_selected_change_state(saved_selected_state)
         else:
             # Update processed include IDs only when the selected display remains
             # current for incremental line inclusion.
             write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
+            print(
+                _("✓ Included line(s): {lines} from {file}").format(
+                    lines=line_id_specification,
+                    file=line_changes.path,
+                ),
+                file=sys.stderr,
+            )
+            print_remaining_line_changes_header(line_changes.path)
             recalculate_selected_hunk_for_file(line_changes.path)
-
-    print(_("✓ Included line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+        finish_review_scoped_line_action(review_state, file_path=line_changes.path)
+    if preserve_selected_state:
+        print(
+            _("✓ Included line(s): {lines} from {file}").format(
+                lines=line_id_specification,
+                file=line_changes.path,
+            ),
+            file=sys.stderr,
+        )
 
 
 def _derive_replacement_unit_display_ids(
@@ -545,9 +600,8 @@ def _build_partial_structural_run_selection_error(
         return None
 
     return _(
-        "Contiguous file-scoped selections cannot span multiple structural change runs "
-        "while selecting only part of one run. Select one run at a time, fully include "
-        "each spanned run, or use --as."
+        "That line range crosses separate changes while selecting only part of one. "
+        "Select one change at a time, include every line in the range, or use --as."
     )
 
 
@@ -634,45 +688,6 @@ def _apply_include_line_replacement(
     )
 
 
-def _snapshot_selected_change_state() -> dict[str, bytes | None]:
-    """Capture the current selected change cache so explicit file ops can restore it."""
-    paths = {
-        "patch": get_selected_hunk_patch_file_path(),
-        "hash": get_selected_hunk_hash_file_path(),
-        "kind": get_selected_change_kind_file_path(),
-        "line_state": get_line_changes_json_file_path(),
-        "binary": get_selected_binary_file_json_path(),
-        "index_snapshot": get_index_snapshot_file_path(),
-        "working_snapshot": get_working_tree_snapshot_file_path(),
-        "processed_include_ids": get_processed_include_ids_file_path(),
-    }
-    return {
-        name: (read_file_bytes(path) if path.exists() else None)
-        for name, path in paths.items()
-    }
-
-
-def _restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
-    """Restore a previously captured selected change cache."""
-    paths = {
-        "patch": get_selected_hunk_patch_file_path(),
-        "hash": get_selected_hunk_hash_file_path(),
-        "kind": get_selected_change_kind_file_path(),
-        "line_state": get_line_changes_json_file_path(),
-        "binary": get_selected_binary_file_json_path(),
-        "index_snapshot": get_index_snapshot_file_path(),
-        "working_snapshot": get_working_tree_snapshot_file_path(),
-        "processed_include_ids": get_processed_include_ids_file_path(),
-    }
-    for name, path in paths.items():
-        data = snapshot.get(name)
-        if data is None:
-            path.unlink(missing_ok=True)
-        else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
-
-
 def command_include_line_as(
     line_id_specification: str,
     replacement_text: str,
@@ -684,6 +699,16 @@ def command_include_line_as(
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+    scope_resolution = resolve_live_line_action_scope(
+        FileReviewAction.INCLUDE,
+        action_command=f"include --line {line_id_specification} --as",
+        line_id_specification=line_id_specification,
+        file=file,
+        validate_pathless_before_live_guard=True,
+    )
+    if scope_resolution.should_stop:
+        return
+    review_state = scope_resolution.review_state
 
     operation_parts = ["include", "--line", line_id_specification, "--as", replacement_text]
     if no_edge_overlap:
@@ -711,7 +736,16 @@ def command_include_line_as(
             )
 
             write_line_ids_file(get_processed_include_ids_file_path(), set())
+            print(
+                _("✓ Included line(s) as replacement: {lines} from {file}").format(
+                    lines=line_id_specification,
+                    file=line_changes.path,
+                ),
+                file=sys.stderr,
+            )
+            print_remaining_line_changes_header(line_changes.path)
             recalculate_selected_hunk_for_file(line_changes.path)
+            finish_review_scoped_line_action(review_state, file_path=line_changes.path)
         else:
             if file == "":
                 target_file = get_selected_change_file_path()
@@ -732,7 +766,7 @@ def command_include_line_as(
             else:
                 if file != "":
                     preserve_selected_state = True
-                saved_selected_state = _snapshot_selected_change_state() if preserve_selected_state else None
+                saved_selected_state = snapshot_selected_change_state() if preserve_selected_state else None
 
                 cached_lines = cache_unstaged_file_as_single_hunk(target_file)
                 if cached_lines is None:
@@ -757,15 +791,28 @@ def command_include_line_as(
             )
 
             if preserve_selected_state:
-                _restore_selected_change_state(saved_selected_state)
+                restore_selected_change_state(saved_selected_state)
             else:
                 write_line_ids_file(get_processed_include_ids_file_path(), set())
+                print(
+                    _("✓ Included line(s) as replacement: {lines} from {file}").format(
+                        lines=line_id_specification,
+                        file=target_file,
+                    ),
+                    file=sys.stderr,
+                )
+                print_remaining_line_changes_header(target_file)
                 recalculate_selected_hunk_for_file(target_file)
+            finish_review_scoped_line_action(review_state, file_path=target_file)
 
-    print(
-        _("✓ Included line(s) as replacement: {lines}").format(lines=line_id_specification),
-        file=sys.stderr,
-    )
+    if preserve_selected_state:
+        print(
+            _("✓ Included line(s) as replacement: {lines} from {file}").format(
+                lines=line_id_specification,
+                file=target_file,
+            ),
+            file=sys.stderr,
+        )
 
 
 def command_include_to_batch(batch_name: str, line_ids: str | None = None, file: str | None = None, *, quiet: bool = False) -> None:
@@ -781,13 +828,35 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
     """
     require_git_repository()
     ensure_state_directory_exists()
+    original_file_scope = file
+    scope_resolution = resolve_live_to_batch_action_scope(
+        FileReviewAction.INCLUDE_TO_BATCH,
+        command_name="include",
+        batch_name=batch_name,
+        line_ids=line_ids,
+        file=file,
+    )
+    if scope_resolution.should_stop:
+        return
+    file = scope_resolution.file
+    review_state = scope_resolution.review_state
     operation_parts = ["include", "--to", batch_name]
     if line_ids is not None:
         operation_parts.extend(["--line", line_ids])
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
-        if file is not None:
+        if (
+            file is None
+            and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.BINARY
+        ):
+            selected_change = load_selected_change()
+            if isinstance(selected_change, BinaryFileChange):
+                _command_include_binary_to_batch(batch_name, selected_change, quiet=quiet)
+            else:
+                _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+        elif file is not None:
             # File-scoped operation
 
             # Determine target file
@@ -807,20 +876,48 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
                 _command_include_file_lines_to_batch(batch_name, target_file, line_ids, quiet=quiet)
         else:
             # Hunk-scoped operation (selected behavior)
-            if (
-                line_ids is None
-                and read_selected_change_kind() == SelectedChangeKind.BINARY
-            ):
-                selected_change = load_selected_change()
-                if isinstance(selected_change, BinaryFileChange):
-                    _command_include_binary_to_batch(batch_name, selected_change, quiet=quiet)
-                else:
-                    _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
-            elif line_ids is not None:
+            if line_ids is not None:
                 _command_include_lines_to_batch(batch_name, line_ids, quiet=quiet)
             else:
                 # Include entire selected hunk
                 _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+    if original_file_scope in (None, "") and line_ids is not None:
+        finish_review_scoped_line_action(review_state)
+
+
+def _detect_file_mode(file_path: str) -> str:
+    """Return the current git file mode for a path, defaulting to a regular file."""
+    absolute_path = get_git_repository_root_path() / file_path
+    if absolute_path.exists():
+        return "100755" if absolute_path.stat().st_mode & stat.S_IXUSR else "100644"
+
+    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+    if ls_result.returncode == 0 and ls_result.stdout.strip():
+        parts = ls_result.stdout.strip().split()
+        if parts:
+            return parts[0]
+    return "100644"
+
+
+def _save_empty_text_lifecycle_to_batch(
+    batch_name: str,
+    file_path: str,
+    file_mode: str,
+) -> str | None:
+    """Persist an empty added/deleted text path, returning its lifecycle type."""
+    change_type = detect_empty_text_lifecycle_change(file_path)
+    if change_type is None:
+        return None
+
+    snapshot_file_if_untracked(file_path)
+    add_file_to_batch(
+        batch_name,
+        file_path,
+        BatchOwnership(claimed_lines=[], deletions=[]),
+        file_mode,
+        change_type=change_type,
+    )
+    return change_type.value
 
 
 def _command_include_binary_to_batch(
@@ -863,6 +960,11 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
+    binary_change = render_binary_file_change(file_path)
+    if binary_change is not None:
+        _command_include_binary_to_batch(batch_name, binary_change, quiet=quiet)
+        return
+
     # Detect file mode
     file_mode = _detect_file_mode(file_path)
 
@@ -875,6 +977,15 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
         all_lines_to_batch.extend(hunk_lines.lines)
 
     if not all_lines_to_batch:
+        if _save_empty_text_lifecycle_to_batch(batch_name, file_path, file_mode) is not None:
+            if not quiet:
+                print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
+            if quiet:
+                advance_to_next_change()
+            else:
+                advance_to_and_show_next_change()
+            return
+
         if not quiet:
             print(_("No changes in file '{file}' to include.").format(file=file_path), file=sys.stderr)
         return
@@ -955,7 +1066,6 @@ def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_i
             print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
         return
 
-    # Detect file mode
     file_mode = _detect_file_mode(file_path)
 
     # Prepare batch ownership update (handles stale source, translation, merge)
@@ -1055,7 +1165,6 @@ def _command_include_lines_to_batch(batch_name: str, line_id_specification: str,
                 file=line_changes.path, batch=batch_name, error=str(e))
         )
 
-    # Detect file mode
     file_mode = _detect_file_mode(line_changes.path)
 
     # Save to batch using batch source model
@@ -1107,6 +1216,13 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     selected_patch = None
     selected_hash = None
     for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        if isinstance(patch, BinaryFileChange):
+            patch_hash = compute_binary_file_hash(patch)
+            if patch_hash not in blocked_hashes:
+                _command_include_binary_to_batch(batch_name, patch, quiet=quiet)
+                return
+            continue
+
         patch_bytes = patch.to_patch_bytes()
         patch_hash = compute_stable_hunk_hash(patch_bytes)
         if patch_hash not in blocked_hashes:

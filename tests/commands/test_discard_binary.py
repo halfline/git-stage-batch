@@ -191,10 +191,10 @@ class TestBinaryDiscard:
         with pytest.raises(CommandError) as exc_info:
             command_discard_from_batch("test-batch", line_ids="1", file="data.bin")
 
-        # Verify error message mentions binary files and atomicity
+        # Verify error message is user-facing.
         error_msg = str(exc_info.value).lower()
         assert "binary" in error_msg
-        assert ("complete units" in error_msg or "atomic" in error_msg)
+        assert "discard the whole file" in error_msg
 
     def test_discard_binary_creates_parent_directories(self, binary_repo):
         """Test that discarding binary file creates parent directories if needed."""

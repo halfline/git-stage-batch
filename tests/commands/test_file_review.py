@@ -1624,3 +1624,123 @@ def test_pathless_include_from_other_batch_after_full_batch_review_refuses(paged
 
     with pytest.raises(CommandError, match="no longer matches"):
         command_include_from_batch("other-batch", line_ids=line_spec)
+def test_reset_from_batch_refuses_after_navigational_batch_file_list(paged_file_repo, capsys):
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+
+    command_show_from_batch("cleanup")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        command_reset_from_batch("cleanup")
+
+    metadata = read_batch_metadata("cleanup")
+    assert set(metadata.get("files", {})) == {"file.txt", "other.txt"}
+
+@pytest.mark.parametrize(
+    "batch_file_action",
+    [
+        lambda: command_include_from_batch("cleanup", file=""),
+        lambda: command_discard_from_batch("cleanup", file=""),
+        lambda: command_apply_from_batch("cleanup", file=""),
+        lambda: command_reset_from_batch("cleanup", file=""),
+    ],
+)
+def test_default_batch_file_actions_refuse_after_partial_batch_review(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+    batch_file_action,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    original_content = (paged_batch_repo / "file.txt").read_text()
+
+    with pytest.raises(CommandError) as exc_info:
+        batch_file_action()
+
+    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert (paged_batch_repo / "file.txt").read_text() == original_content
+    assert "file.txt" in read_batch_metadata("cleanup").get("files", {})
+
+@pytest.mark.parametrize(
+    "batch_file_action",
+    [
+        lambda: command_include_from_batch("cleanup", file=""),
+        lambda: command_discard_from_batch("cleanup", file=""),
+        lambda: command_apply_from_batch("cleanup", file=""),
+        lambda: command_reset_from_batch("cleanup", file=""),
+    ],
+)
+def test_default_batch_file_actions_refuse_after_batch_file_list(
+    paged_file_repo,
+    capsys,
+    batch_file_action,
+):
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    command_show_from_batch("cleanup")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        batch_file_action()
+
+    metadata = read_batch_metadata("cleanup")
+    assert set(metadata.get("files", {})) == {"file.txt", "other.txt"}
+
+def test_bare_reset_from_batch_after_full_single_file_review_uses_reviewed_file(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    command_reset_from_batch("cleanup")
+
+    metadata = read_batch_metadata("cleanup")
+    assert set(metadata.get("files", {})) == {"other.txt"}
+
+def test_pathless_reset_from_batch_uses_reviewed_file_in_multi_file_batch(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    _create_multi_file_batch(paged_file_repo)
+    capsys.readouterr()
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+    command_reset_from_batch("cleanup", line_ids=line_spec)
+
+    captured = capsys.readouterr()
+    assert f"Reset line(s) {line_spec} from batch 'cleanup'" in captured.err
+    metadata = read_batch_metadata("cleanup")
+    assert set(metadata.get("files", {})) == {"file.txt", "other.txt"}
+
+def test_explicit_reset_from_batch_rejects_unshown_review_selection(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    assert len(state.selections) > 1
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        command_reset_from_batch("cleanup", line_ids=unshown_spec, file="file.txt")
+
+    metadata = read_batch_metadata("cleanup")
+    assert "file.txt" in metadata.get("files", {})

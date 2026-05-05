@@ -4,6 +4,9 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.reset as reset_module
+import git_stage_batch.commands.show_from as show_from_module
+import git_stage_batch.data.hunk_tracking as hunk_tracking_module
 from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
@@ -11,11 +14,27 @@ from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.reset import command_reset_from_batch
+from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.line_selection import parse_line_selection
+from git_stage_batch.core.models import RenderedBatchDisplay, ReviewActionGroup
 from git_stage_batch.data.batch_sources import create_batch_source_commit, save_session_batch_sources
-from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.hunk_tracking import fetch_next_change, render_batch_file_display
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
+
+
+_RESET_ACTIONS = ("reset-from-batch",)
+
+
+def _review_action_groups_from_map(gutter_to_selection_id: dict[int, int]) -> tuple[ReviewActionGroup, ...]:
+    return tuple(
+        ReviewActionGroup(
+            display_ids=(gutter_id,),
+            selection_ids=(selection_id,),
+            actions=_RESET_ACTIONS,
+        )
+        for gutter_id, selection_id in gutter_to_selection_id.items()
+    )
 
 
 @pytest.fixture
@@ -117,6 +136,269 @@ class TestResetFromBatch:
         for range_str in batch_ownership_after.get("claimed_lines", []):
             batch_line_ids_after.update(parse_line_selection(range_str))
         assert batch_line_ids_after == {1, 3}
+
+    def test_reset_line_claims_translate_batch_review_gutter_ids(self, temp_git_repo, monkeypatch):
+        """Reset --line should use user-visible batch review gutter IDs."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2\nline 3 modified\n")
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        add_file_to_batch(
+            "mybatch",
+            "test.py",
+            BatchOwnership(claimed_lines=["1", "3"], deletions=[]),
+            "100644",
+        )
+
+        original_render = reset_module.render_batch_file_display
+
+        def render_with_shifted_gutter(batch_name, file_path, metadata=None):
+            rendered = original_render(batch_name, file_path, metadata=metadata)
+            assert rendered is not None
+            gutter_to_selection_id = {1: 2, 2: 1}
+            selection_id_to_gutter = {2: 1, 1: 2}
+            return RenderedBatchDisplay(
+                line_changes=rendered.line_changes,
+                gutter_to_selection_id=gutter_to_selection_id,
+                selection_id_to_gutter=selection_id_to_gutter,
+                actionable_selection_groups=rendered.actionable_selection_groups,
+                review_gutter_to_selection_id=gutter_to_selection_id,
+                review_selection_id_to_gutter=selection_id_to_gutter,
+                review_action_groups=_review_action_groups_from_map(gutter_to_selection_id),
+            )
+
+        monkeypatch.setattr(reset_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_shifted_gutter)
+
+        command_show_from_batch("mybatch", file="test.py", page="all")
+
+        command_reset_from_batch("mybatch", line_ids="1", file="test.py")
+
+        metadata_after = read_batch_metadata("mybatch")
+        batch_ownership_after = metadata_after["files"]["test.py"]
+        batch_line_ids_after = set()
+        for range_str in batch_ownership_after.get("claimed_lines", []):
+            batch_line_ids_after.update(parse_line_selection(range_str))
+        assert batch_line_ids_after == {1}
+
+    def test_reset_line_claims_reject_mixed_fresh_review_and_raw_ids(self, temp_git_repo, monkeypatch):
+        """Fresh review IDs must not silently fall back to raw batch display IDs."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2\nline 3 modified\n")
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        add_file_to_batch(
+            "mybatch",
+            "test.py",
+            BatchOwnership(claimed_lines=["1", "3"], deletions=[]),
+            "100644",
+        )
+
+        original_render = reset_module.render_batch_file_display
+
+        def render_with_shifted_gutter(batch_name, file_path, metadata=None):
+            rendered = original_render(batch_name, file_path, metadata=metadata)
+            assert rendered is not None
+            gutter_to_selection_id = {1: 2, 2: 1}
+            selection_id_to_gutter = {2: 1, 1: 2}
+            return RenderedBatchDisplay(
+                line_changes=rendered.line_changes,
+                gutter_to_selection_id=gutter_to_selection_id,
+                selection_id_to_gutter=selection_id_to_gutter,
+                actionable_selection_groups=rendered.actionable_selection_groups,
+                review_gutter_to_selection_id=gutter_to_selection_id,
+                review_selection_id_to_gutter=selection_id_to_gutter,
+                review_action_groups=_review_action_groups_from_map(gutter_to_selection_id),
+            )
+
+        monkeypatch.setattr(reset_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_shifted_gutter)
+
+        command_show_from_batch("mybatch", file="test.py", page="all")
+
+        with pytest.raises(CommandError, match="not valid from the current file review"):
+            command_reset_from_batch("mybatch", line_ids="1,99", file="test.py")
+
+        metadata_after = read_batch_metadata("mybatch")
+        batch_ownership_after = metadata_after["files"]["test.py"]
+        batch_line_ids_after = set()
+        for range_str in batch_ownership_after.get("claimed_lines", []):
+            batch_line_ids_after.update(parse_line_selection(range_str))
+        assert batch_line_ids_after == {1, 3}
+
+    def test_reset_line_claims_reject_stale_review_before_raw_id_fallback(self, temp_git_repo, monkeypatch):
+        """Stale review gutter IDs must not be reinterpreted as raw batch IDs."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2 modified\n")
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        add_file_to_batch(
+            "mybatch",
+            "test.py",
+            BatchOwnership(claimed_lines=["1", "2"], deletions=[]),
+            "100644",
+        )
+
+        original_render = reset_module.render_batch_file_display
+
+        def render_with_shifted_gutter(batch_name, file_path, metadata=None):
+            rendered = original_render(batch_name, file_path, metadata=metadata)
+            assert rendered is not None
+            gutter_to_selection_id = {1: 2, 2: 1}
+            selection_id_to_gutter = {2: 1, 1: 2}
+            return RenderedBatchDisplay(
+                line_changes=rendered.line_changes,
+                gutter_to_selection_id=gutter_to_selection_id,
+                selection_id_to_gutter=selection_id_to_gutter,
+                actionable_selection_groups=rendered.actionable_selection_groups,
+                review_gutter_to_selection_id=gutter_to_selection_id,
+                review_selection_id_to_gutter=selection_id_to_gutter,
+                review_action_groups=_review_action_groups_from_map(gutter_to_selection_id),
+            )
+
+        def render_with_raw_gutter(batch_name, file_path, metadata=None):
+            rendered = original_render(batch_name, file_path, metadata=metadata)
+            assert rendered is not None
+            gutter_to_selection_id = {1: 1, 2: 2}
+            selection_id_to_gutter = {1: 1, 2: 2}
+            return RenderedBatchDisplay(
+                line_changes=rendered.line_changes,
+                gutter_to_selection_id=gutter_to_selection_id,
+                selection_id_to_gutter=selection_id_to_gutter,
+                actionable_selection_groups=rendered.actionable_selection_groups,
+                review_gutter_to_selection_id=gutter_to_selection_id,
+                review_selection_id_to_gutter=selection_id_to_gutter,
+                review_action_groups=_review_action_groups_from_map(gutter_to_selection_id),
+            )
+
+        monkeypatch.setattr(reset_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_shifted_gutter)
+
+        command_show_from_batch("mybatch", file="test.py", page="all")
+
+        monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_raw_gutter)
+
+        with pytest.raises(CommandError, match="no longer matches"):
+            command_reset_from_batch("mybatch", line_ids="1", file="test.py")
+
+        metadata_after = read_batch_metadata("mybatch")
+        batch_ownership_after = metadata_after["files"]["test.py"]
+        batch_line_ids_after = set()
+        for range_str in batch_ownership_after.get("claimed_lines", []):
+            batch_line_ids_after.update(parse_line_selection(range_str))
+        assert batch_line_ids_after == {1, 2}
+
+    def test_reset_line_claims_do_not_require_live_mergeability(self, temp_git_repo):
+        """Resetting batch metadata should not depend on current worktree mergeability."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("mybatch", line_ids="2", quiet=True)
+
+        test_file.write_text("totally different\ncontent\n")
+        rendered = render_batch_file_display("mybatch", "test.py")
+        assert rendered is not None
+        assert rendered.gutter_to_selection_id == {}
+
+        command_reset_from_batch("mybatch", line_ids="1", file="test.py")
+
+        metadata_after = read_batch_metadata("mybatch")
+        assert "test.py" not in metadata_after.get("files", {})
+
+    def test_reset_line_claims_after_review_do_not_require_live_mergeability(self, temp_git_repo):
+        """A fresh batch review should not make reset depend on mergeability."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("mybatch", line_ids="2", quiet=True)
+
+        test_file.write_text("totally different\ncontent\n")
+        rendered = render_batch_file_display("mybatch", "test.py")
+        assert rendered is not None
+        assert rendered.gutter_to_selection_id == {}
+
+        command_show_from_batch("mybatch", file="test.py", page="all")
+        command_reset_from_batch("mybatch", line_ids="1", file="test.py")
+
+        metadata_after = read_batch_metadata("mybatch")
+        assert "test.py" not in metadata_after.get("files", {})
+
+    def test_reset_line_claims_after_review_ignore_later_worktree_changes(self, temp_git_repo):
+        """Reset review IDs should stay valid when only mergeability changes."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2\n")
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        add_file_to_batch(
+            "mybatch",
+            "test.py",
+            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            "100644",
+        )
+
+        test_file.write_text("line 1\nline 2\n")
+        command_show_from_batch("mybatch", file="test.py", page="all")
+        test_file.write_text("totally different\ncontent\n")
+
+        command_reset_from_batch("mybatch", line_ids="1", file="test.py")
+
+        metadata_after = read_batch_metadata("mybatch")
+        assert "test.py" not in metadata_after.get("files", {})
+
+    def test_pathless_reset_line_claims_after_review_ignore_later_worktree_changes(self, temp_git_repo):
+        """Pathless reset review IDs should not depend on live mergeability."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2\n")
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        add_file_to_batch(
+            "mybatch",
+            "test.py",
+            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            "100644",
+        )
+
+        test_file.write_text("line 1\nline 2\n")
+        command_show_from_batch("mybatch", file="test.py", page="all")
+        test_file.write_text("totally different\ncontent\n")
+
+        command_reset_from_batch("mybatch", line_ids="1")
+
+        metadata_after = read_batch_metadata("mybatch")
+        assert "test.py" not in metadata_after.get("files", {})
 
     def test_reset_with_multiple_batches(self, temp_git_repo):
         """Test that reset only makes hunks visible if not claimed by other batches."""
@@ -426,8 +708,35 @@ class TestResetFromBatch:
         with pytest.raises(CommandError) as exc_info:
             command_reset_from_batch("mybatch", line_ids="1")
 
-        assert "atomic ownership unit" in str(exc_info.value.message).lower()
-        assert "replacement" in str(exc_info.value.message).lower()
+        assert "cannot select only part of this change" in str(exc_info.value.message).lower()
+        assert "select all related lines together" in str(exc_info.value.message).lower()
+
+    def test_reset_explicit_file_rejects_partial_review_group(self, temp_git_repo):
+        """Fresh batch file reviews should reject partial reset selections before raw IDs."""
+
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2\nline 3\n")
+
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        fetch_next_change()
+        ownership = BatchOwnership(
+            claimed_lines=["1"],
+            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])]
+        )
+        add_file_to_batch("mybatch", "test.py", ownership, "100644")
+
+        command_show_from_batch("mybatch", file="test.py", page="all")
+
+        with pytest.raises(CommandError) as exc_info:
+            command_reset_from_batch("mybatch", line_ids="1", file="test.py")
+
+        assert "only partly selects a reviewed change" in exc_info.value.message
+        assert "Use: --line 1-2" in exc_info.value.message
 
     def test_reset_presence_only_keeps_unrelated_deletions(self, temp_git_repo):
         """Test that resetting presence-only lines preserves unrelated deletion claims."""
@@ -569,3 +878,36 @@ class TestResetFromBatch:
         assert 2 not in claimed_ids, "Source line 2 should be removed (selected)"
         assert 3 in claimed_ids, "Source line 3 should remain (separate unit)"
         assert len(file_ownership.deletions) == 0, "No deletions in this ownership"
+
+    def test_reset_single_presence_line_after_batch_review(self, temp_git_repo):
+        """Batch reviews should not merge adjacent presence-only reset targets."""
+
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\nline 4\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2 modified\nline 3 modified\nline 4\n")
+
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        fetch_next_change()
+        ownership = BatchOwnership(
+            claimed_lines=["1", "2", "3"],
+            deletions=[],
+        )
+        add_file_to_batch("mybatch", "test.py", ownership, "100644")
+
+        command_show_from_batch("mybatch", file="test.py", page="all")
+        command_reset_from_batch("mybatch", line_ids="2")
+
+        metadata_after = read_batch_metadata("mybatch")
+        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
+        claimed_ids = set()
+        for range_str in file_ownership.claimed_lines:
+            claimed_ids.update(parse_line_selection(range_str))
+
+        assert 1 in claimed_ids
+        assert 2 not in claimed_ids
+        assert 3 in claimed_ids
+        assert len(file_ownership.deletions) == 0

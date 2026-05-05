@@ -15,7 +15,7 @@ from git_stage_batch.utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
-from git_stage_batch.data.hunk_tracking import render_unstaged_file_as_single_hunk
+from git_stage_batch.data.hunk_tracking import read_selected_change_kind, render_unstaged_file_as_single_hunk
 from git_stage_batch.commands.skip import command_skip, command_skip_line
 from git_stage_batch.cli.argument_parser import parse_command_line
 
@@ -287,7 +287,7 @@ class TestShowFileFlag:
             "    helper,",
             ")",
         )
-        beta_ids = ids_for_texts(
+        assert ids_for_texts(
             "from old_beta import helper",
             "from new_beta import helper",
         )
@@ -572,18 +572,25 @@ class TestShowFileFlag:
         assert "change-two" in changed_texts
         assert "change-three" in changed_texts
 
-    def test_show_files_selection_can_feed_include(self, multi_file_repo):
-        """Show --files should leave the final displayed file selected for include."""
+    def test_show_files_outputs_navigation_list_and_clears_selection(self, multi_file_repo, capsys):
+        """Show --files should be navigational, not a hidden selected-file action."""
         command_start()
+        capsys.readouterr()
 
         args = parse_command_line(["show", "--files", "*.txt"], quiet=True)
         assert args is not None
         args.func(args)
 
-        command_include(quiet=True)
-
+        captured = capsys.readouterr()
+        assert "── matched files" in captured.out
+        assert "Changes: file vs HEAD" in captured.out
+        assert "Open:" in captured.out
+        assert "git-stage-batch show --file alpha.txt" in captured.out
+        assert read_selected_change_kind() is None
+        with pytest.raises(CommandError, match="last command only showed files"):
+            command_include(quiet=True)
         result = run_git_command(["diff", "--cached", "--name-only"])
-        assert result.stdout.strip() == "gamma.txt"
+        assert result.stdout == ""
 
     def test_include_files_reports_aggregate_staged_scope(self, multi_file_repo, capsys):
         """Include --files should report the full staged scope once."""
@@ -637,33 +644,36 @@ class TestShowFileFlag:
         result = run_git_command(["diff", "--cached", "--name-only"])
         assert result.stdout.splitlines() == ["alpha.txt", "beta.txt", "gamma.txt"]
 
-    def test_show_files_selection_can_feed_discard(self, multi_file_repo):
-        """Show --files should leave the final displayed file selected for discard."""
+    def test_show_files_does_not_feed_bare_discard(self, multi_file_repo, capsys):
+        """A multi-file file list should not leave a selected file for discard."""
         command_start()
+        capsys.readouterr()
 
         args = parse_command_line(["show", "--files", "*.txt"], quiet=True)
         assert args is not None
         args.func(args)
+        capsys.readouterr()
 
-        command_discard(quiet=True)
-
+        assert read_selected_change_kind() is None
+        with pytest.raises(CommandError, match="last command only showed files"):
+            command_discard(quiet=True)
         assert (multi_file_repo / "alpha.txt").read_text() == "alpha1\nalpha2-modified\nalpha3\nalpha4-new\n"
         assert (multi_file_repo / "beta.txt").read_text() == "beta1\nbeta2-modified\nbeta3\nbeta4-new\n"
-        assert (multi_file_repo / "gamma.txt").read_text() == "gamma1\ngamma2\ngamma3\n"
+        assert (multi_file_repo / "gamma.txt").read_text() == "gamma1\ngamma2-modified\ngamma3\ngamma4-new\n"
 
-    def test_show_files_selection_can_feed_skip(self, multi_file_repo):
-        """Show --files should leave the final displayed file selected for skip."""
+    def test_show_files_does_not_feed_bare_skip(self, multi_file_repo, capsys):
+        """A multi-file file list should not leave a selected file for skip."""
         command_start()
+        capsys.readouterr()
 
         args = parse_command_line(["show", "--files", "*.txt"], quiet=True)
         assert args is not None
         args.func(args)
+        capsys.readouterr()
 
-        command_skip(quiet=True)
-        command_include(quiet=True)
-
-        result = run_git_command(["diff", "--cached", "--name-only"])
-        assert result.stdout.strip() == "alpha.txt"
+        assert read_selected_change_kind() is None
+        with pytest.raises(CommandError, match="last command only showed files"):
+            command_skip(quiet=True)
 
 
 class TestIncludeToBatchWithFile:
@@ -830,16 +840,16 @@ class TestBatchSourceWithFile:
         assert "alpha.txt" not in staged
         assert "gamma.txt" not in staged
 
-    def test_include_from_batch_file_empty_string(self, multi_file_repo):
-        """Include --from BATCH --file (empty) should use first file from batch display."""
+    def test_include_from_batch_file_empty_string_uses_selected_batch_file(self, multi_file_repo):
+        """Include --from BATCH --file (empty) should use a selected batch file."""
         command_start()
         command_include_to_batch("batch", file="alpha.txt")
         command_include_to_batch("batch", file="beta.txt")
 
         subprocess.run(["git", "checkout", "HEAD", "--", "."], check=True, capture_output=True)
 
-        # Show batch to cache first file
-        command_show_from_batch("batch")
+        # Show one batch file to cache an explicit selected file.
+        command_show_from_batch("batch", file="alpha.txt")
 
         # Include with empty string
         command_include_from_batch("batch", file="")
@@ -847,6 +857,19 @@ class TestBatchSourceWithFile:
         # First file (alpha.txt) should be staged
         result = run_git_command(["diff", "--cached", "--name-only"])
         assert "alpha.txt" in result.stdout
+
+    def test_include_from_batch_file_empty_string_after_file_list_fails(self, multi_file_repo):
+        """A multi-file batch file list should not select a hidden batch file."""
+        command_start()
+        command_include_to_batch("batch", file="alpha.txt")
+        command_include_to_batch("batch", file="beta.txt")
+
+        subprocess.run(["git", "checkout", "HEAD", "--", "."], check=True, capture_output=True)
+
+        command_show_from_batch("batch")
+
+        with pytest.raises(CommandError, match="last command only showed files"):
+            command_include_from_batch("batch", file="")
 
     def test_apply_from_batch_with_file(self, multi_file_repo):
         """Apply --from BATCH --file PATH should apply only that file."""
@@ -915,8 +938,8 @@ class TestBatchSourceWithFile:
 class TestMultiFileBatchDisplay:
     """Test displaying multi-file batches with separators."""
 
-    def test_show_from_multi_file_batch_separators(self, multi_file_repo, capsys):
-        """Show --from BATCH with multiple files should show file headers."""
+    def test_show_from_multi_file_batch_list(self, multi_file_repo, capsys):
+        """Show --from BATCH with multiple files should show a navigational file list."""
         command_start()
         capsys.readouterr()  # Clear start's output
         command_include_to_batch("multi", file="alpha.txt")
@@ -926,13 +949,13 @@ class TestMultiFileBatchDisplay:
         command_show_from_batch("multi")
 
         captured = capsys.readouterr()
-        # Should have file headers in standard format
-        assert "alpha.txt :: @@" in captured.out
-        assert "beta.txt :: @@" in captured.out
-        assert "gamma.txt :: @@" in captured.out
+        assert "── matched files" in captured.out
+        assert "Changes: batch multi" in captured.out
+        assert "git-stage-batch show --from multi --file alpha.txt" in captured.out
+        assert read_selected_change_kind() is None
 
-    def test_show_from_multi_file_displays_all_content(self, multi_file_repo, capsys):
-        """Show --from BATCH should display content from all files."""
+    def test_show_from_multi_file_list_summarizes_all_files(self, multi_file_repo, capsys):
+        """Show --from BATCH should summarize every matched file."""
         command_start()
         capsys.readouterr()  # Clear start's output
         command_include_to_batch("all", file="alpha.txt")
@@ -942,10 +965,25 @@ class TestMultiFileBatchDisplay:
         command_show_from_batch("all")
 
         captured = capsys.readouterr()
-        # Should see content from all three files
-        assert "alpha" in captured.out.lower()
-        assert "beta" in captured.out.lower()
-        assert "gamma" in captured.out.lower()
+        assert "alpha.txt" in captured.out
+        assert "beta.txt" in captured.out
+        assert "gamma.txt" in captured.out
+
+    def test_show_from_multi_file_open_command_uses_page_review(self, multi_file_repo, capsys):
+        """Matched-file open commands should route to the page-aware batch review."""
+        command_start()
+        capsys.readouterr()
+        command_include_to_batch("multi", file="alpha.txt")
+        command_include_to_batch("multi", file="beta.txt")
+
+        command_show_from_batch("multi")
+        capsys.readouterr()
+
+        command_show_from_batch("multi", file="alpha.txt")
+
+        captured = capsys.readouterr()
+        assert "Changes: batch multi" in captured.out
+        assert "Showing page 1 of 1" in captured.out
 
     def test_batch_files_maintain_insertion_order(self, multi_file_repo):
         """Files in batch should maintain insertion order, not alphabetical."""
@@ -1569,9 +1607,8 @@ class TestExplicitFilePath:
 
         assert (
             str(exc_info.value)
-            == "Contiguous file-scoped selections cannot span multiple structural change runs "
-            "while selecting only part of one run. Select one run at a time, fully include "
-            "each spanned run, or use --as."
+            == "That line range crosses separate changes while selecting only part of one. "
+            "Select one change at a time, include every line in the range, or use --as."
         )
 
         result = run_git_command(["diff", "--cached", "--name-only"])

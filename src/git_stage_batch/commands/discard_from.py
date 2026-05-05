@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import stat
 import sys
+from pathlib import Path
 from typing import Optional
 
 from ..batch.merge import discard_batch
@@ -19,6 +21,28 @@ from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, BatchMetadataError
 from ..i18n import _
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command
+
+
+def _baseline_file_mode(baseline_commit: str, file_path: str) -> str | None:
+    """Return file mode for a path in the baseline tree, if present."""
+    result = run_git_command(
+        ["ls-tree", baseline_commit, "--", file_path],
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    return result.stdout.split(maxsplit=1)[0]
+
+
+def _restore_working_tree_file_mode(file_path: Path, file_mode: str | None) -> None:
+    """Restore executable bits for a working-tree file from a Git file mode."""
+    if file_mode is None:
+        return
+    current_mode = file_path.stat().st_mode
+    if file_mode == "100755":
+        file_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    else:
+        file_path.chmod(current_mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
 
 
 def _discard_binary_file_from_batch(file_path: str, baseline_commit: str) -> None:
@@ -49,6 +73,10 @@ def _discard_binary_file_from_batch(file_path: str, baseline_commit: str) -> Non
         baseline_content = result.stdout
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_bytes(baseline_content)
+        _restore_working_tree_file_mode(
+            full_path,
+            _baseline_file_mode(baseline_commit, file_path),
+        )
         print(_("✓ Restored binary file to baseline: {file}").format(file=file_path), file=sys.stderr)
     else:
         # File doesn't exist in baseline - delete from working tree

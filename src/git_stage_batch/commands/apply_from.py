@@ -261,6 +261,9 @@ def command_apply_from_batch(
                         working_content
                     )
 
+                # Write merged content to working tree (bytes). A selected
+                # deleted-text file still represents path absence once the
+                # selected deletion leaves the destination empty.
                 effective_change_type = selected_text_target_change_type(
                     text_change_type,
                     selected_ids,

@@ -161,6 +161,8 @@ def add_binary_file_to_batch(
 
     current_binary_content: bytes | None = None
     if binary_change.is_deleted_file():
+        # Deleted binaries need the pre-delete source for baseline-style
+        # operations, so reuse/create the normal session source.
         batch_source_commit = get_batch_source_for_file(file_path)
         if not batch_source_commit:
             batch_source_commit = create_batch_source_commit(file_path)
@@ -168,6 +170,9 @@ def add_binary_file_to_batch(
             batch_sources[file_path] = batch_source_commit
             save_session_batch_sources(batch_sources)
     else:
+        # Added/modified binaries are atomic and cannot be reconstructed from
+        # line ownership. Capture the current bytes as their source, even when
+        # the session already has an older source commit for this path.
         if file_content_override is None:
             full_path = get_git_repository_root_path() / file_path
             if not full_path.exists():
@@ -180,7 +185,11 @@ def add_binary_file_to_batch(
             file_content_override=current_binary_content,
         )
 
+    # For binary files, store the full live file bytes as the realized content.
+    # Binary batches are atomic, so the batch commit must carry the exact bytes
+    # the user is saving.
     if binary_change.is_deleted_file():
+        # Deleted file: no content in batch (will be deleted when applied)
         blob_sha = None
     else:
         assert current_binary_content is not None

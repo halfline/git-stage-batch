@@ -370,6 +370,9 @@ def command_include_from_batch(
 
                 snapshot_file_if_untracked(file_path)
 
+                # Update index and working tree with their independently merged
+                # targets. A selected deleted-text file still represents path
+                # absence once the selected deletion leaves that destination empty.
                 index_change_type = selected_text_target_change_type(
                     text_change_type,
                     selected_ids,

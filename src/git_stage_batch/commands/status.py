@@ -156,5 +156,19 @@ def command_status(*, porcelain: bool = False) -> None:
             print()
             print(_("Skipped hunks:"))
             for hunk in skipped_hunks:
-                ids_str = format_id_range(hunk["ids"])
-                print(_("  {}:{} [#{}]").format(hunk['file'], hunk['line'], ids_str))
+                if hunk.get("line") is None:
+                    print(
+                        _("  {file} [binary {change_type}]").format(
+                            file=hunk["file"],
+                            change_type=hunk.get("change_type", "modified"),
+                        )
+                    )
+                else:
+                    ids_str = format_id_range(hunk["ids"])
+                    print(
+                        _("  {file}:{line} [#{ids}]").format(
+                            file=hunk["file"],
+                            line=hunk["line"],
+                            ids=ids_str,
+                        )
+                    )

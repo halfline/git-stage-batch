@@ -185,8 +185,8 @@ Similar to `git add -p` but **more granular and flexible**:
 # Exact unchanged edge anchors are stripped by default for line-scoped --as
 ❯ git-stage-batch include --line 1-2 --as 'keep1\nreplacement\nkeep4'
 
-# Keep those anchors literally with --no-anchor
-❯ git-stage-batch include --line 1-2 --as 'keep1\nreplacement\nkeep4' --no-anchor
+# Keep those edge-overlap lines literally with --no-edge-overlap
+❯ git-stage-batch include --line 1-2 --as 'keep1\nreplacement\nkeep4' --no-edge-overlap
 
 # Or stage full replacement text for one file-scoped path
 ❯ git-stage-batch include --file path.txt --as 'full staged file text'

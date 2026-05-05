@@ -559,10 +559,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Read replacement text from standard input exactly, preserving trailing newlines"),
     )
     parser_include.add_argument(
-        "--no-anchor",
-        dest="no_anchor",
+        "--no-edge-overlap",
+        dest="no_edge_overlap",
         action="store_true",
-        help=_("Do not strip unchanged edge anchor lines from replacement text used with --as"),
+        help=_("Do not strip unchanged edge-overlap lines from replacement text used with --as"),
+    )
+    parser_include.add_argument(
+        "--no-anchor",
+        dest="no_edge_overlap",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
 
     def dispatch_include(args: argparse.Namespace) -> None:
@@ -574,8 +580,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         )
         if replacement_text is not None:
             if args.line_ids and args.from_batch and not args.to_batch:
-                if args.no_anchor:
-                    raise CommandError(_("`--no-anchor` only applies to live `include --line --as` operations."))
+                if args.no_edge_overlap:
+                    raise CommandError(_("`--no-edge-overlap` only applies to live `include --line --as` operations."))
                 if isinstance(resolved_batch_scope, list):
                     raise CommandError(_("Cannot use --lines with multiple files."))
                 commands.command_include_from_batch(
@@ -592,7 +598,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     args.line_ids,
                     replacement_text,
                     file=resolved_live_scope,
-                    no_anchor=args.no_anchor,
+                    no_edge_overlap=args.no_edge_overlap,
                 )
                 return
             if (
@@ -601,8 +607,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 and args.to_batch is None
                 and resolved_live_scope is not None
             ):
-                if args.no_anchor:
-                    raise CommandError(_("`--no-anchor` requires `include --line --as`."))
+                if args.no_edge_overlap:
+                    raise CommandError(_("`--no-edge-overlap` requires `include --line --as`."))
                 if isinstance(resolved_live_scope, list):
                     raise CommandError(_("Cannot use --as with multiple files."))
                 commands.command_include_file_as(replacement_text, file=resolved_live_scope)
@@ -610,8 +616,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             raise CommandError(
                 _("`include --as` requires `--file` or `--line` and does not support `--to`.")
             )
-        if args.no_anchor:
-            raise CommandError(_("`--no-anchor` requires `include --line --as`."))
+        if args.no_edge_overlap:
+            raise CommandError(_("`--no-edge-overlap` requires `include --line --as`."))
         if args.from_batch:
             _run_for_each_file(
                 resolved_batch_scope,
@@ -719,10 +725,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Read replacement text from standard input exactly, preserving trailing newlines"),
     )
     parser_discard.add_argument(
-        "--no-anchor",
-        dest="no_anchor",
+        "--no-edge-overlap",
+        dest="no_edge_overlap",
         action="store_true",
-        help=_("Do not strip unchanged edge anchor lines from replacement text used with --as"),
+        help=_("Do not strip unchanged edge-overlap lines from replacement text used with --as"),
+    )
+    parser_discard.add_argument(
+        "--no-anchor",
+        dest="no_edge_overlap",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
 
     def dispatch_discard(args: argparse.Namespace) -> None:
@@ -741,7 +753,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     args.line_ids,
                     replacement_text,
                     file=resolved_live_scope,
-                    no_anchor=args.no_anchor,
+                    no_edge_overlap=args.no_edge_overlap,
                 )
                 return
             if (
@@ -750,8 +762,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 and args.line_ids is None
                 and resolved_live_scope is not None
             ):
-                if args.no_anchor:
-                    raise CommandError(_("`--no-anchor` requires `discard --to --line --as`."))
+                if args.no_edge_overlap:
+                    raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
                 if isinstance(resolved_live_scope, list):
                     raise CommandError(_("Cannot use --as with multiple files."))
                 commands.command_discard_file_as(replacement_text, file=resolved_live_scope)
@@ -759,8 +771,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             raise CommandError(
                 _("`discard --as` requires `--file`, or `--to` with `--line`.")
             )
-        if args.no_anchor:
-            raise CommandError(_("`--no-anchor` requires `discard --to --line --as`."))
+        if args.no_edge_overlap:
+            raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
         if args.from_batch:
             _run_for_each_file(
                 resolved_batch_scope,

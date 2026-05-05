@@ -525,7 +525,7 @@ class TestBuildTargetIndexContent:
 
         assert result == b"keep1\nstaged\nkeep3\nkeep4\n"
 
-    def test_replace_selection_keeps_matching_edge_anchors_with_no_anchor(self):
+    def test_replace_selection_keeps_matching_edge_anchors_with_no_edge_overlap(self):
         """Replacement staging should preserve duplicated anchors when requested."""
         header = HunkHeader(1, 4, 1, 4)
         lines = [
@@ -570,7 +570,7 @@ class TestBuildTargetIndexContent:
 
         assert result == b"keep1\nstaged\nkeep3\nkeep4\n"
 
-    def test_working_tree_replace_selection_keeps_matching_edge_anchors_with_no_anchor(self):
+    def test_working_tree_replace_selection_keeps_matching_edge_anchors_with_no_edge_overlap(self):
         """Working-tree replacement should preserve duplicated anchors when requested."""
         header = HunkHeader(1, 4, 1, 4)
         lines = [

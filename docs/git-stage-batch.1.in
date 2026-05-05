@@ -216,14 +216,15 @@ Allows surgical removal of debug code or unwanted modifications.
 .TP
 .B include \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR
 Stage replacement text for the selected changed region.
-When TEXT includes exact unchanged edge anchors from the preserved file
-context, those anchors are stripped by default.
+When TEXT includes exact unchanged lines overlapping the preserved file
+context immediately before or after the selected span, those edge-overlap
+lines are stripped by default.
 Replacement selections must form one contiguous displayed line-ID range.
 File-scoped views may span omitted gap markers when the selected IDs remain
 contiguous, but disjoint ranges still require separate commands.
 .TP
-.B include \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR \-\-no\-anchor
-Do not strip unchanged edge anchor lines from replacement text.
+.B include \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR \-\-no\-edge\-overlap
+Do not strip unchanged edge-overlap lines from replacement text.
 .TP
 .B include \-\-file \fIPATH\fR \-\-as \fITEXT\fR
 Stage TEXT as the full index content for the selected file-scoped path while
@@ -236,14 +237,15 @@ without staging it.
 .B discard \-\-to \fIBATCH\fR \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR
 Save replacement text to a batch and discard the original selected lines
 from the working tree.
-When TEXT includes exact unchanged edge anchors from the preserved file
-context, those anchors are stripped by default.
+When TEXT includes exact unchanged lines overlapping the preserved file
+context immediately before or after the selected span, those edge-overlap
+lines are stripped by default.
 Replacement selections must form one contiguous displayed line-ID range.
 File-scoped views may span omitted gap markers when the selected IDs remain
 contiguous, but disjoint ranges still require separate commands.
 .TP
-.B discard \-\-to \fIBATCH\fR \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR \-\-no\-anchor
-Do not strip unchanged edge anchor lines from replacement text.
+.B discard \-\-to \fIBATCH\fR \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR \-\-no\-edge\-overlap
+Do not strip unchanged edge-overlap lines from replacement text.
 .SS Permanent File Exclusion
 .TP
 .B block-file \fR[\fIPATH\fR]

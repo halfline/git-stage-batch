@@ -272,14 +272,14 @@ def build_target_index_content_bytes_with_replaced_lines(
             raise ValueError(
                 "Replacement text still includes unchanged anchor lines before the selected span. "
                 "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
-                "or pass --no-anchor to keep the anchor text."
+                "or pass --no-edge-overlap to keep the edge-overlap text."
             )
 
         if longest_suffix_context_match(replacement_lines, after_context) >= 2:
             raise ValueError(
                 "Replacement text still includes unchanged anchor lines after the selected span. "
                 "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
-                "or pass --no-anchor to keep the anchor text."
+                "or pass --no-edge-overlap to keep the edge-overlap text."
             )
 
     output_lines = (
@@ -524,14 +524,14 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
             raise ValueError(
                 "Replacement text still includes unchanged anchor lines before the selected span. "
                 "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
-                "or pass --no-anchor to keep the anchor text."
+                "or pass --no-edge-overlap to keep the edge-overlap text."
             )
 
         if longest_suffix_context_match(replacement_lines, after_context) >= 2:
             raise ValueError(
                 "Replacement text still includes unchanged anchor lines after the selected span. "
                 "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
-                "or pass --no-anchor to keep the anchor text."
+                "or pass --no-edge-overlap to keep the edge-overlap text."
             )
 
     output_lines = (

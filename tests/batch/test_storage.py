@@ -117,6 +117,52 @@ def test_boolean_replacement_unit_indices_are_omitted_from_metadata(temp_git_rep
     assert "replacement_units" not in ownership.to_metadata_dict()
 
 
+def test_add_file_to_batch_marks_whole_added_empty_text_file(temp_git_repo):
+    """Whole empty added text files need path lifecycle metadata."""
+    empty_file = temp_git_repo / "empty.txt"
+    empty_file.write_text("")
+
+    ownership = BatchOwnership(claimed_lines=[], deletions=[])
+    add_file_to_batch("test-batch", "empty.txt", ownership)
+
+    file_meta = read_batch_metadata("test-batch")["files"]["empty.txt"]
+    assert file_meta["change_type"] == "added"
+    assert read_file_from_batch("test-batch", "empty.txt") == ""
+
+
+def test_add_file_to_batch_does_not_mark_partial_added_text_file_as_lifecycle(temp_git_repo):
+    """Partial line batches from a new file should stay content-scoped."""
+    partial_file = temp_git_repo / "partial.txt"
+    partial_file.write_text("one\ntwo\n")
+
+    ownership = BatchOwnership(claimed_lines=["1"], deletions=[])
+    add_file_to_batch("test-batch", "partial.txt", ownership)
+
+    file_meta = read_batch_metadata("test-batch")["files"]["partial.txt"]
+    assert "change_type" not in file_meta
+    assert read_file_from_batch("test-batch", "partial.txt") == "one\n"
+
+
+def test_add_file_to_batch_marks_whole_deleted_text_file(temp_git_repo):
+    """Whole deleted text files need deletion metadata and no batch-tree path."""
+    gone_file = temp_git_repo / "gone.txt"
+    gone_file.write_text("gone\n")
+    subprocess.run(["git", "add", "gone.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Add gone"], check=True, capture_output=True)
+    initialize_abort_state()
+
+    gone_file.unlink()
+    ownership = BatchOwnership(
+        claimed_lines=[],
+        deletions=[DeletionClaim(anchor_line=None, content_lines=[b"gone\n"])],
+    )
+    add_file_to_batch("test-batch", "gone.txt", ownership)
+
+    file_meta = read_batch_metadata("test-batch")["files"]["gone.txt"]
+    assert file_meta["change_type"] == "deleted"
+    assert read_file_from_batch("test-batch", "gone.txt") is None
+
+
 def test_add_file_to_batch_update_file(temp_git_repo):
     """Test updating existing file in batch."""
     create_batch("test-batch", "Test")

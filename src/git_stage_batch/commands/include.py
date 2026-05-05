@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import stat
 import sys
 
-from ..batch import add_file_to_batch, create_batch
+from ..batch import add_binary_file_to_batch, add_file_to_batch, create_batch
 from ..batch.comparison import (
     SemanticChangeKind,
     derive_display_id_run_sets,
@@ -20,7 +21,7 @@ from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
     parse_unified_diff_streaming,
 )
-from ..core.hashing import compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
 from ..core.line_selection import (
     format_line_ids,
     parse_line_selection,
@@ -41,6 +42,7 @@ from ..data.hunk_tracking import (
     load_selected_change,
     read_selected_change_kind,
     recalculate_selected_hunk_for_file,
+    record_binary_hunk_skipped,
     record_hunk_included,
     record_hunk_skipped,
     require_selected_hunk,
@@ -74,6 +76,20 @@ from ..utils.paths import (
     get_processed_include_ids_file_path,
     get_working_tree_snapshot_file_path,
 )
+
+
+def _detect_file_mode(file_path: str) -> str:
+    """Return the current git file mode for a path, defaulting to a regular file."""
+    absolute_path = get_git_repository_root_path() / file_path
+    if absolute_path.exists():
+        return "100755" if absolute_path.stat().st_mode & stat.S_IXUSR else "100644"
+
+    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+    if ls_result.returncode == 0 and ls_result.stdout.strip():
+        parts = ls_result.stdout.strip().split()
+        if parts:
+            return parts[0]
+    return "100644"
 
 
 def command_include(*, quiet: bool = False) -> None:
@@ -662,7 +678,7 @@ def command_include_line_as(
     replacement_text: str,
     file: str | None = None,
     *,
-    no_anchor: bool = False,
+    no_edge_overlap: bool = False,
 ) -> None:
     """Stage a replacement for one contiguous selected line span and mask it."""
     require_git_repository()
@@ -670,8 +686,8 @@ def command_include_line_as(
     ensure_state_directory_exists()
 
     operation_parts = ["include", "--line", line_id_specification, "--as", replacement_text]
-    if no_anchor:
-        operation_parts.append("--no-anchor")
+    if no_edge_overlap:
+        operation_parts.append("--no-edge-overlap")
     if file is not None:
         operation_parts.extend(["--file", file])
 
@@ -691,7 +707,7 @@ def command_include_line_as(
                 replacement_text=replacement_text,
                 hunk_base_content=hunk_base_content,
                 hunk_source_content=hunk_source_content,
-                trim_unchanged_edge_anchors=not no_anchor,
+                trim_unchanged_edge_anchors=not no_edge_overlap,
             )
 
             write_line_ids_file(get_processed_include_ids_file_path(), set())
@@ -737,7 +753,7 @@ def command_include_line_as(
                 replacement_text=replacement_text,
                 hunk_base_content=hunk_base_content,
                 hunk_source_content=hunk_source_content,
-                trim_unchanged_edge_anchors=not no_anchor,
+                trim_unchanged_edge_anchors=not no_edge_overlap,
             )
 
             if preserve_selected_state:
@@ -791,11 +807,53 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
                 _command_include_file_lines_to_batch(batch_name, target_file, line_ids, quiet=quiet)
         else:
             # Hunk-scoped operation (selected behavior)
-            if line_ids is not None:
+            if (
+                line_ids is None
+                and read_selected_change_kind() == SelectedChangeKind.BINARY
+            ):
+                selected_change = load_selected_change()
+                if isinstance(selected_change, BinaryFileChange):
+                    _command_include_binary_to_batch(batch_name, selected_change, quiet=quiet)
+                else:
+                    _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+            elif line_ids is not None:
                 _command_include_lines_to_batch(batch_name, line_ids, quiet=quiet)
             else:
                 # Include entire selected hunk
                 _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+
+
+def _command_include_binary_to_batch(
+    batch_name: str,
+    binary_change: BinaryFileChange,
+    *,
+    quiet: bool = False,
+) -> None:
+    """Save one binary change to a batch and mark it processed."""
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    patch_hash = compute_binary_file_hash(binary_change)
+
+    add_binary_file_to_batch(
+        batch_name,
+        binary_change,
+        file_mode=_detect_file_mode(file_path),
+    )
+    append_lines_to_file(get_block_list_file_path(), [patch_hash])
+    record_binary_hunk_skipped(binary_change, patch_hash)
+
+    if not quiet:
+        print(
+            _("Included binary file '{file}' to batch '{batch}'").format(
+                file=file_path,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+
+    if quiet:
+        advance_to_next_change()
+    else:
+        advance_to_and_show_next_change()
 
 
 def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:
@@ -806,12 +864,7 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
         create_batch(batch_name, "Auto-created")
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(file_path)
 
     # Collect ALL hunks from this file (live working tree state)
     all_lines_to_batch = []
@@ -903,12 +956,7 @@ def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_i
         return
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(file_path)
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
@@ -1008,12 +1056,7 @@ def _command_include_lines_to_batch(batch_name: str, line_id_specification: str,
         )
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", line_changes.path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(line_changes.path)
 
     # Save to batch using batch source model
     add_file_to_batch(batch_name, line_changes.path, ownership, file_mode)
@@ -1079,12 +1122,7 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     file_path = selected_patch.new_path
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(file_path)
 
     # Collect all lines to batch (either selected hunk or all hunks from file)
     all_lines_to_batch = []

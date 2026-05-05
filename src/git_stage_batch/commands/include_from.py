@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import stat
 import sys
 from typing import Optional
 
 from ..batch.merge import merge_batch
 from ..batch.metadata_validation import read_validated_batch_metadata
+from ..batch.query import get_batch_commit_sha
 from ..batch.replacement import build_replacement_batch_view
 from ..batch.selection import (
     resolve_batch_file_scope,
@@ -15,12 +17,156 @@ from ..batch.selection import (
     translate_atomic_unit_error_to_gutter_ids,
 )
 from ..batch.validation import batch_exists
+from ..core.text_lifecycle import (
+    TextFileChangeType,
+    mode_for_text_materialization,
+    normalized_text_change_type,
+    selected_text_target_change_type,
+)
 from ..data.hunk_tracking import render_batch_file_display
+from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
-from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError, BatchMetadataError
+from ..exceptions import (
+    AtomicUnitError,
+    BatchMetadataError,
+    CommandError,
+    MergeError,
+    exit_with_error,
+)
 from ..i18n import _
 from ..staging.operations import update_index_with_blob_content
-from ..utils.git import require_git_repository, run_git_command
+from ..utils.git import (
+    create_git_blob,
+    get_git_repository_root_path,
+    require_git_repository,
+    run_git_command,
+)
+
+
+def _read_binary_file_from_batch(
+    batch_name: str,
+    file_path: str,
+    file_meta: dict,
+) -> bytes | None:
+    """Read one binary batch target, or return None for a stored deletion."""
+    batch_commit = get_batch_commit_sha(batch_name)
+    if not batch_commit:
+        raise RuntimeError(f"Batch commit not found for batch '{batch_name}'")
+
+    change_type = file_meta.get("change_type", "modified")
+    if change_type == "deleted":
+        return None
+
+    result = run_git_command(
+        ["show", f"{batch_commit}:{file_path}"],
+        check=False,
+        text_output=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
+
+    return result.stdout
+
+
+def _stage_binary_file_from_batch(
+    file_path: str,
+    file_meta: dict,
+    batch_content: bytes | None,
+) -> None:
+    """Stage one binary batch target into the index."""
+    change_type = file_meta.get("change_type", "modified")
+    if change_type == "deleted":
+        result = run_git_command(["update-index", "--force-remove", "--", file_path], check=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to stage binary deletion for {file_path}: {result.stderr}")
+        return
+
+    if batch_content is None:
+        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
+
+    blob_hash = create_git_blob([batch_content])
+    file_mode = file_meta.get("mode", "100644")
+    run_git_command(["update-index", "--add", "--cacheinfo", str(file_mode), blob_hash, file_path])
+
+
+def _apply_working_tree_file_mode(full_path, file_mode: str) -> None:
+    """Apply a normal Git file mode to a working-tree file."""
+    current_mode = full_path.stat().st_mode
+    if file_mode == "100755":
+        full_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    else:
+        full_path.chmod(current_mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+
+
+def _stage_text_file_from_batch(
+    file_path: str,
+    content: bytes | None,
+    file_mode: str | None,
+    change_type: str = "modified",
+) -> None:
+    """Stage text content, optionally forcing the batch target mode."""
+    if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
+        result = run_git_command(["update-index", "--force-remove", "--", file_path], check=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to stage text deletion for {file_path}: {result.stderr}")
+        return
+
+    if content is None:
+        raise RuntimeError(f"Text file not found in batch content: {file_path}")
+
+    if file_mode is None:
+        update_index_with_blob_content(file_path, content)
+        return
+
+    blob_hash = create_git_blob([content])
+    run_git_command(["update-index", "--add", "--cacheinfo", file_mode, blob_hash, file_path])
+
+
+def _write_text_file_from_batch(
+    file_path: str,
+    content: bytes | None,
+    file_mode: str | None,
+    change_type: str = "modified",
+) -> None:
+    """Write one text batch target into the working tree."""
+    repo_root = get_git_repository_root_path()
+    full_path = repo_root / file_path
+
+    if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
+        if full_path.exists():
+            full_path.unlink()
+        return
+
+    if content is None:
+        raise RuntimeError(f"Text file not found in batch content: {file_path}")
+
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(content)
+    if file_mode is not None:
+        _apply_working_tree_file_mode(full_path, file_mode)
+
+
+def _write_binary_file_from_batch(
+    file_path: str,
+    file_meta: dict,
+    batch_content: bytes | None,
+) -> None:
+    """Write one binary batch target into the working tree."""
+    repo_root = get_git_repository_root_path()
+    full_path = repo_root / file_path
+    change_type = file_meta.get("change_type", "modified")
+
+    if change_type == "deleted":
+        if full_path.exists():
+            full_path.unlink()
+        return
+
+    if batch_content is None:
+        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
+
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(batch_content)
+    _apply_working_tree_file_mode(full_path, str(file_meta.get("mode", "100644")))
 
 
 def _require_contiguous_display_selection(selected_ids: set[int]) -> None:
@@ -40,7 +186,7 @@ def command_include_from_batch(
     patterns: Optional[list[str]] = None,
     replacement_text: Optional[str] = None,
 ) -> None:
-    """Stage batch changes to index using structural merge.
+    """Stage batch changes to index and working tree using structural merge.
 
     Args:
         batch_name: Name of batch to include from
@@ -80,6 +226,12 @@ def command_include_from_batch(
     if replacement_text is not None and not selected_ids:
         exit_with_error(_("`include --from --as` requires `--line`."))
 
+    # Reject line selection for binary files (binary files are atomic units)
+    if selected_ids:
+        file_path_for_check = list(files.keys())[0]  # Single file context enforced above
+        if files[file_path_for_check].get("file_type") == "binary":
+            exit_with_error(_("Cannot use --lines with binary files. Include the whole file instead."))
+
     # Translate gutter IDs to selection IDs if line selection is active
     selection_ids_to_include = selected_ids
     rendered = None  # Store for error translation
@@ -104,12 +256,22 @@ def command_include_from_batch(
         operation_parts.extend(["--file", file])
     if replacement_text is not None:
         operation_parts.extend(["--as", replacement_text])
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
         # Apply all files in batch
+        repo_root = get_git_repository_root_path()
         failed_files = []
 
         for file_path, file_meta in files.items():
             try:
+                if file_meta.get("file_type") == "binary":
+                    batch_content = _read_binary_file_from_batch(batch_name, file_path, file_meta)
+                    snapshot_file_if_untracked(file_path)
+                    _stage_binary_file_from_batch(file_path, file_meta, batch_content)
+                    _write_binary_file_from_batch(file_path, file_meta, batch_content)
+                    continue
+
+                text_change_type = normalized_text_change_type(file_meta.get("change_type"))
+
                 # Get batch source commit content (as bytes)
                 batch_source_commit = file_meta["batch_source_commit"]
                 batch_source_result = run_git_command(
@@ -128,10 +290,36 @@ def command_include_from_batch(
                     check=False,
                     text_output=False
                 )
-                if index_result.returncode == 0:
+                index_exists = index_result.returncode == 0
+                if index_exists:
                     index_content = index_result.stdout
                 else:
                     index_content = b""
+
+                # Get selected working tree content (as bytes)
+                full_path = repo_root / file_path
+                working_exists = full_path.exists()
+                if working_exists:
+                    working_content = full_path.read_bytes()
+                else:
+                    working_content = b""
+
+                batch_file_mode = str(file_meta.get("mode", "100644"))
+                index_file_mode = mode_for_text_materialization(
+                    batch_file_mode,
+                    selected_ids,
+                    destination_exists=index_exists,
+                )
+                working_file_mode = mode_for_text_materialization(
+                    batch_file_mode,
+                    selected_ids,
+                    destination_exists=working_exists,
+                )
+                if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
+                    snapshot_file_if_untracked(file_path)
+                    _stage_text_file_from_batch(file_path, None, index_file_mode, text_change_type)
+                    _write_text_file_from_batch(file_path, None, working_file_mode, text_change_type)
+                    continue
 
                 # Get ownership from metadata, filtered by selected selection IDs if specified
                 try:
@@ -150,27 +338,63 @@ def command_include_from_batch(
 
                 # If nothing selected for this file, skip it
                 if ownership.is_empty():
-                    continue
+                    if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
+                        merged_index_content = b""
+                        merged_working_content = b""
+                    else:
+                        continue
+                else:
+                    if replacement_text is not None:
+                        try:
+                            batch_source_content, ownership = build_replacement_batch_view(
+                                batch_source_content,
+                                ownership,
+                                replacement_text,
+                            )
+                        except ValueError as e:
+                            exit_with_error(str(e))
 
-                if replacement_text is not None:
-                    try:
-                        batch_source_content, ownership = build_replacement_batch_view(
-                            batch_source_content,
-                            ownership,
-                            replacement_text,
-                        )
-                    except ValueError as e:
-                        exit_with_error(str(e))
+                    # Perform structural merge against both destinations. include --from
+                    # is the staged form of apply --from, so the working tree must
+                    # receive the selected batch content too.
+                    merged_index_content = merge_batch(
+                        batch_source_content,
+                        ownership,
+                        index_content
+                    )
+                    merged_working_content = merge_batch(
+                        batch_source_content,
+                        ownership,
+                        working_content
+                    )
 
-                # Perform structural merge
-                merged_content = merge_batch(
-                    batch_source_content,
-                    ownership,
-                    index_content
+                snapshot_file_if_untracked(file_path)
+
+                # Update index and working tree with their independently merged
+                # targets. A selected deleted-text file still represents path
+                # absence once the selected deletion leaves that destination empty.
+                index_change_type = selected_text_target_change_type(
+                    text_change_type,
+                    selected_ids,
+                    merged_index_content,
                 )
-
-                # Update index with merged content
-                update_index_with_blob_content(file_path, merged_content)
+                working_change_type = selected_text_target_change_type(
+                    text_change_type,
+                    selected_ids,
+                    merged_working_content,
+                )
+                _stage_text_file_from_batch(
+                    file_path,
+                    merged_index_content,
+                    index_file_mode,
+                    index_change_type,
+                )
+                _write_text_file_from_batch(
+                    file_path,
+                    merged_working_content,
+                    working_file_mode,
+                    working_change_type,
+                )
 
             except MergeError:
                 # Merge conflict - batch created from different file version

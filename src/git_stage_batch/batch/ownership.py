@@ -877,12 +877,12 @@ def validate_ownership_units(units: list[OwnershipUnit]) -> None:
             if unit.kind == OwnershipUnitKind.REPLACEMENT:
                 if not unit.claimed_source_lines or not unit.deletion_claims:
                     raise MergeError(
-                        _("Invalid replacement unit: must have both claimed lines and deletions")
+                        _("Invalid replacement in batch metadata: expected both added and removed lines.")
                     )
             elif unit.kind == OwnershipUnitKind.DELETION_ONLY:
                 if unit.claimed_source_lines or not unit.deletion_claims:
                     raise MergeError(
-                        _("Invalid deletion-only unit: must have deletions but no claimed lines")
+                        _("Invalid deletion in batch metadata: expected removed lines only.")
                     )
 
 
@@ -915,15 +915,12 @@ def select_ownership_units_by_display_ids(
             continue
         elif unit.is_atomic and intersection != unit.display_line_ids:
             # Partial selection of atomic unit - error
-            reason_text = f" ({unit.atomic_reason})" if unit.atomic_reason else ""
-
             raise AtomicUnitError(
-                _("Cannot partially select atomic ownership unit.\n"
-                  "Unit kind: {kind}{reason}\n"
-                  "Selected: {selected_ids}").format(
-                    kind=unit.kind.value,
-                    reason=reason_text,
-                    selected_ids=sorted(intersection)
+                _("Cannot select only part of this change.\n"
+                  "Select all related lines together: {required_ids}\n"
+                  "You selected: {selected_ids}").format(
+                    required_ids=format_line_ids(sorted(unit.display_line_ids)),
+                    selected_ids=format_line_ids(sorted(intersection))
                 ),
                 required_selection_ids=unit.display_line_ids,
                 unit_kind=unit.kind.value

@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import json
+import stat
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from git_stage_batch.batch.storage import add_binary_file_to_batch
+from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard import command_discard
-from git_stage_batch.commands.include import command_include
+from git_stage_batch.commands.discard_from import command_discard_from_batch
+from git_stage_batch.commands.include import command_include, command_include_to_batch
 from git_stage_batch.commands.skip import command_skip
+from git_stage_batch.commands.status import command_status
 from git_stage_batch.core.models import BinaryFileChange, LineLevelChange
 from git_stage_batch.data.file_tracking import auto_add_untracked_files
 from git_stage_batch.data.hunk_tracking import fetch_next_change
@@ -115,6 +121,95 @@ def test_binary_file_deleted_include(binary_file_repo: Path, monkeypatch: pytest
     # Verify deletion was staged (D  means fully staged deletion)
     status_result = run_git_command(["status", "--porcelain"])
     assert "D  image.png" in status_result.stdout
+
+
+def test_selected_binary_include_to_batch_updates_skipped_progress(
+    binary_file_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Selected binary include --to should count as processed in status."""
+    monkeypatch.chdir(binary_file_repo)
+
+    (binary_file_repo / "image.png").write_bytes(b"\x89PNG\r\n\x1a\nBATCHED")
+
+    initialize_abort_state()
+    auto_add_untracked_files()
+
+    result = fetch_next_change()
+    assert isinstance(result, BinaryFileChange)
+
+    command_include_to_batch("bin-batch", quiet=True)
+
+    command_status(porcelain=True)
+    status_output = json.loads(capsys.readouterr().out)
+
+    assert status_output["progress"]["skipped"] == 1
+    assert len(status_output["skipped_hunks"]) == 1
+    skipped_hunk = status_output["skipped_hunks"][0]
+    assert skipped_hunk["file"] == "image.png"
+    assert skipped_hunk["line"] is None
+    assert skipped_hunk["ids"] == []
+    assert skipped_hunk["change_type"] == "modified"
+
+
+def test_binary_apply_from_batch_restores_executable_mode(
+    binary_file_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Applying a binary batch entry should honor the stored executable bit."""
+    monkeypatch.chdir(binary_file_repo)
+
+    tool_path = binary_file_repo / "tool.bin"
+    modified_content = b"\x00BATCHED"
+    tool_path.write_bytes(b"\x00BASE")
+    tool_path.chmod(0o644)
+    subprocess.run(["git", "add", "tool.bin"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Add binary tool"], check=True, capture_output=True)
+
+    initialize_abort_state()
+    tool_path.write_bytes(modified_content)
+    add_binary_file_to_batch(
+        "bin-batch",
+        BinaryFileChange("tool.bin", "tool.bin", "modified"),
+        file_mode="100755",
+    )
+    subprocess.run(["git", "checkout", "HEAD", "--", "tool.bin"], check=True, capture_output=True)
+    tool_path.chmod(0o644)
+
+    command_apply_from_batch("bin-batch", file="tool.bin")
+
+    assert tool_path.read_bytes() == modified_content
+    assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
+
+
+def test_binary_discard_from_batch_restores_baseline_executable_mode(
+    binary_file_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """discard --from should restore baseline executable bits for binaries."""
+    monkeypatch.chdir(binary_file_repo)
+
+    tool_path = binary_file_repo / "tool.bin"
+    tool_path.write_bytes(b"\x00BASE")
+    tool_path.chmod(0o755)
+    subprocess.run(["git", "add", "tool.bin"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Add executable binary"], check=True, capture_output=True)
+
+    initialize_abort_state()
+    tool_path.write_bytes(b"\x00BATCHED")
+    add_binary_file_to_batch(
+        "bin-batch",
+        BinaryFileChange("tool.bin", "tool.bin", "modified"),
+        file_mode="100644",
+    )
+    tool_path.write_bytes(b"\x00WORKTREE")
+    tool_path.chmod(0o644)
+
+    command_discard_from_batch("bin-batch", file="tool.bin")
+
+    assert tool_path.read_bytes() == b"\x00BASE"
+    assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
 
 
 def test_binary_file_added_discard(binary_file_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:

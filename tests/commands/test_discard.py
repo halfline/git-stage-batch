@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
-from git_stage_batch.batch import list_batch_files, read_file_from_batch
+from git_stage_batch.batch import list_batch_files, read_batch_metadata, read_file_from_batch
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.commands.apply_from import command_apply_from_batch
@@ -174,6 +174,57 @@ class TestCommandDiscardLine:
         with pytest.raises(CommandError):
             command_discard_line("1")
 
+    def test_discard_to_batch_line_captures_worktree_executable_mode(self, temp_git_repo):
+        """discard --to --line should store chmod changes from the working tree."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o644)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.write_text("#!/bin/sh\necho base\necho added\n")
+        tool_path.chmod(0o755)
+
+        command_start()
+        command_discard_to_batch("mode-batch", line_ids="1", quiet=True)
+
+        metadata = read_batch_metadata("mode-batch")
+        assert metadata["files"]["tool.sh"]["mode"] == "100755"
+
+    def test_discard_to_batch_line_as_captures_worktree_executable_mode(self, temp_git_repo):
+        """discard --to --line --as should store chmod changes from the working tree."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o644)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.write_text("#!/bin/sh\necho base\necho added\n")
+        tool_path.chmod(0o755)
+
+        command_start()
+        command_discard_line_as_to_batch("mode-batch", "1", "replacement", quiet=True)
+
+        metadata = read_batch_metadata("mode-batch")
+        assert metadata["files"]["tool.sh"]["mode"] == "100755"
+
+    def test_discard_to_batch_file_line_captures_worktree_executable_mode(self, temp_git_repo):
+        """discard --to --file --line should store chmod changes from the working tree."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o644)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.write_text("#!/bin/sh\necho base\necho added\n")
+        tool_path.chmod(0o755)
+
+        command_start()
+        command_discard_to_batch("mode-batch", file="tool.sh", line_ids="1", quiet=True)
+
+        metadata = read_batch_metadata("mode-batch")
+        assert metadata["files"]["tool.sh"]["mode"] == "100755"
+
     def test_discard_line_removes_single_addition(self, temp_git_repo):
         """Test discarding a single added line."""
         readme = temp_git_repo / "README.md"
@@ -322,6 +373,23 @@ class TestCommandDiscardToBatch:
         # Changes should be discarded
         file_txt = temp_git_repo_with_session / "file.txt"
         assert not file_txt.exists()
+
+    def test_discard_to_batch_hunk_captures_worktree_executable_mode(self, temp_git_repo):
+        """discard --to should store chmod changes from the working tree."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o644)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.write_text("#!/bin/sh\necho base\necho added\n")
+        tool_path.chmod(0o755)
+
+        command_start()
+        command_discard_to_batch("mode-batch", quiet=True)
+
+        metadata = read_batch_metadata("mode-batch")
+        assert metadata["files"]["tool.sh"]["mode"] == "100755"
 
     def test_discard_lines_to_batch_saves_partial_content(self, temp_git_repo):
         """Test that line-level discard to batch synthesizes correct partial content."""
@@ -578,8 +646,8 @@ class TestCommandDiscardToBatch:
         command_apply_from_batch("feature-batch")
         assert readme.read_text() == "keep1\nstaged\nkeep3\nkeep4\n"
 
-    def test_discard_line_as_to_batch_no_anchor_keeps_matching_edge_anchors(self, temp_git_repo):
-        """Discard --to --line --as --no-anchor should preserve duplicate anchors."""
+    def test_discard_line_as_to_batch_no_edge_overlap_keeps_matching_edge_anchors(self, temp_git_repo):
+        """Discard --to --line --as --no-edge-overlap should preserve duplicate anchors."""
         readme = temp_git_repo / "README.md"
         readme.write_text("keep1\nold\nkeep3\nkeep4\n")
         subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
@@ -594,7 +662,7 @@ class TestCommandDiscardToBatch:
             "feature-batch",
             "1-2",
             "keep1\nstaged\nkeep3\nkeep4\n",
-            no_anchor=True,
+            no_edge_overlap=True,
         )
 
         assert readme.read_text() == "keep1\nold\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"

@@ -459,6 +459,35 @@ owned only by this skill.
   longer matches the staged diff, fix it in the main skill rather than pushing
   the problem back to the user.
 
+## Git Command Concurrency
+
+Always pass `--no-optional-locks` to read-only git commands such as
+`git status`, `git diff`, `git log`, and `git show`. Without this flag,
+git refreshes cached filesystem metadata in the index, which requires
+`.git/index.lock`. When Claude Code runs multiple read-only git commands
+in parallel — which it does by default for concurrency-safe tools — two
+stat-refreshing commands race for that lock and one fails.
+
+Claude Code's own internal git commands already use this flag, but
+commands run through BashTool do not get it injected automatically.
+
+```bash
+# correct
+git --no-optional-locks status --short
+git --no-optional-locks diff HEAD
+git --no-optional-locks log --oneline -5
+git --no-optional-locks diff --cached
+
+# incorrect — will race when parallelized
+git status --short
+git diff HEAD
+```
+
+This applies to every `git` invocation in the skill that does not need to
+modify the index. Commands that intentionally write to the index — such
+as `git commit`, `git add`, or `git apply --cached` — must not use this
+flag.
+
 ## `git-stage-batch` Workflow
 
 Use the non-interactive subcommands rather than interactive mode.

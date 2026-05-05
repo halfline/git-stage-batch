@@ -34,9 +34,38 @@ This skill only handles content that is already staged. Do not stage unstaged
 changes, do not unstage anything, and do not rearrange the index into a
 different split. Leave unstaged work exactly as you found it.
 
+## Git Command Concurrency
+
+Always pass `--no-optional-locks` to read-only git commands such as
+`git status`, `git diff`, `git log`, and `git show`. Without this flag,
+git refreshes cached filesystem metadata in the index, which requires
+`.git/index.lock`. When Claude Code runs multiple read-only git commands
+in parallel — which it does by default for concurrency-safe tools — two
+stat-refreshing commands race for that lock and one fails.
+
+Claude Code's own internal git commands already use this flag, but
+commands run through BashTool do not get it injected automatically.
+
+```bash
+# correct
+git --no-optional-locks status --short
+git --no-optional-locks diff --cached --stat
+git --no-optional-locks diff --cached
+git --no-optional-locks log --pretty=oneline -- path/to/file
+
+# incorrect — will race when parallelized
+git status --short
+git diff --cached
+```
+
+This applies to every `git` invocation in the skill that does not need to
+modify the index. Commands that intentionally write to the index — such
+as `git commit`, `git add`, or `git apply --cached` — must not use this
+flag.
+
 ## Core Workflow
 
-1. Inspect repository state with `git status --short`.
+1. Inspect repository state with `git --no-optional-locks status --short`.
 2. Check whether the index contains staged changes.
 3. If there are no staged changes, stop and tell the user there is nothing to
    commit.
@@ -44,8 +73,8 @@ different split. Leave unstaged work exactly as you found it.
    - `CONTRIBUTING.md` when present
    - `.git/hooks/commit-msg` when present
 5. Inspect the staged set with:
-   - `git diff --cached --stat`
-   - `git diff --cached`
+   - `git --no-optional-locks diff --cached --stat`
+   - `git --no-optional-locks diff --cached`
 6. Treat unstaged changes as context only. They are not part of this commit
    and must remain untouched.
 7. Decide whether the staged set is coherent as one commit.
@@ -86,9 +115,9 @@ When the current commit is fully staged, you may use the shared
   - any preferred prefixes established by history
   - the exact files staged for this commit
 - Tell it to inspect only what it needs, typically:
-  - `git diff --cached --stat`
-  - `git diff --cached`
-  - `git log --pretty=oneline -- <path>` for representative staged paths
+  - `git --no-optional-locks diff --cached --stat`
+  - `git --no-optional-locks diff --cached`
+  - `git --no-optional-locks log --pretty=oneline -- <path>` for representative staged paths
   - `CONTRIBUTING.md` when present
   - `.git/hooks/commit-msg` when present
 

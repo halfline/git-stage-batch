@@ -41,17 +41,24 @@ the remaining uncertainty explicitly instead of inventing false precision.
 
 Inspect only what is needed:
 
-1. `git diff --cached --stat` to see staged scope
-2. `git diff --cached` to understand the actual change
-3. `git log --pretty=oneline -- <path>` for representative staged paths when
-   prefix or wording conventions are unclear
+1. `git --no-optional-locks diff --cached --stat` to see staged scope
+2. `git --no-optional-locks diff --cached` to understand the actual change
+3. `git --no-optional-locks log --pretty=oneline -- <path>` for representative
+   staged paths when prefix or wording conventions are unclear
 4. `CONTRIBUTING.md` when present
 5. `.git/hooks/commit-msg` when present
-6. `git show HEAD:<path>` for representative paths when establishing what the
-   project currently provides — the working tree may contain changes intended
-   for later commits in the series and must not be treated as current state
+6. `git --no-optional-locks show HEAD:<path>` for representative paths when
+   establishing what the project currently provides — the working tree may
+   contain changes intended for later commits in the series and must not be
+   treated as current state
 
 Prefer the smallest number of commands that gives a confident answer.
+
+Always pass `--no-optional-locks` to every git command. Without this
+flag, git refreshes cached filesystem metadata in the index, which
+requires `.git/index.lock`. When Claude Code runs multiple read-only git
+commands in parallel, two stat-refreshing commands race for that lock and
+one fails.
 
 ## Drafting rules
 

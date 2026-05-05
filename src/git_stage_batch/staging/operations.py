@@ -361,7 +361,7 @@ def build_target_working_tree_content_with_discarded_lines(
         push_output(working_lines[working_pointer])
         working_pointer += 1
 
-    return "\n".join(output_lines) + ("\n" if (working_text.endswith("\n") or output_lines) else "")
+    return "\n".join(output_lines) + ("\n" if output_lines else "")
 
 
 def build_target_working_tree_content_bytes_with_discarded_lines(
@@ -421,7 +421,7 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
         push_output(working_lines[working_pointer])
         working_pointer += 1
 
-    trailing_newline = working_content.endswith(b"\n") or bool(output_lines)
+    trailing_newline = bool(output_lines)
     return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
 
 

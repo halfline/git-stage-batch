@@ -102,12 +102,12 @@ _git_stage_batch()
                     __git_stage_batch_set_nospace_for_dirs
                     return
                     ;;
-                --line)
-                    # Line IDs - no completion
+                --line|--lines|--as)
+                    # Free-form values - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --files --from --to --line --no-edge-overlap" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --files --from --to --line --lines --as --as-stdin --no-edge-overlap" -- "$cur"))
             ;;
         skip)
             case "$prev" in
@@ -138,12 +138,12 @@ _git_stage_batch()
                     __git_stage_batch_set_nospace_for_dirs
                     return
                     ;;
-                --line)
-                    # Line IDs - no completion
+                --line|--lines|--as)
+                    # Free-form values - no completion
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --files --from --to --line --no-edge-overlap" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --files --from --to --line --lines --as --as-stdin --no-edge-overlap" -- "$cur"))
             ;;
         apply)
             case "$prev" in

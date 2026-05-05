@@ -27,6 +27,7 @@ from git_stage_batch.utils.paths import get_batched_hunks_file_path
 from git_stage_batch.utils.paths import get_start_batch_refs_file_path
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -64,6 +65,39 @@ class TestGetStateDirectoryPath:
         """Test getting the state directory path."""
         state_dir = get_state_directory_path()
         assert state_dir == temp_git_repo / ".git" / "git-stage-batch"
+
+    def test_get_state_directory_path_uses_linked_worktree_git_dir(
+        self,
+        temp_git_repo,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Linked worktrees store git state beside the main repository git dir."""
+        worktree = tmp_path / "linked"
+        subprocess.run(
+            ["git", "worktree", "add", str(worktree)],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        monkeypatch.chdir(worktree)
+
+        git_dir = subprocess.run(
+            ["git", "rev-parse", "--absolute-git-dir"],
+            check=True,
+            cwd=worktree,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        state_dir = get_state_directory_path()
+
+        assert state_dir == Path(git_dir) / "git-stage-batch"
+        assert state_dir != worktree / ".git" / "git-stage-batch"
+
+        ensure_state_directory_exists()
+
+        assert state_dir.is_dir()
 
 
 class TestEnsureStateDirectoryExists:

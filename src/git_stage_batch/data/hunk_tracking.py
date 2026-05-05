@@ -45,6 +45,7 @@ from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
     get_context_lines,
+    get_selected_change_clear_reason_file_path,
     get_selected_change_kind_file_path,
     get_selected_binary_file_json_path,
     get_selected_hunk_hash_file_path,
@@ -68,6 +69,41 @@ class SelectedChangeKind(str, Enum):
     FILE = "file"
     BINARY = "binary"
     BATCH_FILE = "batch-file"
+
+
+def _selected_change_state_paths():
+    """Return files that make up the cached selected change state."""
+    return {
+        "patch": get_selected_hunk_patch_file_path(),
+        "hash": get_selected_hunk_hash_file_path(),
+        "clear_reason": get_selected_change_clear_reason_file_path(),
+        "kind": get_selected_change_kind_file_path(),
+        "line_state": get_line_changes_json_file_path(),
+        "binary": get_selected_binary_file_json_path(),
+        "index_snapshot": get_index_snapshot_file_path(),
+        "working_snapshot": get_working_tree_snapshot_file_path(),
+        "processed_include_ids": get_processed_include_ids_file_path(),
+        "processed_skip_ids": get_processed_skip_ids_file_path(),
+    }
+
+
+def snapshot_selected_change_state() -> dict[str, bytes | None]:
+    """Capture the current selected change cache."""
+    return {
+        name: (read_file_bytes(path) if path.exists() else None)
+        for name, path in _selected_change_state_paths().items()
+    }
+
+
+def restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
+    """Restore a previously captured selected change cache."""
+    for name, path in _selected_change_state_paths().items():
+        data = snapshot.get(name)
+        if data is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
 
 
 def clear_selected_change_state_files() -> None:

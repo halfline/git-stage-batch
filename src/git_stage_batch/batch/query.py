@@ -31,7 +31,8 @@ def read_batch_metadata(name: str) -> dict:
                 "claimed_lines": list[str],  # e.g. ["1-5", "10", "15-20"]
                 "deletions": list[dict],  # [{"after_source_line": int|None, "blob": str}]
                 "replacement_units": list[dict],  # optional claimed/deletion coupling
-                "mode": str  # File mode (e.g. "100644")
+                "mode": str,  # File mode (e.g. "100644")
+                "change_type": str,  # optional text lifecycle: "added" or "deleted"
             }
         }
     }

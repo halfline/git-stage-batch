@@ -662,7 +662,7 @@ def command_include_line_as(
     replacement_text: str,
     file: str | None = None,
     *,
-    no_anchor: bool = False,
+    no_edge_overlap: bool = False,
 ) -> None:
     """Stage a replacement for one contiguous selected line span and mask it."""
     require_git_repository()
@@ -670,8 +670,8 @@ def command_include_line_as(
     ensure_state_directory_exists()
 
     operation_parts = ["include", "--line", line_id_specification, "--as", replacement_text]
-    if no_anchor:
-        operation_parts.append("--no-anchor")
+    if no_edge_overlap:
+        operation_parts.append("--no-edge-overlap")
     if file is not None:
         operation_parts.extend(["--file", file])
 
@@ -691,7 +691,7 @@ def command_include_line_as(
                 replacement_text=replacement_text,
                 hunk_base_content=hunk_base_content,
                 hunk_source_content=hunk_source_content,
-                trim_unchanged_edge_anchors=not no_anchor,
+                trim_unchanged_edge_anchors=not no_edge_overlap,
             )
 
             write_line_ids_file(get_processed_include_ids_file_path(), set())
@@ -737,7 +737,7 @@ def command_include_line_as(
                 replacement_text=replacement_text,
                 hunk_base_content=hunk_base_content,
                 hunk_source_content=hunk_source_content,
-                trim_unchanged_edge_anchors=not no_anchor,
+                trim_unchanged_edge_anchors=not no_edge_overlap,
             )
 
             if preserve_selected_state:

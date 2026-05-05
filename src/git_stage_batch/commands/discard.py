@@ -460,7 +460,7 @@ def command_discard_line_as_to_batch(
     replacement_text: str,
     file: str | None = None,
     *,
-    no_anchor: bool = False,
+    no_edge_overlap: bool = False,
     quiet: bool = False,
 ) -> None:
     """Save replacement text to batch, then discard the original selection locally."""
@@ -474,8 +474,8 @@ def command_discard_line_as_to_batch(
         "--line", line_id_specification,
         "--as", replacement_text,
     ]
-    if no_anchor:
-        operation_parts.append("--no-anchor")
+    if no_edge_overlap:
+        operation_parts.append("--no-edge-overlap")
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
@@ -499,7 +499,7 @@ def command_discard_line_as_to_batch(
                 batch_name,
                 line_id_specification,
                 replacement_text,
-                no_anchor=no_anchor,
+                no_edge_overlap=no_edge_overlap,
                 quiet=quiet,
             )
 
@@ -515,7 +515,7 @@ def _command_discard_lines_to_batch_as(
     line_id_specification: str,
     replacement_text: str,
     *,
-    no_anchor: bool = False,
+    no_edge_overlap: bool = False,
     quiet: bool = False,
 ) -> None:
     """Persist replacement text to batch and discard original selected lines."""
@@ -541,7 +541,7 @@ def _command_discard_lines_to_batch_as(
             effective_ids,
             replacement_text,
             working_bytes,
-            trim_unchanged_edge_anchors=not no_anchor,
+            trim_unchanged_edge_anchors=not no_edge_overlap,
         )
     except ValueError as e:
         exit_with_error(str(e))

@@ -14,7 +14,18 @@ from ..core.line_selection import (
     write_line_ids_file,
 )
 from ..core.models import BinaryFileChange
-from ..data.hunk_tracking import SelectedChangeKind, advance_to_and_show_next_change, advance_to_next_change, fetch_next_change, get_selected_change_file_path, load_selected_change, read_selected_change_kind, record_hunk_skipped, require_selected_hunk
+from ..data.hunk_tracking import (
+    SelectedChangeKind,
+    advance_to_and_show_next_change,
+    advance_to_next_change,
+    fetch_next_change,
+    get_selected_change_file_path,
+    load_selected_change,
+    read_selected_change_kind,
+    record_hunk_skipped,
+    refuse_bare_action_after_file_list,
+    require_selected_hunk,
+)
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
@@ -42,6 +53,7 @@ def command_skip(*, quiet: bool = False) -> None:
     require_session_started()
     ensure_state_directory_exists()
 
+    refuse_bare_action_after_file_list("skip")
     if read_selected_change_kind() == SelectedChangeKind.FILE:
         command_skip_file("")
         return
@@ -121,6 +133,8 @@ def command_skip_file(
     require_session_started()
     ensure_state_directory_exists()
 
+    if file == "":
+        refuse_bare_action_after_file_list("skip --file")
     # Determine target file
     if file == "":
         target_file = get_selected_change_file_path()

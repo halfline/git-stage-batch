@@ -487,13 +487,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if isinstance(resolved_file_scope, list):
                 if args.line_ids:
                     raise CommandError(_("Cannot use --lines with multiple files."))
-                last_index = len(resolved_file_scope) - 1
-                for index, file in enumerate(resolved_file_scope):
-                    commands.command_show(
-                        file=file,
-                        porcelain=args.porcelain,
-                        selectable=(index == last_index),
-                    )
+                commands.command_show_file_list(resolved_file_scope)
             else:
                 commands.command_show(file=resolved_file_scope, porcelain=args.porcelain)
             return

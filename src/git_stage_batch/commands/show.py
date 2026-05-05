@@ -14,15 +14,19 @@ from ..data.hunk_tracking import (
     SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
     cache_file_as_single_hunk,
+    clear_selected_change_state_files,
     get_selected_change_file_path,
+    mark_selected_change_cleared_by_file_list,
     render_file_as_single_hunk,
     write_selected_change_kind,
 )
+from ..data.file_review_state import ReviewSource
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.session import require_session_started
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..output import print_line_level_changes
+from ..output.file_review_list import make_file_review_list_entry, print_file_review_list
 from ..utils.file_io import read_text_file_contents, write_file_bytes, write_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.paths import (
@@ -33,6 +37,28 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
+
+
+def command_show_file_list(files: list[str]) -> None:
+    """Show a navigational file list for multiple live file reviews."""
+    require_git_repository()
+    require_session_started()
+    ensure_state_directory_exists()
+
+    entries = []
+    for file_path in files:
+        line_changes = render_file_as_single_hunk(file_path)
+        if line_changes is not None:
+            entries.append(make_file_review_list_entry(line_changes))
+
+    if not entries:
+        print(_("No reviewable changes in matched files."), file=sys.stderr)
+        return
+
+    clear_selected_change_state_files()
+    mark_selected_change_cleared_by_file_list(source=ReviewSource.FILE_VS_HEAD.value)
+
+    print_file_review_list(source_label=_("Changes: file vs HEAD"), entries=entries)
 
 
 def command_show(file: str | None = None, *, porcelain: bool = False, selectable: bool = True) -> None:

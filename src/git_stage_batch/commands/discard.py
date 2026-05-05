@@ -38,6 +38,7 @@ from ..data.hunk_tracking import (
     read_selected_change_kind,
     recalculate_selected_hunk_for_file,
     record_hunk_discarded,
+    refuse_bare_action_after_file_list,
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -91,6 +92,7 @@ def command_discard(*, quiet: bool = False) -> None:
     require_session_started()
     ensure_state_directory_exists()
 
+    refuse_bare_action_after_file_list("discard")
     if read_selected_change_kind() == SelectedChangeKind.FILE:
         _command_discard_selected_file(quiet=quiet)
         return
@@ -269,6 +271,8 @@ def command_discard_file(file: str) -> None:
     require_session_started()
     ensure_state_directory_exists()
 
+    if file == "":
+        refuse_bare_action_after_file_list("discard --file")
     # Determine target file
     if file == "":
         target_file = get_selected_change_file_path()

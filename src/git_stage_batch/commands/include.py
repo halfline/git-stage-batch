@@ -45,6 +45,7 @@ from ..data.hunk_tracking import (
     record_binary_hunk_skipped,
     record_hunk_included,
     record_hunk_skipped,
+    refuse_bare_action_after_file_list,
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -103,6 +104,7 @@ def command_include(*, quiet: bool = False) -> None:
     require_session_started()
     ensure_state_directory_exists()
 
+    refuse_bare_action_after_file_list("include")
     if read_selected_change_kind() == SelectedChangeKind.FILE:
         command_include_file("")
         return 0
@@ -199,6 +201,8 @@ def command_include_file(
     require_session_started()
     ensure_state_directory_exists()
 
+    if file == "":
+        refuse_bare_action_after_file_list("include --file")
     # Determine target file
     if file == "":
         target_file = get_selected_change_file_path()

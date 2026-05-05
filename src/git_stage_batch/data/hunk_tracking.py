@@ -75,6 +75,7 @@ class SelectedChangeClearReason(str, Enum):
     """Reasons selected change state was intentionally cleared."""
 
     FILE_LIST = "file-list"
+    STALE_BATCH_SELECTION = "stale-batch-selection"
 
 
 def _selected_change_state_paths():
@@ -132,6 +133,20 @@ def mark_selected_change_cleared_by_file_list(
         reason=SelectedChangeClearReason.FILE_LIST,
         source=source,
         batch_name=batch_name,
+    )
+
+
+def mark_selected_change_cleared_by_stale_batch_selection(
+    *,
+    batch_name: str,
+    file_path: str,
+) -> None:
+    """Record that a batch mutation invalidated the selected batch file."""
+    _write_selected_change_clear_reason(
+        reason=SelectedChangeClearReason.STALE_BATCH_SELECTION,
+        source="batch",
+        batch_name=batch_name,
+        file_path=file_path,
     )
 
 
@@ -208,6 +223,23 @@ def selected_change_was_cleared_by_file_list(
     return True
 
 
+def selected_change_was_cleared_by_stale_batch_selection(
+    *,
+    batch_name: str | None = None,
+) -> bool:
+    """Return whether the current empty selection is a stale batch selection."""
+    if read_selected_change_kind() is not None:
+        return False
+    marker = _read_selected_change_clear_reason()
+    if marker is None:
+        return False
+    if marker["reason"] != SelectedChangeClearReason.STALE_BATCH_SELECTION.value:
+        return False
+    if batch_name is not None and marker["batch_name"] != batch_name:
+        return False
+    return True
+
+
 def refuse_bare_action_after_file_list(
     action_command: str,
     *,
@@ -229,6 +261,29 @@ def refuse_bare_action_after_file_list(
             "before running:\n"
             "  git-stage-batch {action}"
         ).format(open_command=open_command, action=action_command)
+    )
+
+
+def refuse_bare_action_after_stale_batch_selection(
+    action_command: str,
+    *,
+    batch_name: str,
+) -> None:
+    """Refuse a bare batch action after the selected batch file went stale."""
+    if not selected_change_was_cleared_by_stale_batch_selection(batch_name=batch_name):
+        return
+
+    marker = _read_selected_change_clear_reason() or {}
+    file_path = marker.get("file_path") or "the previously selected file"
+    raise CommandError(
+        _(
+            "No selected change.\n"
+            "The selected batch file '{file}' was changed or removed from batch '{batch}'.\n\n"
+            "Open a current batch file with:\n"
+            "  git-stage-batch show --from {batch} --file PATH\n"
+            "before running:\n"
+            "  git-stage-batch {action}"
+        ).format(file=file_path, batch=batch_name, action=action_command)
     )
 
 

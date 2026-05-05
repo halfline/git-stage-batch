@@ -22,6 +22,7 @@ from ..data.batch_sources import (
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
     create_git_blob,
+    get_git_repository_root_path,
     git_commit_tree,
     git_read_tree,
     git_update_index,
@@ -134,7 +135,8 @@ def add_file_to_batch(
 def add_binary_file_to_batch(
     batch_name: str,
     binary_change: BinaryFileChange,
-    file_mode: str = "100644"
+    file_mode: str = "100644",
+    file_content_override: bytes | None = None,
 ) -> None:
     """Add a binary file change to a batch as an atomic unit.
 
@@ -145,6 +147,8 @@ def add_binary_file_to_batch(
         batch_name: Name of the batch
         binary_change: BinaryFileChange describing the change
         file_mode: Git file mode (default: 100644)
+        file_content_override: Optional bytes to persist for added/modified
+            binary changes instead of reading the current working tree.
     """
     validate_batch_name(batch_name)
 
@@ -155,32 +159,32 @@ def add_binary_file_to_batch(
     # Determine file path
     file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
 
-    # Get or create batch source commit for this file
-    batch_source_commit = get_batch_source_for_file(file_path)
-    if not batch_source_commit:
-        # Create batch source commit
-        batch_source_commit = create_batch_source_commit(file_path)
-        # Save to session cache
-        batch_sources = load_session_batch_sources()
-        batch_sources[file_path] = batch_source_commit
-        save_session_batch_sources(batch_sources)
-
-    # For binary files, store the full file from batch source as the realized content
+    current_binary_content: bytes | None = None
     if binary_change.is_deleted_file():
-        # Deleted file: no content in batch (will be deleted when applied)
+        batch_source_commit = get_batch_source_for_file(file_path)
+        if not batch_source_commit:
+            batch_source_commit = create_batch_source_commit(file_path)
+            batch_sources = load_session_batch_sources()
+            batch_sources[file_path] = batch_source_commit
+            save_session_batch_sources(batch_sources)
+    else:
+        if file_content_override is None:
+            full_path = get_git_repository_root_path() / file_path
+            if not full_path.exists():
+                raise FileNotFoundError(file_path)
+            current_binary_content = full_path.read_bytes()
+        else:
+            current_binary_content = file_content_override
+        batch_source_commit = create_batch_source_commit(
+            file_path,
+            file_content_override=current_binary_content,
+        )
+
+    if binary_change.is_deleted_file():
         blob_sha = None
     else:
-        # Added or modified: read full file from batch source
-        batch_source_result = run_git_command(
-            ["show", f"{batch_source_commit}:{file_path}"],
-            check=False,
-            text_output=False
-        )
-        if batch_source_result.returncode == 0:
-            blob_sha = create_git_blob([batch_source_result.stdout])
-        else:
-            # File doesn't exist in batch source (shouldn't happen for binary files)
-            blob_sha = None
+        assert current_binary_content is not None
+        blob_sha = create_git_blob([current_binary_content])
 
     # Update batch metadata with binary file marker
     metadata = read_batch_metadata(batch_name)

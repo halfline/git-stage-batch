@@ -244,6 +244,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                         dest_batch,
                         result["binary_change"],
                         file_mode=file_meta.get("mode", "100644"),
+                        file_content_override=result.get("target_content"),
                     )
                 else:
                     add_sifted_text_file_to_batch(
@@ -333,6 +334,7 @@ def _perform_atomic_in_place_sift(
                     temp_batch_name,
                     result["binary_change"],
                     file_mode=file_meta.get("mode", "100644"),
+                    file_content_override=result.get("target_content"),
                 )
             else:
                 add_sifted_text_file_to_batch(
@@ -405,22 +407,23 @@ def _compute_sifted_binary_file(
         batch_source_content = batch_source_result.stdout
 
     full_path = repo_root / file_path
-    if full_path.exists():
+    working_exists = full_path.exists()
+    if working_exists:
         working_content = full_path.read_bytes()
     else:
         working_content = b""
 
     if change_type == "deleted":
-        if not full_path.exists():
+        if not working_exists:
             return None
     elif change_type in ("added", "modified"):
-        if working_content == batch_source_content:
+        if working_exists and working_content == batch_source_content:
             return None
 
     old_path = file_path if change_type != "added" else "/dev/null"
     new_path = file_path if change_type != "deleted" else "/dev/null"
 
-    return {
+    result = {
         "type": "binary",
         "binary_change": BinaryFileChange(
             old_path=old_path,
@@ -428,6 +431,9 @@ def _compute_sifted_binary_file(
             change_type=change_type,
         ),
     }
+    if change_type != "deleted":
+        result["target_content"] = batch_source_content
+    return result
 
 
 

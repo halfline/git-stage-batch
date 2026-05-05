@@ -246,3 +246,205 @@ def finish_review_scoped_line_action(
         clear_last_file_review_state()
     else:
         clear_last_file_review_state_if_file_matches(file_path)
+def selected_change_kind_matches_review_source(
+    selected_kind: SelectedChangeKind | None,
+    review_state: FileReviewState,
+) -> bool:
+    """Return whether the selected kind is compatible with the review source."""
+    if review_state.source in (ReviewSource.FILE_VS_HEAD, ReviewSource.UNSTAGED):
+        return selected_kind == SelectedChangeKind.FILE
+    if review_state.source == ReviewSource.BATCH:
+        return selected_kind in (SelectedChangeKind.BATCH_FILE, SelectedChangeKind.BATCH_BINARY)
+    return False
+
+
+def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
+    """Return whether selected state still matches the persisted review state."""
+    selected_kind = read_selected_change_kind()
+    if not selected_change_kind_matches_review_source(selected_kind, review_state):
+        return False
+    if get_selected_change_file_path() != review_state.file_path:
+        return False
+    if selected_kind is None:
+        return False
+    gutter_to_selection_id = None
+    line_changes = None
+    if review_state.source == ReviewSource.BATCH and review_state.batch_name is not None:
+        from .hunk_tracking import render_batch_file_display
+
+        rendered = render_batch_file_display(review_state.batch_name, review_state.file_path)
+        if rendered is None:
+            return False
+        gutter_to_selection_id = (
+            rendered.review_gutter_to_selection_id
+            or rendered.gutter_to_selection_id
+        )
+        actionable_selection_groups = rendered.actionable_selection_groups
+        review_action_groups = rendered.review_action_groups or None
+        line_changes = rendered.line_changes
+    else:
+        from .hunk_tracking import snapshots_are_stale
+
+        if snapshots_are_stale(review_state.file_path):
+            return False
+        actionable_selection_groups = None
+        review_action_groups = None
+
+    current_selected_fingerprint = fingerprint_selected_file_view(
+        source=review_state.source,
+        batch_name=review_state.batch_name,
+        file_path=review_state.file_path,
+        selected_change_kind=selected_kind,
+        gutter_to_selection_id=gutter_to_selection_id,
+        actionable_selection_groups=actionable_selection_groups,
+        review_action_groups=review_action_groups,
+        line_changes=line_changes,
+    )
+    if current_selected_fingerprint != review_state.selected_file_fingerprint:
+        return False
+    return (
+        compute_current_file_review_diff_fingerprint(review_state.file_path, line_changes=line_changes)
+        == review_state.diff_fingerprint
+    )
+
+
+def selected_batch_review_matches_reset_state(review_state: FileReviewState) -> bool:
+    """Return whether a batch review still has stable reset IDs."""
+    selected_kind = read_selected_change_kind()
+    if review_state.source != ReviewSource.BATCH or review_state.batch_name is None:
+        return False
+    if not selected_change_kind_matches_review_source(selected_kind, review_state):
+        return False
+    if get_selected_change_file_path() != review_state.file_path:
+        return False
+
+    from .hunk_tracking import render_batch_file_display
+
+    rendered = render_batch_file_display(review_state.batch_name, review_state.file_path)
+    if rendered is None:
+        return False
+    if (
+        compute_current_file_review_diff_fingerprint(
+            review_state.file_path,
+            line_changes=rendered.line_changes,
+        )
+        != review_state.diff_fingerprint
+    ):
+        return False
+
+    current_reset_groups = [
+        (group.display_ids, group.selection_ids)
+        for group in rendered.review_action_groups
+        if FileReviewAction.RESET_FROM_BATCH.value in group.actions
+    ]
+    persisted_reset_groups = {
+        (selection.display_ids, selection.selection_ids)
+        for selection in review_state.selections
+        if FileReviewAction.RESET_FROM_BATCH in selection.actions
+    }
+
+    def can_cover(
+        remaining_pairs: frozenset[tuple[int, int]],
+    ) -> bool:
+        if not remaining_pairs:
+            return True
+        first_pair = min(remaining_pairs)
+        for display_ids, selection_ids in current_reset_groups:
+            group_pairs = frozenset(zip(display_ids, selection_ids))
+            if first_pair not in group_pairs:
+                continue
+            if not group_pairs.issubset(remaining_pairs):
+                continue
+            if can_cover(remaining_pairs - group_pairs):
+                return True
+        return False
+
+    return all(
+        can_cover(frozenset(zip(display_ids, selection_ids)))
+        for display_ids, selection_ids in persisted_reset_groups
+    )
+
+
+def _review_state_matches_action(
+    review_state: FileReviewState,
+    action: FileReviewAction | str,
+) -> bool:
+    """Return whether a review is fresh for a specific action."""
+    review_action = _coerce_review_action(action)
+    if (
+        review_state.source == ReviewSource.BATCH
+        and review_action == FileReviewAction.RESET_FROM_BATCH
+    ):
+        return selected_batch_review_matches_reset_state(review_state)
+    return selected_change_matches_review_state(review_state)
+
+
+def _format_pages(pages: set[int]) -> str:
+    from ..core.line_selection import format_line_ids
+
+    return format_line_ids(sorted(pages))
+
+
+def shown_complete_review_selection_groups(
+    review_state: FileReviewState,
+    action: FileReviewAction | str,
+) -> list[set[int]]:
+    """Return complete actionable display-ID groups from shown review pages."""
+    review_action = _coerce_review_action(action)
+    shown_pages = (
+        set(range(1, review_state.page_count + 1))
+        if review_state.entire_file_shown else
+        set(review_state.shown_pages)
+    )
+    return [
+        set(selection.display_ids)
+        for selection in review_state.selections
+        if review_action in selection.actions
+        and set(range(selection.first_page, selection.last_page + 1)).issubset(shown_pages)
+    ]
+
+
+def fresh_batch_review_selection_groups_for_action(
+    batch_name: str,
+    file_path: str,
+    action: FileReviewAction | str,
+) -> list[set[int]] | None:
+    """Return shown review groups for a fresh matching batch review, if one is active."""
+    review_state = read_last_file_review_state()
+    if review_state is None:
+        return None
+    if review_state.source != ReviewSource.BATCH:
+        return None
+    if review_state.batch_name != batch_name or review_state.file_path != file_path:
+        return None
+    review_action = _coerce_review_action(action)
+    try:
+        review_is_fresh = _review_state_matches_action(review_state, review_action)
+    except Exception:
+        review_is_fresh = False
+    if not review_is_fresh:
+        raise CommandError(
+            _(
+                "The file review for {file} no longer matches batch '{batch}'.\n"
+                "Line IDs may no longer match.\n\n"
+                "Run:\n"
+                "  git-stage-batch show --from {batch} --file {file}"
+            ).format(
+                batch=shlex.quote(batch_name),
+                file=shlex.quote(file_path),
+            )
+        )
+
+    return shown_complete_review_selection_groups(review_state, action)
+
+
+def fresh_batch_review_display_ids_for_action(
+    batch_name: str,
+    file_path: str,
+    action: FileReviewAction | str,
+) -> set[int] | None:
+    """Return shown display IDs for a fresh matching batch review, if one is active."""
+    groups = fresh_batch_review_selection_groups_for_action(batch_name, file_path, action)
+    if groups is None:
+        return None
+    return {display_id for group in groups for display_id in group}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import stat
 import sys
 
-from ..batch import add_file_to_batch, create_batch
+from ..batch import add_binary_file_to_batch, add_file_to_batch, create_batch
 from ..batch.comparison import (
     SemanticChangeKind,
     derive_display_id_run_sets,
@@ -21,7 +21,7 @@ from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
     parse_unified_diff_streaming,
 )
-from ..core.hashing import compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
 from ..core.line_selection import (
     format_line_ids,
     parse_line_selection,
@@ -42,6 +42,7 @@ from ..data.hunk_tracking import (
     load_selected_change,
     read_selected_change_kind,
     recalculate_selected_hunk_for_file,
+    record_binary_hunk_skipped,
     record_hunk_included,
     record_hunk_skipped,
     require_selected_hunk,
@@ -806,11 +807,53 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
                 _command_include_file_lines_to_batch(batch_name, target_file, line_ids, quiet=quiet)
         else:
             # Hunk-scoped operation (selected behavior)
-            if line_ids is not None:
+            if (
+                line_ids is None
+                and read_selected_change_kind() == SelectedChangeKind.BINARY
+            ):
+                selected_change = load_selected_change()
+                if isinstance(selected_change, BinaryFileChange):
+                    _command_include_binary_to_batch(batch_name, selected_change, quiet=quiet)
+                else:
+                    _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+            elif line_ids is not None:
                 _command_include_lines_to_batch(batch_name, line_ids, quiet=quiet)
             else:
                 # Include entire selected hunk
                 _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+
+
+def _command_include_binary_to_batch(
+    batch_name: str,
+    binary_change: BinaryFileChange,
+    *,
+    quiet: bool = False,
+) -> None:
+    """Save one binary change to a batch and mark it processed."""
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    patch_hash = compute_binary_file_hash(binary_change)
+
+    add_binary_file_to_batch(
+        batch_name,
+        binary_change,
+        file_mode=_detect_file_mode(file_path),
+    )
+    append_lines_to_file(get_block_list_file_path(), [patch_hash])
+    record_binary_hunk_skipped(binary_change, patch_hash)
+
+    if not quiet:
+        print(
+            _("Included binary file '{file}' to batch '{batch}'").format(
+                file=file_path,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+
+    if quiet:
+        advance_to_next_change()
+    else:
+        advance_to_and_show_next_change()
 
 
 def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:

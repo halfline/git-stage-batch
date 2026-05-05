@@ -1153,6 +1153,22 @@ def record_hunk_skipped(line_changes: LineLevelChange, hunk_hash: str) -> None:
         f.write(json.dumps(metadata) + "\n")
 
 
+def record_binary_hunk_skipped(binary_change: BinaryFileChange, hunk_hash: str) -> None:
+    """Record that a binary change was skipped with file-level metadata."""
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    metadata = {
+        "hash": hunk_hash,
+        "file": file_path,
+        "line": None,
+        "ids": [],
+        "change_type": binary_change.change_type,
+    }
+
+    jsonl_path = get_skipped_hunks_jsonl_file_path()
+    with jsonl_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(metadata) + "\n")
+
+
 def format_id_range(ids: list[int]) -> str:
     """Format list of IDs as compact range string (e.g., '1-5,7,9-11').
 

@@ -48,15 +48,13 @@ def resolve_batch_file_scope(
     """
     if file is not None:
         # Specific file requested
-        from ..data.hunk_tracking import get_batch_file_for_line_operation
+        from ..data.hunk_tracking import get_batch_file_for_line_operation, get_selected_change_file_path
 
         # If file is empty string, use selected hunk's file
         if file == "":
-            from ..data.line_state import load_line_changes_from_state
-            line_changes = load_line_changes_from_state()
-            if line_changes is None:
+            file_to_use = get_selected_change_file_path()
+            if file_to_use is None:
                 exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-            file_to_use = line_changes.path
         else:
             file_to_use = file
 

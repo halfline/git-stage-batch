@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 import sys
 
 from ..batch import add_file_to_batch, create_batch
@@ -625,12 +626,7 @@ def _command_discard_lines_to_batch_as(
                   "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
             )
 
-        ls_result = run_git_command(["ls-files", "-s", "--", line_changes.path], check=False)
-        file_mode = "100644"
-        if ls_result.returncode == 0 and ls_result.stdout.strip():
-            parts = ls_result.stdout.strip().split()
-            if parts:
-                file_mode = parts[0]
+        file_mode = _detect_file_mode(line_changes.path)
 
         if batch_source_commit is None:
             batch_source_commit = create_batch_source_commit(
@@ -713,6 +709,20 @@ def _select_rewritten_replacement_lines(
     exit_with_error(_("Replacement selection could not be located after rewriting the file."))
 
 
+def _detect_file_mode(file_path: str) -> str:
+    """Return the current git file mode for a path, defaulting to a regular file."""
+    absolute_path = get_git_repository_root_path() / file_path
+    if absolute_path.exists():
+        return "100755" if absolute_path.stat().st_mode & stat.S_IXUSR else "100644"
+
+    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+    if ls_result.returncode == 0 and ls_result.stdout.strip():
+        parts = ls_result.stdout.strip().split()
+        if parts:
+            return parts[0]
+    return "100644"
+
+
 def _command_discard_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:
     """Discard entire file to batch (internal helper for file-scoped operations)."""
 
@@ -728,12 +738,7 @@ def _command_discard_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     blocked_hashes = set(blocklist_text.splitlines())
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(file_path)
 
     # Collect ALL hunks from this file (live working tree state)
     all_lines_to_batch = []
@@ -888,12 +893,7 @@ def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_i
         return
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(file_path)
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
@@ -1011,12 +1011,7 @@ def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str,
         )
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", line_changes.path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(line_changes.path)
 
     # add_file_to_batch creates the batch source commit from this snapshot.
     snapshot_file_if_untracked(line_changes.path)
@@ -1082,12 +1077,7 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     blocked_hashes = set(blocklist_text.splitlines())
 
     # Detect file mode
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
-    file_mode = "100644"  # default
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            file_mode = parts[0]
+    file_mode = _detect_file_mode(file_path)
 
     # Collect all lines to batch (either selected hunk or all hunks from file)
     all_lines_to_batch = []

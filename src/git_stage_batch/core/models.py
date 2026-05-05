@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 
@@ -95,6 +95,16 @@ class LineLevelChange:
         return len(str(max(changed_ids)))
 
 
+@dataclass(frozen=True)
+class ReviewActionGroup:
+    """One user-visible file-review selection and the actions it supports."""
+
+    display_ids: tuple[int, ...]
+    selection_ids: tuple[int, ...]
+    actions: tuple[str, ...]
+    reason: str = "simple"
+
+
 @dataclass
 class RenderedBatchDisplay:
     """Rendered batch display with gutter ID translation for selection.
@@ -110,7 +120,15 @@ class RenderedBatchDisplay:
         line_changes: What gets shown to the user (contains original selection IDs)
         gutter_to_selection_id: Map from filtered gutter number to selection ID (for ownership selection)
         selection_id_to_gutter: Reverse map from selection ID to filtered gutter number
+        actionable_selection_groups: Complete original selection-ID groups that may be acted on from review output
+        review_gutter_to_selection_id: Map from review gutter number to selection ID
+        review_selection_id_to_gutter: Reverse map for review gutter IDs
+        review_action_groups: Action-specific groups for page-aware review state
     """
     line_changes: LineLevelChange
     gutter_to_selection_id: dict[int, int]
     selection_id_to_gutter: dict[int, int]
+    actionable_selection_groups: tuple[tuple[int, ...], ...] = ()
+    review_gutter_to_selection_id: dict[int, int] = field(default_factory=dict)
+    review_selection_id_to_gutter: dict[int, int] = field(default_factory=dict)
+    review_action_groups: tuple[ReviewActionGroup, ...] = ()

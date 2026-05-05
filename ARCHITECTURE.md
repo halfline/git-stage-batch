@@ -35,7 +35,7 @@ The codebase is organized as a set of layers:
   User-facing command implementations.
 - `data/`
   Session-persistent state, selected-hunk caches, progress tracking, undo/redo,
-  and other workflow bookkeeping.
+  page-aware file review safety state, and other workflow bookkeeping.
 - `core/`
   Neutral models and parsing logic for diffs, hunks, hashes, and line
   selections.
@@ -46,7 +46,8 @@ The codebase is organized as a set of layers:
   The advanced named-batch subsystem: ownership, storage, merge, attribution,
   source refresh, and batch-specific selection logic.
 - `output/`
-  Rendering of hunks, patches, and colors for terminal display.
+  Rendering of hunks, page-aware file reviews, multi-file review lists,
+  patches, and colors for terminal display.
 - `tui/`
   The interactive single-key interface built on top of the command layer.
 - `utils/`
@@ -83,6 +84,17 @@ For a typical non-batch staging workflow:
 The program therefore behaves like a state machine spread across CLI
 invocations. The on-disk state in `data/` is what keeps the workflow coherent.
 
+File-scoped `show --file` and single-file `show --from <batch> --file` add a
+page-aware review layer on top of the selected-change cache. Large file reviews
+can show only one page or a page range. When not all pages are shown, pathless
+or omitted-path actions such as `include`, `skip`, `discard`, or `include
+--file` without a path refuse unless the user names a file explicitly or selects
+complete actionable changes that were actually shown. Multi-file `show --files`
+and multi-file `show --from <batch>` are navigational lists; they intentionally
+clear selected-change state instead of leaving a hidden selected file behind,
+and later pathless or omitted-path actions refuse until the user shows a hunk or
+opens one listed file.
+
 ## Core Representation of Changes
 
 The `core/` package defines the models and parsing logic used throughout the
@@ -118,6 +130,8 @@ It stores information such as:
 - the starting `HEAD`
 - stash-like abort restoration data
 - the currently selected hunk or file
+- the last page-aware file review, including which pages and complete
+  actionable selections were shown
 - included, skipped, or discarded progress
 - iteration state for `again`
 - undo/redo checkpoints
@@ -134,6 +148,10 @@ Important modules include:
   Undo/redo checkpoints for session operations.
 - `data.line_state`
   Serialization of the currently selected line-level view.
+- `data.file_review_state`
+  Safety metadata for page-aware file reviews. It records the review source,
+  shown pages, complete actionable selections, and fingerprints of the selected
+  file view so later pathless actions can refuse stale or ambiguous operations.
 - `data.progress`, `data.file_tracking`, `data.hunk_tracking`
   Progress bookkeeping across files and hunks.
 
@@ -227,7 +245,8 @@ Key modules:
 The program separates data modeling from terminal rendering.
 
 - `output/`
-  Knows how to print line-level changes, binary changes, patches, and colors.
+  Knows how to print line-level changes, page-aware file reviews, multi-file
+  review lists, binary changes, patches, and colors.
 - `tui/`
   Adds the interactive menu-driven front end.
 
@@ -290,6 +309,11 @@ A recurring theme in the codebase is conservative refusal.
 This shows up in several places:
 
 - stale selected hunks are rejected and recalculated
+- stale or mismatched file-review safety state is rejected before pathless or
+  omitted-path line actions are accepted
+- partial file reviews block ambiguous pathless or omitted-path actions until
+  the user shows all pages, names the file explicitly, or selects complete shown
+  changes
 - batch merge paths fail when structure is ambiguous
 - atomic ownership units cannot be partially selected
 - abort snapshots are captured up front so destructive operations can be rolled

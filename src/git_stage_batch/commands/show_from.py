@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import sys
 from typing import Optional
 
@@ -13,15 +14,21 @@ from ..batch.selection import (
 from ..batch.validation import batch_exists
 from ..data.hunk_tracking import (
     cache_batch_as_single_hunk,
-    cache_batch_files_generator,
-    cache_rendered_batch_file_display,
+    clear_selected_change_state_files,
+    mark_selected_change_cleared_by_file_list,
     render_batch_file_display,
 )
+from ..data.file_review_state import ReviewSource
 from ..output import print_line_level_changes
+from ..output.file_review_list import make_file_review_list_entry, print_file_review_list
 from ..exceptions import exit_with_error, BatchMetadataError
 from ..i18n import _
 from ..core.models import LineLevelChange
 from ..utils.git import require_git_repository
+
+
+def _batch_source_args(batch_name: str) -> str:
+    return f" --from {shlex.quote(batch_name)}"
 
 
 def command_show_from_batch(
@@ -109,22 +116,30 @@ def command_show_from_batch(
 
         return
 
-    # Show all files in batch
-    has_content = False
-    first_rendered = None
-    for rendered in cache_batch_files_generator(batch_name, metadata=metadata):
-        if not has_content:
-            has_content = True
-            first_rendered = rendered
-        else:
-            # Print blank line separator between files
-            print()
+    entries = []
+    for file_path in files:
+        rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
+        if rendered is not None:
+            entries.append(
+                make_file_review_list_entry(
+                    rendered.line_changes,
+                    gutter_to_selection_id=rendered.gutter_to_selection_id,
+                )
+            )
 
-        print_line_level_changes(rendered.line_changes, gutter_to_selection_id=rendered.gutter_to_selection_id)
-
-    # Cache first file for subsequent commands
-    if first_rendered is not None:
-        cache_rendered_batch_file_display(first_rendered.line_changes.path, first_rendered)
+    if entries:
+        # Multi-file batch output is navigational; it must not leave a hidden
+        # selected file that a later bare action could operate on.
+        if selectable:
+            clear_selected_change_state_files()
+            mark_selected_change_cleared_by_file_list(
+                source=ReviewSource.BATCH.value,
+                batch_name=batch_name,
+            )
+        print_file_review_list(
+            source_label=_("Changes: batch {name}").format(name=batch_name),
+            entries=entries,
+            command_source_args=_batch_source_args(batch_name),
+        )
     else:
-        # Empty batch
         print(_("Batch '{name}' is empty").format(name=batch_name), file=sys.stderr)

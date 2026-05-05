@@ -59,18 +59,6 @@ from ..utils.paths import (
 )
 
 
-def _set_batch_baseline(
-    batch_name: str,
-    baseline_commit: str,
-) -> None:
-    """Update a batch's baseline commit in metadata."""
-    metadata = read_batch_metadata(batch_name)
-    metadata["baseline"] = baseline_commit
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
-
-
-
 def create_synthetic_batch_source_commit(
     baseline_commit: str,
     file_path: str,
@@ -185,9 +173,12 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                 )
             )
 
-        create_batch(dest_batch, note=f"Sifted from {source_batch}")
+        create_batch(
+            dest_batch,
+            note=f"Sifted from {source_batch}",
+            baseline_commit=source_metadata.get("baseline"),
+        )
         dest_created = True
-        _set_batch_baseline(dest_batch, source_metadata.get("baseline"))
 
     try:
         repo_root = get_git_repository_root_path()
@@ -310,8 +301,11 @@ def _perform_atomic_in_place_sift(
     if batch_exists(temp_batch_name):
         delete_batch(temp_batch_name)
 
-    create_batch(temp_batch_name, note=f"Temporary sift of {batch_name}")
-    _set_batch_baseline(temp_batch_name, source_metadata.get("baseline"))
+    create_batch(
+        temp_batch_name,
+        note=f"Temporary sift of {batch_name}",
+        baseline_commit=source_metadata.get("baseline"),
+    )
 
     try:
         for file_path, file_meta, result in retained_files:
@@ -354,8 +348,11 @@ def _handle_empty_source_batch(source_batch: str, dest_batch: str) -> None:
         return
 
     source_metadata = read_batch_metadata(source_batch)
-    create_batch(dest_batch, note=f"Sifted from {source_batch} (was empty)")
-    _set_batch_baseline(dest_batch, source_metadata.get("baseline"))
+    create_batch(
+        dest_batch,
+        note=f"Sifted from {source_batch} (was empty)",
+        baseline_commit=source_metadata.get("baseline"),
+    )
 
     print(
         _("✓ Sifted batch '{source}' to '{dest}': source was empty").format(

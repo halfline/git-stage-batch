@@ -13,12 +13,19 @@ from ..batch.selection import (
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
     select_batch_ownership_for_display_ids,
+    translate_atomic_unit_error_to_gutter_ids,
 )
 from ..batch.validation import batch_exists
+from ..core.text_lifecycle import (
+    TextFileChangeType,
+    mode_for_text_materialization,
+    normalized_text_change_type,
+    selected_text_discard_change_type,
+)
 from ..data.hunk_tracking import render_batch_file_display
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
-from ..exceptions import exit_with_error, MergeError, BatchMetadataError
+from ..exceptions import exit_with_error, AtomicUnitError, CommandError, MergeError, BatchMetadataError
 from ..i18n import _
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command
 
@@ -88,6 +95,27 @@ def _discard_binary_file_from_batch(file_path: str, baseline_commit: str) -> Non
             pass
 
 
+def _discard_text_file_lifecycle_from_batch(file_path: str, baseline_commit: str) -> None:
+    """Discard a whole-path text add/delete by restoring baseline state."""
+    repo_root = get_git_repository_root_path()
+    full_path = repo_root / file_path
+
+    result = run_git_command(
+        ["show", f"{baseline_commit}:{file_path}"],
+        check=False,
+        text_output=False,
+    )
+    if result.returncode == 0:
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_bytes(result.stdout)
+        _restore_working_tree_file_mode(
+            full_path,
+            _baseline_file_mode(baseline_commit, file_path),
+        )
+    elif full_path.exists():
+        full_path.unlink()
+
+
 def command_discard_from_batch(
     batch_name: str,
     line_ids: Optional[str] = None,
@@ -136,6 +164,7 @@ def command_discard_from_batch(
 
     # Translate gutter IDs to selection IDs if line selection is active
     selection_ids_to_discard = selected_ids
+    rendered = None
     if selected_ids:
         # Use pure render helper to get gutter ID mapping (no side effects)
         file_path_for_render = list(files.keys())[0]  # Single file context enforced above
@@ -159,7 +188,7 @@ def command_discard_from_batch(
         operation_parts.extend(["--line", line_ids])
     if file is not None:
         operation_parts.extend(["--file", file])
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
         # Discard all files in batch
         repo_root = get_git_repository_root_path()
         failed_files = []
@@ -172,6 +201,14 @@ def command_discard_from_batch(
                 # Binary files are atomic units - handle separately without ownership/merge logic
                 if file_meta.get("file_type") == "binary":
                     _discard_binary_file_from_batch(file_path, baseline_commit)
+                    continue
+
+                text_change_type = normalized_text_change_type(file_meta.get("change_type"))
+                if selected_ids is None and text_change_type in {
+                    TextFileChangeType.ADDED,
+                    TextFileChangeType.DELETED,
+                }:
+                    _discard_text_file_lifecycle_from_batch(file_path, baseline_commit)
                     continue
 
                 # Get batch source commit content (as bytes)
@@ -192,19 +229,35 @@ def command_discard_from_batch(
                     check=False,
                     text_output=False
                 )
-                baseline_content = baseline_result.stdout if baseline_result.returncode == 0 else b""
+                baseline_exists = baseline_result.returncode == 0
+                baseline_content = baseline_result.stdout if baseline_exists else b""
 
                 # Get selected working tree content (as bytes)
                 full_path = repo_root / file_path
-                if full_path.exists():
+                working_exists = full_path.exists()
+                if working_exists:
                     working_content = full_path.read_bytes()
                 else:
                     working_content = b""
+                baseline_mode = _baseline_file_mode(baseline_commit, file_path)
+                restore_mode = mode_for_text_materialization(
+                    baseline_mode,
+                    selected_ids,
+                    destination_exists=working_exists,
+                )
 
                 # Get ownership from metadata, filtered by selected selection IDs if specified
-                ownership = select_batch_ownership_for_display_ids(
-                    file_meta, batch_source_content, selection_ids_to_discard
-                )
+                try:
+                    ownership = select_batch_ownership_for_display_ids(
+                        file_meta, batch_source_content, selection_ids_to_discard
+                    )
+                except AtomicUnitError as e:
+                    if rendered:
+                        translate_atomic_unit_error_to_gutter_ids(e, rendered, "discard from", batch_name)
+                    exit_with_error(_("Failed to discard from batch '{name}': {error}").format(
+                        name=batch_name,
+                        error=str(e),
+                    ))
 
                 # If nothing selected for this file, skip it
                 if ownership.is_empty():
@@ -218,10 +271,22 @@ def command_discard_from_batch(
                     baseline_content
                 )
 
-                # Write to working tree (bytes)
-                full_path.parent.mkdir(parents=True, exist_ok=True)
-                full_path.write_bytes(discarded_content)
+                effective_change_type = selected_text_discard_change_type(
+                    text_change_type,
+                    selected_ids,
+                    discarded_content,
+                    baseline_exists=baseline_exists,
+                )
+                if effective_change_type == TextFileChangeType.DELETED:
+                    if full_path.exists():
+                        full_path.unlink()
+                else:
+                    full_path.parent.mkdir(parents=True, exist_ok=True)
+                    full_path.write_bytes(discarded_content)
+                    _restore_working_tree_file_mode(full_path, restore_mode)
 
+            except CommandError:
+                raise
             except MergeError as e:
                 print(_("Error discarding {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
                 failed_files.append(file_path)

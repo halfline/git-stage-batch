@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 import sys
 from typing import Optional
 
@@ -21,6 +22,17 @@ from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError, BatchMetadataError
 from ..i18n import _
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command
+
+
+def _apply_working_tree_file_mode(full_path, file_mode: str | None) -> None:
+    """Apply a normal Git file mode to a working-tree file."""
+    if file_mode is None:
+        return
+    current_mode = full_path.stat().st_mode
+    if file_mode == "100755":
+        full_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    else:
+        full_path.chmod(current_mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
 
 
 def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: dict) -> None:
@@ -47,6 +59,11 @@ def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: di
         raise RuntimeError(f"Batch commit not found for batch '{batch_name}'")
 
     change_type = file_meta.get("change_type", "modified")
+    if change_type == "deleted":
+        if full_path.exists():
+            full_path.unlink()
+            print(_("✓ Deleted binary file: {file}").format(file=file_path), file=sys.stderr)
+        return
 
     # Read file from batch commit tree
     result = run_git_command(
@@ -55,24 +72,23 @@ def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: di
         text_output=False
     )
 
-    if result.returncode == 0:
-        # File exists in batch commit - write to working tree
-        binary_content = result.stdout
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(binary_content)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Binary file metadata for {file_path} says {change_type}, "
+            "but the batch content is missing"
+        )
 
-        if change_type == "added":
-            print(_("✓ Applied new binary file: {file}").format(file=file_path), file=sys.stderr)
-        else:
-            print(_("✓ Replaced binary file: {file}").format(file=file_path), file=sys.stderr)
+    # File exists in batch commit - write to working tree
+    binary_content = result.stdout
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(binary_content)
+
+    _apply_working_tree_file_mode(full_path, str(file_meta.get("mode", "100644")))
+
+    if change_type == "added":
+        print(_("✓ Applied new binary file: {file}").format(file=file_path), file=sys.stderr)
     else:
-        # File doesn't exist in batch commit - this is a deletion
-        if full_path.exists():
-            full_path.unlink()
-            print(_("✓ Deleted binary file: {file}").format(file=file_path), file=sys.stderr)
-        else:
-            # File already doesn't exist - no-op
-            pass
+        print(_("✓ Replaced binary file: {file}").format(file=file_path), file=sys.stderr)
 
 
 def command_apply_from_batch(

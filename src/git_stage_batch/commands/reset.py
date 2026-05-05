@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import shlex
 import sys
 
+from ..core.line_selection import format_line_ids
 from ..batch.operations import create_batch
 from ..batch.ownership import (
     BatchOwnership,
@@ -28,6 +30,13 @@ from ..batch.state_refs import sync_batch_state_refs
 from ..batch.validation import batch_exists, validate_batch_name
 from ..exceptions import MergeError, exit_with_error
 from ..i18n import _
+from ..data.file_review_state import (
+    FileReviewAction,
+    fresh_batch_review_selection_groups_for_action,
+    resolve_batch_source_action_scope,
+    validate_review_scoped_line_selection,
+)
+from ..data.hunk_tracking import render_batch_file_display
 from ..data.undo import undo_checkpoint
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import require_git_repository, run_git_command
@@ -57,14 +66,36 @@ def command_reset_from_batch(
     require_git_repository()
     ensure_state_directory_exists()
     validate_batch_name(batch_name)
+    extra_action_parts = ()
+    if to_batch is not None:
+        extra_action_parts = ("--to", shlex.quote(to_batch))
+    scope_resolution = resolve_batch_source_action_scope(
+        FileReviewAction.RESET_FROM_BATCH,
+        command_name="reset",
+        batch_name=batch_name,
+        line_ids=line_ids,
+        file=file,
+        patterns=patterns,
+        extra_action_parts=extra_action_parts,
+    )
+    file = scope_resolution.file
 
     if not batch_exists(batch_name):
         exit_with_error(_("Batch '{name}' does not exist").format(name=batch_name))
+
+    metadata = read_batch_metadata(batch_name)
+    all_files = metadata.get("files", {})
 
     if to_batch is not None:
         validate_batch_name(to_batch)
         if to_batch == batch_name:
             exit_with_error(_("--to must name a different batch"))
+
+    effective_line_ids = (
+        _translate_reset_line_ids_to_selection_ids(batch_name, all_files, file, patterns, line_ids)
+        if line_ids is not None else
+        None
+    )
     operation_parts = ["reset", "--from", batch_name]
     if to_batch is not None:
         operation_parts.extend(["--to", to_batch])
@@ -74,13 +105,13 @@ def command_reset_from_batch(
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
         if to_batch is not None:
-            _move_claims_between_batches(batch_name, to_batch, file, patterns, line_ids)
+            _move_claims_between_batches(batch_name, to_batch, file, patterns, effective_line_ids)
         elif file is not None:
-            _reset_file_claims_from_batch(batch_name, file, line_ids)
+            _reset_file_claims_from_batch(batch_name, file, effective_line_ids)
         elif patterns is not None:
-            _reset_pattern_claims_from_batch(batch_name, patterns, line_ids)
+            _reset_pattern_claims_from_batch(batch_name, patterns, effective_line_ids)
         elif line_ids is not None:
-            _reset_line_claims_from_batch(batch_name, line_ids)
+            _reset_line_claims_from_batch(batch_name, effective_line_ids)
         else:
             _reset_all_claims_from_batch(batch_name)
 
@@ -100,6 +131,64 @@ def command_reset_from_batch(
         print(_("✓ Reset file from batch '{name}'").format(name=batch_name), file=sys.stderr)
     else:
         print(_("✓ Reset all claims from batch '{name}'").format(name=batch_name), file=sys.stderr)
+
+
+def _translate_reset_line_ids_to_selection_ids(
+    batch_name: str,
+    all_files: dict[str, dict],
+    file: str | None,
+    patterns: list[str] | None,
+    line_id_specification: str,
+) -> str:
+    """Translate fresh file-review gutter IDs to batch selection IDs.
+
+    Reset is a metadata operation, so explicit reset line IDs must keep working
+    even when a batch change is not currently mergeable into the worktree. Only
+    translate through the mergeability-filtered gutter map when a fresh batch
+    file review is in scope; otherwise leave the batch display IDs untouched.
+    """
+    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
+    selected_ids = require_single_file_context_for_line_selection(
+        batch_name, files, line_id_specification, "reset"
+    )
+    if selected_ids is None:
+        return line_id_specification
+
+    file_path = list(files.keys())[0]
+    if files[file_path].get("file_type") == "binary":
+        exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
+
+    review_groups = fresh_batch_review_selection_groups_for_action(
+        batch_name,
+        file_path,
+        FileReviewAction.RESET_FROM_BATCH,
+    )
+    if review_groups is None:
+        return line_id_specification
+    validate_review_scoped_line_selection(selected_ids, review_groups)
+
+    rendered = render_batch_file_display(batch_name, file_path)
+    if rendered is None:
+        exit_with_error(
+            _("No changes for file '{file}' in batch '{name}'.").format(
+                file=file_path,
+                name=batch_name,
+            )
+        )
+
+    display_id_map = rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
+    selection_ids = set()
+    for gutter_id in selected_ids:
+        if gutter_id in display_id_map:
+            selection_ids.add(display_id_map[gutter_id])
+        else:
+            exit_with_error(
+                _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
+                    id=gutter_id
+                )
+            )
+
+    return format_line_ids(sorted(selection_ids))
 
 
 def _ensure_destination_batch(source_batch: str, dest_batch: str, source_metadata: dict) -> None:

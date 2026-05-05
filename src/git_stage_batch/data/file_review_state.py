@@ -448,3 +448,68 @@ def fresh_batch_review_display_ids_for_action(
     if groups is None:
         return None
     return {display_id for group in groups for display_id in group}
+
+
+
+def _print_stale_or_mismatched_file_review_help(action: str, review_state: FileReviewState) -> None:
+    show_command = _show_command_for_review_state(review_state)
+    raise ReviewScopedSelectionError(
+        _(
+            "The file review for {file} no longer matches the selected file view.\n"
+            "Line IDs may no longer match.\n\n"
+            "Run:\n"
+            "  {command}"
+        ).format(file=review_state.file_path, command=show_command)
+    )
+
+
+def _quote(value: str) -> str:
+    return shlex.quote(value)
+
+
+def _show_command_for_review_state(review_state: FileReviewState, *, page: str | None = None) -> str:
+    command = "git-stage-batch show"
+    if review_state.source == ReviewSource.BATCH and review_state.batch_name is not None:
+        command += f" --from {_quote(review_state.batch_name)}"
+    command += f" --file {_quote(review_state.file_path)}"
+    if page is not None:
+        command += f" --page {page}"
+    return command
+
+
+def _line_action_command(
+    action: FileReviewAction | str,
+    review_state: FileReviewState,
+    *,
+    line_spec: str | None = None,
+    whole_file: bool = False,
+    pathless_line: bool = False,
+) -> str | None:
+    review_action = _coerce_review_action(action)
+    action_value = review_action.value
+    if review_action in (FileReviewAction.INCLUDE_TO_BATCH, FileReviewAction.DISCARD_TO_BATCH):
+        return None
+    if review_state.source == ReviewSource.BATCH:
+        if review_action in (FileReviewAction.INCLUDE, FileReviewAction.INCLUDE_FROM_BATCH):
+            action_value = FileReviewAction.INCLUDE.value
+        elif review_action in (FileReviewAction.DISCARD, FileReviewAction.DISCARD_FROM_BATCH):
+            action_value = FileReviewAction.DISCARD.value
+        elif review_action == FileReviewAction.APPLY_FROM_BATCH:
+            action_value = "apply"
+        elif review_action == FileReviewAction.RESET_FROM_BATCH:
+            action_value = "reset"
+        else:
+            return None
+        command = f"git-stage-batch {action_value} --from {_quote(review_state.batch_name or '')}"
+        file_args = f" --file {_quote(review_state.file_path)}"
+    else:
+        command = f"git-stage-batch {action_value}"
+        file_args = f" --file {_quote(review_state.file_path)}"
+
+    if line_spec is not None:
+        if pathless_line:
+            return f"{command} --line {line_spec}"
+        return f"{command}{file_args} --line {line_spec}"
+    if whole_file:
+        return f"{command}{file_args}"
+    return command

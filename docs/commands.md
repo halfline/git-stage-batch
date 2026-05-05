@@ -493,10 +493,10 @@ file-scoped path with `TEXT` without staging it.
 `discard --to BATCH --line ... --as TEXT` saves replacement text to the batch
 and removes the original selected lines from the working tree.
 
-For line-scoped replacement workflows, `--as` now trims exact unchanged edge
-anchor lines by default when the provided text includes surrounding preserved
-context from the selected file span. Pass `--no-anchor` to keep those edge
-anchors literally.
+For line-scoped replacement workflows, `--as` now trims exact unchanged lines
+that overlap the preserved file context immediately before or after the
+selected span. Pass `--no-edge-overlap` to keep those edge-overlap lines
+literally.
 
 If the replacement text should come from a file or another command exactly,
 use `--as-stdin` instead of shell command substitution. For example:
@@ -506,7 +506,7 @@ use `--as-stdin` instead of shell command substitution. For example:
 ❯ some-command | git-stage-batch include --line 1-3 --as-stdin
 ❯ git-stage-batch discard --file path.txt --as-stdin < replacement.txt
 ❯ some-command | git-stage-batch discard --to batch --line 1-3 --as-stdin
-❯ git-stage-batch include --line 1-3 --as 'keep1\nstaged\nkeep4' --no-anchor
+❯ git-stage-batch include --line 1-3 --as 'keep1\nstaged\nkeep4' --no-edge-overlap
 ```
 
 Unlike `--as "$(cat replacement.txt)"`, `--as-stdin` preserves trailing

@@ -23,7 +23,13 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     selected_text_target_change_type,
 )
-from ..data.hunk_tracking import render_batch_file_display
+from ..data.file_review_state import (
+    FileReviewAction,
+    resolve_batch_source_action_scope,
+)
+from ..data.hunk_tracking import (
+    render_batch_file_display,
+)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import (
@@ -197,6 +203,15 @@ def command_include_from_batch(
         replacement_text: Optional replacement text for selected batch lines.
     """
     require_git_repository()
+    scope_resolution = resolve_batch_source_action_scope(
+        FileReviewAction.INCLUDE_FROM_BATCH,
+        command_name="include",
+        batch_name=batch_name,
+        line_ids=line_ids,
+        file=file,
+        patterns=patterns,
+    )
+    file = scope_resolution.file
 
     # Refresh index to ensure git's cached stat info is up-to-date
     run_git_command(["update-index", "--refresh"], check=False)

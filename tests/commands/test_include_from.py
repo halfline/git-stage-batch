@@ -5,11 +5,17 @@ from git_stage_batch.commands.include import command_include_to_batch
 from unittest.mock import patch, MagicMock
 from git_stage_batch.core.models import LineLevelChange, LineEntry
 
+import stat
 import subprocess
 
 import pytest
 
 from git_stage_batch.batch import create_batch
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.storage import add_file_to_batch
+from git_stage_batch.commands.apply_from import command_apply_from_batch
+from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.data.hunk_tracking import render_batch_file_display
 from git_stage_batch.data.session import initialize_abort_state
@@ -145,6 +151,240 @@ class TestCommandIncludeFromBatch:
         # Try to use --file without cached hunk (no fetch_next_change call after command_start)
         with pytest.raises(CommandError):
             command_include_from_batch("test-batch", file="")
+
+    def test_include_from_batch_restores_text_executable_mode(self, temp_git_repo):
+        """Test whole-file include --from honors the batch target mode for text files."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o644)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.write_text("#!/bin/sh\necho batched\n")
+        tool_path.chmod(0o755)
+        command_start()
+        command_include_to_batch("test-batch", file="tool.sh", quiet=True)
+
+        subprocess.run(["git", "checkout", "HEAD", "--", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        command_include_from_batch("test-batch", file="tool.sh")
+
+        index_entry = run_git_command(["ls-files", "-s", "--", "tool.sh"]).stdout
+        assert index_entry.startswith("100755 ")
+        assert tool_path.read_text() == "#!/bin/sh\necho batched\n"
+        assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
+
+    def test_apply_from_batch_restores_text_executable_mode(self, temp_git_repo):
+        """Test whole-file apply --from honors the batch target mode for text files."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o644)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.write_text("#!/bin/sh\necho batched\n")
+        tool_path.chmod(0o755)
+        command_start()
+        command_include_to_batch("test-batch", file="tool.sh", quiet=True)
+
+        subprocess.run(["git", "checkout", "HEAD", "--", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        tool_path.chmod(0o644)
+
+        command_apply_from_batch("test-batch", file="tool.sh")
+
+        assert tool_path.read_text() == "#!/bin/sh\necho batched\n"
+        assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
+
+    def test_discard_from_batch_restores_text_baseline_executable_mode(self, temp_git_repo):
+        """Test whole-file discard --from honors the baseline mode for text files."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o755)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add executable tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.write_text("#!/bin/sh\necho batched\n")
+        command_start()
+        command_include_to_batch("test-batch", file="tool.sh", quiet=True)
+
+        tool_path.write_text("#!/bin/sh\necho batched\n")
+        tool_path.chmod(0o644)
+
+        command_discard_from_batch("test-batch", file="tool.sh")
+
+        assert tool_path.read_text() == "#!/bin/sh\necho base\n"
+        assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
+
+    def test_discard_from_batch_removes_added_text_file(self, temp_git_repo):
+        """Whole added text files saved to a batch discard back to absence."""
+        new_path = temp_git_repo / "new.txt"
+        new_path.write_text("new content\n")
+        command_start()
+        command_include_to_batch("test-batch", file="new.txt", quiet=True)
+
+        file_meta = read_batch_metadata("test-batch")["files"]["new.txt"]
+        assert file_meta["change_type"] == "added"
+
+        command_discard_from_batch("test-batch", file="new.txt")
+
+        assert not new_path.exists()
+
+    def test_apply_from_batch_removes_deleted_text_file(self, temp_git_repo):
+        """Whole deleted text files saved to a batch apply back to absence."""
+        gone_path = temp_git_repo / "gone.txt"
+        gone_path.write_text("gone\n")
+        subprocess.run(["git", "add", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add gone"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        gone_path.unlink()
+        command_start()
+        command_include_to_batch("test-batch", file="gone.txt", quiet=True)
+
+        file_meta = read_batch_metadata("test-batch")["files"]["gone.txt"]
+        assert file_meta["change_type"] == "deleted"
+
+        subprocess.run(["git", "checkout", "HEAD", "--", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        command_apply_from_batch("test-batch", file="gone.txt")
+
+        assert not gone_path.exists()
+        assert run_git_command(["diff", "--cached", "--name-only", "--", "gone.txt"]).stdout == ""
+
+    def test_apply_from_batch_line_scoped_deleted_text_file_removes_path(self, temp_git_repo):
+        """Selecting every deleted text line should preserve deleted-path semantics."""
+        gone_path = temp_git_repo / "gone.txt"
+        gone_path.write_text("gone\n")
+        subprocess.run(["git", "add", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add gone"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        gone_path.unlink()
+        command_start()
+        command_include_to_batch("test-batch", file="gone.txt", quiet=True)
+
+        subprocess.run(["git", "checkout", "HEAD", "--", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        command_apply_from_batch("test-batch", line_ids="1", file="gone.txt")
+
+        assert not gone_path.exists()
+        assert run_git_command(["diff", "--cached", "--name-only", "--", "gone.txt"]).stdout == ""
+
+    def test_apply_from_batch_line_scoped_added_text_file_restores_executable_mode(self, temp_git_repo):
+        """Line-scoped apply that creates a text path should use the batch mode."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho batched\n")
+        tool_path.chmod(0o755)
+        command_start()
+        command_include_to_batch("test-batch", file="tool.sh", quiet=True)
+
+        tool_path.unlink()
+        command_apply_from_batch("test-batch", line_ids="1-2", file="tool.sh")
+
+        assert tool_path.read_text() == "#!/bin/sh\necho batched\n"
+        assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
+
+    def test_include_from_batch_stages_deleted_text_file_and_removes_worktree_path(self, temp_git_repo):
+        """Whole deleted text files saved to a batch include as staged deletions."""
+        gone_path = temp_git_repo / "gone.txt"
+        gone_path.write_text("gone\n")
+        subprocess.run(["git", "add", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add gone"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        gone_path.unlink()
+        command_start()
+        command_include_to_batch("test-batch", file="gone.txt", quiet=True)
+
+        subprocess.run(["git", "checkout", "HEAD", "--", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        command_include_from_batch("test-batch", file="gone.txt")
+
+        assert not gone_path.exists()
+        assert run_git_command(["status", "--short", "--", "gone.txt"]).stdout == "D  gone.txt\n"
+
+    def test_include_from_batch_line_scoped_added_text_file_restores_executable_mode(self, temp_git_repo):
+        """Line-scoped include that creates a text path should use the batch mode."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho batched\n")
+        tool_path.chmod(0o755)
+        command_start()
+        command_include_to_batch("test-batch", file="tool.sh", quiet=True)
+
+        tool_path.unlink()
+        run_git_command(["reset", "HEAD", "tool.sh"], check=False)
+        command_include_from_batch("test-batch", line_ids="1-2", file="tool.sh")
+
+        index_entry = run_git_command(["ls-files", "-s", "--", "tool.sh"]).stdout
+        assert index_entry.startswith("100755 ")
+        assert tool_path.read_text() == "#!/bin/sh\necho batched\n"
+        assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
+
+    def test_include_from_batch_line_scoped_deleted_text_file_stages_deletion(self, temp_git_repo):
+        """Line-scoped include of a full deleted text file should stage path deletion."""
+        gone_path = temp_git_repo / "gone.txt"
+        gone_path.write_text("gone\n")
+        subprocess.run(["git", "add", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add gone"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        gone_path.unlink()
+        command_start()
+        command_include_to_batch("test-batch", file="gone.txt", quiet=True)
+
+        subprocess.run(["git", "checkout", "HEAD", "--", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        command_include_from_batch("test-batch", line_ids="1", file="gone.txt")
+
+        assert not gone_path.exists()
+        assert run_git_command(["status", "--short", "--", "gone.txt"]).stdout == "D  gone.txt\n"
+
+    def test_include_from_batch_creates_added_empty_text_file(self, temp_git_repo):
+        """Empty added text files should not be skipped as empty ownership."""
+        empty_path = temp_git_repo / "empty.txt"
+        empty_path.write_text("")
+        command_start()
+        add_file_to_batch("test-batch", "empty.txt", BatchOwnership(claimed_lines=[], deletions=[]))
+
+        empty_path.unlink()
+        command_include_from_batch("test-batch", file="empty.txt")
+
+        assert empty_path.exists()
+        assert empty_path.read_bytes() == b""
+        assert run_git_command(["diff", "--cached", "--name-only", "--", "empty.txt"]).stdout == "empty.txt\n"
+
+    def test_discard_from_batch_line_scoped_added_text_file_removes_path(self, temp_git_repo):
+        """Line-scoped discard of a full added text file should restore absence."""
+        new_path = temp_git_repo / "new.txt"
+        new_path.write_text("new\n")
+        command_start()
+        command_include_to_batch("test-batch", file="new.txt", quiet=True)
+
+        command_discard_from_batch("test-batch", line_ids="1", file="new.txt")
+
+        assert not new_path.exists()
+
+    def test_discard_from_batch_partial_new_text_file_removes_path_when_exhausted(self, temp_git_repo):
+        """Discarding the remaining owned content of a partial new file should restore absence."""
+        new_path = temp_git_repo / "new.txt"
+        new_path.write_text("owned\nunowned\n")
+        command_start()
+        command_include_to_batch("test-batch", line_ids="1", file="new.txt", quiet=True)
+
+        new_path.write_text("owned\n")
+
+        command_discard_from_batch("test-batch", file="new.txt")
+
+        assert not new_path.exists()
+
+    def test_discard_from_batch_line_scoped_deleted_text_file_restores_executable_mode(self, temp_git_repo):
+        """Line-scoped discard that restores a deleted text path should use baseline mode."""
+        tool_path = temp_git_repo / "tool.sh"
+        tool_path.write_text("#!/bin/sh\necho base\n")
+        tool_path.chmod(0o755)
+        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add executable tool"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        tool_path.unlink()
+        command_start()
+        command_include_to_batch("test-batch", file="tool.sh", quiet=True)
+
+        command_discard_from_batch("test-batch", line_ids="1-2", file="tool.sh")
+
+        assert tool_path.read_text() == "#!/bin/sh\necho base\n"
+        assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
 
     def test_include_from_batch_as_replaces_presence_only_selection(self, temp_git_repo):
         """Test include --from --line --as replaces claimed batch content before staging."""

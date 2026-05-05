@@ -25,6 +25,7 @@ from ..core.diff_parser import (
 from ..core.hashing import compute_stable_hunk_hash
 from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange
+from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     advance_to_and_show_next_change,
@@ -757,34 +758,34 @@ def _command_discard_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
         patches_to_discard.append((patch_bytes_loop, patch_hash))
 
     if not all_lines_to_batch:
-        # Special case: empty new file (exists in working tree but not in HEAD)
+        # Special case: empty text lifecycle changes have no hunk body.
         repo_root = get_git_repository_root_path()
         full_path = repo_root / file_path
-        if full_path.exists():
-            # Check if file exists in HEAD
-            head_result = run_git_command(["cat-file", "-e", f"HEAD:{file_path}"], check=False)
-            if head_result.returncode != 0:
-                # File doesn't exist in HEAD - it's a new empty file
-                # Save empty file metadata to batch and delete it
-                empty_ownership = BatchOwnership(claimed_lines=[], deletions=[])
+        lifecycle_change_type = detect_empty_text_lifecycle_change(file_path)
+        if lifecycle_change_type is not None:
+            snapshot_file_if_untracked(file_path)
+            add_file_to_batch(
+                batch_name,
+                file_path,
+                BatchOwnership(claimed_lines=[], deletions=[]),
+                file_mode,
+                change_type=lifecycle_change_type,
+            )
 
-                # Snapshot before deleting
-                snapshot_file_if_untracked(file_path)
-
-                # Save to batch
-                add_file_to_batch(batch_name, file_path, empty_ownership, file_mode)
-
+            if lifecycle_change_type == TextFileChangeType.ADDED:
                 # Delete from working tree
                 full_path.unlink()
 
                 # Remove from index if present (from intent-to-add)
                 run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
+            else:
+                run_git_command(["checkout", "HEAD", "--", file_path], check=False)
 
-                if not quiet:
-                    print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
+            if not quiet:
+                print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
 
-                log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
-                return
+            log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
+            return
 
         if not quiet:
             print(_("No changes in file '{file}' to discard.").format(file=file_path), file=sys.stderr)

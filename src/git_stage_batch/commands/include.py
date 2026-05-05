@@ -29,6 +29,7 @@ from ..core.line_selection import (
     write_line_ids_file,
 )
 from ..core.models import BinaryFileChange
+from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     advance_to_and_show_next_change,
@@ -856,6 +857,27 @@ def _command_include_binary_to_batch(
         advance_to_and_show_next_change()
 
 
+def _save_empty_text_lifecycle_to_batch(
+    batch_name: str,
+    file_path: str,
+    file_mode: str,
+) -> str | None:
+    """Persist an empty added/deleted text path, returning its lifecycle type."""
+    change_type = detect_empty_text_lifecycle_change(file_path)
+    if change_type is None:
+        return None
+
+    snapshot_file_if_untracked(file_path)
+    add_file_to_batch(
+        batch_name,
+        file_path,
+        BatchOwnership(claimed_lines=[], deletions=[]),
+        file_mode,
+        change_type=change_type,
+    )
+    return change_type.value
+
+
 def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:
     """Include entire file to batch (internal helper for file-scoped operations)."""
 
@@ -875,6 +897,15 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
         all_lines_to_batch.extend(hunk_lines.lines)
 
     if not all_lines_to_batch:
+        if _save_empty_text_lifecycle_to_batch(batch_name, file_path, file_mode) is not None:
+            if not quiet:
+                print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
+            if quiet:
+                advance_to_next_change()
+            else:
+                advance_to_and_show_next_change()
+            return
+
         if not quiet:
             print(_("No changes in file '{file}' to include.").format(file=file_path), file=sys.stderr)
         return

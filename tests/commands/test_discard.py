@@ -578,8 +578,8 @@ class TestCommandDiscardToBatch:
         command_apply_from_batch("feature-batch")
         assert readme.read_text() == "keep1\nstaged\nkeep3\nkeep4\n"
 
-    def test_discard_line_as_to_batch_no_anchor_keeps_matching_edge_anchors(self, temp_git_repo):
-        """Discard --to --line --as --no-anchor should preserve duplicate anchors."""
+    def test_discard_line_as_to_batch_no_edge_overlap_keeps_matching_edge_anchors(self, temp_git_repo):
+        """Discard --to --line --as --no-edge-overlap should preserve duplicate anchors."""
         readme = temp_git_repo / "README.md"
         readme.write_text("keep1\nold\nkeep3\nkeep4\n")
         subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
@@ -594,7 +594,7 @@ class TestCommandDiscardToBatch:
             "feature-batch",
             "1-2",
             "keep1\nstaged\nkeep3\nkeep4\n",
-            no_anchor=True,
+            no_edge_overlap=True,
         )
 
         assert readme.read_text() == "keep1\nold\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"

@@ -351,7 +351,7 @@ def test_parse_command_line_include_with_line_range_and_as_stdin_dispatches_line
         "2-3",
         "replacement one\nreplacement two\n",
         file="path.txt",
-        no_anchor=False,
+        no_edge_overlap=False,
     )
 
 
@@ -420,30 +420,30 @@ def test_parse_command_line_include_rejects_as_and_as_stdin_together(monkeypatch
         args.func(args)
 
 
-def test_parse_command_line_include_with_no_anchor_dispatches_line_replacement(monkeypatch):
-    """Include --line --as --no-anchor should forward the no-anchor flag."""
+def test_parse_command_line_include_with_no_edge_overlap_dispatches_line_replacement(monkeypatch):
+    """Include --line --as --no-edge-overlap should forward the no-edge-overlap flag."""
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_include_line_as", mock_command)
 
     args = parse_command_line(
-        ["include", "--file", "path.txt", "--line", "2-3", "--as", "replacement", "--no-anchor"],
+        ["include", "--file", "path.txt", "--line", "2-3", "--as", "replacement", "--no-edge-overlap"],
         quiet=True,
     )
 
     assert args is not None
     args.func(args)
-    mock_command.assert_called_once_with("2-3", "replacement", file="path.txt", no_anchor=True)
+    mock_command.assert_called_once_with("2-3", "replacement", file="path.txt", no_edge_overlap=True)
 
 
-def test_parse_command_line_include_rejects_no_anchor_without_line_as():
-    """Include should reject --no-anchor outside live include --line --as."""
+def test_parse_command_line_include_rejects_no_edge_overlap_without_line_as():
+    """Include should reject --no-edge-overlap outside live include --line --as."""
     args = parse_command_line(
-        ["include", "--file", "path.txt", "--no-anchor"],
+        ["include", "--file", "path.txt", "--no-edge-overlap"],
         quiet=True,
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`--no-anchor` requires `include --line --as`"):
+    with pytest.raises(argument_parser.CommandError, match="`--no-edge-overlap` requires `include --line --as`"):
         args.func(args)
 
 
@@ -764,7 +764,7 @@ def test_parse_command_line_discard_to_line_range_and_as_stdin_dispatches_replac
         "2-3",
         "replacement one\nreplacement two\n",
         file="path.txt",
-        no_anchor=False,
+        no_edge_overlap=False,
     )
 
 
@@ -781,13 +781,13 @@ def test_parse_command_line_discard_rejects_as_and_as_stdin_together(monkeypatch
         args.func(args)
 
 
-def test_parse_command_line_discard_with_no_anchor_dispatches_line_replacement(monkeypatch):
-    """Discard --to --line --as --no-anchor should forward the no-anchor flag."""
+def test_parse_command_line_discard_with_no_edge_overlap_dispatches_line_replacement(monkeypatch):
+    """Discard --to --line --as --no-edge-overlap should forward the no-edge-overlap flag."""
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_discard_line_as_to_batch", mock_command)
 
     args = parse_command_line(
-        ["discard", "--to", "batch", "--file", "path.txt", "--line", "2-3", "--as", "replacement", "--no-anchor"],
+        ["discard", "--to", "batch", "--file", "path.txt", "--line", "2-3", "--as", "replacement", "--no-edge-overlap"],
         quiet=True,
     )
 
@@ -798,19 +798,19 @@ def test_parse_command_line_discard_with_no_anchor_dispatches_line_replacement(m
         "2-3",
         "replacement",
         file="path.txt",
-        no_anchor=True,
+        no_edge_overlap=True,
     )
 
 
-def test_parse_command_line_discard_rejects_no_anchor_without_to_line_as():
-    """Discard should reject --no-anchor outside discard --to --line --as."""
+def test_parse_command_line_discard_rejects_no_edge_overlap_without_to_line_as():
+    """Discard should reject --no-edge-overlap outside discard --to --line --as."""
     args = parse_command_line(
-        ["discard", "--file", "path.txt", "--no-anchor"],
+        ["discard", "--file", "path.txt", "--no-edge-overlap"],
         quiet=True,
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`--no-anchor` requires `discard --to --line --as`"):
+    with pytest.raises(argument_parser.CommandError, match="`--no-edge-overlap` requires `discard --to --line --as`"):
         args.func(args)
 
 

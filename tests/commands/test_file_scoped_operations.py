@@ -1428,8 +1428,8 @@ class TestExplicitFilePath:
         staged_content = run_git_command(["show", ":module.py"]).stdout
         assert staged_content == "keep1\nkeep2\nstaged\nkeep4\n"
 
-    def test_include_line_as_with_explicit_path_no_anchor_keeps_edge_anchors(self, tmp_path, monkeypatch):
-        """Explicit file-scoped include --line --as --no-anchor should preserve duplicate anchors."""
+    def test_include_line_as_with_explicit_path_no_edge_overlap_keeps_edge_anchors(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line --as --no-edge-overlap should preserve duplicate anchors."""
         repo = tmp_path / "test_repo"
         repo.mkdir()
         monkeypatch.chdir(repo)
@@ -1450,7 +1450,7 @@ class TestExplicitFilePath:
             "1-2",
             "keep1\nkeep2\nstaged\nkeep4\n",
             file="module.py",
-            no_anchor=True,
+            no_edge_overlap=True,
         )
 
         staged_content = run_git_command(["show", ":module.py"]).stdout

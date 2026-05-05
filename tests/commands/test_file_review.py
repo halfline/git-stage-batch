@@ -1744,3 +1744,28 @@ def test_explicit_reset_from_batch_rejects_unshown_review_selection(
 
     metadata = read_batch_metadata("cleanup")
     assert "file.txt" in metadata.get("files", {})
+def test_start_clears_batch_review_state_left_outside_session(paged_batch_repo, monkeypatch, capsys):
+    _force_one_change_per_page(monkeypatch)
+    command_stop()
+    capsys.readouterr()
+    subprocess.run(["git", "restore", "file.txt"], check=True, capture_output=True)
+
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    assert read_last_file_review_state() is not None
+
+    live_file = paged_batch_repo / "live.txt"
+    live_file.write_text("live 1\nlive 2\n")
+    subprocess.run(["git", "add", "live.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Add live file"], check=True, capture_output=True)
+    live_file.write_text("live changed\nlive 2\n")
+
+    command_start(quiet=True)
+
+    assert read_last_file_review_state() is None
+    assert get_selected_change_file_path() == "live.txt"
+
+    command_include_line("1")
+
+    captured = capsys.readouterr()
+    assert "Included line(s): 1" in captured.err

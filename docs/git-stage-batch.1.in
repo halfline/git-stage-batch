@@ -90,10 +90,15 @@ Reprint the cached "selected" hunk.
 Show all changes from one file. Without PATH, uses the selected hunk's file.
 .TP
 .B \-\-files \fIPATTERN\fR...
-Show all changes from files matched by Git-style patterns.
+Show files matched by Git-style patterns.
 Patterns use Git's ignore matcher semantics, including ordered \fB!\fR exclusions.
-When multiple files are shown, only the final displayed file remains selected
-for later \fB\-\-line\fR operations.
+When multiple files match, prints a navigational file list and does not leave
+a hidden selected file for later bare actions.
+.TP
+.B \-\-page \fIPAGES\fR, \-\-pages \fIPAGES\fR
+Show one or more file-review pages, such as \fB2\fR, \fB3-4\fR, or
+\fBall\fR. Requires \fB\-\-file\fR, or \fB\-\-files\fR resolving to exactly
+one file. Cannot be combined with \fB\-\-line\fR or \fB\-\-porcelain\fR.
 .TP
 .B \-\-porcelain
 Exit silently with status code only (0 if hunk exists, 1 if no hunk).

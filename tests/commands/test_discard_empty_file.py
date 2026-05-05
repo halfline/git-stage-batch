@@ -6,8 +6,12 @@ import pytest
 
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.batch import read_file_from_batch
 from git_stage_batch.batch.operations import create_batch
+from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.git import get_git_repository_root_path
+from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
 @pytest.fixture
@@ -90,3 +94,23 @@ class TestDiscardEmptyFile:
             check=True
         )
         assert not ls_result.stdout.strip(), "File should not be in index"
+
+    def test_discard_empty_deleted_file_to_batch(self, temp_git_repo):
+        """Discarding an empty text deletion to batch should restore the file locally."""
+        empty_file = temp_git_repo / "empty.txt"
+        empty_file.write_bytes(b"")
+        subprocess.run(["git", "add", "empty.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add empty file"], check=True, capture_output=True)
+        empty_file.unlink()
+
+        ensure_state_directory_exists()
+        initialize_abort_state()
+        create_batch("delete-batch", "Test batch for empty deletion")
+
+        command_discard_to_batch("delete-batch", line_ids=None, file="empty.txt", quiet=True)
+
+        file_meta = read_batch_metadata("delete-batch")["files"]["empty.txt"]
+        assert file_meta["change_type"] == "deleted"
+        assert read_file_from_batch("delete-batch", "empty.txt") is None
+        assert empty_file.exists()
+        assert empty_file.read_bytes() == b""

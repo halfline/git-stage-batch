@@ -36,10 +36,20 @@ from ..batch.state_refs import (
     get_batch_content_ref_name,
     sync_batch_state_refs,
 )
-from ..batch.storage import add_binary_file_to_batch, _build_realized_content, _update_batch_commit
+from ..batch.storage import (
+    add_binary_file_to_batch,
+    _build_realized_content,
+    _remove_file_from_batch_commit,
+    _update_batch_commit,
+)
 from ..batch.validation import batch_exists, validate_batch_name
 from ..core.line_selection import format_line_ids
 from ..core.models import BinaryFileChange
+from ..core.text_lifecycle import (
+    TextFileChangeType,
+    normalized_text_change_type,
+    sifted_empty_text_path_change_type,
+)
 from ..exceptions import BatchMetadataError, exit_with_error
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents
@@ -93,6 +103,7 @@ def add_sifted_text_file_to_batch(
     target_content: bytes,
     ownership: BatchOwnership,
     file_mode: str = "100644",
+    change_type: str | None = None,
 ) -> None:
     """Persist a sifted text file into a batch.
 
@@ -126,16 +137,23 @@ def add_sifted_text_file_to_batch(
     if "files" not in metadata:
         metadata["files"] = {}
 
-    metadata["files"][file_path] = {
+    text_change_type = normalized_text_change_type(change_type)
+    file_metadata = {
         "batch_source_commit": batch_source_commit,
         **ownership.to_metadata_dict(),
         "mode": file_mode,
     }
+    if text_change_type != TextFileChangeType.MODIFIED:
+        file_metadata["change_type"] = text_change_type.value
+    metadata["files"][file_path] = file_metadata
 
     metadata_path = get_batch_metadata_file_path(batch_name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
-    _update_batch_commit(batch_name, file_path, target_blob_sha, file_mode)
+    if text_change_type == TextFileChangeType.DELETED:
+        _remove_file_from_batch_commit(batch_name, file_path)
+    else:
+        _update_batch_commit(batch_name, file_path, target_blob_sha, file_mode)
 
 
 
@@ -234,6 +252,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                         target_content=result["target_content"],
                         ownership=result["ownership"],
                         file_mode=file_meta.get("mode", "100644"),
+                        change_type=result.get("change_type"),
                     )
     except MergeError as e:
         if dest_created and batch_exists(dest_batch):
@@ -322,6 +341,7 @@ def _perform_atomic_in_place_sift(
                     target_content=result["target_content"],
                     ownership=result["ownership"],
                     file_mode=file_meta.get("mode", "100644"),
+                    change_type=result.get("change_type"),
                 )
 
         temp_commit = run_git_command(["rev-parse", get_batch_content_ref_name(temp_batch_name)], check=False)
@@ -423,6 +443,7 @@ def _compute_sifted_text_file(
     target content itself.
     """
     batch_source_commit = file_meta["batch_source_commit"]
+    change_type = normalized_text_change_type(file_meta.get("change_type"))
 
     batch_source_result = run_git_command(
         ["show", f"{batch_source_commit}:{file_path}"],
@@ -461,7 +482,9 @@ def _compute_sifted_text_file(
         source_ownership,
     )
 
-    if working_content == target_content:
+    target_exists = change_type != TextFileChangeType.DELETED
+    working_exists = full_path.exists()
+    if target_exists == working_exists and working_content == target_content:
         return None
 
     new_ownership = build_ownership_from_working_to_target_delta(
@@ -469,7 +492,18 @@ def _compute_sifted_text_file(
         target_content=target_content,
     )
     if new_ownership is None or new_ownership.is_empty():
-        return None
+        result_change_type = sifted_empty_text_path_change_type(
+            change_type,
+            target_exists=target_exists,
+            working_exists=working_exists,
+            target_content=target_content,
+            ownership_is_empty=True,
+        )
+        if result_change_type == TextFileChangeType.MODIFIED:
+            return None
+        new_ownership = BatchOwnership(claimed_lines=[], deletions=[])
+    else:
+        result_change_type = change_type
 
     _validate_sifted_text_file_result(
         target_content=target_content,
@@ -481,6 +515,7 @@ def _compute_sifted_text_file(
         "type": "text",
         "ownership": new_ownership,
         "target_content": target_content,
+        "change_type": result_change_type.value,
     }
 
 

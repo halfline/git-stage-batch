@@ -24,6 +24,16 @@ class HunkHeader:
             return max(self.old_start, 0)
         return max(self.old_start - 1, 0)
 
+    def new_prefix_line_count(self) -> int:
+        """Return the number of new-file lines before this hunk applies.
+
+        In deletion-only hunks, unified diff uses new_start as the anchor
+        before the deleted lines rather than as the first changed new line.
+        """
+        if self.new_len == 0:
+            return max(self.new_start, 0)
+        return max(self.new_start - 1, 0)
+
 
 @dataclass
 class SingleHunkPatch:

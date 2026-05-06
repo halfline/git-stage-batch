@@ -7,7 +7,7 @@ Thank you for your interest in contributing!
 This project uses [uv](https://docs.astral.sh/uv/) for development workflow and [Meson](https://mesonbuild.com/) as the build backend.
 
 **Requirements:**
-- Python 3.13+
+- Python 3.10+
 - uv (for development)
 - meson and ninja-build (install via your system package manager)
 

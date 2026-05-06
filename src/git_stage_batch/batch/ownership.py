@@ -9,7 +9,13 @@ from ..core.line_selection import format_line_ids, parse_line_selection
 from ..data.batch_sources import create_batch_source_commit
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
-from ..utils.git import create_git_blob, get_git_repository_root_path, read_git_blob, run_git_command
+from ..utils.git import (
+    create_git_blob,
+    get_git_repository_root_path,
+    read_git_blob,
+    read_git_blobs_as_bytes,
+    run_git_command,
+)
 from .match import match_lines
 from .merge import _apply_presence_constraints
 
@@ -39,11 +45,19 @@ class DeletionClaim:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> DeletionClaim:
+    def from_dict(
+        cls,
+        data: dict,
+        blob_contents: dict[str, bytes] | None = None,
+    ) -> DeletionClaim:
         """Deserialize from metadata dictionary."""
         anchor_line = data.get("after_source_line")
         blob_sha = data["blob"]
-        blob_content = b"".join(read_git_blob(blob_sha))
+        blob_content = (
+            blob_contents[blob_sha]
+            if blob_contents is not None and blob_sha in blob_contents
+            else b"".join(read_git_blob(blob_sha))
+        )
         content_lines = blob_content.splitlines(keepends=True)
         return cls(anchor_line=anchor_line, content_lines=content_lines)
 
@@ -112,8 +126,12 @@ class BatchOwnership:
     @classmethod
     def from_metadata_dict(cls, data: dict) -> BatchOwnership:
         """Create from metadata dictionary."""
+        deletion_metadata = data.get("deletions", [])
+        blob_contents = read_git_blobs_as_bytes(
+            d["blob"] for d in deletion_metadata if "blob" in d
+        )
         deletions = [
-            DeletionClaim.from_dict(d) for d in data.get("deletions", [])
+            DeletionClaim.from_dict(d, blob_contents) for d in deletion_metadata
         ]
         replacement_units = [
             ReplacementUnit.from_dict(d)

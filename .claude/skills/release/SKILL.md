@@ -2,7 +2,7 @@
 name: release
 description: Cut a new release — bump VERSION, build, open a PR, merge, tag, push, upload to GitHub and PyPI.
 whenToUse: Use this when the user wants to cut, publish, or ship a new release of the project.
-allowed-tools: Bash(git *), Bash(gh *), Bash(uv build), Bash(uv publish), Bash(cat VERSION), Bash(ls dist/), Bash(rm -rf dist/), Read, Write, Edit
+allowed-tools: Bash(git *), Bash(gh *), Bash(uv run pytest *), Bash(uv build), Bash(uv publish), Bash(cat VERSION), Bash(ls dist/), Bash(rm -rf dist/), Read, Write, Edit
 user-invocable: true
 ---
 
@@ -15,7 +15,7 @@ Ask the user for the new version number if they have not already provided one. T
 Before starting, verify:
 1. The working tree is clean (`git status --short` produces no output).
 2. You are on the `main` branch.
-3. All tests pass (`uv run pytest`).
+3. All tests pass (`uv run pytest -n auto`).
 
 If any check fails, stop and report the problem.
 

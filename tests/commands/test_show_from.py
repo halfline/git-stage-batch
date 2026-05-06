@@ -275,6 +275,42 @@ class TestCommandShowFromBatch:
         assert rendered is not None
         assert len(calls) == 1
 
+    def test_show_from_reuses_line_mapping_across_mergeability_probes(self, temp_git_repo, monkeypatch):
+        """Rendering should not rebuild source/working alignment for every unit."""
+
+        (temp_git_repo / "file.txt").write_text("one\nkeep\ntwo\nend\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        create_batch("multi-unit-batch")
+        add_file_to_batch(
+            "multi-unit-batch",
+            "file.txt",
+            BatchOwnership(claimed_lines=["1,3"], deletions=[]),
+            "100644",
+        )
+
+        original_hunk_match_lines = hunk_tracking.match_lines
+        original_merge_match_lines = merge_module.match_lines
+        calls = []
+
+        def counting_hunk_match_lines(*args, **kwargs):
+            calls.append("hunk")
+            return original_hunk_match_lines(*args, **kwargs)
+
+        def counting_merge_match_lines(*args, **kwargs):
+            calls.append("merge")
+            return original_merge_match_lines(*args, **kwargs)
+
+        monkeypatch.setattr(hunk_tracking, "match_lines", counting_hunk_match_lines)
+        monkeypatch.setattr(merge_module, "match_lines", counting_merge_match_lines)
+
+        rendered = render_batch_file_display("multi-unit-batch", "file.txt")
+
+        assert rendered is not None
+        assert len(rendered.review_action_groups) == 2
+        assert calls == ["hunk"]
+
     def test_show_from_multi_file_list_renders_each_file_once(self, temp_git_repo, monkeypatch, capsys):
         """Showing a multi-file batch file list should render each file once."""
 
@@ -293,16 +329,24 @@ class TestCommandShowFromBatch:
 
         original_render = hunk_tracking.render_batch_file_display
         rendered_files = []
+        probe_flags = []
 
-        def counting_render(batch_name, file_path, metadata=None):
+        def counting_render(batch_name, file_path, metadata=None, *, probe_mergeability=True):
             rendered_files.append(file_path)
-            return original_render(batch_name, file_path, metadata=metadata)
+            probe_flags.append(probe_mergeability)
+            return original_render(
+                batch_name,
+                file_path,
+                metadata=metadata,
+                probe_mergeability=probe_mergeability,
+            )
 
         monkeypatch.setattr(show_from_module, "render_batch_file_display", counting_render)
 
         command_show_from_batch("multi-file-batch")
 
         assert rendered_files == ["file1.txt", "file2.txt"]
+        assert probe_flags == [False, False]
         captured = capsys.readouterr()
         assert "── matched files" in captured.out
 

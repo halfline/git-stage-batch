@@ -43,6 +43,7 @@ from git_stage_batch.exceptions import CommandError
 from git_stage_batch.core.line_selection import format_line_ids
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange, RenderedBatchDisplay, ReviewActionGroup
 from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.output.colors import Colors
 from git_stage_batch.output.file_review import build_file_review_model, make_file_review_state, print_file_review
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -937,7 +938,7 @@ def test_pathless_include_line_rejects_partial_replacement_selection(paged_file_
     _force_one_change_per_page(monkeypatch)
     command_show(file="file.txt", page="1")
     captured = capsys.readouterr()
-    assert "select together:" in captured.out
+    assert "Change 1/3   lines 1–2   2-line group" in captured.out
 
     state = read_last_file_review_state()
     assert state is not None
@@ -1194,7 +1195,7 @@ def test_show_file_opens_near_selected_hunk_by_line_span(paged_file_repo, monkey
     command_show(file="file.txt")
 
     captured = capsys.readouterr()
-    assert "Showing page 2 of 3" in captured.out
+    assert "file.txt  ·  file vs HEAD  ·  page 2/3" in captured.out
     assert "Showing the area around the change you were viewing." in captured.out
     state = read_last_file_review_state()
     assert state is not None
@@ -1207,8 +1208,12 @@ def test_show_from_batch_file_page_uses_gutter_ids_in_output_and_state(paged_bat
     command_show_from_batch("cleanup", file="file.txt", page="1")
 
     captured = capsys.readouterr()
-    assert "Changes: batch cleanup" in captured.out
-    assert "git-stage-batch include --from cleanup --file file.txt" in captured.out
+    assert "file.txt  ·  cleanup  ·  page 1/3  ·  change 1/3" in captured.out
+    assert "file.txt  ·  page 1/3  ·  change 1/3" in captured.out
+    assert "include  git-stage-batch include --from cleanup --line" in captured.out
+    assert "git-stage-batch include --from cleanup --line" in captured.out
+    assert "all      git-stage-batch show --from cleanup --file file.txt --page all" in captured.out
+    assert "git-stage-batch show --from cleanup --file file.txt --page all" in captured.out
     assert "[#1]" in captured.out
     state = read_last_file_review_state()
     assert state is not None
@@ -1908,8 +1913,7 @@ def test_show_from_batch_file_defaults_to_page_review_and_persists_state(paged_b
     command_show_from_batch("cleanup", file="file.txt")
 
     captured = capsys.readouterr()
-    assert "Changes: batch cleanup" in captured.out
-    assert "Showing page 1 of 3" in captured.out
+    assert "file.txt  ·  cleanup  ·  page 1/3  ·  change 1/3" in captured.out
     state = read_last_file_review_state()
     assert state is not None
     assert state.source == "batch"
@@ -1991,6 +1995,95 @@ def test_batch_review_model_keeps_unselectable_changed_rows(capsys):
     assert "unmergeable" in captured.out
 
 
+def test_file_review_rows_use_diff_colors(capsys, monkeypatch):
+    """Page-aware reviews should color rows like hunk display."""
+    line_changes = LineLevelChange(
+        path="file.txt",
+        header=HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1),
+        lines=[
+            LineEntry(
+                id=1,
+                kind="-",
+                old_line_number=1,
+                new_line_number=None,
+                text_bytes=b"old",
+                text="old",
+            ),
+            LineEntry(
+                id=2,
+                kind="+",
+                old_line_number=None,
+                new_line_number=1,
+                text_bytes=b"new",
+                text="new",
+            ),
+        ],
+    )
+    model = build_file_review_model(line_changes)
+    monkeypatch.setattr(Colors, "enabled", lambda: True)
+
+    print_file_review(
+        model,
+        shown_pages=(1,),
+        source_label="Changes: working tree",
+        page_spec="all",
+        source=ReviewSource.FILE_VS_HEAD,
+    )
+
+    captured = capsys.readouterr()
+    assert f"{Colors.GRAY}[#1]{Colors.RESET}" in captured.out
+    assert f"{Colors.RED} - old{Colors.RESET}" in captured.out
+    assert f"{Colors.GREEN} + new{Colors.RESET}" in captured.out
+    assert (
+        f"{Colors.BOLD}file.txt  ·  working tree  ·  page 1/1  ·  "
+        f"change 1/1  ·  lines 1–2{Colors.RESET}"
+    ) in captured.out
+    assert (
+        f"{Colors.CYAN}include{Colors.RESET}  "
+        f"git-stage-batch {Colors.BOLD}include{Colors.RESET} "
+        f"--line {Colors.BOLD}1-2{Colors.RESET}"
+    ) in captured.out
+def test_oversized_review_change_splits_without_partial_actions(capsys, monkeypatch):
+    from git_stage_batch.output import file_review
+
+    lines = [
+        LineEntry(
+            id=index,
+            kind="+",
+            old_line_number=None,
+            new_line_number=index,
+            text_bytes=f"line {index}".encode(),
+            text=f"line {index}",
+        )
+        for index in range(1, 9)
+    ]
+    line_changes = LineLevelChange(
+        path="file.txt",
+        header=HunkHeader(old_start=1, old_len=0, new_start=1, new_len=8),
+        lines=lines,
+    )
+    monkeypatch.setattr(file_review, "_body_budget", lambda: 6)
+
+    model = build_file_review_model(line_changes)
+
+    assert len(model.pages) == 2
+    assert model.changes[0].first_page == 1
+    assert model.changes[0].last_page == 2
+
+    print_file_review(
+        model,
+        shown_pages=(1,),
+        source_label="Changes: working tree",
+        page_spec="1",
+        source=ReviewSource.FILE_VS_HEAD,
+    )
+
+    captured = capsys.readouterr()
+    assert "file.txt  ·  working tree  ·  page 1/2  ·  change 1/1  ·  lines 1–4" in captured.out
+    assert "Change 1/1   lines 1–4   4-line partial group" in captured.out
+    assert "No complete change is actionable from this page." in captured.out
+    assert "git-stage-batch include --line" not in captured.out
+
 def test_batch_review_model_splits_visible_runs_around_hidden_rows(capsys):
     line_changes = LineLevelChange(
         path="file.txt",
@@ -2038,9 +2131,9 @@ def test_batch_review_model_splits_visible_runs_around_hidden_rows(capsys):
     )
 
     captured = capsys.readouterr()
-    assert "Change 1 of 3 · select: --line 1" in captured.out
-    assert "Change 2 of 3 · not currently selectable" in captured.out
-    assert "Change 3 of 3 · select: --line 2" in captured.out
+    assert "Change 1/3   lines 1   1-line change" in captured.out
+    assert "Change 2/3   not currently selectable" in captured.out
+    assert "Change 3/3   lines 2   1-line change" in captured.out
     hidden_rows = [
         line
         for line in captured.out.splitlines()

@@ -187,6 +187,42 @@ class TestBuildTargetIndexContent:
 
         assert result == "line1\nline2\n"
 
+    def test_insertion_only_hunk_keeps_anchor_line(self):
+        """Zero-length old ranges insert after the old start line."""
+        header = HunkHeader(2, 0, 3, 2)
+        lines = [
+            LineEntry(1, "+", None, 3, text_bytes=b"inserted", text="inserted"),
+            LineEntry(2, "+", None, 4, text_bytes=b"", text=""),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_text = "line1\n\nline3\n"
+
+        result = build_target_index_content_with_selected_lines(
+            line_changes,
+            {1, 2},
+            base_text,
+        )
+
+        assert result == "line1\n\ninserted\n\nline3\n"
+
+    def test_insertion_only_hunk_keeps_anchor_line_bytes(self):
+        """Bytes-preserving insertion staging should keep the anchor line."""
+        header = HunkHeader(2, 0, 3, 2)
+        lines = [
+            LineEntry(1, "+", None, 3, text_bytes=b"inserted", text="inserted"),
+            LineEntry(2, "+", None, 4, text_bytes=b"", text=""),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"line1\n\nline3\n"
+
+        result = build_target_index_content_bytes_with_selected_lines(
+            line_changes,
+            {1, 2},
+            base_content,
+        )
+
+        assert result == b"line1\n\ninserted\n\nline3\n"
+
     def test_preserves_trailing_newline(self):
         """Test that trailing newline is preserved from base."""
         header = HunkHeader(1, 1, 1, 2)

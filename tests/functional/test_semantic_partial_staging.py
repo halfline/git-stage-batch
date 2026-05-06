@@ -90,6 +90,54 @@ def test_semantic_partial_staging_pure_addition(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "base\nfoo\n"
 
 
+def test_semantic_partial_staging_pure_addition_preserves_blank_anchor(functional_repo):
+    _commit_file(
+        functional_repo,
+        "CONTRIBUTING.md",
+        "# Contributing\n"
+        "\n"
+        "```bash\n"
+        "uv run pytest -n auto\n"
+        "```\n"
+        "\n"
+        "## Commit Message Guidelines\n",
+    )
+    (functional_repo / "CONTRIBUTING.md").write_text(
+        "# Contributing\n"
+        "\n"
+        "```bash\n"
+        "uv run pytest -n auto\n"
+        "```\n"
+        "\n"
+        "Use the xdist form (`-n auto`) for full-suite runs.\n"
+        "\n"
+        "## Commit Message Guidelines\n"
+    )
+
+    git_stage_batch("start", "-U0")
+    git_stage_batch("include", "--line", "1-2")
+
+    assert _index_content(functional_repo, "CONTRIBUTING.md") == (
+        "# Contributing\n"
+        "\n"
+        "```bash\n"
+        "uv run pytest -n auto\n"
+        "```\n"
+        "\n"
+        "Use the xdist form (`-n auto`) for full-suite runs.\n"
+        "\n"
+        "## Commit Message Guidelines\n"
+    )
+    result = subprocess.run(
+        ["git", "diff", "--", "CONTRIBUTING.md"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout == ""
+
+
 def test_semantic_partial_staging_pure_deletion(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\nc\n")
     (functional_repo / "file.txt").write_text("a\nc\n")

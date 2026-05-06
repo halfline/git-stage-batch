@@ -71,7 +71,7 @@ Tests interactive/TUI mode:
 
 ```bash
 # Run all functional tests
-uv run pytest tests/functional/
+uv run pytest -n auto tests/functional/
 
 # Run specific test file
 uv run pytest tests/functional/test_basic_workflow.py
@@ -104,10 +104,8 @@ uv run pytest tests/functional/test_status.py::TestStatusCommand::test_status_af
 
 ## Current Status
 
-**Status & Interactive Tests**: 45/45 passing ✅
-**Other Functional Tests**: Some failures (expected - catching real issues)
-
-The failing tests are **valuable** - they're catching actual bugs and edge cases that need fixing.
+The functional suite is expected to pass. Treat failures as release blockers
+unless a test is explicitly marked as an expected failure.
 
 ## Fixtures
 

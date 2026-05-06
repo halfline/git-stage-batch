@@ -311,7 +311,7 @@ def build_target_working_tree_content_with_discarded_lines(
     working_lines = working_text.splitlines()
     output_lines: list[str] = []
 
-    working_pointer = line_changes.header.new_start - 1  # 0-based
+    working_pointer = max(line_changes.header.new_start - 1, 0)
     working_line_count = len(working_lines)
 
     def push_output(line: str) -> None:
@@ -326,12 +326,19 @@ def build_target_working_tree_content_with_discarded_lines(
             push_output(working_lines[working_pointer])
             working_pointer += 1
 
+    def copy_remaining_lines_before_deletion(index: int) -> None:
+        for next_entry in line_changes.lines[index + 1:]:
+            if next_entry.new_line_number is not None:
+                copy_unchanged_lines_before(next_entry.new_line_number)
+                return
+        copy_unchanged_lines_before(working_line_count + 1)
+
     # Copy lines before the hunk
     for index in range(0, min(working_pointer, working_line_count)):
         push_output(working_lines[index])
 
     # Process hunk lines
-    for line_entry in line_changes.lines:
+    for index, line_entry in enumerate(line_changes.lines):
         is_gap_line = (
             line_entry.kind == " "
             and line_entry.old_line_number is None
@@ -347,6 +354,7 @@ def build_target_working_tree_content_with_discarded_lines(
                 working_pointer += 1
         elif line_entry.kind == "-":
             if line_entry.id in discard_ids:
+                copy_remaining_lines_before_deletion(index)
                 push_output(line_entry.text)
         elif line_entry.kind == "+":
             copy_unchanged_lines_before(line_entry.new_line_number)
@@ -373,7 +381,7 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
     working_lines = working_content.splitlines()
     output_lines: list[bytes] = []
 
-    working_pointer = line_changes.header.new_start - 1
+    working_pointer = max(line_changes.header.new_start - 1, 0)
     working_line_count = len(working_lines)
 
     def push_output(line: bytes) -> None:
@@ -388,10 +396,17 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
             push_output(working_lines[working_pointer])
             working_pointer += 1
 
+    def copy_remaining_lines_before_deletion(index: int) -> None:
+        for next_entry in line_changes.lines[index + 1:]:
+            if next_entry.new_line_number is not None:
+                copy_unchanged_lines_before(next_entry.new_line_number)
+                return
+        copy_unchanged_lines_before(working_line_count + 1)
+
     for index in range(0, min(working_pointer, working_line_count)):
         push_output(working_lines[index])
 
-    for line_entry in line_changes.lines:
+    for index, line_entry in enumerate(line_changes.lines):
         is_gap_line = (
             line_entry.kind == " "
             and line_entry.old_line_number is None
@@ -407,6 +422,7 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
                 working_pointer += 1
         elif line_entry.kind == "-":
             if line_entry.id in discard_ids:
+                copy_remaining_lines_before_deletion(index)
                 push_output(line_entry.text_bytes)
         elif line_entry.kind == "+":
             copy_unchanged_lines_before(line_entry.new_line_number)

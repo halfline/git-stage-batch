@@ -27,11 +27,13 @@ from ..data.file_review_state import (
 from ..data.hunk_tracking import SelectedChangeKind
 from ..exceptions import CommandError
 from ..i18n import _
+from .colors import Colors
 
 DEFAULT_NON_TTY_REVIEW_LINES = 80
 DEFAULT_REVIEW_WIDTH = 80
-REVIEW_HEADER_LINES = 4
-REVIEW_FOOTER_LINES = 12
+REVIEW_HEADER_LINES = 3
+REVIEW_FOOTER_LINES = 9
+PAGER_EXIT_MARGIN_LINES = 1
 MINIMUM_BODY_LINES = 8
 
 
@@ -527,47 +529,78 @@ def build_file_review_model(
     ]
 
     body_budget = _body_budget()
-    pages: list[list[ReviewChange]] = []
-    current_page: list[ReviewChange] = []
+    page_fragments: list[list[tuple[ReviewChange, tuple[LineEntry, ...], bool, bool]]] = []
+    current_page: list[tuple[ReviewChange, tuple[LineEntry, ...], bool, bool]] = []
     current_height = 0
     for change in changes:
         change_height = len(change.rows) + 2
-        if current_page and current_height + change_height > body_budget:
-            pages.append(current_page)
-            current_page = []
-            current_height = 0
-        current_page.append(change)
-        current_height += change_height
-    if current_page:
-        pages.append(current_page)
-    if not pages:
-        pages = [[]]
+        if change_height <= body_budget or body_budget <= 2:
+            if current_page and current_height + change_height > body_budget:
+                page_fragments.append(current_page)
+                current_page = []
+                current_height = 0
+            current_page.append((change, change.rows, True, True))
+            current_height += change_height
+            continue
 
-    paged_changes: list[ReviewChange] = []
-    for page_number, page_changes in enumerate(pages, start=1):
-        for change in page_changes:
-            paged_changes.append(
-                ReviewChange(
-                    index=change.index,
-                    total=change.total,
-                    path=change.path,
-                    hunk_header=change.hunk_header,
-                    old_start=change.old_start,
-                    old_end=change.old_end,
-                    new_start=change.new_start,
-                    new_end=change.new_end,
-                    rows=change.rows,
-                    display_ids=change.display_ids,
-                    selection_ids=change.selection_ids,
-                    select_as=change.select_as,
-                    reason=change.reason,
-                    is_oversized=(len(change.rows) + 2) > body_budget,
-                    note=change.note,
-                    actions=change.actions,
-                    first_page=page_number,
-                    last_page=page_number,
+        rows_per_fragment = max(1, body_budget - 2)
+        row_chunks = [
+            tuple(change.rows[index:index + rows_per_fragment])
+            for index in range(0, len(change.rows), rows_per_fragment)
+        ]
+        for chunk_index, row_chunk in enumerate(row_chunks):
+            fragment_height = len(row_chunk) + 2
+            if current_page:
+                page_fragments.append(current_page)
+                current_page = []
+            current_page.append(
+                (
+                    change,
+                    row_chunk,
+                    chunk_index == 0,
+                    chunk_index == len(row_chunks) - 1,
                 )
             )
+            current_height = fragment_height
+            if chunk_index < len(row_chunks) - 1:
+                page_fragments.append(current_page)
+                current_page = []
+                current_height = 0
+    if current_page:
+        page_fragments.append(current_page)
+    if not page_fragments:
+        page_fragments = [[]]
+
+    change_pages: dict[int, list[int]] = {}
+    for page_number, fragments in enumerate(page_fragments, start=1):
+        for change, _rows, _is_first, _is_last in fragments:
+            change_pages.setdefault(change.index, []).append(page_number)
+
+    paged_changes: list[ReviewChange] = []
+    for change in changes:
+        pages_for_change = change_pages.get(change.index, [1])
+        paged_changes.append(
+            ReviewChange(
+                index=change.index,
+                total=change.total,
+                path=change.path,
+                hunk_header=change.hunk_header,
+                old_start=change.old_start,
+                old_end=change.old_end,
+                new_start=change.new_start,
+                new_end=change.new_end,
+                rows=change.rows,
+                display_ids=change.display_ids,
+                selection_ids=change.selection_ids,
+                select_as=change.select_as,
+                reason=change.reason,
+                is_oversized=(len(change.rows) + 2) > body_budget,
+                note=change.note,
+                actions=change.actions,
+                first_page=min(pages_for_change),
+                last_page=max(pages_for_change),
+            )
+        )
     by_index = {change.index: change for change in paged_changes}
     final_pages = tuple(
         FileReviewPage(
@@ -575,14 +608,14 @@ def build_file_review_model(
             changes=tuple(
                 ReviewChangeFragment(
                     change=by_index[change.index],
-                    rows=by_index[change.index].rows,
-                    is_first_fragment=True,
-                    is_last_fragment=True,
+                    rows=rows,
+                    is_first_fragment=is_first,
+                    is_last_fragment=is_last,
                 )
-                for change in page_changes
+                for change, rows, is_first, is_last in fragments
             ),
         )
-        for page_number, page_changes in enumerate(pages, start=1)
+        for page_number, fragments in enumerate(page_fragments, start=1)
     )
     return FileReviewModel(
         line_changes=line_changes,
@@ -596,21 +629,16 @@ def build_file_review_model(
 def _body_budget() -> int:
     size = _review_terminal_size()
     estimated_footer_lines = _estimate_file_review_footer_height()
-    return max(MINIMUM_BODY_LINES, size.lines - REVIEW_HEADER_LINES - estimated_footer_lines)
+    reserved_lines = REVIEW_HEADER_LINES + estimated_footer_lines + PAGER_EXIT_MARGIN_LINES
+    return max(MINIMUM_BODY_LINES, size.lines - reserved_lines)
 
 
 def _review_terminal_size():
-    if not sys.stdout.isatty():
-        return os.terminal_size((DEFAULT_REVIEW_WIDTH, DEFAULT_NON_TTY_REVIEW_LINES))
     return shutil.get_terminal_size(fallback=(DEFAULT_REVIEW_WIDTH, DEFAULT_NON_TTY_REVIEW_LINES))
 
 
-def _estimate_file_review_footer_height(complete_change_count: int = 3) -> int:
-    base_lines = 9
-    if complete_change_count == 0:
-        return base_lines
-    individual_lines = min(complete_change_count, 5) + 2
-    return min(18, base_lines + individual_lines)
+def _estimate_file_review_footer_height(_complete_change_count: int = 3) -> int:
+    return REVIEW_FOOTER_LINES
 
 
 def resolve_default_review_pages(
@@ -666,9 +694,11 @@ def _pages_containing_review_display_ids(
 ) -> tuple[int, ...]:
     """Return review pages containing all of the requested display IDs."""
     if model.display_id_by_selection_id is None:
-        display_id_for_row = lambda row: row.id
+        def display_id_for_row(row: LineEntry) -> int | None:
+            return row.id
     else:
-        display_id_for_row = lambda row: model.display_id_by_selection_id.get(row.id)
+        def display_id_for_row(row: LineEntry) -> int | None:
+            return model.display_id_by_selection_id.get(row.id)
 
     wanted = set(display_ids)
     found: set[int] = set()
@@ -693,9 +723,11 @@ def _change_index_containing_review_display_ids(
 ) -> int:
     """Return a stable nearby change index for supplemental review selections."""
     if model.display_id_by_selection_id is None:
-        display_id_for_row = lambda row: row.id
+        def display_id_for_row(row: LineEntry) -> int | None:
+            return row.id
     else:
-        display_id_for_row = lambda row: model.display_id_by_selection_id.get(row.id)
+        def display_id_for_row(row: LineEntry) -> int | None:
+            return model.display_id_by_selection_id.get(row.id)
 
     wanted = set(display_ids)
     for page in model.pages:
@@ -841,6 +873,47 @@ def make_file_review_state(
     )
 
 
+def _display_ids_for_rows(
+    rows: tuple[LineEntry, ...],
+    display_id_by_selection_id: dict[int, int] | None,
+) -> tuple[int, ...]:
+    display_ids: list[int] = []
+    seen: set[int] = set()
+    for row in rows:
+        if row.id is None:
+            continue
+        display_id = (
+            row.id
+            if display_id_by_selection_id is None else
+            display_id_by_selection_id.get(row.id)
+        )
+        if display_id is None or display_id in seen:
+            continue
+        display_ids.append(display_id)
+        seen.add(display_id)
+    return tuple(display_ids)
+
+
+def _line_spec_for_display_ids(display_ids: tuple[int, ...]) -> str:
+    if not display_ids:
+        return "-"
+    return _display_line_spec(format_line_ids(list(display_ids)))
+
+
+def _change_spec_for_fragments(fragments: list[ReviewChangeFragment]) -> str:
+    change_ids: list[int] = []
+    seen: set[int] = set()
+    for fragment in fragments:
+        change_id = fragment.change.index
+        if change_id in seen:
+            continue
+        change_ids.append(change_id)
+        seen.add(change_id)
+    if not change_ids:
+        return "-"
+    return _display_line_spec(format_line_ids(change_ids))
+
+
 def print_file_review(
     model: FileReviewModel,
     *,
@@ -850,16 +923,34 @@ def print_file_review(
     command_source_args: str = "",
     source: ReviewSource,
     batch_name: str | None = None,
+    note: str | None = None,
     opened_near_selected_hunk: bool = False,
 ) -> None:
     """Print a page-aware file review."""
     page_count = len(model.pages)
     shown_page_set = set(shown_pages)
-    shown_changes = [
-        fragment.change
+    shown_fragments = [
+        fragment
         for page in shown_pages
         for fragment in model.pages[page - 1].changes
     ]
+    shown_changes = []
+    seen_change_indexes: set[int] = set()
+    for fragment in shown_fragments:
+        if fragment.change.index in seen_change_indexes:
+            continue
+        shown_changes.append(fragment.change)
+        seen_change_indexes.add(fragment.change.index)
+    shown_display_ids = []
+    seen_display_ids: set[int] = set()
+    for fragment in shown_fragments:
+        for display_id in _display_ids_for_rows(fragment.rows, model.display_id_by_selection_id):
+            if display_id in seen_display_ids:
+                continue
+            shown_display_ids.append(display_id)
+            seen_display_ids.add(display_id)
+    shown_line_spec = _line_spec_for_display_ids(tuple(shown_display_ids))
+    shown_change_spec = _change_spec_for_fragments(shown_fragments)
     complete_changes = [
         change
         for change in shown_changes
@@ -870,9 +961,13 @@ def print_file_review(
     _print_header(
         model.line_changes.path,
         source_label=source_label,
+        source=source,
+        batch_name=batch_name,
+        note=note,
         shown_pages=shown_pages,
         page_count=page_count,
-        shown_changes=shown_changes,
+        shown_change_spec=shown_change_spec,
+        shown_line_spec=shown_line_spec,
         total_changes=len(model.changes),
         opened_near_selected_hunk=opened_near_selected_hunk,
     )
@@ -885,30 +980,38 @@ def print_file_review(
         for fragment in model.pages[page - 1].changes:
             change = fragment.change
             print()
-            selection_spec = change.select_as or format_line_ids(list(change.display_ids))
-            heading_action = _review_change_heading_action(change)
-            span_text = (
-                _(" · large change")
-                if change.is_oversized
-                else ""
+            fragment_display_ids = _display_ids_for_rows(
+                fragment.rows,
+                model.display_id_by_selection_id,
+            )
+            selection_spec = (
+                _line_spec_for_display_ids(fragment_display_ids)
+                if fragment_display_ids else
+                change.select_as or "-"
             )
             if change.display_ids:
+                line_count = len(fragment_display_ids) if fragment_display_ids else len(change.display_ids)
+                size_label = (
+                    _("1-line change")
+                    if line_count == 1 else
+                    _("{count}-line partial group").format(count=line_count)
+                    if not fragment.is_first_fragment or not fragment.is_last_fragment else
+                    _("{count}-line group").format(count=line_count)
+                )
                 print(
-                    _("Change {index} of {total} · {action}: --line {lines}{span}").format(
+                    _("Change {index}/{total}   lines {lines}   {size}").format(
                         index=change.index,
                         total=change.total,
-                        action=heading_action,
                         lines=selection_spec,
-                        span=span_text,
+                        size=size_label,
                     )
                 )
             else:
                 print(
-                    _("Change {index} of {total} · {note}{span}").format(
+                    _("Change {index}/{total}   {note}").format(
                         index=change.index,
                         total=change.total,
                         note=change.note or _("not currently selectable"),
-                        span=span_text,
                     )
                 )
             _print_rows(
@@ -922,7 +1025,8 @@ def print_file_review(
         model.line_changes.path,
         shown_pages=shown_pages,
         page_count=page_count,
-        shown_changes=shown_changes,
+        shown_change_spec=shown_change_spec,
+        shown_line_spec=shown_line_spec,
         complete_changes=complete_changes,
         total_changes=len(model.changes),
         page_spec=page_spec,
@@ -946,47 +1050,84 @@ def _review_change_heading_action(change: ReviewChange) -> str:
     return _("select")
 
 
+def _display_line_spec(line_spec: str) -> str:
+    return line_spec.replace("-", "–")
+
+
+def _page_summary(shown_pages: tuple[int, ...], page_count: int) -> str:
+    page_word = _("page") if len(shown_pages) == 1 else _("pages")
+    return _("{page_word} {pages}/{page_count}").format(
+        page_word=page_word,
+        pages=_display_line_spec(format_line_ids(list(shown_pages))),
+        page_count=page_count,
+    )
+
+
+def _change_summary(change_spec: str, total_changes: int) -> str:
+    change_word = _("change") if "," not in change_spec and "–" not in change_spec else _("changes")
+    return _("{change_word} {changes}/{total}").format(
+        change_word=change_word,
+        changes=change_spec,
+        total=total_changes,
+    )
+
+
+def _review_source_summary(
+    source: ReviewSource,
+    batch_name: str | None,
+    source_label: str,
+) -> str:
+    if source == ReviewSource.BATCH and batch_name:
+        return batch_name
+    prefix = _("Changes: ")
+    if source_label.startswith(prefix):
+        return source_label[len(prefix):]
+    return source_label
+
+
 def _print_header(
     path: str,
     *,
     source_label: str,
+    source: ReviewSource,
+    batch_name: str | None,
+    note: str | None,
     shown_pages: tuple[int, ...],
     page_count: int,
-    shown_changes: list[ReviewChange],
+    shown_change_spec: str,
+    shown_line_spec: str,
     total_changes: int,
     opened_near_selected_hunk: bool,
 ) -> None:
-    print(f"── {path} " + "─" * 60)
-    print(source_label)
-    page_word = _("page") if len(shown_pages) == 1 else _("pages")
-    page_text = format_line_ids(list(shown_pages))
-    change_ids = [change.index for change in shown_changes]
-    change_text = format_line_ids(change_ids) if change_ids else ""
-    print(
-        _("Showing {page_word} {pages} of {page_count} · shown changes {changes} of {total}").format(
-            page_word=page_word,
-            pages=page_text,
-            page_count=page_count,
-            changes=change_text or "-",
-            total=total_changes,
+    use_color = Colors.enabled()
+    status = "  ·  ".join(
+        (
+            path,
+            _review_source_summary(source, batch_name, source_label),
+            _page_summary(shown_pages, page_count),
+            _change_summary(shown_change_spec, total_changes),
+            _("lines {lines}").format(lines=shown_line_spec),
         )
     )
-    if opened_near_selected_hunk:
-        print(_("Showing the area around the change you were viewing."))
+    if use_color:
+        print(f"{Colors.BOLD}{status}{Colors.RESET}")
     else:
-        _print_page_coverage(shown_pages, page_count)
-    print("─" * 72)
-
-
-def _print_page_coverage(shown_pages: tuple[int, ...], page_count: int) -> None:
-    shown = set(shown_pages)
-    all_pages = set(range(1, page_count + 1))
-    if shown == all_pages:
-        print(_("Entire file shown."))
-        return
-    missing = sorted(all_pages - shown)
-    if missing:
-        print(_("Pages {pages} are not shown.").format(pages=format_line_ids(missing)))
+        print(status)
+    if opened_near_selected_hunk:
+        message = _("Showing the area around the change you were viewing.")
+        print(f"{Colors.GRAY}{message}{Colors.RESET}" if use_color else message)
+    if note:
+        note_lines = note.splitlines()
+        if len(note_lines) == 1:
+            note_text = _("Note: {note}").format(note=note_lines[0])
+            print(f"{Colors.GRAY}{note_text}{Colors.RESET}" if use_color else note_text)
+        else:
+            note_label = _("Note:")
+            print(f"{Colors.GRAY}{note_label}{Colors.RESET}" if use_color else note_label)
+            for line in note_lines:
+                print(f"    {line}")
+    rule = "─" * 78
+    print(f"{Colors.GRAY}{rule}{Colors.RESET}" if use_color else rule)
 
 
 def _maximum_display_id_digit_count(model: FileReviewModel) -> int:
@@ -1004,8 +1145,16 @@ def _print_rows(
     display_id_by_selection_id: dict[int, int] | None,
     allowed_selection_ids: set[int] | None = None,
 ) -> None:
+    use_color = Colors.enabled()
     label_width = maximum_digits + 3
     for line in rows:
+        is_gap_line = (
+            line.id is None
+            and line.kind == " "
+            and line.old_line_number is None
+            and line.new_line_number is None
+            and line.source_line is None
+        )
         if line.id is None or (
             allowed_selection_ids is not None
             and line.id not in allowed_selection_ids
@@ -1020,7 +1169,62 @@ def _print_rows(
         else:
             label = f"[#{display_id}]"
         padding = " " * max(0, label_width - len(label))
-        print(f"{label}{padding} {line.kind} {line.text}")
+        row_text = f" {line.kind} {line.text}"
+        if not use_color:
+            print(f"{label}{padding}{row_text}")
+            continue
+
+        if label:
+            print(f"{Colors.GRAY}{label}{Colors.RESET}{padding}", end="")
+        else:
+            print(padding, end="")
+
+        if line.kind == "+":
+            print(f"{Colors.GREEN}{row_text}{Colors.RESET}")
+        elif line.kind == "-":
+            print(f"{Colors.RED}{row_text}{Colors.RESET}")
+        elif is_gap_line:
+            print(f"{Colors.GRAY}{row_text}{Colors.RESET}")
+        else:
+            print(row_text)
+
+
+def _style_footer_command(command: str) -> str:
+    try:
+        tokens = shlex.split(command, posix=False)
+    except ValueError:
+        return command
+
+    dynamic_value_options = {"--file", "--from", "--line", "--page", "--to"}
+    if tokens[:2] == ["git", "stage-batch"]:
+        action_index = 2
+    elif tokens[:1] == ["git-stage-batch"]:
+        action_index = 1
+    else:
+        action_index = -1
+    styled_tokens: list[str] = []
+    bold_next = False
+    for index, token in enumerate(tokens):
+        should_bold = bold_next or index == action_index
+        if should_bold:
+            styled_tokens.append(f"{Colors.BOLD}{token}{Colors.RESET}")
+        else:
+            styled_tokens.append(token)
+        bold_next = token in dynamic_value_options
+    return " ".join(styled_tokens)
+
+
+def _invoked_command_prefix() -> str:
+    executable = os.path.basename(sys.argv[0])
+    if executable == "git" and len(sys.argv) > 1 and sys.argv[1] == "stage-batch":
+        return "git stage-batch"
+    return "git-stage-batch"
+
+
+def _display_footer_command(command: str) -> str:
+    if command.startswith("git-stage-batch "):
+        return _invoked_command_prefix() + command[len("git-stage-batch"):]
+    return command
 
 
 def _print_footer(
@@ -1028,7 +1232,8 @@ def _print_footer(
     *,
     shown_pages: tuple[int, ...],
     page_count: int,
-    shown_changes: list[ReviewChange],
+    shown_change_spec: str,
+    shown_line_spec: str,
     complete_changes: list[ReviewChange],
     total_changes: int,
     page_spec: str,
@@ -1038,18 +1243,8 @@ def _print_footer(
 ) -> None:
     shown = set(shown_pages)
     is_entire = shown == set(range(1, page_count + 1))
-    marker = "end" if max(shown_pages) == page_count else "more"
-    print()
-    print(f"── {marker} " + "─" * 63)
-    page_label = "page" if len(shown_pages) == 1 else "pages"
-    print(
-        f"{path} · {page_label} {format_line_ids(list(shown_pages))}/{page_count} "
-        f"· shown changes {format_line_ids([c.index for c in shown_changes])} of {total_changes}"
-    )
-    if not is_entire and max(shown_pages) < page_count:
-        print(
-            f"Next: git-stage-batch show{command_source_args} --file {_quote(path)} --page {max(shown_pages) + 1}"
-        )
+    hints: list[tuple[str, str]] = []
+    navigation_hints: list[tuple[str, str]] = []
 
     review_state = _footer_review_state(
         path=path,
@@ -1076,25 +1271,40 @@ def _print_footer(
 
     if primary_changes:
         combined_selection = ",".join(format_line_ids(list(change.display_ids)) for change in primary_changes)
-        print()
-        print(_("Complete changes shown:"))
         include_line_command = (
             _line_action_command("include", review_state, line_spec=combined_selection, pathless_line=True)
             if review_state is not None else
             None
         )
-        print(f"  {include_line_command or f'git-stage-batch include{command_source_args} --line {combined_selection}'}")
-        print()
-        if command_source_args:
-            print(_("Same selection also works with:"))
-            discard_line_command = (
-                _line_action_command("discard", review_state, line_spec=combined_selection, pathless_line=True)
+        hints.append(
+            (
+                _("include"),
+                include_line_command or f"git-stage-batch include{command_source_args} --line {combined_selection}",
+            )
+        )
+        if not command_source_args:
+            skip_line_command = (
+                _line_action_command("skip", review_state, line_spec=combined_selection, pathless_line=True)
                 if review_state is not None else
                 None
             )
-            print(f"  {discard_line_command or f'git-stage-batch discard{command_source_args} --line {combined_selection}'}")
-        else:
-            print(_("Also works with: skip, discard"))
+            hints.append(
+                (
+                    _("skip"),
+                    skip_line_command or f"git-stage-batch skip --line {combined_selection}",
+                )
+            )
+        discard_line_command = (
+            _line_action_command("discard", review_state, line_spec=combined_selection, pathless_line=True)
+            if review_state is not None else
+            None
+        )
+        hints.append(
+            (
+                _("discard"),
+                discard_line_command or f"git-stage-batch discard{command_source_args} --line {combined_selection}",
+            )
+        )
         if source == ReviewSource.BATCH and reset_changes:
             reset_selection = ",".join(format_line_ids(list(change.display_ids)) for change in reset_changes)
             reset_line_command = _line_action_command(
@@ -1103,18 +1313,12 @@ def _print_footer(
                 line_spec=reset_selection,
                 pathless_line=True,
             )
-            print(f"  {reset_line_command or f'git-stage-batch reset{command_source_args} --line {reset_selection}'}")
-        if len(primary_changes) <= 5:
-            print()
-            print(_("Individual changes:"))
-            for change in primary_changes:
-                selection_spec = format_line_ids(list(change.display_ids))
-                include_change_command = (
-                    _line_action_command("include", review_state, line_spec=selection_spec, pathless_line=True)
-                    if review_state is not None else
-                    None
+            hints.append(
+                (
+                    _("reset"),
+                    reset_line_command or f"git-stage-batch reset{command_source_args} --line {reset_selection}",
                 )
-                print(f"  {include_change_command or f'git-stage-batch include{command_source_args} --line {selection_spec}'}")
+            )
     elif reset_changes:
         reset_selection = ",".join(format_line_ids(list(change.display_ids)) for change in reset_changes)
         reset_line_command = _line_action_command(
@@ -1123,25 +1327,68 @@ def _print_footer(
             line_spec=reset_selection,
             pathless_line=True,
         )
-        print()
-        print(_("Resettable changes shown:"))
-        print(f"  {reset_line_command or f'git-stage-batch reset{command_source_args} --line {reset_selection}'}")
+        hints.append(
+            (
+                _("reset"),
+                reset_line_command or f"git-stage-batch reset{command_source_args} --line {reset_selection}",
+            )
+        )
     elif not is_entire:
-        print()
-        print(_("No complete change is actionable from this page."))
+        hints.append((_("No complete change is actionable from this page."), ""))
+
+    if not is_entire and max(shown_pages) < page_count:
+        navigation_hints.append(
+            (
+                _("next"),
+                f"git-stage-batch show{command_source_args} --file {_quote(path)} --page {max(shown_pages) + 1}",
+            )
+        )
 
     if is_entire:
-        print()
-        print(_("Actions:"))
-        print(f"  git-stage-batch include{command_source_args} --file {_quote(path)}")
-        if not command_source_args:
-            print("  git-stage-batch include")
+        hints.append(
+            (
+                _("include"),
+                f"git-stage-batch include{command_source_args} --file {_quote(path)}",
+            )
+        )
     else:
+        navigation_hints.append(
+            (
+                _("all"),
+                f"git-stage-batch show{command_source_args} --file {_quote(path)} --page all",
+            )
+        )
+
+    hints.extend(navigation_hints)
+    if hints:
         print()
-        print(_("All:") + f" git-stage-batch show{command_source_args} --file {_quote(path)} --page all")
+        use_color = Colors.enabled()
+        rule = "─" * 78
+        print(f"{Colors.GRAY}{rule}{Colors.RESET}" if use_color else rule)
+        status = "  ·  ".join(
+            (
+                path,
+                _page_summary(shown_pages, page_count),
+                _change_summary(shown_change_spec, total_changes),
+                _("lines {lines}").format(lines=shown_line_spec),
+            )
+        )
+        if use_color:
+            print(f"{Colors.BOLD}{status}{Colors.RESET}")
+        else:
+            print(status)
         print()
-        print(_("Whole file:"))
-        print(f"  git-stage-batch include{command_source_args} --file {_quote(path)}")
+        action_width = max(len(action) for action, command in hints if command)
+        for action, command in hints:
+            if not command:
+                print(action)
+                continue
+            display_command = _display_footer_command(command)
+            action_text = action.ljust(action_width)
+            if use_color:
+                print(f"{Colors.CYAN}{action_text}{Colors.RESET}  {_style_footer_command(display_command)}")
+            else:
+                print(f"{action_text}  {display_command}")
 
 
 def _footer_review_state(

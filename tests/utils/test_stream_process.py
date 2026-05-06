@@ -698,6 +698,43 @@ class TestCwdAndEnv:
 
         assert output_data == b"absolute\n"
 
+    def test_command_receives_current_pwd_when_parent_env_is_stale(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Test direct child PWD matches the process cwd."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("PWD", "/stale/logical/path")
+
+        result = run_command([
+            sys.executable,
+            "-c",
+            "import os; print(os.environ['PWD'])",
+        ])
+
+        assert result.stdout == f"{os.getcwd()}\n"
+
+    def test_env_parameter_pwd_is_copied_and_normalized(self, tmp_path, monkeypatch):
+        """Test caller env mappings are not mutated while normalizing PWD."""
+        monkeypatch.chdir(tmp_path)
+        child_env = {
+            "PATH": os.environ.get("PATH", ""),
+            "PWD": "/stale/logical/path",
+        }
+
+        result = run_command(
+            [
+                sys.executable,
+                "-c",
+                "import os; print(os.environ['PWD'])",
+            ],
+            env=child_env,
+        )
+
+        assert result.stdout == f"{os.getcwd()}\n"
+        assert child_env["PWD"] == "/stale/logical/path"
+
     def test_env_parameter(self):
         """Test that env parameter works."""
         events = list(stream_command(

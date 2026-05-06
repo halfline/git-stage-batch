@@ -70,7 +70,7 @@ This runs the tool without permanently installing it.
 
 ## Requirements
 
-- **Python 3.13+**
+- **Python 3.10+**
 - No other dependencies (pure stdlib!)
 
 ## Verify Installation

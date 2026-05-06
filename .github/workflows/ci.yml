@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.13"]
+        python-version: ["3.10"]
       fail-fast: false
 
     steps:
@@ -23,11 +23,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Set up venv
-        run: uv venv
-
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
+
+      - name: Set up venv
+        run: uv venv --python ${{ matrix.python-version }}
 
       - name: Install meson
         run: uv pip install meson-python
@@ -50,11 +50,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Set up venv
-        run: uv venv
-
       - name: Set up Python
-        run: uv python install 3.13
+        run: uv python install 3.10
+
+      - name: Set up venv
+        run: uv venv --python 3.10
 
       - name: Install meson
         run: uv pip install meson-python

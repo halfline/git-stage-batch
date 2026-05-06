@@ -224,6 +224,10 @@ def _apply_batch_source_mapping(
         elif line.kind == "-":
             # Deletion: use last known batch source line as insertion position
             source_line = last_source_line
+            if source_line is None and line.old_line_number is not None and line.old_line_number > 1:
+                source_line = mapping.get_source_line_from_target_line(
+                    line.old_line_number - 1
+                )
 
         new_lines.append(
             LineEntry(
@@ -262,6 +266,8 @@ def _fill_source_from_working_tree(line_changes: LineLevelChange) -> LineLevelCh
                 last_source_line = source_line
         elif line.kind == "-":
             source_line = last_source_line
+            if source_line is None and line.old_line_number is not None and line.old_line_number > 1:
+                source_line = line.old_line_number - 1
 
         new_lines.append(
             LineEntry(

@@ -729,6 +729,28 @@ def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(mo
     ]
 
 
+def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkeypatch):
+    """discard --to --files should suppress per-file selected-change display."""
+    mock_command = Mock(return_value=1)
+    mock_advance = Mock()
+    mock_show = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_discard_to_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "advance_to_next_change", mock_advance)
+    monkeypatch.setattr(argument_parser, "show_selected_change", mock_show)
+    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py", "notes.txt"])
+
+    args = parse_command_line(["discard", "--to", "batch", "--files", "*.py"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    assert mock_command.call_args_list == [
+        call("batch", file="foo.py", quiet=True, advance=False),
+        call("batch", file="bar.py", quiet=True, advance=False),
+    ]
+    mock_advance.assert_called_once_with()
+    mock_show.assert_called_once_with()
+
+
 def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
     """Apply should dispatch once per file resolved from --files."""
     mock_command = Mock()

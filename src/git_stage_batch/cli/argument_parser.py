@@ -253,6 +253,48 @@ def _skip_each_resolved_file(files: list[str]) -> None:
     show_selected_change()
 
 
+def _discard_to_batch_each_resolved_file(batch_name: str, files: list[str]) -> None:
+    """Save a multi-file live scope to a batch and report one aggregate summary."""
+    total_hunks = 0
+    discarded_files: list[str] = []
+
+    for file_path in files:
+        discarded_hunks = commands.command_discard_to_batch(
+            batch_name,
+            file=file_path,
+            quiet=True,
+            advance=False,
+        )
+        if discarded_hunks > 0:
+            total_hunks += discarded_hunks
+            discarded_files.append(file_path)
+
+    if total_hunks == 0:
+        print(_("No hunks saved to batch from matched files."), file=sys.stderr)
+        return
+
+    advance_to_next_change()
+
+    if len(discarded_files) == 1:
+        file_summary = discarded_files[0]
+    else:
+        file_summary = ngettext(
+            "{count} file",
+            "{count} files",
+            len(discarded_files),
+        ).format(count=len(discarded_files))
+
+    print(
+        ngettext(
+            "✓ Saved {count} hunk from {files} to batch '{batch}' and discarded it",
+            "✓ Saved {count} hunks from {files} to batch '{batch}' and discarded them",
+            total_hunks,
+        ).format(count=total_hunks, files=file_summary, batch=batch_name),
+        file=sys.stderr,
+    )
+    show_selected_change()
+
+
 def _resolve_live_file_scope(
     file_arg: str | None,
     file_patterns: list[str] | None,
@@ -816,11 +858,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             )
         elif args.to_batch:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-            _run_for_each_file(
-                resolved_live_scope,
-                lambda file: commands.command_discard_to_batch(args.to_batch, args.line_ids, file),
-                line_ids=args.line_ids,
-            )
+            if isinstance(resolved_live_scope, list) and args.line_ids is None:
+                _discard_to_batch_each_resolved_file(args.to_batch, resolved_live_scope)
+            else:
+                _run_for_each_file(
+                    resolved_live_scope,
+                    lambda file: commands.command_discard_to_batch(args.to_batch, args.line_ids, file),
+                    line_ids=args.line_ids,
+                )
         elif args.line_ids:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
             if isinstance(resolved_live_scope, list):

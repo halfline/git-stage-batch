@@ -610,6 +610,26 @@ class TestShowFileFlag:
         result = run_git_command(["diff", "--cached", "--name-only"])
         assert result.stdout.splitlines() == ["alpha.txt", "beta.txt", "gamma.txt"]
 
+    def test_discard_to_batch_files_reports_aggregate_scope_once(self, multi_file_repo, capsys):
+        """Discard --to --files should not render the next selected hunk per file."""
+        command_start()
+        capsys.readouterr()
+
+        args = parse_command_line(["discard", "--to", "saved", "--files", "*.txt"], quiet=True)
+        assert args is not None
+        args.func(args)
+
+        captured = capsys.readouterr()
+        assert "✓ Saved 3 hunks from 3 files to batch 'saved' and discarded them" in captured.err
+        assert captured.out.count("alpha.txt") == 0
+        assert captured.out.count("beta.txt") == 0
+        assert captured.out.count("gamma.txt") == 0
+
+        result = run_git_command(["diff", "--name-only"])
+        assert result.stdout == ""
+        metadata = read_batch_metadata("saved")
+        assert sorted(metadata["files"]) == ["alpha.txt", "beta.txt", "gamma.txt"]
+
     def test_include_files_can_restage_manually_unstaged_file_in_same_session(self, multi_file_repo, capsys):
         """Manual unstaging should not leave file-scoped include blocked in-session."""
         command_start()

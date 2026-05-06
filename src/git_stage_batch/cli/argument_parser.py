@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 import sys
 import tempfile
-from collections.abc import Callable
-from contextlib import nullcontext
+from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from enum import Enum
 from importlib import resources
@@ -18,6 +19,7 @@ from ..batch.validation import batch_exists
 from .. import commands
 from ..batch.query import read_batch_metadata
 from ..data.hunk_tracking import advance_to_next_change, show_selected_change
+from ..data.undo import undo_checkpoint
 from ..exceptions import CommandError
 from ..i18n import _, ngettext
 from ..utils.command import run_command
@@ -212,15 +214,46 @@ def _run_for_each_file(
     callback: Callable[[str | None], None],
     *,
     line_ids: str | None = None,
+    undo_operation: str | None = None,
+    worktree_paths: Sequence[str] | None = None,
 ) -> None:
     """Run a callback once per resolved file argument."""
     if file_scope.is_multiple and line_ids is not None:
         raise CommandError(_("Cannot use --lines with multiple files."))
     if file_scope.is_multiple:
-        for file in file_scope.files:
-            callback(file)
+        checkpoint = (
+            _multi_file_undo_checkpoint(
+                undo_operation,
+                file_scope.files,
+                worktree_paths=worktree_paths,
+            )
+            if undo_operation is not None else
+            nullcontext()
+        )
+        with checkpoint:
+            for file in file_scope.files:
+                callback(file)
         return
     callback(file_scope.optional_file())
+
+
+def _format_multi_file_operation(command: str, files: Sequence[str]) -> str:
+    """Return a readable undo operation for a resolved multi-file command."""
+    return f"{command} --files {' '.join(shlex.quote(file) for file in files)}"
+
+
+def _multi_file_undo_checkpoint(
+    command: str,
+    files: Sequence[str],
+    *,
+    worktree_paths: Sequence[str] | None = None,
+) -> AbstractContextManager[None]:
+    """Create one undo checkpoint for a resolved multi-file command."""
+    paths = list(worktree_paths) if worktree_paths is not None else None
+    return undo_checkpoint(
+        _format_multi_file_operation(command, files),
+        worktree_paths=paths,
+    )
 
 
 def _include_each_resolved_file(files: list[str]) -> None:
@@ -228,15 +261,16 @@ def _include_each_resolved_file(files: list[str]) -> None:
     total_hunks = 0
     staged_files: list[str] = []
 
-    for file_path in files:
-        staged_hunks = commands.command_include_file(
-            file_path,
-            quiet=True,
-            advance=False,
-        )
-        if staged_hunks > 0:
-            total_hunks += staged_hunks
-            staged_files.append(file_path)
+    with _multi_file_undo_checkpoint("include", files):
+        for file_path in files:
+            staged_hunks = commands.command_include_file(
+                file_path,
+                quiet=True,
+                advance=False,
+            )
+            if staged_hunks > 0:
+                total_hunks += staged_hunks
+                staged_files.append(file_path)
 
     if total_hunks == 0:
         print(_("No hunks staged from matched files."), file=sys.stderr)
@@ -269,15 +303,16 @@ def _skip_each_resolved_file(files: list[str]) -> None:
     total_hunks = 0
     skipped_files: list[str] = []
 
-    for file_path in files:
-        skipped_hunks = commands.command_skip_file(
-            file_path,
-            quiet=True,
-            advance=False,
-        )
-        if skipped_hunks > 0:
-            total_hunks += skipped_hunks
-            skipped_files.append(file_path)
+    with _multi_file_undo_checkpoint("skip", files):
+        for file_path in files:
+            skipped_hunks = commands.command_skip_file(
+                file_path,
+                quiet=True,
+                advance=False,
+            )
+            if skipped_hunks > 0:
+                total_hunks += skipped_hunks
+                skipped_files.append(file_path)
 
     if total_hunks == 0:
         print(_("No hunks skipped from matched files."), file=sys.stderr)
@@ -310,16 +345,18 @@ def _discard_to_batch_each_resolved_file(batch_name: str, files: list[str]) -> N
     total_hunks = 0
     discarded_files: list[str] = []
 
-    for file_path in files:
-        discarded_hunks = commands.command_discard_to_batch(
-            batch_name,
-            file=file_path,
-            quiet=True,
-            advance=False,
-        )
-        if discarded_hunks > 0:
-            total_hunks += discarded_hunks
-            discarded_files.append(file_path)
+    operation = f"discard --to {shlex.quote(batch_name)}"
+    with _multi_file_undo_checkpoint(operation, files, worktree_paths=files):
+        for file_path in files:
+            discarded_hunks = commands.command_discard_to_batch(
+                batch_name,
+                file=file_path,
+                quiet=True,
+                advance=False,
+            )
+            if discarded_hunks > 0:
+                total_hunks += discarded_hunks
+                discarded_files.append(file_path)
 
     if total_hunks == 0:
         print(_("No hunks saved to batch from matched files."), file=sys.stderr)
@@ -747,6 +784,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 resolved_batch_scope,
                 lambda file: commands.command_include_from_batch(args.from_batch, args.line_ids, file),
                 line_ids=args.line_ids,
+                undo_operation=f"include --from {shlex.quote(args.from_batch)}",
+                worktree_paths=resolved_batch_scope.files,
             )
         elif args.to_batch:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
@@ -754,6 +793,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 resolved_live_scope,
                 lambda file: commands.command_include_to_batch(args.to_batch, args.line_ids, file),
                 line_ids=args.line_ids,
+                undo_operation=f"include --to {shlex.quote(args.to_batch)}",
             )
         elif args.line_ids:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
@@ -907,6 +947,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 resolved_batch_scope,
                 lambda file: commands.command_discard_from_batch(args.from_batch, args.line_ids, file),
                 line_ids=args.line_ids,
+                undo_operation=f"discard --from {shlex.quote(args.from_batch)}",
+                worktree_paths=resolved_batch_scope.files,
             )
         elif args.to_batch:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
@@ -917,6 +959,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     resolved_live_scope,
                     lambda file: commands.command_discard_to_batch(args.to_batch, args.line_ids, file),
                     line_ids=args.line_ids,
+                    undo_operation=f"discard --to {shlex.quote(args.to_batch)}",
+                    worktree_paths=resolved_live_scope.files,
                 )
         elif args.line_ids:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
@@ -925,7 +969,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         else:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
             if not resolved_live_scope.is_implicit:
-                _run_for_each_file(resolved_live_scope, commands.command_discard_file)
+                _run_for_each_file(
+                    resolved_live_scope,
+                    commands.command_discard_file,
+                    undo_operation="discard",
+                    worktree_paths=resolved_live_scope.files,
+                )
             else:
                 commands.command_discard()
 
@@ -1099,6 +1148,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 file=file,
             ),
             line_ids=args.line_ids if hasattr(args, "line_ids") else None,
+            undo_operation=f"apply --from {shlex.quote(args.from_batch)}",
+            worktree_paths=resolved_file_scope.files,
         )
 
     parser_apply.set_defaults(func=dispatch_apply)
@@ -1137,6 +1188,11 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     def dispatch_reset(args: argparse.Namespace) -> None:
         resolved_file_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+        command_parts = ["reset", "--from", shlex.quote(args.from_batch)]
+        if args.to_batch is not None:
+            command_parts.extend(["--to", shlex.quote(args.to_batch)])
+        if args.line_ids is not None:
+            command_parts.extend(["--line", shlex.quote(args.line_ids)])
         _run_for_each_file(
             resolved_file_scope,
             lambda file: commands.command_reset_from_batch(
@@ -1147,6 +1203,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 args.to_batch,
             ),
             line_ids=args.line_ids,
+            undo_operation=" ".join(command_parts),
         )
 
     parser_reset.set_defaults(func=dispatch_reset)

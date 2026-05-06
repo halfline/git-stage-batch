@@ -52,3 +52,20 @@ def test_main_acquires_session_lock_before_dispatch():
                         main_module.main()
 
     assert events == ["lock-enter", "dispatch", "lock-exit"]
+
+
+def test_main_handles_keyboard_interrupt_without_traceback(capsys):
+    """Ctrl-C should exit cleanly without Python's KeyboardInterrupt traceback."""
+    args = Namespace(working_directory=None)
+
+    with patch.object(sys, "argv", ["git-stage-batch", "show"]):
+        with patch.object(main_module, "parse_command_line", return_value=args):
+            with patch.object(main_module, "should_page_output", return_value=False):
+                with patch.object(main_module, "dispatch_args", side_effect=KeyboardInterrupt):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main_module.main()
+
+    assert exc_info.value.code == 130
+    captured = capsys.readouterr()
+    assert "Interrupted." in captured.err
+    assert "Traceback" not in captured.err

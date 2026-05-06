@@ -1209,6 +1209,8 @@ def test_show_from_batch_file_page_uses_gutter_ids_in_output_and_state(paged_bat
 
     captured = capsys.readouterr()
     assert "file.txt  ·  cleanup  ·  page 1/3  ·  change 1/3" in captured.out
+    assert "Note: Auto-created" in captured.out
+    assert "# Auto-created" not in captured.err
     assert "file.txt  ·  page 1/3  ·  change 1/3" in captured.out
     assert "include  git-stage-batch include --from cleanup --line" in captured.out
     assert "git-stage-batch include --from cleanup --line" in captured.out
@@ -2043,6 +2045,40 @@ def test_file_review_rows_use_diff_colors(capsys, monkeypatch):
         f"git-stage-batch {Colors.BOLD}include{Colors.RESET} "
         f"--line {Colors.BOLD}1-2{Colors.RESET}"
     ) in captured.out
+
+
+def test_file_review_multiline_note_is_part_of_header(capsys):
+    line_changes = LineLevelChange(
+        path="file.txt",
+        header=HunkHeader(old_start=1, old_len=0, new_start=1, new_len=1),
+        lines=[
+            LineEntry(
+                id=1,
+                kind="+",
+                old_line_number=None,
+                new_line_number=1,
+                text_bytes=b"new",
+                text="new",
+            ),
+        ],
+    )
+    model = build_file_review_model(line_changes)
+
+    print_file_review(
+        model,
+        shown_pages=(1,),
+        source_label="Changes: batch cleanup",
+        page_spec="all",
+        command_source_args=" --from cleanup",
+        source=ReviewSource.BATCH,
+        batch_name="cleanup",
+        note="first line\nsecond line",
+    )
+
+    captured = capsys.readouterr()
+    assert "Note:\n    first line\n    second line\n" in captured.out
+
+
 def test_oversized_review_change_splits_without_partial_actions(capsys, monkeypatch):
     from git_stage_batch.output import file_review
 
@@ -2083,6 +2119,7 @@ def test_oversized_review_change_splits_without_partial_actions(capsys, monkeypa
     assert "Change 1/1   lines 1–4   4-line partial group" in captured.out
     assert "No complete change is actionable from this page." in captured.out
     assert "git-stage-batch include --line" not in captured.out
+
 
 def test_batch_review_model_splits_visible_runs_around_hidden_rows(capsys):
     line_changes = LineLevelChange(

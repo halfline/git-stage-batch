@@ -509,7 +509,9 @@ def _is_claimed_run_structurally_coherent(
 def _apply_presence_constraints(
     source_lines: list[bytes],
     working_lines: list[bytes],
-    claimed_line_set: set[int]
+    claimed_line_set: set[int],
+    *,
+    source_to_working_mapping: LineMapping | None = None,
 ) -> list[RealizedEntry]:
     """Apply presence constraints: ensure all claimed lines exist in result.
 
@@ -525,9 +527,9 @@ def _apply_presence_constraints(
     Returns:
         Realized entries with all claimed lines present and provenance preserved
     """
-    if not claimed_line_set:
-        mapping = match_lines(source_lines, working_lines)
+    mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
 
+    if not claimed_line_set:
         result: list[RealizedEntry] = []
         for working_idx, working_line in enumerate(working_lines):
             source_line = mapping.get_source_line_from_target_line(working_idx + 1)
@@ -538,8 +540,6 @@ def _apply_presence_constraints(
                 is_claimed=False,
             ))
         return result
-
-    mapping = match_lines(source_lines, working_lines)
 
     present_claimed: dict[int, int] = {}
     missing_claimed: dict[int, bytes] = {}
@@ -707,13 +707,15 @@ def _satisfy_constraints(
     claimed_line_set: set[int],
     deletion_claims: list['DeletionClaim'],
     *,
-    strict: bool = True
+    strict: bool = True,
+    source_to_working_mapping: LineMapping | None = None,
 ) -> list[RealizedEntry]:
     """Apply presence and absence constraints until claimed lines survive."""
     realized_entries = _apply_presence_constraints(
         source_lines,
         working_lines,
-        claimed_line_set
+        claimed_line_set,
+        source_to_working_mapping=source_to_working_mapping,
     )
 
     realized_entries = _apply_absence_constraints(
@@ -1040,7 +1042,9 @@ def _suppress_at_boundary_for_realization(
 def merge_batch(
     batch_source_content: bytes,
     ownership: 'BatchOwnership',
-    working_content: bytes
+    working_content: bytes,
+    *,
+    source_to_working_mapping: LineMapping | None = None,
 ) -> bytes:
     """Constraint-based batch merge into working tree using structural provenance.
 
@@ -1081,6 +1085,8 @@ def merge_batch(
         batch_source_content: File content from batch source commit (bytes)
         ownership: BatchOwnership with presence and absence constraints
         working_content: Current working tree file content (bytes)
+        source_to_working_mapping: Optional precomputed alignment for
+            batch_source_content -> working_content.
 
     Returns:
         New working tree content with constraints applied (bytes)
@@ -1099,7 +1105,7 @@ def merge_batch(
     claimed_line_set = resolved.claimed_line_set
     deletion_claims = resolved.deletion_claims
 
-    mapping = match_lines(source_lines, working_lines)
+    mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
     _check_structural_validity(
         mapping,
         claimed_line_set,
@@ -1112,7 +1118,8 @@ def merge_batch(
         source_lines,
         working_lines,
         claimed_line_set,
-        deletion_claims
+        deletion_claims,
+        source_to_working_mapping=mapping,
     )
 
     return b"".join(entry.content for entry in realized_entries)

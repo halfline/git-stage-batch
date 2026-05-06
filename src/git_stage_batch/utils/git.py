@@ -267,6 +267,44 @@ def read_git_blob(blob_sha: str) -> Iterator[bytes]:
         raise RuntimeError(f"git cat-file failed with exit code {exit_code}: {stderr_text}")
 
 
+def read_git_blobs_as_bytes(blob_hashes: Iterable[str]) -> dict[str, bytes]:
+    """Read multiple git blobs with one cat-file process."""
+    unique_blob_hashes = list(dict.fromkeys(blob_hashes))
+    if not unique_blob_hashes:
+        return {}
+
+    payload = "".join(f"{blob_hash}\n" for blob_hash in unique_blob_hashes).encode("ascii")
+    result = run_command(
+        ["git", "cat-file", "--batch"],
+        [payload],
+        text_output=False,
+    )
+
+    data = result.stdout
+    blobs: dict[str, bytes] = {}
+    offset = 0
+    for requested_hash in unique_blob_hashes:
+        header_end = data.index(b"\n", offset)
+        header = data[offset:header_end].decode("ascii", errors="replace")
+        offset = header_end + 1
+        parts = header.split()
+        if len(parts) >= 2 and parts[1] == "missing":
+            continue
+        if len(parts) < 3 or parts[1] != "blob":
+            raise RuntimeError(f"Unexpected git cat-file --batch header: {header}")
+
+        object_hash = parts[0]
+        size = int(parts[2])
+        content = data[offset:offset + size]
+        offset += size
+        if offset < len(data) and data[offset:offset + 1] == b"\n":
+            offset += 1
+        blobs[requested_hash] = content
+        blobs[object_hash] = content
+
+    return blobs
+
+
 def read_git_blob_as_bytes(blob_hash: str) -> bytes | None:
     """Read a git blob object as bytes.
 

@@ -290,12 +290,16 @@ def command_show_from_batch(
         if binary_change is not None:
             entries.append(make_binary_file_review_list_entry(binary_change))
             continue
-        rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
+        rendered = render_batch_file_display(
+            batch_name,
+            file_path,
+            metadata=metadata,
+            probe_mergeability=False,
+        )
         if rendered is not None:
             entries.append(
                 make_file_review_list_entry(
                     rendered.line_changes,
-                    gutter_to_selection_id=rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id,
                 )
             )
 

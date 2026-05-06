@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from ..core.models import LineLevelChange
+from ..i18n import _
 from .colors import Colors
+
+
+def print_remaining_line_changes_header(file_path: str) -> None:
+    """Print a boundary before refreshed remaining line changes."""
+    print()
+    print(_("── remaining unstaged changes in {file} ──").format(file=file_path))
 
 
 def print_line_level_changes(line_changes: LineLevelChange, *, gutter_to_selection_id: dict[int, int] | None = None) -> None:

@@ -3,7 +3,15 @@
 import json
 from git_stage_batch.core.line_selection import parse_line_selection
 from git_stage_batch.commands.discard import command_discard_to_batch
-from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.commands.include import command_include
+from git_stage_batch.commands.show import command_show, command_show_file_list
+from git_stage_batch.data.file_review_state import read_last_file_review_state
+from git_stage_batch.data.hunk_tracking import (
+    SelectedChangeKind,
+    fetch_next_change,
+    get_selected_change_file_path,
+    read_selected_change_kind,
+)
 from git_stage_batch.exceptions import NoMoreHunks
 
 import subprocess
@@ -23,6 +31,7 @@ from git_stage_batch.utils.paths import (
     get_batch_claimed_hunks_file_path,
     get_batch_directory_path,
     get_batches_directory_path,
+    get_selected_change_clear_reason_file_path,
     get_session_batch_sources_file_path,
     get_state_directory_path,
 )
@@ -80,6 +89,69 @@ class TestCommandAgain:
         # Permanent files should be preserved
         assert journal.exists()
         assert abort_head.exists()
+
+    def test_again_clears_file_list_clear_reason(self, temp_git_repo):
+        """Again should make a fresh selection after a navigational file list."""
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+
+        command_start()
+        command_show_file_list(["README.md"])
+
+        assert read_selected_change_kind() is None
+        assert get_selected_change_clear_reason_file_path().exists()
+
+        command_again(quiet=True)
+
+        assert not get_selected_change_clear_reason_file_path().exists()
+        assert read_selected_change_kind() == SelectedChangeKind.HUNK
+        assert get_selected_change_file_path() == "README.md"
+
+    def test_again_clears_file_review_state(self, temp_git_repo):
+        """Again should not leave page-review state from the previous selected file."""
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+
+        command_start()
+        command_show(file="README.md", page="all")
+
+        assert read_last_file_review_state() is not None
+        assert read_selected_change_kind() == SelectedChangeKind.FILE
+
+        command_again(quiet=True)
+
+        assert read_last_file_review_state() is None
+        assert read_selected_change_kind() == SelectedChangeKind.HUNK
+        assert get_selected_change_file_path() == "README.md"
+
+    def test_again_clears_stale_binary_guard_for_fresh_pass(self, temp_git_repo):
+        """A stale binary selection should not survive an explicit fresh pass."""
+        binary_file = temp_git_repo / "asset.bin"
+        binary_file.write_bytes(b"\x00\x01\x02")
+        subprocess.run(["git", "add", "asset.bin"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add binary"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+        binary_file.write_bytes(b"\x00\x03\x04")
+
+        command_start()
+        command_show(file="asset.bin", porcelain=True)
+        subprocess.run(["git", "restore", "asset.bin"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        assert read_selected_change_kind() == SelectedChangeKind.BINARY
+
+        command_again(quiet=True)
+
+        assert read_selected_change_kind() == SelectedChangeKind.HUNK
+        assert get_selected_change_file_path() == "README.md"
+
+        command_include(quiet=True)
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert "M  README.md" in status
 
     def test_again_when_no_state_exists(self, temp_git_repo):
         """Test that again works when state directory gets recreated."""

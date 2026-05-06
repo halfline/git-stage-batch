@@ -10,9 +10,11 @@ from ..batch.merge import merge_batch
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.query import get_batch_commit_sha
 from ..batch.selection import (
+    resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
     select_batch_ownership_for_display_ids,
+    translate_batch_file_gutter_ids_to_selection_ids,
     translate_atomic_unit_error_to_gutter_ids,
 )
 from ..batch.validation import batch_exists
@@ -22,7 +24,13 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     selected_text_target_change_type,
 )
-from ..data.hunk_tracking import render_batch_file_display
+from ..data.file_review_state import (
+    FileReviewAction,
+    resolve_batch_source_action_scope,
+)
+from ..data.hunk_tracking import (
+    render_batch_file_display,
+)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError, BatchMetadataError
@@ -136,6 +144,15 @@ def command_apply_from_batch(
         patterns: Optional gitignore-style file patterns to filter batch files.
     """
     require_git_repository()
+    scope_resolution = resolve_batch_source_action_scope(
+        FileReviewAction.APPLY_FROM_BATCH,
+        command_name="apply",
+        batch_name=batch_name,
+        line_ids=line_ids,
+        file=file,
+        patterns=patterns,
+    )
+    file = scope_resolution.file
 
     # Check batch exists
     if not batch_exists(batch_name):
@@ -152,6 +169,8 @@ def command_apply_from_batch(
     if not all_files:
         exit_with_error(_("Batch '{name}' is empty").format(name=batch_name))
 
+    file = resolve_current_batch_binary_file_scope(batch_name, all_files, file, patterns, line_ids)
+
     # Determine which files to operate on
     files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
 
@@ -164,23 +183,19 @@ def command_apply_from_batch(
     if selected_ids:
         file_path_for_check = list(files.keys())[0]  # Single file context enforced above
         if files[file_path_for_check].get("file_type") == "binary":
-            exit_with_error(_("Cannot use --lines with binary files. Binary files must be applied as complete units."))
+            exit_with_error(_("Cannot use --lines with binary files. Apply the whole file instead."))
 
     # Translate gutter IDs to selection IDs if line selection is active
     selection_ids_to_apply = selected_ids
     rendered = None  # Store for error translation
     if selected_ids:
-        # Use pure render helper to get gutter ID mapping (no side effects)
         file_path_for_render = list(files.keys())[0]  # Single file context enforced above
-        rendered = render_batch_file_display(batch_name, file_path_for_render)
-        if rendered:
-            # Translate gutter IDs (what user sees) to selection IDs (internal)
-            selection_ids_to_apply = set()
-            for gutter_id in selected_ids:
-                if gutter_id in rendered.gutter_to_selection_id:
-                    selection_ids_to_apply.add(rendered.gutter_to_selection_id[gutter_id])
-                else:
-                    exit_with_error(_("Line ID {id} not found or not individually mergeable").format(id=gutter_id))
+        selection_ids_to_apply, rendered = translate_batch_file_gutter_ids_to_selection_ids(
+            batch_name,
+            file_path_for_render,
+            selected_ids,
+            FileReviewAction.APPLY_FROM_BATCH,
+        )
     operation_parts = ["apply", "--from", batch_name]
     if line_ids is not None:
         operation_parts.extend(["--line", line_ids])

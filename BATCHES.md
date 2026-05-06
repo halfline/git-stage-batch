@@ -44,7 +44,7 @@ newer code.
 
 Concretely, a batch can later:
 
-- stage its changes into the index
+- stage its changes into the index and working tree
 - apply its changes back to the working tree
 - discard its changes from the working tree
 - move or reset its claims
@@ -178,6 +178,7 @@ Per text file:
 - `deletions`
 - `replacement_units` (optional; omitted when empty)
 - `mode`
+- `change_type` (optional; `added` or `deleted` for whole-path lifecycle changes)
 
 Per binary file:
 
@@ -191,6 +192,10 @@ Per binary file:
 deletion indexes so replacement atomicity does not need to be rediscovered from
 display adjacency. The field is omitted when no explicit replacement units are
 stored.
+Text `change_type` is omitted for ordinary modified-file batches. It is only
+stored when a text batch owns the whole added path or the whole deleted path;
+deleted text paths are absent from the batch content tree just like deleted
+binary paths.
 
 ---
 
@@ -318,13 +323,14 @@ working tree right now?"
 
 The user-facing commands that consume this model fall into three groups:
 
-- commands that stage batch content into the index
+- commands that stage batch content into the index and working tree
 - commands that apply batch content to the working tree
 - commands that remove batch content from the working tree
 
 ### `include --from`
 
-`include --from <batch>` stages batch content into the index.
+`include --from <batch>` stages batch content into the index and writes it to
+the working tree.
 
 Implementation:
 
@@ -336,13 +342,14 @@ For each file, the command:
 1. reads batch metadata
 2. reads the file's batch source content
 3. optionally narrows ownership by display line IDs or file scope
-4. merges source constraints into current working-tree bytes with `merge_batch()`
-5. writes the result to the index
+4. merges source constraints into current index bytes with `merge_batch()`
+5. merges source constraints into current working-tree bytes with `merge_batch()`
+6. writes the merged targets to the index and working tree
 
 ### `apply --from`
 
 `apply --from <batch>` uses the same merge model, but writes the merged result
-to the working tree instead of the index.
+only to the working tree, leaving the index untouched.
 
 Implementation:
 
@@ -503,7 +510,14 @@ Two different mechanisms drive what the user sees:
 ownership using `build_display_lines_from_batch_source()` in
 `src/git_stage_batch/batch/display.py`.
 
-That reconstructed view contains:
+For a single file, the command caches that reconstructed view as a selected
+batch-file view and renders it through the page-aware file review output. For
+multiple files, `show --from <batch>` prints a navigational file list instead
+of caching one hidden selected file. Pathless or omitted-path actions after
+that list refuse until the user opens a specific file with
+`show --from <batch> --file <path>`.
+
+The reconstructed single-file view contains:
 
 - claimed lines
 - deleted lines represented from deletion claims
@@ -511,7 +525,28 @@ That reconstructed view contains:
 - ephemeral display IDs
 
 Those display IDs are not source line numbers. They are UI identifiers used for
-line-level batch operations.
+line-level batch operations. Batch display has two related line-ID spaces:
+
+- mergeable gutter IDs, used by historical line actions when there is no fresh
+  matching file review
+- review gutter IDs, used by page-aware file reviews
+
+The review gutter ID space can include resettable lines that are not currently
+mergeable into the working tree. Review selections therefore persist
+action-specific groups: `include --from`, `apply --from`, and `discard --from`
+only accept groups that are mergeable for that action, while `reset --from` can
+also accept reset-only groups.
+
+Page-aware batch reviews also persist short-lived safety state in
+`data.file_review_state`. That state records the batch name, file path, shown
+pages, complete action-specific review selections, and fingerprints of the
+selected batch view. Pathless line actions from batch commands, the
+corresponding omitted-path `--file` forms, and explicit `--file <path> --line`
+forms with a fresh matching review validate against this state so users cannot
+accidentally act on unshown pages, stale display IDs, or a selection that is not
+supported by the requested action. Whole-file batch actions may use the reviewed
+file only after a fresh full-file review; partial reviews refuse until all pages
+are shown or the file path is named explicitly.
 
 This is an important separation of concerns:
 

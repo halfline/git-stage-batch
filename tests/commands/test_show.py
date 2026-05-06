@@ -15,8 +15,10 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.show as show_module
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.data.hunk_tracking import get_selected_change_file_path
 from git_stage_batch.data.line_state import load_line_changes_from_state
 
 
@@ -55,6 +57,34 @@ class TestCommandShow:
         assert "README.md" in captured.out
         assert "New line added" in captured.out
         assert "[#1]" in captured.out  # Check for line ID annotation
+
+    def test_show_restores_previous_selection_when_hunk_is_fully_filtered(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """Invisible filtered traversal should not replace the last selection."""
+        a_file = temp_git_repo / "a.txt"
+        b_file = temp_git_repo / "b.txt"
+        a_file.write_text("a\n")
+        b_file.write_text("b\n")
+        subprocess.run(["git", "add", "a.txt", "b.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        a_file.write_text("a changed\n")
+        b_file.write_text("b changed\n")
+
+        command_start()
+        capsys.readouterr()
+        command_show(file="a.txt", porcelain=True)
+        assert get_selected_change_file_path() == "a.txt"
+
+        monkeypatch.setattr(show_module, "apply_line_level_batch_filter_to_cached_hunk", lambda: True)
+
+        command_show()
+
+        assert get_selected_change_file_path() == "a.txt"
 
     def test_show_no_changes(self, temp_git_repo, capsys):
         """Test that show displays message when no more hunks remain."""
@@ -237,6 +267,24 @@ class TestCommandShow:
             command_show(porcelain=True)
 
         assert exc_info.value.code == 1
+
+    def test_show_displays_binary_change_in_hunk_mode(self, temp_git_repo, capsys):
+        """Plain show should display binary changes instead of reporting no hunks."""
+        binary_file = temp_git_repo / "asset.bin"
+        binary_file.write_bytes(b"\x00\x01\x02")
+        subprocess.run(["git", "add", "asset.bin"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add binary"], check=True, cwd=temp_git_repo, capture_output=True)
+        binary_file.write_bytes(b"\x00\x03\x04")
+
+        ensure_state_directory_exists()
+        initialize_abort_state()
+
+        command_show()
+
+        captured = capsys.readouterr()
+        assert "asset.bin" in captured.out
+        assert "Binary file modified" in captured.out
+        assert "No more hunks to process" not in captured.err
 
     def test_show_file_preview_hides_gutter_ids_without_replacing_selection(self, temp_git_repo, capsys):
         """Non-selectable file previews should hide gutter IDs and preserve cached selection."""

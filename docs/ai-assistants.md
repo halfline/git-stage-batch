@@ -242,9 +242,9 @@ fi
 
 # Get structured status
 status=$(git-stage-batch status --porcelain)
-echo "$status" | jq '.selected_hunk'
-echo "$status" | jq '.remaining_line_ids'
-echo "$status" | jq '.blocked_hunks'
+echo "$status" | jq '.selected_change'
+echo "$status" | jq '.file_review'
+echo "$status" | jq '.progress.remaining'
 ```
 
 ## Tips for AI Configuration

@@ -8,6 +8,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch import create_batch
+from git_stage_batch.data.hunk_tracking import render_batch_file_display
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
@@ -62,6 +63,29 @@ class TestCommandDiscardFromBatch:
 
         captured = capsys.readouterr()
         assert "Discarded changes from batch" in captured.err
+
+    def test_discard_from_batch_partial_atomic_unit_shows_required_lines(self, temp_git_repo):
+        """Partial replacement selections should keep the atomic-selection guidance."""
+        test_file = temp_git_repo / "file.txt"
+        test_file.write_text("old value\nkeep\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("new value\nkeep\n")
+        command_start()
+        command_include_to_batch("test-batch", quiet=True)
+
+        rendered = render_batch_file_display("test-batch", "file.txt")
+        new_value_gutter = next(
+            rendered.selection_id_to_gutter[line.id]
+            for line in rendered.line_changes.lines
+            if line.id is not None and line.text == "new value"
+        )
+
+        with pytest.raises(CommandError, match="must be selected together") as exc_info:
+            command_discard_from_batch("test-batch", line_ids=str(new_value_gutter), file="file.txt")
+
+        assert "Use: --line" in exc_info.value.message
 
     def test_discard_from_empty_batch_fails(self, temp_git_repo):
         """Test discarding from an empty batch fails."""

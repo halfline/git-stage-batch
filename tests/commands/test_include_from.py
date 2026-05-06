@@ -1,10 +1,5 @@
 """Tests for include from batch command."""
 
-from git_stage_batch.commands.start import command_start
-from git_stage_batch.commands.include import command_include_to_batch
-from unittest.mock import patch, MagicMock
-from git_stage_batch.core.models import LineLevelChange, LineEntry
-
 import stat
 import subprocess
 
@@ -16,7 +11,10 @@ from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
+from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
+from git_stage_batch.commands.show_from import command_show_from_batch
+from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import render_batch_file_display
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
@@ -113,17 +111,11 @@ class TestCommandIncludeFromBatch:
         (temp_git_repo / "file1.txt").write_text("line 1\nline 2\n")
         (temp_git_repo / "file2.txt").write_text("line A\nline B\n")
 
-        # Mock cached hunk state to make it look like file1.txt is the selected file
-        mock_lines = LineLevelChange(
-            path="file1.txt",
-            header=MagicMock(),  # Mock header (not relevant for this test)
-            lines=[LineEntry(id=1, kind="+", text_bytes=b"file1 added\n", text="file1 added\n", old_line_number=None, new_line_number=3)]
-        )
+        # Show file1 from the batch so --file without PATH reuses that selected file.
+        command_show_from_batch("test-batch", file="file1.txt")
+        capsys.readouterr()
 
-        with patch("git_stage_batch.data.hunk_tracking.require_selected_hunk"):
-            with patch("git_stage_batch.data.line_state.load_line_changes_from_state", return_value=mock_lines):
-                # Use --file mode to stage from batch (should only stage file1)
-                command_include_from_batch("test-batch", file="")
+        command_include_from_batch("test-batch", file="")
 
         # Verify only file1 is staged (not file2)
         result = run_git_command(["diff", "--cached", "--name-only"])

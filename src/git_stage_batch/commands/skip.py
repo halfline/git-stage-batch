@@ -7,20 +7,39 @@ import json
 import sys
 
 from ..core.diff_parser import build_line_changes_from_patch_bytes, parse_unified_diff_streaming
-from ..core.hashing import compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
 from ..core.line_selection import (
     parse_line_selection,
     read_line_ids_file,
     write_line_ids_file,
 )
 from ..core.models import BinaryFileChange
-from ..data.hunk_tracking import SelectedChangeKind, advance_to_and_show_next_change, advance_to_next_change, fetch_next_change, get_selected_change_file_path, load_selected_change, read_selected_change_kind, record_hunk_skipped, require_selected_hunk
+from ..data.hunk_tracking import (
+    SelectedChangeKind,
+    advance_to_and_show_next_change,
+    advance_to_next_change,
+    fetch_next_change,
+    get_selected_change_file_path,
+    load_selected_change,
+    read_selected_change_kind,
+    record_binary_hunk_skipped,
+    record_hunk_skipped,
+    refuse_bare_action_after_file_list,
+    require_selected_hunk,
+)
+from ..data.file_review_state import (
+    FileReviewAction,
+    finish_review_scoped_line_action,
+    refuse_ambiguous_bare_action_after_partial_file_review,
+    refuse_live_action_for_batch_selection,
+    resolve_live_line_action_scope,
+)
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
-from ..exceptions import NoMoreHunks
+from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes
+from ..output import print_line_level_changes, print_remaining_line_changes_header
 from ..utils.file_io import append_lines_to_file, read_text_file_contents, write_text_file_contents
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.journal import log_journal
@@ -41,6 +60,12 @@ def command_skip(*, quiet: bool = False) -> None:
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+
+    if refuse_live_action_for_batch_selection(FileReviewAction.SKIP):
+        return
+    if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.SKIP):
+        return
+    refuse_bare_action_after_file_list("skip")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
         command_skip_file("")
@@ -67,7 +92,7 @@ def command_skip(*, quiet: bool = False) -> None:
             blocklist_path = get_block_list_file_path()
             append_lines_to_file(blocklist_path, [patch_hash])
 
-            # Binary files don't have line-level tracking, so skip record_hunk_skipped
+            record_binary_hunk_skipped(item, patch_hash)
 
             if not quiet:
                 change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
@@ -121,6 +146,13 @@ def command_skip_file(
     require_session_started()
     ensure_state_directory_exists()
 
+    if file == "":
+        if refuse_live_action_for_batch_selection(FileReviewAction.SKIP):
+            return 0
+        if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.SKIP):
+            return 0
+        refuse_bare_action_after_file_list("skip --file")
+
     # Determine target file
     if file == "":
         target_file = get_selected_change_file_path()
@@ -139,6 +171,21 @@ def command_skip_file(
 
         hunks_skipped = 0
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+            if isinstance(patch, BinaryFileChange):
+                file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+                if file_path != target_file:
+                    continue
+
+                patch_hash = compute_binary_file_hash(patch)
+                if patch_hash in blocked_hashes:
+                    continue
+
+                append_lines_to_file(blocklist_path, [patch_hash])
+                blocked_hashes.add(patch_hash)
+                record_binary_hunk_skipped(patch, patch_hash)
+                hunks_skipped += 1
+                continue
+
             if patch.new_path != target_file:
                 continue
 
@@ -174,7 +221,7 @@ def command_skip_file(
         return hunks_skipped
 
 
-def command_skip_line(line_id_specification: str) -> None:
+def command_skip_line(line_id_specification: str, file: str | None = None) -> None:
     """Mark only the specified lines as skipped.
 
     Args:
@@ -183,16 +230,58 @@ def command_skip_line(line_id_specification: str) -> None:
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
-    require_selected_hunk()
+    target_file = None
+    reuse_selected_file_view = False
+    scope_resolution = resolve_live_line_action_scope(
+        FileReviewAction.SKIP,
+        action_command=f"skip --line {line_id_specification}",
+        line_id_specification=line_id_specification,
+        file=file,
+        validate_pathless_before_live_guard=True,
+    )
+    if scope_resolution.should_stop:
+        return
+    review_state = scope_resolution.review_state
+    if file is None:
+        require_selected_hunk()
+    else:
+        if file == "":
+            target_file = get_selected_change_file_path()
+            if target_file is None:
+                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+        else:
+            target_file = file
+        from ..data.hunk_tracking import cache_unstaged_file_as_single_hunk
+        from ..data.hunk_tracking import render_unstaged_file_as_single_hunk
 
-    line_changes = load_line_changes_from_state()
-    if line_changes is None:
-        raise NoMoreHunks()
+        reuse_selected_file_view = (
+            read_selected_change_kind() == SelectedChangeKind.FILE
+            and get_selected_change_file_path() == target_file
+        )
+        if not reuse_selected_file_view and render_unstaged_file_as_single_hunk(target_file) is None:
+            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
     requested_ids = parse_line_selection(line_id_specification)
-    already_skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
-    combined_skip_ids = already_skipped_ids | set(requested_ids)
-    with undo_checkpoint(f"skip --line {line_id_specification}"):
+    operation_parts = ["skip", "--line", line_id_specification]
+    if file is not None:
+        operation_parts.extend(["--file", file])
+    with undo_checkpoint(" ".join(operation_parts)):
+        if file is not None:
+            if not reuse_selected_file_view:
+                if cache_unstaged_file_as_single_hunk(target_file) is None:
+                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+            require_selected_hunk()
+
+        line_changes = load_line_changes_from_state()
+        if line_changes is None:
+            raise NoMoreHunks()
+
+        already_skipped_ids = (
+            set(read_line_ids_file(get_processed_skip_ids_file_path()))
+            if file is None or reuse_selected_file_view else
+            set()
+        )
+        combined_skip_ids = already_skipped_ids | set(requested_ids)
         # Update processed skip IDs
         write_line_ids_file(get_processed_skip_ids_file_path(), combined_skip_ids)
 
@@ -205,6 +294,7 @@ def command_skip_line(line_id_specification: str) -> None:
         if not visible_changed_ids:
             if read_selected_change_kind() == SelectedChangeKind.FILE:
                 print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+                finish_review_scoped_line_action(review_state)
                 command_skip_file("")
                 return
 
@@ -213,6 +303,7 @@ def command_skip_line(line_id_specification: str) -> None:
             append_lines_to_file(blocklist_path, [patch_hash])
             record_hunk_skipped(line_changes, patch_hash)
             print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+            finish_review_scoped_line_action(review_state)
             advance_to_and_show_next_change()
             return
 
@@ -233,4 +324,6 @@ def command_skip_line(line_id_specification: str) -> None:
         )
 
     print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
+    print_remaining_line_changes_header(filtered_line_changes.path)
     print_line_level_changes(filtered_line_changes)
+    finish_review_scoped_line_action(review_state)

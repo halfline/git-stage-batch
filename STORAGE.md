@@ -320,6 +320,7 @@ Git-backed state ref exists. It records:
 * Per-file ownership
 * Per-file source snapshot commit
 * Per-file mode
+* Text file lifecycle markers when a batch owns a whole added/deleted path
 * Binary file markers when needed
 
 Example:
@@ -335,6 +336,15 @@ Example:
       "claimed_lines": ["10-12"],
       "deletions": [],
       "mode": "100644"
+    },
+    "src/removed.py": {
+      "batch_source_commit": "fed456...",
+      "claimed_lines": [],
+      "deletions": [
+        {"after_source_line": null, "blob": "789abc..."}
+      ],
+      "mode": "100644",
+      "change_type": "deleted"
     }
   }
 }
@@ -352,6 +362,10 @@ model used to reconstruct and validate a batch:
 * `replacement_units` optionally links claimed ranges to deletion indexes for
   explicit replacement atomicity. It is omitted when empty.
 * `mode` defines the file mode for realized content.
+* `change_type` is optional for text files and omitted for ordinary modified
+  content. `added` means the batch owns the whole added text path. `deleted`
+  means the batch owns the whole removed text path, and the path is omitted
+  from the batch content ref.
 
 ### Limitations
 
@@ -717,9 +731,11 @@ hunk.hash.txt
 hunk.patch
 hunk.lines.json
 change-kind.txt
+clear-reason.txt
 binary-file.json
 index.snapshot
 working-tree.snapshot
+file-review.json
 ```
 
 ### `hunk.patch`
@@ -751,6 +767,13 @@ Stores whether the selected cached item is a text hunk, a file-scoped view, a
 binary file, or a batch-file view. Commands use it to decide how to interpret
 the rest of the selected-state cache.
 
+### `clear-reason.txt`
+
+Stores why selected-change state was intentionally cleared. Multi-file review
+lists write `file-list` here after clearing the selected cache so later bare
+`include`, `skip`, `discard`, omitted-path `--file`, or batch-from actions
+refuse instead of auto-selecting the next hunk or hidden file.
+
 ### `index.snapshot`
 
 Stores the file's index bytes when the hunk is selected.
@@ -758,6 +781,30 @@ Stores the file's index bytes when the hunk is selected.
 ### `working-tree.snapshot`
 
 Stores the file's working tree bytes when the hunk is selected.
+
+### `file-review.json`
+
+Stores short-lived safety state for the most recent page-aware file review. It
+is not the selected change itself; it is a guardrail layered on top of the
+selected hunk/file cache.
+
+The file records:
+
+* The review source: live file-vs-HEAD, unstaged, or batch.
+* The batch name for batch reviews.
+* The file path, page count, shown pages, and whether the full file was shown.
+* Complete actionable line selections that were visible in the shown pages.
+* Fingerprints of the selected file view and rendered diff.
+
+Pathless and omitted-path line actions use this file to make sure requested
+display IDs still refer to the same shown review. Pathless or omitted-path
+whole-file actions use it to refuse after partial reviews, where acting on the
+whole selected file would be ambiguous.
+
+Multi-file review lists deliberately clear this file and the selected-change
+cache, then record `clear-reason.txt`; they are navigation, not selection.
+Invalid explicit page requests are validated before rewriting selected state, so
+a mistyped page number does not silently select a file or batch-file view.
 
 ### Staleness Detection
 
@@ -768,6 +815,12 @@ the operation is rejected.
 Batch hunks and file-scoped live operations do not use these staleness
 snapshots in the same way, because they are rendered from batch state or live
 working tree state rather than from the cached selected hunk.
+
+Page-aware file-review freshness is tracked separately by `file-review.json`.
+The persisted fingerprints include the selected line-level view and, for live
+reviews, the index and working-tree snapshots. Batch review validation also
+re-renders the batch file to verify the gutter-to-selection-ID mapping before
+accepting pathless or omitted-path batch line actions.
 
 ---
 

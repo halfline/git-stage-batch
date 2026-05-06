@@ -3,8 +3,11 @@
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.batch import list_batch_files, read_file_from_batch
+from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.validation import batch_exists
+from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import NoMoreHunks
+from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 import subprocess
 
@@ -169,6 +172,44 @@ class TestCommandIncludeToBatch:
             text=True
         )
         assert result.stdout == ""
+
+    def test_include_empty_added_text_file_to_batch(self, temp_git_repo):
+        """Whole-file include to batch should persist empty added text files."""
+        empty_file = temp_git_repo / "empty.txt"
+        empty_file.write_bytes(b"")
+
+        command_start(quiet=True)
+        command_include_to_batch("empty-batch", file="empty.txt", quiet=True)
+
+        file_meta = read_batch_metadata("empty-batch")["files"]["empty.txt"]
+        assert file_meta["change_type"] == "added"
+        assert read_file_from_batch("empty-batch", "empty.txt") == ""
+        assert empty_file.exists()
+
+        command_again(quiet=True)
+        with pytest.raises(NoMoreHunks):
+            fetch_next_change()
+
+    def test_include_empty_deleted_text_file_to_batch(self, temp_git_repo):
+        """Whole-file include to batch should persist empty text deletions."""
+        empty_file = temp_git_repo / "empty.txt"
+        empty_file.write_bytes(b"")
+        subprocess.run(["git", "add", "empty.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add empty file"], check=True, cwd=temp_git_repo, capture_output=True)
+        empty_file.unlink()
+
+        ensure_state_directory_exists()
+        initialize_abort_state()
+        command_include_to_batch("empty-delete-batch", file="empty.txt", quiet=True)
+
+        file_meta = read_batch_metadata("empty-delete-batch")["files"]["empty.txt"]
+        assert file_meta["change_type"] == "deleted"
+        assert read_file_from_batch("empty-delete-batch", "empty.txt") is None
+        assert not empty_file.exists()
+
+        command_again(quiet=True)
+        with pytest.raises(NoMoreHunks):
+            fetch_next_change()
 
     def test_include_to_batch_auto_creates_batch(self, temp_git_repo):
         """Test that include to batch auto-creates batch if it doesn't exist."""

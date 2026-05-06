@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Optional
 
 from .ownership import (
@@ -19,6 +20,7 @@ from ..utils.file_patterns import resolve_gitignore_style_patterns
 if TYPE_CHECKING:
     from ..exceptions import AtomicUnitError
     from ..core.models import RenderedBatchDisplay
+    from ..data.file_review_state import FileReviewAction
 
 
 def resolve_batch_file_scope(
@@ -46,15 +48,13 @@ def resolve_batch_file_scope(
     """
     if file is not None:
         # Specific file requested
-        from ..data.hunk_tracking import get_batch_file_for_line_operation
+        from ..data.hunk_tracking import get_batch_file_for_line_operation, get_selected_change_file_path
 
         # If file is empty string, use selected hunk's file
         if file == "":
-            from ..data.line_state import load_line_changes_from_state
-            line_changes = load_line_changes_from_state()
-            if line_changes is None:
+            file_to_use = get_selected_change_file_path()
+            if file_to_use is None:
                 exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-            file_to_use = line_changes.path
         else:
             file_to_use = file
 
@@ -73,6 +73,36 @@ def resolve_batch_file_scope(
     else:
         # All files in batch (default)
         return all_files
+
+
+def resolve_current_batch_binary_file_scope(
+    batch_name: str,
+    all_files: dict[str, dict],
+    file: Optional[str] = None,
+    patterns: Optional[list[str]] = None,
+    line_ids: Optional[str] = None,
+) -> Optional[str]:
+    """Resolve a pathless whole-file batch action through the selected binary.
+
+    A selected batch binary is an atomic current-file selection. Both the bare
+    command and `--file` with no path are pathless whole-file actions, so both
+    must revalidate the cached batch fingerprint before they can narrow to the
+    selected file.
+    """
+    if patterns is not None or line_ids is not None or file not in (None, ""):
+        return file
+
+    from ..data.hunk_tracking import (
+        SelectedChangeKind,
+        read_selected_change_kind,
+        require_current_selected_batch_binary_file_for_batch,
+    )
+
+    if read_selected_change_kind() != SelectedChangeKind.BATCH_BINARY:
+        return file
+
+    selected_file = require_current_selected_batch_binary_file_for_batch(batch_name, all_files)
+    return selected_file if selected_file is not None else file
 
 
 def require_single_file_context_for_line_selection(
@@ -105,7 +135,8 @@ def require_single_file_context_for_line_selection(
     if len(files) != 1:
         exit_with_error(
             _("Line-level {operation} (--line) requires single-file context.\n"
-              "Use --file to specify a file, or run 'show --from {name}' first to select a file.").format(
+              "Use --file to specify a file, or open one listed file with "
+              "'show --from {name} --file PATH'.").format(
                 operation=operation_verb,
                 name=batch_name
             )
@@ -163,6 +194,67 @@ def translate_atomic_unit_error_to_gutter_ids(
         name=batch_name,
         error=str(error)
     ))
+
+
+def translate_batch_file_gutter_ids_to_selection_ids(
+    batch_name: str,
+    file_path: str,
+    selected_ids: set[int] | None,
+    action: 'FileReviewAction | str',
+) -> tuple[set[int] | None, 'RenderedBatchDisplay | None']:
+    """Translate displayed batch-file gutter IDs to internal selection IDs.
+
+    If the IDs came after a fresh matching file review, validate them against
+    the complete actions shown by that review before consulting the full batch
+    display. Without a matching review, keep the historical raw batch display
+    behavior.
+    """
+    if selected_ids is None:
+        return None, None
+
+    from ..data.file_review_state import (
+        fresh_batch_review_selection_groups_for_action,
+        validate_review_scoped_line_selection,
+    )
+    from ..data.hunk_tracking import render_batch_file_display
+
+    review_groups = fresh_batch_review_selection_groups_for_action(batch_name, file_path, action)
+    if review_groups is not None:
+        validate_review_scoped_line_selection(selected_ids, review_groups)
+
+    rendered = render_batch_file_display(batch_name, file_path)
+    if rendered is None:
+        return selected_ids, None
+
+    display_id_map = (
+        rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
+        if review_groups is not None else
+        rendered.gutter_to_selection_id
+    )
+    rendered_for_messages = (
+        replace(
+            rendered,
+            gutter_to_selection_id=dict(display_id_map),
+            selection_id_to_gutter={
+                selection_id: gutter_id
+                for gutter_id, selection_id in display_id_map.items()
+            },
+        )
+        if review_groups is not None else
+        rendered
+    )
+    selection_ids: set[int] = set()
+    for gutter_id in selected_ids:
+        if gutter_id in display_id_map:
+            selection_ids.add(display_id_map[gutter_id])
+        else:
+            exit_with_error(
+                _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
+                    id=gutter_id
+                )
+            )
+
+    return selection_ids, rendered_for_messages
 
 
 def select_batch_ownership_for_display_ids(

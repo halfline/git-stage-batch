@@ -5,9 +5,29 @@ from __future__ import annotations
 import json
 import sys
 
-from ..core.hashing import compute_stable_hunk_hash
+from ..batch.query import read_batch_metadata
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
 from ..core.diff_parser import parse_unified_diff_streaming
-from ..data.hunk_tracking import format_id_range, snapshots_are_stale
+from ..core.models import BinaryFileChange
+from ..data.file_review_state import (
+    FileReviewAction,
+    ReviewSource,
+    read_last_file_review_state,
+    selected_change_matches_review_state,
+    shown_complete_review_selection_groups,
+)
+from ..data.hunk_tracking import (
+    SelectedChangeKind,
+    binary_file_change_is_stale,
+    clear_selected_change_state_files,
+    format_id_range,
+    load_selected_binary_file,
+    mark_selected_change_cleared_by_stale_batch_selection,
+    read_selected_change_kind,
+    selected_batch_binary_batch_name,
+    selected_batch_binary_file_for_batch,
+    snapshots_are_stale,
+)
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import get_iteration_count
 from ..i18n import _
@@ -42,8 +62,12 @@ def estimate_remaining_hunks() -> int:
     remaining = 0
     try:
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
-            hunk_hash = compute_stable_hunk_hash(patch.to_patch_bytes())
-            file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
+            if isinstance(patch, BinaryFileChange):
+                hunk_hash = compute_binary_file_hash(patch)
+                file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+            else:
+                hunk_hash = compute_stable_hunk_hash(patch.to_patch_bytes())
+                file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
             file_path = file_path.removeprefix("a/").removeprefix("b/")
 
             if hunk_hash not in blocked_hashes and file_path not in blocked_files:
@@ -52,6 +76,174 @@ def estimate_remaining_hunks() -> int:
         return 0
 
     return remaining
+
+
+def _selected_change_is_stale(selected_kind: SelectedChangeKind | None, file_path: str) -> bool:
+    """Return whether selected state should be treated as stale by status."""
+    if selected_kind in (SelectedChangeKind.BATCH_FILE, SelectedChangeKind.BATCH_BINARY):
+        return False
+    return snapshots_are_stale(file_path)
+
+
+def _selected_kind_label(selected_kind: str | None) -> str:
+    labels = {
+        SelectedChangeKind.HUNK.value: _("Current hunk:"),
+        SelectedChangeKind.FILE.value: _("Current file review:"),
+        SelectedChangeKind.BATCH_FILE.value: _("Current batch file review:"),
+        SelectedChangeKind.BINARY.value: _("Current binary file:"),
+        SelectedChangeKind.BATCH_BINARY.value: _("Current batch binary file:"),
+    }
+    return labels.get(selected_kind or SelectedChangeKind.HUNK.value, _("Current selection:"))
+
+
+def _read_batch_review_display_ids(file_path: str) -> list[int]:
+    """Return user-visible gutter IDs for the current batch file review."""
+    review_state = read_last_file_review_state()
+    if review_state is None:
+        return []
+    if review_state.source != ReviewSource.BATCH or review_state.file_path != file_path:
+        return []
+    try:
+        if not selected_change_matches_review_state(review_state):
+            return []
+    except Exception:
+        return []
+
+    return sorted({
+        display_id
+        for group in shown_complete_review_selection_groups(
+            review_state,
+            FileReviewAction.INCLUDE_FROM_BATCH,
+        )
+        for display_id in group
+    })
+
+
+def _read_live_review_display_ids(file_path: str) -> list[int] | None:
+    """Return shown live-review gutter IDs.
+
+    None means no matching live review exists; an empty list can also mean a
+    matching review exists but is no longer fresh.
+    """
+    review_state = read_last_file_review_state()
+    if review_state is None:
+        return None
+    if review_state.source != ReviewSource.FILE_VS_HEAD or review_state.file_path != file_path:
+        return None
+    try:
+        if not selected_change_matches_review_state(review_state):
+            return []
+    except Exception:
+        return []
+
+    return sorted({
+        display_id
+        for group in shown_complete_review_selection_groups(
+            review_state,
+            FileReviewAction.INCLUDE,
+        )
+        for display_id in group
+    })
+
+
+def _read_selected_change_summary() -> tuple[bool, dict | None]:
+    """Return whether a non-stale selected change exists and its status summary."""
+    selected_kind = read_selected_change_kind()
+    if selected_kind in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
+        binary_file = load_selected_binary_file()
+        if binary_file is None:
+            return False, None
+        if selected_kind == SelectedChangeKind.BINARY and binary_file_change_is_stale(binary_file):
+            return False, None
+        file_path = binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
+        if selected_kind == SelectedChangeKind.BATCH_BINARY:
+            batch_name = selected_batch_binary_batch_name()
+            if batch_name is None:
+                clear_selected_change_state_files()
+                return False, None
+            metadata = read_batch_metadata(batch_name)
+            if selected_batch_binary_file_for_batch(batch_name, metadata.get("files", {})) is None:
+                clear_selected_change_state_files()
+                mark_selected_change_cleared_by_stale_batch_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                )
+                return False, None
+        return True, {
+            "kind": selected_kind.value,
+            "file": file_path,
+            "line": None,
+            "ids": [],
+            "change_type": binary_file.change_type,
+        }
+
+    if not get_selected_hunk_patch_file_path().exists() or not get_line_changes_json_file_path().exists():
+        return False, None
+
+    try:
+        line_changes = load_line_changes_from_state()
+        if line_changes is None:
+            return False, None
+        if selected_kind == SelectedChangeKind.BATCH_FILE:
+            review_state = read_last_file_review_state()
+            if review_state is not None:
+                try:
+                    if not selected_change_matches_review_state(review_state):
+                        if review_state.source == ReviewSource.BATCH and review_state.batch_name is not None:
+                            mark_batch_name = review_state.batch_name
+                            mark_file_path = review_state.file_path
+                        else:
+                            mark_batch_name = None
+                            mark_file_path = None
+                        clear_selected_change_state_files()
+                        if mark_batch_name is not None and mark_file_path is not None:
+                            mark_selected_change_cleared_by_stale_batch_selection(
+                                batch_name=mark_batch_name,
+                                file_path=mark_file_path,
+                            )
+                        return False, None
+                except Exception:
+                    clear_selected_change_state_files()
+                    return False, None
+        if _selected_change_is_stale(selected_kind, line_changes.path):
+            return False, None
+        kind_value = selected_kind.value if selected_kind is not None else SelectedChangeKind.HUNK.value
+        if selected_kind == SelectedChangeKind.BATCH_FILE:
+            ids = _read_batch_review_display_ids(line_changes.path)
+        elif selected_kind == SelectedChangeKind.FILE:
+            ids = _read_live_review_display_ids(line_changes.path)
+            if ids is None:
+                ids = line_changes.changed_line_ids()
+        else:
+            ids = line_changes.changed_line_ids()
+        return True, {
+            "kind": kind_value,
+            "file": line_changes.path,
+            "line": line_changes.header.old_start,
+            "ids": ids,
+        }
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return False, None
+
+
+def _read_file_review_summary() -> dict | None:
+    review_state = read_last_file_review_state()
+    if review_state is None:
+        return None
+    try:
+        fresh = selected_change_matches_review_state(review_state)
+    except Exception:
+        fresh = False
+    return {
+        "source": review_state.source.value,
+        "batch_name": review_state.batch_name,
+        "file": review_state.file_path,
+        "page_spec": review_state.page_spec,
+        "shown_pages": list(review_state.shown_pages),
+        "page_count": review_state.page_count,
+        "entire_file_shown": review_state.entire_file_shown,
+        "fresh": fresh,
+    }
 
 
 def command_status(*, porcelain: bool = False) -> None:
@@ -66,7 +258,7 @@ def command_status(*, porcelain: bool = False) -> None:
     # can persist after cleanup because batch metadata is intentionally kept.
     if not get_abort_head_file_path().exists():
         if porcelain:
-            print(json.dumps({"session_active": False}))
+            print(json.dumps({"session": {"active": False}}))
         else:
             print(_("No batch staging session in progress."), file=sys.stderr)
             print(_("Run 'git-stage-batch start' to begin."), file=sys.stderr)
@@ -93,37 +285,24 @@ def command_status(*, porcelain: bool = False) -> None:
                 except json.JSONDecodeError:
                     pass  # Skip malformed lines
 
-    # Check for selected hunk
-    has_selected = get_selected_hunk_patch_file_path().exists()
-    selected_summary = None
-    if has_selected:
-        if get_line_changes_json_file_path().exists():
-            try:
-                data = json.loads(read_text_file_contents(get_line_changes_json_file_path()))
-                file_path = data["path"]
-                if snapshots_are_stale(file_path):
-                    # Stale cache, no selected hunk
-                    has_selected = False
-                else:
-                    line_changes = load_line_changes_from_state()
-                    selected_summary = {
-                        "file": line_changes.path,
-                        "line": line_changes.header.old_start,
-                        "ids": line_changes.changed_line_ids()
-                    }
-            except (json.JSONDecodeError, KeyError):
-                has_selected = False
+    has_selected, selected_summary = _read_selected_change_summary()
+    file_review_summary = _read_file_review_summary()
 
     # Estimate remaining hunks
     remaining_estimate = estimate_remaining_hunks()
+    status_value = "in_progress" if has_selected or remaining_estimate > 0 else "complete"
 
     if porcelain:
         # Machine-readable JSON output
         output = {
-            "session_active": True,
-            "iteration": iteration,
-            "status": "in_progress" if has_selected else "complete",
-            "selected_hunk": selected_summary,
+            "session": {
+                "active": True,
+                "iteration": iteration,
+                "status": status_value,
+                "in_progress": status_value == "in_progress",
+            },
+            "selected_change": selected_summary,
+            "file_review": file_review_summary,
             "progress": {
                 "included": included_count,
                 "skipped": len(skipped_hunks),
@@ -135,40 +314,65 @@ def command_status(*, porcelain: bool = False) -> None:
         print(json.dumps(output, indent=2))
     else:
         # Human-readable progress report
-        status = _("in progress") if has_selected else _("complete")
-        print(_("Session: iteration {} ({})").format(iteration, status))
+        status_label = _("in progress") if status_value == "in_progress" else _("complete")
+        print(_("Session: iteration {iteration} ({status})").format(
+            iteration=iteration,
+            status=status_label,
+        ))
         print()
 
         if selected_summary:
             ids_str = format_id_range(selected_summary["ids"])
-            print(_("Current hunk:"))
-            print(_("  {}:{}").format(selected_summary['file'], selected_summary['line']))
-            print(_("  [#{}]").format(ids_str))
+            print(_selected_kind_label(selected_summary.get("kind")))
+            if selected_summary.get("line") is None:
+                print(_("  {file}").format(file=selected_summary["file"]))
+            else:
+                print(_("  {file}:{line}").format(
+                    file=selected_summary["file"],
+                    line=selected_summary["line"],
+                ))
+            if ids_str:
+                print(_("  [#{ids}]").format(ids=ids_str))
+            if selected_summary.get("change_type"):
+                print(_("  {change_type}").format(change_type=selected_summary["change_type"]))
+            print()
+
+        if file_review_summary:
+            print(_("Last file review:"))
+            source = file_review_summary["source"]
+            if file_review_summary["batch_name"]:
+                source = _("batch {name}").format(name=file_review_summary["batch_name"])
+            print(_("  source: {source}").format(source=source))
+            print(
+                _("  pages: {pages}/{count}").format(
+                    pages=format_id_range(file_review_summary["shown_pages"]),
+                    count=file_review_summary["page_count"],
+                )
+            )
+            if not file_review_summary["entire_file_shown"]:
+                print(_("  partial review; bare whole-file actions will require confirmation by command"))
+            if not file_review_summary["fresh"]:
+                print(_("  stale; run show again before using pathless line actions"))
             print()
 
         print(_("Progress this iteration:"))
-        print(_("  Included:  {} hunks").format(included_count))
-        print(_("  Skipped:   {} hunks").format(len(skipped_hunks)))
-        print(_("  Discarded: {} hunks").format(discarded_count))
-        print(_("  Remaining: ~{} hunks").format(remaining_estimate))
+        print(_("  Included:  {count} hunks").format(count=included_count))
+        print(_("  Skipped:   {count} hunks").format(count=len(skipped_hunks)))
+        print(_("  Discarded: {count} hunks").format(count=discarded_count))
+        print(_("  Remaining: ~{count} hunks").format(count=remaining_estimate))
 
         if skipped_hunks:
             print()
             print(_("Skipped hunks:"))
             for hunk in skipped_hunks:
+                ids_str = format_id_range(hunk.get("ids", []))
                 if hunk.get("line") is None:
-                    print(
-                        _("  {file} [binary {change_type}]").format(
-                            file=hunk["file"],
-                            change_type=hunk.get("change_type", "modified"),
-                        )
-                    )
+                    print(_("  {file}").format(file=hunk["file"]))
+                elif ids_str:
+                    print(_("  {file}:{line} [#{ids}]").format(
+                        file=hunk["file"],
+                        line=hunk["line"],
+                        ids=ids_str,
+                    ))
                 else:
-                    ids_str = format_id_range(hunk["ids"])
-                    print(
-                        _("  {file}:{line} [#{ids}]").format(
-                            file=hunk["file"],
-                            line=hunk["line"],
-                            ids=ids_str,
-                        )
-                    )
+                    print(_("  {file}:{line}").format(file=hunk["file"], line=hunk["line"]))

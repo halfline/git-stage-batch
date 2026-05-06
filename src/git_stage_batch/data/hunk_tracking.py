@@ -8,7 +8,8 @@ import subprocess
 import sys
 from dataclasses import replace
 from enum import Enum
-from typing import Generator, Optional, Union
+from hashlib import sha256
+from typing import Generator, Mapping, Optional, Union
 
 from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
 from ..batch import display as batch_display
@@ -20,9 +21,10 @@ from ..batch.ownership import (
     rebuild_ownership_from_units,
     validate_ownership_units,
 )
-from ..batch.query import read_batch_metadata
+from ..batch.query import get_batch_commit_sha, list_batch_names, read_batch_metadata
 from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
-from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, RenderedBatchDisplay
+from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, RenderedBatchDisplay, ReviewActionGroup
+from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
     parse_unified_diff_streaming,
@@ -45,6 +47,7 @@ from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
     get_context_lines,
+    get_selected_change_clear_reason_file_path,
     get_selected_change_kind_file_path,
     get_selected_binary_file_json_path,
     get_selected_hunk_hash_file_path,
@@ -68,20 +71,243 @@ class SelectedChangeKind(str, Enum):
     FILE = "file"
     BINARY = "binary"
     BATCH_FILE = "batch-file"
+    BATCH_BINARY = "batch-binary"
+
+
+_BATCH_MERGE_REVIEW_ACTIONS = (
+    "include-from-batch",
+    "discard-from-batch",
+    "apply-from-batch",
+)
+_BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
+
+
+class SelectedChangeClearReason(str, Enum):
+    """Reasons selected change state was intentionally cleared."""
+
+    FILE_LIST = "file-list"
+    STALE_BATCH_SELECTION = "stale-batch-selection"
+
+
+def _selected_change_state_paths():
+    """Return files that make up the cached selected change state."""
+    return {
+        "patch": get_selected_hunk_patch_file_path(),
+        "hash": get_selected_hunk_hash_file_path(),
+        "clear_reason": get_selected_change_clear_reason_file_path(),
+        "kind": get_selected_change_kind_file_path(),
+        "line_state": get_line_changes_json_file_path(),
+        "binary": get_selected_binary_file_json_path(),
+        "index_snapshot": get_index_snapshot_file_path(),
+        "working_snapshot": get_working_tree_snapshot_file_path(),
+        "processed_include_ids": get_processed_include_ids_file_path(),
+        "processed_skip_ids": get_processed_skip_ids_file_path(),
+    }
+
+
+def snapshot_selected_change_state() -> dict[str, bytes | None]:
+    """Capture the current selected change cache."""
+    return {
+        name: (read_file_bytes(path) if path.exists() else None)
+        for name, path in _selected_change_state_paths().items()
+    }
+
+
+def restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
+    """Restore a previously captured selected change cache."""
+    for name, path in _selected_change_state_paths().items():
+        data = snapshot.get(name)
+        if data is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
 
 
 def clear_selected_change_state_files() -> None:
     """Clear all cached selected hunk state files."""
-    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
-    get_selected_hunk_hash_file_path().unlink(missing_ok=True)
-    get_selected_change_kind_file_path().unlink(missing_ok=True)
-    get_line_changes_json_file_path().unlink(missing_ok=True)
-    get_selected_binary_file_json_path().unlink(missing_ok=True)
-    get_index_snapshot_file_path().unlink(missing_ok=True)
-    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
-    get_processed_include_ids_file_path().unlink(missing_ok=True)
-    get_processed_skip_ids_file_path().unlink(missing_ok=True)
+    from .file_review_state import clear_last_file_review_state
+
+    for path in _selected_change_state_paths().values():
+        path.unlink(missing_ok=True)
+    clear_last_file_review_state()
     # processed_batch_ids is global state (union of all batches), not per-hunk state
+
+
+def mark_selected_change_cleared_by_file_list(
+    *,
+    source: str,
+    batch_name: str | None = None,
+) -> None:
+    """Record that a navigational file list intentionally cleared selection."""
+    _write_selected_change_clear_reason(
+        reason=SelectedChangeClearReason.FILE_LIST,
+        source=source,
+        batch_name=batch_name,
+    )
+
+
+def mark_selected_change_cleared_by_stale_batch_selection(
+    *,
+    batch_name: str,
+    file_path: str,
+) -> None:
+    """Record that a batch mutation invalidated the selected batch file."""
+    _write_selected_change_clear_reason(
+        reason=SelectedChangeClearReason.STALE_BATCH_SELECTION,
+        source="batch",
+        batch_name=batch_name,
+        file_path=file_path,
+    )
+
+
+def _write_selected_change_clear_reason(
+    *,
+    reason: SelectedChangeClearReason,
+    source: str,
+    batch_name: str | None = None,
+    file_path: str | None = None,
+) -> None:
+    """Write a structured selected-change clear marker."""
+    write_text_file_contents(
+        get_selected_change_clear_reason_file_path(),
+        json.dumps(
+            {
+                "reason": reason.value,
+                "source": source,
+                "batch_name": batch_name,
+                "file_path": file_path,
+            },
+            ensure_ascii=False,
+            indent=0,
+        ),
+    )
+
+
+def _read_selected_change_clear_reason() -> dict[str, str | None] | None:
+    """Return the structured clear marker, tolerating legacy plain-text state."""
+    raw_reason = read_text_file_contents(get_selected_change_clear_reason_file_path()).strip()
+    if not raw_reason:
+        return None
+    if raw_reason == SelectedChangeClearReason.FILE_LIST.value:
+        return {
+            "reason": SelectedChangeClearReason.FILE_LIST.value,
+            "source": None,
+            "batch_name": None,
+        }
+    try:
+        data = json.loads(raw_reason)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    reason = data.get("reason")
+    if reason not in {item.value for item in SelectedChangeClearReason}:
+        return None
+    return {
+        "reason": reason,
+        "source": data.get("source") if isinstance(data.get("source"), str) else None,
+        "batch_name": data.get("batch_name") if isinstance(data.get("batch_name"), str) else None,
+        "file_path": data.get("file_path") if isinstance(data.get("file_path"), str) else None,
+    }
+
+
+def selected_change_was_cleared_by_file_list(
+    *,
+    source: str | None = None,
+    batch_name: str | None = None,
+) -> bool:
+    """Return whether the current empty selection came from a file list."""
+    if read_selected_change_kind() is not None:
+        return False
+    marker = _read_selected_change_clear_reason()
+    if marker is None:
+        return False
+    if marker["reason"] != SelectedChangeClearReason.FILE_LIST.value:
+        return False
+    marker_source = marker["source"]
+    marker_batch_name = marker["batch_name"]
+    if source is not None and marker_source != source:
+        return False
+    if batch_name is not None and marker_batch_name != batch_name:
+        return False
+    return True
+
+
+def selected_change_was_cleared_by_stale_batch_selection(
+    *,
+    batch_name: str | None = None,
+) -> bool:
+    """Return whether the current empty selection is a stale batch selection."""
+    if read_selected_change_kind() is not None:
+        return False
+    marker = _read_selected_change_clear_reason()
+    if marker is None:
+        return False
+    if marker["reason"] != SelectedChangeClearReason.STALE_BATCH_SELECTION.value:
+        return False
+    if batch_name is not None and marker["batch_name"] != batch_name:
+        return False
+    return True
+
+
+def refuse_bare_action_after_file_list(
+    action_command: str,
+    *,
+    open_command: str = "git-stage-batch show --file PATH",
+    source: str | None = None,
+    batch_name: str | None = None,
+) -> None:
+    """Refuse a bare action after a navigational file list cleared selection."""
+    if not selected_change_was_cleared_by_file_list(source=source, batch_name=batch_name):
+        return
+    raise CommandError(
+        _(
+            "No selected change.\n"
+            "The last command only showed files; it did not choose one for follow-up actions.\n\n"
+            "Run:\n"
+            "  git-stage-batch show\n"
+            "or choose a file with:\n"
+            "  {open_command}\n"
+            "before running:\n"
+            "  git-stage-batch {action}"
+        ).format(open_command=open_command, action=action_command)
+    )
+
+
+def refuse_bare_action_after_stale_batch_selection(
+    action_command: str,
+    *,
+    batch_name: str,
+) -> None:
+    """Refuse a bare batch action after the selected batch file went stale."""
+    if not selected_change_was_cleared_by_stale_batch_selection(batch_name=batch_name):
+        return
+
+    marker = _read_selected_change_clear_reason() or {}
+    file_path = marker.get("file_path") or "the previously selected file"
+    raise CommandError(
+        _(
+            "No selected change.\n"
+            "The selected batch file '{file}' was changed or removed from batch '{batch}'.\n\n"
+            "Open a current batch file with:\n"
+            "  git-stage-batch show --from {batch} --file PATH\n"
+            "before running:\n"
+            "  git-stage-batch {action}"
+        ).format(file=file_path, batch=batch_name, action=action_command)
+    )
+
+
+def _read_selected_binary_data() -> dict | None:
+    """Read cached binary selection data, if structurally valid."""
+    binary_path = get_selected_binary_file_json_path()
+    if not binary_path.exists():
+        return None
+    try:
+        binary_data = json.loads(read_text_file_contents(binary_path))
+    except json.JSONDecodeError:
+        return None
+    return binary_data if isinstance(binary_data, dict) else None
 
 
 def load_selected_binary_file() -> Optional[BinaryFileChange]:
@@ -90,23 +316,201 @@ def load_selected_binary_file() -> Optional[BinaryFileChange]:
     Returns:
         BinaryFileChange if a binary file is cached, None otherwise
     """
-    binary_path = get_selected_binary_file_json_path()
-    if not binary_path.exists():
+    if read_selected_change_kind() not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
+        return None
+
+    binary_data = _read_selected_binary_data()
+    if binary_data is None:
         return None
 
     try:
-        binary_data = json.loads(read_text_file_contents(binary_path))
         return BinaryFileChange(
             old_path=binary_data["old_path"],
             new_path=binary_data["new_path"],
             change_type=binary_data["change_type"]
         )
-    except (json.JSONDecodeError, KeyError):
+    except KeyError:
         return None
+
+
+def compute_batch_binary_fingerprint(
+    batch_name: str,
+    file_path: str,
+    file_meta: Mapping[str, object],
+) -> str:
+    """Return a stable identity for the current binary content stored in a batch."""
+    batch_blob = None
+    if file_meta.get("change_type") != "deleted":
+        batch_commit = get_batch_commit_sha(batch_name)
+        if batch_commit is not None:
+            blob_result = run_git_command(
+                ["rev-parse", "--verify", f"{batch_commit}:{file_path}"],
+                check=False,
+            )
+            if blob_result.returncode == 0:
+                batch_blob = blob_result.stdout.strip()
+
+    payload = {
+        "file_path": file_path,
+        "file_type": file_meta.get("file_type"),
+        "change_type": file_meta.get("change_type"),
+        "mode": file_meta.get("mode"),
+        "batch_source_commit": file_meta.get("batch_source_commit"),
+        "batch_blob": batch_blob,
+    }
+    data = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return sha256(data.encode("utf-8", errors="surrogateescape")).hexdigest()
+
+
+def cache_binary_file_change(
+    binary_change: BinaryFileChange,
+    *,
+    kind: SelectedChangeKind = SelectedChangeKind.BINARY,
+    batch_name: str | None = None,
+    batch_binary_fingerprint: str | None = None,
+) -> None:
+    """Cache a binary file change as the current selected change."""
+    if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
+        raise ValueError("binary selections must use a binary selected-change kind")
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    binary_data = {
+        "old_path": binary_change.old_path,
+        "new_path": binary_change.new_path,
+        "change_type": binary_change.change_type,
+        "batch_name": batch_name if kind == SelectedChangeKind.BATCH_BINARY else None,
+        "batch_binary_fingerprint": (
+            batch_binary_fingerprint
+            if kind == SelectedChangeKind.BATCH_BINARY else
+            None
+        ),
+    }
+    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
+    get_line_changes_json_file_path().unlink(missing_ok=True)
+    get_index_snapshot_file_path().unlink(missing_ok=True)
+    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+    get_processed_include_ids_file_path().unlink(missing_ok=True)
+    get_processed_skip_ids_file_path().unlink(missing_ok=True)
+    write_text_file_contents(
+        get_selected_binary_file_json_path(),
+        json.dumps(binary_data, ensure_ascii=False, indent=0),
+    )
+    write_text_file_contents(
+        get_selected_hunk_hash_file_path(),
+        compute_binary_file_hash(binary_change),
+    )
+    if kind == SelectedChangeKind.BINARY:
+        write_snapshots_for_selected_file_path(file_path)
+    write_selected_change_kind(kind)
+
+
+def selected_batch_binary_matches_batch(batch_name: str) -> bool:
+    """Return whether the cached batch-binary selection came from this batch."""
+    if read_selected_change_kind() != SelectedChangeKind.BATCH_BINARY:
+        return False
+    binary_data = _read_selected_binary_data()
+    if binary_data is None:
+        return False
+    return binary_data.get("batch_name") == batch_name
+
+
+def selected_batch_binary_batch_name() -> str | None:
+    """Return the source batch name for the cached batch-binary selection."""
+    if read_selected_change_kind() != SelectedChangeKind.BATCH_BINARY:
+        return None
+    binary_data = _read_selected_binary_data()
+    if binary_data is None:
+        return None
+    batch_name = binary_data.get("batch_name")
+    return batch_name if isinstance(batch_name, str) else None
+
+
+def selected_batch_binary_file_for_batch(
+    batch_name: str,
+    all_files: Mapping[str, dict],
+) -> str | None:
+    """Return the selected batch-binary file if it still exists in batch metadata."""
+    if not selected_batch_binary_matches_batch(batch_name):
+        return None
+
+    binary_file = load_selected_binary_file()
+    if binary_file is None:
+        return None
+
+    file_path = binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
+    file_meta = all_files.get(file_path)
+    if file_meta is None:
+        return None
+    if file_meta.get("file_type") != "binary":
+        return None
+    if file_meta.get("change_type") != binary_file.change_type:
+        return None
+
+    binary_data = _read_selected_binary_data()
+    if binary_data is None:
+        return None
+    cached_fingerprint = binary_data.get("batch_binary_fingerprint")
+    if not isinstance(cached_fingerprint, str):
+        return None
+    current_fingerprint = compute_batch_binary_fingerprint(batch_name, file_path, file_meta)
+    if current_fingerprint != cached_fingerprint:
+        return None
+
+    return file_path
+
+
+def require_current_selected_batch_binary_file_for_batch(
+    batch_name: str,
+    all_files: Mapping[str, dict],
+) -> str | None:
+    """Return selected batch-binary file for this batch, or refuse if it went stale."""
+    if not selected_batch_binary_matches_batch(batch_name):
+        return None
+
+    selected_file = selected_batch_binary_file_for_batch(batch_name, all_files)
+    if selected_file is not None:
+        return selected_file
+
+    binary_file = load_selected_binary_file()
+    file_path = (
+        binary_file.new_path
+        if binary_file is not None and binary_file.new_path != "/dev/null" else
+        binary_file.old_path
+        if binary_file is not None else
+        "the selected batch binary"
+    )
+    clear_selected_change_state_files()
+    mark_selected_change_cleared_by_stale_batch_selection(
+        batch_name=batch_name,
+        file_path=file_path,
+    )
+    exit_with_error(
+        _(
+            "The selected batch binary no longer matches batch '{name}'.\n"
+            "Show the batch again before using a pathless batch action."
+        ).format(name=batch_name)
+    )
+
+
+def binary_file_change_is_stale(binary_change: BinaryFileChange) -> bool:
+    """Return whether a cached binary selection no longer matches repository state."""
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    if snapshots_are_stale(file_path):
+        return True
+    current_change = render_binary_file_change(file_path)
+    if current_change is None:
+        return True
+    return (
+        current_change.old_path != binary_change.old_path
+        or current_change.new_path != binary_change.new_path
+        or current_change.change_type != binary_change.change_type
+    )
 
 
 def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     """Persist the kind of selected change cached in session state."""
+    get_selected_change_clear_reason_file_path().unlink(missing_ok=True)
+    if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
+        get_selected_binary_file_json_path().unlink(missing_ok=True)
     write_text_file_contents(get_selected_change_kind_file_path(), kind)
 
 
@@ -128,8 +532,17 @@ def read_selected_change_kind() -> Optional[SelectedChangeKind]:
 
 def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange]]:
     """Load the currently cached selected change, if any."""
+    selected_kind = read_selected_change_kind()
     binary_file = load_selected_binary_file()
     if binary_file is not None:
+        if selected_kind == SelectedChangeKind.BINARY and binary_file_change_is_stale(binary_file):
+            file_path = binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
+            raise CommandError(
+                _(
+                    "Selected binary file no longer matches the working tree: {file}.\n"
+                    "Run 'show' again before using a pathless action."
+                ).format(file=file_path)
+            )
         return binary_file
 
     patch_path = get_selected_hunk_patch_file_path()
@@ -184,6 +597,9 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
 
     file_path = line_changes.path
 
+    if not line_changes.lines and _empty_text_lifecycle_change_is_batched(file_path):
+        return True
+
     # Step 1: Build file attribution (file-centric, not diff-centric)
     attribution = build_file_attribution(file_path)
 
@@ -206,6 +622,19 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
                   ensure_ascii=False, indent=0)
     )
 
+    return False
+
+
+def _empty_text_lifecycle_change_is_batched(file_path: str) -> bool:
+    """Return whether the current empty text lifecycle diff is already batched."""
+    change_type = detect_empty_text_lifecycle_change(file_path)
+    if change_type is None:
+        return False
+
+    for batch_name in list_batch_names():
+        file_meta = read_batch_metadata(batch_name).get("files", {}).get(file_path)
+        if file_meta is not None and file_meta.get("change_type") == change_type:
+            return True
     return False
 
 
@@ -335,6 +764,35 @@ def render_batch_file_display(
     )
 
     if not display_lines:
+        change_type = file_meta.get("change_type", "modified")
+        if change_type in {"added", "deleted"}:
+            marker_kind = "+" if change_type == "added" else "-"
+            line_changes = LineLevelChange(
+                path=file_path,
+                header=HunkHeader(
+                    old_start=0 if change_type == "added" else 1,
+                    old_len=0 if change_type == "added" else 1,
+                    new_start=1 if change_type == "added" else 0,
+                    new_len=1 if change_type == "added" else 0,
+                ),
+                lines=[
+                    LineEntry(
+                        id=1,
+                        kind=marker_kind,
+                        old_line_number=1 if change_type == "deleted" else None,
+                        new_line_number=1 if change_type == "added" else None,
+                        text_bytes=b"<empty file>",
+                        text="<empty file>",
+                        source_line=None,
+                    )
+                ],
+            )
+            return RenderedBatchDisplay(
+                line_changes=line_changes,
+                gutter_to_selection_id={},
+                selection_id_to_gutter={},
+                actionable_selection_groups=(),
+            )
         return None
 
     # Determine which display lines should get gutter IDs
@@ -451,10 +909,74 @@ def render_batch_file_display(
             selection_id_to_gutter[entry.id] = gutter_num
             gutter_num += 1
 
+    line_id_display_order = [
+        entry.id
+        for entry in line_entries
+        if entry.id is not None
+    ]
+    resettable_ids = {
+        line_id
+        for unit in units
+        for line_id in unit.display_line_ids
+    }
+    review_gutter_to_selection_id = {}
+    review_selection_id_to_gutter = {}
+    review_gutter_num = 1
+    for entry in line_entries:
+        if entry.id is not None and entry.id in resettable_ids:
+            review_gutter_to_selection_id[review_gutter_num] = entry.id
+            review_selection_id_to_gutter[entry.id] = review_gutter_num
+            review_gutter_num += 1
+
+    actionable_selection_groups = []
+    review_action_groups = []
+    for unit in units:
+        if not unit.display_line_ids:
+            continue
+        ordered_group = tuple(
+            line_id
+            for line_id in line_id_display_order
+            if line_id in unit.display_line_ids
+        )
+        if len(ordered_group) != len(unit.display_line_ids):
+            continue
+
+        actions = [_BATCH_RESET_REVIEW_ACTION]
+        if unit.display_line_ids.issubset(mergeable_ids):
+            actionable_selection_groups.append(ordered_group)
+            actions = [
+                *_BATCH_MERGE_REVIEW_ACTIONS,
+                _BATCH_RESET_REVIEW_ACTION,
+            ]
+
+        review_display_ids = tuple(
+            review_selection_id_to_gutter[line_id]
+            for line_id in ordered_group
+            if line_id in review_selection_id_to_gutter
+        )
+        if len(review_display_ids) == len(ordered_group):
+            if unit.kind.value == "replacement":
+                reason = "replacement"
+            elif unit.kind.value == "deletion_only":
+                reason = "structural-run"
+            else:
+                reason = "simple"
+            review_action_groups.append(
+                ReviewActionGroup(
+                    display_ids=review_display_ids,
+                    selection_ids=ordered_group,
+                    actions=tuple(actions),
+                    reason=reason,
+                )
+            )
     return RenderedBatchDisplay(
         line_changes=line_changes,
         gutter_to_selection_id=gutter_to_selection_id,
-        selection_id_to_gutter=selection_id_to_gutter
+        selection_id_to_gutter=selection_id_to_gutter,
+        actionable_selection_groups=tuple(actionable_selection_groups),
+        review_gutter_to_selection_id=review_gutter_to_selection_id,
+        review_selection_id_to_gutter=review_selection_id_to_gutter,
+        review_action_groups=tuple(review_action_groups),
     )
 
 
@@ -659,6 +1181,8 @@ def _cache_combined_file_line_changes(
     write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
     write_selected_change_kind(SelectedChangeKind.FILE)
+    write_line_ids_file(get_processed_include_ids_file_path(), set())
+    write_line_ids_file(get_processed_skip_ids_file_path(), set())
     write_text_file_contents(get_line_changes_json_file_path(),
                             json.dumps(convert_line_changes_to_serializable_dict(combined_line_changes),
                                       ensure_ascii=False, indent=0))
@@ -678,6 +1202,19 @@ def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
             stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])
         ),
     )
+
+
+def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
+    """Render a binary file change for file-scoped display without caching state."""
+    try:
+        for item in parse_unified_diff_streaming(
+            stream_git_command(["diff", "--no-color", "HEAD", "--", file_path])
+        ):
+            if isinstance(item, BinaryFileChange):
+                return item
+    except subprocess.CalledProcessError:
+        return None
+    return None
 
 
 def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
@@ -759,6 +1296,9 @@ def _build_combined_file_line_changes(
     previous_new_end = None
 
     for single_hunk in patches:
+        if isinstance(single_hunk, BinaryFileChange):
+            continue
+
         patch_bytes = single_hunk.to_patch_bytes()
         line_changes = build_line_changes_from_patch_bytes(patch_bytes)
 
@@ -864,16 +1404,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
                 if file_path in blocked_files:
                     continue
 
-                # Cache binary file as JSON (for state persistence)
-                binary_data = {
-                    "old_path": item.old_path,
-                    "new_path": item.new_path,
-                    "change_type": item.change_type,
-                }
-                write_text_file_contents(get_selected_binary_file_json_path(),
-                                       json.dumps(binary_data, ensure_ascii=False, indent=0))
-                write_text_file_contents(get_selected_hunk_hash_file_path(), binary_hash)
-                write_selected_change_kind(SelectedChangeKind.BINARY)
+                cache_binary_file_change(item)
 
                 # Return the BinaryFileChange object directly
                 return item
@@ -1008,7 +1539,7 @@ def snapshots_are_stale(file_path: str) -> bool:
     repo_root = get_git_repository_root_path()
     file_full_path = repo_root / file_path
     try:
-        selected_worktree_content = read_file_bytes(file_full_path)
+        selected_worktree_content = read_file_bytes(file_full_path) if file_full_path.exists() else b""
     except Exception:
         return True  # Error reading means state is stale
 
@@ -1019,6 +1550,14 @@ def snapshots_are_stale(file_path: str) -> bool:
 
 def require_selected_hunk() -> None:
     """Ensure selected hunk exists and is not stale, exit with error otherwise."""
+    if read_selected_change_kind() in (SelectedChangeKind.BATCH_FILE, SelectedChangeKind.BATCH_BINARY):
+        exit_with_error(
+            _(
+                "Selected file came from a batch, not a live hunk. "
+                "Open a live hunk with 'show' or use the matching '--from' command."
+            )
+        )
+
     if not get_selected_hunk_patch_file_path().exists():
         exit_with_error(_("No selected hunk. Run 'start' first."))
 
@@ -1053,7 +1592,15 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
             command_show()
             return
 
-        print_line_level_changes(line_changes)
+        if apply_line_level_batch_filter_to_cached_hunk():
+            clear_selected_change_state_files()
+            from ..commands.show import command_show
+            command_show()
+            return
+
+        line_changes = load_line_changes_from_state()
+        if line_changes is not None:
+            print_line_level_changes(line_changes)
         return
 
     # Load blocklist

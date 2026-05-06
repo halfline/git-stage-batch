@@ -1,6 +1,14 @@
 """Tests for status command."""
 
-from git_stage_batch.commands.show import command_show
+from git_stage_batch.batch import create_batch
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.storage import add_binary_file_to_batch
+from git_stage_batch.batch.storage import add_file_to_batch
+from git_stage_batch.commands.include import command_include_line, command_include_to_batch
+from git_stage_batch.commands.reset import command_reset_from_batch
+from git_stage_batch.commands.show import command_show, command_show_file_list
+from git_stage_batch.commands.show_from import command_show_from_batch
+from git_stage_batch.data.hunk_tracking import SelectedChangeKind, read_selected_change_kind
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import get_iteration_count_file_path
 from git_stage_batch.utils.paths import ensure_state_directory_exists, get_state_directory_path
@@ -10,10 +18,13 @@ import subprocess
 
 import pytest
 
+from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.skip import command_skip, command_skip_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.status import command_status
+from git_stage_batch.core.line_selection import format_line_ids
+from git_stage_batch.data.file_review_state import read_last_file_review_state
 
 
 @pytest.fixture
@@ -209,7 +220,7 @@ class TestCommandStatus:
 
         captured = capsys.readouterr()
         output = json.loads(captured.out)
-        assert output == {"session_active": False}
+        assert output == {"session": {"active": False}}
 
     def test_status_ignores_persistent_batch_state_without_session(self, temp_git_repo, capsys):
         """Persistent batch metadata alone should not count as an active session."""
@@ -248,9 +259,10 @@ class TestCommandStatus:
         output = json.loads(captured.out)
 
         # Verify JSON structure
-        assert output["session_active"] is True
-        assert output["iteration"] == 1
-        assert output["status"] in ("in_progress", "complete")
+        assert output["session"]["active"] is True
+        assert output["session"]["iteration"] == 1
+        assert output["session"]["status"] in ("in_progress", "complete")
+        assert isinstance(output["session"]["in_progress"], bool)
         assert "progress" in output
         assert "included" in output["progress"]
         assert "skipped" in output["progress"]
@@ -258,8 +270,8 @@ class TestCommandStatus:
         assert "remaining" in output["progress"]
         assert "skipped_hunks" in output
 
-    def test_status_porcelain_includes_selected_hunk(self, temp_git_repo, capsys):
-        """Test status --porcelain includes selected hunk details."""
+    def test_status_porcelain_includes_selected_change(self, temp_git_repo, capsys):
+        """Test status --porcelain includes selected change details."""
 
         # Create and commit a file
         test_file = temp_git_repo / "test.txt"
@@ -282,10 +294,297 @@ class TestCommandStatus:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
 
-        # Should have selected hunk details (if full state caching is implemented)
-        # At this stage, show.py may only cache patch+hash, not full LineLevelChange
-        if output["selected_hunk"] is not None:
-            assert "file" in output["selected_hunk"]
-            assert "line" in output["selected_hunk"]
-            assert "ids" in output["selected_hunk"]
-            assert output["selected_hunk"]["file"] == "test.txt"
+        assert output["selected_change"] is not None
+        assert output["selected_change"]["kind"] == "hunk"
+        assert output["selected_change"]["file"] == "test.txt"
+        assert "line" in output["selected_change"]
+        assert "ids" in output["selected_change"]
+
+    def test_status_in_progress_when_no_selection_but_hunks_remain(self, temp_git_repo, capsys):
+        """Navigational file lists clear selection without making the session complete."""
+        (temp_git_repo / "a.txt").write_text("a\n")
+        (temp_git_repo / "b.txt").write_text("b\n")
+        subprocess.run(["git", "add", "a.txt", "b.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "a.txt").write_text("a changed\n")
+        (temp_git_repo / "b.txt").write_text("b changed\n")
+
+        command_start()
+        capsys.readouterr()
+        command_show_file_list(["a.txt", "b.txt"])
+        capsys.readouterr()
+
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "Session: iteration 1 (in progress)" in captured.out
+        assert "Current hunk:" not in captured.out
+        assert "Remaining: ~2 hunks" in captured.out
+
+    def test_status_reports_selected_batch_file_review_without_snapshots(self, temp_git_repo, capsys):
+        """Batch-file reviews intentionally lack live snapshots but remain selected."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nbatched\n")
+
+        command_start()
+        capsys.readouterr()
+        command_include_to_batch("cleanup", file="README.md", quiet=True)
+        capsys.readouterr()
+        command_show_from_batch("cleanup", file="README.md")
+        capsys.readouterr()
+
+        command_status()
+
+        captured = capsys.readouterr()
+        assert "Session: iteration 1 (in progress)" in captured.out
+        assert "Current batch file review:" in captured.out
+        assert "Last file review:" in captured.out
+        assert "source: batch cleanup" in captured.out
+
+        command_status(porcelain=True)
+        output = json.loads(capsys.readouterr().out)
+        assert output["session"]["status"] == "in_progress"
+        assert output["selected_change"]["kind"] == "batch-file"
+        assert output["selected_change"]["file"] == "README.md"
+        assert output["file_review"]["source"] == "batch"
+        assert output["file_review"]["batch_name"] == "cleanup"
+
+    def test_status_reports_batch_review_gutter_ids(self, temp_git_repo, capsys):
+        """Batch-file status should show user-visible gutter IDs, not source IDs."""
+        test_file = temp_git_repo / "file.txt"
+        test_file.write_text("keep\nold\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        ensure_state_directory_exists()
+        initialize_abort_state()
+        test_file.write_text("keep\nnew\n")
+        create_batch("manual")
+        add_file_to_batch(
+            "manual",
+            "file.txt",
+            BatchOwnership(claimed_lines=["2"], deletions=[]),
+            "100644",
+        )
+        test_file.write_text("keep\nold\n")
+
+        command_show_from_batch("manual", file="file.txt", page="all")
+        capsys.readouterr()
+
+        command_status(porcelain=True)
+        output = json.loads(capsys.readouterr().out)
+
+        assert output["selected_change"]["kind"] == "batch-file"
+        assert output["selected_change"]["ids"] == [1]
+
+        command_status()
+        captured = capsys.readouterr()
+        assert "[#1]" in captured.out
+        assert "[#2]" not in captured.out
+
+    def test_status_reports_only_shown_batch_review_gutter_ids(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """Batch-file status should not advertise hidden-page line IDs."""
+        from git_stage_batch.output import file_review
+
+        monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
+        test_file = temp_git_repo / "file.txt"
+        original = [f"line {number}\n" for number in range(1, 31)]
+        test_file.write_text("".join(original))
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        changed = original[:]
+        changed[1] = "line 2 changed\n"
+        changed[11] = "line 12 changed\n"
+        changed[21] = "line 22 changed\n"
+        test_file.write_text("".join(changed))
+
+        ensure_state_directory_exists()
+        initialize_abort_state()
+        add_file_to_batch(
+            "cleanup",
+            "file.txt",
+            BatchOwnership(claimed_lines=["2", "12", "22"], deletions=[]),
+            "100644",
+        )
+
+        command_show_from_batch("cleanup", file="file.txt", page="1")
+        capsys.readouterr()
+
+        command_status(porcelain=True)
+        output = json.loads(capsys.readouterr().out)
+
+        assert output["selected_change"]["kind"] == "batch-file"
+        assert output["selected_change"]["ids"] == [1]
+
+    def test_status_reports_only_shown_live_review_gutter_ids(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """Live file status should not advertise hidden-page line IDs."""
+        from git_stage_batch.output import file_review
+
+        monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
+        test_file = temp_git_repo / "file.txt"
+        original = [f"line {number}\n" for number in range(1, 31)]
+        test_file.write_text("".join(original))
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        changed = original[:]
+        changed[1] = "line 2 changed\n"
+        changed[11] = "line 12 changed\n"
+        changed[21] = "line 22 changed\n"
+        test_file.write_text("".join(changed))
+
+        command_start()
+        capsys.readouterr()
+        command_show(file="file.txt", page="1")
+        capsys.readouterr()
+
+        command_status(porcelain=True)
+        output = json.loads(capsys.readouterr().out)
+
+        assert output["selected_change"]["kind"] == "file"
+        assert output["selected_change"]["ids"] == [1, 2]
+
+    def test_status_hides_ids_from_stale_live_review(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """Status should not fall back to raw IDs from a stale live review."""
+        from git_stage_batch.output import file_review
+
+        monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
+        test_file = temp_git_repo / "file.txt"
+        original = [f"line {number}\n" for number in range(1, 31)]
+        test_file.write_text("".join(original))
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        changed = original[:]
+        changed[1] = "line 2 changed\n"
+        changed[11] = "line 12 changed\n"
+        changed[21] = "line 22 changed\n"
+        test_file.write_text("".join(changed))
+
+        command_start()
+        capsys.readouterr()
+        command_show(file="file.txt", page="1")
+        capsys.readouterr()
+        state = read_last_file_review_state()
+        assert state is not None
+        line_spec = format_line_ids(list(state.selections[0].display_ids))
+
+        command_include_line(line_spec)
+        capsys.readouterr()
+
+        command_status(porcelain=True)
+        output = json.loads(capsys.readouterr().out)
+
+        assert output["file_review"]["fresh"] is False
+        assert output["selected_change"]["kind"] == "file"
+        assert output["selected_change"]["ids"] == []
+
+    def test_status_complete_after_selected_batch_file_is_reset(self, temp_git_repo, capsys):
+        """Resetting the selected batch file should not leave status in progress."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nbatched\n")
+
+        command_start()
+        capsys.readouterr()
+        command_include_to_batch("cleanup", file="README.md", quiet=True)
+        capsys.readouterr()
+        subprocess.run(["git", "checkout", "HEAD", "--", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        command_show_from_batch("cleanup", file="README.md", page="all")
+        capsys.readouterr()
+        command_reset_from_batch("cleanup")
+        capsys.readouterr()
+
+        command_status(porcelain=True)
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["session"]["status"] == "complete"
+        assert output["selected_change"] is None
+        assert output["progress"]["remaining"] == 0
+
+    def test_status_hides_stale_binary_selection_without_clearing_it(self, temp_git_repo, capsys):
+        """A stale binary selection should not affect progress or lose its pathless-action guard."""
+        binary_file = temp_git_repo / "asset.bin"
+        binary_file.write_bytes(b"\x00\x01\x02")
+        subprocess.run(["git", "add", "asset.bin"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add binary"], check=True, cwd=temp_git_repo, capture_output=True)
+        binary_file.write_bytes(b"\x00\x03\x04")
+
+        ensure_state_directory_exists()
+        initialize_abort_state()
+        command_show(file="asset.bin", porcelain=True)
+        subprocess.run(["git", "restore", "asset.bin"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        command_status(porcelain=True)
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["session"]["status"] == "complete"
+        assert output["selected_change"] is None
+        assert output["progress"]["remaining"] == 0
+        assert read_selected_change_kind() == SelectedChangeKind.BINARY
+
+    def test_status_keeps_current_deleted_binary_selection(self, temp_git_repo, capsys):
+        """A binary deletion should remain selected while the deletion is still present."""
+        binary_file = temp_git_repo / "asset.bin"
+        binary_file.write_bytes(b"\x00\x01\x02")
+        subprocess.run(["git", "add", "asset.bin"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add binary"], check=True, cwd=temp_git_repo, capture_output=True)
+        binary_file.unlink()
+
+        ensure_state_directory_exists()
+        initialize_abort_state()
+        command_show(file="asset.bin", porcelain=True)
+
+        command_status(porcelain=True)
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["session"]["status"] == "in_progress"
+        assert output["selected_change"]["kind"] == "binary"
+        assert output["selected_change"]["file"] == "asset.bin"
+        assert output["selected_change"]["change_type"] == "deleted"
+
+    def test_status_drops_stale_batch_binary_selection(self, temp_git_repo, capsys):
+        """A cached batch-binary selection should not survive changed batch bytes."""
+        binary_file = temp_git_repo / "asset.bin"
+        binary_file.write_bytes(b"\x00\x01\x02")
+        subprocess.run(["git", "add", "asset.bin"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add binary"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        ensure_state_directory_exists()
+        initialize_abort_state()
+        binary_file.write_bytes(b"\x00\x03\x04")
+        add_binary_file_to_batch(
+            "bin-batch",
+            BinaryFileChange("asset.bin", "asset.bin", "modified"),
+        )
+        command_show_from_batch("bin-batch", file="asset.bin")
+        capsys.readouterr()
+
+        binary_file.write_bytes(b"\x00\x05\x06")
+        add_binary_file_to_batch(
+            "bin-batch",
+            BinaryFileChange("asset.bin", "asset.bin", "modified"),
+        )
+
+        command_status(porcelain=True)
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["selected_change"] is None
+        assert read_selected_change_kind() is None

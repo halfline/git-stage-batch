@@ -2,9 +2,52 @@
 
 from __future__ import annotations
 
-from ..core.models import LineLevelChange
+from ..core.models import LineEntry, LineLevelChange
 from ..utils.git import create_git_blob, run_git_command
 from ..utils.journal import log_journal
+
+
+def _is_synthetic_gap_line(line_entry: LineEntry) -> bool:
+    return (
+        line_entry.kind == " "
+        and line_entry.old_line_number is None
+        and line_entry.new_line_number is None
+    )
+
+
+def _old_index_for_new_anchor(
+    line_changes: LineLevelChange,
+    new_anchor: int,
+    before_index: int,
+) -> int:
+    """Translate a new-file anchor to an old-file insertion index.
+
+    File-scoped views can concatenate separate hunks and omit their individual
+    zero-length headers. Counting earlier changed entries restores the line
+    number delta at the selected row.
+    """
+    old_index = new_anchor
+    for line_entry in line_changes.lines[:before_index]:
+        if line_entry.kind == "+":
+            old_index -= 1
+        elif line_entry.kind == "-":
+            old_index += 1
+    return max(old_index, 0)
+
+
+def _new_index_for_old_anchor(
+    line_changes: LineLevelChange,
+    old_anchor: int,
+    before_index: int,
+) -> int:
+    """Translate an old-file anchor to a new-file insertion index."""
+    new_index = old_anchor
+    for line_entry in line_changes.lines[:before_index]:
+        if line_entry.kind == "-":
+            new_index -= 1
+        elif line_entry.kind == "+":
+            new_index += 1
+    return max(new_index, 0)
 
 
 def build_target_index_content_with_selected_lines(
@@ -234,20 +277,47 @@ def build_target_index_content_bytes_with_replaced_lines(
 
     def find_next_old_line_number(start_index: int) -> int | None:
         for line_entry in line_changes.lines[start_index:]:
+            if _is_synthetic_gap_line(line_entry):
+                return None
             if line_entry.old_line_number is not None:
                 return line_entry.old_line_number
         return None
+
+    def find_previous_old_line_number(end_index: int) -> int | None:
+        for line_entry in reversed(line_changes.lines[:end_index + 1]):
+            if _is_synthetic_gap_line(line_entry):
+                return None
+            if line_entry.old_line_number is not None:
+                return line_entry.old_line_number
+        return None
+
+    def old_insertion_index(index: int) -> int:
+        line_entry = line_changes.lines[index]
+        if line_entry.kind == "+" and line_entry.new_line_number is not None:
+            return min(
+                _old_index_for_new_anchor(
+                    line_changes,
+                    line_entry.new_line_number - 1,
+                    index,
+                ),
+                base_line_count,
+            )
+
+        previous_old_line_number = find_previous_old_line_number(index - 1)
+        if previous_old_line_number is not None:
+            return min(previous_old_line_number, base_line_count)
+
+        next_old_line_number = find_next_old_line_number(index + 1)
+        if next_old_line_number is not None:
+            return max(next_old_line_number - 1, 0)
+
+        return min(line_changes.header.old_prefix_line_count(), base_line_count)
 
     first_selected_line = line_changes.lines[span_start_index]
     if first_selected_line.old_line_number is not None:
         replace_start = max(first_selected_line.old_line_number - 1, 0)
     else:
-        next_old_line_number = find_next_old_line_number(span_start_index + 1)
-        replace_start = (
-            max(next_old_line_number - 1, 0)
-            if next_old_line_number is not None
-            else base_line_count
-        )
+        replace_start = old_insertion_index(span_start_index)
 
     replace_end = base_line_count
     for line_entry in reversed(line_changes.lines[span_start_index:span_end_index + 1]):
@@ -255,12 +325,7 @@ def build_target_index_content_bytes_with_replaced_lines(
             replace_end = line_entry.old_line_number
             break
     else:
-        next_old_line_number = find_next_old_line_number(span_end_index + 1)
-        replace_end = (
-            max(next_old_line_number - 1, 0)
-            if next_old_line_number is not None
-            else base_line_count
-        )
+        replace_end = replace_start
 
     if trim_unchanged_edge_anchors:
         before_context = base_lines[:replace_start]
@@ -317,7 +382,7 @@ def build_target_working_tree_content_with_discarded_lines(
     working_lines = working_text.splitlines()
     output_lines: list[str] = []
 
-    working_pointer = max(line_changes.header.new_start - 1, 0)
+    working_pointer = line_changes.header.new_prefix_line_count()
     working_line_count = len(working_lines)
 
     def push_output(line: str) -> None:
@@ -328,16 +393,31 @@ def build_target_working_tree_content_with_discarded_lines(
         if new_line_number is None:
             return
         target_index = max(new_line_number - 1, 0)
+        copy_unchanged_lines_until_index(target_index)
+
+    def copy_unchanged_lines_until_index(target_index: int) -> None:
+        nonlocal working_pointer
         while working_pointer < min(target_index, working_line_count):
             push_output(working_lines[working_pointer])
             working_pointer += 1
 
     def copy_remaining_lines_before_deletion(index: int) -> None:
+        line_entry = line_changes.lines[index]
+        if line_entry.old_line_number is not None:
+            copy_unchanged_lines_until_index(
+                _new_index_for_old_anchor(
+                    line_changes,
+                    line_entry.old_line_number - 1,
+                    index,
+                )
+            )
+
         for next_entry in line_changes.lines[index + 1:]:
+            if _is_synthetic_gap_line(next_entry):
+                return
             if next_entry.new_line_number is not None:
                 copy_unchanged_lines_before(next_entry.new_line_number)
                 return
-        copy_unchanged_lines_before(working_line_count + 1)
 
     # Copy lines before the hunk
     for index in range(0, min(working_pointer, working_line_count)):
@@ -387,7 +467,7 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
     working_lines = working_content.splitlines()
     output_lines: list[bytes] = []
 
-    working_pointer = max(line_changes.header.new_start - 1, 0)
+    working_pointer = line_changes.header.new_prefix_line_count()
     working_line_count = len(working_lines)
 
     def push_output(line: bytes) -> None:
@@ -398,16 +478,31 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
         if new_line_number is None:
             return
         target_index = max(new_line_number - 1, 0)
+        copy_unchanged_lines_until_index(target_index)
+
+    def copy_unchanged_lines_until_index(target_index: int) -> None:
+        nonlocal working_pointer
         while working_pointer < min(target_index, working_line_count):
             push_output(working_lines[working_pointer])
             working_pointer += 1
 
     def copy_remaining_lines_before_deletion(index: int) -> None:
+        line_entry = line_changes.lines[index]
+        if line_entry.old_line_number is not None:
+            copy_unchanged_lines_until_index(
+                _new_index_for_old_anchor(
+                    line_changes,
+                    line_entry.old_line_number - 1,
+                    index,
+                )
+            )
+
         for next_entry in line_changes.lines[index + 1:]:
+            if _is_synthetic_gap_line(next_entry):
+                return
             if next_entry.new_line_number is not None:
                 copy_unchanged_lines_before(next_entry.new_line_number)
                 return
-        copy_unchanged_lines_before(working_line_count + 1)
 
     for index in range(0, min(working_pointer, working_line_count)):
         push_output(working_lines[index])
@@ -502,20 +597,47 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
 
     def find_next_new_line_number(start_index: int) -> int | None:
         for line_entry in line_changes.lines[start_index:]:
+            if _is_synthetic_gap_line(line_entry):
+                return None
             if line_entry.new_line_number is not None:
                 return line_entry.new_line_number
         return None
+
+    def find_previous_new_line_number(end_index: int) -> int | None:
+        for line_entry in reversed(line_changes.lines[:end_index + 1]):
+            if _is_synthetic_gap_line(line_entry):
+                return None
+            if line_entry.new_line_number is not None:
+                return line_entry.new_line_number
+        return None
+
+    def new_insertion_index(index: int) -> int:
+        line_entry = line_changes.lines[index]
+        if line_entry.kind == "-" and line_entry.old_line_number is not None:
+            return min(
+                _new_index_for_old_anchor(
+                    line_changes,
+                    line_entry.old_line_number - 1,
+                    index,
+                ),
+                working_line_count,
+            )
+
+        previous_new_line_number = find_previous_new_line_number(index - 1)
+        if previous_new_line_number is not None:
+            return min(previous_new_line_number, working_line_count)
+
+        next_new_line_number = find_next_new_line_number(index + 1)
+        if next_new_line_number is not None:
+            return max(next_new_line_number - 1, 0)
+
+        return min(line_changes.header.new_prefix_line_count(), working_line_count)
 
     first_selected_line = line_changes.lines[span_start_index]
     if first_selected_line.new_line_number is not None:
         replace_start = max(first_selected_line.new_line_number - 1, 0)
     else:
-        next_new_line_number = find_next_new_line_number(span_start_index + 1)
-        replace_start = (
-            max(next_new_line_number - 1, 0)
-            if next_new_line_number is not None
-            else working_line_count
-        )
+        replace_start = new_insertion_index(span_start_index)
 
     replace_end = working_line_count
     for line_entry in reversed(line_changes.lines[span_start_index:span_end_index + 1]):
@@ -523,12 +645,7 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
             replace_end = line_entry.new_line_number
             break
     else:
-        next_new_line_number = find_next_new_line_number(span_end_index + 1)
-        replace_end = (
-            max(next_new_line_number - 1, 0)
-            if next_new_line_number is not None
-            else working_line_count
-        )
+        replace_end = replace_start
 
     if trim_unchanged_edge_anchors:
         before_context = working_lines[:replace_start]

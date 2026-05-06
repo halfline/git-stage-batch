@@ -17,6 +17,10 @@ from .file_io import read_text_file_contents, write_text_file_contents
 from .text import bytes_to_lines
 
 
+_GIT_REPOSITORY_ROOT_CACHE: dict[Path, Path] = {}
+_GIT_DIRECTORY_CACHE: dict[Path, Path] = {}
+
+
 def stream_git_command(
     arguments: list[str],
     stdin_chunks: Iterable[bytes] | None = None,
@@ -379,14 +383,28 @@ def get_git_repository_root_path() -> Path:
     Raises:
         subprocess.CalledProcessError: If not in a git repository
     """
+    cwd = Path.cwd()
+    cached = _GIT_REPOSITORY_ROOT_CACHE.get(cwd)
+    if cached is not None:
+        return cached
+
     output = run_git_command(["rev-parse", "--show-toplevel"]).stdout.strip()
-    return Path(output)
+    path = Path(output)
+    _GIT_REPOSITORY_ROOT_CACHE[cwd] = path
+    return path
 
 
 def get_git_directory_path() -> Path:
     """Get the absolute path to the repository's git directory."""
+    cwd = Path.cwd()
+    cached = _GIT_DIRECTORY_CACHE.get(cwd)
+    if cached is not None:
+        return cached
+
     output = run_git_command(["rev-parse", "--absolute-git-dir"]).stdout.strip()
-    return Path(output)
+    path = Path(output)
+    _GIT_DIRECTORY_CACHE[cwd] = path
+    return path
 
 
 def resolve_file_path_to_repo_relative(file_path: str) -> str:

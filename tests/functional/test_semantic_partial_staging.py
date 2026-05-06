@@ -138,6 +138,52 @@ def test_semantic_partial_staging_pure_addition_preserves_blank_anchor(functiona
     assert result.stdout == ""
 
 
+def test_include_line_as_pure_addition_preserves_anchor(functional_repo):
+    _commit_file(functional_repo, "file.txt", "A\nC\n")
+    (functional_repo / "file.txt").write_text("A\nB\nC\n")
+
+    git_stage_batch("start", "-U0")
+    git_stage_batch("include", "--line", "1", "--as", "X")
+
+    assert _index_content(functional_repo, "file.txt") == "A\nX\nC\n"
+
+
+def test_discard_line_pure_deletion_preserves_anchor(functional_repo):
+    _commit_file(functional_repo, "file.txt", "A\nB\nC\n")
+    (functional_repo / "file.txt").write_text("A\nC\n")
+
+    git_stage_batch("start", "-U0")
+    git_stage_batch("discard", "--line", "1")
+
+    assert (functional_repo / "file.txt").read_text() == "A\nB\nC\n"
+    result = subprocess.run(
+        ["git", "diff", "--", "file.txt"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout == ""
+
+
+def test_discard_file_line_pure_deletion_preserves_anchor(functional_repo):
+    _commit_file(
+        functional_repo,
+        "file.txt",
+        "line1\nold-a\nline3\nline4\nline5\nold-b\nline7\n",
+    )
+    (functional_repo / "file.txt").write_text(
+        "line1\nline3\nline4\nline5\nline7\n"
+    )
+
+    git_stage_batch("start", "-U0")
+    git_stage_batch("discard", "--file", "file.txt", "--line", "1")
+
+    assert (functional_repo / "file.txt").read_text() == (
+        "line1\nold-a\nline3\nline4\nline5\nline7\n"
+    )
+
+
 def test_semantic_partial_staging_pure_deletion(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\nc\n")
     (functional_repo / "file.txt").write_text("a\nc\n")

@@ -9,6 +9,7 @@ from git_stage_batch.staging.operations import (
     build_target_index_content_bytes_with_selected_lines,
     build_target_index_content_bytes_with_replaced_lines,
     build_target_index_content_with_selected_lines,
+    build_target_working_tree_content_bytes_with_discarded_lines,
     build_target_working_tree_content_bytes_with_replaced_lines,
     build_target_working_tree_content_with_discarded_lines,
     update_index_with_blob_content,
@@ -483,6 +484,51 @@ class TestBuildTargetIndexContent:
             b"line20\n"
         )
 
+    def test_replace_insertion_only_hunk_uses_old_anchor(self):
+        """Pure insertion replacement should not move to the file end."""
+        header = HunkHeader(2, 0, 3, 1)
+        lines = [
+            LineEntry(1, "+", None, 3, text_bytes=b"inserted", text="inserted"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"line1\n\nline3\n"
+
+        result = build_target_index_content_bytes_with_replaced_lines(
+            line_changes,
+            {1},
+            "replacement",
+            base_content,
+        )
+
+        assert result == b"line1\n\nreplacement\nline3\n"
+
+    def test_replace_file_scoped_insertion_uses_prior_change_delta(self):
+        """File-scoped pure insertions should keep anchors after prior hunks."""
+        header = HunkHeader(1, 1, 2, 3)
+        lines = [
+            LineEntry(1, "+", None, 2, text_bytes=b"add-a", text="add-a"),
+            LineEntry(
+                None,
+                " ",
+                None,
+                None,
+                text_bytes=b"... 1 more line ...",
+                text="... 1 more line ...",
+            ),
+            LineEntry(2, "+", None, 4, text_bytes=b"add-b", text="add-b"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"line1\nline3\nline5\n"
+
+        result = build_target_index_content_bytes_with_replaced_lines(
+            line_changes,
+            {2},
+            "replacement",
+            base_content,
+        )
+
+        assert result == b"line1\nline3\nreplacement\nline5\n"
+
     def test_replace_selection_spans_multiple_file_scoped_regions(self):
         """File-scoped replacement staging should replace the full selected span."""
         header = HunkHeader(5, 32, 5, 38)
@@ -629,6 +675,24 @@ class TestBuildTargetIndexContent:
 
         assert result == b"keep1\nkeep1\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"
 
+    def test_working_tree_replace_deletion_only_hunk_uses_new_anchor(self):
+        """Pure deletion replacement should not move to the file end."""
+        header = HunkHeader(2, 1, 1, 0)
+        lines = [
+            LineEntry(1, "-", 2, None, text_bytes=b"deleted", text="deleted"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"line1\nline3\n"
+
+        result = build_target_working_tree_content_bytes_with_replaced_lines(
+            line_changes,
+            {1},
+            "replacement",
+            working_content,
+        )
+
+        assert result == b"line1\nreplacement\nline3\n"
+
 
 class TestBuildTargetWorkingTreeContent:
     """Tests for build_target_working_tree_content_with_discarded_lines."""
@@ -664,6 +728,72 @@ class TestBuildTargetWorkingTreeContent:
 
         # Discarding the deletion reinserts it
         assert result == "line1\ndeleted line\nline2\n"
+
+    def test_deletion_only_hunk_keeps_new_anchor_line(self):
+        """Zero-length new ranges reinsert after the new start line."""
+        header = HunkHeader(2, 1, 1, 0)
+        lines = [
+            LineEntry(1, "-", 2, None, text_bytes=b"deleted", text="deleted"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_text = "line1\nline3\n"
+
+        result = build_target_working_tree_content_with_discarded_lines(
+            line_changes,
+            {1},
+            working_text,
+        )
+
+        assert result == "line1\ndeleted\nline3\n"
+
+    def test_deletion_only_hunk_keeps_new_anchor_line_bytes(self):
+        """Bytes-preserving deletion discard should keep the anchor line."""
+        header = HunkHeader(2, 1, 1, 0)
+        lines = [
+            LineEntry(1, "-", 2, None, text_bytes=b"deleted", text="deleted"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"line1\nline3\n"
+
+        result = build_target_working_tree_content_bytes_with_discarded_lines(
+            line_changes,
+            {1},
+            working_content,
+        )
+
+        assert result == b"line1\ndeleted\nline3\n"
+
+    def test_file_scoped_deletion_uses_prior_change_delta(self):
+        """File-scoped deletions should keep anchors after prior hunks."""
+        header = HunkHeader(2, 5, 1, 3)
+        lines = [
+            LineEntry(1, "-", 2, None, text_bytes=b"old-a", text="old-a"),
+            LineEntry(
+                None,
+                " ",
+                None,
+                None,
+                text_bytes=b"... 3 more lines ...",
+                text="... 3 more lines ...",
+            ),
+            LineEntry(2, "-", 6, None, text_bytes=b"old-b", text="old-b"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_text = "line1\nline3\nline4\nline5\nline7\n"
+
+        first_result = build_target_working_tree_content_with_discarded_lines(
+            line_changes,
+            {1},
+            working_text,
+        )
+        second_result = build_target_working_tree_content_with_discarded_lines(
+            line_changes,
+            {2},
+            working_text,
+        )
+
+        assert first_result == "line1\nold-a\nline3\nline4\nline5\nline7\n"
+        assert second_result == "line1\nline3\nline4\nline5\nold-b\nline7\n"
 
     def test_keep_addition(self):
         """Test keeping an added line (not discarding)."""

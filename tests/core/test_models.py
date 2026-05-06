@@ -25,6 +25,30 @@ class TestHunkHeader:
         assert header1 == header2
         assert header1 != header3
 
+    def test_old_prefix_line_count_for_non_empty_range(self):
+        """Non-empty old ranges start at the first changed old line."""
+        header = HunkHeader(old_start=10, old_len=3, new_start=12, new_len=5)
+
+        assert header.old_prefix_line_count() == 9
+
+    def test_old_prefix_line_count_for_zero_length_range(self):
+        """Zero-length old ranges are anchored after old_start."""
+        header = HunkHeader(old_start=10, old_len=0, new_start=11, new_len=2)
+
+        assert header.old_prefix_line_count() == 10
+
+    def test_new_prefix_line_count_for_non_empty_range(self):
+        """Non-empty new ranges start at the first changed new line."""
+        header = HunkHeader(old_start=10, old_len=5, new_start=12, new_len=3)
+
+        assert header.new_prefix_line_count() == 11
+
+    def test_new_prefix_line_count_for_zero_length_range(self):
+        """Zero-length new ranges are anchored after new_start."""
+        header = HunkHeader(old_start=10, old_len=2, new_start=9, new_len=0)
+
+        assert header.new_prefix_line_count() == 9
+
 
 class TestSingleHunkPatch:
     """Tests for SingleHunkPatch dataclass."""

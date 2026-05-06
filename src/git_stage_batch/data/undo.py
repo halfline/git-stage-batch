@@ -211,6 +211,10 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
 @contextmanager
 def undo_checkpoint(operation: str, *, worktree_paths: list[str] | None = None) -> Iterator[None]:
     """Bracket an undoable operation with before and after snapshots."""
+    if _PENDING_CHECKPOINT is not None:
+        yield
+        return
+
     checkpoint = _create_undo_checkpoint(operation, worktree_paths=worktree_paths)
     try:
         yield

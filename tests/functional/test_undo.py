@@ -1,5 +1,6 @@
 """Functional tests for undo support."""
 
+import json
 import subprocess
 
 from .conftest import git_stage_batch, get_staged_diff
@@ -13,6 +14,16 @@ def _commit_file(path, content: str) -> None:
     path.write_text(content)
     _git("add", str(path))
     _git("commit", "-m", f"Add {path.name}")
+
+
+def _create_two_changed_text_files(repo):
+    alpha = repo / "alpha.txt"
+    beta = repo / "beta.txt"
+    _commit_file(alpha, "alpha\n")
+    _commit_file(beta, "beta\n")
+    alpha.write_text("alpha\nalpha change\n")
+    beta.write_text("beta\nbeta change\n")
+    return alpha, beta
 
 
 def test_undo_skip_restores_selected_hunk(repo_with_changes):
@@ -116,6 +127,83 @@ def test_undo_include_to_batch_restores_batch_refs(functional_repo):
     assert git_stage_batch("show", "--from", "undo-batch").stdout == ""
     assert _git("rev-parse", "refs/git-stage-batch/batches/undo-batch").stdout.strip() != content_ref
     assert _git("rev-parse", "refs/git-stage-batch/state/undo-batch").stdout.strip() != state_ref
+
+
+def test_undo_include_files_restores_entire_multi_file_operation(functional_repo):
+    """Undoing include --files should unstage every matched file."""
+    alpha, beta = _create_two_changed_text_files(functional_repo)
+
+    git_stage_batch("start")
+    git_stage_batch("include", "--files", "*.txt")
+
+    assert set(_git("diff", "--cached", "--name-only").stdout.splitlines()) == {
+        "alpha.txt",
+        "beta.txt",
+    }
+
+    git_stage_batch("undo")
+
+    assert _git("diff", "--cached", "--name-only").stdout == ""
+    assert alpha.read_text() == "alpha\nalpha change\n"
+    assert beta.read_text() == "beta\nbeta change\n"
+
+
+def test_undo_skip_files_restores_entire_multi_file_operation(functional_repo):
+    """Undoing skip --files should clear every skipped hunk."""
+    _create_two_changed_text_files(functional_repo)
+
+    git_stage_batch("start")
+    git_stage_batch("skip", "--files", "*.txt")
+
+    skipped_status = json.loads(git_stage_batch("status", "--porcelain").stdout)
+    assert skipped_status["progress"]["skipped"] == 2
+
+    git_stage_batch("undo")
+
+    restored_status = json.loads(git_stage_batch("status", "--porcelain").stdout)
+    assert restored_status["progress"]["skipped"] == 0
+
+
+def test_undo_discard_files_restores_entire_multi_file_operation(functional_repo):
+    """Undoing discard --files should restore every matched file."""
+    alpha, beta = _create_two_changed_text_files(functional_repo)
+
+    git_stage_batch("start")
+    git_stage_batch("discard", "--files", "*.txt")
+
+    assert set(_git("diff", "--cached", "--name-only").stdout.splitlines()) == {
+        "alpha.txt",
+        "beta.txt",
+    }
+
+    git_stage_batch("undo")
+
+    assert _git("diff", "--cached", "--name-only").stdout == ""
+    assert set(_git("diff", "--name-only").stdout.splitlines()) == {
+        "alpha.txt",
+        "beta.txt",
+    }
+    assert alpha.read_text() == "alpha\nalpha change\n"
+    assert beta.read_text() == "beta\nbeta change\n"
+
+
+def test_undo_discard_to_batch_files_restores_entire_multi_file_operation(functional_repo):
+    """Undoing discard --to --files should restore every discarded file."""
+    alpha, beta = _create_two_changed_text_files(functional_repo)
+
+    git_stage_batch("start")
+    git_stage_batch("discard", "--to", "saved", "--files", "*.txt")
+
+    assert _git("diff", "--name-only").stdout == ""
+
+    git_stage_batch("undo")
+
+    assert set(_git("diff", "--name-only").stdout.splitlines()) == {
+        "alpha.txt",
+        "beta.txt",
+    }
+    assert alpha.read_text() == "alpha\nalpha change\n"
+    assert beta.read_text() == "beta\nbeta change\n"
 
 
 def test_undo_block_file_restores_gitignore_session_and_index(functional_repo):

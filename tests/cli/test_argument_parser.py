@@ -159,6 +159,62 @@ def test_show_git_stage_batch_help_materializes_editable_manpage(monkeypatch, tm
     assert calls[0][1]["MANPATH"].endswith(f"{os.pathsep}/usr/share/man")
 
 
+def test_resolve_live_file_scope_marks_implicit_scope():
+    scope = argument_parser._resolve_live_file_scope(None, None)
+
+    assert scope.kind is argument_parser.FileScopeKind.IMPLICIT
+    assert scope.files == ()
+    assert scope.optional_file() is None
+
+
+def test_resolve_live_file_scope_marks_explicit_scope():
+    scope = argument_parser._resolve_live_file_scope("src/parser.py", None)
+
+    assert scope.kind is argument_parser.FileScopeKind.EXPLICIT
+    assert scope.files == ("src/parser.py",)
+    assert scope.optional_file() == "src/parser.py"
+
+
+def test_resolve_live_file_scope_keeps_single_pattern_scope_kind(monkeypatch):
+    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["src/parser.py", "notes.txt"])
+
+    scope = argument_parser._resolve_live_file_scope(None, ["*.py"])
+
+    assert scope.kind is argument_parser.FileScopeKind.PATTERN
+    assert scope.files == ("src/parser.py",)
+    assert scope.optional_file() == "src/parser.py"
+
+
+def test_resolve_batch_file_scope_marks_implicit_scope():
+    scope = argument_parser._resolve_batch_file_scope("batch", None, None)
+
+    assert scope.kind is argument_parser.FileScopeKind.IMPLICIT
+    assert scope.files == ()
+    assert scope.optional_file() is None
+
+
+def test_resolve_batch_file_scope_marks_explicit_scope():
+    scope = argument_parser._resolve_batch_file_scope("batch", "src/parser.py", None)
+
+    assert scope.kind is argument_parser.FileScopeKind.EXPLICIT
+    assert scope.files == ("src/parser.py",)
+    assert scope.optional_file() == "src/parser.py"
+
+
+def test_resolve_batch_file_scope_keeps_pattern_scope_kind(monkeypatch):
+    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
+    monkeypatch.setattr(
+        argument_parser,
+        "read_batch_metadata",
+        lambda name: {"files": {"src/parser.py": {}, "src/render.py": {}, "notes.txt": {}}},
+    )
+
+    scope = argument_parser._resolve_batch_file_scope("batch", None, ["*.py"])
+
+    assert scope.kind is argument_parser.FileScopeKind.PATTERN
+    assert scope.files == ("src/parser.py", "src/render.py")
+
+
 def test_parse_command_line_version():
     """Test parsing --version flag."""
     # --version causes argparse to exit, which is expected

@@ -14,6 +14,16 @@ class HunkHeader:
     new_start: int
     new_len: int
 
+    def old_prefix_line_count(self) -> int:
+        """Return the number of old-file lines before this hunk applies.
+
+        In insertion-only hunks, unified diff uses old_start as the anchor
+        before the inserted lines rather than as the first changed old line.
+        """
+        if self.old_len == 0:
+            return max(self.old_start, 0)
+        return max(self.old_start - 1, 0)
+
 
 @dataclass
 class SingleHunkPatch:

@@ -29,6 +29,10 @@ uv sync
 uv run pytest -n auto
 ```
 
+Use the xdist form (`-n auto`) for full-suite runs. The suite is large enough
+that serial `uv run pytest` is mainly useful for focused debugging or when
+reproducing ordering-sensitive failures.
+
 ## Commit Message Guidelines
 
 We follow strict commit message conventions to maintain a clear and understandable project history.

@@ -202,3 +202,46 @@ def test_semantic_partial_staging_falls_back_for_replacement_plus_trailing_inser
 
     assert result.returncode == 0
     assert _index_content(functional_repo, "file.txt") == "keep\nworking value\n"
+
+
+def test_semantic_partial_staging_falls_back_for_move_plus_edit(functional_repo):
+    _commit_file(
+        functional_repo,
+        "workflow.yml",
+        "steps:\n"
+        "  - name: Set up venv\n"
+        "    run: uv venv\n"
+        "\n"
+        "  - name: Set up Python\n"
+        "    run: uv python install 3.10\n"
+        "\n"
+        "  - name: Run tests\n"
+        "    run: uv run pytest\n",
+    )
+    (functional_repo / "workflow.yml").write_text(
+        "steps:\n"
+        "  - name: Set up Python\n"
+        "    run: uv python install 3.10\n"
+        "\n"
+        "  - name: Set up venv\n"
+        "    run: uv venv --python 3.10\n"
+        "\n"
+        "  - name: Run tests\n"
+        "    run: uv run pytest -n auto\n"
+    )
+
+    git_stage_batch("start", "-U0")
+    git_stage_batch("show", "--file", "workflow.yml", "--page", "all")
+    git_stage_batch("include", "--line", "1-6")
+
+    assert _index_content(functional_repo, "workflow.yml") == (
+        "steps:\n"
+        "  - name: Set up Python\n"
+        "    run: uv python install 3.10\n"
+        "\n"
+        "  - name: Set up venv\n"
+        "    run: uv venv --python 3.10\n"
+        "\n"
+        "  - name: Run tests\n"
+        "    run: uv run pytest\n"
+    )

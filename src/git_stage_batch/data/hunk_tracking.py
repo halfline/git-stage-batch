@@ -15,6 +15,7 @@ from ..batch.attribution import build_file_attribution, filter_owned_diff_fragme
 from ..batch import display as batch_display
 from ..batch import merge as batch_merge
 from ..batch.display import annotate_with_batch_source
+from ..batch.match import match_lines
 from ..batch.ownership import (
     BatchOwnership,
     build_ownership_units_from_display_lines,
@@ -704,6 +705,8 @@ def render_batch_file_display(
     batch_name: str,
     file_path: str,
     metadata: dict | None = None,
+    *,
+    probe_mergeability: bool = True,
 ) -> Optional['RenderedBatchDisplay']:
     """Pure function to render batch file display with gutter ID translation.
 
@@ -723,6 +726,9 @@ def render_batch_file_display(
     Args:
         batch_name: Name of the batch
         file_path: Specific file to render
+        probe_mergeability: If True, compute which batch lines are currently
+            mergeable. Multi-file navigational previews can set this to False
+            because they do not cache or act on individual lines.
 
     Returns:
         RenderedBatchDisplay with line changes and gutter ID translation, or None if file not found.
@@ -755,6 +761,14 @@ def render_batch_file_display(
         working_content = working_path.read_bytes()
     else:
         working_content = b""
+    source_to_working_mapping = None
+    if probe_mergeability:
+        source_normalized = batch_source_content_bytes.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+        working_normalized = working_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+        source_to_working_mapping = match_lines(
+            source_normalized.splitlines(keepends=True) if source_normalized else [],
+            working_normalized.splitlines(keepends=True) if working_normalized else [],
+        )
 
     # Build display lines (already has correct line IDs matching ownership)
     display_lines = batch_display.build_display_lines_from_batch_source(
@@ -801,8 +815,9 @@ def render_batch_file_display(
     # 2. Lines that are part of atomic units (can be selected together with unit)
     mergeable_ids = set()
 
-    # Build ownership units to identify atomic groupings
-    units = build_ownership_units_from_display_lines(ownership, display_lines)
+    # Build ownership units to identify atomic groupings. Navigational previews
+    # do not need per-line actionability, so skip the expensive merge probes.
+    units = build_ownership_units_from_display_lines(ownership, display_lines) if probe_mergeability else []
 
     # Check each ownership unit once.  All lines in an atomic unit share the
     # same mergeability result, and merge_batch performs the expensive
@@ -813,7 +828,12 @@ def render_batch_file_display(
             ownership_for_unit = rebuild_ownership_from_units([unit])
             if ownership_for_unit.is_empty():
                 continue
-            batch_merge.merge_batch(batch_source_content_bytes, ownership_for_unit, working_content)
+            batch_merge.merge_batch(
+                batch_source_content_bytes,
+                ownership_for_unit,
+                working_content,
+                source_to_working_mapping=source_to_working_mapping,
+            )
             mergeable_ids.update(unit.display_line_ids)
         except (MergeError, ValueError, KeyError, Exception):
             # Unit not mergeable - exclude all its lines

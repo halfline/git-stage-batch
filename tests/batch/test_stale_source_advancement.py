@@ -42,6 +42,26 @@ def test_detect_current_batch_source_with_valid_source_lines():
     assert detect_stale_batch_source_for_selection(current_lines) is False
 
 
+def test_detect_stale_batch_source_with_missing_deletion_anchor():
+    """Deletion-only selections after file start need source refresh."""
+    stale_lines = [
+        LineEntry(id=1, kind='-', old_line_number=2, new_line_number=None,
+                 text_bytes=b"old line", text="old line", source_line=None),
+    ]
+
+    assert detect_stale_batch_source_for_selection(stale_lines) is True
+
+
+def test_detect_current_batch_source_with_file_start_deletion_anchor():
+    """A missing deletion source line is valid before the first line."""
+    current_lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                 text_bytes=b"old first", text="old first", source_line=None),
+    ]
+
+    assert detect_stale_batch_source_for_selection(current_lines) is False
+
+
 def test_translate_fails_loudly_with_none_source_line():
     """Test that translation fails loudly instead of silently dropping None source_lines."""
     stale_lines = [

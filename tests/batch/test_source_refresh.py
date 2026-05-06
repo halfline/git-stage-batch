@@ -133,6 +133,28 @@ def test_prepare_batch_ownership_update_first_time_stale_blank_context():
     assert result.ownership_after.claimed_lines == ["1-2"]
 
 
+def test_prepare_batch_ownership_update_first_time_deletion_anchor():
+    """First-time deletion-only selections keep their source anchor."""
+    lines = [
+        LineEntry(
+            id=1, kind='-', old_line_number=2, new_line_number=None,
+            text_bytes=b"old line", text="old line", source_line=None
+        ),
+    ]
+
+    result = prepare_batch_ownership_update_for_selection(
+        batch_name="test-batch",
+        file_path="test.py",
+        current_batch_source_commit=None,
+        existing_ownership=None,
+        selected_lines=lines
+    )
+
+    assert result.batch_source_commit is None
+    assert result.ownership_before is None
+    assert result.ownership_after.deletions[0].anchor_line == 1
+
+
 def test_prepare_batch_ownership_update_first_time():
     """Test prepare_batch_ownership_update_for_selection for first-time add."""
     # Lines with valid source_line (first add to batch)

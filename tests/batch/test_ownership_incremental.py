@@ -78,3 +78,19 @@ def test_translate_lines_preserves_deletion_structure():
     assert ownership.deletions[1].content_lines == [b'del3\n']
     assert ownership.deletions[1].anchor_line == 1  # after source line 1
     assert ownership.replacement_units == []
+
+
+def test_translate_lines_keeps_file_start_anchor_for_deletion_run():
+    """A file-start deletion run should keep its None anchor."""
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'first', text='first', source_line=None),
+        LineEntry(id=2, kind='-', old_line_number=2, new_line_number=None,
+                  text_bytes=b'second', text='second', source_line=1),
+    ]
+
+    ownership = translate_lines_to_batch_ownership(lines)
+
+    assert len(ownership.deletions) == 1
+    assert ownership.deletions[0].anchor_line is None
+    assert ownership.deletions[0].content_lines == [b'first\n', b'second\n']

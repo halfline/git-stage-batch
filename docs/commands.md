@@ -63,6 +63,8 @@ Display the cached "selected" hunk, one file review, or a matched-files list.
 
 When `--file` is used, `show` displays a structured file review with global line IDs, page orientation, and exact follow-up commands. By default, large file reviews are bounded to the first relevant page. Use `--page all` or `--pages all` to review the whole file.
 
+When only part of a file review has been shown, unqualified actions such as `include`, `skip`, and `discard` refuse. Use one of the shown pathless `--line` selections for a complete change, show the page range that covers the complete change, or use `--file PATH` for the whole file.
+
 When `--files` resolves to multiple files, `show` prints a matched-files list with per-file change counts, changed-line counts, review page counts, and exact `show --file PATH` commands. This list is navigational: it does not select a hidden file for later bare actions.
 
 For multi-file batches, `show --from BATCH` uses the same matched-files list and repeats `--from BATCH` in the suggested open commands.
@@ -182,14 +184,18 @@ Outputs JSON with stable fields for script integration:
 ```json
 {
   "session": {
+    "active": true,
     "iteration": 1,
+    "status": "in_progress",
     "in_progress": true
   },
-  "selected": {
+  "selected_change": {
+    "kind": "hunk",
     "file": "auth.py",
     "line": 42,
     "ids": [1, 2, 3]
   },
+  "file_review": null,
   "progress": {
     "included": 2,
     "skipped": 1,

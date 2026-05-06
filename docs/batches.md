@@ -169,35 +169,41 @@ file list and does not leave a hidden selected batch file behind.
 
 ## `include --from BATCH`
 
-Stage the changes from a batch to the index.
+Stage the changes from a batch to the index and write them to the working tree.
 
 **Stage entire batch:**
 ```
 ❯ git-stage-batch include --from batch-name
 ```
 
-Applies the batch's accumulated changes to the index, staging them for commit.
+Applies the batch's accumulated changes to the index and working tree, staging
+them for commit.
 
 **Line-level staging:**
 ```
 ❯ git-stage-batch include --from batch-name --line 1-5
 ```
 
-Stage only specific lines from the batch, allowing partial application of batch changes.
+Stage only specific lines from the batch, allowing partial application of batch
+changes to the index and working tree.
 
 **File-level staging (selected file):**
 ```
 ❯ git-stage-batch include --from batch-name --file
 ```
 
-Stage changes from the batch for the selected hunk's file only. Use this during a staging session when you want to pull in batch changes for the file you're reviewing, without affecting other files in the batch.
+Stage changes from the batch for the selected hunk's file only. Use this during
+a staging session when you want to pull in batch changes for the file you're
+reviewing, without affecting other files in the batch.
 
 **File-level staging (specific file):**
 ```
 ❯ git-stage-batch include --from batch-name --file src/config.py
 ```
 
-Stage changes from the batch for `src/config.py` only, without needing a selected hunk. Useful for applying specific files from multi-file batches outside of an active staging session.
+Stage changes from the batch for `src/config.py` only, without needing a
+selected hunk. Useful for applying specific files from multi-file batches
+outside of an active staging session.
 
 **Pattern-based staging:**
 ```bash
@@ -305,7 +311,9 @@ Apply batch changes to the working tree without staging them.
 ❯ git-stage-batch apply --from batch-name
 ```
 
-Applies the batch's accumulated changes to your working tree, leaving the index untouched. This is different from `include --from` which stages changes to the index.
+Applies the batch's accumulated changes to your working tree, leaving the index
+untouched. This is different from `include --from`, which writes the selected
+batch changes to both the index and working tree.
 
 **Use cases:**
 - Temporarily applying batched changes to test them before committing
@@ -349,9 +357,9 @@ Apply batch changes for `src/debug.py` only to the working tree, without needing
     filter to a specific file, or `--line` to apply only specific lines.
 
 !!! info "Working Tree Only"
-    Unlike `include --from`, this command modifies only the working tree and leaves
-    the index (staging area) untouched. Use this when you want to preview or test
-    changes before staging them.
+    Unlike `include --from`, this command modifies only the working tree and
+    leaves the index (staging area) untouched. Use this when you want to preview
+    or test changes before staging them.
 
 **Example workflow:**
 ```bash

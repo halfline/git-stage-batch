@@ -182,7 +182,7 @@ Similar to `git add -p` but **more granular and flexible**:
 # Replacement text must use one contiguous displayed line-ID span
 ❯ git-stage-batch include --line 1-2 --as 'replacement'
 
-# Exact unchanged edge anchors are stripped by default for line-scoped --as
+# Exact unchanged edge-overlap lines are stripped by default for line-scoped --as
 ❯ git-stage-batch include --line 1-2 --as 'keep1\nreplacement\nkeep4'
 
 # Keep those edge-overlap lines literally with --no-edge-overlap

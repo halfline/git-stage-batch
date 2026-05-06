@@ -113,10 +113,6 @@ def command_show_from_batch(
         batch_name, files, line_ids, "show"
     )
 
-    # Display batch note if present
-    if metadata.get("note"):
-        print(f"# {metadata['note']}", file=sys.stderr)
-
     if len(files) == 1:
         # Show specific file from batch
         # Get the resolved file path
@@ -209,6 +205,7 @@ def command_show_from_batch(
                 command_source_args=_batch_source_args(batch_name),
                 source=ReviewSource.BATCH,
                 batch_name=batch_name,
+                note=metadata.get("note") or None,
             )
             return
 
@@ -218,11 +215,6 @@ def command_show_from_batch(
                 review_gutter_to_selection_id
                 if selectable else
                 rendered.gutter_to_selection_id
-            )
-            line_selection_id_to_gutter = (
-                review_selection_id_to_gutter
-                if selectable else
-                rendered.selection_id_to_gutter
             )
 
             # Translate gutter IDs (what user sees) to selection IDs (internal)

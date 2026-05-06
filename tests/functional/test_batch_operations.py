@@ -149,8 +149,8 @@ class TestShowFromBatch:
 
         result = git_stage_batch("show", "--from", "test-batch")
         assert result.returncode == 0
-        # Should show the note
-        assert "Test changes" in result.stderr
+        # Should show the note in the header
+        assert "Test changes" in result.stdout
         # Should show line IDs
         assert "[#" in result.stdout
 

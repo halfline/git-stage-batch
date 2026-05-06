@@ -1002,8 +1002,7 @@ class TestMultiFileBatchDisplay:
         command_show_from_batch("multi", file="alpha.txt")
 
         captured = capsys.readouterr()
-        assert "Changes: batch multi" in captured.out
-        assert "Showing page 1 of 1" in captured.out
+        assert "alpha.txt  ·  multi  ·  page 1/1" in captured.out
 
     def test_batch_files_maintain_insertion_order(self, multi_file_repo):
         """Files in batch should maintain insertion order, not alphabetical."""

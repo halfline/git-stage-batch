@@ -253,6 +253,12 @@ def _resolve_spawn_executable(executable: str, env: dict[str, str]) -> str:
     return _resolve_spawn_executable_from_paths(executable, os.get_exec_path(env))
 
 
+def _spawn_environment(env: dict[str, str] | None) -> dict[str, str]:
+    spawn_env = os.environ.copy() if env is None else dict(env)
+    spawn_env["PWD"] = os.getcwd()
+    return spawn_env
+
+
 def _add_spawn_close_action(
     file_actions: list[tuple[int, int] | tuple[int, int, int]],
     fd: int,
@@ -597,7 +603,7 @@ def start_command(
         child_fds_seen.add(captured.child_fd)
 
     executable, spawn_arguments = _spawn_arguments_for_cwd(arguments, cwd)
-    spawn_env = os.environ.copy() if env is None else env
+    spawn_env = _spawn_environment(env)
     executable_path = _resolve_spawn_executable(executable, spawn_env)
 
     # Create pipes for stdin/stdout/stderr

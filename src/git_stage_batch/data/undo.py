@@ -7,6 +7,7 @@ import shutil
 import stat
 import tempfile
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -15,11 +16,12 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
 from ..utils.git import (
-    create_git_blob,
+    create_git_blobs,
+    GitIndexEntryUpdate,
     get_git_repository_root_path,
     git_commit_tree,
     git_read_tree,
-    git_update_index,
+    git_update_index_entries,
     git_write_tree,
     run_git_command,
     temp_git_index,
@@ -41,6 +43,13 @@ REF_PREFIXES = (
     BATCH_STATE_REF_PREFIX,
 )
 _PENDING_CHECKPOINT: str | None = None
+
+
+@dataclass(frozen=True)
+class _IndexContentUpdate:
+    path: str
+    data: bytes
+    mode: str = "100644"
 
 
 def _list_refs() -> dict[str, str]:
@@ -75,15 +84,19 @@ def _changed_worktree_paths() -> list[str]:
 
 def _snapshot_worktree_paths(paths: list[str]) -> list[dict[str, Any]]:
     repo_root = get_git_repository_root_path()
-    worktree_paths = []
+    worktree_paths: list[dict[str, Any]] = []
+    existing_entry_indexes: list[int] = []
+    existing_contents: list[bytes] = []
     for file_path in sorted(set(paths)):
         full_path = repo_root / file_path
         if full_path.exists() and full_path.is_file():
+            existing_entry_indexes.append(len(worktree_paths))
+            existing_contents.append(full_path.read_bytes())
             worktree_paths.append({
                 "path": file_path,
                 "exists": True,
                 "mode": _file_mode_for_path(full_path),
-                "blob": create_git_blob([full_path.read_bytes()]),
+                "blob": None,
             })
         else:
             worktree_paths.append({
@@ -92,6 +105,13 @@ def _snapshot_worktree_paths(paths: list[str]) -> list[dict[str, Any]]:
                 "mode": "100644",
                 "blob": None,
             })
+
+    for entry_index, blob_sha in zip(
+        existing_entry_indexes,
+        create_git_blobs(existing_contents),
+        strict=True,
+    ):
+        worktree_paths[entry_index]["blob"] = blob_sha
     return worktree_paths
 
 
@@ -104,13 +124,26 @@ def _snapshot_current_state(paths: list[str]) -> dict[str, Any]:
     }
 
 
-def _run_update_index(env: dict[str, str], mode: str, blob_sha: str, path: str) -> None:
-    git_update_index(mode=mode, blob_sha=blob_sha, file_path=path, env=env)
+def _add_index_content_updates(env: dict[str, str], updates: list[_IndexContentUpdate]) -> None:
+    blob_shas = create_git_blobs(update.data for update in updates)
+    git_update_index_entries(
+        [
+            GitIndexEntryUpdate(
+                file_path=update.path,
+                mode=update.mode,
+                blob_sha=blob_sha,
+            )
+            for update, blob_sha in zip(updates, blob_shas, strict=True)
+        ],
+        env=env,
+    )
 
 
 def _add_blob_to_index(env: dict[str, str], path: str, data: bytes, mode: str = "100644") -> None:
-    blob_sha = create_git_blob([data])
-    _run_update_index(env, mode, blob_sha, path)
+    _add_index_content_updates(
+        env,
+        [_IndexContentUpdate(path=path, data=data, mode=mode)],
+    )
 
 
 def _file_mode_for_path(path: Path) -> str:
@@ -131,10 +164,18 @@ def _restore_file_mode(path: Path, mode: str) -> None:
 def _add_directory_to_index(env: dict[str, str], *, source_dir: Path, tree_prefix: str) -> None:
     if not source_dir.exists():
         return
+    updates: list[_IndexContentUpdate] = []
     for file_path in sorted(path for path in source_dir.rglob("*") if path.is_file()):
         relative_path = file_path.relative_to(source_dir).as_posix()
         tree_path = f"{tree_prefix}/{relative_path}"
-        _add_blob_to_index(env, tree_path, file_path.read_bytes(), _file_mode_for_path(file_path))
+        updates.append(
+            _IndexContentUpdate(
+                path=tree_path,
+                data=file_path.read_bytes(),
+                mode=_file_mode_for_path(file_path),
+            )
+        )
+    _add_index_content_updates(env, updates)
 
 
 def _current_stack_commit(ref_name: str) -> str | None:
@@ -182,18 +223,18 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
         _add_directory_to_index(env, source_dir=session_dir, tree_prefix="session")
         _add_directory_to_index(env, source_dir=get_batches_directory_path(), tree_prefix="batches")
 
-        repo_root = get_git_repository_root_path()
-        for entry in before["worktree_paths"]:
-            if not entry["exists"]:
-                continue
-            full_path = repo_root / entry["path"]
-            if full_path.exists() and full_path.is_file():
-                _add_blob_to_index(
-                    env,
-                    f"worktree/{entry['path']}",
-                    full_path.read_bytes(),
-                    entry["mode"],
+        git_update_index_entries(
+            [
+                GitIndexEntryUpdate(
+                    file_path=f"worktree/{entry['path']}",
+                    mode=entry["mode"],
+                    blob_sha=entry["blob"],
                 )
+                for entry in before["worktree_paths"]
+                if entry["exists"] and entry.get("blob")
+            ],
+            env=env,
+        )
 
         tree_sha = git_write_tree(env=env)
 
@@ -416,21 +457,32 @@ def _write_snapshot_commit(
         _add_directory_to_index(env, source_dir=batches_dir, tree_prefix="batches")
 
         repo_root = get_git_repository_root_path()
+        index_updates: list[GitIndexEntryUpdate] = []
+        content_updates: list[_IndexContentUpdate] = []
         for entry in worktree_entries:
             if not entry.get("exists", False):
                 continue
             blob_sha = entry.get("blob")
             if blob_sha:
-                _run_update_index(env, entry.get("mode", "100644"), blob_sha, f"worktree/{entry['path']}")
+                index_updates.append(
+                    GitIndexEntryUpdate(
+                        file_path=f"worktree/{entry['path']}",
+                        mode=entry.get("mode", "100644"),
+                        blob_sha=blob_sha,
+                    )
+                )
             else:
                 full_path = repo_root / entry["path"]
                 if full_path.exists() and full_path.is_file():
-                    _add_blob_to_index(
-                        env,
-                        f"worktree/{entry['path']}",
-                        full_path.read_bytes(),
-                        entry.get("mode", "100644"),
+                    content_updates.append(
+                        _IndexContentUpdate(
+                            path=f"worktree/{entry['path']}",
+                            data=full_path.read_bytes(),
+                            mode=entry.get("mode", "100644"),
+                        )
                     )
+        git_update_index_entries(index_updates, env=env)
+        _add_index_content_updates(env, content_updates)
 
         tree_sha = git_write_tree(env=env)
 

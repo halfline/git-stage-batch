@@ -67,15 +67,6 @@ def log_journal(operation: str, **kwargs: Any) -> None:
             if "git_stage_batch" in s.filename
         ][-5:]  # Last 5 frames
 
-        # Get repository path for global journal (to distinguish different repos)
-        repo_path = None
-        try:
-            result = run_git_command(["rev-parse", "--show-toplevel"], check=False)
-            if result.returncode == 0:
-                repo_path = result.stdout.strip()
-        except Exception:
-            pass
-
         entry = {
             "timestamp": datetime.now().isoformat(),
             "pid": os.getpid(),
@@ -92,6 +83,15 @@ def log_journal(operation: str, **kwargs: Any) -> None:
 
         # Write to global persistent journal if debug mode enabled
         if os.environ.get("GIT_STAGE_BATCH_DEBUG"):
+            # Get repository path for global journal (to distinguish different repos)
+            repo_path = None
+            try:
+                result = run_git_command(["rev-parse", "--show-toplevel"], check=False)
+                if result.returncode == 0:
+                    repo_path = result.stdout.strip()
+            except Exception:
+                pass
+
             global_journal_path = Path("/var/tmp/git-stage-batch-journal.jsonl")
             global_entry = {
                 "repo": repo_path,

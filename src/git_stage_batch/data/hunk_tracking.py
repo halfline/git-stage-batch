@@ -1685,10 +1685,18 @@ def record_hunk_included(hunk_hash: str) -> None:
 
 def record_hunk_discarded(hunk_hash: str) -> None:
     """Record that a hunk was discarded (removed from working tree)."""
+    record_hunks_discarded([hunk_hash])
+
+
+def record_hunks_discarded(hunk_hashes: list[str]) -> None:
+    """Record that hunks were discarded (removed from working tree)."""
+    new_hashes = {hunk_hash for hunk_hash in hunk_hashes if hunk_hash}
+    if not new_hashes:
+        return
     discarded_path = get_discarded_hunks_file_path()
     content = read_text_file_contents(discarded_path)
     existing = set(content.splitlines()) if content else set()
-    existing.add(hunk_hash)
+    existing.update(new_hashes)
     write_text_file_contents(discarded_path, "\n".join(sorted(existing)) + "\n" if existing else "")
 
 

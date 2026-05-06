@@ -347,16 +347,14 @@ def _discard_to_batch_each_resolved_file(batch_name: str, files: list[str]) -> N
 
     operation = f"discard --to {shlex.quote(batch_name)}"
     with _multi_file_undo_checkpoint(operation, files, worktree_paths=files):
-        for file_path in files:
-            discarded_hunks = commands.command_discard_to_batch(
-                batch_name,
-                file=file_path,
-                quiet=True,
-                advance=False,
-            )
-            if discarded_hunks > 0:
-                total_hunks += discarded_hunks
-                discarded_files.append(file_path)
+        result = commands.command_discard_files_to_batch(
+            batch_name,
+            files,
+            quiet=True,
+            advance=False,
+        )
+        total_hunks = result.discarded_hunks
+        discarded_files = result.discarded_files
 
     if total_hunks == 0:
         print(_("No hunks saved to batch from matched files."), file=sys.stderr)

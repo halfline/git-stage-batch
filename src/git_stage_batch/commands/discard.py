@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import stat
 import sys
+from dataclasses import dataclass
 
-from ..batch import add_binary_file_to_batch, add_file_to_batch, create_batch
+from ..batch import (
+    BatchFileUpdate,
+    add_binary_file_to_batch,
+    add_file_to_batch,
+    add_files_to_batch,
+    create_batch,
+)
 from ..batch.display import annotate_with_batch_source, annotate_with_batch_source_content
 from ..batch.ownership import (
     BatchOwnership,
@@ -38,6 +46,7 @@ from ..data.hunk_tracking import (
     read_selected_change_kind,
     recalculate_selected_hunk_for_file,
     record_hunk_discarded,
+    record_hunks_discarded,
     refuse_bare_action_after_file_list,
     render_binary_file_change,
     require_selected_hunk,
@@ -56,7 +65,7 @@ from ..data.file_review_state import (
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
-from ..data.session import require_session_started, snapshot_file_if_untracked
+from ..data.session import require_session_started, snapshot_file_if_untracked, snapshot_files_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
@@ -77,6 +86,41 @@ from ..utils.paths import (
 from .include import (
     _expand_replacement_selection_ids,
 )
+
+
+@dataclass(frozen=True)
+class _PreparedPatchDiscard:
+    patch_bytes: bytes
+    patch_hash: str
+
+
+@dataclass
+class _TextFileDiscardInput:
+    file_path: str
+    file_mode: str
+    all_lines_to_batch: list
+    patches_to_discard: list[_PreparedPatchDiscard]
+
+
+@dataclass(frozen=True)
+class _CollectedTextFileDiscards:
+    inputs_by_file: dict[str, _TextFileDiscardInput]
+    files_with_text_patches: set[str]
+
+
+@dataclass(frozen=True)
+class _PreparedTextFileDiscardToBatch:
+    file_path: str
+    file_mode: str
+    ownership: BatchOwnership
+    batch_source_commit: str | None
+    patches_to_discard: list[_PreparedPatchDiscard]
+
+
+@dataclass(frozen=True)
+class DiscardFilesToBatchResult:
+    discarded_hunks: int
+    discarded_files: list[str]
 
 
 def _load_explicit_file_selection(file_path: str):
@@ -822,7 +866,12 @@ def _select_rewritten_replacement_lines(
 
 def _detect_file_mode(file_path: str) -> str:
     """Return the current git file mode for a path, defaulting to a regular file."""
-    absolute_path = get_git_repository_root_path() / file_path
+    return _detect_file_mode_from_root(get_git_repository_root_path(), file_path)
+
+
+def _detect_file_mode_from_root(repo_root: Path, file_path: str) -> str:
+    """Return the current git file mode using a known repository root."""
+    absolute_path = repo_root / file_path
     if absolute_path.exists():
         return "100755" if absolute_path.stat().st_mode & stat.S_IXUSR else "100644"
 
@@ -886,6 +935,261 @@ def _command_discard_binary_to_batch(
     elif not quiet:
         advance_to_and_show_next_change()
     return 1
+
+
+def _prepare_text_file_discard_to_batch(
+    batch_name: str,
+    discard_input: _TextFileDiscardInput,
+    *,
+    metadata: dict,
+) -> _PreparedTextFileDiscardToBatch | None:
+    """Prepare one normal text file discard without publishing batch state."""
+    if not discard_input.all_lines_to_batch:
+        return None
+
+    file_path = discard_input.file_path
+    existing_ownership = None
+    current_batch_source = None
+    if file_path in metadata.get("files", {}):
+        file_metadata = metadata["files"][file_path]
+        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
+        current_batch_source = file_metadata.get("batch_source_commit")
+
+    try:
+        update = prepare_batch_ownership_update_for_selection(
+            batch_name=batch_name,
+            file_path=file_path,
+            current_batch_source_commit=current_batch_source,
+            existing_ownership=existing_ownership,
+            selected_lines=discard_input.all_lines_to_batch,
+        )
+    except ValueError as e:
+        exit_with_error(
+            _("Cannot discard file to batch: batch source is stale and remapping failed.\n"
+              "File: {file}\n"
+              "Batch: {batch}\n"
+              "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
+        )
+
+    return _PreparedTextFileDiscardToBatch(
+        file_path=file_path,
+        file_mode=discard_input.file_mode,
+        ownership=update.ownership_after,
+        batch_source_commit=update.batch_source_commit,
+        patches_to_discard=discard_input.patches_to_discard,
+    )
+
+
+def _collect_text_file_discard_inputs(
+    files: list[str],
+    *,
+    blocked_hashes: set[str],
+) -> _CollectedTextFileDiscards:
+    """Collect normal text file discard inputs from one Git diff."""
+    if not files:
+        return _CollectedTextFileDiscards(inputs_by_file={}, files_with_text_patches=set())
+
+    repo_root = get_git_repository_root_path()
+    inputs_by_file: dict[str, _TextFileDiscardInput] = {}
+    files_with_text_patches: set[str] = set()
+
+    for patch in parse_unified_diff_streaming(
+        stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", *files])
+    ):
+        if isinstance(patch, BinaryFileChange):
+            continue
+
+        file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+        files_with_text_patches.add(file_path)
+
+        patch_bytes = patch.to_patch_bytes()
+        patch_hash = compute_stable_hunk_hash(patch_bytes)
+        if patch_hash in blocked_hashes:
+            continue
+
+        hunk_lines = build_line_changes_from_patch_bytes(
+            patch_bytes,
+            annotator=annotate_with_batch_source,
+        )
+        discard_input = inputs_by_file.get(file_path)
+        if discard_input is None:
+            discard_input = _TextFileDiscardInput(
+                file_path=file_path,
+                file_mode=_detect_file_mode_from_root(repo_root, file_path),
+                all_lines_to_batch=[],
+                patches_to_discard=[],
+            )
+            inputs_by_file[file_path] = discard_input
+        discard_input.all_lines_to_batch.extend(hunk_lines.lines)
+        discard_input.patches_to_discard.append(
+            _PreparedPatchDiscard(
+                patch_bytes=patch_bytes,
+                patch_hash=patch_hash,
+            )
+        )
+        blocked_hashes.add(patch_hash)
+
+    return _CollectedTextFileDiscards(
+        inputs_by_file=inputs_by_file,
+        files_with_text_patches=files_with_text_patches,
+    )
+
+
+def _run_reverse_apply_for_prepared_discards(
+    prepared_discards: list[_PreparedTextFileDiscardToBatch],
+    *,
+    check_only: bool = False,
+) -> None:
+    arguments = ["git", "apply", "--reverse", "--unidiff-zero"]
+    if check_only:
+        arguments.append("--check")
+
+    exit_code = 0
+    stderr_chunks = []
+    patch_chunks = [
+        patch.patch_bytes
+        for prepared in prepared_discards
+        for patch in prepared.patches_to_discard
+    ]
+    for event in stream_command(arguments, stdin_chunks=patch_chunks):
+        if isinstance(event, ExitEvent):
+            exit_code = event.exit_code
+        elif isinstance(event, OutputEvent) and event.fd == 2:
+            stderr_chunks.append(event.data)
+
+    if exit_code != 0:
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+        exit_with_error(_("Failed to discard changes from file: {err}").format(err=stderr_text))
+
+
+def _discard_prepared_text_files_to_batch(
+    batch_name: str,
+    prepared_discards: list[_PreparedTextFileDiscardToBatch],
+) -> DiscardFilesToBatchResult:
+    """Publish prepared text file discards once, then update the worktree."""
+    if not prepared_discards:
+        return DiscardFilesToBatchResult(discarded_hunks=0, discarded_files=[])
+
+    snapshot_files_if_untracked([prepared.file_path for prepared in prepared_discards])
+
+    _run_reverse_apply_for_prepared_discards(prepared_discards, check_only=True)
+    add_files_to_batch(
+        batch_name,
+        [
+            BatchFileUpdate(
+                file_path=prepared.file_path,
+                ownership=prepared.ownership,
+                file_mode=prepared.file_mode,
+                batch_source_commit=prepared.batch_source_commit,
+            )
+            for prepared in prepared_discards
+        ],
+    )
+    _run_reverse_apply_for_prepared_discards(prepared_discards)
+
+    repo_root = get_git_repository_root_path()
+    for prepared in prepared_discards:
+        full_path = repo_root / prepared.file_path
+        if not full_path.exists():
+            run_git_command(["rm", "--cached", "--quiet", "--", prepared.file_path], check=False)
+
+    hunk_hashes = [
+        patch.patch_hash
+        for prepared in prepared_discards
+        for patch in prepared.patches_to_discard
+    ]
+    record_hunks_discarded(hunk_hashes)
+
+    return DiscardFilesToBatchResult(
+        discarded_hunks=len(hunk_hashes),
+        discarded_files=[
+            prepared.file_path
+            for prepared in prepared_discards
+            if prepared.patches_to_discard
+        ],
+    )
+
+
+def command_discard_files_to_batch(
+    batch_name: str,
+    files: list[str],
+    *,
+    quiet: bool = False,
+    advance: bool = True,
+) -> DiscardFilesToBatchResult:
+    """Save resolved text files to a batch with one batch publication."""
+    require_git_repository()
+    ensure_state_directory_exists()
+
+    if not files:
+        return DiscardFilesToBatchResult(discarded_hunks=0, discarded_files=[])
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
+
+    blocklist_path = get_block_list_file_path()
+    blocklist_text = read_text_file_contents(blocklist_path)
+    blocked_hashes = set(blocklist_text.splitlines())
+    metadata = read_batch_metadata(batch_name)
+    collected_discards = _collect_text_file_discard_inputs(
+        files,
+        blocked_hashes=blocked_hashes,
+    )
+
+    prepared_discards: list[_PreparedTextFileDiscardToBatch] = []
+    total_hunks = 0
+    discarded_files: list[str] = []
+
+    def flush_prepared() -> None:
+        nonlocal metadata, total_hunks
+        nonlocal discarded_files, prepared_discards
+        result = _discard_prepared_text_files_to_batch(batch_name, prepared_discards)
+        if result.discarded_hunks:
+            total_hunks += result.discarded_hunks
+            discarded_files.extend(result.discarded_files)
+            metadata = read_batch_metadata(batch_name)
+        prepared_discards = []
+
+    for file_path in files:
+        log_journal("discard_file_to_batch_start", batch_name=batch_name, file_path=file_path, quiet=quiet)
+        discard_input = collected_discards.inputs_by_file.get(file_path)
+        if discard_input is None and file_path in collected_discards.files_with_text_patches:
+            continue
+
+        prepared = _prepare_text_file_discard_to_batch(
+            batch_name,
+            discard_input,
+            metadata=metadata,
+        ) if discard_input is not None else None
+        if prepared is None:
+            flush_prepared()
+            discarded_hunks = command_discard_to_batch(
+                batch_name,
+                file=file_path,
+                quiet=True,
+                advance=False,
+            )
+            if discarded_hunks > 0:
+                total_hunks += discarded_hunks
+                discarded_files.append(file_path)
+                metadata = read_batch_metadata(batch_name)
+                blocklist_text = read_text_file_contents(blocklist_path)
+                blocked_hashes = set(blocklist_text.splitlines())
+            continue
+
+        prepared_discards.append(prepared)
+        log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
+
+    flush_prepared()
+
+    if quiet and advance:
+        advance_to_next_change()
+    elif not quiet:
+        advance_to_and_show_next_change()
+
+    return DiscardFilesToBatchResult(
+        discarded_hunks=total_hunks,
+        discarded_files=discarded_files,
+    )
 
 
 def _command_discard_file_to_batch(

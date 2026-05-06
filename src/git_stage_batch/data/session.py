@@ -187,6 +187,64 @@ def snapshot_file_if_untracked(file_path: str) -> None:
     append_file_path_to_file(get_abort_snapshot_list_file_path(), file_path)
 
 
+def snapshot_files_if_untracked(file_paths: list[str]) -> None:
+    """Snapshot untracked files before modifying several paths."""
+    unique_file_paths = list(dict.fromkeys(file_paths))
+    if not unique_file_paths:
+        return
+
+    empty_blob_hash = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    stage_result = run_git_command(
+        ["ls-files", "--stage", "-z", "--", *unique_file_paths],
+        check=False,
+        text_output=False,
+    )
+
+    tracked_real_content: set[str] = set()
+    tracked_empty_content: set[str] = set()
+    for record in stage_result.stdout.split(b"\0"):
+        if not record:
+            continue
+        try:
+            metadata, path_bytes = record.split(b"\t", 1)
+        except ValueError:
+            continue
+        parts = metadata.split()
+        if len(parts) < 2:
+            continue
+        file_path = path_bytes.decode("utf-8")
+        blob_hash = parts[1].decode("ascii", errors="replace")
+        if blob_hash == empty_blob_hash:
+            tracked_empty_content.add(file_path)
+        else:
+            tracked_real_content.add(file_path)
+
+    snapshotted_files = set(read_file_paths_file(get_abort_snapshot_list_file_path()))
+    repo_root = get_git_repository_root_path()
+    snapshot_dir = get_abort_snapshots_directory_path()
+    newly_snapshotted: list[str] = []
+    for file_path in unique_file_paths:
+        if file_path in tracked_real_content:
+            continue
+        if file_path in snapshotted_files:
+            continue
+
+        full_path = repo_root / file_path
+        if not full_path.exists():
+            continue
+
+        snapshot_path = snapshot_dir / file_path
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(full_path, snapshot_path)
+        newly_snapshotted.append(file_path)
+
+    if newly_snapshotted:
+        write_file_paths_file(
+            get_abort_snapshot_list_file_path(),
+            [*snapshotted_files, *newly_snapshotted],
+        )
+
+
 def get_iteration_count() -> int:
     """Get selected iteration count, defaulting to 1.
 

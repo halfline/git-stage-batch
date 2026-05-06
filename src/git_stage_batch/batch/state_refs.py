@@ -4,21 +4,30 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import dataclass
 from typing import Any
 
 from .ref_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from .validation import validate_batch_name
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import (
-    create_git_blob,
+    create_git_blobs,
+    GitIndexEntryUpdate,
     git_commit_tree,
-    git_update_index,
+    git_update_index_entries,
     git_write_tree,
     run_git_command,
     temp_git_index,
     update_git_refs,
 )
 from ..utils.paths import get_batch_metadata_file_path
+
+
+@dataclass(frozen=True)
+class _StateContentUpdate:
+    path: str
+    data: bytes
+    mode: str = "100644"
 
 
 def get_batch_content_ref_name(batch_name: str) -> str:
@@ -116,7 +125,12 @@ def get_authoritative_batch_commit_sha(batch_name: str) -> str | None:
     return result.stdout.strip()
 
 
-def sync_batch_state_refs(batch_name: str, *, content_commit: str | None = None) -> None:
+def sync_batch_state_refs(
+    batch_name: str,
+    *,
+    content_commit: str | None = None,
+    source_contents: dict[str, bytes] | None = None,
+) -> None:
     """Publish batch metadata and source snapshots into authoritative Git refs."""
     validate_batch_name(batch_name)
 
@@ -136,36 +150,50 @@ def sync_batch_state_refs(batch_name: str, *, content_commit: str | None = None)
         "files": {},
     }
 
+    source_contents = source_contents or {}
+    content_updates: list[_StateContentUpdate] = []
+
     with temp_git_index() as env:
         for file_path, file_meta in metadata.get("files", {}).items():
             state_file_meta = dict(file_meta)
 
             source_commit = file_meta.get("batch_source_commit")
             if source_commit:
-                source_result = run_git_command(
-                    ["show", f"{source_commit}:{file_path}"],
-                    check=False,
-                    text_output=False,
-                )
-                if source_result.returncode == 0:
-                    source_blob = create_git_blob([source_result.stdout])
+                source_content = source_contents.get(file_path)
+                if source_content is None:
+                    source_result = run_git_command(
+                        ["show", f"{source_commit}:{file_path}"],
+                        check=False,
+                        text_output=False,
+                    )
+                    if source_result.returncode == 0:
+                        source_content = source_result.stdout
+
+                if source_content is not None:
                     source_path = f"sources/{file_path}"
-                    git_update_index(
-                        mode=file_meta.get("mode", "100644"),
-                        blob_sha=source_blob,
-                        file_path=source_path,
-                        env=env,
+                    content_updates.append(
+                        _StateContentUpdate(
+                            path=source_path,
+                            data=source_content,
+                            mode=file_meta.get("mode", "100644"),
+                        )
                     )
                     state_file_meta["source_path"] = source_path
 
             state_metadata["files"][file_path] = state_file_meta
 
         state_json = json.dumps(state_metadata, indent=2).encode("utf-8")
-        state_blob = create_git_blob([state_json])
-        git_update_index(
-            mode="100644",
-            blob_sha=state_blob,
-            file_path="batch.json",
+        content_updates.append(_StateContentUpdate(path="batch.json", data=state_json))
+        blob_shas = create_git_blobs(update.data for update in content_updates)
+        git_update_index_entries(
+            [
+                GitIndexEntryUpdate(
+                    file_path=update.path,
+                    mode=update.mode,
+                    blob_sha=blob_sha,
+                )
+                for update, blob_sha in zip(content_updates, blob_shas, strict=True)
+            ],
             env=env,
         )
 

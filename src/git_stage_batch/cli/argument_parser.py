@@ -8,6 +8,8 @@ import sys
 import tempfile
 from collections.abc import Callable
 from contextlib import nullcontext
+from dataclasses import dataclass
+from enum import Enum
 from importlib import resources
 from pathlib import Path
 
@@ -21,6 +23,56 @@ from ..i18n import _, ngettext
 from ..utils.command import run_command
 from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
 from .completion import command_complete_files
+
+
+class FileScopeKind(str, Enum):
+    """How a command's optional file scope was requested."""
+
+    IMPLICIT = "implicit"
+    EXPLICIT = "explicit"
+    PATTERN = "pattern"
+
+
+@dataclass(frozen=True)
+class FileScope:
+    """Resolved command file scope with explicit origin and concrete files."""
+
+    kind: FileScopeKind
+    files: tuple[str, ...] = ()
+
+    @classmethod
+    def implicit(cls) -> "FileScope":
+        return cls(FileScopeKind.IMPLICIT)
+
+    @classmethod
+    def explicit(cls, file_path: str) -> "FileScope":
+        return cls(FileScopeKind.EXPLICIT, (file_path,))
+
+    @classmethod
+    def pattern(cls, files: list[str]) -> "FileScope":
+        return cls(FileScopeKind.PATTERN, tuple(files))
+
+    @property
+    def is_implicit(self) -> bool:
+        return self.kind == FileScopeKind.IMPLICIT
+
+    @property
+    def is_multiple(self) -> bool:
+        return len(self.files) > 1
+
+    def optional_file(self) -> str | None:
+        """Return the single file path for this scope, or None for implicit scope."""
+        if self.is_implicit:
+            return None
+        if self.is_multiple:
+            raise ValueError("multiple file scope cannot be represented by one path")
+        return self.files[0]
+
+    def require_single_file(self, error_message: str) -> str | None:
+        """Return an optional single file path, or raise for a multi-file scope."""
+        if self.is_multiple:
+            raise CommandError(error_message)
+        return self.optional_file()
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -156,19 +208,19 @@ def _validate_file_inputs(
 
 
 def _run_for_each_file(
-    file_arg: str | list[str] | None,
+    file_scope: FileScope,
     callback: Callable[[str | None], None],
     *,
     line_ids: str | None = None,
 ) -> None:
     """Run a callback once per resolved file argument."""
-    if isinstance(file_arg, list) and line_ids is not None:
+    if file_scope.is_multiple and line_ids is not None:
         raise CommandError(_("Cannot use --lines with multiple files."))
-    if isinstance(file_arg, list):
-        for file in file_arg:
+    if file_scope.is_multiple:
+        for file in file_scope.files:
             callback(file)
         return
-    callback(file_arg)
+    callback(file_scope.optional_file())
 
 
 def _include_each_resolved_file(files: list[str]) -> None:
@@ -298,11 +350,11 @@ def _discard_to_batch_each_resolved_file(batch_name: str, files: list[str]) -> N
 def _resolve_live_file_scope(
     file_arg: str | None,
     file_patterns: list[str] | None,
-) -> str | list[str] | None:
+) -> FileScope:
     """Resolve single-file or pattern-based live file scope."""
     _validate_file_inputs(file_arg, file_patterns)
     if file_patterns is None:
-        return file_arg
+        return FileScope.implicit() if file_arg is None else FileScope.explicit(file_arg)
 
     resolved_files = resolve_gitignore_style_patterns(list_changed_files(), file_patterns)
     if not resolved_files:
@@ -311,20 +363,18 @@ def _resolve_live_file_scope(
                 patterns=", ".join(file_patterns),
             )
         )
-    if len(resolved_files) == 1:
-        return resolved_files[0]
-    return resolved_files
+    return FileScope.pattern(resolved_files)
 
 
 def _resolve_batch_file_scope(
     batch_name: str,
     file_arg: str | None,
     file_patterns: list[str] | None,
-) -> str | list[str] | None:
+) -> FileScope:
     """Resolve single-file or pattern-based batch file scope."""
     _validate_file_inputs(file_arg, file_patterns)
     if file_patterns is None:
-        return file_arg
+        return FileScope.implicit() if file_arg is None else FileScope.explicit(file_arg)
     if not batch_exists(batch_name):
         raise CommandError(_("Batch '{name}' does not exist").format(name=batch_name))
 
@@ -337,9 +387,7 @@ def _resolve_batch_file_scope(
                 patterns=", ".join(file_patterns),
             )
         )
-    if len(resolved_files) == 1:
-        return resolved_files[0]
-    return resolved_files
+    return FileScope.pattern(resolved_files)
 
 
 def _resolve_replacement_text(args: argparse.Namespace) -> str | None:
@@ -518,7 +566,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         if args.page is not None:
             if args.from_batch and not batch_exists(args.from_batch):
                 raise CommandError(_("Batch '{name}' does not exist").format(name=args.from_batch))
-            if resolved_file_scope is None:
+            if resolved_file_scope.is_implicit:
                 if not (
                     args.from_batch
                     and batch_exists(args.from_batch)
@@ -530,14 +578,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                             "unless `--from` names a single-file batch."
                         )
                     )
-            if isinstance(resolved_file_scope, list):
+            if resolved_file_scope.is_multiple:
                 raise CommandError(_("`show --page` requires exactly one resolved file."))
             if args.line_ids is not None:
                 raise CommandError(_("Cannot use `show --page` together with `show --line`."))
             if args.porcelain:
                 raise CommandError(_("Cannot use `show --page` with `--porcelain`."))
         if args.from_batch:
-            if isinstance(resolved_file_scope, list):
+            if resolved_file_scope.is_multiple:
                 if args.line_ids:
                     raise CommandError(_("Cannot use --lines with multiple files."))
                 commands.command_show_from_batch(
@@ -547,17 +595,26 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     page=args.page,
                 )
             else:
-                commands.command_show_from_batch(args.from_batch, args.line_ids, resolved_file_scope, page=args.page)
+                commands.command_show_from_batch(
+                    args.from_batch,
+                    args.line_ids,
+                    resolved_file_scope.optional_file(),
+                    page=args.page,
+                )
             return
-        if args.line_ids or resolved_file_scope is not None:
-            if isinstance(resolved_file_scope, list) and args.porcelain:
+        if args.line_ids or not resolved_file_scope.is_implicit:
+            if resolved_file_scope.is_multiple and args.porcelain:
                 raise CommandError(_("Cannot use --porcelain with multiple files."))
-            if isinstance(resolved_file_scope, list):
+            if resolved_file_scope.is_multiple:
                 if args.line_ids:
                     raise CommandError(_("Cannot use --lines with multiple files."))
-                commands.command_show_file_list(resolved_file_scope)
+                commands.command_show_file_list(list(resolved_file_scope.files))
             else:
-                commands.command_show(file=resolved_file_scope, page=args.page, porcelain=args.porcelain)
+                commands.command_show(
+                    file=resolved_file_scope.optional_file(),
+                    page=args.page,
+                    porcelain=args.porcelain,
+                )
             return
         commands.command_show(porcelain=args.porcelain)
 
@@ -642,25 +699,23 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 if args.no_edge_overlap:
                     raise CommandError(_("`--no-edge-overlap` only applies to live `include --line --as` operations."))
                 resolved_batch_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-                if isinstance(resolved_batch_scope, list):
-                    raise CommandError(_("Cannot use --lines with multiple files."))
+                resolved_file = resolved_batch_scope.require_single_file(_("Cannot use --lines with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
                 commands.command_include_from_batch(
                     args.from_batch,
                     args.line_ids,
-                    file=resolved_batch_scope,
+                    file=resolved_file,
                     replacement_text=replacement_text,
                 )
                 return
             if args.line_ids and not args.from_batch and not args.to_batch:
                 resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-                if isinstance(resolved_live_scope, list):
-                    raise CommandError(_("Cannot use --lines with multiple files."))
+                resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
                 commands.command_include_line_as(
                     args.line_ids,
                     replacement_text,
-                    file=resolved_live_scope,
+                    file=resolved_file,
                     no_edge_overlap=args.no_edge_overlap,
                 )
                 return
@@ -670,16 +725,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 and args.to_batch is None
             ):
                 resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-                if resolved_live_scope is None:
+                if resolved_live_scope.is_implicit:
                     raise CommandError(
                         _("`include --as` requires `--file` or `--line` and does not support `--to`.")
                     )
                 if args.no_edge_overlap:
                     raise CommandError(_("`--no-edge-overlap` requires `include --line --as`."))
-                if isinstance(resolved_live_scope, list):
+                if resolved_live_scope.is_multiple:
                     raise CommandError(_("Cannot use --as with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
-                commands.command_include_file_as(replacement_text, file=resolved_live_scope)
+                commands.command_include_file_as(replacement_text, file=resolved_live_scope.optional_file())
                 return
             raise CommandError(
                 _("`include --as` requires `--file` or `--line` and does not support `--to`.")
@@ -702,15 +757,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             )
         elif args.line_ids:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-            if isinstance(resolved_live_scope, list):
-                raise CommandError(_("Cannot use --lines with multiple files."))
-            commands.command_include_line(args.line_ids, file=resolved_live_scope)
+            resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
+            commands.command_include_line(args.line_ids, file=resolved_file)
         else:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-            if isinstance(resolved_live_scope, list):
-                _include_each_resolved_file(resolved_live_scope)
-            elif resolved_live_scope is not None:
-                commands.command_include_file(resolved_live_scope)
+            if resolved_live_scope.is_multiple:
+                _include_each_resolved_file(list(resolved_live_scope.files))
+            elif not resolved_live_scope.is_implicit:
+                commands.command_include_file(resolved_live_scope.optional_file())
             else:
                 commands.command_include()
 
@@ -739,14 +793,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     def dispatch_skip(args: argparse.Namespace) -> None:
         resolved_file_scope = _resolve_live_file_scope(args.file, args.file_patterns)
         if args.line_ids:
-            if isinstance(resolved_file_scope, list):
-                raise CommandError(_("Cannot use --lines with multiple files."))
-            commands.command_skip_line(args.line_ids, file=resolved_file_scope)
-        elif resolved_file_scope is not None:
-            if isinstance(resolved_file_scope, list):
-                _skip_each_resolved_file(resolved_file_scope)
+            resolved_file = resolved_file_scope.require_single_file(_("Cannot use --lines with multiple files."))
+            commands.command_skip_line(args.line_ids, file=resolved_file)
+        elif not resolved_file_scope.is_implicit:
+            if resolved_file_scope.is_multiple:
+                _skip_each_resolved_file(list(resolved_file_scope.files))
             else:
-                commands.command_skip_file(resolved_file_scope)
+                commands.command_skip_file(resolved_file_scope.optional_file())
         else:
             commands.command_skip()
 
@@ -816,14 +869,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
             if args.to_batch and args.line_ids and not args.from_batch:
                 resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-                if isinstance(resolved_live_scope, list):
-                    raise CommandError(_("Cannot use --lines with multiple files."))
+                resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
                 commands.command_discard_line_as_to_batch(
                     args.to_batch,
                     args.line_ids,
                     replacement_text,
-                    file=resolved_live_scope,
+                    file=resolved_file,
                     no_edge_overlap=args.no_edge_overlap,
                 )
                 return
@@ -833,16 +885,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 and args.line_ids is None
             ):
                 resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-                if resolved_live_scope is None:
+                if resolved_live_scope.is_implicit:
                     raise CommandError(
                         _("`discard --as` requires `--file`, or `--to` with `--line`.")
                     )
                 if args.no_edge_overlap:
                     raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
-                if isinstance(resolved_live_scope, list):
+                if resolved_live_scope.is_multiple:
                     raise CommandError(_("Cannot use --as with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
-                commands.command_discard_file_as(replacement_text, file=resolved_live_scope)
+                commands.command_discard_file_as(replacement_text, file=resolved_live_scope.optional_file())
                 return
             raise CommandError(
                 _("`discard --as` requires `--file`, or `--to` with `--line`.")
@@ -858,8 +910,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             )
         elif args.to_batch:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-            if isinstance(resolved_live_scope, list) and args.line_ids is None:
-                _discard_to_batch_each_resolved_file(args.to_batch, resolved_live_scope)
+            if resolved_live_scope.is_multiple and args.line_ids is None:
+                _discard_to_batch_each_resolved_file(args.to_batch, list(resolved_live_scope.files))
             else:
                 _run_for_each_file(
                     resolved_live_scope,
@@ -868,12 +920,11 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 )
         elif args.line_ids:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-            if isinstance(resolved_live_scope, list):
-                raise CommandError(_("Cannot use --lines with multiple files."))
-            commands.command_discard_line(args.line_ids, file=resolved_live_scope)
+            resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
+            commands.command_discard_line(args.line_ids, file=resolved_file)
         else:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-            if resolved_live_scope is not None:
+            if not resolved_live_scope.is_implicit:
                 _run_for_each_file(resolved_live_scope, commands.command_discard_file)
             else:
                 commands.command_discard()

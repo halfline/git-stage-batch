@@ -349,6 +349,14 @@ def detect_stale_batch_source_for_selection(selected_lines: list) -> bool:
         # If they don't, the current batch source cannot express this change
         if line.kind in (' ', '+') and line.source_line is None:
             return True
+        # A None deletion anchor is only current for deletions before line 1.
+        if (
+            line.kind == '-'
+            and line.source_line is None
+            and line.old_line_number is not None
+            and line.old_line_number > 1
+        ):
+            return True
     return False
 
 
@@ -436,9 +444,10 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
         elif line.kind == '-':
             active_replacement_unit = None
             # Deletion: suppression constraint
-            # Use deletion's source_line as anchor if we haven't set one yet
-            # (This handles deletion-only selections where no context lines precede)
-            if current_deletion_anchor is None and line.source_line is not None:
+            # Anchor each deletion run at its first deleted line. A None anchor
+            # means the run starts before the first source line and must not be
+            # overwritten by later deleted lines in the same run.
+            if not current_deletion_lines:
                 current_deletion_anchor = line.source_line
             # text_bytes has line content with \r preserved but \n stripped (diff format)
             # Add back \n for proper round-tripping

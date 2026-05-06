@@ -90,10 +90,15 @@ Reprint the cached "selected" hunk.
 Show all changes from one file. Without PATH, uses the selected hunk's file.
 .TP
 .B \-\-files \fIPATTERN\fR...
-Show all changes from files matched by Git-style patterns.
+Show files matched by Git-style patterns.
 Patterns use Git's ignore matcher semantics, including ordered \fB!\fR exclusions.
-When multiple files are shown, only the final displayed file remains selected
-for later \fB\-\-line\fR operations.
+When multiple files match, prints a navigational file list and does not leave
+a hidden selected file for later bare actions.
+.TP
+.B \-\-page \fIPAGES\fR, \-\-pages \fIPAGES\fR
+Show one or more file-review pages, such as \fB2\fR, \fB3-4\fR, or
+\fBall\fR. Requires \fB\-\-file\fR, or \fB\-\-files\fR resolving to exactly
+one file. Cannot be combined with \fB\-\-line\fR or \fB\-\-porcelain\fR.
 .TP
 .B \-\-porcelain
 Exit silently with status code only (0 if hunk exists, 1 if no hunk).
@@ -126,8 +131,10 @@ Displays iteration number, selected hunk location, progress metrics
 .TP
 .B \-\-porcelain
 Output in machine-readable JSON format for script integration.
-The JSON includes: session (iteration and in_progress flag), selected
-(selected hunk location or null), progress (counts), and skipped_hunks (array).
+The JSON includes: session (active, iteration, status, and in_progress),
+selected_change (selected hunk/file/batch-file/binary details or null),
+file_review (last page-aware review details or null), progress (counts), and
+skipped_hunks (array).
 .RE
 .SS Session Management
 .TP
@@ -216,34 +223,44 @@ Allows surgical removal of debug code or unwanted modifications.
 .TP
 .B include \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR
 Stage replacement text for the selected changed region.
-When TEXT includes exact unchanged edge anchors from the preserved file
-context, those anchors are stripped by default.
+When TEXT includes exact unchanged lines overlapping the preserved file
+context immediately before or after the selected span, those edge-overlap
+lines are stripped by default.
 Replacement selections must form one contiguous displayed line-ID range.
 File-scoped views may span omitted gap markers when the selected IDs remain
 contiguous, but disjoint ranges still require separate commands.
 .TP
-.B include \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR \-\-no\-anchor
-Do not strip unchanged edge anchor lines from replacement text.
+.B include \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR \-\-no\-edge\-overlap
+Do not strip unchanged edge-overlap lines from replacement text.
 .TP
 .B include \-\-file \fIPATH\fR \-\-as \fITEXT\fR
 Stage TEXT as the full index content for the selected file-scoped path while
 leaving the working tree unchanged.
 .TP
+.B include \fR[\fB\-\-file \fIPATH\fR | \fB\-\-line \fILINE_IDS\fR]\fB \-\-as\-stdin
+Read replacement text from standard input exactly instead of from \fB\-\-as\fR.
+Preserves trailing newlines.
+.TP
 .B discard \-\-file \fIPATH\fR \-\-as \fITEXT\fR
 Replace the working-tree content for the selected file-scoped path with TEXT
 without staging it.
 .TP
+.B discard \fR[\fB\-\-file \fIPATH\fR | \fB\-\-to \fIBATCH\fR \fB\-\-line \fILINE_IDS\fR]\fB \-\-as\-stdin
+Read replacement text from standard input exactly instead of from \fB\-\-as\fR.
+Preserves trailing newlines.
+.TP
 .B discard \-\-to \fIBATCH\fR \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR
 Save replacement text to a batch and discard the original selected lines
 from the working tree.
-When TEXT includes exact unchanged edge anchors from the preserved file
-context, those anchors are stripped by default.
+When TEXT includes exact unchanged lines overlapping the preserved file
+context immediately before or after the selected span, those edge-overlap
+lines are stripped by default.
 Replacement selections must form one contiguous displayed line-ID range.
 File-scoped views may span omitted gap markers when the selected IDs remain
 contiguous, but disjoint ranges still require separate commands.
 .TP
-.B discard \-\-to \fIBATCH\fR \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR \-\-no\-anchor
-Do not strip unchanged edge anchor lines from replacement text.
+.B discard \-\-to \fIBATCH\fR \-\-line \fILINE_IDS\fR \-\-as \fITEXT\fR \-\-no\-edge\-overlap
+Do not strip unchanged edge-overlap lines from replacement text.
 .SS Permanent File Exclusion
 .TP
 .B block-file \fR[\fIPATH\fR]
@@ -358,11 +375,13 @@ The following commands accept \fB\-\-from\fR flags to work with batches:
 .B show \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
 Show the accumulated changes stored in a batch.
 Use \fB\-\-line\fR to filter display to specific line IDs.
-Use \fB\-\-file\fR or \fB\-\-files\fR to limit display to specific batch files.
+Use \fB\-\-file\fR to open one page-aware batch file review.
+Use \fB\-\-files\fR to list matching batch files; multi-file lists are
+navigational and do not select a hidden batch file.
 .TP
 .B include \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
-Stage the changes from a batch to the index. Fails if the batch's changes
-cannot be applied cleanly to the selected state.
+Stage the changes from a batch to the index and write them to the working tree.
+Fails if the batch's changes cannot be applied cleanly to the selected state.
 Use \fB\-\-line\fR to stage only specific lines from the batch.
 Use \fB\-\-file\fR to apply one file from the batch.
 Use \fB\-\-files\fR to apply all batch files matched by Git-style patterns.

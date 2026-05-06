@@ -1731,7 +1731,9 @@ The core commands (start, include, skip, discard) handle the majority of use cas
 <p>Show the accumulated changes stored in a batch.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>❯ git-stage-batch show --from batch-name
 </span></code></pre></div>
-<p>Displays the diff representing all changes accumulated in the batch, showing what would be staged or discarded if you operate on the batch.</p>
+<p>Displays a matched-files list for multi-file batches. Open one listed file with
+<code>show --from batch-name --file PATH</code> to review its page-aware batch diff and
+use its line IDs.</p>
 <p><strong>Line-level filtering:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>❯ git-stage-batch show --from batch-name --line 1,3,5-7
 </span></code></pre></div></p>
@@ -1739,26 +1741,33 @@ The core commands (start, include, skip, discard) handle the majority of use cas
 <p><strong>Pattern-based filtering:</strong>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--from<span class="w"> </span>batch-name<span class="w"> </span>--files<span class="w"> </span><span class="s2">&quot;src/**/*.py&quot;</span><span class="w"> </span><span class="s2">&quot;!src/vendor/**&quot;</span>
 </span></code></pre></div></p>
-<p>When <code>--files</code> resolves to multiple files, only the final displayed file remains selected for later <code>--line</code> operations.</p>
+<p>When <code>--files</code> resolves to multiple files, <code>show --from</code> prints a navigational
+file list and does not leave a hidden selected batch file behind.</p>
 <hr />
 <h2 id="include-from-batch"><code>include --from BATCH</code><a class="headerlink" href="#include-from-batch" title="Permanent link">&para;</a></h2>
-<p>Stage the changes from a batch to the index.</p>
+<p>Stage the changes from a batch to the index and write them to the working tree.</p>
 <p><strong>Stage entire batch:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>❯ git-stage-batch include --from batch-name
 </span></code></pre></div></p>
-<p>Applies the batch's accumulated changes to the index, staging them for commit.</p>
+<p>Applies the batch's accumulated changes to the index and working tree, staging
+them for commit.</p>
 <p><strong>Line-level staging:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>❯ git-stage-batch include --from batch-name --line 1-5
 </span></code></pre></div></p>
-<p>Stage only specific lines from the batch, allowing partial application of batch changes.</p>
+<p>Stage only specific lines from the batch, allowing partial application of batch
+changes to the index and working tree.</p>
 <p><strong>File-level staging (selected file):</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>❯ git-stage-batch include --from batch-name --file
 </span></code></pre></div></p>
-<p>Stage changes from the batch for the selected hunk's file only. Use this during a staging session when you want to pull in batch changes for the file you're reviewing, without affecting other files in the batch.</p>
+<p>Stage changes from the batch for the selected hunk's file only. Use this during
+a staging session when you want to pull in batch changes for the file you're
+reviewing, without affecting other files in the batch.</p>
 <p><strong>File-level staging (specific file):</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>❯ git-stage-batch include --from batch-name --file src/config.py
 </span></code></pre></div></p>
-<p>Stage changes from the batch for <code>src/config.py</code> only, without needing a selected hunk. Useful for applying specific files from multi-file batches outside of an active staging session.</p>
+<p>Stage changes from the batch for <code>src/config.py</code> only, without needing a
+selected hunk. Useful for applying specific files from multi-file batches
+outside of an active staging session.</p>
 <p><strong>Pattern-based staging:</strong>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>batch-name<span class="w"> </span>--files<span class="w"> </span><span class="s2">&quot;src/**/*.py&quot;</span><span class="w"> </span><span class="s2">&quot;!src/vendor/**&quot;</span>
 </span></code></pre></div></p>
@@ -1836,7 +1845,9 @@ filter to a specific file, or <code>--line</code> to discard only specific lines
 <p><strong>Apply entire batch:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>❯ git-stage-batch apply --from batch-name
 </span></code></pre></div></p>
-<p>Applies the batch's accumulated changes to your working tree, leaving the index untouched. This is different from <code>include --from</code> which stages changes to the index.</p>
+<p>Applies the batch's accumulated changes to your working tree, leaving the index
+untouched. This is different from <code>include --from</code>, which writes the selected
+batch changes to both the index and working tree.</p>
 <p><strong>Use cases:</strong>
 - Temporarily applying batched changes to test them before committing
 - Restoring changes that were saved with <code>discard --to</code>
@@ -1867,9 +1878,9 @@ filter to a specific file, or <code>--line</code> to apply only specific lines.<
 </div>
 <div class="admonition info">
 <p class="admonition-title">Working Tree Only</p>
-<p>Unlike <code>include --from</code>, this command modifies only the working tree and leaves
-the index (staging area) untouched. Use this when you want to preview or test
-changes before staging them.</p>
+<p>Unlike <code>include --from</code>, this command modifies only the working tree and
+leaves the index (staging area) untouched. Use this when you want to preview
+or test changes before staging them.</p>
 </div>
 <p><strong>Example workflow:</strong>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># Save debugging changes to a batch</span>

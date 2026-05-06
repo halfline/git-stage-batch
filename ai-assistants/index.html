@@ -1487,9 +1487,9 @@ they spawn a fresh-context subagent.</p>
 </span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
 </span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a># Get structured status
 </span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>status=$(git-stage-batch status --porcelain)
-</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>echo &quot;$status&quot; | jq &#39;.selected_hunk&#39;
-</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>echo &quot;$status&quot; | jq &#39;.remaining_line_ids&#39;
-</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>echo &quot;$status&quot; | jq &#39;.blocked_hunks&#39;
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>echo &quot;$status&quot; | jq &#39;.selected_change&#39;
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>echo &quot;$status&quot; | jq &#39;.file_review&#39;
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>echo &quot;$status&quot; | jq &#39;.progress.remaining&#39;
 </span></code></pre></div>
 <h2 id="tips-for-ai-configuration">Tips for AI Configuration<a class="headerlink" href="#tips-for-ai-configuration" title="Permanent link">&para;</a></h2>
 <ol>

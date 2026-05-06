@@ -8,6 +8,7 @@ import sys
 import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..exceptions import exit_with_error
@@ -19,6 +20,25 @@ from .text import bytes_to_lines
 
 _GIT_REPOSITORY_ROOT_CACHE: dict[Path, Path] = {}
 _GIT_DIRECTORY_CACHE: dict[Path, Path] = {}
+
+
+@dataclass(frozen=True)
+class GitTreeBlob:
+    """One blob entry from a Git tree."""
+
+    file_path: str
+    mode: str
+    blob_sha: str
+
+
+@dataclass(frozen=True)
+class GitIndexEntryUpdate:
+    """One index-info update for a temporary Git index."""
+
+    file_path: str
+    mode: str | None = None
+    blob_sha: str | None = None
+    force_remove: bool = False
 
 
 def stream_git_command(
@@ -184,6 +204,46 @@ def git_update_index(
     )
 
 
+def git_update_index_entries(
+    entries: Iterable[GitIndexEntryUpdate],
+    *,
+    env: dict[str, str] | None = None,
+) -> None:
+    """Update several index entries through one update-index process."""
+    payload_chunks: list[bytes] = []
+    for entry in entries:
+        path_bytes = entry.file_path.encode("utf-8")
+        if entry.force_remove:
+            if entry.mode is not None or entry.blob_sha is not None:
+                raise ValueError("mode and blob_sha cannot be used with force_remove=True")
+            payload_chunks.extend([
+                b"0 0000000000000000000000000000000000000000\t",
+                path_bytes,
+                b"\0",
+            ])
+        else:
+            if entry.mode is None or entry.blob_sha is None:
+                raise ValueError("mode and blob_sha are required unless force_remove=True")
+            payload_chunks.extend([
+                entry.mode.encode("ascii"),
+                b" ",
+                entry.blob_sha.encode("ascii"),
+                b"\t",
+                path_bytes,
+                b"\0",
+            ])
+
+    if not payload_chunks:
+        return
+
+    for _chunk in stream_git_command(
+        ["update-index", "-z", "--index-info"],
+        payload_chunks,
+        env=env,
+    ):
+        pass
+
+
 def git_write_tree(*, env: dict[str, str] | None = None) -> str:
     """Write the current or provided index as a Git tree."""
     return run_git_command(["write-tree"], env=env).stdout.strip()
@@ -240,6 +300,34 @@ def create_git_blob(content_chunks: Iterable[bytes]) -> str:
     stdout_bytes = b"".join(stdout_chunks)
     blob_sha = stdout_bytes.strip().decode("utf-8")
     return blob_sha
+
+
+def create_git_blobs(contents: Iterable[bytes]) -> list[str]:
+    """Create several blob objects with one hash-object process."""
+    content_list = list(contents)
+    if not content_list:
+        return []
+
+    with tempfile.TemporaryDirectory(prefix="git-stage-batch-blobs-") as temp_dir:
+        temp_path = Path(temp_dir)
+        path_lines: list[str] = []
+        for index, content in enumerate(content_list):
+            path = temp_path / str(index)
+            path.write_bytes(content)
+            path_lines.append(str(path))
+
+        payload = ("\n".join(path_lines) + "\n").encode("utf-8")
+        result = run_command(
+            ["git", "hash-object", "-w", "--stdin-paths"],
+            [payload],
+        )
+
+    blob_shas = result.stdout.strip().splitlines()
+    if len(blob_shas) != len(content_list):
+        raise RuntimeError(
+            f"git hash-object returned {len(blob_shas)} hashes for {len(content_list)} blobs"
+        )
+    return blob_shas
 
 
 def read_git_blob(blob_sha: str) -> Iterator[bytes]:
@@ -307,6 +395,56 @@ def read_git_blobs_as_bytes(blob_hashes: Iterable[str]) -> dict[str, bytes]:
         blobs[object_hash] = content
 
     return blobs
+
+
+def list_git_tree_blobs(treeish: str, file_paths: Iterable[str]) -> dict[str, GitTreeBlob]:
+    """List blob entries for paths in one tree with one ls-tree process."""
+    unique_file_paths = list(dict.fromkeys(file_paths))
+    if not unique_file_paths:
+        return {}
+
+    result = run_git_command(
+        ["ls-tree", "-rz", treeish, "--", *unique_file_paths],
+        check=False,
+        text_output=False,
+    )
+    if result.returncode != 0:
+        return {}
+
+    entries: dict[str, GitTreeBlob] = {}
+    for record in result.stdout.split(b"\0"):
+        if not record:
+            continue
+        try:
+            metadata_bytes, path_bytes = record.split(b"\t", 1)
+        except ValueError:
+            continue
+        metadata = metadata_bytes.decode("ascii", errors="replace").split()
+        if len(metadata) < 3 or metadata[1] != "blob":
+            continue
+        file_path = path_bytes.decode("utf-8")
+        entries[file_path] = GitTreeBlob(
+            file_path=file_path,
+            mode=metadata[0],
+            blob_sha=metadata[2],
+        )
+    return entries
+
+
+def read_git_tree_file_contents(treeish: str, file_paths: Iterable[str]) -> dict[str, bytes]:
+    """Read several file contents from a tree with batched object IO."""
+    tree_blobs = list_git_tree_blobs(treeish, file_paths)
+    if not tree_blobs:
+        return {}
+
+    blob_contents = read_git_blobs_as_bytes(
+        blob.blob_sha for blob in tree_blobs.values()
+    )
+    return {
+        file_path: blob_contents[blob.blob_sha]
+        for file_path, blob in tree_blobs.items()
+        if blob.blob_sha in blob_contents
+    }
 
 
 def read_git_blob_as_bytes(blob_hash: str) -> bytes | None:

@@ -17,6 +17,8 @@ from .query import (
 from .storage import (
     add_binary_file_to_batch,
     add_file_to_batch,
+    add_files_to_batch,
+    BatchFileUpdate,
     copy_file_from_batch_to_batch,
     get_batch_diff,
     read_file_from_batch,
@@ -26,6 +28,8 @@ from .validation import batch_exists, validate_batch_name
 __all__ = [
     "add_binary_file_to_batch",
     "add_file_to_batch",
+    "add_files_to_batch",
+    "BatchFileUpdate",
     "batch_exists",
     "copy_file_from_batch_to_batch",
     "create_batch",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from .metadata_validation import get_validated_baseline_commit
@@ -15,6 +16,7 @@ from ..core.models import BinaryFileChange
 from ..core.text_lifecycle import TextFileChangeType, resolve_text_change_type
 from ..data.batch_sources import (
     create_batch_source_commit,
+    create_batch_source_commits,
     get_batch_source_for_file,
     load_session_batch_sources,
     save_session_batch_sources,
@@ -22,11 +24,15 @@ from ..data.batch_sources import (
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
     create_git_blob,
+    create_git_blobs,
+    GitIndexEntryUpdate,
     get_git_repository_root_path,
     git_commit_tree,
     git_read_tree,
     git_update_index,
+    git_update_index_entries,
     git_write_tree,
+    read_git_tree_file_contents,
     run_git_command,
     temp_git_index,
 )
@@ -35,6 +41,17 @@ from .merge import _satisfy_constraints
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership, DeletionClaim
+
+
+@dataclass(frozen=True)
+class BatchFileUpdate:
+    """One text file update to persist into a batch."""
+
+    file_path: str
+    ownership: BatchOwnership
+    file_mode: str = "100644"
+    batch_source_commit: str | None = None
+    change_type: str | None = None
 
 
 def add_file_to_batch(
@@ -61,75 +78,155 @@ def add_file_to_batch(
         change_type: Optional persisted text lifecycle type from another batch.
             Only whole-file added/deleted lifecycle states are retained.
     """
+    add_files_to_batch(
+        batch_name,
+        [
+            BatchFileUpdate(
+                file_path=file_path,
+                ownership=ownership,
+                file_mode=file_mode,
+                batch_source_commit=batch_source_commit,
+                change_type=change_type,
+            )
+        ],
+    )
+
+
+def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
+    """Add or update text files in one batch content/state publication."""
+    if not updates:
+        return
+
     validate_batch_name(batch_name)
 
     # Auto-create batch if it doesn't exist
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
-    # Get or create batch source commit for this file
-    batch_source_commit = batch_source_commit or get_batch_source_for_file(file_path)
-    if not batch_source_commit:
-        # Create batch source commit
-        batch_source_commit = create_batch_source_commit(file_path)
-        # Save to session cache
-        batch_sources = load_session_batch_sources()
-        batch_sources[file_path] = batch_source_commit
-        save_session_batch_sources(batch_sources)
-
-    # Read baseline and batch source content
-    # Use validated version to get clear error if metadata is corrupted
     baseline_commit = get_validated_baseline_commit(batch_name)
-
-    # Read base file content as bytes
-    base_result = run_git_command(["show", f"{baseline_commit}:{file_path}"], check=False, text_output=False)
-    baseline_exists = base_result.returncode == 0
-    base_content = base_result.stdout if baseline_exists else b""
-
-    # Read batch source content as bytes
-    batch_source_result = run_git_command(["show", f"{batch_source_commit}:{file_path}"], check=False, text_output=False)
-    batch_source_content = batch_source_result.stdout if batch_source_result.returncode == 0 else b""
-
-    # Build realized content: base + claimed changes + deletions
-    realized_content_bytes = _build_realized_content(
-        base_content,
-        batch_source_content,
-        ownership
-    )
-
-    text_change_type = resolve_text_change_type(
-        file_path=file_path,
-        baseline_exists=baseline_exists,
-        batch_source_content=batch_source_content,
-        realized_content=realized_content_bytes,
-        requested_change_type=change_type,
-    )
-
-    # Update batch metadata
     metadata = read_batch_metadata(batch_name)
     if "files" not in metadata:
         metadata["files"] = {}
 
-    file_metadata = {
-        "batch_source_commit": batch_source_commit,
-        **ownership.to_metadata_dict(),
-        "mode": file_mode
-    }
-    if text_change_type != TextFileChangeType.MODIFIED:
-        file_metadata["change_type"] = text_change_type.value
-    metadata["files"][file_path] = file_metadata
+    batch_sources = load_session_batch_sources()
+    batch_sources_changed = False
+    batch_source_commits: dict[str, str] = {}
+    batch_source_contents: dict[str, bytes] = {}
+    missing_source_paths: list[str] = []
 
-    # Write updated metadata
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    for update in updates:
+        batch_source_commit = update.batch_source_commit or batch_sources.get(update.file_path)
+        if batch_source_commit:
+            batch_source_commits[update.file_path] = batch_source_commit
+        else:
+            missing_source_paths.append(update.file_path)
 
-    # Build batch commit tree with realized content. Deleted text paths are
-    # represented by metadata plus path absence in the batch tree.
-    if text_change_type == TextFileChangeType.DELETED:
-        _remove_file_from_batch_commit(batch_name, file_path)
-    else:
-        blob_sha = create_git_blob([realized_content_bytes])
-        _update_batch_commit(batch_name, file_path, blob_sha, file_mode)
+    created_sources = create_batch_source_commits(missing_source_paths)
+    if created_sources:
+        batch_sources_changed = True
+        for file_path, source in created_sources.items():
+            batch_sources[file_path] = source.commit_sha
+            batch_source_commits[file_path] = source.commit_sha
+            batch_source_contents[file_path] = source.file_content
+
+    update_paths = [update.file_path for update in updates]
+    baseline_contents = read_git_tree_file_contents(baseline_commit, update_paths)
+
+    existing_source_paths_by_commit: dict[str, list[str]] = {}
+    for update in updates:
+        if update.file_path in batch_source_contents:
+            continue
+        existing_source_paths_by_commit.setdefault(
+            batch_source_commits[update.file_path],
+            [],
+        ).append(update.file_path)
+
+    for source_commit, source_paths in existing_source_paths_by_commit.items():
+        batch_source_contents.update(
+            read_git_tree_file_contents(source_commit, source_paths)
+        )
+
+    with temp_git_index() as env:
+        existing_commit = get_batch_commit_sha(batch_name)
+        if existing_commit:
+            git_read_tree(existing_commit, env=env)
+
+        index_updates: list[GitIndexEntryUpdate] = []
+        realized_contents: list[bytes] = []
+        realized_content_indexes: list[int] = []
+        for update in updates:
+            file_path = update.file_path
+            batch_source_commit = batch_source_commits[file_path]
+            baseline_exists = file_path in baseline_contents
+            base_content = baseline_contents.get(file_path, b"")
+            batch_source_content = batch_source_contents.get(file_path, b"")
+
+            realized_content_bytes = _build_realized_content(
+                base_content,
+                batch_source_content,
+                update.ownership,
+            )
+
+            text_change_type = resolve_text_change_type(
+                file_path=file_path,
+                baseline_exists=baseline_exists,
+                batch_source_content=batch_source_content,
+                realized_content=realized_content_bytes,
+                requested_change_type=update.change_type,
+            )
+
+            file_metadata = {
+                "batch_source_commit": batch_source_commit,
+                **update.ownership.to_metadata_dict(),
+                "mode": update.file_mode
+            }
+            if text_change_type != TextFileChangeType.MODIFIED:
+                file_metadata["change_type"] = text_change_type.value
+            metadata["files"][file_path] = file_metadata
+
+            if text_change_type == TextFileChangeType.DELETED:
+                index_updates.append(
+                    GitIndexEntryUpdate(file_path=file_path, force_remove=True)
+                )
+            else:
+                realized_content_indexes.append(len(index_updates))
+                realized_contents.append(realized_content_bytes)
+                index_updates.append(
+                    GitIndexEntryUpdate(
+                        file_path=file_path,
+                        mode=update.file_mode,
+                    )
+                )
+
+        blob_shas = create_git_blobs(realized_contents)
+        for index_update_index, blob_sha in zip(realized_content_indexes, blob_shas, strict=True):
+            index_update = index_updates[index_update_index]
+            index_updates[index_update_index] = GitIndexEntryUpdate(
+                file_path=index_update.file_path,
+                mode=index_update.mode,
+                blob_sha=blob_sha,
+            )
+        git_update_index_entries(index_updates, env=env)
+
+        metadata_path = get_batch_metadata_file_path(batch_name)
+        write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+        if batch_sources_changed:
+            save_session_batch_sources(batch_sources)
+
+        tree_sha = git_write_tree(env=env)
+
+    commit_sha = git_commit_tree(
+        tree_sha,
+        parents=_batch_commit_parents(batch_name),
+        message=f"Batch: {batch_name}",
+    )
+
+    from .state_refs import sync_batch_state_refs
+    sync_batch_state_refs(
+        batch_name,
+        content_commit=commit_sha,
+        source_contents=batch_source_contents,
+    )
 
 
 def add_binary_file_to_batch(

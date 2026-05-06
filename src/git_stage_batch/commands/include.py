@@ -35,6 +35,7 @@ from ..data.hunk_tracking import (
     advance_to_and_show_next_change,
     advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
+    build_file_hunk_from_content,
     cache_unstaged_file_as_single_hunk,
     clear_selected_change_state_files,
     fetch_next_change,
@@ -70,6 +71,7 @@ from ..output import print_line_level_changes, print_remaining_line_changes_head
 from ..staging.operations import (
     build_target_index_content_bytes_with_replaced_lines,
     build_target_index_content_bytes_with_selected_lines,
+    build_target_working_tree_content_bytes_with_discarded_lines,
     update_index_with_blob_content,
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
@@ -86,6 +88,35 @@ from ..utils.paths import (
     get_processed_include_ids_file_path,
     get_working_tree_snapshot_file_path,
 )
+
+
+def _file_line_signature(line) -> tuple[str, int | None, int | None, bytes]:
+    return (
+        line.kind,
+        line.old_line_number,
+        line.new_line_number,
+        line.text_bytes,
+    )
+
+
+def _already_staged_file_review_ids(line_changes, current_index_content: bytes) -> set[int]:
+    staged_line_changes = build_file_hunk_from_content(
+        line_changes.path,
+        current_index_content,
+    )
+    if staged_line_changes is None:
+        return set()
+
+    staged_signatures = {
+        _file_line_signature(line)
+        for line in staged_line_changes.lines
+        if line.id is not None
+    }
+    return {
+        line.id
+        for line in line_changes.lines
+        if line.id is not None and _file_line_signature(line) in staged_signatures
+    }
 
 
 def command_include(*, quiet: bool = False) -> None:
@@ -466,11 +497,27 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
                 selected_ids=sorted(combined_include_ids),
                 reason=semantic_attempt.reason,
             )
-            target_index_content = build_target_index_content_bytes_with_selected_lines(
-                line_changes,
-                combined_include_ids,
-                hunk_base_content,
-            )
+            if read_selected_change_kind() == SelectedChangeKind.FILE:
+                already_staged_ids = _already_staged_file_review_ids(
+                    line_changes,
+                    current_index_content,
+                )
+                unselected_ids = (
+                    set(line_changes.changed_line_ids())
+                    - combined_include_ids
+                    - already_staged_ids
+                )
+                target_index_content = build_target_working_tree_content_bytes_with_discarded_lines(
+                    line_changes,
+                    unselected_ids,
+                    hunk_source_content,
+                )
+            else:
+                target_index_content = build_target_index_content_bytes_with_selected_lines(
+                    line_changes,
+                    combined_include_ids,
+                    hunk_base_content,
+                )
 
         update_index_with_blob_content(line_changes.path, target_index_content)
 

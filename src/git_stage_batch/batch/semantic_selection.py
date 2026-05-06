@@ -138,6 +138,15 @@ def _build_claimed_ranges(claimed_source_lines: set[int]) -> list[str]:
     return [format_line_ids(sorted(claimed_source_lines))]
 
 
+def _has_synthetic_gap(line_changes: LineLevelChange) -> bool:
+    return any(
+        line.kind == " "
+        and line.old_line_number is None
+        and line.new_line_number is None
+        for line in line_changes.lines
+    )
+
+
 def _build_temporary_ownership_for_selected_hunk(
     *,
     line_changes: LineLevelChange,
@@ -162,6 +171,11 @@ def _build_temporary_ownership_for_selected_hunk(
         first_unknown = min(unknown_ids)
         raise SemanticSelectionAmbiguousError(
             _("Line ID {id} not found in selected hunk.").format(id=first_unknown)
+        )
+
+    if _has_synthetic_gap(line_changes):
+        raise SemanticSelectionUnsupportedError(
+            _("Selected lines contain omitted file-review context.")
         )
 
     hunk_base_lines = _split_content_lines(selected_hunk_base_content)

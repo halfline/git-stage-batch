@@ -7,6 +7,7 @@ import sys
 from contextlib import nullcontext
 
 from ..exceptions import CommandError
+from ..i18n import _
 from ..utils.session_lock import acquire_session_lock
 from .argument_parser import parse_command_line
 from .dispatch import dispatch_args
@@ -31,6 +32,9 @@ def main() -> None:
         if e.message:
             print(e.message, file=sys.stderr)
         sys.exit(e.exit_code)
+    except KeyboardInterrupt:
+        print(_("Interrupted."), file=sys.stderr)
+        sys.exit(130)
 
 
 if __name__ == "__main__":

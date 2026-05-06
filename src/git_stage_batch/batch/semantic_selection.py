@@ -186,7 +186,7 @@ def _build_temporary_ownership_for_selected_hunk(
     selected_rows: list[SemanticSelectionRow] = []
     pairing_modes: set[str] = set()
 
-    old_pointer = max(line_changes.header.old_start - 1, 0)
+    old_pointer = line_changes.header.old_prefix_line_count()
     for index in range(0, min(old_pointer, len(hunk_base_lines))):
         source_lines.append(hunk_base_lines[index])
 

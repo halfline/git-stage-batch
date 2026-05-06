@@ -26,7 +26,7 @@ def build_target_index_content_with_selected_lines(
     output_lines: list[str] = []
     pending_additions: list[str] = []
 
-    base_pointer = 0
+    base_pointer = line_changes.header.old_prefix_line_count()
     base_line_count = len(base_lines)
 
     def push_output(line: str) -> None:
@@ -48,6 +48,9 @@ def build_target_index_content_with_selected_lines(
         while base_pointer < min(target_index, base_line_count):
             push_output(base_lines[base_pointer])
             base_pointer += 1
+
+    for index in range(0, min(base_pointer, base_line_count)):
+        push_output(base_lines[index])
 
     for line_entry in line_changes.lines:
         is_gap_line = (
@@ -101,7 +104,7 @@ def build_target_index_content_bytes_with_selected_lines(
     output_lines: list[bytes] = []
     pending_additions: list[bytes] = []
 
-    base_pointer = 0
+    base_pointer = line_changes.header.old_prefix_line_count()
     base_line_count = len(base_lines)
 
     def push_output(line: bytes) -> None:
@@ -123,6 +126,9 @@ def build_target_index_content_bytes_with_selected_lines(
         while base_pointer < min(target_index, base_line_count):
             push_output(base_lines[base_pointer])
             base_pointer += 1
+
+    for index in range(0, min(base_pointer, base_line_count)):
+        push_output(base_lines[index])
 
     for line_entry in line_changes.lines:
         is_gap_line = (

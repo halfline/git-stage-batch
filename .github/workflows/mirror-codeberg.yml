@@ -17,6 +17,6 @@ jobs:
       - name: Push to Codeberg
         run: |
           git remote add codeberg https://halfline:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/halfline/git-stage-batch.git
-          git fetch origin '+refs/heads/*:refs/heads/*'
-          git push codeberg --all --force --prune
+          git fetch --prune origin '+refs/heads/*:refs/mirror/heads/*' '+refs/tags/*:refs/tags/*'
+          git push codeberg --force --prune 'refs/mirror/heads/*:refs/heads/*'
           git push codeberg --tags --force

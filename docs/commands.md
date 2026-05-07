@@ -174,6 +174,7 @@ Skipped hunks:
 
 **Options:**
 - `--porcelain`: Output in machine-readable JSON format
+- `--for-prompt[=FORMAT]`: Print a prompt segment only when a session is active
 
 **Porcelain output:**
 ```bash
@@ -211,6 +212,21 @@ Outputs JSON with stable fields for script integration:
   ]
 }
 ```
+
+**Prompt output:**
+```bash
+PS1=$PS1'\r$(__git_ps1 "\n╎\e[32m%s$(git-stage-batch status --for-prompt=\|{status}\ {processed}/{total})\e[0m")\n'
+```
+
+When no session is active, `--for-prompt` prints nothing, so any spacing or
+brackets included in `FORMAT` are hidden too. Without `FORMAT`, it prints
+`STAGING`. In prompt output, `{status}` is the operation name `STAGING`;
+`{progress_status}` exposes the underlying `in_progress` or `complete` state.
+Format fields include `{status}`, `{status_label}`, `{progress_status}`,
+`{progress_label}`, `{iteration}`, `{processed}`, `{total}`, `{included}`,
+`{skipped}`, `{discarded}`, `{remaining}`, `{selected_file}`,
+`{selected_line}`, `{selected_ids}`, and `{selected_kind}`. `{processed}` is
+`included + skipped + discarded`; `{total}` is `{processed} + remaining`.
 
 ---
 

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from string import Formatter
+import subprocess
 import sys
 
 from ..batch.query import read_batch_metadata
@@ -30,11 +33,11 @@ from ..data.hunk_tracking import (
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import get_iteration_count
+from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
-from ..utils.git import require_git_repository, stream_git_command
+from ..utils.git import require_git_repository, run_git_command, stream_git_command
 from ..utils.paths import (
-    get_abort_head_file_path,
     get_block_list_file_path,
     get_blocked_files_file_path,
     get_context_lines,
@@ -43,7 +46,37 @@ from ..utils.paths import (
     get_discarded_hunks_file_path,
     get_included_hunks_file_path,
     get_skipped_hunks_jsonl_file_path,
+    get_state_directory_path,
 )
+
+
+DEFAULT_PROMPT_FORMAT = "STAGING"
+_PROMPT_FIELDS = frozenset(
+    {
+        "active",
+        "change_type",
+        "discarded",
+        "file_review_batch",
+        "file_review_fresh",
+        "file_review_source",
+        "included",
+        "in_progress",
+        "iteration",
+        "processed",
+        "progress_label",
+        "progress_status",
+        "remaining",
+        "selected_file",
+        "selected_ids",
+        "selected_kind",
+        "selected_line",
+        "skipped",
+        "status",
+        "status_label",
+        "total",
+    }
+)
+_LIGHT_PROMPT_FIELDS = frozenset({"active"})
 
 
 def estimate_remaining_hunks() -> int:
@@ -246,35 +279,34 @@ def _read_file_review_summary() -> dict | None:
     }
 
 
-def command_status(*, porcelain: bool = False) -> None:
-    """Show session progress and selected state.
+def _session_marker_path(git_dir: Path | None = None) -> Path:
+    """Return the active-session marker path without creating state directories."""
+    state_dir = git_dir / "git-stage-batch" if git_dir is not None else get_state_directory_path()
+    return state_dir / "session" / "abort" / "head.txt"
 
-    Args:
-        porcelain: If True, output JSON for scripting instead of human-readable text
-    """
-    require_git_repository()
 
-    # Only treat an active abort marker as a live session. The state directory
-    # can persist after cleanup because batch metadata is intentionally kept.
-    if not get_abort_head_file_path().exists():
-        if porcelain:
-            print(json.dumps({"session": {"active": False}}))
-        else:
-            print(_("No batch staging session in progress."), file=sys.stderr)
-            print(_("Run 'git-stage-batch start' to begin."), file=sys.stderr)
-        return
+def _git_directory_for_prompt() -> Path | None:
+    """Return the git directory for prompt rendering, or None outside a repo."""
+    try:
+        result = run_git_command(["rev-parse", "--absolute-git-dir"], check=False)
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    git_dir = result.stdout.strip()
+    return Path(git_dir) if git_dir else None
 
-    # Gather metrics
+
+def _read_status_summary() -> dict:
+    """Read the complete machine-readable status summary for an active session."""
     iteration = get_iteration_count()
 
-    # Count processed hunks this iteration
     included_content = read_text_file_contents(get_included_hunks_file_path())
     included_count = len([h for h in included_content.splitlines() if h.strip()])
 
     discarded_content = read_text_file_contents(get_discarded_hunks_file_path())
     discarded_count = len([h for h in discarded_content.splitlines() if h.strip()])
 
-    # Parse skipped hunks JSONL
     skipped_hunks = []
     jsonl_path = get_skipped_hunks_jsonl_file_path()
     if jsonl_path.exists():
@@ -288,32 +320,152 @@ def command_status(*, porcelain: bool = False) -> None:
     has_selected, selected_summary = _read_selected_change_summary()
     file_review_summary = _read_file_review_summary()
 
-    # Estimate remaining hunks
     remaining_estimate = estimate_remaining_hunks()
     status_value = "in_progress" if has_selected or remaining_estimate > 0 else "complete"
 
+    return {
+        "session": {
+            "active": True,
+            "iteration": iteration,
+            "status": status_value,
+            "in_progress": status_value == "in_progress",
+        },
+        "selected_change": selected_summary,
+        "file_review": file_review_summary,
+        "progress": {
+            "included": included_count,
+            "skipped": len(skipped_hunks),
+            "discarded": discarded_count,
+            "remaining": remaining_estimate,
+        },
+        "skipped_hunks": skipped_hunks,
+    }
+
+
+def _prompt_field_names(prompt_format: str) -> set[str]:
+    """Return top-level field names used by a status prompt format string."""
+    fields: set[str] = set()
+    try:
+        parsed = Formatter().parse(prompt_format)
+        for _literal_text, field_name, _format_spec, _conversion in parsed:
+            if field_name is None:
+                continue
+            if field_name == "":
+                raise CommandError(_("Status prompt format cannot use positional fields."))
+            field_name = field_name.split(".", 1)[0].split("[", 1)[0]
+            if field_name not in _PROMPT_FIELDS:
+                raise CommandError(
+                    _("Unknown status prompt field '{field}'.").format(field=field_name)
+                )
+            fields.add(field_name)
+    except ValueError as error:
+        raise CommandError(
+            _("Invalid status prompt format: {error}").format(error=str(error))
+        ) from error
+    return fields
+
+
+def _prompt_values(summary: dict | None = None) -> dict:
+    """Return values available to `status --for-prompt` format strings."""
+    if summary is None:
+        return {"active": True}
+
+    session = summary["session"]
+    progress = summary["progress"]
+    selected = summary["selected_change"] or {}
+    file_review = summary["file_review"] or {}
+    progress_status = session["status"]
+    progress_label = _("in progress") if progress_status == "in_progress" else _("complete")
+    processed = progress["included"] + progress["skipped"] + progress["discarded"]
+    total = processed + progress["remaining"]
+    status = "STAGING"
+
+    return {
+        "active": session["active"],
+        "change_type": selected.get("change_type") or "",
+        "discarded": progress["discarded"],
+        "file_review_batch": file_review.get("batch_name") or "",
+        "file_review_fresh": file_review.get("fresh", ""),
+        "file_review_source": file_review.get("source") or "",
+        "included": progress["included"],
+        "in_progress": session["in_progress"],
+        "iteration": session["iteration"],
+        "processed": processed,
+        "progress_label": progress_label,
+        "progress_status": progress_status,
+        "remaining": progress["remaining"],
+        "selected_file": selected.get("file") or "",
+        "selected_ids": format_id_range(selected.get("ids") or []),
+        "selected_kind": selected.get("kind") or "",
+        "selected_line": selected.get("line") or "",
+        "skipped": progress["skipped"],
+        "status": status,
+        "status_label": status,
+        "total": total,
+    }
+
+
+def _render_prompt_status(prompt_format: str, summary: dict | None = None) -> str:
+    """Render a prompt status segment for an active session."""
+    fields = _prompt_field_names(prompt_format)
+    values = _prompt_values(summary if fields - _LIGHT_PROMPT_FIELDS else None)
+    try:
+        return prompt_format.format_map(values)
+    except KeyError as error:
+        raise CommandError(
+            _("Unknown status prompt field '{field}'.").format(field=error.args[0])
+        ) from error
+    except ValueError as error:
+        raise CommandError(
+            _("Invalid status prompt format: {error}").format(error=str(error))
+        ) from error
+
+
+def command_status(*, porcelain: bool = False, prompt_format: str | None = None) -> None:
+    """Show session progress and selected state.
+
+    Args:
+        porcelain: If True, output JSON for scripting instead of human-readable text
+        prompt_format: If set, render this format string only for active sessions
+    """
+    if porcelain and prompt_format is not None:
+        raise CommandError(_("Cannot use --porcelain with --for-prompt."))
+
+    if prompt_format is not None:
+        git_dir = _git_directory_for_prompt()
+        if git_dir is None or not _session_marker_path(git_dir).exists():
+            return
+    else:
+        require_git_repository()
+
+    # Only treat an active abort marker as a live session. The state directory
+    # can persist after cleanup because batch metadata is intentionally kept.
+    if prompt_format is None and not _session_marker_path().exists():
+        if porcelain:
+            print(json.dumps({"session": {"active": False}}))
+        else:
+            print(_("No batch staging session in progress."), file=sys.stderr)
+            print(_("Run 'git-stage-batch start' to begin."), file=sys.stderr)
+        return
+
+    if prompt_format is not None:
+        fields = _prompt_field_names(prompt_format)
+        output = _read_status_summary() if fields - _LIGHT_PROMPT_FIELDS else None
+        print(_render_prompt_status(prompt_format, output), end="")
+        return
+
+    output = _read_status_summary()
+
     if porcelain:
-        # Machine-readable JSON output
-        output = {
-            "session": {
-                "active": True,
-                "iteration": iteration,
-                "status": status_value,
-                "in_progress": status_value == "in_progress",
-            },
-            "selected_change": selected_summary,
-            "file_review": file_review_summary,
-            "progress": {
-                "included": included_count,
-                "skipped": len(skipped_hunks),
-                "discarded": discarded_count,
-                "remaining": remaining_estimate
-            },
-            "skipped_hunks": skipped_hunks
-        }
         print(json.dumps(output, indent=2))
     else:
         # Human-readable progress report
+        iteration = output["session"]["iteration"]
+        status_value = output["session"]["status"]
+        selected_summary = output["selected_change"]
+        file_review_summary = output["file_review"]
+        progress = output["progress"]
+        skipped_hunks = output["skipped_hunks"]
         status_label = _("in progress") if status_value == "in_progress" else _("complete")
         print(_("Session: iteration {iteration} ({status})").format(
             iteration=iteration,
@@ -356,10 +508,10 @@ def command_status(*, porcelain: bool = False) -> None:
             print()
 
         print(_("Progress this iteration:"))
-        print(_("  Included:  {count} hunks").format(count=included_count))
+        print(_("  Included:  {count} hunks").format(count=progress["included"]))
         print(_("  Skipped:   {count} hunks").format(count=len(skipped_hunks)))
-        print(_("  Discarded: {count} hunks").format(count=discarded_count))
-        print(_("  Remaining: ~{count} hunks").format(count=remaining_estimate))
+        print(_("  Discarded: {count} hunks").format(count=progress["discarded"]))
+        print(_("  Remaining: ~{count} hunks").format(count=progress["remaining"]))
 
         if skipped_hunks:
             print()

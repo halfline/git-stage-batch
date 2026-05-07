@@ -25,6 +25,7 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.status import command_status
 from git_stage_batch.core.line_selection import format_line_ids
 from git_stage_batch.data.file_review_state import read_last_file_review_state
+from git_stage_batch.exceptions import CommandError
 
 
 @pytest.fixture
@@ -221,6 +222,106 @@ class TestCommandStatus:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
         assert output == {"session": {"active": False}}
+
+    def test_status_for_prompt_no_session_is_silent(self, temp_git_repo, capsys):
+        """Prompt mode should hide the entire configured segment when inactive."""
+        command_status(prompt_format=" [{status}]")
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_status_for_prompt_outside_repository_is_silent(self, tmp_path, monkeypatch, capsys):
+        """Prompt mode should be safe to call from non-git directories."""
+        monkeypatch.chdir(tmp_path)
+
+        command_status(prompt_format=" STAGING")
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_status_for_prompt_default_static_label(self, temp_git_repo, capsys, monkeypatch):
+        """The default prompt segment should only need an active session marker."""
+        ensure_state_directory_exists()
+        initialize_abort_state()
+
+        def fail_estimate_remaining_hunks():
+            raise AssertionError("full status should not be read")
+
+        monkeypatch.setattr(
+            "git_stage_batch.commands.status.estimate_remaining_hunks",
+            fail_estimate_remaining_hunks,
+        )
+
+        command_status(prompt_format=" STAGING")
+
+        captured = capsys.readouterr()
+        assert captured.out == " STAGING"
+        assert captured.err == ""
+
+    def test_status_for_prompt_formats_status_fields(self, temp_git_repo, capsys):
+        """Prompt mode should render custom fields without a trailing newline."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+        command_start()
+        capsys.readouterr()
+
+        command_status(
+            prompt_format=(
+                " [{status}:{status_label}:{progress_status}:"
+                "{progress_label}:{iteration}:{remaining}:{selected_file}]"
+            )
+        )
+
+        captured = capsys.readouterr()
+        assert captured.out.startswith(" [STAGING:STAGING:in_progress:in progress:1:")
+        assert captured.out.endswith(":README.md]")
+        assert "\n" not in captured.out
+        assert captured.err == ""
+
+    def test_status_for_prompt_formats_processed_and_total_counts(self, temp_git_repo, capsys):
+        """Prompt mode should expose processed and total progress counts."""
+        file1 = temp_git_repo / "file1.txt"
+        file1.write_text("original 1\n")
+        file2 = temp_git_repo / "file2.txt"
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+
+        command_start()
+        command_include()
+        capsys.readouterr()
+
+        command_status(prompt_format=" {processed}/{total}:{included}:{skipped}:{discarded}:{remaining}")
+
+        captured = capsys.readouterr()
+        assert captured.out == " 1/2:1:0:0:1"
+        assert captured.err == ""
+
+    def test_status_for_prompt_reports_complete_session(self, temp_git_repo, capsys):
+        """Prompt status should switch to complete when no work remains."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+        command_start()
+        command_skip()
+        capsys.readouterr()
+
+        command_status(prompt_format="[{status}:{progress_status}]")
+
+        captured = capsys.readouterr()
+        assert captured.out == "[STAGING:complete]"
+
+    def test_status_for_prompt_unknown_field_errors_when_active(self, temp_git_repo):
+        """Unknown prompt fields should be reported for active sessions."""
+        ensure_state_directory_exists()
+        initialize_abort_state()
+
+        with pytest.raises(CommandError, match="Unknown status prompt field 'missing'"):
+            command_status(prompt_format="[{missing}]")
 
     def test_status_ignores_persistent_batch_state_without_session(self, temp_git_repo, capsys):
         """Persistent batch metadata alone should not count as an active session."""

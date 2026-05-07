@@ -31,7 +31,7 @@ from .show_from import command_show_from_batch
 from .sift import command_sift_batch
 from .skip import command_skip, command_skip_file, command_skip_line
 from .start import command_start
-from .status import command_status
+from .status import DEFAULT_PROMPT_FORMAT, command_status
 from .stop import command_stop
 from .suggest_fixup import command_suggest_fixup, command_suggest_fixup_line
 from .unblock_file import command_unblock_file
@@ -75,6 +75,7 @@ __all__ = [
     "command_skip_line",
     "command_start",
     "command_status",
+    "DEFAULT_PROMPT_FORMAT",
     "command_stop",
     "command_suggest_fixup",
     "command_suggest_fixup_line",

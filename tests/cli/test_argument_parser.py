@@ -413,6 +413,25 @@ def test_parse_command_line_status_alias():
     assert callable(args.func)
 
 
+def test_parse_command_line_status_for_prompt():
+    """Test parsing status prompt format."""
+    args = parse_command_line(["status", "--for-prompt", " [{status}]"], quiet=True)
+    assert args is not None
+    assert args.command == "status"
+    assert args.prompt_format == " [{status}]"
+    assert args.porcelain is False
+    assert hasattr(args, "func")
+    assert callable(args.func)
+
+
+def test_parse_command_line_status_for_prompt_default():
+    """Test parsing status prompt mode with the default label."""
+    args = parse_command_line(["status", "--for-prompt"], quiet=True)
+    assert args is not None
+    assert args.command == "status"
+    assert args.prompt_format == "STAGING"
+
+
 def test_parse_command_line_include():
     """Test parsing include command."""
     args = parse_command_line(["include"], quiet=True)

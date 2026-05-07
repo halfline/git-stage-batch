@@ -54,6 +54,29 @@ def test_main_acquires_session_lock_before_dispatch():
     assert events == ["lock-enter", "dispatch", "lock-exit"]
 
 
+def test_main_skips_session_lock_for_prompt_status():
+    """Prompt status should not create or lock session state before dispatch."""
+    events = []
+
+    def fake_dispatch(args):
+        events.append(("dispatch", args.prompt_format))
+
+    args = Namespace(working_directory=None, prompt_format="STAGING")
+
+    with patch.object(sys, "argv", ["git-stage-batch", "status", "--for-prompt"]):
+        with patch.object(main_module, "parse_command_line", return_value=args):
+            with patch.object(main_module, "should_page_output", return_value=False):
+                with patch.object(
+                    main_module,
+                    "acquire_session_lock",
+                    side_effect=AssertionError("prompt status must not lock"),
+                ):
+                    with patch.object(main_module, "dispatch_args", side_effect=fake_dispatch):
+                        main_module.main()
+
+    assert events == [("dispatch", "STAGING")]
+
+
 def test_main_handles_keyboard_interrupt_without_traceback(capsys):
     """Ctrl-C should exit cleanly without Python's KeyboardInterrupt traceback."""
     args = Namespace(working_directory=None)

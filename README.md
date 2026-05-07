@@ -112,6 +112,9 @@ For scripting and automation, use the `--porcelain` flag:
 # Get status as JSON
 git-stage-batch status --porcelain
 
+# Add active session status next to a __git_ps1 branch
+PS1=$PS1'\r$(__git_ps1 "\n╎\e[32m%s$(git-stage-batch status --for-prompt=\|{status}\ {processed}/{total})\e[0m")\n'
+
 # Check if a hunk exists (exit code 0/1)
 git-stage-batch show --porcelain
 ```

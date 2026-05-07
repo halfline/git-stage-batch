@@ -6,9 +6,10 @@ import argparse
 from contextlib import contextmanager
 from importlib import import_module
 
-main_module = import_module("git_stage_batch.cli.main")
 from git_stage_batch.cli import pager as pager_module
 from git_stage_batch.cli.pager import should_page_output
+
+main_module = import_module("git_stage_batch.cli.main")
 
 
 def _make_args(**overrides) -> argparse.Namespace:
@@ -41,6 +42,13 @@ def test_should_not_page_porcelain_output(monkeypatch):
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
 
     assert should_page_output(_make_args(command="status", porcelain=True)) is False
+
+
+def test_should_not_page_prompt_output(monkeypatch):
+    """Prompt output should bypass the pager."""
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+
+    assert should_page_output(_make_args(command="status", prompt_format="STAGING")) is False
 
 
 def test_should_not_page_interactive_mode(monkeypatch):

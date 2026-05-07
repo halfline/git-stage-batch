@@ -44,6 +44,9 @@ def should_page_output(args: argparse.Namespace) -> bool:
     if getattr(args, "porcelain", False):
         return False
 
+    if getattr(args, "prompt_format", None) is not None:
+        return False
+
     return command in _PAGEABLE_COMMANDS
 
 

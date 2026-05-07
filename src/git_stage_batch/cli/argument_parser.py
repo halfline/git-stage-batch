@@ -661,12 +661,26 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["st"],
         help=_("Show selected session status"),
     )
-    parser_status.add_argument(
+    status_output = parser_status.add_mutually_exclusive_group()
+    status_output.add_argument(
         "--porcelain",
         action="store_true",
         help=_("Output JSON for scripting instead of human-readable text"),
     )
-    parser_status.set_defaults(func=lambda args: commands.command_status(porcelain=args.porcelain))
+    status_output.add_argument(
+        "--for-prompt",
+        dest="prompt_format",
+        nargs="?",
+        const=commands.DEFAULT_PROMPT_FORMAT,
+        metavar="FORMAT",
+        help=_("Print FORMAT only when a session is active, for shell prompts"),
+    )
+    parser_status.set_defaults(
+        func=lambda args: commands.command_status(
+            porcelain=args.porcelain,
+            prompt_format=args.prompt_format,
+        )
+    )
 
     # include - Stage the selected hunk
     parser_include = subparsers.add_parser(

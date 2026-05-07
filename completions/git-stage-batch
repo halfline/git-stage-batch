@@ -182,7 +182,12 @@ _git_stage_batch()
             COMPREPLY=($(compgen -W "--from --to --line --file --files" -- "$cur"))
             ;;
         status)
-            COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
+            case "$prev" in
+                --for-prompt)
+                    return
+                    ;;
+            esac
+            COMPREPLY=($(compgen -W "--porcelain --for-prompt" -- "$cur"))
             ;;
         undo|redo)
             COMPREPLY=($(compgen -W "--force" -- "$cur"))

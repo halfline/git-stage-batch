@@ -22,8 +22,13 @@ def main() -> None:
             if args.working_directory is not None:
                 os.chdir(args.working_directory)
             pager_context = pager_output() if should_page_output(args) else nullcontext()
+            lock_context = (
+                nullcontext()
+                if getattr(args, "prompt_format", None) is not None
+                else acquire_session_lock()
+            )
             with pager_context:
-                with acquire_session_lock():
+                with lock_context:
                     dispatch_args(args)
         else:
             # Parsing failed

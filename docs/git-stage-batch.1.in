@@ -123,7 +123,7 @@ Reverse-apply the cached hunk to the working tree; advance to next.
 .B WARNING:
 This permanently removes changes from your working tree.
 .TP
-.B status \fR[\fB\-\-porcelain\fR]
+.B status \fR[\fB\-\-porcelain\fR|\fB\-\-for\-prompt\fR[\fB=\fIFORMAT\fR]]
 Show session progress and remaining hunks.
 Displays iteration number, selected hunk location, progress metrics
 (included/skipped/discarded/remaining counts), and a list of skipped hunks.
@@ -135,6 +135,45 @@ The JSON includes: session (active, iteration, status, and in_progress),
 selected_change (selected hunk/file/batch-file/binary details or null),
 file_review (last page-aware review details or null), progress (counts), and
 skipped_hunks (array).
+.TP
+.B \-\-for\-prompt\fR[\fB=\fIFORMAT\fR]
+Print a shell-prompt segment only when a session is active. When no session is
+active, prints nothing, including any custom spacing or brackets in
+.IR FORMAT .
+Without
+.IR FORMAT ,
+prints
+.BR STAGING .
+In prompt output,
+.BR {status}
+is the operation name
+.BR STAGING ;
+.BR {progress_status}
+exposes the underlying
+.BR in_progress
+or
+.BR complete
+state. Format fields include
+.BR {status} ,
+.BR {status_label} ,
+.BR {progress_status} ,
+.BR {progress_label} ,
+.BR {iteration} ,
+.BR {processed} ,
+.BR {total} ,
+.BR {included} ,
+.BR {skipped} ,
+.BR {discarded} ,
+.BR {remaining} ,
+.BR {selected_file} ,
+.BR {selected_line} ,
+.BR {selected_ids} ,
+and
+.BR {selected_kind} .
+.BR {processed}
+is included + skipped + discarded;
+.BR {total}
+is processed + remaining.
 .RE
 .SS Session Management
 .TP

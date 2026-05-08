@@ -174,7 +174,7 @@ Per batch:
 Per text file:
 
 - `batch_source_commit`
-- `claimed_lines`
+- `presence_claims`
 - `deletions`
 - `replacement_units` (optional; omitted when empty)
 - `mode`
@@ -188,7 +188,9 @@ Per binary file:
 - `mode`
 
 `deletions` are serialized as anchored blobs, not inline text.
-`replacement_units` records explicit coupling between claimed source ranges and
+`presence_claims` is the first-class representation for source content that must
+exist after the batch is applied. Each claim stores `source_lines` ranges.
+`replacement_units` records explicit coupling between presence source ranges and
 deletion indexes so replacement atomicity does not need to be rediscovered from
 display adjacency. The field is omitted when no explicit replacement units are
 stored.
@@ -246,14 +248,14 @@ Ownership is defined in `src/git_stage_batch/batch/ownership.py`.
 
 `BatchOwnership` has three persistent fields:
 
-- `claimed_lines`
+- `presence_claims`
   Source-space line ranges like `["3-7", "10"]`
 - `deletions`
   `DeletionClaim(anchor_line, content_lines)` records that a specific baseline
   sequence must be absent after a given source line, or at start-of-file if the
   anchor is `None`
 - `replacement_units`
-  Optional metadata linking claimed line ranges to entries in `deletions` when
+  Optional metadata linking presence source ranges to entries in `deletions` when
   the capture path knows they form one replacement. These persisted units are
   selected atomically as a whole; display-adjacency grouping is only the fallback
   for ownership without explicit replacement metadata.
@@ -261,9 +263,10 @@ Ownership is defined in `src/git_stage_batch/batch/ownership.py`.
 This distinction is central:
 
 - presence claims say "this source content belongs to the batch"
-- deletion claims say "this baseline content was removed by the batch"
+- absence claims say "this baseline content was removed by the batch"
 
-The system treats deletions as constraints, not as negative patches to replay.
+The metadata key is still `deletions` for historical reasons, but the system
+treats those entries as absence constraints, not as negative patches to replay.
 
 ### Ownership versus attribution
 

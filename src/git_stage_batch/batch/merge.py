@@ -536,7 +536,7 @@ def _is_claimed_run_structurally_coherent(
 def _apply_presence_constraints(
     source_lines: list[bytes],
     working_lines: list[bytes],
-    claimed_line_set: set[int],
+    presence_line_set: set[int],
     *,
     source_to_working_mapping: LineMapping | None = None,
 ) -> list[RealizedEntry]:
@@ -549,14 +549,14 @@ def _apply_presence_constraints(
     Args:
         source_lines: Batch source file lines (bytes with newlines)
         working_lines: Working tree file lines (bytes with newlines)
-        claimed_line_set: Set of source line numbers that must be present
+        presence_line_set: Set of source line numbers that must be present
 
     Returns:
         Realized entries with all claimed lines present and provenance preserved
     """
     mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
 
-    if not claimed_line_set:
+    if not presence_line_set:
         result: list[RealizedEntry] = []
         for working_idx, working_line in enumerate(working_lines):
             source_line = mapping.get_source_line_from_target_line(working_idx + 1)
@@ -571,7 +571,7 @@ def _apply_presence_constraints(
     present_claimed: dict[int, int] = {}
     missing_claimed: dict[int, bytes] = {}
 
-    for source_line in claimed_line_set:
+    for source_line in presence_line_set:
         if 1 <= source_line <= len(source_lines):
             working_line = mapping.get_target_line_from_source_line(source_line)
             if working_line is not None:
@@ -583,7 +583,7 @@ def _apply_presence_constraints(
         result: list[RealizedEntry] = []
         for working_idx, working_line in enumerate(working_lines):
             source_line = mapping.get_source_line_from_target_line(working_idx + 1)
-            is_claimed = source_line in claimed_line_set if source_line else False
+            is_claimed = source_line in presence_line_set if source_line else False
             result.append(RealizedEntry(
                 content=working_line,
                 source_line=source_line,
@@ -608,7 +608,7 @@ def _apply_presence_constraints(
                 ))
                 working_idx += 1
 
-            is_claimed = source_line in claimed_line_set
+            is_claimed = source_line in presence_line_set
             if is_claimed:
                 result.append(RealizedEntry(
                     content=source_lines[source_line - 1],
@@ -717,7 +717,7 @@ def _apply_absence_constraints(
 
 def _missing_claimed_lines(
     entries: list[RealizedEntry],
-    claimed_line_set: set[int]
+    presence_line_set: set[int]
 ) -> set[int]:
     """Return claimed source lines that are not present as claimed entries."""
     present_claimed = {
@@ -725,13 +725,13 @@ def _missing_claimed_lines(
         for entry in entries
         if entry.is_claimed and entry.source_line is not None
     }
-    return claimed_line_set - present_claimed
+    return presence_line_set - present_claimed
 
 
 def _satisfy_constraints(
     source_lines: list[bytes],
     working_lines: list[bytes],
-    claimed_line_set: set[int],
+    presence_line_set: set[int],
     deletion_claims: list['DeletionClaim'],
     *,
     strict: bool = True,
@@ -741,7 +741,7 @@ def _satisfy_constraints(
     realized_entries = _apply_presence_constraints(
         source_lines,
         working_lines,
-        claimed_line_set,
+        presence_line_set,
         source_to_working_mapping=source_to_working_mapping,
     )
 
@@ -751,14 +751,14 @@ def _satisfy_constraints(
         strict=strict
     )
 
-    if not _missing_claimed_lines(realized_entries, claimed_line_set):
+    if not _missing_claimed_lines(realized_entries, presence_line_set):
         return realized_entries
 
     current_lines = [entry.content for entry in realized_entries]
     realized_entries = _apply_presence_constraints(
         source_lines,
         current_lines,
-        claimed_line_set
+        presence_line_set
     )
 
     realized_entries = _apply_absence_constraints(
@@ -767,7 +767,7 @@ def _satisfy_constraints(
         strict=strict
     )
 
-    missing_claimed = _missing_claimed_lines(realized_entries, claimed_line_set)
+    missing_claimed = _missing_claimed_lines(realized_entries, presence_line_set)
     if missing_claimed:
         if not strict:
             return realized_entries
@@ -1133,13 +1133,13 @@ def merge_batch(
     working_lines = working_normalized.splitlines(keepends=True) if working_normalized else []
 
     resolved = ownership.resolve()
-    claimed_line_set = resolved.claimed_line_set
+    presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
     mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
     _check_structural_validity(
         mapping,
-        claimed_line_set,
+        presence_line_set,
         deletion_claims,
         source_lines,
         working_lines
@@ -1148,7 +1148,7 @@ def merge_batch(
     realized_entries = _satisfy_constraints(
         source_lines,
         working_lines,
-        claimed_line_set,
+        presence_line_set,
         deletion_claims,
         source_to_working_mapping=mapping,
     )
@@ -1222,7 +1222,7 @@ def discard_batch(
     baseline_lines = baseline_normalized.splitlines(keepends=True) if baseline_normalized else []
 
     resolved = ownership.resolve()
-    claimed_line_set = resolved.claimed_line_set
+    presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
     working_to_source = match_lines(source_lines, working_lines)
@@ -1240,7 +1240,7 @@ def discard_batch(
 
     realized_entries = _reverse_presence_constraints(
         realized_entries,
-        claimed_line_set,
+        presence_line_set,
         source_lines,
         baseline_lines,
         correspondence
@@ -1429,7 +1429,7 @@ def _build_realized_entries_for_discard(
 
 def _reverse_presence_constraints(
     entries: list[RealizedEntry],
-    claimed_line_set: set[int],
+    presence_line_set: set[int],
     source_lines: list[bytes],
     baseline_lines: list[bytes],
     correspondence: BaselineCorrespondence
@@ -1453,7 +1453,7 @@ def _reverse_presence_constraints(
 
     Args:
         entries: Realized entries from working tree with source provenance
-        claimed_line_set: Set of source line numbers that are batch-owned
+        presence_line_set: Set of source line numbers that are batch-owned
         source_lines: Batch source lines (for validation)
         baseline_lines: Baseline lines (not used directly; in correspondence)
         correspondence: Baseline restoration correspondence
@@ -1468,7 +1468,7 @@ def _reverse_presence_constraints(
     processed_replace_regions: set[int] = set()
 
     for entry in entries:
-        if entry.source_line is not None and entry.source_line in claimed_line_set:
+        if entry.source_line is not None and entry.source_line in presence_line_set:
             region = correspondence.get_region_for_source_line(entry.source_line)
 
             if region is None:
@@ -1509,7 +1509,7 @@ def _reverse_presence_constraints(
                         region.source_start_line,
                         region.source_end_line + 1
                     ))
-                    claimed_lines_in_region = source_lines_in_region & claimed_line_set
+                    claimed_lines_in_region = source_lines_in_region & presence_line_set
 
                     if claimed_lines_in_region != source_lines_in_region:
                         raise MergeError(
@@ -1687,13 +1687,13 @@ def _check_pair_conflicts(
 
     _check_presence_vs_absence_conflict(
         source_lines,
-        resolved_a.claimed_line_set,
+        resolved_a.presence_line_set,
         resolved_b.deletion_claims
     )
 
     _check_presence_vs_absence_conflict(
         source_lines,
-        resolved_b.claimed_line_set,
+        resolved_b.presence_line_set,
         resolved_a.deletion_claims
     )
 

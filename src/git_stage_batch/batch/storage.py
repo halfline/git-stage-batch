@@ -359,7 +359,7 @@ def _build_realized_content(
 
     # Resolve ownership
     resolved = ownership.resolve()
-    claimed_line_set = resolved.claimed_line_set
+    presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
     # Apply constraints using same model as merge, with lenient absence
@@ -367,7 +367,7 @@ def _build_realized_content(
     realized_entries = _satisfy_constraints(
         source_lines,
         base_lines,
-        claimed_line_set,
+        presence_line_set,
         deletion_claims,
         strict=False
     )

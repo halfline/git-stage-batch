@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from ..core.line_selection import format_line_ids, parse_line_selection
+from ..core.line_selection import format_line_ids
 from .ownership import BatchOwnership, DeletionClaim, ReplacementUnit
 
 
-def _format_claimed_lines(line_numbers: list[int]) -> list[str]:
-    """Format claimed line numbers as normalized range strings."""
+def _format_presence_lines(line_numbers: list[int]) -> list[str]:
+    """Format presence source line numbers as normalized range strings."""
     if not line_numbers:
         return []
     return [format_line_ids(line_numbers)]
@@ -20,11 +20,7 @@ def build_replacement_batch_view(
 ) -> tuple[bytes, BatchOwnership]:
     """Build a temporary batch-source snapshot and ownership for replacement text."""
     source_lines = batch_source_content.splitlines(keepends=True)
-    claimed_source_lines = sorted({
-        line_num
-        for line_range in ownership.claimed_lines
-        for line_num in parse_line_selection(line_range)
-    }) if ownership.claimed_lines else []
+    claimed_source_lines = sorted(ownership.presence_line_set())
     replacement_bytes = replacement_text.encode("utf-8", errors="surrogateescape")
     replacement_lines = [line + b"\n" for line in replacement_bytes.splitlines()]
 
@@ -68,12 +64,12 @@ def build_replacement_batch_view(
 
         return (
             b"".join(new_source_lines),
-            BatchOwnership(
-                claimed_lines=_format_claimed_lines(new_claimed_lines),
-                deletions=new_deletions,
+            BatchOwnership.from_presence_lines(
+                _format_presence_lines(new_claimed_lines),
+                new_deletions,
                 replacement_units=[
                     ReplacementUnit(
-                        claimed_lines=_format_claimed_lines(new_claimed_lines),
+                        presence_lines=_format_presence_lines(new_claimed_lines),
                         deletion_indices=list(range(len(new_deletions))),
                     )
                 ] if new_claimed_lines and new_deletions else [],
@@ -118,12 +114,12 @@ def build_replacement_batch_view(
 
     return (
         b"".join(new_source_lines),
-        BatchOwnership(
-            claimed_lines=_format_claimed_lines(new_claimed_lines),
-            deletions=new_deletions,
+        BatchOwnership.from_presence_lines(
+            _format_presence_lines(new_claimed_lines),
+            new_deletions,
             replacement_units=[
                 ReplacementUnit(
-                    claimed_lines=_format_claimed_lines(new_claimed_lines),
+                    presence_lines=_format_presence_lines(new_claimed_lines),
                     deletion_indices=list(range(len(new_deletions))),
                 )
             ] if new_claimed_lines and new_deletions else [],

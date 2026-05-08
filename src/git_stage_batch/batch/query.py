@@ -28,9 +28,9 @@ def read_batch_metadata(name: str) -> dict:
         "files": {
             "path": {
                 "batch_source_commit": str,  # Batch source SHA
-                "claimed_lines": list[str],  # e.g. ["1-5", "10", "15-20"]
+                "presence_claims": list[dict],  # [{"source_lines": ["1-5"]}]
                 "deletions": list[dict],  # [{"after_source_line": int|None, "blob": str}]
-                "replacement_units": list[dict],  # optional claimed/deletion coupling
+                "replacement_units": list[dict],  # optional presence/deletion coupling
                 "mode": str,  # File mode (e.g. "100644")
                 "change_type": str,  # optional text lifecycle: "added" or "deleted"
             }

@@ -132,7 +132,7 @@ def _replacement_rows_look_reordered(deletions: list[LineEntry], additions: list
     return set(old_keys) == set(new_keys) and old_keys != new_keys
 
 
-def _build_claimed_ranges(claimed_source_lines: set[int]) -> list[str]:
+def _build_presence_ranges(claimed_source_lines: set[int]) -> list[str]:
     if not claimed_source_lines:
         return []
     return [format_line_ids(sorted(claimed_source_lines))]
@@ -379,9 +379,9 @@ def _build_temporary_ownership_for_selected_hunk(
         source_lines.append(hunk_base_lines[old_pointer])
         old_pointer += 1
 
-    ownership = BatchOwnership(
-        claimed_lines=_build_claimed_ranges(claimed_source_lines),
-        deletions=deletion_claims,
+    ownership = BatchOwnership.from_presence_lines(
+        _build_presence_ranges(claimed_source_lines),
+        deletion_claims,
     )
     if ownership.is_empty():
         raise SemanticSelectionAmbiguousError(_("No selected semantic changes to stage."))

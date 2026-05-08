@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..core.line_selection import parse_line_selection
 from ..core.models import LineLevelChange, LineEntry
 from ..data.batch_sources import get_batch_source_for_file
 from ..i18n import ngettext
@@ -90,8 +89,7 @@ def build_display_lines_from_batch_source(
     source_lines = batch_source_content.splitlines(keepends=True)
     if context_lines is None:
         context_lines = 0
-    # Parse claimed lines: join list of range strings, then parse as selection
-    claimed_set = set(parse_line_selection(",".join(ownership.claimed_lines))) if ownership.claimed_lines else set()
+    claimed_set = ownership.presence_line_set()
 
     display_lines = []
     display_id = 1

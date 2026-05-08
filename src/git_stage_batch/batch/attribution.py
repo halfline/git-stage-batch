@@ -116,11 +116,27 @@ def _make_unit_id(
 
 
 
-def _parse_claimed_source_lines(file_metadata: dict) -> list[int]:
-    claimed_lines = file_metadata.get("claimed_lines", [])
-    if not claimed_lines:
-        return []
-    return list(parse_line_selection(",".join(claimed_lines)))
+def _parse_presence_source_lines(file_metadata: dict) -> list[int]:
+    presence_lines: list[int] = []
+    for claim in file_metadata.get("presence_claims", []):
+        source_lines = claim.get("source_lines", [])
+        if source_lines:
+            presence_lines.extend(
+                parse_line_selection(",".join(str(line) for line in source_lines))
+            )
+    legacy_claimed_lines = file_metadata.get("claimed_lines", [])
+    if not presence_lines and legacy_claimed_lines:
+        presence_lines.extend(
+            parse_line_selection(",".join(str(line) for line in legacy_claimed_lines))
+        )
+    return presence_lines
+
+
+def _has_presence_source_lines(file_metadata: dict) -> bool:
+    return bool(
+        file_metadata.get("presence_claims")
+        or file_metadata.get("claimed_lines")
+    )
 
 
 def compare_baseline_to_working_tree(file_path: str) -> FileComparison:
@@ -347,12 +363,12 @@ def _enumerate_units_from_batches(
         file_metadata = batch_metadata["files"][file_path]
         batch_source_commit = file_metadata["batch_source_commit"]
         batch_source_lines = read_git_object_as_lines(f"{batch_source_commit}:{file_path}")
-        if not batch_source_lines and file_metadata.get("claimed_lines"):
+        if not batch_source_lines and _has_presence_source_lines(file_metadata):
             continue
 
         alignment = match_lines(source_lines=batch_source_lines, target_lines=working_tree_lines)
 
-        for source_line in _parse_claimed_source_lines(file_metadata):
+        for source_line in _parse_presence_source_lines(file_metadata):
             if source_line < 1 or source_line > len(batch_source_lines):
                 continue
 
@@ -453,7 +469,7 @@ def _batch_owns_presence_unit(
     if unit.claimed_content is None:
         return False
 
-    claimed_source_lines = _parse_claimed_source_lines(file_metadata)
+    claimed_source_lines = _parse_presence_source_lines(file_metadata)
     if not claimed_source_lines:
         return False
 

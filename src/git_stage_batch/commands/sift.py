@@ -507,7 +507,7 @@ def _compute_sifted_text_file(
         )
         if result_change_type == TextFileChangeType.MODIFIED:
             return None
-        new_ownership = BatchOwnership(claimed_lines=[], deletions=[])
+        new_ownership = BatchOwnership([], [])
     else:
         result_change_type = change_type
 
@@ -580,14 +580,15 @@ def build_ownership_from_working_to_target_delta(
     if not claimed_line_numbers and not deletion_claims:
         return None
 
-    if claimed_line_numbers:
-        claimed_lines = [format_line_ids(sorted(claimed_line_numbers))]
-    else:
-        claimed_lines = []
+    presence_lines = (
+        [format_line_ids(sorted(claimed_line_numbers))]
+        if claimed_line_numbers else
+        []
+    )
 
-    return BatchOwnership(
-        claimed_lines=claimed_lines,
-        deletions=deletion_claims,
+    return BatchOwnership.from_presence_lines(
+        presence_lines,
+        deletion_claims,
     )
 
 
@@ -605,7 +606,7 @@ def _validate_sifted_text_file_result(
     else:
         target_lines = []
 
-    for claimed_line in resolved.claimed_line_set:
+    for claimed_line in resolved.presence_line_set:
         if claimed_line < 1 or claimed_line > len(target_lines):
             raise MergeError(
                 f"Sift validation failed: claimed line {claimed_line} is out of bounds "

@@ -1256,7 +1256,7 @@ def _command_discard_file_to_batch(
             add_file_to_batch(
                 batch_name,
                 file_path,
-                BatchOwnership(claimed_lines=[], deletions=[]),
+                BatchOwnership([], []),
                 file_mode,
                 change_type=lifecycle_change_type,
             )

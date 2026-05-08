@@ -63,6 +63,26 @@ class DeletionClaim:
 
 
 @dataclass
+class PresenceClaim:
+    """A presence constraint over batch-source lines."""
+
+    source_lines: list[str]
+
+    def source_line_set(self) -> set[int]:
+        """Return batch-source line numbers covered by this presence claim."""
+        return _parse_line_ranges(self.source_lines)
+
+    def to_dict(self) -> dict:
+        """Serialize to metadata dictionary."""
+        return {"source_lines": self.source_lines}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> PresenceClaim:
+        """Deserialize from metadata dictionary."""
+        return cls(source_lines=data.get("source_lines", []))
+
+
+@dataclass
 class ReplacementUnit:
     """Explicit coupling between presence claims and deletion claims.
 
@@ -70,13 +90,13 @@ class ReplacementUnit:
     canonical deletion constraint is stored only once in metadata.
     """
 
-    claimed_lines: list[str]
+    presence_lines: list[str]
     deletion_indices: list[int]
 
     def to_dict(self) -> dict:
         """Serialize to metadata dictionary."""
         return {
-            "claimed_lines": self.claimed_lines,
+            "presence_lines": self.presence_lines,
             "deletion_indices": self.deletion_indices,
         }
 
@@ -84,7 +104,7 @@ class ReplacementUnit:
     def from_dict(cls, data: dict) -> ReplacementUnit:
         """Deserialize from metadata dictionary."""
         return cls(
-            claimed_lines=data.get("claimed_lines", []),
+            presence_lines=data.get("presence_lines", data.get("claimed_lines", [])),
             deletion_indices=data.get("deletion_indices", []),
         )
 
@@ -94,22 +114,46 @@ class BatchOwnership:
     """Represents batch ownership in batch source space.
 
     A batch owns content relative to its batch source commit:
-    - claimed_lines: Line ranges that exist in batch source (presence claims)
+    - presence_claims: Batch-source lines that must exist after application
     - deletions: Suppression constraints for baseline content (absence claims)
     - replacement_units: Optional explicit coupling between claims and deletions
     """
-    claimed_lines: list[str]  # Range strings like ["1-5", "10-15", "18"]
+    presence_claims: list[PresenceClaim]
     deletions: list[DeletionClaim]  # Separate deletion constraints
     replacement_units: list[ReplacementUnit] = field(default_factory=list)
 
+    @classmethod
+    def from_presence_lines(
+        cls,
+        source_lines: list[str],
+        deletions: list[DeletionClaim] | None = None,
+        *,
+        replacement_units: list[ReplacementUnit] | None = None,
+    ) -> BatchOwnership:
+        """Create ownership from source-line ranges."""
+        return cls(
+            presence_claims=_presence_claims_from_source_lines(
+                _parse_line_ranges(source_lines),
+            ),
+            deletions=deletions or [],
+            replacement_units=replacement_units or [],
+        )
+
     def is_empty(self) -> bool:
-        """Check if this ownership is empty (no claimed lines or deletions)."""
-        return not self.claimed_lines and not self.deletions
+        """Check if this ownership is empty (no presence claims or deletions)."""
+        return not self.presence_claims and not self.deletions
+
+    def presence_line_set(self) -> set[int]:
+        """Return all batch-source lines claimed present by this ownership."""
+        presence_lines: set[int] = set()
+        for claim in self.presence_claims:
+            presence_lines.update(claim.source_line_set())
+        return presence_lines
 
     def to_metadata_dict(self) -> dict:
         """Convert to metadata dictionary format for storage."""
         data = {
-            "claimed_lines": self.claimed_lines,
+            "presence_claims": [claim.to_dict() for claim in self.presence_claims],
             "deletions": [claim.to_dict() for claim in self.deletions]
         }
         replacement_units = [
@@ -127,9 +171,19 @@ class BatchOwnership:
     def from_metadata_dict(cls, data: dict) -> BatchOwnership:
         """Create from metadata dictionary."""
         deletion_metadata = data.get("deletions", [])
+        presence_metadata = data.get("presence_claims", [])
+        legacy_claimed_lines = data.get("claimed_lines", [])
         blob_contents = read_git_blobs_as_bytes(
             d["blob"] for d in deletion_metadata if "blob" in d
         )
+        presence_claims = [
+            PresenceClaim.from_dict(d)
+            for d in presence_metadata
+        ]
+        if not presence_claims and legacy_claimed_lines:
+            presence_claims = _presence_claims_from_source_lines(
+                _parse_line_ranges(legacy_claimed_lines)
+            )
         deletions = [
             DeletionClaim.from_dict(d, blob_contents) for d in deletion_metadata
         ]
@@ -138,7 +192,7 @@ class BatchOwnership:
             for d in data.get("replacement_units", [])
         ]
         return cls(
-            claimed_lines=data.get("claimed_lines", []),
+            presence_claims=presence_claims,
             deletions=deletions,
             replacement_units=replacement_units,
         )
@@ -146,13 +200,9 @@ class BatchOwnership:
     def resolve(self) -> ResolvedBatchOwnership:
         """Resolve into representation for materialization and merge.
 
-        Returns claimed lines as a set and deletion claims as a list (preserving structure).
+        Returns presence lines as a set and deletion claims as a list (preserving structure).
         """
-        # Parse claimed line ranges into set
-        claimed_line_set = set(parse_line_selection(",".join(self.claimed_lines))) if self.claimed_lines else set()
-
-        # Deletion claims are already properly structured - just return them
-        return ResolvedBatchOwnership(claimed_line_set, self.deletions)
+        return ResolvedBatchOwnership(self.presence_line_set(), self.deletions)
 
 
 @dataclass
@@ -162,10 +212,10 @@ class ResolvedBatchOwnership:
     Preserves the structure of deletion claims as separate constraints.
 
     Attributes:
-        claimed_line_set: Batch source line numbers (1-indexed, identity-based)
+        presence_line_set: Batch source line numbers (1-indexed, identity-based)
         deletion_claims: List of suppression constraints (order and structure preserved)
     """
-    claimed_line_set: set[int]  # Batch source line numbers (1-indexed)
+    presence_line_set: set[int]  # Batch source line numbers (1-indexed)
     deletion_claims: list[DeletionClaim]  # Separate constraints, not collapsed
 
 
@@ -194,16 +244,26 @@ def _deletion_signature(deletion: DeletionClaim) -> tuple[int | None, bytes]:
     return deletion.anchor_line, b"".join(deletion.content_lines)
 
 
-def _parse_claimed_ranges(claimed_lines: list[str]) -> set[int]:
-    """Parse claimed line range strings into a set."""
-    return set(parse_line_selection(",".join(claimed_lines))) if claimed_lines else set()
+def _parse_line_ranges(line_ranges: list[str] | list[int]) -> set[int]:
+    """Parse source line range strings into a set."""
+    return (
+        set(parse_line_selection(",".join(str(line) for line in line_ranges)))
+        if line_ranges else set()
+    )
 
 
-def _format_claimed_set(claimed_lines: set[int]) -> list[str]:
-    """Format a claimed line set as normalized range strings."""
-    if not claimed_lines:
+def _format_line_set(source_lines: set[int]) -> list[str]:
+    """Format a source line set as normalized range strings."""
+    if not source_lines:
         return []
-    return [format_line_ids(sorted(claimed_lines))]
+    return [format_line_ids(sorted(source_lines))]
+
+
+def _presence_claims_from_source_lines(source_lines: set[int]) -> list[PresenceClaim]:
+    """Build normalized presence claims from a source-line set."""
+    if not source_lines:
+        return []
+    return [PresenceClaim(source_lines=_format_line_set(source_lines))]
 
 
 def _normalize_replacement_units(
@@ -215,7 +275,7 @@ def _normalize_replacement_units(
     components: list[tuple[set[int], set[int]]] = []
 
     for unit in replacement_units:
-        claimed = _parse_claimed_ranges(unit.claimed_lines)
+        claimed = _parse_line_ranges(unit.presence_lines)
         deletion_indices = {
             index
             for index in unit.deletion_indices
@@ -247,7 +307,7 @@ def _normalize_replacement_units(
 
     return [
         ReplacementUnit(
-            claimed_lines=_format_claimed_set(claimed),
+            presence_lines=_format_line_set(claimed),
             deletion_indices=sorted(deletion_indices),
         )
         for claimed, deletion_indices in components
@@ -271,12 +331,9 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
         Merged BatchOwnership with combined claims and deduplicated deletions
     """
     # Merge claimed lines (combine and normalize ranges)
-    existing_claimed = _parse_claimed_ranges(existing.claimed_lines)
-    new_claimed = _parse_claimed_ranges(new.claimed_lines)
+    existing_claimed = existing.presence_line_set()
+    new_claimed = new.presence_line_set()
     combined_claimed = existing_claimed | new_claimed
-
-    # Normalize to range strings
-    claimed_lines = _format_claimed_set(combined_claimed)
 
     # Merge deletion claims: deduplicate by anchor and content
     # When batch source advances and ownership is remapped, the same deletion can appear
@@ -318,12 +375,12 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
                 if type(index) is int and index in index_map
             ]
             combined_replacement_units.append(ReplacementUnit(
-                claimed_lines=unit.claimed_lines,
+                presence_lines=unit.presence_lines,
                 deletion_indices=remapped_indices,
             ))
 
     return BatchOwnership(
-        claimed_lines=claimed_lines,
+        presence_claims=_presence_claims_from_source_lines(combined_claimed),
         deletions=combined_deletions,
         replacement_units=_normalize_replacement_units(
             combined_replacement_units,
@@ -363,7 +420,7 @@ def detect_stale_batch_source_for_selection(selected_lines: list) -> bool:
 def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     """Translate display lines to batch source ownership.
 
-    Creates presence claims (claimed_lines) and suppression constraints (deletion_claims).
+    Creates presence claims and suppression constraints (deletion_claims).
     Each contiguous run of deletions becomes a separate DeletionClaim.
 
     This function assumes all selected lines can be expressed in batch source
@@ -375,14 +432,14 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
         selected_lines: List of LineEntry objects to translate
 
     Returns:
-        BatchOwnership with claimed_lines and deletion claims
+        BatchOwnership with presence claims and deletion claims
 
     Raises:
         ValueError: If any claimed line has source_line=None (stale batch source)
     """
     # Translate to batch source-space ownership
     # Diff shows index→working tree, batch source = working tree
-    # Context/addition lines exist in batch source → claimed_lines (presence)
+    # Context/addition lines exist in batch source → presence claims
     # Deletion lines don't exist in batch source → deletion claims (suppression)
 
     claimed_source_lines: list[int] = []
@@ -426,15 +483,15 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
             if line.kind == '+':
                 if flushed_deletion_indices:
                     active_replacement_unit = ReplacementUnit(
-                        claimed_lines=[],
+                        presence_lines=[],
                         deletion_indices=flushed_deletion_indices,
                     )
                     replacement_units.append(active_replacement_unit)
 
                 if active_replacement_unit is not None:
-                    claimed = _parse_claimed_ranges(active_replacement_unit.claimed_lines)
+                    claimed = _parse_line_ranges(active_replacement_unit.presence_lines)
                     claimed.add(line.source_line)
-                    active_replacement_unit.claimed_lines = _format_claimed_set(claimed)
+                    active_replacement_unit.presence_lines = _format_line_set(claimed)
             else:
                 active_replacement_unit = None
 
@@ -456,11 +513,8 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     # Flush any final deletion run
     flush_deletion_run()
 
-    # Normalize claimed lines into range strings
-    claimed_lines = [format_line_ids(claimed_source_lines)] if claimed_source_lines else []
-
     return BatchOwnership(
-        claimed_lines=claimed_lines,
+        presence_claims=_presence_claims_from_source_lines(set(claimed_source_lines)),
         deletions=deletion_claims,
         replacement_units=_normalize_replacement_units(
             replacement_units,
@@ -707,7 +761,7 @@ def _build_explicit_replacement_units_from_display_lines(
         return units, consumed_claimed_lines, consumed_deletion_indices
 
     for replacement_unit in replacement_units:
-        claimed_source_lines = _parse_claimed_ranges(replacement_unit.claimed_lines)
+        claimed_source_lines = _parse_line_ranges(replacement_unit.presence_lines)
         deletion_indices = set(replacement_unit.deletion_indices)
         claimed_display_ids: set[int] = set()
         deletion_display_ids: set[int] = set()
@@ -993,27 +1047,24 @@ def rebuild_ownership_from_units(units: list[OwnershipUnit]) -> BatchOwnership:
     Returns:
         New BatchOwnership with combined ownership from all units
     """
-    all_claimed_lines = set()
+    all_presence_lines = set()
     all_deletions = []
     replacement_units: list[ReplacementUnit] = []
 
     for unit in units:
-        all_claimed_lines.update(unit.claimed_source_lines)
+        all_presence_lines.update(unit.claimed_source_lines)
         deletion_indices = []
         for deletion in unit.deletion_claims:
             all_deletions.append(deletion)
             deletion_indices.append(len(all_deletions) - 1)
         if unit.kind == OwnershipUnitKind.REPLACEMENT and unit.preserves_replacement_unit:
             replacement_units.append(ReplacementUnit(
-                claimed_lines=_format_claimed_set(unit.claimed_source_lines),
+                presence_lines=_format_line_set(unit.claimed_source_lines),
                 deletion_indices=deletion_indices,
             ))
 
-    # Format claimed lines as range strings
-    claimed_lines_formatted = _format_claimed_set(all_claimed_lines)
-
     return BatchOwnership(
-        claimed_lines=claimed_lines_formatted,
+        presence_claims=_presence_claims_from_source_lines(all_presence_lines),
         deletions=all_deletions,
         replacement_units=_normalize_replacement_units(
             replacement_units,
@@ -1032,18 +1083,18 @@ def _remap_replacement_units(
     remapped_units: list[ReplacementUnit] = []
 
     for unit in replacement_units:
-        new_claimed_lines: set[int] = set()
-        for old_line_num in _parse_claimed_ranges(unit.claimed_lines):
+        new_presence_lines: set[int] = set()
+        for old_line_num in _parse_line_ranges(unit.presence_lines):
             new_line_num = map_claimed_line(old_line_num)
             if new_line_num is None:
                 raise ValueError(
                     f"Cannot remap replacement unit claimed line {old_line_num} "
                     f"from old source to new source: no unique mapping found."
                 )
-            new_claimed_lines.add(new_line_num)
+            new_presence_lines.add(new_line_num)
 
         remapped_units.append(ReplacementUnit(
-            claimed_lines=_format_claimed_set(new_claimed_lines),
+            presence_lines=_format_line_set(new_presence_lines),
             deletion_indices=unit.deletion_indices,
         ))
 
@@ -1081,27 +1132,20 @@ def remap_batch_ownership_to_new_source(
     # Build mapping from old source line numbers to new source line numbers
     mapping = match_lines(old_lines, new_lines)
 
-    # Remap claimed lines
-    old_claimed = (
-        set(parse_line_selection(",".join(ownership.claimed_lines)))
-        if ownership.claimed_lines
-        else set()
-    )
-    new_claimed = set()
+    # Remap presence lines
+    old_presence = ownership.presence_line_set()
+    new_presence = set()
 
-    for old_line_num in old_claimed:
+    for old_line_num in old_presence:
         new_line_num = mapping.get_target_line_from_source_line(old_line_num)
         if new_line_num is None:
             # Line cannot be mapped - fail loudly
             raise ValueError(
-                f"Cannot remap claimed line {old_line_num} from old source to new source: "
+                f"Cannot remap presence line {old_line_num} from old source to new source: "
                 f"no unique mapping found. This indicates the old line was removed or "
                 f"significantly changed in the new source."
             )
-        new_claimed.add(new_line_num)
-
-    # Format new claimed lines
-    new_claimed_lines = _format_claimed_set(new_claimed)
+        new_presence.add(new_line_num)
 
     # Remap deletion anchors
     new_deletions = []
@@ -1134,7 +1178,7 @@ def remap_batch_ownership_to_new_source(
     )
 
     return BatchOwnership(
-        claimed_lines=new_claimed_lines,
+        presence_claims=_presence_claims_from_source_lines(new_presence),
         deletions=new_deletions,
         replacement_units=new_replacement_units,
     )
@@ -1171,16 +1215,12 @@ def _advance_source_content_preserving_existing_presence_with_provenance(
     """Build advanced source content and preserve input line provenance."""
     old_lines = old_source_content.splitlines(keepends=True)
     working_lines = working_content.splitlines(keepends=True)
-    claimed_lines = (
-        set(parse_line_selection(",".join(ownership.claimed_lines)))
-        if ownership.claimed_lines
-        else set()
-    )
+    presence_lines = ownership.presence_line_set()
 
     entries = _apply_presence_constraints(
         old_lines,
         working_lines,
-        claimed_lines,
+        presence_lines,
     )
 
     source_line_map = {}
@@ -1203,19 +1243,17 @@ def _remap_batch_ownership_with_source_line_map(
     source_line_map: dict[int, int],
 ) -> BatchOwnership:
     """Remap ownership using provenance from source refresh construction."""
-    old_claimed = set(parse_line_selection(",".join(ownership.claimed_lines))) if ownership.claimed_lines else set()
-    new_claimed = set()
+    old_presence = ownership.presence_line_set()
+    new_presence = set()
 
-    for old_line_num in old_claimed:
+    for old_line_num in old_presence:
         new_line_num = source_line_map.get(old_line_num)
         if new_line_num is None:
             raise ValueError(
-                f"Cannot remap claimed line {old_line_num} from old source to new source: "
+                f"Cannot remap presence line {old_line_num} from old source to new source: "
                 f"no preserved source-line mapping found."
             )
-        new_claimed.add(new_line_num)
-
-    new_claimed_lines = _format_claimed_set(new_claimed)
+        new_presence.add(new_line_num)
 
     new_deletions = []
     for deletion in ownership.deletions:
@@ -1244,7 +1282,7 @@ def _remap_batch_ownership_with_source_line_map(
     )
 
     return BatchOwnership(
-        claimed_lines=new_claimed_lines,
+        presence_claims=_presence_claims_from_source_lines(new_presence),
         deletions=new_deletions,
         replacement_units=new_replacement_units,
     )

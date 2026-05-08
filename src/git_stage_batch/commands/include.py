@@ -120,6 +120,43 @@ def _already_staged_file_review_ids(line_changes, current_index_content: bytes) 
     }
 
 
+def _record_baseline_references_for_additions(line_changes) -> None:
+    """Attach old-file insertion references to addition lines for batch round trips."""
+    last_old_line: int | None = None
+    last_old_text_bytes: bytes | None = None
+    index = 0
+
+    while index < len(line_changes.lines):
+        line = line_changes.lines[index]
+        if line.kind == "+":
+            next_old_line: int | None = None
+            next_old_text_bytes: bytes | None = None
+            scan_index = index + 1
+            while scan_index < len(line_changes.lines):
+                next_line = line_changes.lines[scan_index]
+                if next_line.kind in {" ", "-"} and next_line.old_line_number is not None:
+                    next_old_line = next_line.old_line_number
+                    next_old_text_bytes = next_line.text_bytes
+                    break
+                scan_index += 1
+
+            while index < len(line_changes.lines) and line_changes.lines[index].kind == "+":
+                addition_line = line_changes.lines[index]
+                addition_line.baseline_reference_after_line = last_old_line
+                addition_line.baseline_reference_after_text_bytes = last_old_text_bytes
+                addition_line.has_baseline_reference_after = True
+                addition_line.baseline_reference_before_line = next_old_line
+                addition_line.baseline_reference_before_text_bytes = next_old_text_bytes
+                addition_line.has_baseline_reference_before = next_old_line is not None
+                index += 1
+            continue
+
+        if line.kind in {" ", "-"} and line.old_line_number is not None:
+            last_old_line = line.old_line_number
+            last_old_text_bytes = line.text_bytes
+        index += 1
+
+
 def command_include(*, quiet: bool = False) -> None:
     """Include (stage) the selected hunk or binary file."""
 
@@ -1111,6 +1148,7 @@ def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_i
 
     # Annotate with batch source line numbers
     line_changes = annotate_with_batch_source(file_path, cached_lines)
+    _record_baseline_references_for_additions(line_changes)
 
     # Parse line IDs and filter to selected lines
     requested_ids = set(parse_line_selection(line_id_specification))
@@ -1189,6 +1227,7 @@ def _command_include_lines_to_batch(batch_name: str, line_id_specification: str,
 
     requested_ids = set(parse_line_selection(line_id_specification))
     line_changes = load_line_changes_from_state()
+    _record_baseline_references_for_additions(line_changes)
     require_line_selection_in_view(
         line_changes,
         requested_ids,

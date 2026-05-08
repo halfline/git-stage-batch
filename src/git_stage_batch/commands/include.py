@@ -540,11 +540,25 @@ def command_include_file(
                 hunks_staged += 1
                 continue
 
-            if patch.new_path != target_file:
+            patch_paths = {
+                path for path in (patch.old_path, patch.new_path)
+                if path != "/dev/null"
+            }
+            if target_file not in patch_paths:
                 continue
 
             patch_bytes = patch.to_patch_bytes()
             patch_hash = compute_stable_hunk_hash(patch_bytes)
+
+            if patch.old_path != patch.new_path:
+                result = run_git_command(["add", "--", *sorted(patch_paths)], check=False)
+                if result.returncode != 0:
+                    print(_("Failed to stage file: {error}").format(error=result.stderr), file=sys.stderr)
+                    break
+
+                record_hunk_included(patch_hash)
+                hunks_staged += 1
+                continue
 
             # Apply the hunk to the index using streaming
             stderr_chunks = []

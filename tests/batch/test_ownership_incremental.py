@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from git_stage_batch.batch.ownership import (
     DeletionClaim,
+    ReplacementLineRun,
     ReplacementUnit,
+    translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
 )
 from git_stage_batch.core.models import LineEntry
@@ -94,3 +96,100 @@ def test_translate_lines_keeps_file_start_anchor_for_deletion_run():
     assert len(ownership.deletions) == 1
     assert ownership.deletions[0].anchor_line is None
     assert ownership.deletions[0].content_lines == [b'first\n', b'second\n']
+
+
+def test_translate_hunk_selection_uses_full_hunk_boundaries():
+    """Unselected rows should delimit selected claims without being owned."""
+    lines = [
+        LineEntry(id=1, kind='+', old_line_number=None, new_line_number=1,
+                  text_bytes=b'x', text='x', source_line=1,
+                  has_baseline_reference_after=True,
+                  baseline_reference_after_line=None,
+                  has_baseline_reference_before=True,
+                  baseline_reference_before_line=1,
+                  baseline_reference_before_text_bytes=b'same'),
+        LineEntry(id=2, kind='+', old_line_number=None, new_line_number=2,
+                  text_bytes=b'same', text='same', source_line=2),
+        LineEntry(id=None, kind=' ', old_line_number=1, new_line_number=3,
+                  text_bytes=b'same', text='same', source_line=3),
+        LineEntry(id=4, kind='-', old_line_number=2, new_line_number=None,
+                  text_bytes=b'a', text='a', source_line=3),
+        LineEntry(id=None, kind=' ', old_line_number=3, new_line_number=4,
+                  text_bytes=b'c', text='c', source_line=4),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(lines, {1, 4})
+
+    assert ownership.presence_line_set() == {1}
+    assert len(ownership.deletions) == 1
+    assert ownership.deletions[0].content_lines == [b'a\n']
+    assert ownership.deletions[0].baseline_reference.after_line == 1
+    assert ownership.deletions[0].baseline_reference.after_content == b'same'
+    assert ownership.deletions[0].baseline_reference.before_line == 3
+    assert ownership.deletions[0].baseline_reference.before_content == b'c'
+    assert ownership.replacement_units == []
+
+
+def test_translate_hunk_selection_uses_file_derived_replacement_runs():
+    """Replacement units come from caller-provided before/after line runs."""
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'a', text='a', source_line=None),
+        LineEntry(id=2, kind='-', old_line_number=2, new_line_number=None,
+                  text_bytes=b'b', text='b', source_line=1),
+        LineEntry(id=3, kind='+', old_line_number=None, new_line_number=1,
+                  text_bytes=b'A', text='A', source_line=1,
+                  has_baseline_reference_after=True,
+                  baseline_reference_after_line=2,
+                  baseline_reference_after_text_bytes=b'b'),
+        LineEntry(id=4, kind='+', old_line_number=None, new_line_number=2,
+                  text_bytes=b'B', text='B', source_line=2),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {1, 3},
+        replacement_line_runs=[
+            ReplacementLineRun(
+                old_line_numbers=(1, 2),
+                new_line_numbers=(1, 2),
+            ),
+        ],
+    )
+
+    assert ownership.presence_line_set() == {1}
+    assert len(ownership.deletions) == 1
+    assert ownership.deletions[0].content_lines == [b'a\n']
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
+    ]
+
+
+def test_translate_hunk_selection_keeps_one_to_many_replacement_atomic():
+    """A 1-to-N replacement run should be one unit, not invented line pairs."""
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'old', text='old', source_line=None),
+        LineEntry(id=2, kind='+', old_line_number=None, new_line_number=1,
+                  text_bytes=b'new one', text='new one', source_line=1),
+        LineEntry(id=3, kind='+', old_line_number=None, new_line_number=2,
+                  text_bytes=b'new two', text='new two', source_line=2),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {1, 2, 3},
+        replacement_line_runs=[
+            ReplacementLineRun(
+                old_line_numbers=(1,),
+                new_line_numbers=(1, 2),
+            ),
+        ],
+    )
+
+    assert ownership.presence_line_set() == {1, 2}
+    assert len(ownership.deletions) == 1
+    assert ownership.deletions[0].content_lines == [b'old\n']
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+    ]

@@ -27,15 +27,9 @@ class TestDeletionClaimIdentity:
         # Batch B: removes "old_impl()"
         # These are DIFFERENT constraints even though anchor is the same
 
-        ownership_a = BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[DeletionClaim(anchor_line=1, content_lines=[b"debug_log()\n"])]
-        )
+        ownership_a = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=1, content_lines=[b"debug_log()\n"])])
 
-        ownership_b = BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[DeletionClaim(anchor_line=1, content_lines=[b"old_impl()\n"])]
-        )
+        ownership_b = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=1, content_lines=[b"old_impl()\n"])])
 
         # Applying batch A should preserve "old_impl()" even though anchor matches.
         result_a = merge_batch(batch_source, ownership_a, working)
@@ -55,10 +49,7 @@ class TestDeletionClaimIdentity:
         working = b"line1\nmarker\nline3\nmarker\nline5\n"
 
         # Claim that suppresses only the first marker after line 1.
-        ownership = BatchOwnership(
-            claimed_lines=["1", "3", "5"],
-            deletions=[DeletionClaim(anchor_line=1, content_lines=[b"marker\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["1", "3", "5"], [DeletionClaim(anchor_line=1, content_lines=[b"marker\n"])])
 
         result = merge_batch(batch_source, ownership, working)
         lines = result.splitlines(keepends=True)
@@ -79,9 +70,9 @@ class TestDeletionClaimIdentity:
         a single claim, even if they could share an anchor.
         """
         # Two separate deletion runs should be two separate claims
-        ownership = BatchOwnership(
-            claimed_lines=["1", "2", "3"],
-            deletions=[
+        ownership = BatchOwnership.from_presence_lines(
+            ["1", "2", "3"],
+            [
                 DeletionClaim(anchor_line=1, content_lines=[b"old1\n", b"old2\n"]),
                 # Kept separate from the first claim even though it shares an anchor.
             ]
@@ -104,9 +95,9 @@ class TestRepeatedLinesNotGloballyRemoved:
         working = b"header\ncommon\nsection1\ncommon\nsection2\ncommon\nfooter\n"
 
         # Suppress "common" after "header" (first occurrence only)
-        ownership = BatchOwnership(
-            claimed_lines=["1", "3"],  # header, footer
-            deletions=[DeletionClaim(anchor_line=1, content_lines=[b"common\n"])]
+        ownership = BatchOwnership.from_presence_lines(
+            ["1", "3"],
+            [DeletionClaim(anchor_line=1, content_lines=[b"common\n"])]
         )
 
         result = merge_batch(batch_source, ownership, working)
@@ -129,10 +120,7 @@ class TestIdempotence:
         batch_source = b"line1\nline2-modified\nline3\n"
         working = b"line1\nline2\nline3\n"
 
-        ownership = BatchOwnership(
-            claimed_lines=["2"],
-            deletions=[DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])])
 
         # First application
         result1 = merge_batch(batch_source, ownership, working)
@@ -147,10 +135,7 @@ class TestIdempotence:
         batch_source = b"line1\nline2-modified\nline3\n"
         working = b"line1\nline2\nextra\nline3\n"
 
-        ownership = BatchOwnership(
-            claimed_lines=["2"],
-            deletions=[DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])])
 
         result1 = merge_batch(batch_source, ownership, working)
         result2 = merge_batch(batch_source, ownership, result1)
@@ -173,10 +158,7 @@ class TestPureRemovalBatches:
         working = b"line1\nline2\ndebug_log()\nline3\n"
 
         # Pure removal: just suppress debug_log, don't claim anything else
-        ownership = BatchOwnership(
-            claimed_lines=[],
-            deletions=[DeletionClaim(anchor_line=2, content_lines=[b"debug_log()\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines([], [DeletionClaim(anchor_line=2, content_lines=[b"debug_log()\n"])])
 
         result = merge_batch(batch_source, ownership, working)
 
@@ -196,10 +178,7 @@ class TestBytesBasedSemantics:
         working = b"line1\n\xe9cole\nextra\nline3\n"
 
         # Claim école (line 2) and suppress "extra" (working tree insertion after école)
-        ownership = BatchOwnership(
-            claimed_lines=["2"],
-            deletions=[DeletionClaim(anchor_line=2, content_lines=[b"extra\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=2, content_lines=[b"extra\n"])])
 
         result = merge_batch(
             batch_source,
@@ -217,10 +196,7 @@ class TestBytesBasedSemantics:
         batch_source = b"line1\r\nline2-modified\r\nline3\r\n"
         working = b"line1\r\nline2\r\nline3\r\n"
 
-        ownership = BatchOwnership(
-            claimed_lines=["2"],
-            deletions=[DeletionClaim(anchor_line=1, content_lines=[b"line2\r\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=1, content_lines=[b"line2\r\n"])])
 
         result = merge_batch(batch_source, ownership, working)
 
@@ -236,10 +212,7 @@ class TestRealizedContentConstruction:
         baseline_content = b"line1\nline2\nline3\n"
         batch_source_content = b"line1\nline2-modified\nline3\n"
 
-        ownership = BatchOwnership(
-            claimed_lines=["2"],
-            deletions=[DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])])
 
         realized = _build_realized_content(
             baseline_content,
@@ -262,9 +235,7 @@ class TestRealizedContentConstruction:
         baseline_content = b"header\nold value\nfooter\n"
         batch_source_content = b"header\nnew value\nfooter\n"
 
-        ownership = BatchOwnership(
-            claimed_lines=[],
-            deletions=[DeletionClaim(anchor_line=2, content_lines=[b"old value\n"])],
+        ownership = BatchOwnership.from_presence_lines([], [DeletionClaim(anchor_line=2, content_lines=[b"old value\n"])],
         )
 
         realized = _build_realized_content(
@@ -280,9 +251,9 @@ class TestRealizedContentConstruction:
         baseline_content = b"line1\nline2\nline3\n"
         batch_source_content = b"line1\nline2\nline3\n"
 
-        ownership = BatchOwnership(
-            claimed_lines=[],
-            deletions=[
+        ownership = BatchOwnership.from_presence_lines(
+            [],
+            [
                 DeletionClaim(anchor_line=1, content_lines=[b"line2\n"]),
                 DeletionClaim(anchor_line=2, content_lines=[b"line3\n"]),
             ],

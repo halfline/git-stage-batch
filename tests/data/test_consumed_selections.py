@@ -60,7 +60,7 @@ def test_record_consumed_selection_refreshes_stale_first_selection(temp_git_repo
 
     metadata = read_consumed_file_metadata("test.txt")
     assert metadata is not None
-    assert metadata["claimed_lines"] == ["2"]
+    assert metadata["presence_claims"] == [{"source_lines": ["2"]}]
     assert metadata["replacement_masks"] == [
         {
             "deleted_lines": ["staged line"],

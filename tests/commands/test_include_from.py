@@ -328,7 +328,7 @@ class TestCommandIncludeFromBatch:
         empty_path = temp_git_repo / "empty.txt"
         empty_path.write_text("")
         command_start()
-        add_file_to_batch("test-batch", "empty.txt", BatchOwnership(claimed_lines=[], deletions=[]))
+        add_file_to_batch("test-batch", "empty.txt", BatchOwnership.from_presence_lines([], []))
 
         empty_path.unlink()
         command_include_from_batch("test-batch", file="empty.txt")

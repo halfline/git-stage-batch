@@ -8,9 +8,11 @@ import pytest
 
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.merge import merge_batch
 from git_stage_batch.batch.storage import add_file_to_batch, get_batch_diff, read_file_from_batch
 from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim, ReplacementUnit
 from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.utils.git import create_git_blob
 
 
 @pytest.fixture
@@ -39,7 +41,7 @@ def temp_git_repo(tmp_path, monkeypatch):
 def test_add_file_to_batch_creates_batch(temp_git_repo):
     """Test that add_file_to_batch auto-creates batch if needed."""
     # Claim lines 1-2 from file.txt (range string format)
-    ownership = BatchOwnership(claimed_lines=["1-2"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["1-2"], [])
     add_file_to_batch("test-batch", "file.txt", ownership)
 
     content = read_file_from_batch("test-batch", "file.txt")
@@ -53,7 +55,7 @@ def test_add_file_to_batch_existing_batch(temp_git_repo):
     create_batch("test-batch", "Test")
 
     # Claim line 1
-    ownership = BatchOwnership(claimed_lines=["1"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
     add_file_to_batch("test-batch", "file.txt", ownership)
 
     content = read_file_from_batch("test-batch", "file.txt")
@@ -65,13 +67,13 @@ def test_add_file_to_batch_persists_replacement_units(temp_git_repo):
     """Text metadata should round-trip explicit replacement-unit references."""
     create_batch("test-batch", "Test")
 
-    ownership = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old\n"]),
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
         ],
     )
 
@@ -79,22 +81,64 @@ def test_add_file_to_batch_persists_replacement_units(temp_git_repo):
 
     file_meta = read_batch_metadata("test-batch")["files"]["file.txt"]
     assert file_meta["replacement_units"] == [
-        {"claimed_lines": ["1"], "deletion_indices": [0]},
+        {"presence_lines": ["1"], "deletion_indices": [0]},
     ]
 
     round_tripped = BatchOwnership.from_metadata_dict(file_meta)
     assert round_tripped.replacement_units == [
-        ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+        ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
+    ]
+
+def test_legacy_claimed_lines_metadata_loads_as_presence_claims(temp_git_repo):
+    """Old claimed_lines metadata should retain presence ownership."""
+    ownership = BatchOwnership.from_metadata_dict({
+        "claimed_lines": ["2"],
+        "deletions": [],
+    })
+
+    assert ownership.presence_line_set() == {2}
+    assert ownership.presence_claims[0].source_lines == ["2"]
+
+    result = merge_batch(
+        b"line1\nline2\nline3\n",
+        ownership,
+        b"line1\nline3\n",
+    )
+    assert result == b"line1\nline2\nline3\n"
+
+
+def test_legacy_replacement_units_metadata_loads_presence_lines(temp_git_repo):
+    """Old replacement-unit keys should stay readable after upgrade."""
+    old_blob = create_git_blob([b"old\n"])
+
+    ownership = BatchOwnership.from_metadata_dict({
+        "claimed_lines": ["2"],
+        "deletions": [
+            {
+                "after_source_line": 1,
+                "blob": old_blob,
+            }
+        ],
+        "replacement_units": [
+            {
+                "claimed_lines": ["2"],
+                "deletion_indices": [0],
+            }
+        ],
+    })
+
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
     ]
 
 
 def test_empty_replacement_units_are_omitted_from_metadata():
     """Empty replacement-unit references should not serialize an empty key."""
-    ownership = BatchOwnership(
-        claimed_lines=[],
-        deletions=[],
+    ownership = BatchOwnership.from_presence_lines(
+        [],
+        [],
         replacement_units=[
-            ReplacementUnit(claimed_lines=[], deletion_indices=[]),
+            ReplacementUnit(presence_lines=[], deletion_indices=[]),
         ],
     )
 
@@ -103,14 +147,14 @@ def test_empty_replacement_units_are_omitted_from_metadata():
 
 def test_boolean_replacement_unit_indices_are_omitted_from_metadata(temp_git_repo):
     """JSON booleans should not serialize as replacement deletion indexes."""
-    ownership = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old one\n"]),
             DeletionClaim(anchor_line=None, content_lines=[b"old two\n"]),
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1"], deletion_indices=[True]),
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[True]),
         ],
     )
 
@@ -122,7 +166,7 @@ def test_add_file_to_batch_marks_whole_added_empty_text_file(temp_git_repo):
     empty_file = temp_git_repo / "empty.txt"
     empty_file.write_text("")
 
-    ownership = BatchOwnership(claimed_lines=[], deletions=[])
+    ownership = BatchOwnership.from_presence_lines([], [])
     add_file_to_batch("test-batch", "empty.txt", ownership)
 
     file_meta = read_batch_metadata("test-batch")["files"]["empty.txt"]
@@ -135,7 +179,7 @@ def test_add_file_to_batch_does_not_mark_partial_added_text_file_as_lifecycle(te
     partial_file = temp_git_repo / "partial.txt"
     partial_file.write_text("one\ntwo\n")
 
-    ownership = BatchOwnership(claimed_lines=["1"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
     add_file_to_batch("test-batch", "partial.txt", ownership)
 
     file_meta = read_batch_metadata("test-batch")["files"]["partial.txt"]
@@ -152,9 +196,9 @@ def test_add_file_to_batch_marks_whole_deleted_text_file(temp_git_repo):
     initialize_abort_state()
 
     gone_file.unlink()
-    ownership = BatchOwnership(
-        claimed_lines=[],
-        deletions=[DeletionClaim(anchor_line=None, content_lines=[b"gone\n"])],
+    ownership = BatchOwnership.from_presence_lines(
+        [],
+        [DeletionClaim(anchor_line=None, content_lines=[b"gone\n"])],
     )
     add_file_to_batch("test-batch", "gone.txt", ownership)
 
@@ -168,11 +212,11 @@ def test_add_file_to_batch_update_file(temp_git_repo):
     create_batch("test-batch", "Test")
 
     # First add line 1
-    ownership1 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    ownership1 = BatchOwnership.from_presence_lines(["1"], [])
     add_file_to_batch("test-batch", "file.txt", ownership1)
 
     # Then update to lines 1-2
-    ownership2 = BatchOwnership(claimed_lines=["1-2"], deletions=[])
+    ownership2 = BatchOwnership.from_presence_lines(["1-2"], [])
     add_file_to_batch("test-batch", "file.txt", ownership2)
 
     content = read_file_from_batch("test-batch", "file.txt")
@@ -188,10 +232,10 @@ def test_add_file_to_batch_multiple_files(temp_git_repo):
 
     create_batch("test-batch", "Test")
 
-    ownership1 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    ownership1 = BatchOwnership.from_presence_lines(["1"], [])
     add_file_to_batch("test-batch", "file.txt", ownership1)
 
-    ownership2 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    ownership2 = BatchOwnership.from_presence_lines(["1"], [])
     add_file_to_batch("test-batch", "file2.txt", ownership2)
 
     content1 = read_file_from_batch("test-batch", "file.txt")
@@ -229,7 +273,7 @@ def test_get_batch_diff_with_file(temp_git_repo):
     create_batch("test-batch", "Test")
 
     # Claim lines from file.txt
-    ownership = BatchOwnership(claimed_lines=["1-2"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["1-2"], [])
     add_file_to_batch("test-batch", "file.txt", ownership)
 
     diff = get_batch_diff("test-batch")
@@ -247,7 +291,7 @@ def test_get_batch_diff_custom_context(temp_git_repo):
     """Test getting diff with custom context lines."""
     create_batch("test-batch", "Test")
 
-    ownership = BatchOwnership(claimed_lines=["1-3"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["1-3"], [])
     add_file_to_batch("test-batch", "file.txt", ownership)
 
     diff = get_batch_diff("test-batch", context_lines=1)

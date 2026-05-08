@@ -53,7 +53,7 @@ def _git_rev_parse(refname: str) -> str:
 def test_state_ref_contains_batch_json_and_source_snapshot(temp_git_repo):
     """State ref mirrors metadata and stores source bytes as tree entries."""
     create_batch("test-batch", "Test note")
-    add_file_to_batch("test-batch", "file.txt", BatchOwnership(claimed_lines=["1-2"], deletions=[]))
+    add_file_to_batch("test-batch", "file.txt", BatchOwnership.from_presence_lines(["1-2"], []))
 
     content_ref = get_batch_content_ref_name("test-batch")
     state_ref = get_batch_state_ref_name("test-batch")

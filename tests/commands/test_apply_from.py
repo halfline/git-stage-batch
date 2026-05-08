@@ -137,8 +137,8 @@ class TestCommandApplyFromBatch:
         subprocess.run(["git", "commit", "-m", "Modified state"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Add both files to batch manually
-        ownership1 = BatchOwnership(claimed_lines=["2"], deletions=[])
-        ownership2 = BatchOwnership(claimed_lines=["2"], deletions=[])
+        ownership1 = BatchOwnership.from_presence_lines(["2"], [])
+        ownership2 = BatchOwnership.from_presence_lines(["2"], [])
         add_file_to_batch("multi-file-batch", "file1.txt", ownership1, "100644")
         add_file_to_batch("multi-file-batch", "file2.txt", ownership2, "100644")
 
@@ -168,8 +168,8 @@ class TestCommandApplyFromBatch:
         subprocess.run(["git", "commit", "-m", "Modified"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Add both files to batch - claiming the "new line" (line 2 in batch source)
-        ownership1 = BatchOwnership(claimed_lines=["2"], deletions=[])
-        ownership2 = BatchOwnership(claimed_lines=["2"], deletions=[])
+        ownership1 = BatchOwnership.from_presence_lines(["2"], [])
+        ownership2 = BatchOwnership.from_presence_lines(["2"], [])
         add_file_to_batch("multi-file-batch", "file1.txt", ownership1, "100644")
         add_file_to_batch("multi-file-batch", "file2.txt", ownership2, "100644")
 
@@ -200,7 +200,7 @@ class TestCommandApplyFromBatch:
         add_file_to_batch(
             "line-batch",
             "file.txt",
-            BatchOwnership(["2"], []),
+            BatchOwnership.from_presence_lines(["2"], []),
             "100644",
         )
         subprocess.run(["git", "reset", "--hard", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
@@ -233,10 +233,7 @@ class TestCommandApplyFromBatch:
         subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
         subprocess.run(["git", "commit", "-m", "New state for batch"], check=True, cwd=temp_git_repo, capture_output=True)
 
-        ownership = BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"old line\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"old line\n"])])
         add_file_to_batch("replacement-batch", "file.txt", ownership, "100644")
 
         # Reset working tree to old state
@@ -271,10 +268,7 @@ class TestCommandApplyFromBatch:
         subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
         subprocess.run(["git", "commit", "-m", "New state"], check=True, cwd=temp_git_repo, capture_output=True)
 
-        ownership = BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"old line\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"old line\n"])])
         add_file_to_batch("atomic-batch", "file.txt", ownership, "100644")
 
         # Reset to old state

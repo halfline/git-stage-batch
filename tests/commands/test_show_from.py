@@ -70,7 +70,7 @@ class TestCommandShowFromBatch:
         add_file_to_batch(
             "test-batch",
             "empty.txt",
-            BatchOwnership(claimed_lines=[], deletions=[]),
+            BatchOwnership.from_presence_lines([], []),
             "100644",
             change_type="added",
         )
@@ -90,14 +90,14 @@ class TestCommandShowFromBatch:
         add_file_to_batch(
             "test-batch",
             "empty.txt",
-            BatchOwnership(claimed_lines=[], deletions=[]),
+            BatchOwnership.from_presence_lines([], []),
             "100644",
             change_type="added",
         )
         add_file_to_batch(
             "test-batch",
             "content.txt",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
             change_type="added",
         )
@@ -195,8 +195,8 @@ class TestCommandShowFromBatch:
         subprocess.run(["git", "commit", "-m", "Modified"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Add both files to batch
-        ownership1 = BatchOwnership(claimed_lines=["2"], deletions=[])
-        ownership2 = BatchOwnership(claimed_lines=["2"], deletions=[])
+        ownership1 = BatchOwnership.from_presence_lines(["2"], [])
+        ownership2 = BatchOwnership.from_presence_lines(["2"], [])
         add_file_to_batch("multi-file-batch", "file1.txt", ownership1, "100644")
         add_file_to_batch("multi-file-batch", "file2.txt", ownership2, "100644")
 
@@ -220,9 +220,9 @@ class TestCommandShowFromBatch:
         # replaces a two-line deletion block, making a three-display-line unit.
         (temp_git_repo / "file.txt").write_text("new one\nkeep\n")
         create_batch("replacement-batch")
-        ownership = BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[
+        ownership = BatchOwnership.from_presence_lines(
+            ["1"],
+            [
                 DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"])
             ],
         )
@@ -253,9 +253,9 @@ class TestCommandShowFromBatch:
 
         (temp_git_repo / "file.txt").write_text("new one\nkeep\n")
         create_batch("display-lines-batch")
-        ownership = BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[
+        ownership = BatchOwnership.from_presence_lines(
+            ["1"],
+            [
                 DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"])
             ],
         )
@@ -286,7 +286,7 @@ class TestCommandShowFromBatch:
         add_file_to_batch(
             "multi-unit-batch",
             "file.txt",
-            BatchOwnership(claimed_lines=["1,3"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1,3"], []),
             "100644",
         )
 
@@ -364,13 +364,13 @@ class TestCommandShowFromBatch:
         add_file_to_batch(
             "multi-file-batch",
             "file1.txt",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
         )
         add_file_to_batch(
             "multi-file-batch",
             "file2.txt",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
         )
 

@@ -190,7 +190,7 @@ class TestCommandAgain:
         metadata["files"] = {
             "README.md": {
                 "batch_source_commit": "dummy",
-                "claimed_lines": ["1-3"],
+                "presence_claims": [{"source_lines": ["1-3"]}],
                 "deletions": [],
                 "mode": "100644"
             }
@@ -213,8 +213,9 @@ class TestCommandAgain:
         metadata_after = json.loads(read_text_file_contents(metadata_path))
         file_data = metadata_after["files"]["README.md"]
         line_ids = set()
-        for range_str in file_data.get("claimed_lines", []):
-            line_ids.update(parse_line_selection(range_str))
+        for claim in file_data.get("presence_claims", []):
+            for range_str in claim.get("source_lines", []):
+                line_ids.update(parse_line_selection(range_str))
         assert line_ids == {1, 2, 3}
 
     def test_again_preserves_multiple_batches(self, temp_git_repo):

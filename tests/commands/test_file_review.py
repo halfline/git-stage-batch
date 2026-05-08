@@ -649,7 +649,10 @@ def test_pathless_include_to_batch_line_filters_file_review_selection(
 
     first_metadata = read_batch_metadata("first")
     second_metadata = read_batch_metadata("second")
-    assert first_metadata["files"]["file.txt"]["claimed_lines"] != second_metadata["files"]["file.txt"]["claimed_lines"]
+    assert (
+        first_metadata["files"]["file.txt"]["presence_claims"] !=
+        second_metadata["files"]["file.txt"]["presence_claims"]
+    )
     assert read_selected_change_kind() is None
 
 
@@ -2235,13 +2238,13 @@ def test_batch_review_does_not_suggest_partial_non_adjacent_atomic_replacement(
     add_file_to_batch(
         "atomic",
         "file.txt",
-        BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[
+        BatchOwnership.from_presence_lines(
+            ["1"],
+            [
                 DeletionClaim(anchor_line=3, content_lines=[b"old later\n"]),
             ],
             replacement_units=[
-                ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+                ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
             ],
         ),
         "100644",
@@ -2355,7 +2358,7 @@ def test_show_from_batch_line_after_review_uses_review_id_space(
     add_file_to_batch(
         "manual",
         "file.txt",
-        BatchOwnership(claimed_lines=["1", "2"], deletions=[]),
+        BatchOwnership.from_presence_lines(["1", "2"], []),
         "100644",
     )
 
@@ -2428,7 +2431,7 @@ def test_show_from_batch_line_without_review_uses_printed_review_id_space(
     add_file_to_batch(
         "manual",
         "file.txt",
-        BatchOwnership(claimed_lines=["1", "2"], deletions=[]),
+        BatchOwnership.from_presence_lines(["1", "2"], []),
         "100644",
     )
     test_file.write_text("one\ntwo\n")

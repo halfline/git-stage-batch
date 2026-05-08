@@ -73,7 +73,7 @@ def test_merge_corruption_simplified():
         content_lines=[b"    parser_status.set_defaults(func=lambda _: status())\n"]
     )]
 
-    ownership = BatchOwnership(claimed, deletions)
+    ownership = BatchOwnership.from_presence_lines(claimed, deletions)
 
     # Apply merge - should raise MergeError due to context mismatch
 

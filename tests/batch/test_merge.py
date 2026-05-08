@@ -149,7 +149,7 @@ class TestMergeBatch:
         working = b"line1\nline3\nline5\n"  # Missing lines 2, 4
         claimed = ["2"]  # Claim line 2
 
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         # Should insert line2 between line1 and line3
         assert result == b"line1\nline2\nline3\nline5\n"
@@ -160,7 +160,7 @@ class TestMergeBatch:
         working = b"line1\r\nline3\r\n"
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         assert result == b"line1\r\nline2\r\nline3\r\n"
 
@@ -170,7 +170,7 @@ class TestMergeBatch:
         working = b"line1\nextra1\nline2\nextra2\nline3\n"
         claimed = ["2"]  # Claim line2
 
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         # Should preserve extras
         assert result == working
@@ -261,12 +261,12 @@ class TestMergeBatch:
         even_claimed = ["2", "4", "6", "8", "10"]
 
         # Apply even lines first
-        result1 = merge_batch(source, BatchOwnership(even_claimed, []), working)
+        result1 = merge_batch(source, BatchOwnership.from_presence_lines(even_claimed, []), working)
         assert result1 == b"line2\nline4\nline6\nline8\nline10\n"
 
         # Now apply odd lines on top of even
         odd_claimed = ["1", "3", "5", "7", "9"]
-        result2 = merge_batch(source, BatchOwnership(odd_claimed, []), result1)
+        result2 = merge_batch(source, BatchOwnership.from_presence_lines(odd_claimed, []), result1)
 
         # Should interleave correctly
         expected = b"\n".join([f"line{i}".encode() for i in range(1, 11)]) + b"\n"
@@ -279,12 +279,12 @@ class TestMergeBatch:
 
         # Apply odd first
         odd_claimed = ["1", "3", "5", "7", "9"]
-        result1 = merge_batch(source, BatchOwnership(odd_claimed, []), working)
+        result1 = merge_batch(source, BatchOwnership.from_presence_lines(odd_claimed, []), working)
         assert result1 == b"line1\nline3\nline5\nline7\nline9\n"
 
         # Then apply even
         even_claimed = ["2", "4", "6", "8", "10"]
-        result2 = merge_batch(source, BatchOwnership(even_claimed, []), result1)
+        result2 = merge_batch(source, BatchOwnership.from_presence_lines(even_claimed, []), result1)
 
         # Should produce same result as even-then-odd
         expected = b"\n".join([f"line{i}".encode() for i in range(1, 11)]) + b"\n"
@@ -301,7 +301,7 @@ class TestMergeBatch:
         # Claim line 2 (first "dup")
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         # Should insert first dup based on alignment, not text search
         # Result should have both dups in correct positions
@@ -318,7 +318,7 @@ class TestMergeBatch:
         # Claim line 2 (first blank line)
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         # Should insert first blank line at correct position via alignment
         assert result == b"line1\n\nline3\n\nline5\n"
@@ -334,7 +334,7 @@ class TestMergeBatch:
         # Claim line 2 (first "}")
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         # Should insert first brace at correct position via alignment
         assert result == b"func1() {\n}\nfunc2() {\n}\nfunc3() {\n}\n"
@@ -347,7 +347,7 @@ class TestMergeBatch:
         # Claim all source lines (no-op for content, but tests preservation)
         claimed = ["1", "2", "3"]
 
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         # Extras should remain in their positions
         assert result == b"A\nX\nB\nY\nC\nZ\n"
@@ -363,7 +363,7 @@ class TestMergeBatch:
         # Claim line 2 (A in batch source)
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         # A should already be present at line 3, so shouldn't duplicate
         # (semantic matching finds it despite different position)
@@ -378,7 +378,7 @@ class TestMergeBatch:
         # Claim lines 2-4
         claimed = ["2-4"]
 
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         assert result == b"line1\nline2\nline3\nline4\nline5\n"
 
@@ -436,7 +436,7 @@ class TestMergeBatch:
         claimed = [str(i) for i in range(100, 10001, 100)]
 
         # This should complete quickly (difflib.SequenceMatcher is fast in practice)
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         # Verify result has both extras and source
         assert result.startswith(b"extra1\n")
@@ -455,7 +455,7 @@ class TestMergeErrors:
         claimed = ["100"]  # Out of range
 
         with pytest.raises(MergeError, match="out of range"):
-            merge_batch(source, BatchOwnership(claimed, []), working)
+            merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
     def test_merge_error_deletion_anchor_out_of_range(self):
         """Test error when deletion anchor is out of range."""
@@ -480,7 +480,7 @@ class TestMergeErrors:
 
         # Should fail because cannot reliably place line 5
         with pytest.raises(MergeError, match="Cannot reliably place"):
-            merge_batch(source, BatchOwnership(claimed, []), working)
+            merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
     def test_merge_succeeds_with_minimal_context(self):
         """Test that merge succeeds when there's minimal but sufficient context."""
@@ -493,7 +493,7 @@ class TestMergeErrors:
         claimed = ["3"]
 
         # Should succeed because lines 2 and 4 provide context
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
         assert result == b"line1\nline2\nline3\nline4\nline5\n"
 
     def test_merge_succeeds_with_only_trailing_context(self):
@@ -507,7 +507,7 @@ class TestMergeErrors:
         claimed = ["2"]
 
         # Should succeed - line3 provides trailing context
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
         assert b"line2" in result
 
     def test_merge_succeeds_with_only_leading_context(self):
@@ -521,7 +521,7 @@ class TestMergeErrors:
         claimed = ["4"]
 
         # Should succeed - line3 provides leading context
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
         assert b"line4" in result
 
     def test_merge_requires_context_even_at_edges(self):
@@ -535,7 +535,7 @@ class TestMergeErrors:
         claimed = ["1"]
 
         # Should succeed - line2 provides context
-        result = merge_batch(source, BatchOwnership(claimed, []), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
         assert b"line1" in result
 
     def test_merge_edge_lines_fail_without_neighbors(self):
@@ -550,7 +550,7 @@ class TestMergeErrors:
 
         # Should fail - file completely rewritten
         with pytest.raises(MergeError, match="file completely rewritten"):
-            merge_batch(source, BatchOwnership(claimed, []), working)
+            merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
     def test_merge_error_batch_created_from_later_file_state(self):
         """Test error when batch was created from later file state with extra context.
@@ -592,7 +592,7 @@ class TestMergeErrors:
 
         # This correctly raises MergeError because deletion anchor doesn't exist
         with pytest.raises(MergeError, match="anchor not present"):
-            merge_batch(source_later, BatchOwnership(claimed, deletions), working_early)
+            merge_batch(source_later, BatchOwnership.from_presence_lines(claimed, deletions), working_early)
 
     def test_merge_produces_corruption_with_mismatched_context(self):
         """Reproduce corruption when merging batch from later state to earlier state.
@@ -657,7 +657,7 @@ parser_include = subparsers.add_parser(
         claimed = ["5", "6"]  # New argument and new set_defaults
 
         # Apply the merge
-        result = merge_batch(source, BatchOwnership(claimed, deletions), working)
+        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, deletions), working)
 
         # Check that old and new set_defaults are not both present.
         result_str = result.decode()
@@ -738,7 +738,7 @@ line3_c
         # This should fail because Section A doesn't exist in working tree
         # The anchor line 2 doesn't map correctly
         with pytest.raises(MergeError):
-            merge_batch(source, BatchOwnership(claimed, deletions), working)
+            merge_batch(source, BatchOwnership.from_presence_lines(claimed, deletions), working)
 
 
 class TestDiscardBatch:
@@ -751,7 +751,7 @@ class TestDiscardBatch:
         working = b"modified\n"
 
         # Claim the modified line
-        ownership = BatchOwnership(["1"], [])
+        ownership = BatchOwnership.from_presence_lines(["1"], [])
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -765,7 +765,7 @@ class TestDiscardBatch:
         working = b"line1\nmodified2\nextra\nline3\n"
 
         # Claim only line 2 (modified2)
-        ownership = BatchOwnership(["2"], [])
+        ownership = BatchOwnership.from_presence_lines(["2"], [])
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -780,7 +780,7 @@ class TestDiscardBatch:
         working = b"X\nY\nZ\nA\nB_modified\nC\nD\nE\n"
 
         # Claim the modified B
-        ownership = BatchOwnership(["2"], [])
+        ownership = BatchOwnership.from_presence_lines(["2"], [])
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -794,7 +794,7 @@ class TestDiscardBatch:
         working = b"line1\ninserted\nline2\n"
 
         # Claim the inserted line
-        ownership = BatchOwnership(["2"], [])  # Line 2 of batch_source is "inserted"
+        ownership = BatchOwnership.from_presence_lines(["2"], [])  # Line 2 of batch_source is "inserted"
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -808,7 +808,7 @@ class TestDiscardBatch:
         working = b"inserted\nline1\nline2\n"
 
         # Claim the inserted line
-        ownership = BatchOwnership(["1"], [])  # Line 1 of batch_source is "inserted"
+        ownership = BatchOwnership.from_presence_lines(["1"], [])  # Line 1 of batch_source is "inserted"
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -822,7 +822,7 @@ class TestDiscardBatch:
         working = b"A\nB_modified\ninserted\nC\n"
 
         # Claim both modified B and the insertion
-        ownership = BatchOwnership(["2", "3"], [])  # Lines 2 and 3 of batch_source
+        ownership = BatchOwnership.from_presence_lines(["2", "3"], [])  # Lines 2 and 3 of batch_source
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -836,7 +836,7 @@ class TestDiscardBatch:
         working = b"line1\ninsert1\ninsert2\nline2\n"
 
         # Claim both inserted lines
-        ownership = BatchOwnership(["2", "3"], [])  # Lines 2 and 3 of batch_source
+        ownership = BatchOwnership.from_presence_lines(["2", "3"], [])  # Lines 2 and 3 of batch_source
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -850,7 +850,7 @@ class TestDiscardBatch:
         working = b"1\n2_mod\n3\n4_mod\n5\n"
 
         # Claim even lines (2, 4)
-        ownership = BatchOwnership(["2", "4"], [])
+        ownership = BatchOwnership.from_presence_lines(["2", "4"], [])
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -864,7 +864,7 @@ class TestDiscardBatch:
         working = b"line1\nline2\n"  # But working tree doesn't have it
 
         # Claim the inserted line
-        ownership = BatchOwnership(["2"], [])  # Line 2 of batch_source
+        ownership = BatchOwnership.from_presence_lines(["2"], [])  # Line 2 of batch_source
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -878,7 +878,7 @@ class TestDiscardBatch:
         working = b"line1\nline2\n"  # Already at baseline
 
         # Claim line 2, but it's not present in working tree
-        ownership = BatchOwnership(["2"], [])
+        ownership = BatchOwnership.from_presence_lines(["2"], [])
 
         result = discard_batch(batch_source, ownership, working, baseline)
 

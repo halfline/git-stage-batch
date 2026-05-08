@@ -22,14 +22,14 @@ def test_translate_lines_creates_deletion_constraints():
     ownership = translate_lines_to_batch_ownership(lines)
 
     # Should claim the + line (presence claim)
-    assert '1' in ','.join(ownership.claimed_lines)
+    assert '1' in ','.join(ownership.presence_claims[0].source_lines)
 
     # Should create deletion constraint for - line (suppression constraint)
     assert len(ownership.deletions) == 1
     assert isinstance(ownership.deletions[0], DeletionClaim)
     assert ownership.deletions[0].content_lines == [b'old_version\n']
     assert len(ownership.replacement_units) == 1
-    assert ownership.replacement_units[0].claimed_lines == ["1"]
+    assert ownership.replacement_units[0].presence_lines == ["1"]
     assert ownership.replacement_units[0].deletion_indices == [0]
 
 
@@ -49,7 +49,7 @@ def test_translate_lines_records_multi_line_replacement_unit():
     ownership = translate_lines_to_batch_ownership(lines)
 
     assert ownership.replacement_units == [
-        ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+        ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
     ]
 
 

@@ -41,7 +41,7 @@ def test_refreshed_batch_selection_dataclass():
 
 def test_prepared_batch_update_dataclass():
     """Test PreparedBatchUpdate dataclass construction."""
-    ownership = BatchOwnership(claimed_lines=["1-3"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["1-3"], [])
 
     update = PreparedBatchUpdate(
         batch_source_commit="def456",
@@ -64,7 +64,7 @@ def test_ensure_batch_source_current_non_stale_source():
         ),
     ]
 
-    ownership = BatchOwnership(claimed_lines=["1"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
 
     # Should return original values unchanged
     result = ensure_batch_source_current_for_selection(
@@ -130,7 +130,7 @@ def test_prepare_batch_ownership_update_first_time_stale_blank_context():
 
     assert result.batch_source_commit is None
     assert result.ownership_before is None
-    assert result.ownership_after.claimed_lines == ["1-2"]
+    assert result.ownership_after.presence_claims[0].source_lines == ["1-2"]
 
 
 def test_prepare_batch_ownership_update_first_time_deletion_anchor():
@@ -180,13 +180,13 @@ def test_prepare_batch_ownership_update_first_time():
     assert result.batch_source_commit is None
     assert result.ownership_before is None
     assert result.ownership_after is not None
-    assert result.ownership_after.claimed_lines == ["1-2"]
+    assert result.ownership_after.presence_claims[0].source_lines == ["1-2"]
 
 
 def test_prepare_batch_ownership_update_with_existing():
     """Test prepare_batch_ownership_update_for_selection merging with existing ownership."""
     # Existing ownership claims lines 1-2
-    existing = BatchOwnership(claimed_lines=["1-2"], deletions=[])
+    existing = BatchOwnership.from_presence_lines(["1-2"], [])
 
     # New lines claim lines 3-4
     lines = [
@@ -211,12 +211,12 @@ def test_prepare_batch_ownership_update_with_existing():
     assert result.ownership_before == existing
     assert result.ownership_after is not None
     # Should merge 1-2 with 3-4
-    assert "1-4" in ",".join(result.ownership_after.claimed_lines)
+    assert "1-4" in ",".join(result.ownership_after.presence_claims[0].source_lines)
 
 
 def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
     """Repeated working lines should use known synthesis identity."""
-    ownership = BatchOwnership(claimed_lines=["1,4"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["1,4"], [])
     advanced = _advance_source_content_preserving_existing_presence_with_provenance(
         old_source_content=b"owned before\nsame\nsame\nowned after\n",
         working_content=b"same\nsame\n",

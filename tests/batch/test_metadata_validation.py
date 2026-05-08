@@ -282,7 +282,7 @@ def test_validate_batch_metadata_structure_missing_batch_source_commit(temp_git_
         "files": {
             "test.txt": {
                 # Missing batch_source_commit
-                "claimed_lines": [],
+                "presence_claims": [],
                 "mode": "100644"
             }
         }
@@ -330,7 +330,7 @@ def test_validate_batch_metadata_structure_invalid_batch_source_commit(temp_git_
         "files": {
             "test.txt": {
                 "batch_source_commit": "0000000000000000000000000000000000000000",
-                "claimed_lines": [],
+                "presence_claims": [],
                 "mode": "100644"
             }
         }
@@ -465,7 +465,7 @@ def test_validate_batch_metadata_structure_valid_structure(temp_git_repo):
         "files": {
             "test.txt": {
                 "batch_source_commit": source_commit,
-                "claimed_lines": ["1-5"],
+                "presence_claims": [{"source_lines": ["1-5"]}],
                 "mode": "100644"
             }
         }

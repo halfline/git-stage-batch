@@ -82,10 +82,7 @@ def test_remap_claimed_lines_to_new_source():
     new_source = b"new first line\nline one\nline two\nline three\n"
 
     # Original ownership claims lines 1-2 in old source
-    old_ownership = BatchOwnership(
-        claimed_lines=["1-2"],
-        deletions=[]
-    )
+    old_ownership = BatchOwnership.from_presence_lines(["1-2"], [])
 
     # Remap to new source
     new_ownership = remap_batch_ownership_to_new_source(
@@ -95,7 +92,7 @@ def test_remap_claimed_lines_to_new_source():
     )
 
     # Lines 1-2 in old source should map to lines 2-3 in new source
-    assert new_ownership.claimed_lines == ["2-3"]
+    assert new_ownership.presence_claims[0].source_lines == ["2-3"]
     assert new_ownership.deletions == []
 
 
@@ -105,9 +102,9 @@ def test_remap_deletion_anchors_to_new_source():
     new_source = b"new first line\nline one\nline two\nline three\n"
 
     # Original ownership has deletion anchored at line 2
-    old_ownership = BatchOwnership(
-        claimed_lines=[],
-        deletions=[
+    old_ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
             DeletionClaim(anchor_line=2, content_lines=[b"deleted line\n"])
         ]
     )
@@ -130,9 +127,9 @@ def test_remap_start_of_file_deletion_anchor():
     old_source = b"line one\nline two\n"
     new_source = b"new first line\nline one\nline two\n"
 
-    old_ownership = BatchOwnership(
-        claimed_lines=[],
-        deletions=[
+    old_ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"deleted at start\n"])
         ]
     )
@@ -155,13 +152,10 @@ def test_remap_fails_when_line_removed_in_new_source():
     new_source = b"line one\nline three\n"
 
     # Claim line 2 in old source
-    old_ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[]
-    )
+    old_ownership = BatchOwnership.from_presence_lines(["2"], [])
 
     # Should fail because line 2 cannot be uniquely mapped
-    with pytest.raises(ValueError, match="Cannot remap claimed line"):
+    with pytest.raises(ValueError, match="Cannot remap presence line"):
         remap_batch_ownership_to_new_source(
             ownership=old_ownership,
             old_source_content=old_source,
@@ -175,9 +169,9 @@ def test_remap_fails_when_anchor_removed_in_new_source():
     new_source = b"line one\nline three\n"
 
     # Anchor deletion at line 2
-    old_ownership = BatchOwnership(
-        claimed_lines=[],
-        deletions=[
+    old_ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
             DeletionClaim(anchor_line=2, content_lines=[b"deleted\n"])
         ]
     )
@@ -198,10 +192,7 @@ def test_remap_preserves_multiple_claimed_line_ranges():
     new_source = b"x\ny\na\nb\nc\nd\ne\nf\n"
 
     # Claim lines 1-2 and 5-6 in old source
-    old_ownership = BatchOwnership(
-        claimed_lines=["1-2", "5-6"],
-        deletions=[]
-    )
+    old_ownership = BatchOwnership.from_presence_lines(["1-2", "5-6"], [])
 
     new_ownership = remap_batch_ownership_to_new_source(
         ownership=old_ownership,
@@ -210,7 +201,7 @@ def test_remap_preserves_multiple_claimed_line_ranges():
     )
 
     # Lines 1-2 → 3-4, lines 5-6 → 7-8
-    assert new_ownership.claimed_lines == ["3-4,7-8"]
+    assert new_ownership.presence_claims[0].source_lines == ["3-4,7-8"]
 
 
 def test_remap_preserves_deletion_content():
@@ -220,9 +211,9 @@ def test_remap_preserves_deletion_content():
 
     deletion_content = [b"deleted line 1\n", b"deleted line 2\n"]
 
-    old_ownership = BatchOwnership(
-        claimed_lines=[],
-        deletions=[
+    old_ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
             DeletionClaim(anchor_line=1, content_lines=deletion_content)
         ]
     )
@@ -242,13 +233,13 @@ def test_remap_preserves_explicit_replacement_units():
     old_source = b"new value\nanchor\n"
     new_source = b"prefix\nnew value\nanchor\n"
 
-    old_ownership = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[
+    old_ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
             DeletionClaim(anchor_line=2, content_lines=[b"old value\n"]),
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
         ],
     )
 
@@ -258,57 +249,57 @@ def test_remap_preserves_explicit_replacement_units():
         new_source_content=new_source,
     )
 
-    assert new_ownership.claimed_lines == ["2"]
+    assert new_ownership.presence_claims[0].source_lines == ["2"]
     assert new_ownership.deletions[0].anchor_line == 3
     assert new_ownership.replacement_units == [
-        ReplacementUnit(claimed_lines=["2"], deletion_indices=[0]),
+        ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
     ]
 
 
 def test_merge_coalesces_overlapping_replacement_units_after_deduplication():
     """Deduplicated deletion claims should keep replacement metadata disjoint."""
     deletion = DeletionClaim(anchor_line=None, content_lines=[b"old value\n"])
-    existing = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[deletion],
+    existing = BatchOwnership.from_presence_lines(
+        ["1"],
+        [deletion],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
         ],
     )
-    new = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[
+    new = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old value\n"]),
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["2"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
         ],
     )
 
     merged = merge_batch_ownership(existing, new)
 
-    assert merged.claimed_lines == ["1-2"]
+    assert merged.presence_claims[0].source_lines == ["1-2"]
     assert merged.deletions == [deletion]
     assert merged.replacement_units == [
-        ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+        ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
     ]
 
 
 def test_merge_ignores_boolean_replacement_unit_deletion_indices():
     """JSON booleans should not be accepted as deletion indexes."""
-    new = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[
+    new = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old one\n"]),
             DeletionClaim(anchor_line=None, content_lines=[b"old two\n"]),
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1"], deletion_indices=[True]),
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[True]),
         ],
     )
 
     merged = merge_batch_ownership(
-        BatchOwnership(claimed_lines=[], deletions=[]),
+        BatchOwnership.from_presence_lines([], []),
         new,
     )
 
@@ -319,10 +310,7 @@ def test_advance_source_preserves_claimed_lines_missing_from_working_tree():
     """Previously discarded claimed lines remain available in advanced source."""
     old_source = b"owned one\nowned two\nremaining change\n"
     working_tree = b"remaining change\nnew later change\n"
-    ownership = BatchOwnership(
-        claimed_lines=["1-2"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["1-2"], [])
 
     new_source, source_line_map = _advance_source_content_preserving_existing_presence(
         old_source_content=old_source,
@@ -335,17 +323,14 @@ def test_advance_source_preserves_claimed_lines_missing_from_working_tree():
     )
 
     assert new_source == b"owned one\nowned two\nremaining change\nnew later change\n"
-    assert remapped.claimed_lines == ["1-2"]
+    assert remapped.presence_claims[0].source_lines == ["1-2"]
 
 
 def test_advance_source_tracks_working_line_provenance_for_ambiguous_duplicates():
     """Synthesized source should remember working-line identity."""
     old_source = b"owned before\nsame\nsame\nowned after\n"
     working_tree = b"same\nsame\n"
-    ownership = BatchOwnership(
-        claimed_lines=["1,4"],
-        deletions=[],
-    )
+    ownership = BatchOwnership.from_presence_lines(["1,4"], [])
 
     advanced = _advance_source_content_preserving_existing_presence_with_provenance(
         old_source_content=old_source,

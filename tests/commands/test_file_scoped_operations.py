@@ -525,7 +525,7 @@ class TestShowFileFlag:
 
         metadata = read_batch_metadata("body-only")
         file_metadata = metadata["files"]["module.py"]
-        assert file_metadata["claimed_lines"] == ["61"]
+        assert file_metadata["presence_claims"][0]["source_lines"] == ["61"]
         assert file_metadata["deletions"][0]["after_source_line"] == 60
 
         command_show_from_batch("body-only")

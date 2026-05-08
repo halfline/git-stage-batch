@@ -5,7 +5,12 @@ import pytest
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.batch.merge import merge_batch, discard_batch
 from git_stage_batch.exceptions import MergeError
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.ownership import (
+    BaselineReference,
+    BatchOwnership,
+    DeletionClaim,
+    ReplacementUnit,
+)
 
 
 class TestMatchLines:
@@ -175,6 +180,93 @@ class TestMergeBatch:
         # Should preserve extras
         assert result == working
 
+    def test_baseline_referenced_presence_is_noop_when_already_present(self):
+        """Baseline-coordinate insertion fallback should satisfy, not duplicate."""
+        source = b"base\nfoo\nbar\n"
+        working = b"base\nfoo\nbar\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [],
+            baseline_references={
+                2: BaselineReference(
+                    after_line=1,
+                    after_content=b"base",
+                    before_line=2,
+                    before_content=b"bar",
+                    has_before_line=True,
+                )
+            },
+        )
+
+        result = merge_batch(source, ownership, working)
+
+        assert result == working
+
+    def test_baseline_referenced_presence_inserts_when_missing(self):
+        """Baseline-coordinate insertion fallback still handles baseline targets."""
+        source = b"base\nfoo\nbar\n"
+        working = b"base\nbar\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [],
+            baseline_references={
+                2: BaselineReference(
+                    after_line=1,
+                    after_content=b"base",
+                    before_line=2,
+                    before_content=b"bar",
+                    has_before_line=True,
+                )
+            },
+        )
+
+        result = merge_batch(source, ownership, working)
+
+        assert result == source
+
+    def test_baseline_referenced_noncontiguous_presence_is_noop_when_source_matches(self):
+        """Already-satisfied additions may be interleaved with unclaimed source lines."""
+        source = b"line1\nline2\nline3\nline4\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2,4"],
+            [],
+            baseline_references={
+                line: BaselineReference(
+                    after_line=1,
+                    after_content=b"line1",
+                    before_line=None,
+                    has_before_line=False,
+                )
+                for line in (2, 4)
+            },
+        )
+
+        result = merge_batch(source, ownership, source)
+
+        assert result == source
+
+    def test_baseline_referenced_noncontiguous_presence_inserts_subset_when_missing(self):
+        """Baseline-coordinate insertion can stage selected additions without siblings."""
+        source = b"line1\nline2\nline3\nline4\n"
+        working = b"line1\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2,4"],
+            [],
+            baseline_references={
+                line: BaselineReference(
+                    after_line=1,
+                    after_content=b"line1",
+                    before_line=None,
+                    has_before_line=False,
+                )
+                for line in (2, 4)
+            },
+        )
+
+        result = merge_batch(source, ownership, working)
+
+        assert result == b"line1\nline2\nline4\n"
+
     def test_merge_with_deletion_suppresses_content(self):
         """Test that deletion constraints suppress matching content."""
         source = b"line1\nline2\nline3\n"
@@ -187,6 +279,130 @@ class TestMergeBatch:
 
         # Should remove the unwanted line
         assert result == b"line1\nline2\nline3\n"
+
+    def test_baseline_referenced_absence_suppresses_when_source_anchor_missing(self):
+        """Absence-only fallback should use exact baseline coordinates."""
+        source = b"line1\nnew context\nline3\n"
+        working = b"line1\nold value\nline3\n"
+        ownership = BatchOwnership.from_presence_lines(
+            [],
+            [
+                DeletionClaim(
+                    anchor_line=2,
+                    content_lines=[b"old value\n"],
+                    baseline_reference=BaselineReference(after_line=1),
+                )
+            ],
+        )
+
+        result = merge_batch(source, ownership, working)
+
+        assert result == b"line1\nline3\n"
+
+    def test_baseline_referenced_absence_is_noop_when_already_absent(self):
+        """Already-satisfied absence constraints should not block a round trip."""
+        ownership = BatchOwnership.from_presence_lines(
+            [],
+            [
+                DeletionClaim(
+                    anchor_line=1,
+                    content_lines=[b"old value\n"],
+                    baseline_reference=BaselineReference(after_line=1),
+                )
+            ],
+        )
+
+        result = merge_batch(b"", ownership, b"")
+
+        assert result == b""
+
+    def test_baseline_referenced_replacement_is_noop_when_source_matches(self):
+        """Applying replacement ownership back to its own source is a no-op."""
+        source = b"A\nsame\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["1"],
+            [
+                DeletionClaim(
+                    anchor_line=None,
+                    content_lines=[b"same\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=None,
+                        before_line=2,
+                        before_content=b"same",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                1: BaselineReference(
+                    after_line=None,
+                    before_line=2,
+                    before_content=b"same",
+                    has_before_line=True,
+                )
+            },
+            replacement_units=[
+                ReplacementUnit(
+                    presence_lines=["1"],
+                    deletion_indices=[0],
+                )
+            ],
+        )
+
+        result = merge_batch(source, ownership, source)
+
+        assert result == source
+
+    def test_baseline_referenced_independent_presence_and_absence(self):
+        """Independent baseline-coordinate insertions and removals can compose."""
+        source = b"x\nsame\nsame\nc\nsame\nc\n"
+        working = b"same\na\nc\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["1"],
+            [
+                DeletionClaim(
+                    anchor_line=5,
+                    content_lines=[b"a\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"same",
+                        before_line=3,
+                        before_content=b"c",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                1: BaselineReference(
+                    after_line=None,
+                    before_line=1,
+                    before_content=b"same",
+                    has_before_line=True,
+                )
+            },
+        )
+
+        result = merge_batch(source, ownership, working)
+
+        assert result == b"x\nsame\nc\n"
+
+    def test_baseline_referenced_absence_declines_when_content_changed(self):
+        """Baseline-coordinate fallback should not remove changed target bytes."""
+        source = b"line1\nnew context\nline3\n"
+        working = b"line1\nother value\nline3\n"
+        ownership = BatchOwnership.from_presence_lines(
+            [],
+            [
+                DeletionClaim(
+                    anchor_line=2,
+                    content_lines=[b"old value\n"],
+                    baseline_reference=BaselineReference(after_line=1),
+                )
+            ],
+        )
+
+        with pytest.raises(MergeError):
+            merge_batch(source, ownership, working)
 
     def test_merge_with_deletion_after_line(self):
         """Test deletion constraint removes content at specific position."""

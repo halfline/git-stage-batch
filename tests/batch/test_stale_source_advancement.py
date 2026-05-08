@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from git_stage_batch.batch.ownership import (
+    BaselineReference,
     BatchOwnership,
     DeletionClaim,
     ReplacementUnit,
@@ -282,6 +283,41 @@ def test_merge_coalesces_overlapping_replacement_units_after_deduplication():
     assert merged.deletions == [deletion]
     assert merged.replacement_units == [
         ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+    ]
+
+
+def test_merge_deduplicated_deletions_keeps_stronger_baseline_reference():
+    """Deduplicated deletions should keep baseline metadata from new claims."""
+    existing = BatchOwnership.from_presence_lines(
+        [],
+        [DeletionClaim(anchor_line=1, content_lines=[b"old value\n"])],
+    )
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"anchor",
+        before_line=2,
+        before_content=b"next",
+        has_before_line=True,
+    )
+    new = BatchOwnership.from_presence_lines(
+        [],
+        [
+            DeletionClaim(
+                anchor_line=1,
+                content_lines=[b"old value\n"],
+                baseline_reference=reference,
+            ),
+        ],
+    )
+
+    merged = merge_batch_ownership(existing, new)
+
+    assert merged.deletions == [
+        DeletionClaim(
+            anchor_line=1,
+            content_lines=[b"old value\n"],
+            baseline_reference=reference,
+        )
     ]
 
 

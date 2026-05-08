@@ -10,7 +10,12 @@ from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.merge import merge_batch
 from git_stage_batch.batch.storage import add_file_to_batch, get_batch_diff, read_file_from_batch
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim, ReplacementUnit
+from git_stage_batch.batch.ownership import (
+    BaselineReference,
+    BatchOwnership,
+    DeletionClaim,
+    ReplacementUnit,
+)
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.git import create_git_blob
 
@@ -130,6 +135,45 @@ def test_legacy_replacement_units_metadata_loads_presence_lines(temp_git_repo):
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
     ]
+
+
+def test_add_file_to_batch_persists_baseline_references(temp_git_repo):
+    """Presence and absence claims should share baseline reference metadata."""
+    create_batch("test-batch", "Test")
+
+    presence_reference = BaselineReference(
+        after_line=1,
+        after_content=b"line1",
+        before_line=3,
+        before_content=b"line3",
+        has_before_line=True,
+    )
+    deletion_reference = BaselineReference(after_line=1)
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            DeletionClaim(
+                anchor_line=1,
+                content_lines=[b"old line\n"],
+                baseline_reference=deletion_reference,
+            ),
+        ],
+        baseline_references={2: presence_reference},
+    )
+
+    add_file_to_batch("test-batch", "file.txt", ownership)
+
+    file_meta = read_batch_metadata("test-batch")["files"]["file.txt"]
+    assert file_meta["presence_claims"][0]["baseline_references"]["2"][
+        "after_line"
+    ] == 1
+    assert file_meta["deletions"][0]["baseline_reference"] == {
+        "after_line": 1,
+    }
+
+    round_tripped = BatchOwnership.from_metadata_dict(file_meta)
+    assert round_tripped.presence_baseline_references()[2] == presence_reference
+    assert round_tripped.deletions[0].baseline_reference == deletion_reference
 
 
 def test_empty_replacement_units_are_omitted_from_metadata():

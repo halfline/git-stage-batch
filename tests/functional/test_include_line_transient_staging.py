@@ -1,4 +1,4 @@
-"""Functional tests for semantic line-level staging."""
+"""Functional tests for include --line transient batch staging."""
 
 import subprocess
 
@@ -40,7 +40,7 @@ def _index_bytes(repo, path: str) -> bytes:
     return result.stdout
 
 
-def test_semantic_partial_staging_first_replace_row(functional_repo):
+def test_include_line_transient_staging_first_replace_row(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\n")
     (functional_repo / "file.txt").write_text("A\nB\n")
 
@@ -50,7 +50,7 @@ def test_semantic_partial_staging_first_replace_row(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "A\nb\n"
 
 
-def test_semantic_partial_staging_second_replace_row(functional_repo):
+def test_include_line_transient_staging_second_replace_row(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\n")
     (functional_repo / "file.txt").write_text("A\nB\n")
 
@@ -60,7 +60,7 @@ def test_semantic_partial_staging_second_replace_row(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "a\nB\n"
 
 
-def test_semantic_partial_staging_same_cardinality_replacement_by_position(functional_repo):
+def test_include_line_transient_staging_same_cardinality_replacement_by_position(functional_repo):
     _commit_file(functional_repo, "file.txt", "red\nblue\n")
     (functional_repo / "file.txt").write_text("circle\nsquare\n")
 
@@ -70,7 +70,7 @@ def test_semantic_partial_staging_same_cardinality_replacement_by_position(funct
     assert _index_content(functional_repo, "file.txt") == "circle\nblue\n"
 
 
-def test_semantic_partial_staging_full_replace_selection(functional_repo):
+def test_include_line_transient_staging_full_replace_selection(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\n")
     (functional_repo / "file.txt").write_text("A\nB\n")
 
@@ -80,7 +80,7 @@ def test_semantic_partial_staging_full_replace_selection(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "A\nB\n"
 
 
-def test_semantic_partial_staging_pure_addition(functional_repo):
+def test_include_line_transient_staging_pure_addition(functional_repo):
     _commit_file(functional_repo, "file.txt", "base\n")
     (functional_repo / "file.txt").write_text("base\nfoo\nbar\n")
 
@@ -90,7 +90,7 @@ def test_semantic_partial_staging_pure_addition(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "base\nfoo\n"
 
 
-def test_semantic_partial_staging_pure_addition_preserves_blank_anchor(functional_repo):
+def test_include_line_transient_staging_pure_addition_preserves_blank_anchor(functional_repo):
     _commit_file(
         functional_repo,
         "CONTRIBUTING.md",
@@ -184,7 +184,7 @@ def test_discard_file_line_pure_deletion_preserves_anchor(functional_repo):
     )
 
 
-def test_semantic_partial_staging_pure_deletion(functional_repo):
+def test_include_line_transient_staging_pure_deletion(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\nc\n")
     (functional_repo / "file.txt").write_text("a\nc\n")
 
@@ -194,7 +194,7 @@ def test_semantic_partial_staging_pure_deletion(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "a\nc\n"
 
 
-def test_semantic_partial_staging_falls_back_for_partial_replace_row(functional_repo):
+def test_include_line_transient_staging_handles_partial_replace_row(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\n")
     (functional_repo / "file.txt").write_text("A\nB\n")
 
@@ -205,7 +205,7 @@ def test_semantic_partial_staging_falls_back_for_partial_replace_row(functional_
     assert _index_content(functional_repo, "file.txt") == "b\n"
 
 
-def test_semantic_partial_staging_falls_back_for_ambiguous_replace_rows(functional_repo):
+def test_include_line_uses_batch_order_for_ambiguous_replace_rows(functional_repo):
     _commit_file(functional_repo, "file.txt", "same\nsame\n")
     (functional_repo / "file.txt").write_text("A\nB\n")
 
@@ -213,10 +213,10 @@ def test_semantic_partial_staging_falls_back_for_ambiguous_replace_rows(function
     result = git_stage_batch("include", "--line", "1,3")
 
     assert result.returncode == 0
-    assert _index_content(functional_repo, "file.txt") == "same\nA\n"
+    assert _index_content(functional_repo, "file.txt") == "A\nsame\n"
 
 
-def test_semantic_partial_staging_falls_back_for_reorder_like_replacement(functional_repo):
+def test_include_line_uses_batch_order_for_reorder_like_replacement(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\n")
     (functional_repo / "file.txt").write_text("B\nA\n")
 
@@ -224,10 +224,22 @@ def test_semantic_partial_staging_falls_back_for_reorder_like_replacement(functi
     result = git_stage_batch("include", "--line", "1,3")
 
     assert result.returncode == 0
-    assert _index_content(functional_repo, "file.txt") == "b\nB\n"
+    assert _index_content(functional_repo, "file.txt") == "B\nb\n"
 
 
-def test_semantic_partial_staging_replacement_preserves_missing_trailing_newline(functional_repo):
+def test_include_line_batch_round_trip_without_intervening_tree_change(functional_repo):
+    _commit_file(functional_repo, "file.txt", "a\nb\n")
+    (functional_repo / "file.txt").write_text("A\nB\n")
+
+    git_stage_batch("start")
+    git_stage_batch("include", "--to", "round-trip", "--line", "1,3")
+    git_stage_batch("include", "--from", "round-trip", "--file", "file.txt")
+
+    assert _index_content(functional_repo, "file.txt") == "A\nb\n"
+    assert (functional_repo / "file.txt").read_text() == "A\nB\n"
+
+
+def test_include_line_transient_staging_replacement_preserves_missing_trailing_newline(functional_repo):
     _commit_file_bytes(functional_repo, "file.txt", b"a\nb")
     (functional_repo / "file.txt").write_bytes(b"A\nB")
 
@@ -237,7 +249,23 @@ def test_semantic_partial_staging_replacement_preserves_missing_trailing_newline
     assert _index_bytes(functional_repo, "file.txt") == b"A\nb"
 
 
-def test_semantic_partial_staging_addition_preserves_missing_trailing_newline(functional_repo):
+def test_include_line_transient_staging_preserves_crlf_line_endings(functional_repo):
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    _commit_file_bytes(functional_repo, "file.txt", b"a\r\nb\r\nc\r\n")
+    (functional_repo / "file.txt").write_bytes(b"a\r\nB\r\nc\r\n")
+
+    git_stage_batch("start")
+    git_stage_batch("include", "--line", "1-2")
+
+    assert _index_bytes(functional_repo, "file.txt") == b"a\r\nB\r\nc\r\n"
+
+
+def test_include_line_transient_staging_addition_preserves_missing_trailing_newline(functional_repo):
     _commit_file_bytes(functional_repo, "file.txt", b"base\n")
     (functional_repo / "file.txt").write_bytes(b"base\nfoo")
 
@@ -247,7 +275,7 @@ def test_semantic_partial_staging_addition_preserves_missing_trailing_newline(fu
     assert _index_bytes(functional_repo, "file.txt") == b"base\nfoo"
 
 
-def test_semantic_partial_staging_fallback_preserves_missing_trailing_newline(functional_repo):
+def test_include_line_transient_staging_preserves_missing_trailing_newline(functional_repo):
     _commit_file_bytes(functional_repo, "file.txt", b"a\nb")
     (functional_repo / "file.txt").write_bytes(b"A\nB")
 
@@ -257,7 +285,7 @@ def test_semantic_partial_staging_fallback_preserves_missing_trailing_newline(fu
     assert _index_bytes(functional_repo, "file.txt") == b"b"
 
 
-def test_semantic_partial_staging_preserves_unrelated_index_state(functional_repo):
+def test_include_line_transient_staging_preserves_unrelated_index_state_for_paired_lines(functional_repo):
     _commit_file(functional_repo, "file.txt", "x\na\nb\ny\n")
 
     file_path = functional_repo / "file.txt"
@@ -272,7 +300,7 @@ def test_semantic_partial_staging_preserves_unrelated_index_state(functional_rep
     assert _index_content(functional_repo, "file.txt") == "X\nA\nb\ny\n"
 
 
-def test_semantic_partial_staging_fallback_preserves_unrelated_index_state(functional_repo):
+def test_include_line_transient_staging_preserves_unrelated_index_state_for_single_line(functional_repo):
     _commit_file(functional_repo, "file.txt", "x\na\nb\ny\n")
 
     file_path = functional_repo / "file.txt"
@@ -287,7 +315,7 @@ def test_semantic_partial_staging_fallback_preserves_unrelated_index_state(funct
     assert _index_content(functional_repo, "file.txt") == "X\nb\ny\n"
 
 
-def test_semantic_partial_staging_falls_back_for_replacement_plus_trailing_insertion(functional_repo):
+def test_include_line_transient_staging_handles_replacement_plus_trailing_insertion(functional_repo):
     _commit_file(functional_repo, "file.txt", "keep\nold value\n")
     (functional_repo / "file.txt").write_text("keep\nworking value\nextra line\n")
 
@@ -298,7 +326,7 @@ def test_semantic_partial_staging_falls_back_for_replacement_plus_trailing_inser
     assert _index_content(functional_repo, "file.txt") == "keep\nworking value\n"
 
 
-def test_semantic_partial_staging_falls_back_for_move_plus_edit(functional_repo):
+def test_include_line_transient_staging_handles_move_plus_edit(functional_repo):
     _commit_file(
         functional_repo,
         "workflow.yml",

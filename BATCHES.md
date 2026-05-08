@@ -596,6 +596,27 @@ way that is useful for selection. The merge model works in source-space
 coordinates and structural alignment. They are related, but they are not the
 same layer and should not be treated as interchangeable.
 
+### Live `include --line`
+
+Live line inclusion uses the batch constraint model directly. The command creates
+transient batch ownership for the selected live hunk lines, merges that ownership
+into the index target with `merge_batch()`, and independently verifies that
+merging the same ownership into the current working tree would leave the working
+tree unchanged. The transient batch state is deleted before the command returns.
+
+The transient ownership builder scans the full live hunk, not just the selected
+rows, so unselected context can still provide source and baseline boundaries for
+selected absence claims. Replacement coupling is supplied from before/after file
+comparison as semantic replacement runs. It is not inferred from the displayed
+diff layout: same-sized runs may expose positional row units, while 1-to-N and
+N-to-1 replacements are represented as one run and only become a replacement
+unit when the whole run is selected.
+
+If the transient batch path cannot prove that working-tree unchanged property,
+the command refuses the line selection. It does not fall back to the older
+semantic matcher or raw line staging path, because those paths can reinterpret
+stale or ambiguous display IDs through a different model.
+
 ### Attribution for the live working tree
 
 Live `show` filtering uses file-centric attribution built in

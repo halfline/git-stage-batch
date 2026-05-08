@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from ..core.line_selection import format_line_ids, parse_line_selection
+from ..core.models import LineEntry
 from ..data.batch_sources import create_batch_source_commit
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
@@ -245,6 +246,14 @@ class ReplacementUnit:
             presence_lines=data.get("presence_lines", data.get("claimed_lines", [])),
             deletion_indices=data.get("deletion_indices", []),
         )
+
+
+@dataclass(frozen=True)
+class ReplacementLineRun:
+    """One file-derived replacement run in old-file and new-file coordinates."""
+
+    old_line_numbers: tuple[int, ...]
+    new_line_numbers: tuple[int, ...]
 
 
 @dataclass
@@ -782,6 +791,285 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
             current_deletion_lines.append(line.text_bytes + b'\n')
 
     # Flush any final deletion run
+    flush_deletion_run()
+
+    return BatchOwnership(
+        presence_claims=_presence_claims_from_source_lines(
+            set(claimed_source_lines),
+            presence_baseline_references,
+        ),
+        deletions=deletion_claims,
+        replacement_units=_normalize_replacement_units(
+            replacement_units,
+            deletion_count=len(deletion_claims),
+        ),
+    )
+
+
+def _old_line_content_by_number(hunk_lines: list[LineEntry]) -> dict[int, bytes]:
+    return {
+        line.old_line_number: line.text_bytes
+        for line in hunk_lines
+        if line.old_line_number is not None and line.kind in {" ", "-"}
+    }
+
+
+def _baseline_reference_for_deletion_run(
+    deletion_lines: list[LineEntry],
+    old_line_content: dict[int, bytes],
+) -> BaselineReference | None:
+    old_line_numbers = [
+        line.old_line_number
+        for line in deletion_lines
+        if line.old_line_number is not None
+    ]
+    if not old_line_numbers:
+        return None
+
+    first_old_line = min(old_line_numbers)
+    last_old_line = max(old_line_numbers)
+    after_line = first_old_line - 1 if first_old_line > 1 else None
+    before_line = last_old_line + 1
+    before_content = old_line_content.get(before_line)
+    return BaselineReference(
+        after_line=after_line,
+        after_content=(
+            old_line_content.get(after_line)
+            if after_line is not None else
+            None
+        ),
+        has_after_line=True,
+        before_line=before_line if before_content is not None else None,
+        before_content=before_content,
+        has_before_line=before_content is not None,
+    )
+
+
+def translate_hunk_selection_to_batch_ownership(
+    hunk_lines: list[LineEntry],
+    selected_display_ids: set[int],
+    *,
+    replacement_line_runs: list[ReplacementLineRun] | None = None,
+) -> BatchOwnership:
+    """Translate selected live-hunk IDs while retaining full-hunk boundaries.
+
+    Unlike translate_lines_to_batch_ownership(), this scans the complete live
+    diff hunk. Unselected lines are not claimed, but they still delimit selected
+    deletion runs and provide source/baseline boundary metadata for conservative
+    round trips through batch storage. The IDs are user-facing selection handles;
+    the input is not rendered batch-display output.
+
+    Replacement coupling is supplied by the caller as before/after line-number
+    runs derived from the full files represented by the hunk. This function does
+    not infer semantic replacement units from the pregenerated diff layout.
+    """
+    claimed_source_lines: list[int] = []
+    presence_baseline_references: dict[int, BaselineReference] = {}
+    deletion_claims: list[DeletionClaim] = []
+    replacement_units: list[ReplacementUnit] = []
+    old_line_content = _old_line_content_by_number(hunk_lines)
+    consumed_replacement_ids: set[int] = set()
+    deletion_lines_by_old_line = {
+        line.old_line_number: line
+        for line in hunk_lines
+        if line.kind == "-" and line.old_line_number is not None
+    }
+    addition_lines_by_new_line = {
+        line.new_line_number: line
+        for line in hunk_lines
+        if line.kind == "+" and line.new_line_number is not None
+    }
+
+    def add_replacement_unit(
+        selected_old_lines: list[LineEntry],
+        selected_new_lines: list[LineEntry],
+    ) -> None:
+        selected_source_lines: set[int] = set()
+        for new_line in selected_new_lines:
+            if new_line.source_line is None:
+                raise ValueError(
+                    f"Cannot translate line to batch ownership: source_line is None "
+                    f"(kind={new_line.kind!r}, text={new_line.text!r}). "
+                    f"Batch source is stale and must be advanced before translation."
+                )
+
+            claimed_source_lines.append(new_line.source_line)
+            selected_source_lines.add(new_line.source_line)
+            if new_line.has_baseline_reference_after:
+                presence_baseline_references[new_line.source_line] = BaselineReference(
+                    after_line=new_line.baseline_reference_after_line,
+                    after_content=new_line.baseline_reference_after_text_bytes,
+                    has_after_line=new_line.has_baseline_reference_after,
+                    before_line=new_line.baseline_reference_before_line,
+                    before_content=new_line.baseline_reference_before_text_bytes,
+                    has_before_line=new_line.has_baseline_reference_before,
+                )
+
+        deletion_claims.append(
+            DeletionClaim(
+                anchor_line=selected_old_lines[0].source_line,
+                content_lines=[
+                    old_line.text_bytes + b"\n"
+                    for old_line in selected_old_lines
+                ],
+                baseline_reference=_baseline_reference_for_deletion_run(
+                    selected_old_lines,
+                    old_line_content,
+                ),
+            )
+        )
+        replacement_units.append(
+            ReplacementUnit(
+                presence_lines=_format_line_set(selected_source_lines),
+                deletion_indices=[len(deletion_claims) - 1],
+            )
+        )
+        consumed_replacement_ids.update(
+            line_id
+            for line_id in [
+                *(line.id for line in selected_old_lines),
+                *(line.id for line in selected_new_lines),
+            ]
+            if line_id is not None
+        )
+
+    for replacement_run in replacement_line_runs or []:
+        old_lines = [
+            deletion_lines_by_old_line.get(old_line_number)
+            for old_line_number in replacement_run.old_line_numbers
+        ]
+        new_lines = [
+            addition_lines_by_new_line.get(new_line_number)
+            for new_line_number in replacement_run.new_line_numbers
+        ]
+        if (
+            any(line is None for line in old_lines)
+            or any(line is None for line in new_lines)
+        ):
+            continue
+
+        old_hunk_lines = [line for line in old_lines if line is not None]
+        new_hunk_lines = [line for line in new_lines if line is not None]
+
+        if len(old_hunk_lines) == len(new_hunk_lines):
+            for old_line, new_line in zip(old_hunk_lines, new_hunk_lines):
+                old_selected = (
+                    old_line.id is not None
+                    and old_line.id in selected_display_ids
+                )
+                new_selected = (
+                    new_line.id is not None
+                    and new_line.id in selected_display_ids
+                )
+                if old_selected and new_selected:
+                    add_replacement_unit([old_line], [new_line])
+            continue
+
+        selected_old_lines = [
+            line for line in old_hunk_lines
+            if line.id is not None and line.id in selected_display_ids
+        ]
+        selected_new_lines = [
+            line for line in new_hunk_lines
+            if line.id is not None and line.id in selected_display_ids
+        ]
+        if (
+            len(selected_old_lines) == len(old_hunk_lines)
+            and len(selected_new_lines) == len(new_hunk_lines)
+            and selected_old_lines
+            and selected_new_lines
+        ):
+            add_replacement_unit(selected_old_lines, selected_new_lines)
+
+    current_deletion_anchor: int | None = None
+    current_deletion_lines: list[bytes] = []
+    current_deletion_hunk_lines: list[LineEntry] = []
+    active_replacement_unit: ReplacementUnit | None = None
+
+    def flush_deletion_run() -> list[int]:
+        nonlocal current_deletion_anchor
+        nonlocal current_deletion_lines
+        nonlocal current_deletion_hunk_lines
+        if not current_deletion_lines:
+            return []
+
+        deletion_claims.append(
+            DeletionClaim(
+                anchor_line=current_deletion_anchor,
+                content_lines=current_deletion_lines[:],
+                baseline_reference=_baseline_reference_for_deletion_run(
+                    current_deletion_hunk_lines,
+                    old_line_content,
+                ),
+            )
+        )
+        deletion_index = len(deletion_claims) - 1
+        current_deletion_lines = []
+        current_deletion_hunk_lines = []
+        return [deletion_index]
+
+    for line in hunk_lines:
+        is_selected = (
+            line.id is not None
+            and line.id in selected_display_ids
+            and line.id not in consumed_replacement_ids
+        )
+
+        if line.kind in {" ", "+"}:
+            flushed_deletion_indices = flush_deletion_run()
+
+            if is_selected:
+                if line.source_line is None:
+                    raise ValueError(
+                        f"Cannot translate line to batch ownership: source_line is None "
+                        f"(kind={line.kind!r}, text={line.text!r}). "
+                        f"Batch source is stale and must be advanced before translation."
+                    )
+
+                claimed_source_lines.append(line.source_line)
+                if line.has_baseline_reference_after:
+                    presence_baseline_references[line.source_line] = BaselineReference(
+                        after_line=line.baseline_reference_after_line,
+                        after_content=line.baseline_reference_after_text_bytes,
+                        has_after_line=line.has_baseline_reference_after,
+                        before_line=line.baseline_reference_before_line,
+                        before_content=line.baseline_reference_before_text_bytes,
+                        has_before_line=line.has_baseline_reference_before,
+                    )
+
+                if line.kind == "+":
+                    if flushed_deletion_indices:
+                        active_replacement_unit = ReplacementUnit(
+                            presence_lines=[],
+                            deletion_indices=flushed_deletion_indices,
+                        )
+                        replacement_units.append(active_replacement_unit)
+
+                    if active_replacement_unit is not None:
+                        claimed = _parse_line_ranges(active_replacement_unit.presence_lines)
+                        claimed.add(line.source_line)
+                        active_replacement_unit.presence_lines = _format_line_set(claimed)
+                else:
+                    active_replacement_unit = None
+            else:
+                active_replacement_unit = None
+
+            if line.source_line is not None:
+                current_deletion_anchor = line.source_line
+            continue
+
+        if line.kind == "-":
+            if not is_selected:
+                flush_deletion_run()
+                active_replacement_unit = None
+                continue
+
+            active_replacement_unit = None
+            if not current_deletion_lines:
+                current_deletion_anchor = line.source_line
+            current_deletion_lines.append(line.text_bytes + b"\n")
+            current_deletion_hunk_lines.append(line)
+
     flush_deletion_run()
 
     return BatchOwnership(

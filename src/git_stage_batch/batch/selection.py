@@ -19,8 +19,80 @@ from ..utils.file_patterns import resolve_gitignore_style_patterns
 
 if TYPE_CHECKING:
     from ..exceptions import AtomicUnitError
+    from ..core.models import LineLevelChange
     from ..core.models import RenderedBatchDisplay
     from ..data.file_review_state import FileReviewAction
+
+
+def _default_live_file_review_command(file_path: str) -> str:
+    return f"git-stage-batch show --file {file_path}"
+
+
+def line_selection_not_valid_message(
+    *,
+    line_id_specification: str,
+    file_path: str,
+    review_command: str | None = None,
+) -> str:
+    """Return the shared invalid line-selection message."""
+    command = review_command or _default_live_file_review_command(file_path)
+    return _(
+        "Line selection {lines} is not valid for {file}.\n"
+        "Run '{command}' and choose line IDs from the current file view."
+    ).format(lines=line_id_specification, file=file_path, command=command)
+
+
+def line_changes_display_ids(line_changes: 'LineLevelChange') -> set[int]:
+    """Return display IDs that are present in a loaded line view."""
+    return {
+        line.id
+        for line in line_changes.lines
+        if line.id is not None
+    }
+
+
+def missing_requested_display_ids(
+    line_changes: 'LineLevelChange',
+    requested_ids: set[int],
+) -> set[int]:
+    """Return requested display IDs that do not exist in the line view."""
+    return requested_ids - line_changes_display_ids(line_changes)
+
+
+def require_display_ids_available(
+    requested_ids: set[int],
+    available_ids: set[int],
+    *,
+    line_id_specification: str,
+    file_path: str,
+    review_command: str | None = None,
+) -> None:
+    """Reject a line selection if any requested display ID is unavailable."""
+    if requested_ids - available_ids:
+        exit_with_error(
+            line_selection_not_valid_message(
+                line_id_specification=line_id_specification,
+                file_path=file_path,
+                review_command=review_command,
+            )
+        )
+
+
+def require_line_selection_in_view(
+    line_changes: 'LineLevelChange',
+    requested_ids: set[int],
+    *,
+    line_id_specification: str,
+    review_command: str | None = None,
+) -> None:
+    """Reject a line selection if any requested ID is absent from a line view."""
+    require_display_ids_available(
+        requested_ids,
+        line_changes_display_ids(line_changes),
+        line_id_specification=line_id_specification,
+        file_path=line_changes.path,
+        review_command=review_command,
+    )
 
 
 def resolve_batch_file_scope(

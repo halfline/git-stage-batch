@@ -13,6 +13,7 @@ from ..core.line_selection import (
     read_line_ids_file,
     write_line_ids_file,
 )
+from ..batch.selection import require_line_selection_in_view
 from ..core.models import BinaryFileChange
 from ..data.hunk_tracking import (
     SelectedChangeKind,
@@ -275,6 +276,11 @@ def command_skip_line(line_id_specification: str, file: str | None = None) -> No
         line_changes = load_line_changes_from_state()
         if line_changes is None:
             raise NoMoreHunks()
+        require_line_selection_in_view(
+            line_changes,
+            set(requested_ids),
+            line_id_specification=line_id_specification,
+        )
 
         already_skipped_ids = (
             set(read_line_ids_file(get_processed_skip_ids_file_path()))

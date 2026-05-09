@@ -18,6 +18,7 @@ from ..batch.ownership import (
 )
 from ..batch.query import read_batch_metadata
 from ..batch.selection import (
+    require_display_ids_available,
     require_single_file_context_for_line_selection,
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
@@ -37,7 +38,6 @@ from ..data.file_review_state import (
     fresh_batch_review_selection_groups_for_action,
     read_last_file_review_state,
     resolve_batch_source_action_scope,
-    validate_pathless_review_line_action,
     validate_review_scoped_line_selection,
 )
 from ..data.hunk_tracking import (
@@ -448,7 +448,13 @@ def _reset_line_claims_for_file(
         exit_with_error(_("Failed to read batch source content for {file}").format(file=file_path))
     batch_source_content = batch_source_result.stdout
 
-    remaining_units = _partition_line_ownership_units(ownership, batch_source_content, lines_to_remove)[0]
+    remaining_units = _partition_line_ownership_units(
+        ownership,
+        batch_source_content,
+        lines_to_remove,
+        batch_name=batch_name,
+        file_path=file_path,
+    )[0]
 
     # Step 3: Validate remaining units have valid structure
     validate_ownership_units(remaining_units)
@@ -498,6 +504,8 @@ def _select_line_ownership_for_file(
         ownership,
         batch_source_result.stdout,
         lines_to_select,
+        batch_name=batch_name,
+        file_path=file_path,
     )
     validate_ownership_units(selected_units)
     return rebuild_ownership_from_units(selected_units)
@@ -507,10 +515,28 @@ def _partition_line_ownership_units(
     ownership: BatchOwnership,
     batch_source_content: bytes,
     selected_line_ids: set[int],
+    *,
+    batch_name: str,
+    file_path: str,
 ):
     """Partition ownership units by selected display line IDs."""
     # This uses the actual display model, not proximity heuristics
     units = build_ownership_units_from_display(ownership, batch_source_content)
+    available_ids = {
+        display_id
+        for unit in units
+        for display_id in unit.display_line_ids
+    }
+    require_display_ids_available(
+        selected_line_ids,
+        available_ids,
+        line_id_specification=format_line_ids(sorted(selected_line_ids)),
+        file_path=file_path,
+        review_command=(
+            "git-stage-batch show --from "
+            f"{shlex.quote(batch_name)} --file {shlex.quote(file_path)}"
+        ),
+    )
 
     # Step 2: Filter units by selected display IDs
     # This will raise MergeError if atomic units are partially selected

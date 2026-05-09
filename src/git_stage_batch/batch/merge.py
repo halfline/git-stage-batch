@@ -44,6 +44,33 @@ class RealizedEntry:
     is_claimed: bool = False  # True if from a claimed source line (presence constraint)
 
 
+def _detect_line_ending(content: bytes) -> bytes | None:
+    """Return the first line ending style found in content."""
+    for index, byte in enumerate(content):
+        if byte == 13:  # \r
+            if index + 1 < len(content) and content[index + 1] == 10:
+                return b"\r\n"
+            return b"\r"
+        if byte == 10:  # \n
+            return b"\n"
+    return None
+
+
+def _restore_line_endings(content: bytes, line_ending: bytes | None) -> bytes:
+    """Restore normalized LF content to the selected line ending style."""
+    if line_ending in (None, b"\n"):
+        return content
+    return content.replace(b"\n", line_ending)
+
+
+def _merge_result_line_ending(
+    primary_content: bytes,
+    fallback_content: bytes,
+) -> bytes | None:
+    """Choose the line ending style for bytes emitted from a merge."""
+    return _detect_line_ending(primary_content) or _detect_line_ending(fallback_content)
+
+
 @dataclass
 class BaselineRegion:
     """A source-space region with baseline restoration content.
@@ -1095,6 +1122,10 @@ def merge_batch(
         MergeError: If constraints cannot be reliably satisfied or structural
                     displacement is detected
     """
+    result_line_ending = _merge_result_line_ending(
+        working_content,
+        batch_source_content,
+    )
     working_normalized = working_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
     source_normalized = batch_source_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
 
@@ -1122,7 +1153,10 @@ def merge_batch(
         source_to_working_mapping=mapping,
     )
 
-    return b"".join(entry.content for entry in realized_entries)
+    return _restore_line_endings(
+        b"".join(entry.content for entry in realized_entries),
+        result_line_ending,
+    )
 
 
 def discard_batch(
@@ -1175,6 +1209,10 @@ def discard_batch(
     Raises:
         MergeError: If inverse operations cannot be reliably performed
     """
+    result_line_ending = _merge_result_line_ending(
+        working_content,
+        baseline_content or batch_source_content,
+    )
     working_normalized = working_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
     source_normalized = batch_source_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
     baseline_normalized = baseline_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
@@ -1213,7 +1251,10 @@ def discard_batch(
         deletion_claims
     )
 
-    return b"".join(entry.content for entry in realized_entries)
+    return _restore_line_endings(
+        b"".join(entry.content for entry in realized_entries),
+        result_line_ending,
+    )
 
 
 def _build_baseline_correspondence(

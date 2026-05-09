@@ -212,13 +212,8 @@ class TestBytesBasedSemantics:
         # "extra" should be removed (deletion after line 2)
         assert b"extra" not in result
 
-    def test_crlf_line_endings_normalized(self):
-        """CRLF line endings are normalized to LF in merge logic.
-
-        The merge logic normalizes all line endings to LF for consistency
-        (git's internal format). CRLF preservation happens at the working
-        tree layer, not in the merge logic.
-        """
+    def test_crlf_line_endings_preserved(self):
+        """CRLF line endings are preserved after normalized matching."""
         batch_source = b"line1\r\nline2-modified\r\nline3\r\n"
         working = b"line1\r\nline2\r\nline3\r\n"
 
@@ -229,10 +224,7 @@ class TestBytesBasedSemantics:
 
         result = merge_batch(batch_source, ownership, working)
 
-        # Line endings should be normalized to LF
-        assert b"\r\n" not in result
-        assert b"\n" in result
-        # Result should have the claimed content
+        assert result == b"line1\r\nline2-modified\r\nline3\r\n"
         assert b"line2-modified" in result
 
 

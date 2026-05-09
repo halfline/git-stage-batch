@@ -154,6 +154,16 @@ class TestMergeBatch:
         # Should insert line2 between line1 and line3
         assert result == b"line1\nline2\nline3\nline5\n"
 
+    def test_merge_preserves_target_crlf_endings(self):
+        """Merge should not turn a CRLF target into LF bytes."""
+        source = b"line1\r\nline2\r\nline3\r\n"
+        working = b"line1\r\nline3\r\n"
+        claimed = ["2"]
+
+        result = merge_batch(source, BatchOwnership(claimed, []), working)
+
+        assert result == b"line1\r\nline2\r\nline3\r\n"
+
     def test_merge_preserves_working_tree_extras(self):
         """Test that merge preserves working tree extras."""
         source = b"line1\nline2\nline3\n"
@@ -403,15 +413,14 @@ class TestMergeBatch:
         # Both occurrences should be suppressed
         assert result == b"line1\nline2\nline3\n"
 
-    def test_merge_normalizes_line_endings(self):
-        """Test that merge normalizes line endings."""
+    def test_merge_preserves_existing_crlf_line_endings(self):
+        """Test that merge keeps the target file's line endings."""
         source = b"line1\nline2\nline3\n"  # Already normalized
         working = b"line1\r\nline2\r\nline3\r\n"  # Windows line endings
 
         result = merge_batch(source, BatchOwnership([], []), working)
 
-        # Result should use \n (normalized)
-        assert result == b"line1\nline2\nline3\n"
+        assert result == working
 
     def test_merge_large_file_performance(self):
         """Test merge performance with large files (10k+ lines)."""

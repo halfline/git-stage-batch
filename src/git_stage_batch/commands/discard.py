@@ -23,6 +23,7 @@ from ..batch.ownership import (
     translate_lines_to_batch_ownership,
 )
 from ..batch.query import read_batch_metadata
+from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
 from ..batch.source_refresh import _refresh_selected_lines_against_source_content
 from ..batch.validation import batch_exists
@@ -486,6 +487,11 @@ def command_discard_line(line_id_specification: str, file: str | None = None) ->
             line_changes = _load_explicit_file_selection(target_file)
 
         requested_ids = parse_line_selection(line_id_specification)
+        require_line_selection_in_view(
+            line_changes,
+            set(requested_ids),
+            line_id_specification=line_id_specification,
+        )
 
         # Get selected working tree content
         working_file_path = get_git_repository_root_path() / line_changes.path
@@ -677,6 +683,11 @@ def _command_discard_lines_to_batch_as(
     """Persist replacement text to batch and discard original selected lines."""
     line_changes = load_line_changes_from_state()
     requested_ids = set(parse_line_selection(line_id_specification))
+    require_line_selection_in_view(
+        line_changes,
+        requested_ids,
+        line_id_specification=line_id_specification,
+    )
     effective_ids = _expand_replacement_selection_ids(line_changes, requested_ids)
 
     if not batch_exists(batch_name):
@@ -1359,18 +1370,24 @@ def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_i
 
     # Annotate with batch source line numbers
     line_changes = annotate_with_batch_source(file_path, cached_lines)
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
 
     # Parse line IDs and filter to selected lines
     requested_ids = set(parse_line_selection(line_id_specification))
+    require_line_selection_in_view(
+        line_changes,
+        requested_ids,
+        line_id_specification=line_id_specification,
+    )
     selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
 
     if not selected_lines:
         if not quiet:
             print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
         return 0
+
+    # Auto-create batch if it doesn't exist
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
 
     file_mode = _detect_file_mode(file_path)
 
@@ -1447,17 +1464,22 @@ def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str,
 
     require_selected_hunk()
 
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
     requested_ids = set(parse_line_selection(line_id_specification))
     line_changes = load_line_changes_from_state()
+    require_line_selection_in_view(
+        line_changes,
+        requested_ids,
+        line_id_specification=line_id_specification,
+    )
 
     # Filter to requested display line IDs
     selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
     if not selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
+
+    # Auto-create batch if it doesn't exist
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 

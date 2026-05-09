@@ -187,6 +187,30 @@ class TestCommandApplyFromBatch:
         content2 = (temp_git_repo / "file2.txt").read_text()
         assert "new line" not in content2
 
+    def test_apply_line_level_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """apply --from --line should reject when any ID is not shown."""
+        (temp_git_repo / "file.txt").write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        create_batch("line-batch")
+        (temp_git_repo / "file.txt").write_text("line 1\nnew line\nline 2\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add batch content"], check=True, cwd=temp_git_repo, capture_output=True)
+        add_file_to_batch(
+            "line-batch",
+            "file.txt",
+            BatchOwnership(["2"], []),
+            "100644",
+        )
+        subprocess.run(["git", "reset", "--hard", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_apply_from_batch("line-batch", line_ids="1,99", file="file.txt")
+
+        assert "Line ID 99 is not available for this action" in exc_info.value.message
+        assert (temp_git_repo / "file.txt").read_text() == "line 1\nline 2\n"
+
     def test_apply_replacement_unit_includes_deletion(self, temp_git_repo):
         """Test that applying a replacement unit includes both claimed line and deletion."""
 

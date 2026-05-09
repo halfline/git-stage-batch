@@ -5,12 +5,24 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.commands.include import command_include, command_include_line, command_include_line_as, command_include_to_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
 from git_stage_batch.commands.again import command_again
+
+
+def _prepare_single_line_change(repo, file_name="test.txt"):
+    test_file = repo / file_name
+    test_file.write_text("base\n")
+    subprocess.run(["git", "add", file_name], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "commit", "-m", f"Add {file_name}"], check=True, cwd=repo, capture_output=True)
+    test_file.write_text("base\nselected\n")
+    command_start()
+    fetch_next_change()
+    return test_file
 
 
 @pytest.fixture
@@ -290,6 +302,92 @@ class TestCommandIncludeLine:
         # Both lines should be staged
         assert "line1" in result.stdout
         assert "line2" in result.stdout
+
+    def test_include_line_rejects_ids_outside_current_view(self, temp_git_repo):
+        """include --line should reject IDs that are not in the current view."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("base\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("base\nselected\n")
+        command_start()
+        fetch_next_change()
+
+        with pytest.raises(CommandError) as exc_info:
+            command_include_line("99")
+
+        assert "Line selection 99 is not valid for test.txt." in exc_info.value.message
+        assert "current file view" in exc_info.value.message
+        assert "cache" not in exc_info.value.message.lower()
+        assert "round" not in exc_info.value.message.lower()
+        assert "transient" not in exc_info.value.message.lower()
+
+    def test_include_line_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """include --line should reject the whole selection when any ID is stale."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("base\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("base\nselected\n")
+        command_start()
+        fetch_next_change()
+
+        with pytest.raises(CommandError) as exc_info:
+            command_include_line("1,99")
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert staged.stdout == ""
+
+    def test_include_line_as_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """include --line --as should reject the selection when any ID is stale."""
+        _prepare_single_line_change(temp_git_repo)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_include_line_as("1,99", "replacement")
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        staged = subprocess.run(
+            ["git", "diff", "--cached"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert staged.stdout == ""
+
+    def test_include_to_batch_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """include --to --line should reject the selection when any ID is stale."""
+        _prepare_single_line_change(temp_git_repo)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_include_to_batch("invalid-lines", line_ids="1,99", quiet=True)
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        assert not batch_exists("invalid-lines")
+
+    def test_include_file_to_batch_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """include --to --file --line should reject when any ID is stale."""
+        _prepare_single_line_change(temp_git_repo)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_include_to_batch(
+                "invalid-lines",
+                file="test.txt",
+                line_ids="1,99",
+                quiet=True,
+            )
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        assert not batch_exists("invalid-lines")
 
     def test_include_line_handles_deletions(self, temp_git_repo):
         """Test that include --line handles deletions correctly."""

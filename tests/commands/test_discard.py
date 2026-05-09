@@ -19,6 +19,17 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.exceptions import CommandError
 
 
+def _prepare_single_line_change(repo, file_name="test.txt"):
+    test_file = repo / file_name
+    test_file.write_text("base\n")
+    subprocess.run(["git", "add", file_name], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "commit", "-m", f"Add {file_name}"], check=True, cwd=repo, capture_output=True)
+    test_file.write_text("base\nselected\n")
+    command_start()
+    fetch_next_change()
+    return test_file
+
+
 @pytest.fixture
 def temp_git_repo(tmp_path, monkeypatch):
     """Create a temporary git repository for testing."""
@@ -331,9 +342,62 @@ class TestCommandDiscardLine:
         with pytest.raises(CommandError):
             command_discard_line("1")
 
+    def test_discard_line_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """discard --line should reject the selection when any ID is stale."""
+        test_file = _prepare_single_line_change(temp_git_repo)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_discard_line("1,99")
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        assert test_file.read_text() == "base\nselected\n"
+
 
 class TestCommandDiscardToBatch:
     """Tests for discard to batch command."""
+
+    def test_discard_to_batch_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """discard --to --line should reject the selection when any ID is stale."""
+        test_file = _prepare_single_line_change(temp_git_repo)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_discard_to_batch("invalid-lines", line_ids="1,99", quiet=True)
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        assert test_file.read_text() == "base\nselected\n"
+        assert not batch_exists("invalid-lines")
+
+    def test_discard_file_to_batch_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """discard --to --file --line should reject when any ID is stale."""
+        test_file = _prepare_single_line_change(temp_git_repo)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_discard_to_batch(
+                "invalid-lines",
+                file="test.txt",
+                line_ids="1,99",
+                quiet=True,
+            )
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        assert test_file.read_text() == "base\nselected\n"
+        assert not batch_exists("invalid-lines")
+
+    def test_discard_to_batch_as_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """discard --to --line --as should reject when any ID is stale."""
+        test_file = _prepare_single_line_change(temp_git_repo)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_discard_line_as_to_batch(
+                "invalid-lines",
+                "1,99",
+                "replacement",
+                quiet=True,
+            )
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        assert test_file.read_text() == "base\nselected\n"
+        assert not batch_exists("invalid-lines")
 
     def test_discard_to_batch_saves_and_discards(self, temp_git_repo_with_session):
         """Test that discard to batch saves changes to batch and discards from working tree."""

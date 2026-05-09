@@ -325,6 +325,25 @@ class TestResetFromBatch:
         metadata_after = read_batch_metadata("mybatch")
         assert "test.py" not in metadata_after.get("files", {})
 
+    def test_reset_line_claims_reject_unknown_raw_batch_ids(self, temp_git_repo):
+        """Reset should not ignore stale IDs in the raw batch-display path."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 modified\nline 2\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("mybatch", line_ids="2", quiet=True)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_reset_from_batch("mybatch", line_ids="1,99", file="test.py")
+
+        assert "Line selection 1,99 is not valid for test.py." in exc_info.value.message
+        metadata_after = read_batch_metadata("mybatch")
+        assert "test.py" in metadata_after.get("files", {})
+
     def test_reset_line_claims_after_review_do_not_require_live_mergeability(self, temp_git_repo):
         """A fresh batch review should not make reset depend on mergeability."""
         test_file = temp_git_repo / "test.py"

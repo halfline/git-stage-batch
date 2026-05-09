@@ -13,6 +13,17 @@ from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
 
 
+def _prepare_single_line_change(repo, file_name="test.txt"):
+    test_file = repo / file_name
+    test_file.write_text("base\n")
+    subprocess.run(["git", "add", file_name], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "commit", "-m", f"Add {file_name}"], check=True, cwd=repo, capture_output=True)
+    test_file.write_text("base\nselected\n")
+    command_start()
+    fetch_next_change()
+    return test_file
+
+
 @pytest.fixture
 def temp_git_repo(tmp_path, monkeypatch):
     """Create a temporary git repository for testing."""
@@ -117,6 +128,28 @@ class TestCommandSkipLine:
         """Test that skip --line requires an active hunk."""
         with pytest.raises(CommandError):
             command_skip_line("1")
+
+    def test_skip_line_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """skip --line should reject the selection when any ID is stale."""
+        _prepare_single_line_change(temp_git_repo)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_skip_line("1,99")
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
+        assert skip_ids_content == ""
+
+    def test_skip_file_line_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
+        """skip --file --line should reject when any ID is stale."""
+        _prepare_single_line_change(temp_git_repo)
+
+        with pytest.raises(CommandError) as exc_info:
+            command_skip_line("1,99", file="test.txt")
+
+        assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
+        skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
+        assert skip_ids_content == ""
 
     def test_skip_line_marks_single_addition(self, temp_git_repo):
         """Test skipping a single added line advances past that selection."""

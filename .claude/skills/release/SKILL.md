@@ -71,11 +71,13 @@ git pull origin main
 
 ### 6. Tag the merge commit
 
-The project uses **lightweight tags** on the merge commit (not annotated tags). Find the merge commit on main and tag it:
+The project uses annotated tags on the merge commit (not lightweight tags). Find the merge commit on main and tag it:
 
 ```
-git tag v<VERSION>
+git tag -a v<VERSION>
 ```
+
+Use v<VERSION> for the Summary and <changelog markdown> for the message.
 
 ### 7. Push the tag
 

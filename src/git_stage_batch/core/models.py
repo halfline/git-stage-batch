@@ -94,6 +94,12 @@ class LineEntry:
     text_bytes: bytes  # Canonical line content without the leading +/- marker
     text: str  # Derived from text_bytes for display (decoded with errors='replace')
     source_line: int | None = None  # Line position in source reference (e.g., batch source, merge base)
+    baseline_reference_after_line: int | None = None
+    baseline_reference_after_text_bytes: bytes | None = None
+    has_baseline_reference_after: bool = False
+    baseline_reference_before_line: int | None = None
+    baseline_reference_before_text_bytes: bytes | None = None
+    has_baseline_reference_before: bool = False
 
 
 @dataclass

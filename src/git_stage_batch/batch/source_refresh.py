@@ -207,7 +207,13 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
             new_line_number=line.new_line_number,
             text_bytes=line.text_bytes,
             text=line.text,
-            source_line=source_line
+            source_line=source_line,
+            baseline_reference_after_line=line.baseline_reference_after_line,
+            baseline_reference_after_text_bytes=line.baseline_reference_after_text_bytes,
+            has_baseline_reference_after=line.has_baseline_reference_after,
+            baseline_reference_before_line=line.baseline_reference_before_line,
+            baseline_reference_before_text_bytes=line.baseline_reference_before_text_bytes,
+            has_baseline_reference_before=line.has_baseline_reference_before,
         ))
 
     return reannotated_lines
@@ -262,7 +268,13 @@ def _refresh_selected_lines_against_source_content(
             new_line_number=line.new_line_number,
             text_bytes=line.text_bytes,
             text=line.text,
-            source_line=source_line
+            source_line=source_line,
+            baseline_reference_after_line=line.baseline_reference_after_line,
+            baseline_reference_after_text_bytes=line.baseline_reference_after_text_bytes,
+            has_baseline_reference_after=line.has_baseline_reference_after,
+            baseline_reference_before_line=line.baseline_reference_before_line,
+            baseline_reference_before_text_bytes=line.baseline_reference_before_text_bytes,
+            has_baseline_reference_before=line.has_baseline_reference_before,
         ))
 
     return reannotated_lines

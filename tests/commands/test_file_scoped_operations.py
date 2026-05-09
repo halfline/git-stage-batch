@@ -137,6 +137,31 @@ class TestShowFileFlag:
         result = run_git_command(["show", ":beta.txt"])
         assert result.stdout == "beta1\nbeta2\nbeta3\nbeta4-new\n"
 
+    def test_explicit_file_include_line_rebuilds_stale_same_file_view(self, tmp_path, monkeypatch):
+        """Explicit --file line IDs apply to the current file view, not stale state."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        file_path = repo / "file.txt"
+        file_path.write_text("base\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        file_path.write_text("base\nselected\n")
+        command_start()
+        command_show(file="file.txt")
+
+        file_path.write_text("base\nother\n")
+        command_include_line("1", file="file.txt")
+
+        result = run_git_command(["show", ":file.txt"])
+        assert result.stdout == "base\nother\n"
+
     def test_show_file_selection_can_feed_discard_line(self, multi_file_repo):
         """Show --file should cache a usable selection for later discard --line."""
         command_start()
@@ -525,7 +550,7 @@ class TestShowFileFlag:
 
         metadata = read_batch_metadata("body-only")
         file_metadata = metadata["files"]["module.py"]
-        assert file_metadata["claimed_lines"] == ["61"]
+        assert file_metadata["presence_claims"][0]["source_lines"] == ["61"]
         assert file_metadata["deletions"][0]["after_source_line"] == 60
 
         command_show_from_batch("body-only")

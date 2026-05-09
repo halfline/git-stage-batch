@@ -129,7 +129,7 @@ def test_missing_batch_source_commit_clear_error(functional_repo):
     metadata = read_batch_metadata("test-batch")
     metadata["files"] = {
         "test.txt": {
-            "claimed_lines": ["1-3"],
+            "presence_claims": [{"source_lines": ["1-3"]}],
             "mode": "100644"
             # Missing batch_source_commit
         }

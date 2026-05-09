@@ -37,6 +37,22 @@ def _review_action_groups_from_map(gutter_to_selection_id: dict[int, int]) -> tu
     )
 
 
+def _presence_line_ids_from_metadata(file_meta: dict) -> set[int]:
+    line_ids: set[int] = set()
+    for claim in file_meta.get("presence_claims", []):
+        for range_str in claim.get("source_lines", []):
+            line_ids.update(parse_line_selection(range_str))
+    return line_ids
+
+
+def _presence_line_ids_from_ownership(ownership: BatchOwnership) -> set[int]:
+    line_ids: set[int] = set()
+    for claim in ownership.presence_claims:
+        for range_str in claim.source_lines:
+            line_ids.update(parse_line_selection(range_str))
+    return line_ids
+
+
 @pytest.fixture
 def temp_git_repo(tmp_path, monkeypatch):
     """Create a temporary git repository for testing."""
@@ -92,7 +108,7 @@ class TestResetFromBatch:
         # Verify batch has claims in metadata
         metadata = read_batch_metadata("mybatch")
         assert "test.py" in metadata["files"]
-        assert len(metadata["files"]["test.py"]["claimed_lines"]) > 0
+        assert _presence_line_ids_from_metadata(metadata["files"]["test.py"])
 
         # Reset the batch
         command_reset_from_batch("mybatch")
@@ -121,9 +137,7 @@ class TestResetFromBatch:
         # Verify line claims exist in metadata
         metadata = read_batch_metadata("mybatch")
         batch_ownership = metadata["files"]["test.py"]
-        batch_line_ids = set()
-        for range_str in batch_ownership.get("claimed_lines", []):
-            batch_line_ids.update(parse_line_selection(range_str))
+        batch_line_ids = _presence_line_ids_from_metadata(batch_ownership)
         assert batch_line_ids == {1, 2, 3}
 
         # Reset only line 2 (renumbered from display ID 5)
@@ -132,9 +146,7 @@ class TestResetFromBatch:
         # Verify line 2 is removed from batch claims
         metadata_after = read_batch_metadata("mybatch")
         batch_ownership_after = metadata_after["files"]["test.py"]
-        batch_line_ids_after = set()
-        for range_str in batch_ownership_after.get("claimed_lines", []):
-            batch_line_ids_after.update(parse_line_selection(range_str))
+        batch_line_ids_after = _presence_line_ids_from_metadata(batch_ownership_after)
         assert batch_line_ids_after == {1, 3}
 
     def test_reset_line_claims_translate_batch_review_gutter_ids(self, temp_git_repo, monkeypatch):
@@ -150,7 +162,7 @@ class TestResetFromBatch:
         add_file_to_batch(
             "mybatch",
             "test.py",
-            BatchOwnership(claimed_lines=["1", "3"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1", "3"], []),
             "100644",
         )
 
@@ -181,9 +193,7 @@ class TestResetFromBatch:
 
         metadata_after = read_batch_metadata("mybatch")
         batch_ownership_after = metadata_after["files"]["test.py"]
-        batch_line_ids_after = set()
-        for range_str in batch_ownership_after.get("claimed_lines", []):
-            batch_line_ids_after.update(parse_line_selection(range_str))
+        batch_line_ids_after = _presence_line_ids_from_metadata(batch_ownership_after)
         assert batch_line_ids_after == {1}
 
     def test_reset_line_claims_reject_mixed_fresh_review_and_raw_ids(self, temp_git_repo, monkeypatch):
@@ -199,7 +209,7 @@ class TestResetFromBatch:
         add_file_to_batch(
             "mybatch",
             "test.py",
-            BatchOwnership(claimed_lines=["1", "3"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1", "3"], []),
             "100644",
         )
 
@@ -231,9 +241,7 @@ class TestResetFromBatch:
 
         metadata_after = read_batch_metadata("mybatch")
         batch_ownership_after = metadata_after["files"]["test.py"]
-        batch_line_ids_after = set()
-        for range_str in batch_ownership_after.get("claimed_lines", []):
-            batch_line_ids_after.update(parse_line_selection(range_str))
+        batch_line_ids_after = _presence_line_ids_from_metadata(batch_ownership_after)
         assert batch_line_ids_after == {1, 3}
 
     def test_reset_line_claims_reject_stale_review_before_raw_id_fallback(self, temp_git_repo, monkeypatch):
@@ -249,7 +257,7 @@ class TestResetFromBatch:
         add_file_to_batch(
             "mybatch",
             "test.py",
-            BatchOwnership(claimed_lines=["1", "2"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1", "2"], []),
             "100644",
         )
 
@@ -298,9 +306,7 @@ class TestResetFromBatch:
 
         metadata_after = read_batch_metadata("mybatch")
         batch_ownership_after = metadata_after["files"]["test.py"]
-        batch_line_ids_after = set()
-        for range_str in batch_ownership_after.get("claimed_lines", []):
-            batch_line_ids_after.update(parse_line_selection(range_str))
+        batch_line_ids_after = _presence_line_ids_from_metadata(batch_ownership_after)
         assert batch_line_ids_after == {1, 2}
 
     def test_reset_line_claims_do_not_require_live_mergeability(self, temp_git_repo):
@@ -380,7 +386,7 @@ class TestResetFromBatch:
         add_file_to_batch(
             "mybatch",
             "test.py",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
         )
 
@@ -406,7 +412,7 @@ class TestResetFromBatch:
         add_file_to_batch(
             "mybatch",
             "test.py",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
         )
 
@@ -483,13 +489,13 @@ class TestResetFromBatch:
         add_file_to_batch(
             "mybatch",
             "file1.txt",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
         )
         add_file_to_batch(
             "mybatch",
             "file2.txt",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
         )
 
@@ -516,7 +522,7 @@ class TestResetFromBatch:
         add_file_to_batch(
             "mybatch",
             "test.py",
-            BatchOwnership(claimed_lines=["1", "2"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1", "2"], []),
             "100644",
         )
 
@@ -535,9 +541,7 @@ class TestResetFromBatch:
         file_meta = metadata_after["files"]["test.py"]
         assert file_meta["batch_source_commit"] == original_source
 
-        batch_line_ids = set()
-        for range_str in file_meta.get("claimed_lines", []):
-            batch_line_ids.update(parse_line_selection(range_str))
+        batch_line_ids = _presence_line_ids_from_metadata(file_meta)
         assert batch_line_ids == {2}
 
     def test_reset_to_moves_selected_lines_to_destination_batch(self, temp_git_repo):
@@ -555,7 +559,7 @@ class TestResetFromBatch:
         add_file_to_batch(
             "source",
             "test.py",
-            BatchOwnership(claimed_lines=["1", "2"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1", "2"], []),
             "100644",
         )
 
@@ -571,14 +575,10 @@ class TestResetFromBatch:
         assert dest_after["baseline"] == source_baseline
         assert dest_after["files"]["test.py"]["batch_source_commit"] == original_source
 
-        source_line_ids = set()
-        for range_str in source_after["files"]["test.py"].get("claimed_lines", []):
-            source_line_ids.update(parse_line_selection(range_str))
+        source_line_ids = _presence_line_ids_from_metadata(source_after["files"]["test.py"])
         assert source_line_ids == {2}
 
-        dest_line_ids = set()
-        for range_str in dest_after["files"]["test.py"].get("claimed_lines", []):
-            dest_line_ids.update(parse_line_selection(range_str))
+        dest_line_ids = _presence_line_ids_from_metadata(dest_after["files"]["test.py"])
         assert dest_line_ids == {1}
 
     def test_reset_to_moves_explicit_file_only(self, temp_git_repo):
@@ -597,13 +597,13 @@ class TestResetFromBatch:
         add_file_to_batch(
             "source",
             "file1.txt",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
         )
         add_file_to_batch(
             "source",
             "file2.txt",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
         )
 
@@ -634,7 +634,7 @@ class TestResetFromBatch:
         add_file_to_batch(
             "source",
             "test.py",
-            BatchOwnership(claimed_lines=["1"], deletions=[]),
+            BatchOwnership.from_presence_lines(["1"], []),
             "100644",
         )
 
@@ -676,16 +676,13 @@ class TestResetFromBatch:
 
         # Manually create ownership with replacement: claim line 1, delete original line 1
         # The deletion is anchored at line 0 (start of file) to be spatially close to line 1
-        ownership = BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Verify initial ownership has both claimed line and deletion
         metadata = read_batch_metadata("mybatch")
         file_ownership = BatchOwnership.from_metadata_dict(metadata["files"]["test.py"])
-        assert "1" in ",".join(file_ownership.claimed_lines)
+        assert 1 in _presence_line_ids_from_ownership(file_ownership)
         assert len(file_ownership.deletions) == 1
 
         # Reset the replacement unit - must select ALL display IDs in the unit
@@ -716,10 +713,7 @@ class TestResetFromBatch:
         fetch_next_change()
 
         # Create replacement: deletion + claimed line
-        ownership = BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Attempting to select only display ID 1 (deletion) should error
@@ -743,10 +737,7 @@ class TestResetFromBatch:
         command_new_batch("mybatch", "test batch")
         command_start()
         fetch_next_change()
-        ownership = BatchOwnership(
-            claimed_lines=["1"],
-            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         command_show_from_batch("mybatch", file="test.py", page="all")
@@ -779,10 +770,7 @@ class TestResetFromBatch:
         # - deletion anchored after line 6
         # Display order: claimed1, claimed3, claimed5, deletion-at-6
         # This keeps claimed3 separate from the deletion.
-        ownership = BatchOwnership(
-            claimed_lines=["1", "3", "5"],
-            deletions=[DeletionClaim(anchor_line=6, content_lines=[b"debug_log()\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["1", "3", "5"], [DeletionClaim(anchor_line=6, content_lines=[b"debug_log()\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Display structure (display adjacency grouping):
@@ -797,9 +785,7 @@ class TestResetFromBatch:
         # Verify line 3 is removed but lines 1, 5 and deletion remain
         metadata_after = read_batch_metadata("mybatch")
         file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = set()
-        for range_str in file_ownership.claimed_lines:
-            claimed_ids.update(parse_line_selection(range_str))
+        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
 
         assert 1 in claimed_ids, "Line 1 should remain"
         assert 3 not in claimed_ids, "Line 3 should be removed"
@@ -826,10 +812,7 @@ class TestResetFromBatch:
         # Create ownership with:
         # - Replacement unit: deletion + claimed line 1
         # - Presence-only: claimed line 2
-        ownership = BatchOwnership(
-            claimed_lines=["1", "2"],
-            deletions=[DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])]
-        )
+        ownership = BatchOwnership.from_presence_lines(["1", "2"], [DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Display structure:
@@ -843,9 +826,7 @@ class TestResetFromBatch:
         # Verify line 1 AND its deletion are removed, but line 2 remains
         metadata_after = read_batch_metadata("mybatch")
         file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = set()
-        for range_str in file_ownership.claimed_lines:
-            claimed_ids.update(parse_line_selection(range_str))
+        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
 
         assert 1 not in claimed_ids, "Source line 1 should be removed (replacement unit)"
         assert 2 in claimed_ids, "Source line 2 should remain (separate presence-only unit)"
@@ -872,10 +853,7 @@ class TestResetFromBatch:
         fetch_next_change()
 
         # Create ownership with multiple claimed lines (no deletions)
-        ownership = BatchOwnership(
-            claimed_lines=["1", "2", "3"],
-            deletions=[]
-        )
+        ownership = BatchOwnership.from_presence_lines(["1", "2", "3"], [])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Display structure:
@@ -889,9 +867,7 @@ class TestResetFromBatch:
         # Verify only source line 2 is removed, lines 1 and 3 remain
         metadata_after = read_batch_metadata("mybatch")
         file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = set()
-        for range_str in file_ownership.claimed_lines:
-            claimed_ids.update(parse_line_selection(range_str))
+        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
 
         assert 1 in claimed_ids, "Source line 1 should remain (separate unit)"
         assert 2 not in claimed_ids, "Source line 2 should be removed (selected)"
@@ -911,10 +887,7 @@ class TestResetFromBatch:
         command_new_batch("mybatch", "test batch")
         command_start()
         fetch_next_change()
-        ownership = BatchOwnership(
-            claimed_lines=["1", "2", "3"],
-            deletions=[],
-        )
+        ownership = BatchOwnership.from_presence_lines(["1", "2", "3"], [])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         command_show_from_batch("mybatch", file="test.py", page="all")
@@ -922,9 +895,7 @@ class TestResetFromBatch:
 
         metadata_after = read_batch_metadata("mybatch")
         file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = set()
-        for range_str in file_ownership.claimed_lines:
-            claimed_ids.update(parse_line_selection(range_str))
+        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
 
         assert 1 in claimed_ids
         assert 2 not in claimed_ids

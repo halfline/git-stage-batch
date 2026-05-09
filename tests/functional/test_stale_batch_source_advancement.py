@@ -10,6 +10,13 @@ from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.commands.start import command_start
 
 
+def _presence_source_lines(file_metadata: dict) -> list[str]:
+    lines: list[str] = []
+    for claim in file_metadata.get("presence_claims", []):
+        lines.extend(claim.get("source_lines", []))
+    return lines
+
+
 def test_stale_source_advancement_on_discard(functional_repo):
     """Test that batch source is advanced when discarding new code added after initial batch source."""
     # Create initial file
@@ -36,7 +43,7 @@ def test_stale_source_advancement_on_discard(functional_repo):
     first_batch_source = metadata["files"]["test.py"]["batch_source_commit"]
 
     # Verify the batch captured the modification
-    assert metadata["files"]["test.py"]["claimed_lines"] == ["1-3"]
+    assert _presence_source_lines(metadata["files"]["test.py"]) == ["1-3"]
 
     # Now add ENTIRELY NEW code that doesn't exist in the batch source
     # The batch source has "line 1\nmodified line 2\nline 3\n"
@@ -57,7 +64,7 @@ def test_stale_source_advancement_on_discard(functional_repo):
 
     # Verify ownership was preserved and extended
     # Should now claim all 5 lines
-    assert "1-5" in ",".join(metadata["files"]["test.py"]["claimed_lines"])
+    assert "1-5" in ",".join(_presence_source_lines(metadata["files"]["test.py"]))
 
 
 def test_stale_discard_preserves_previously_discarded_claimed_lines(functional_repo):
@@ -92,7 +99,7 @@ def test_stale_discard_preserves_previously_discarded_claimed_lines(functional_r
 
     assert "owned earlier\n" in source
     assert "new later\n" in source
-    assert ",".join(file_metadata["claimed_lines"]) == "1-3"
+    assert ",".join(_presence_source_lines(file_metadata)) == "1-3"
 
 
 def test_existing_ownership_preserved_through_advancement(functional_repo):
@@ -114,7 +121,7 @@ def test_existing_ownership_preserved_through_advancement(functional_repo):
     # Verify initial ownership - should have claimed the line for B_modified
     metadata = read_batch_metadata("test-batch")
     # Should have claimed line 2 in batch source space (the working tree line for B_modified)
-    assert len(metadata["files"]["test.py"]["claimed_lines"]) > 0
+    assert len(_presence_source_lines(metadata["files"]["test.py"])) > 0
 
     # Add new code at the end
     test_file.write_text("a\nB_modified\nC_modified\nd\ne\nf\n")
@@ -125,12 +132,12 @@ def test_existing_ownership_preserved_through_advancement(functional_repo):
 
     # Verify ownership was preserved and extended
     metadata = read_batch_metadata("test-batch")
-    claimed = ",".join(metadata["files"]["test.py"]["claimed_lines"])
+    claimed = ",".join(_presence_source_lines(metadata["files"]["test.py"]))
 
     # Should have original claimed line(s), remapped to new position, plus new lines
     # The exact line numbers depend on batch source mapping, but we should have more lines claimed
     # after the second discard
-    assert len(metadata["files"]["test.py"]["claimed_lines"]) > 0
+    assert len(_presence_source_lines(metadata["files"]["test.py"])) > 0
     # Verify we have additions - the claimed lines string should contain numbers
     assert any(c.isdigit() for c in claimed)
 
@@ -202,7 +209,7 @@ def test_first_discard_with_stale_source_succeeds(functional_repo):
     # Verify batch was created with the new content
     metadata = read_batch_metadata("new-batch")
     assert "newfile.py" in metadata["files"]
-    assert metadata["files"]["newfile.py"]["claimed_lines"]
+    assert _presence_source_lines(metadata["files"]["newfile.py"])
 
 
 def test_deletion_anchors_remapped_correctly(functional_repo):

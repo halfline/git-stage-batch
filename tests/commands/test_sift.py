@@ -81,7 +81,7 @@ class TestSiftBasicBehavior:
         ownership = BatchOwnership.from_metadata_dict(file_meta)
         resolved = ownership.resolve()
         # Should claim line 3 (Line B modified) but not line 2 (Line A modified already present)
-        assert 3 in resolved.claimed_line_set
+        assert 3 in resolved.presence_line_set
 
     def test_sift_empty_when_all_present(self, temp_git_repo):
         """Test that sift produces empty batch when all changes are present."""

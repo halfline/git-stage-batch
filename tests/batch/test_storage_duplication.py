@@ -20,10 +20,7 @@ def test_build_realized_content_no_duplication_when_claiming_moved_line():
     batch_source_content = b"X\nA\nX\nB\n"
 
     # Claim line 1 (the moved/added X)
-    ownership = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
 
     result = _build_realized_content(base_content, batch_source_content, ownership)
     result_lines = result.decode().split('\n')
@@ -47,10 +44,7 @@ def test_build_realized_content_duplicate_line_claimed():
     batch_source_content = b"X\nA\nX\nB\nX\nC\n"
 
     # Claim line 1 (the added X)
-    ownership = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
 
     result = _build_realized_content(base_content, batch_source_content, ownership)
     result_lines = result.decode().split('\n')
@@ -69,10 +63,7 @@ def test_build_realized_content_simple_insert():
     batch_source_content = b"A\nNEW\nB\n"
 
     # Claim line 2 (NEW)
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
 
     result = _build_realized_content(base_content, batch_source_content, ownership)
     assert result == b"A\nNEW\nB\n"
@@ -87,10 +78,7 @@ def test_build_realized_content_equal_block_with_unclaimed_insert():
     batch_source_content = b"A\nINSERTED\nB\nC\n"
 
     # Claim nothing (just see equal blocks)
-    ownership = BatchOwnership(
-        claimed_lines=[],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines([], [])
 
     result = _build_realized_content(base_content, batch_source_content, ownership)
 
@@ -107,10 +95,7 @@ def test_build_realized_content_equal_then_claimed_insert():
     batch_source_content = b"A\nB\nNEW\n"
 
     # Claim line 3 (NEW)
-    ownership = BatchOwnership(
-        claimed_lines=["3"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["3"], [])
 
     result = _build_realized_content(base_content, batch_source_content, ownership)
     lines = result.split(b'\n')

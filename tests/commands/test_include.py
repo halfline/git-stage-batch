@@ -6,6 +6,7 @@ import pytest
 
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.validation import batch_exists
+from git_stage_batch.commands import include as include_command
 from git_stage_batch.commands.include import command_include, command_include_line, command_include_line_as, command_include_to_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
@@ -388,6 +389,34 @@ class TestCommandIncludeLine:
 
         assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
         assert not batch_exists("invalid-lines")
+
+    def test_include_line_failure_message_is_user_facing(self, temp_git_repo, monkeypatch):
+        """Transient-batch refusal should not leak internal implementation terms."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("base\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("base\nselected\n")
+        command_start()
+        fetch_next_change()
+
+        monkeypatch.setattr(
+            include_command,
+            "_try_build_index_content_via_transient_batch",
+            lambda **_kwargs: include_command.TransientIncludeResult.failure(
+                include_command.TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE
+            ),
+        )
+
+        with pytest.raises(CommandError) as exc_info:
+            command_include_line("1")
+
+        assert "applying that selection would also change the working tree" in exc_info.value.message
+        assert "current file view" in exc_info.value.message
+        assert "cache" not in exc_info.value.message.lower()
+        assert "round" not in exc_info.value.message.lower()
+        assert "transient" not in exc_info.value.message.lower()
 
     def test_include_line_handles_deletions(self, temp_git_repo):
         """Test that include --line handles deletions correctly."""

@@ -23,10 +23,7 @@ def test_merge_batch_no_duplication_when_claimed_line_already_present():
     batch_source_content = b"A\nX\nB\n"
 
     # Claimed line 2 (X)
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
 
     # Working tree already has X
     working_content = b"A\nX\nB\n"
@@ -49,10 +46,7 @@ def test_merge_batch_with_working_tree_ahead_of_batch():
     """
     batch_source_content = b"A\nX\nB\n"
 
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
 
     working_content = b"A\nX\nY\nB\n"
 
@@ -75,10 +69,7 @@ def test_merge_batch_claimed_line_missing_from_working_tree():
     """
     batch_source_content = b"A\nX\nB\n"
 
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
 
     working_content = b"A\nB\n"
 
@@ -102,10 +93,7 @@ def test_merge_batch_with_deletion_suppresses_content():
     batch_source_content = b"A\nB\n"
 
     # Create a deletion constraint (suppression)
-    ownership = BatchOwnership(
-        claimed_lines=[],
-        deletions=[DeletionClaim(anchor_line=1, content_lines=[b"UNWANTED\n"])]
-    )
+    ownership = BatchOwnership.from_presence_lines([], [DeletionClaim(anchor_line=1, content_lines=[b"UNWANTED\n"])])
 
     working_content = b"A\nUNWANTED\nB\n"
 
@@ -126,10 +114,7 @@ def test_merge_batch_claimed_line_present_with_extras_after():
     batch_source_content = b"A\nselected\nC\n"
 
     # Claim line 2.
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
 
     # Working tree: A\nselected\nextra1\nextra2\nC\n
     working_content = b"A\nselected\nextra1\nextra2\nC\n"
@@ -163,10 +148,7 @@ def test_merge_batch_complex_divergence_scenario():
     batch_source_content = b"A\nINSERTED\nB\nC\n"
 
     # Claim line 2 (INSERTED)
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
 
     # Working tree has INSERTED at a different position
     working_content = b"A\nDIFFERENT\nB\nINSERTED\nC\n"

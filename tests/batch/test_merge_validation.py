@@ -58,9 +58,9 @@ different line 3
 
     # Claim line 2, delete line after line 2
     # But line 2 doesn't exist in working tree (all lines different)
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[DeletionClaim(
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [DeletionClaim(
             anchor_line=2,
             content_lines=[b"old content\n"]
         )]
@@ -170,7 +170,7 @@ def test_partial_selection_corruption_still_caught():
     # This includes the new argument and new set_defaults
     # But it's part of a region whose trailing context (parser_include) doesn't exist
     claimed = [str(i) for i in range(7, 11)]
-    ownership = BatchOwnership(claimed_lines=claimed, deletions=[])
+    ownership = BatchOwnership.from_presence_lines(claimed, [])
 
     # Should raise MergeError due to incompatible trailing context
     with pytest.raises(MergeError) as exc_info:
@@ -202,7 +202,7 @@ line 7
     # The surrounding context is coherent: line 2 before, line 6 after
     # Both are present in working tree
     claimed = ["3", "4", "5"]
-    ownership = BatchOwnership(claimed_lines=claimed, deletions=[])
+    ownership = BatchOwnership.from_presence_lines(claimed, [])
 
     # Should succeed without error
     result = merge_batch(batch_source, ownership, working)
@@ -241,7 +241,7 @@ footer 2
     # These are missing from working tree, BUT
     # the trailing context (footer 1, footer 2) IS mapped
     claimed = ["3", "4", "5"]
-    ownership = BatchOwnership(claimed_lines=claimed, deletions=[])
+    ownership = BatchOwnership.from_presence_lines(claimed, [])
 
     # Should succeed: trailing context is mapped
     result = merge_batch(batch_source, ownership, working)
@@ -266,7 +266,7 @@ Added line 4
 
     working = b"Header\n"
 
-    ownership = BatchOwnership(claimed_lines=["2", "4"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["2", "4"], [])
 
     result = merge_batch(batch_source, ownership, working)
 
@@ -289,9 +289,9 @@ A test project for git-stage-batch.
 A test project.
 """
 
-    ownership = BatchOwnership(
-        claimed_lines=["3-4"],
-        deletions=[DeletionClaim(
+    ownership = BatchOwnership.from_presence_lines(
+        ["3-4"],
+        [DeletionClaim(
             anchor_line=2,
             content_lines=[b"A test project.\n"]
         )],
@@ -322,9 +322,9 @@ def test_crlf_normalization_in_discard_restoration():
     baseline = b"line 1\nold content\nline 3\n"
 
     # Claim line 2 (batch added it), deletion after line 1 with CRLF
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[DeletionClaim(
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [DeletionClaim(
             anchor_line=1,
             content_lines=[b"old content\r\n"]  # CRLF in deletion content
         )]
@@ -368,7 +368,7 @@ line 3
 
     # Claim lines 3-4
     claimed = ["3", "4"]
-    ownership = BatchOwnership(claimed_lines=claimed, deletions=[])
+    ownership = BatchOwnership.from_presence_lines(claimed, [])
 
     # Should succeed: trailing gap is only 2 unmapped lines (below threshold)
     result = merge_batch(batch_source, ownership, working)

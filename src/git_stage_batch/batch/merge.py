@@ -8,6 +8,7 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 from .match import LineMapping, match_lines
+from ..core.line_selection import parse_line_selection
 from ..exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
 from ..i18n import _
 from ..utils.text import normalize_line_endings
@@ -536,7 +537,7 @@ def _is_claimed_run_structurally_coherent(
 def _apply_presence_constraints(
     source_lines: list[bytes],
     working_lines: list[bytes],
-    claimed_line_set: set[int],
+    presence_line_set: set[int],
     *,
     source_to_working_mapping: LineMapping | None = None,
 ) -> list[RealizedEntry]:
@@ -549,14 +550,14 @@ def _apply_presence_constraints(
     Args:
         source_lines: Batch source file lines (bytes with newlines)
         working_lines: Working tree file lines (bytes with newlines)
-        claimed_line_set: Set of source line numbers that must be present
+        presence_line_set: Set of source line numbers that must be present
 
     Returns:
         Realized entries with all claimed lines present and provenance preserved
     """
     mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
 
-    if not claimed_line_set:
+    if not presence_line_set:
         result: list[RealizedEntry] = []
         for working_idx, working_line in enumerate(working_lines):
             source_line = mapping.get_source_line_from_target_line(working_idx + 1)
@@ -571,7 +572,7 @@ def _apply_presence_constraints(
     present_claimed: dict[int, int] = {}
     missing_claimed: dict[int, bytes] = {}
 
-    for source_line in claimed_line_set:
+    for source_line in presence_line_set:
         if 1 <= source_line <= len(source_lines):
             working_line = mapping.get_target_line_from_source_line(source_line)
             if working_line is not None:
@@ -583,7 +584,7 @@ def _apply_presence_constraints(
         result: list[RealizedEntry] = []
         for working_idx, working_line in enumerate(working_lines):
             source_line = mapping.get_source_line_from_target_line(working_idx + 1)
-            is_claimed = source_line in claimed_line_set if source_line else False
+            is_claimed = source_line in presence_line_set if source_line else False
             result.append(RealizedEntry(
                 content=working_line,
                 source_line=source_line,
@@ -608,7 +609,7 @@ def _apply_presence_constraints(
                 ))
                 working_idx += 1
 
-            is_claimed = source_line in claimed_line_set
+            is_claimed = source_line in presence_line_set
             if is_claimed:
                 result.append(RealizedEntry(
                     content=source_lines[source_line - 1],
@@ -717,7 +718,7 @@ def _apply_absence_constraints(
 
 def _missing_claimed_lines(
     entries: list[RealizedEntry],
-    claimed_line_set: set[int]
+    presence_line_set: set[int]
 ) -> set[int]:
     """Return claimed source lines that are not present as claimed entries."""
     present_claimed = {
@@ -725,13 +726,13 @@ def _missing_claimed_lines(
         for entry in entries
         if entry.is_claimed and entry.source_line is not None
     }
-    return claimed_line_set - present_claimed
+    return presence_line_set - present_claimed
 
 
 def _satisfy_constraints(
     source_lines: list[bytes],
     working_lines: list[bytes],
-    claimed_line_set: set[int],
+    presence_line_set: set[int],
     deletion_claims: list['DeletionClaim'],
     *,
     strict: bool = True,
@@ -741,7 +742,7 @@ def _satisfy_constraints(
     realized_entries = _apply_presence_constraints(
         source_lines,
         working_lines,
-        claimed_line_set,
+        presence_line_set,
         source_to_working_mapping=source_to_working_mapping,
     )
 
@@ -751,14 +752,14 @@ def _satisfy_constraints(
         strict=strict
     )
 
-    if not _missing_claimed_lines(realized_entries, claimed_line_set):
+    if not _missing_claimed_lines(realized_entries, presence_line_set):
         return realized_entries
 
     current_lines = [entry.content for entry in realized_entries]
     realized_entries = _apply_presence_constraints(
         source_lines,
         current_lines,
-        claimed_line_set
+        presence_line_set
     )
 
     realized_entries = _apply_absence_constraints(
@@ -767,7 +768,7 @@ def _satisfy_constraints(
         strict=strict
     )
 
-    missing_claimed = _missing_claimed_lines(realized_entries, claimed_line_set)
+    missing_claimed = _missing_claimed_lines(realized_entries, presence_line_set)
     if missing_claimed:
         if not strict:
             return realized_entries
@@ -1066,6 +1067,311 @@ def _suppress_at_boundary_for_realization(
     return entries
 
 
+def _line_payload_for_reference_match(content: bytes) -> bytes:
+    """Normalize one line for insertion-boundary identity checks."""
+    normalized = normalize_line_endings(content)
+    if normalized.endswith(b"\n"):
+        return normalized[:-1]
+    return normalized
+
+
+def _reference_line_matches(
+    target_line: bytes,
+    reference_content: bytes | None,
+) -> bool:
+    if reference_content is None:
+        return False
+    return (
+        _line_payload_for_reference_match(target_line) ==
+        _line_payload_for_reference_match(reference_content)
+    )
+
+
+def _baseline_reference_insertion_position(
+    reference,
+    working_lines: list[bytes],
+) -> int | None:
+    """Return the proven insertion position for a baseline reference."""
+    if reference is None or not getattr(reference, "has_after_line", False):
+        return None
+
+    after_line = getattr(reference, "after_line", None)
+    position = after_line or 0
+    if position < 0 or position > len(working_lines):
+        return None
+
+    verified_boundary = False
+    if after_line is not None:
+        if after_line < 1 or after_line > len(working_lines):
+            return None
+        if not _reference_line_matches(
+            working_lines[after_line - 1],
+            getattr(reference, "after_content", None),
+        ):
+            return None
+        verified_boundary = True
+
+    if getattr(reference, "has_before_line", False):
+        before_line = getattr(reference, "before_line", None)
+        if before_line is None:
+            if position != len(working_lines):
+                return None
+            verified_boundary = True
+        else:
+            if position >= len(working_lines):
+                return None
+            if not _reference_line_matches(
+                working_lines[position],
+                getattr(reference, "before_content", None),
+            ):
+                return None
+            verified_boundary = True
+
+    if not verified_boundary:
+        return None
+    return position
+
+
+def _baseline_reference_absence_position(
+    reference,
+    working_lines: list[bytes],
+    sequence_length: int,
+) -> int | None:
+    """Return the proven removal position for a baseline reference."""
+    if reference is None or not getattr(reference, "has_after_line", False):
+        return None
+
+    after_line = getattr(reference, "after_line", None)
+    position = after_line or 0
+    if position < 0 or position + sequence_length > len(working_lines):
+        return None
+
+    after_content = getattr(reference, "after_content", None)
+    if after_line is not None and after_content is not None:
+        if after_line < 1 or after_line > len(working_lines):
+            return None
+        if not _reference_line_matches(
+            working_lines[after_line - 1],
+            after_content,
+        ):
+            return None
+
+    if getattr(reference, "has_before_line", False):
+        before_line = getattr(reference, "before_line", None)
+        before_position = position + sequence_length
+        if before_line is None:
+            if before_position != len(working_lines):
+                return None
+        else:
+            if before_position >= len(working_lines):
+                return None
+            if not _reference_line_matches(
+                working_lines[before_position],
+                getattr(reference, "before_content", None),
+            ):
+                return None
+
+    return position
+
+
+def _try_apply_baseline_absence_constraints(
+    working_lines: list[bytes],
+    deletion_claims: list['DeletionClaim'],
+) -> bytes | None:
+    """Apply absence-only constraints by exact baseline coordinates."""
+    if not deletion_claims:
+        return None
+
+    edits: list[tuple[int, int]] = []
+    for claim in deletion_claims:
+        if not claim.content_lines:
+            continue
+        forbidden_sequence = [
+            normalize_line_endings(line)
+            for line in claim.content_lines
+        ]
+        position = _baseline_reference_absence_position(
+            claim.baseline_reference,
+            working_lines,
+            len(forbidden_sequence),
+        )
+        if position is None:
+            return None
+        if working_lines[position:position + len(forbidden_sequence)] != forbidden_sequence:
+            return None
+        edits.append((position, position + len(forbidden_sequence)))
+
+    sorted_edits = sorted(edits, key=lambda edit: edit[0])
+    previous_end = 0
+    for start, end in sorted_edits:
+        if start < previous_end:
+            return None
+        previous_end = end
+
+    result = working_lines[:]
+    for start, end in reversed(sorted_edits):
+        del result[start:end]
+    return b"".join(result)
+
+
+def _baseline_removal_edit(
+    claim: 'DeletionClaim',
+    working_lines: list[bytes],
+) -> tuple[int, int, list[bytes]] | None:
+    if not claim.content_lines:
+        return None
+
+    forbidden_sequence = [
+        normalize_line_endings(line)
+        for line in claim.content_lines
+    ]
+    position = _baseline_reference_absence_position(
+        claim.baseline_reference,
+        working_lines,
+        len(forbidden_sequence),
+    )
+    if position is None:
+        return None
+    if working_lines[position:position + len(forbidden_sequence)] != forbidden_sequence:
+        return None
+    return position, position + len(forbidden_sequence), []
+
+
+def _apply_non_overlapping_baseline_edits(
+    working_lines: list[bytes],
+    edits: list[tuple[int, int, list[bytes]]],
+) -> bytes | None:
+    sorted_edits = sorted(edits, key=lambda edit: (edit[0], edit[1]))
+    previous_end = 0
+    for start, end, _replacement_lines in sorted_edits:
+        if start < previous_end:
+            return None
+        previous_end = max(previous_end, end)
+
+    result = working_lines[:]
+    for start, end, replacement_lines in reversed(sorted_edits):
+        result[start:end] = replacement_lines
+    return b"".join(result)
+
+
+def _has_complete_baseline_references(
+    ownership: 'BatchOwnership',
+    presence_line_set: set[int],
+    deletion_claims: list['DeletionClaim'],
+) -> bool:
+    claimed_line_references = ownership.presence_baseline_references()
+    for claimed_line in presence_line_set:
+        reference = claimed_line_references.get(claimed_line)
+        if reference is None or not getattr(reference, "has_after_line", False):
+            return False
+    for claim in deletion_claims:
+        reference = claim.baseline_reference
+        if reference is None or not getattr(reference, "has_after_line", False):
+            return False
+    return bool(presence_line_set or deletion_claims)
+
+
+def _try_apply_baseline_replacement_units(
+    source_lines: list[bytes],
+    working_lines: list[bytes],
+    ownership: 'BatchOwnership',
+    presence_line_set: set[int],
+    deletion_claims: list['DeletionClaim'],
+) -> bytes | None:
+    """Apply baseline-coordinate edits when structural source anchors fail.
+
+    This is a conservative fallback for same-source round trips where the batch
+    source is the post-change file and the target is still the pre-change
+    baseline/index. In that shape, source anchors can legitimately be absent
+    even though the old baseline bytes still exist at an exact recorded
+    coordinate.
+    """
+    if any(claimed_line < 1 or claimed_line > len(source_lines) for claimed_line in presence_line_set):
+        return None
+
+    if (
+        source_lines == working_lines
+        and _has_complete_baseline_references(
+            ownership,
+            presence_line_set,
+            deletion_claims,
+        )
+    ):
+        return b"".join(working_lines)
+
+    replacement_units = getattr(ownership, "replacement_units", [])
+    edits: list[tuple[int, int, list[bytes]]] = []
+    unit_claimed_lines: set[int] = set()
+    unit_deletion_indices: set[int] = set()
+
+    for unit in replacement_units:
+        claimed_lines = sorted(parse_line_selection(",".join(unit.presence_lines))) if unit.presence_lines else []
+        if not claimed_lines or len(unit.deletion_indices) != 1:
+            return None
+
+        deletion_index = unit.deletion_indices[0]
+        if deletion_index < 0 or deletion_index >= len(deletion_claims):
+            return None
+        replacement_lines: list[bytes] = []
+        for claimed_line in claimed_lines:
+            if claimed_line < 1 or claimed_line > len(source_lines):
+                return None
+            replacement_lines.append(source_lines[claimed_line - 1])
+
+        removal_edit = _baseline_removal_edit(
+            deletion_claims[deletion_index],
+            working_lines,
+        )
+        if removal_edit is None:
+            return None
+        start, end, _removed_lines = removal_edit
+        edits.append((start, end, replacement_lines))
+        unit_claimed_lines.update(claimed_lines)
+        unit_deletion_indices.add(deletion_index)
+
+    for deletion_index, claim in enumerate(deletion_claims):
+        if deletion_index in unit_deletion_indices:
+            continue
+        removal_edit = _baseline_removal_edit(claim, working_lines)
+        if removal_edit is None:
+            return None
+        edits.append(removal_edit)
+
+    remaining_claimed_lines = presence_line_set - unit_claimed_lines
+    claimed_line_references = ownership.presence_baseline_references()
+    if remaining_claimed_lines:
+        grouped_insertions: dict[int, list[int]] = {}
+        for claimed_line in sorted(remaining_claimed_lines):
+            if claimed_line < 1 or claimed_line > len(source_lines):
+                return None
+            reference = claimed_line_references.get(claimed_line)
+            position = _baseline_reference_insertion_position(
+                reference,
+                working_lines,
+            )
+            if position is None:
+                return None
+            grouped_insertions.setdefault(position, []).append(claimed_line)
+
+        for position, claimed_lines in grouped_insertions.items():
+            insertion_lines = [
+                source_lines[claimed_line - 1]
+                for claimed_line in claimed_lines
+            ]
+            if working_lines[position:position + len(insertion_lines)] == insertion_lines:
+                continue
+            edits.append((
+                position,
+                position,
+                insertion_lines,
+            ))
+
+    if unit_claimed_lines | remaining_claimed_lines != presence_line_set:
+        return None
+
+    return _apply_non_overlapping_baseline_edits(working_lines, edits)
+
+
 def merge_batch(
     batch_source_content: bytes,
     ownership: 'BatchOwnership',
@@ -1133,25 +1439,47 @@ def merge_batch(
     working_lines = working_normalized.splitlines(keepends=True) if working_normalized else []
 
     resolved = ownership.resolve()
-    claimed_line_set = resolved.claimed_line_set
+    presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
-    mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
-    _check_structural_validity(
-        mapping,
-        claimed_line_set,
-        deletion_claims,
-        source_lines,
-        working_lines
-    )
-
-    realized_entries = _satisfy_constraints(
+    fallback_content = _try_apply_baseline_replacement_units(
         source_lines,
         working_lines,
-        claimed_line_set,
+        ownership,
+        presence_line_set,
         deletion_claims,
-        source_to_working_mapping=mapping,
     )
+    if fallback_content is not None:
+        return _restore_line_endings(fallback_content, result_line_ending)
+
+    mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
+    try:
+        _check_structural_validity(
+            mapping,
+            presence_line_set,
+            deletion_claims,
+            source_lines,
+            working_lines
+        )
+
+        realized_entries = _satisfy_constraints(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            deletion_claims,
+            source_to_working_mapping=mapping,
+        )
+    except MergeError:
+        fallback_content = _try_apply_baseline_replacement_units(
+            source_lines,
+            working_lines,
+            ownership,
+            presence_line_set,
+            deletion_claims,
+        )
+        if fallback_content is not None:
+            return _restore_line_endings(fallback_content, result_line_ending)
+        raise
 
     return _restore_line_endings(
         b"".join(entry.content for entry in realized_entries),
@@ -1222,7 +1550,7 @@ def discard_batch(
     baseline_lines = baseline_normalized.splitlines(keepends=True) if baseline_normalized else []
 
     resolved = ownership.resolve()
-    claimed_line_set = resolved.claimed_line_set
+    presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
     working_to_source = match_lines(source_lines, working_lines)
@@ -1240,7 +1568,7 @@ def discard_batch(
 
     realized_entries = _reverse_presence_constraints(
         realized_entries,
-        claimed_line_set,
+        presence_line_set,
         source_lines,
         baseline_lines,
         correspondence
@@ -1429,7 +1757,7 @@ def _build_realized_entries_for_discard(
 
 def _reverse_presence_constraints(
     entries: list[RealizedEntry],
-    claimed_line_set: set[int],
+    presence_line_set: set[int],
     source_lines: list[bytes],
     baseline_lines: list[bytes],
     correspondence: BaselineCorrespondence
@@ -1453,7 +1781,7 @@ def _reverse_presence_constraints(
 
     Args:
         entries: Realized entries from working tree with source provenance
-        claimed_line_set: Set of source line numbers that are batch-owned
+        presence_line_set: Set of source line numbers that are batch-owned
         source_lines: Batch source lines (for validation)
         baseline_lines: Baseline lines (not used directly; in correspondence)
         correspondence: Baseline restoration correspondence
@@ -1468,7 +1796,7 @@ def _reverse_presence_constraints(
     processed_replace_regions: set[int] = set()
 
     for entry in entries:
-        if entry.source_line is not None and entry.source_line in claimed_line_set:
+        if entry.source_line is not None and entry.source_line in presence_line_set:
             region = correspondence.get_region_for_source_line(entry.source_line)
 
             if region is None:
@@ -1509,7 +1837,7 @@ def _reverse_presence_constraints(
                         region.source_start_line,
                         region.source_end_line + 1
                     ))
-                    claimed_lines_in_region = source_lines_in_region & claimed_line_set
+                    claimed_lines_in_region = source_lines_in_region & presence_line_set
 
                     if claimed_lines_in_region != source_lines_in_region:
                         raise MergeError(
@@ -1687,13 +2015,13 @@ def _check_pair_conflicts(
 
     _check_presence_vs_absence_conflict(
         source_lines,
-        resolved_a.claimed_line_set,
+        resolved_a.presence_line_set,
         resolved_b.deletion_claims
     )
 
     _check_presence_vs_absence_conflict(
         source_lines,
-        resolved_b.claimed_line_set,
+        resolved_b.presence_line_set,
         resolved_a.deletion_claims
     )
 

@@ -174,7 +174,7 @@ Per batch:
 Per text file:
 
 - `batch_source_commit`
-- `claimed_lines`
+- `presence_claims`
 - `deletions`
 - `replacement_units` (optional; omitted when empty)
 - `mode`
@@ -188,7 +188,11 @@ Per binary file:
 - `mode`
 
 `deletions` are serialized as anchored blobs, not inline text.
-`replacement_units` records explicit coupling between claimed source ranges and
+`presence_claims` is the first-class representation for source content that must
+exist after the batch is applied. Each claim stores `source_lines`; when needed,
+it can also store `baseline_references` keyed by source line with blob-backed
+before/after boundary bytes.
+`replacement_units` records explicit coupling between presence source ranges and
 deletion indexes so replacement atomicity does not need to be rediscovered from
 display adjacency. The field is omitted when no explicit replacement units are
 stored.
@@ -246,14 +250,18 @@ Ownership is defined in `src/git_stage_batch/batch/ownership.py`.
 
 `BatchOwnership` has three persistent fields:
 
-- `claimed_lines`
-  Source-space line ranges like `["3-7", "10"]`
+- `presence_claims`
+  `PresenceClaim(source_lines, baseline_references)` records source-space line
+  ranges like `["3-7", "10"]` that must exist after application. Optional
+  `baseline_references` record the old-file boundary around individual presence
+  lines when that extra proof is available.
 - `deletions`
   `DeletionClaim(anchor_line, content_lines)` records that a specific baseline
   sequence must be absent after a given source line, or at start-of-file if the
-  anchor is `None`
+  anchor is `None`. Optional `baseline_reference` metadata records the same
+  old-file coordinate shape used by presence claims.
 - `replacement_units`
-  Optional metadata linking claimed line ranges to entries in `deletions` when
+  Optional metadata linking presence source ranges to entries in `deletions` when
   the capture path knows they form one replacement. These persisted units are
   selected atomically as a whole; display-adjacency grouping is only the fallback
   for ownership without explicit replacement metadata.
@@ -261,9 +269,10 @@ Ownership is defined in `src/git_stage_batch/batch/ownership.py`.
 This distinction is central:
 
 - presence claims say "this source content belongs to the batch"
-- deletion claims say "this baseline content was removed by the batch"
+- absence claims say "this baseline content was removed by the batch"
 
-The system treats deletions as constraints, not as negative patches to replay.
+The metadata key is still `deletions` for historical reasons, but the system
+treats those entries as absence constraints, not as negative patches to replay.
 
 ### Ownership versus attribution
 
@@ -391,6 +400,35 @@ Those checks are implemented in `_check_structural_validity()` and
 
 The design is intentionally conservative. When context is lost or ambiguous, the
 tool fails instead of guessing.
+
+### Baseline-coordinate round trips
+
+If the target tree has not changed between capturing a selection into a batch and
+applying that batch, the operation should round-trip through batch metadata. The
+merge path supports this without making general fuzzy guesses:
+
+- replacement units can use `baseline_reference.after_line` plus the exact
+  absence bytes to replace a baseline run only when those bytes still exist at
+  that coordinate
+- absence-only claims can use the same baseline coordinate and exact absence
+  bytes when their source anchor is no longer present in the target
+- presence-only additions can use per-claim `baseline_references` only when the
+  recorded before/after boundary bytes still match the target
+- presence-only baseline-coordinate application is still constraint
+  satisfaction, not blind insertion; if the target already equals the batch
+  source, or if the exact claimed insertion is already present at the recorded
+  boundary, the merge is a no-op for that claim
+- if the target exactly equals the batch source and every claimed presence or
+  absence constraint carries baseline-coordinate metadata, the merge is a no-op
+  before structural absence suppression runs. This keeps a freshly captured
+  batch idempotent when round-tripped back onto the same tree, even when old
+  absence bytes also appear as unrelated or newly claimed source bytes.
+- if those exact baseline-coordinate checks fail, the fallback declines and the
+  normal structural merge path decides whether the batch is still safely
+  mergeable
+
+This is deliberately narrower than raw patch replay. It handles the no-change
+round trip while preserving conservative behavior when the target has drifted.
 
 This is worth emphasizing. A wrong guess here would not just produce a merge
 conflict. It could silently place saved lines into the wrong structural context
@@ -557,6 +595,27 @@ The display model creates ephemeral IDs and groups adjacent visible lines in a
 way that is useful for selection. The merge model works in source-space
 coordinates and structural alignment. They are related, but they are not the
 same layer and should not be treated as interchangeable.
+
+### Live `include --line`
+
+Live line inclusion uses the batch constraint model directly. The command creates
+transient batch ownership for the selected live hunk lines, merges that ownership
+into the index target with `merge_batch()`, and independently verifies that
+merging the same ownership into the current working tree would leave the working
+tree unchanged. The transient batch state is deleted before the command returns.
+
+The transient ownership builder scans the full live hunk, not just the selected
+rows, so unselected context can still provide source and baseline boundaries for
+selected absence claims. Replacement coupling is supplied from before/after file
+comparison as semantic replacement runs. It is not inferred from the displayed
+diff layout: same-sized runs may expose positional row units, while 1-to-N and
+N-to-1 replacements are represented as one run and only become a replacement
+unit when the whole run is selected.
+
+If the transient batch path cannot prove that working-tree unchanged property,
+the command refuses the line selection. It does not fall back to the older
+semantic matcher or raw line staging path, because those paths can reinterpret
+stale or ambiguous display IDs through a different model.
 
 ### Attribution for the live working tree
 

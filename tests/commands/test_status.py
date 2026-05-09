@@ -465,7 +465,7 @@ class TestCommandStatus:
         add_file_to_batch(
             "manual",
             "file.txt",
-            BatchOwnership(claimed_lines=["2"], deletions=[]),
+            BatchOwnership.from_presence_lines(["2"], []),
             "100644",
         )
         test_file.write_text("keep\nold\n")
@@ -511,7 +511,7 @@ class TestCommandStatus:
         add_file_to_batch(
             "cleanup",
             "file.txt",
-            BatchOwnership(claimed_lines=["2", "12", "22"], deletions=[]),
+            BatchOwnership.from_presence_lines(["2", "12", "22"], []),
             "100644",
         )
 

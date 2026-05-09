@@ -81,7 +81,7 @@ class TestClearCurrentHunkStateFiles:
         get_working_tree_snapshot_file_path().write_text("tree")
         get_processed_include_ids_file_path().write_text("1\n2\n")
         # processed.batch uses JSON format now and is global state (not per-hunk)
-        get_processed_batch_ids_file_path().write_text(json.dumps({"test.py": {"claimed_lines": ["1", "2"]}}))
+        get_processed_batch_ids_file_path().write_text(json.dumps({"test.py": {"presence_claims": [{"source_lines": ["1", "2"]}]}}))
 
         # Clear state
         clear_selected_change_state_files()
@@ -312,7 +312,7 @@ class TestAdvanceToNextHunk:
         get_selected_hunk_hash_file_path().write_text("old hash")
         get_processed_include_ids_file_path().write_text("1\n")
         # processed.batch uses JSON format now and is global state (persists across hunks)
-        get_processed_batch_ids_file_path().write_text(json.dumps({"file1.txt": {"claimed_lines": ["2"]}}))
+        get_processed_batch_ids_file_path().write_text(json.dumps({"file1.txt": {"presence_claims": [{"source_lines": ["2"]}]}}))
 
         # Advance to next hunk
         advance_to_next_change()

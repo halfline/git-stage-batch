@@ -5,6 +5,7 @@ from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
 
 import pytest
 
+import git_stage_batch.batch.attribution as attribution_module
 from git_stage_batch.batch.attribution import (
     AttributionUnitKind,
     compare_baseline_to_working_tree,
@@ -28,6 +29,75 @@ def temp_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, capture_output=True)
 
     return tmp_path
+
+
+def _create_batch_source_commit(repo, path: str, content: str) -> str:
+    file_path = repo / path
+    file_path.write_text(content)
+    subprocess.run(["git", "add", path], check=True, cwd=repo, capture_output=True)
+    tree = subprocess.run(
+        ["git", "write-tree"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    commit = subprocess.run(
+        ["git", "commit-tree", tree, "-p", "HEAD", "-m", "batch source"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "reset", "--mixed", "HEAD"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    return commit
+
+
+def test_legacy_claimed_lines_metadata_owns_presence_units(temp_repo, monkeypatch):
+    """Attribution should treat old claimed_lines as presence ownership."""
+    test_file = temp_repo / "test.txt"
+    test_file.write_text("base\n")
+    subprocess.run(["git", "add", "test.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "baseline"], check=True, capture_output=True)
+
+    batch_source_commit = _create_batch_source_commit(
+        temp_repo,
+        "test.txt",
+        "base\nadded\n",
+    )
+
+    monkeypatch.setattr(attribution_module, "list_batch_names", lambda: ["legacy"])
+    monkeypatch.setattr(
+        attribution_module,
+        "read_batch_metadata",
+        lambda _name: {
+            "files": {
+                "test.txt": {
+                    "batch_source_commit": batch_source_commit,
+                    "claimed_lines": ["2"],
+                    "deletions": [],
+                }
+            }
+        },
+    )
+
+    attribution = build_file_attribution("test.txt")
+
+    owned_additions = [
+        attributed
+        for attributed in attribution.units
+        if (
+            attributed.unit.kind == AttributionUnitKind.PRESENCE_ONLY
+            and attributed.unit.claimed_content == b"added\n"
+        )
+    ]
+    assert owned_additions
+    assert owned_additions[0].owning_batches == {"legacy"}
 
 
 class TestPresenceGranularity:

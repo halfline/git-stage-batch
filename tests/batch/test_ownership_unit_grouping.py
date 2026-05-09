@@ -22,10 +22,7 @@ from git_stage_batch.batch.display import build_display_lines_from_batch_source
 def test_display_includes_context_between_separated_claimed_lines():
     """Separated owned lines should not be visually glued together."""
     batch_source = "def func(\n    arg1,\n    arg2,\n):\n    return arg1\n"
-    ownership = BatchOwnership(
-        claimed_lines=["1,5"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["1,5"], [])
 
     display_lines = build_display_lines_from_batch_source(batch_source, ownership, context_lines=10)
 
@@ -46,10 +43,7 @@ def test_display_includes_context_between_separated_claimed_lines():
 def test_display_context_honors_context_lines_limit():
     """Unowned source context should be bounded by the requested context width."""
     batch_source = "".join(f"line {i}\n" for i in range(1, 11))
-    ownership = BatchOwnership(
-        claimed_lines=["2,9"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["2,9"], [])
 
     display_lines = build_display_lines_from_batch_source(batch_source, ownership, context_lines=1)
 
@@ -77,10 +71,7 @@ def test_display_context_honors_context_lines_limit():
 def test_display_context_zero_omits_unowned_context():
     """-U0 style display should show only owned lines and deletion constraints."""
     batch_source = "line 1\nline 2\nline 3\n"
-    ownership = BatchOwnership(
-        claimed_lines=["1,3"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["1,3"], [])
 
     display_lines = build_display_lines_from_batch_source(batch_source, ownership, context_lines=0)
 
@@ -111,9 +102,9 @@ def test_deletion_followed_by_claimed_becomes_replacement():
 
     batch_source = b"old line 1\nold line 2\nold line 3\n"
 
-    ownership = BatchOwnership(
-        claimed_lines=["1"],  # New content at line 1
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old line 1\n", b"old line 2\n"])
         ]
     )
@@ -148,9 +139,9 @@ def test_claimed_followed_by_deletion_becomes_replacement():
 
     batch_source = b"old line 1\nold line 2\nold line 3\n"
 
-    ownership = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
             DeletionClaim(anchor_line=1, content_lines=[b"old line 2\n"])
         ]
     )
@@ -181,9 +172,9 @@ def test_deletion_without_adjacent_claimed_is_deletion_only():
 
     batch_source = b"old line 1\nold line 2\nold line 3\n"
 
-    ownership = BatchOwnership(
-        claimed_lines=[],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
             DeletionClaim(anchor_line=1, content_lines=[b"old line 2\n"])
         ]
     )
@@ -214,10 +205,7 @@ def test_claimed_without_adjacent_deletion_is_presence_only():
 
     batch_source = b"old line 1\nold line 2\n"
 
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
 
     units = build_ownership_units_from_display(ownership, batch_source)
 
@@ -287,9 +275,9 @@ def test_nearby_in_source_separated_in_display_not_coupled():
 
     batch_source = b"old line 1\nold line 2\nold line 3\nold line 4\nold line 5\n"
 
-    ownership = BatchOwnership(
-        claimed_lines=["2"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old line 1\n"]),
             DeletionClaim(anchor_line=3, content_lines=[b"old line 4\n"])
         ]
@@ -351,10 +339,7 @@ def test_multiple_presence_only_lines_remain_independently_selectable():
 
     batch_source = b"old line 1\nold line 2\nold line 3\nold line 4\n"
 
-    ownership = BatchOwnership(
-        claimed_lines=["1", "3"],
-        deletions=[]
-    )
+    ownership = BatchOwnership.from_presence_lines(["1", "3"], [])
 
     units = build_ownership_units_from_display(ownership, batch_source)
 
@@ -394,9 +379,9 @@ def test_multiple_consecutive_deletions_and_claims_form_single_replacement():
 
     batch_source = b"old line 1\nold line 2\nold line 3\nold line 4\n"
 
-    ownership = BatchOwnership(
-        claimed_lines=["1-2"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old line 1\n", b"old line 2\n"])
         ]
     )
@@ -427,9 +412,9 @@ def test_multiple_consecutive_deletions_and_claims_form_single_replacement():
 def test_rebuild_does_not_promote_display_adjacency_to_explicit_metadata():
     """Inferred display adjacency should not become persisted replacement intent."""
     batch_source = b"new line\n"
-    ownership = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old line\n"])
         ],
     )
@@ -438,7 +423,7 @@ def test_rebuild_does_not_promote_display_adjacency_to_explicit_metadata():
         build_ownership_units_from_display(ownership, batch_source)
     )
 
-    assert rebuilt.claimed_lines == ["1"]
+    assert rebuilt.presence_claims[0].source_lines == ["1"]
     assert len(rebuilt.deletions) == 1
     assert rebuilt.replacement_units == []
 
@@ -446,13 +431,13 @@ def test_rebuild_does_not_promote_display_adjacency_to_explicit_metadata():
 def test_explicit_replacement_unit_overrides_display_adjacency():
     """Persisted replacement metadata should couple non-adjacent display lines."""
     batch_source = b"new first\ncontext\nanchor\n"
-    ownership = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
             DeletionClaim(anchor_line=3, content_lines=[b"old later\n"]),
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
         ],
     )
 
@@ -469,13 +454,13 @@ def test_explicit_replacement_unit_overrides_display_adjacency():
 def test_explicit_replacement_unit_can_group_multiple_claimed_lines():
     """Explicit metadata can preserve a whole multi-line replacement unit."""
     batch_source = b"new one\nnew two\nkeep\n"
-    ownership = BatchOwnership(
-        claimed_lines=["1-2"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
         ],
     )
 
@@ -490,13 +475,13 @@ def test_explicit_replacement_unit_can_group_multiple_claimed_lines():
 def test_rebuild_preserves_explicit_replacement_units():
     """Filtering/rebuilding ownership should persist replacement couplings."""
     batch_source = b"new one\nnew two\nkeep\n"
-    ownership = BatchOwnership(
-        claimed_lines=["1-2"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [
             DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
         ],
     )
 
@@ -504,10 +489,10 @@ def test_rebuild_preserves_explicit_replacement_units():
         build_ownership_units_from_display(ownership, batch_source)
     )
 
-    assert rebuilt.claimed_lines == ["1-2"]
+    assert rebuilt.presence_claims[0].source_lines == ["1-2"]
     assert len(rebuilt.deletions) == 1
     assert rebuilt.replacement_units == [
-        ReplacementUnit(claimed_lines=["1-2"], deletion_indices=[0]),
+        ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
     ]
 
 
@@ -522,14 +507,14 @@ def test_rebuild_preserves_mixed_same_anchor_deletion_order():
         anchor_line=None,
         content_lines=[b"old inferred\n"],
     )
-    ownership = BatchOwnership(
-        claimed_lines=["1-2"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [
             explicit_deletion,
             inferred_deletion,
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
         ],
     )
 
@@ -539,7 +524,7 @@ def test_rebuild_preserves_mixed_same_anchor_deletion_order():
 
     assert rebuilt.deletions == [explicit_deletion, inferred_deletion]
     assert rebuilt.replacement_units == [
-        ReplacementUnit(claimed_lines=["1"], deletion_indices=[0]),
+        ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
     ]
 
 
@@ -554,14 +539,14 @@ def test_rebuild_preserves_mixed_same_anchor_order_when_explicit_is_later():
         anchor_line=None,
         content_lines=[b"old explicit\n"],
     )
-    ownership = BatchOwnership(
-        claimed_lines=["1"],
-        deletions=[
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
             inferred_deletion,
             explicit_deletion,
         ],
         replacement_units=[
-            ReplacementUnit(claimed_lines=["1"], deletion_indices=[1]),
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[1]),
         ],
     )
 
@@ -571,5 +556,5 @@ def test_rebuild_preserves_mixed_same_anchor_order_when_explicit_is_later():
 
     assert rebuilt.deletions == [inferred_deletion, explicit_deletion]
     assert rebuilt.replacement_units == [
-        ReplacementUnit(claimed_lines=["1"], deletion_indices=[1]),
+        ReplacementUnit(presence_lines=["1"], deletion_indices=[1]),
     ]

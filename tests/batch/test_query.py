@@ -151,10 +151,10 @@ def test_list_batch_files_with_files(temp_git_repo):
     """Test listing files in batch with files."""
     create_batch("test-batch", "Test")
 
-    ownership1 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    ownership1 = BatchOwnership.from_presence_lines(["1"], [])
     add_file_to_batch("test-batch", "file.txt", ownership1)
 
-    ownership2 = BatchOwnership(claimed_lines=["1"], deletions=[])
+    ownership2 = BatchOwnership.from_presence_lines(["1"], [])
     add_file_to_batch("test-batch", "file2.txt", ownership2)
 
     files = list_batch_files("test-batch")
@@ -171,7 +171,7 @@ def test_list_batch_files_sorted(temp_git_repo):
 
     create_batch("test-batch", "Test")
 
-    ownership = BatchOwnership(claimed_lines=["1"], deletions=[])
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
     add_file_to_batch("test-batch", "zebra.txt", ownership)
     add_file_to_batch("test-batch", "apple.txt", ownership)
     add_file_to_batch("test-batch", "middle.txt", ownership)

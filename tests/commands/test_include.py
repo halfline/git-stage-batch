@@ -446,6 +446,38 @@ class TestCommandIncludeLine:
         assert "remove" not in result.stdout
         assert result.stdout == "keep1\nkeep2\n"
 
+    def test_include_line_stages_full_file_deletion(self, temp_git_repo):
+        """Full-file deletion selections should remove the path from the index."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("remove1\nremove2\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.unlink()
+
+        command_start()
+        fetch_next_change()
+
+        command_include_line("1-2")
+
+        status = subprocess.run(
+            ["git", "status", "--short", "--", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert status.stdout == "D  test.txt\n"
+
+        index_entry = subprocess.run(
+            ["git", "ls-files", "-s", "--", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert index_entry.stdout == ""
+
     def test_include_line_as_replaces_staged_content_and_masks_hunk(self, temp_git_repo):
         """Test include --line --as stages replacement text and hides the line."""
         test_file = temp_git_repo / "test.txt"

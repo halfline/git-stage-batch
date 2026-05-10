@@ -86,7 +86,13 @@ from ..staging.operations import (
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
-from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_command
+from ..utils.git import (
+    get_git_repository_root_path,
+    git_update_index,
+    require_git_repository,
+    run_git_command,
+    stream_git_command,
+)
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
@@ -343,6 +349,27 @@ def _try_build_index_content_via_transient_batch(
         if created_batch and batch_exists(batch_name):
             delete_batch(batch_name)
         _restore_session_batch_sources_file(session_sources_existed, session_sources_content)
+
+
+def _stage_live_line_target_content(file_path: str, target_content: bytes) -> None:
+    """Stage the result of live line-level include."""
+    full_path = get_git_repository_root_path() / file_path
+    if target_content == b"" and not full_path.exists():
+        result = git_update_index(
+            file_path=file_path,
+            force_remove=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            exit_with_error(
+                _("Failed to stage deletion for {file}: {error}").format(
+                    file=file_path,
+                    error=result.stderr,
+                )
+            )
+        return
+
+    update_index_with_blob_content(file_path, target_content)
 
 
 def _transient_include_failure_message(
@@ -790,7 +817,7 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
                 )
             )
 
-        update_index_with_blob_content(line_changes.path, target_index_content)
+        _stage_live_line_target_content(line_changes.path, target_index_content)
 
         if preserve_selected_state:
             restore_selected_change_state(saved_selected_state)

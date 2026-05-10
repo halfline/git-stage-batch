@@ -23,7 +23,7 @@ Tests fundamental git-stage-batch workflow:
 - **TestAbortSession**: Aborting and restoring state
 - **TestCompleteWorkflow**: End-to-end scenarios (incremental staging, mixed operations, full commits)
 
-### `test_batch_operations.py` (8 test classes, ~25 tests)
+### `test_functional_batch_operations.py` (8 test classes, ~25 tests)
 Tests batch features:
 - **TestCreateBatch**: Creating batches with/without notes, duplicate detection
 - **TestIncludeToBatch**: Saving changes to batches
@@ -51,12 +51,12 @@ Tests error cases and edge cases:
 - **TestPermissionErrors**: Read-only FS, missing .git, corrupted repo
 - **TestRecovery**: Recovering from error states
 
-### `test_status.py` (2 test classes, ~12 tests)
+### `test_functional_status.py` (2 test classes, ~12 tests)
 Tests status command:
 - **TestStatusCommand**: Status display in various states, progress tracking, shorthand
 - **TestStatusWithBatches**: Status with batch information
 
-### `test_interactive.py` (9 test classes, ~45 tests)
+### `test_functional_interactive.py` (9 test classes, ~45 tests)
 Tests interactive/TUI mode:
 - **TestInteractiveMode**: Starting interactive mode (-i flag, no changes)
 - **TestInteractiveCommands**: Commands in interactive mode (include, skip, show, quit)
@@ -77,7 +77,7 @@ uv run pytest -n auto tests/functional/
 uv run pytest tests/functional/test_basic_workflow.py
 
 # Run specific test class
-uv run pytest tests/functional/test_batch_operations.py::TestCreateBatch
+uv run pytest tests/functional/test_functional_batch_operations.py::TestCreateBatch
 
 # Run with verbose output
 uv run pytest tests/functional/ -v
@@ -86,7 +86,7 @@ uv run pytest tests/functional/ -v
 uv run pytest tests/functional/ -x
 
 # Run specific test
-uv run pytest tests/functional/test_status.py::TestStatusCommand::test_status_after_start -xvs
+uv run pytest tests/functional/test_functional_status.py::TestStatusCommand::test_status_after_start -xvs
 ```
 
 ## Test Coverage Summary

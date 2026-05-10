@@ -656,7 +656,8 @@ If you spawn a subagent for message drafting:
    - `.git/hooks/commit-msg` when present
 5. Require it to return:
    - one proposed commit message
-   - a short checklist confirming prefix, paragraph count, and series position
+   - a short checklist confirming prefix, paragraph count, tense, and series
+     narrative requirements
    - any specific uncertainty if the staged diff does not justify a confident
      draft
 
@@ -889,23 +890,29 @@ multi-commit series. Fill in each bracketed section. Do not merge
 or skip paragraphs.
 
 ```text
-prefix: Summary under 72 chars
+prefix: Summary under 68 chars
 
-[First paragraph: the program's current state.]
+[Present-tense description of what the project, file, or interface
+currently has or provides. Do not mention the patch or what is
+missing yet.]
 
-[Second paragraph: the underlying problem.]
+[Description of what is missing, broken, or insufficient, and why
+that matters. Use maintainer or commit-author perspective for
+internal concerns, user perspective for external ones.]
 
-This commit [addresses|mitigates|resolves] that [problem] by
-[precise description of what this commit changes].
+This commit [addresses|mitigates|resolves] that [problem] by [precise
+description of what this commit changes and how it solves the problem
+stated above].
 
-[Optional fourth paragraph: what comes next.]
+[Connect to what comes next. Omit this paragraph only for the final
+commit in the series.]
 ```
 
 ### First Line (Summary)
 
 Use a short, lowercase prefix (`project:`, `cli:`, `patch:`,
 `editor:`, `state:`, etc.). Capitalize the first word of the
-summary after the colon. Keep the entire line under 72 characters.
+summary after the colon. Keep the entire line under 68 characters.
 If unsure which prefix to use, run `git log --pretty=oneline FILE`
 and see what prefixes were used previously.
 
@@ -939,8 +946,9 @@ Explain the underlying problem from the appropriate perspective.
 Choose the perspective based on who experiences the problem:
 - Use **maintainer perspective** for internal concerns (missing
   infrastructure, lack of test coverage, missing translations,
-  build system gaps). Frame as "The program lacks X" or "The
-  project does not provide Y."
+  build system gaps). This is also the commit author's perspective:
+  the reason the change belongs in history. Frame as "The program
+  lacks X" or "The project does not provide Y."
 - Use **user perspective** for external concerns (confusing
   interfaces, missing documentation, poor workflows). Frame as
   "Users cannot X" or "Users must Y."
@@ -974,19 +982,26 @@ rather than implying the entire problem is solved.
 If the commit introduces infrastructure or an early step toward a
 larger feature, describe it as such.
 
+Start this paragraph with `This commit`.
+
 Use natural prose such as:
 - `This commit addresses that by ...`
-- `This commit improves that by ...`
 - `This commit begins adding support for ... by ...`
 - `This commit lays groundwork for ... by ...`
 
-### Fourth Paragraph (optional)
+### Fourth Paragraph
 
-If there will be changes coming up in the near future, say so:
+Use it for every commit except the final one in a multi-commit series.
+Use future tense because the work has not happened yet, and be specific
+about the next step rather than vague.
+
+For example:
 - `Subsequent commits will provide ...`
 - `In the future, <behavior> will change to ...`
 
-Vary the phrasing across a series.
+Omit this paragraph for the final commit in the series unless
+repository-specific guidance requires otherwise. Vary the phrasing across a
+series.
 
 The most common errors are opening with the problem, merging the
 first and second paragraphs with `but` or `however`, and using
@@ -999,6 +1014,22 @@ Follow any guidance found in `CONTRIBUTING.md` or
 `.git/hooks/commit-msg` before falling back to the generic rules
 here. Those project-specific conventions override any conflicting
 guidance in this skill.
+
+### Required Structure
+
+Every commit message should use this shape:
+
+```text
+prefix: Concise summary of the change
+
+First paragraph describing the selected project state.
+
+Second paragraph describing the underlying problem.
+
+Third paragraph describing how this commit addresses that problem.
+
+Fourth paragraph optional for near-term follow-up.
+```
 
 ### Key Principles
 
@@ -1040,14 +1071,21 @@ guidance in this skill.
   Only use it for human co-authors.
 - Only use the word `this` when referring to the commit itself.
   Use `that` or similar for other contexts.
+- Wrap body paragraphs at 75 characters.
 - Be humble and forward thinking. Avoid words like "comprehensive"
   or "crucial", and avoid a tone that could sound like bragging or
   seem short-sighted.
+- Do not invent concise self-describing labels for internal ideas
+  and use them casually, expecting the user to implicitly know what
+  they should mean. Explain things in a way that reduces cognitive
+  load on the reader.
 
 ### Checklist
 
 Before finalizing a commit message, check:
 
+- Does the summary use a fitting prefix and stay under 68
+  characters?
 - Does the first paragraph describe the program's current state,
   not the patch?
 - Does the first paragraph describe the program's state (what it
@@ -1055,7 +1093,8 @@ Before finalizing a commit message, check:
 - If this is part of a series, does the first paragraph accurately
   reflect the cumulative state after all previous commits?
 - Does the second paragraph use the appropriate perspective
-  (maintainer for internal concerns, user for external concerns)?
+  (maintainer or commit author for internal concerns, user for
+  external concerns)?
 - Does the second paragraph describe the real user-visible or
   maintainer-visible problem?
 - Is the problem broader than just the file being edited?
@@ -1064,11 +1103,14 @@ Before finalizing a commit message, check:
 - If this is the first groundwork commit in a feature series, does
   the message name the eventual user-facing feature rather than
   only the internal machinery?
-- Does the third paragraph clearly state what this commit does
-  without overstating its impact?
+- Does the third paragraph open with `This commit` and clearly state
+  what this commit does without overstating its impact?
 - If this is part of a series, does it show progression (e.g.,
   "begins", "continues", "completes")?
 - If this is an incremental step, does it clearly say so?
+- If this commit is not the last in the series, does the fourth
+  paragraph name what subsequent commits will do?
+- Do body paragraphs wrap at 75 characters?
 
 ### Example: Single Commit
 
@@ -1143,9 +1185,6 @@ program in their native language.
 This commit completes the initial set of language support by
 adding a complete Arabic translation file (po/ar.po) with 216
 translated messages.
-
-The program now supports 14 languages covering major linguistic
-regions globally.
 ```
 
 ### Anti-Patterns

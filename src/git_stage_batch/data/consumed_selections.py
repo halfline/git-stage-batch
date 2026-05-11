@@ -14,7 +14,7 @@ from ..batch.ownership import (
 )
 from ..batch.source_refresh import (
     _refresh_selected_lines_against_new_source,
-    _refresh_selected_lines_against_source_buffer,
+    _refresh_selected_lines_against_source_lines,
 )
 from .batch_sources import create_batch_source_commit
 from ..editor import EditorBuffer
@@ -70,10 +70,10 @@ def record_consumed_selection(
             ) as advance_result:
                 batch_source_commit = advance_result.batch_source_commit
                 existing_ownership = advance_result.ownership
-                selected_lines = _refresh_selected_lines_against_source_buffer(
+                selected_lines = _refresh_selected_lines_against_source_lines(
                     selected_lines,
-                    source_buffer=advance_result.source_buffer,
-                    working_buffer=None,
+                    source_lines=advance_result.source_buffer,
+                    working_lines=(),
                     working_line_map=advance_result.working_line_map,
                 )
         new_ownership = translate_lines_to_batch_ownership(selected_lines)

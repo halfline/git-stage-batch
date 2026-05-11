@@ -28,7 +28,7 @@ from ..batch.ownership import (
 from ..batch.query import read_batch_metadata
 from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
-from ..batch.source_refresh import _refresh_selected_lines_against_source_buffer
+from ..batch.source_refresh import _refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
@@ -800,10 +800,10 @@ def _command_discard_lines_to_batch_as(
                             ownership=existing_ownership,
                             source_line_map=source_with_provenance.source_line_map,
                         )
-                        refreshed_selected_lines = _refresh_selected_lines_against_source_buffer(
+                        refreshed_selected_lines = _refresh_selected_lines_against_source_lines(
                             rewritten_selected_lines,
-                            source_buffer=source_with_provenance.source_buffer,
-                            working_buffer=None,
+                            source_lines=source_with_provenance.source_buffer,
+                            working_lines=(),
                             working_line_map=source_with_provenance.working_line_map,
                         )
                         new_ownership = translate_lines_to_batch_ownership(

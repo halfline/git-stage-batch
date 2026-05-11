@@ -8,12 +8,10 @@ advancement, ownership remapping, cache updates, and line re-annotation.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import ExitStack
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
 from ..data.batch_sources import load_session_batch_sources, save_session_batch_sources
-from ..editor import EditorBuffer
 from .match import match_lines
 from .ownership import (
     BatchOwnership,
@@ -118,10 +116,10 @@ def ensure_batch_source_current_for_selection(
             # Re-annotate lines against the refreshed source. That source may
             # include already-owned lines that are absent from the
             # working tree after earlier discard operations.
-            reannotated_lines = _refresh_selected_lines_against_source_buffer(
+            reannotated_lines = _refresh_selected_lines_against_source_lines(
                 selected_lines,
-                source_buffer=advance_result.source_buffer,
-                working_buffer=None,
+                source_lines=advance_result.source_buffer,
+                working_lines=(),
                 working_line_map=advance_result.working_line_map,
             )
 
@@ -173,7 +171,7 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
 
     This invariant is maintained by create_batch_source_commit(), which creates
     the first source from the current working tree state. Advanced batch sources
-    use _refresh_selected_lines_against_source_buffer() instead because they
+    use _refresh_selected_lines_against_source_lines() instead because they
     may preserve already-owned lines that are absent from the working tree.
 
     For first-time source creation, the mapping is trivial:
@@ -219,41 +217,6 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
         ))
 
     return reannotated_lines
-
-
-def _refresh_selected_lines_against_source_buffer(
-    selected_lines: list,
-    *,
-    source_buffer: bytes | Sequence[bytes],
-    working_buffer: bytes | Sequence[bytes] | None,
-    working_line_map: dict[int, int] | None = None,
-) -> list:
-    """Re-annotate selected lines against a concrete source snapshot.
-
-    If a working-line provenance map is supplied, it describes how the source
-    buffer was synthesized and is treated as authoritative. Text matching is
-    used only when no provenance map is available.
-    """
-    if working_line_map is not None:
-        return _refresh_selected_lines_against_source_lines(
-            selected_lines,
-            source_lines=(),
-            working_lines=(),
-            working_line_map=working_line_map,
-        )
-
-    if working_buffer is None:
-        raise ValueError("working buffer is required without a working-line map")
-
-    with ExitStack() as stack:
-        source_lines = _as_line_sequence(source_buffer, stack)
-        working_lines = _as_line_sequence(working_buffer, stack)
-        return _refresh_selected_lines_against_source_lines(
-            selected_lines,
-            source_lines=source_lines,
-            working_lines=working_lines,
-            working_line_map=working_line_map,
-        )
 
 
 def _refresh_selected_lines_against_source_lines(
@@ -308,16 +271,6 @@ def _refresh_selected_lines_against_source_lines(
         ))
 
     return reannotated_lines
-
-
-def _as_line_sequence(
-    buffer: bytes | Sequence[bytes],
-    stack: ExitStack,
-) -> Sequence[bytes]:
-    if isinstance(buffer, bytes):
-        return stack.enter_context(EditorBuffer.from_bytes(buffer))
-    return buffer
-
 
 def prepare_batch_ownership_update_for_selection(
     batch_name: str,

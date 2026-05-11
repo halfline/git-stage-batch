@@ -208,8 +208,8 @@ def test_annotate_with_batch_source_working_lines_accepts_sequences(
     assert [line.source_line for line in annotated.lines] == [1, None, 2]
 
 
-def test_annotate_with_batch_source_content_loads_indexed_git_content(monkeypatch):
-    """Batch source annotation loads stored source content as indexed lines."""
+def test_annotate_with_batch_source_loads_indexed_buffers(monkeypatch, tmp_path):
+    """Batch source annotation loads source and working tree buffers."""
     line_changes = LineLevelChange(
         path="file.txt",
         header=HunkHeader(old_start=1, old_len=1, new_start=1, new_len=2),
@@ -241,6 +241,14 @@ def test_annotate_with_batch_source_content_loads_indexed_git_content(monkeypatc
         ],
     )
     loaded_revisions = []
+    loaded_working_paths = []
+    (tmp_path / "file.txt").write_bytes(b"line 1\ninserted\nline 2\n")
+
+    monkeypatch.setattr(
+        display_module,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
 
     monkeypatch.setattr(
         display_module,
@@ -258,11 +266,23 @@ def test_annotate_with_batch_source_content_loads_indexed_git_content(monkeypatc
         fake_load_git_object_as_buffer,
     )
 
-    annotated = display_module.annotate_with_batch_source_content(
+    def fake_load_working_tree_file_as_buffer(path):
+        loaded_working_paths.append(path)
+        return EditorBuffer.from_chunks(
+            iter([b"line 1\n", b"inserted\n", b"line 2\n"])
+        )
+
+    monkeypatch.setattr(
+        display_module,
+        "load_working_tree_file_as_buffer",
+        fake_load_working_tree_file_as_buffer,
+    )
+
+    annotated = display_module.annotate_with_batch_source(
         "file.txt",
         line_changes,
-        "line 1\ninserted\nline 2\n",
     )
 
     assert loaded_revisions == ["source-commit:file.txt"]
+    assert loaded_working_paths == ["file.txt"]
     assert [line.source_line for line in annotated.lines] == [1, None, 2]

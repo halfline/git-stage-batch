@@ -11,6 +11,8 @@ from git_stage_batch.staging.operations import (
     build_target_index_content_bytes_with_replaced_lines,
     build_target_index_content_from_lines,
     build_target_index_buffer_from_lines,
+    build_target_index_buffer_with_replaced_lines,
+    build_target_index_content_with_replaced_lines_from_lines,
     build_target_index_content_with_selected_lines,
     build_target_working_tree_content_bytes_with_discarded_lines,
     build_target_working_tree_content_bytes_with_replaced_lines,
@@ -651,6 +653,50 @@ class TestBuildTargetIndexContent:
         )
 
         assert result == b"keep1\nstaged\nkeep3\nkeep4\n"
+
+    def test_index_replacement_accepts_non_list_line_sequences(self, line_sequence):
+        """Index replacement can read from an indexed line sequence."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"tail", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_lines = line_sequence([b"keep\r\n", b"old\r\n", b"tail\r\n"])
+
+        result = build_target_index_content_with_replaced_lines_from_lines(
+            line_changes,
+            {1, 2},
+            "staged",
+            base_lines,
+            base_has_trailing_newline=True,
+        )
+
+        assert result == b"keep\nstaged\ntail\n"
+
+    def test_index_replacement_can_return_buffer(self, line_sequence):
+        """Index replacement can return a buffer for streaming callers."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"tail", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_lines = line_sequence([b"keep\r\n", b"old\r\n", b"tail\r\n"])
+
+        with build_target_index_buffer_with_replaced_lines(
+            line_changes,
+            {1, 2},
+            "staged",
+            base_lines,
+            base_has_trailing_newline=True,
+        ) as result:
+            assert isinstance(result, EditorBuffer)
+            assert result.to_bytes() == b"keep\nstaged\ntail\n"
 
     def test_replace_selection_keeps_matching_edge_anchors_with_no_edge_overlap(self):
         """Replacement staging should preserve duplicated anchors when requested."""

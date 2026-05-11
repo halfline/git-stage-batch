@@ -49,17 +49,11 @@ def read_consumed_file_metadata(file_path: str) -> dict[str, Any] | None:
 def record_consumed_selection(
     file_path: str,
     *,
-    source_content: bytes | None = None,
-    source_buffer: bytes | EditorBuffer | None = None,
+    source_buffer: bytes | EditorBuffer,
     selected_lines: list,
     replacement_mask: dict[str, list[str]] | None = None,
 ) -> None:
     """Persist consumed selection ownership for masking across `again`."""
-    if source_buffer is None:
-        if source_content is None:
-            raise TypeError("source_content or source_buffer is required")
-        source_buffer = source_content
-
     metadata = load_consumed_selections_metadata()
     files = metadata.setdefault("files", {})
     existing_file_metadata = read_consumed_file_metadata(file_path)

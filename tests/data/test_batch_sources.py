@@ -16,7 +16,10 @@ from git_stage_batch.utils.paths import (
 )
 from git_stage_batch.utils.file_io import write_file_paths_file
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.data.batch_sources import create_batch_source_commit
+from git_stage_batch.data.batch_sources import (
+    create_batch_source_commit,
+    create_batch_source_commits,
+)
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.data.batch_sources import load_session_batch_sources
 from git_stage_batch.data.batch_sources import save_session_batch_sources
@@ -190,6 +193,65 @@ class TestCreateBatchSourceCommit:
         )
         parent = result.stdout.strip()
         assert parent == baseline
+
+
+class TestCreateBatchSourceCommits:
+    """Tests for create_batch_source_commits function."""
+
+    def test_creates_commits_for_multiple_session_files(self, temp_git_repo):
+        """Several batch sources can be created in one transaction."""
+        alpha_path = temp_git_repo / "alpha.txt"
+        beta_path = temp_git_repo / "beta.txt"
+        gamma_path = temp_git_repo / "gamma.txt"
+        alpha_path.write_bytes(b"alpha original\n")
+        beta_path.write_bytes(b"beta original\n")
+        subprocess.run(["git", "add", "alpha.txt", "beta.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo)
+
+        baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        alpha_path.write_bytes(b"alpha modified\n")
+        beta_path.write_bytes(b"beta modified\n")
+        gamma_path.write_bytes(b"gamma new\n")
+        initialize_abort_state()
+
+        sources = create_batch_source_commits(["alpha.txt", "beta.txt", "gamma.txt"])
+        try:
+            assert set(sources) == {"alpha.txt", "beta.txt", "gamma.txt"}
+            expected_content = {
+                "alpha.txt": b"alpha modified\n",
+                "beta.txt": b"beta modified\n",
+                "gamma.txt": b"gamma new\n",
+            }
+            for file_path, expected in expected_content.items():
+                source = sources[file_path]
+                assert source.file_buffer.to_bytes() == expected
+
+                result = subprocess.run(
+                    ["git", "show", f"{source.commit_sha}:{file_path}"],
+                    check=True,
+                    cwd=temp_git_repo,
+                    capture_output=True,
+                )
+                assert result.stdout == expected
+
+                parent = subprocess.run(
+                    ["git", "rev-parse", f"{source.commit_sha}^"],
+                    check=True,
+                    cwd=temp_git_repo,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                assert parent == baseline
+        finally:
+            for source in sources.values():
+                source.file_buffer.close()
 
 
 class TestBatchSourceCache:

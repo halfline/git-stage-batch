@@ -9,6 +9,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 
+from ..editor import EditorBuffer
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
@@ -42,6 +43,13 @@ class BatchSourceCommit:
 
     commit_sha: str
     file_content: bytes
+
+
+def _buffer_preview(buffer: EditorBuffer) -> bytes:
+    """Return a short byte preview for journal logging."""
+    for chunk in buffer.byte_chunks(200):
+        return chunk
+    return b"(empty)"
 
 
 def get_saved_session_file_content(file_path: str) -> bytes:
@@ -312,7 +320,8 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
 def create_batch_source_commit(
     file_path: str,
     *,
-    file_content_override: bytes | None = None
+    file_content_override: bytes | None = None,
+    file_buffer_override: bytes | EditorBuffer | None = None,
 ) -> str:
     """Create batch source commit for a file.
 
@@ -321,10 +330,11 @@ def create_batch_source_commit(
 
     Args:
         file_path: Repository-relative path to the file
-        file_content_override: Optional exact content to store. Used by stale-source
-            advancement, where the new source may be synthesized from current
-            working tree content plus already-owned lines rather than the
-            original session-start snapshot.
+        file_content_override: Optional exact content to store. Used by legacy
+            byte callers that synthesize a source from current working tree
+            content plus already-owned lines.
+        file_buffer_override: Optional exact buffer to store without first
+            materializing bytes in the caller.
 
     Returns:
         Batch source commit SHA
@@ -339,32 +349,56 @@ def create_batch_source_commit(
     baseline_result = run_git_command(["cat-file", "-e", f"{baseline_commit}:{file_path}"], check=False)
     file_existed_at_session_start = baseline_result.returncode == 0
 
-    if file_content_override is not None:
-        file_content = file_content_override
-    else:
-        # Get file content at session start (as bytes)
-        file_content = get_saved_session_file_content(file_path)
+    if file_content_override is not None and file_buffer_override is not None:
+        raise CommandError(
+            _("Cannot provide both byte and buffer overrides for batch source")
+        )
 
-    # For new files (didn't exist at session start), use selected working tree content
-    # This ensures the batch source has the lines we're actually claiming
-    if file_content_override is None and not file_existed_at_session_start:
-        repo_root = get_git_repository_root_path()
-        file_full_path = repo_root / file_path
-        if file_full_path.exists():
-            file_content = file_full_path.read_bytes()
+    file_buffer: EditorBuffer | None = None
+    close_file_buffer = True
+    if file_buffer_override is not None:
+        if isinstance(file_buffer_override, EditorBuffer):
+            file_buffer = file_buffer_override
+            close_file_buffer = False
+        else:
+            file_buffer = EditorBuffer.from_bytes(file_buffer_override)
+        content_len = file_buffer.byte_count
+        content_lines = len(file_buffer) if content_len else 0
+        content_preview = _buffer_preview(file_buffer)
+        try:
+            blob_sha = create_git_blob(file_buffer.byte_chunks())
+        finally:
+            if close_file_buffer:
+                file_buffer.close()
+    else:
+        if file_content_override is not None:
+            file_content = file_content_override
+        else:
+            # Get file content at session start (as bytes)
+            file_content = get_saved_session_file_content(file_path)
+
+        # For new files (didn't exist at session start), use selected working tree content
+        # This ensures the batch source has the lines we're actually claiming
+        if file_content_override is None and not file_existed_at_session_start:
+            repo_root = get_git_repository_root_path()
+            file_full_path = repo_root / file_path
+            if file_full_path.exists():
+                file_content = file_full_path.read_bytes()
+
+        content_len = len(file_content)
+        content_lines = len(file_content.splitlines()) if file_content else 0
+        content_preview = file_content[:200] if file_content else b"(empty)"
+        blob_sha = create_git_blob([file_content])
 
     log_journal(
         "batch_source_creating",
         file_path=file_path,
         baseline_commit=baseline_commit,
         file_existed_at_session_start=file_existed_at_session_start,
-        content_len=len(file_content),
-        content_lines=len(file_content.splitlines()) if file_content else 0,
-        content_preview=file_content[:200] if file_content else b"(empty)"
+        content_len=content_len,
+        content_lines=content_lines,
+        content_preview=content_preview
     )
-
-    # Create a blob for the file content (already bytes)
-    blob_sha = create_git_blob([file_content])
 
     # Detect file mode
     repo_root = get_git_repository_root_path()

@@ -326,7 +326,7 @@ def add_binary_file_to_batch(
             current_binary_content = file_content_override
         batch_source_commit = create_batch_source_commit(
             file_path,
-            file_content_override=current_binary_content,
+            file_buffer_override=current_binary_content,
         )
 
     # For binary files, store the full live file bytes as the realized content.

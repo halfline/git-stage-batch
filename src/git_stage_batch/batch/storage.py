@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
@@ -21,6 +22,11 @@ from ..data.batch_sources import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
+from ..editor import (
+    EditorBuffer,
+    restore_line_endings_in_chunks,
+    detect_line_ending,
+)
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
     create_git_blob,
@@ -37,6 +43,7 @@ from ..utils.git import (
     temp_git_index,
 )
 from ..utils.paths import get_batch_metadata_file_path
+from ..utils.text import normalize_line_sequence_endings
 from .merge import _satisfy_constraints
 
 if TYPE_CHECKING:
@@ -343,20 +350,70 @@ def _build_realized_content(
     Returns:
         Realized batch content as bytes (full file for display)
     """
-    base_bytes = base_content if base_content else b""
-    source_bytes = batch_source_content if batch_source_content else b""
+    with (
+        EditorBuffer.from_bytes(base_content or b"") as base_lines,
+        EditorBuffer.from_bytes(batch_source_content or b"") as source_lines,
+    ):
+        return _build_realized_content_from_buffers(
+            base_lines,
+            source_lines,
+            ownership,
+        )
 
-    # Detect line ending style in batch source (for preservation)
-    has_crlf = b'\r\n' in source_bytes
-    has_cr = b'\r' in source_bytes and not has_crlf
 
-    # Normalize line endings for matching (in bytes)
-    base_normalized = base_bytes.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    source_normalized = source_bytes.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+def _build_realized_content_from_buffers(
+    base_lines: Sequence[bytes],
+    batch_source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+) -> bytes:
+    """Build realized batch content from indexed line sequences."""
+    with _build_realized_buffer_from_lines(
+        base_lines,
+        batch_source_lines,
+        ownership,
+    ) as buffer:
+        return buffer.to_bytes()
 
-    base_lines = base_normalized.splitlines(keepends=True) if base_normalized else []
-    source_lines = source_normalized.splitlines(keepends=True) if source_normalized else []
 
+def _build_realized_buffer_from_lines(
+    base_lines: Sequence[bytes],
+    batch_source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+) -> EditorBuffer:
+    """Build realized batch content as an editor buffer."""
+    return EditorBuffer.from_chunks(
+        restore_line_endings_in_chunks(
+            _stream_realized_content_chunks_from_lines(
+                normalize_line_sequence_endings(base_lines),
+                normalize_line_sequence_endings(batch_source_lines),
+                ownership,
+            ),
+            detect_line_ending(batch_source_lines),
+        )
+    )
+
+
+def _build_realized_content_from_lines(
+    base_lines: Sequence[bytes],
+    batch_source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+) -> bytes:
+    """Build realized batch content from normalized line sequences."""
+    return b"".join(
+        _stream_realized_content_chunks_from_lines(
+            base_lines,
+            batch_source_lines,
+            ownership,
+        )
+    )
+
+
+def _stream_realized_content_chunks_from_lines(
+    base_lines: Sequence[bytes],
+    batch_source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+) -> Iterator[bytes]:
+    """Yield realized batch content chunks from normalized line sequences."""
     # Resolve ownership
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
@@ -365,23 +422,15 @@ def _build_realized_content(
     # Apply constraints using same model as merge, with lenient absence
     # enforcement because baseline may not have deletion content at that boundary.
     realized_entries = _satisfy_constraints(
-        source_lines,
+        batch_source_lines,
         base_lines,
         presence_line_set,
         deletion_claims,
         strict=False
     )
 
-    # Emit final bytes
-    result_bytes = b"".join(entry.content for entry in realized_entries)
-
-    # Restore original line ending style from batch source
-    if has_crlf:
-        result_bytes = result_bytes.replace(b'\n', b'\r\n')
-    elif has_cr:
-        result_bytes = result_bytes.replace(b'\n', b'\r')
-
-    return result_bytes
+    for entry in realized_entries:
+        yield entry.content
 
 
 def _suppress_sequence_at_position_bytes(

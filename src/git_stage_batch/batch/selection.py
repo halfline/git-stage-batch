@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Optional
 
 from .ownership import (
     BatchOwnership,
-    build_ownership_units_from_display,
+    build_ownership_units_from_batch_source_lines,
     select_ownership_units_by_display_ids,
     validate_ownership_units,
     rebuild_ownership_from_units,
 )
 from ..core.line_selection import parse_line_selection
+from ..editor import EditorBuffer
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns
@@ -361,14 +363,41 @@ def select_batch_ownership_for_display_ids(
     if selected_ids is None:
         return ownership
 
-    # Build semantic ownership units from display reconstruction
-    units = build_ownership_units_from_display(ownership, batch_source_content)
+    with EditorBuffer.from_bytes(batch_source_content) as batch_source_lines:
+        return _select_batch_ownership_from_lines(
+            ownership,
+            batch_source_lines,
+            selected_ids,
+        )
 
-    # Select units matching the display IDs
+
+def select_batch_ownership_for_display_ids_from_lines(
+    file_meta: dict,
+    batch_source_lines: Sequence[bytes],
+    selected_ids: Optional[set[int]],
+) -> BatchOwnership:
+    """Select ownership from indexed batch-source byte lines."""
+    ownership = BatchOwnership.from_metadata_dict(file_meta)
+    if selected_ids is None:
+        return ownership
+
+    return _select_batch_ownership_from_lines(
+        ownership,
+        batch_source_lines,
+        selected_ids,
+    )
+
+
+def _select_batch_ownership_from_lines(
+    ownership: BatchOwnership,
+    batch_source_lines: Sequence[bytes],
+    selected_ids: set[int],
+) -> BatchOwnership:
+    """Select ownership from reconstructed display units."""
+    units = build_ownership_units_from_batch_source_lines(
+        ownership,
+        batch_source_lines,
+    )
     selected_units = select_ownership_units_by_display_ids(units, selected_ids)
-
-    # Validate selected units have valid structure
     validate_ownership_units(selected_units)
-
-    # Rebuild ownership from selected units
     return rebuild_ownership_from_units(selected_units)

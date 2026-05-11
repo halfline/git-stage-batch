@@ -643,30 +643,6 @@ def build_target_working_tree_content_from_lines(
         return target_buffer.to_bytes()
 
 
-def build_target_working_tree_content_bytes_with_replaced_lines(
-    line_changes: LineLevelChange,
-    replace_ids: set[int],
-    replacement_text: str,
-    working_content: bytes,
-    *,
-    trim_unchanged_edge_anchors: bool = True,
-) -> bytes:
-    """Build working tree content by replacing one contiguous selected span."""
-    if not replace_ids:
-        return working_content
-
-    with EditorBuffer.from_bytes(working_content) as working_lines:
-        with build_target_working_tree_buffer_with_replaced_lines(
-            line_changes,
-            replace_ids,
-            replacement_text,
-            working_lines,
-            working_has_trailing_newline=working_content.endswith(b"\n"),
-            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
-        ) as target_buffer:
-            return target_buffer.to_bytes()
-
-
 def build_target_working_tree_buffer_with_replaced_lines(
     line_changes: LineLevelChange,
     replace_ids: set[int],

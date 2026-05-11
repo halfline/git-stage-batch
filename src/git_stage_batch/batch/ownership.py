@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import ExitStack
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -1702,38 +1701,6 @@ def _remap_replacement_units(
     )
 
 
-def remap_batch_ownership_to_new_source(
-    ownership: BatchOwnership,
-    old_source_content: bytes,
-    new_source_content: bytes,
-) -> BatchOwnership:
-    """Remap batch ownership from old source space to new source space.
-
-    Uses structural line matching to map presence lines and deletion anchors
-    from the old batch source to the new batch source.
-
-    Args:
-        ownership: Existing ownership in old source space
-        old_source_content: Content of old batch source (as bytes)
-        new_source_content: Content of new batch source (as bytes)
-
-    Returns:
-        Remapped ownership in new source space
-
-    Raises:
-        ValueError: If remapping is ambiguous or impossible
-    """
-    with (
-        EditorBuffer.from_bytes(old_source_content) as old_source_lines,
-        EditorBuffer.from_bytes(new_source_content) as new_source_lines,
-    ):
-        return remap_batch_ownership_to_new_source_lines(
-            ownership=ownership,
-            old_source_lines=old_source_lines,
-            new_source_lines=new_source_lines,
-        )
-
-
 def remap_batch_ownership_to_new_source_lines(
     ownership: BatchOwnership,
     old_source_lines: Sequence[bytes],
@@ -1805,41 +1772,6 @@ def remap_batch_ownership_to_new_source_lines(
     )
 
 
-def _advance_source_buffer_preserving_existing_presence(
-    old_source_buffer: bytes | Sequence[bytes],
-    working_buffer: bytes | Sequence[bytes],
-    ownership: BatchOwnership,
-) -> SourceContentWithLineProvenance:
-    """Build source buffer without dropping already-owned lines.
-
-    When discard-to-batch is run repeatedly for hunks in the same file, earlier
-    owned additions may have been reverse-applied out of the working tree. A
-    stale-source refresh must keep those lines in the new batch source or the
-    batch would lose the data it already owns.
-    """
-    return _advance_source_buffer_preserving_existing_presence_with_provenance(
-        old_source_buffer=old_source_buffer,
-        working_buffer=working_buffer,
-        ownership=ownership,
-    )
-
-
-def _advance_source_buffer_preserving_existing_presence_with_provenance(
-    old_source_buffer: bytes | Sequence[bytes],
-    working_buffer: bytes | Sequence[bytes],
-    ownership: BatchOwnership,
-) -> SourceContentWithLineProvenance:
-    """Build source buffer and preserve input line provenance."""
-    with ExitStack() as stack:
-        old_lines = _as_line_sequence(old_source_buffer, stack)
-        working_lines = _as_line_sequence(working_buffer, stack)
-        return _advance_source_lines_preserving_existing_presence(
-            old_lines=old_lines,
-            working_lines=working_lines,
-            ownership=ownership,
-        )
-
-
 def _advance_source_lines_preserving_existing_presence(
     old_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -1867,15 +1799,6 @@ def _advance_source_lines_preserving_existing_presence(
         source_line_map=source_line_map,
         working_line_map=working_line_map,
     )
-
-
-def _as_line_sequence(
-    buffer: bytes | Sequence[bytes],
-    stack: ExitStack,
-) -> Sequence[bytes]:
-    if isinstance(buffer, bytes):
-        return stack.enter_context(EditorBuffer.from_bytes(buffer))
-    return buffer
 
 
 def _remap_batch_ownership_with_source_line_map(

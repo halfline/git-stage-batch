@@ -6,19 +6,60 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch.validation import batch_exists
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.include import command_include_to_batch
 import git_stage_batch.commands.sift as sift_module
-from git_stage_batch.commands.sift import command_sift_batch
+from git_stage_batch.commands.sift import (
+    build_ownership_from_working_and_target_lines,
+    command_sift_batch,
+    validate_sifted_text_file_result_from_lines,
+)
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch import add_binary_file_to_batch, read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.exceptions import CommandError, MergeError
+
+def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
+    """Sift ownership derivation accepts indexed byte-line sequences."""
+    working_lines = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+    target_lines = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+
+    ownership = build_ownership_from_working_and_target_lines(
+        working_lines,
+        target_lines,
+    )
+
+    assert ownership is not None
+    resolved = ownership.resolve()
+    assert resolved.presence_line_set == {2}
+    assert len(resolved.deletion_claims) == 1
+    assert resolved.deletion_claims[0].content_lines == [b"old\n"]
+
+
+def test_validate_sifted_result_accepts_non_list_line_sequences(line_sequence):
+    """Sift validation accepts indexed byte-line sequences."""
+    target_lines = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+    working_lines = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            DeletionClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+            ),
+        ],
+    )
+
+    validate_sifted_text_file_result_from_lines(
+        target_lines,
+        ownership,
+        working_lines,
+    )
 
 
 @pytest.fixture

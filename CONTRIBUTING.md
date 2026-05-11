@@ -347,6 +347,31 @@ The program has Spanish translation but lacks French.
 2. **Use the `git-stage-batch` tool itself** to help stage micro-commits from larger working directory changes.
 3. **Follow existing code style.** The project uses standard Python conventions.
 
+### Commit Series Ordering
+
+Order multi-commit series as repeated implementation steps and their related
+follow-up commits:
+
+```text
+implementation -> tests (-> man page -> bash completion -> website)
+implementation -> tests (-> man page -> bash completion -> website)
+...
+```
+
+Do not put several implementation commits first and then collect the test,
+documentation, completion, or website commits at the end. Each test,
+documentation, completion, or website commit should sit immediately after the
+smallest implementation commit it validates or exposes.
+
+If one implementation change needs more than one follow-up commit because of
+repository rules, keep those follow-ups together before moving to the next
+implementation. Use the order `tests`, then man page, then bash completion,
+then website unless a specific dependency requires otherwise.
+
+When shared groundwork is needed, commit the groundwork first. Then repeat the
+same grouped pattern for each command, workflow, or implementation that adopts
+that groundwork.
+
 ## Questions?
 
 Feel free to open an issue for discussion before starting major work.

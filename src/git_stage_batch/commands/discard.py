@@ -14,10 +14,13 @@ from ..batch import (
     add_files_to_batch,
     create_batch,
 )
-from ..batch.display import annotate_with_batch_source, annotate_with_batch_source_content
+from ..batch.display import (
+    annotate_with_batch_source,
+    annotate_with_batch_source_working_lines,
+)
 from ..batch.ownership import (
     BatchOwnership,
-    _advance_source_content_preserving_existing_presence_with_provenance,
+    _advance_source_lines_preserving_existing_presence,
     _remap_batch_ownership_with_source_line_map,
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
@@ -25,7 +28,7 @@ from ..batch.ownership import (
 from ..batch.query import read_batch_metadata
 from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
-from ..batch.source_refresh import _refresh_selected_lines_against_source_content
+from ..batch.source_refresh import _refresh_selected_lines_against_source_buffer
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
@@ -39,7 +42,7 @@ from ..data.hunk_tracking import (
     SelectedChangeKind,
     advance_to_and_show_next_change,
     advance_to_next_change,
-    build_file_hunk_from_content,
+    build_file_hunk_from_buffer,
     cache_unstaged_file_as_single_hunk,
     fetch_next_change,
     get_selected_change_file_path,
@@ -70,14 +73,18 @@ from ..data.session import require_session_started, snapshot_file_if_untracked, 
 from ..data.undo import undo_checkpoint
 from ..editor import (
     EditorBuffer,
+    BufferInput,
+    buffer_byte_chunks,
+    load_git_object_as_buffer,
     write_buffer_to_path,
 )
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
 from ..output import print_remaining_line_changes_header
-from ..staging.operations import build_target_working_tree_content_bytes_with_discarded_lines
-from ..staging.operations import build_target_working_tree_content_bytes_with_replaced_lines
-from ..staging.operations import build_target_working_tree_buffer_from_lines
+from ..staging.operations import (
+    build_target_working_tree_buffer_from_lines,
+    build_target_working_tree_buffer_with_replaced_lines,
+)
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_command
@@ -127,6 +134,14 @@ class _PreparedTextFileDiscardToBatch:
 class DiscardFilesToBatchResult:
     discarded_hunks: int
     discarded_files: list[str]
+
+
+def _buffer_ends_with_lf(buffer: BufferInput) -> bool:
+    last_chunk = b""
+    for chunk in buffer_byte_chunks(buffer):
+        if chunk:
+            last_chunk = chunk
+    return bool(last_chunk) and last_chunk.endswith(b"\n")
 
 
 def _load_explicit_file_selection(file_path: str):
@@ -707,132 +722,150 @@ def _command_discard_lines_to_batch_as(
     working_file_path = get_git_repository_root_path() / line_changes.path
     if not working_file_path.exists():
         exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
-    working_bytes = working_file_path.read_bytes()
 
     try:
-        rewritten_working_content = build_target_working_tree_content_bytes_with_replaced_lines(
-            line_changes,
-            effective_ids,
-            replacement_text,
-            working_bytes,
-            trim_unchanged_edge_anchors=not no_edge_overlap,
-        )
+        with EditorBuffer.from_path(working_file_path) as working_lines:
+            rewritten_working_buffer = (
+                build_target_working_tree_buffer_with_replaced_lines(
+                    line_changes,
+                    effective_ids,
+                    replacement_text,
+                    working_lines,
+                    working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+                    trim_unchanged_edge_anchors=not no_edge_overlap,
+                )
+            )
     except ValueError as e:
         exit_with_error(str(e))
 
+    target_working_buffer: EditorBuffer | None = None
     try:
-        rewritten_cached_lines = build_file_hunk_from_content(line_changes.path, rewritten_working_content)
-        if rewritten_cached_lines is None:
-            exit_with_error(_("No changes in file '{file}'.").format(file=line_changes.path))
-        rewritten_line_changes = annotate_with_batch_source_content(
-            line_changes.path,
-            rewritten_cached_lines,
-            rewritten_working_content.decode("utf-8", errors="replace"),
-        )
-        rewritten_selected_lines = _select_rewritten_replacement_lines(
-            selected_lines,
-            rewritten_line_changes,
-        )
+        with rewritten_working_buffer as rewritten_working_lines:
+            rewritten_cached_lines = build_file_hunk_from_buffer(
+                line_changes.path,
+                rewritten_working_lines,
+            )
+            if rewritten_cached_lines is None:
+                exit_with_error(_("No changes in file '{file}'.").format(file=line_changes.path))
+            rewritten_line_changes = annotate_with_batch_source_working_lines(
+                line_changes.path,
+                rewritten_cached_lines,
+                rewritten_working_lines,
+            )
+            rewritten_selected_lines = _select_rewritten_replacement_lines(
+                selected_lines,
+                rewritten_line_changes,
+            )
 
-        metadata = read_batch_metadata(batch_name)
-        existing_ownership = None
-        current_batch_source = None
-        batch_source_commit = None
-        if line_changes.path in metadata.get("files", {}):
-            file_metadata = metadata["files"][line_changes.path]
-            existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-            current_batch_source = file_metadata.get("batch_source_commit")
+            metadata = read_batch_metadata(batch_name)
+            existing_ownership = None
+            current_batch_source = None
+            batch_source_commit = None
+            if line_changes.path in metadata.get("files", {}):
+                file_metadata = metadata["files"][line_changes.path]
+                existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
+                current_batch_source = file_metadata.get("batch_source_commit")
 
-        try:
-            if existing_ownership is None:
-                update = prepare_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=line_changes.path,
-                    current_batch_source_commit=current_batch_source,
-                    existing_ownership=existing_ownership,
-                    selected_lines=rewritten_selected_lines,
-                )
-                ownership = update.ownership_after
-                batch_source_commit = update.batch_source_commit
-            else:
-                old_source_result = run_git_command(
-                    ["show", f"{current_batch_source}:{line_changes.path}"],
-                    text_output=False,
-                    check=False,
-                )
-                if old_source_result.returncode != 0:
-                    exit_with_error(
-                        _("Cannot discard lines to batch: failed to read batch source for '{file}'.").format(
-                            file=line_changes.path
-                        )
+            try:
+                if existing_ownership is None:
+                    update = prepare_batch_ownership_update_for_selection(
+                        batch_name=batch_name,
+                        file_path=line_changes.path,
+                        current_batch_source_commit=current_batch_source,
+                        existing_ownership=existing_ownership,
+                        selected_lines=rewritten_selected_lines,
                     )
+                    ownership = update.ownership_after
+                    batch_source_commit = update.batch_source_commit
+                else:
+                    old_source_buffer = load_git_object_as_buffer(
+                        f"{current_batch_source}:{line_changes.path}"
+                    )
+                    if old_source_buffer is None:
+                        exit_with_error(
+                            _("Cannot discard lines to batch: failed to read batch source for '{file}'.").format(
+                                file=line_changes.path
+                            )
+                        )
 
-                advanced_source = _advance_source_content_preserving_existing_presence_with_provenance(
-                    old_source_content=old_source_result.stdout,
-                    working_content=rewritten_working_content,
-                    ownership=existing_ownership,
+                    with (
+                        old_source_buffer as old_source_lines,
+                        _advance_source_lines_preserving_existing_presence(
+                            old_lines=old_source_lines,
+                            working_lines=rewritten_working_lines,
+                            ownership=existing_ownership,
+                        ) as source_with_provenance,
+                    ):
+                        remapped_existing_ownership = _remap_batch_ownership_with_source_line_map(
+                            ownership=existing_ownership,
+                            source_line_map=source_with_provenance.source_line_map,
+                        )
+                        refreshed_selected_lines = _refresh_selected_lines_against_source_buffer(
+                            rewritten_selected_lines,
+                            source_buffer=source_with_provenance.source_buffer,
+                            working_buffer=None,
+                            working_line_map=source_with_provenance.working_line_map,
+                        )
+                        new_ownership = translate_lines_to_batch_ownership(
+                            refreshed_selected_lines
+                        )
+                        ownership = merge_batch_ownership(
+                            remapped_existing_ownership,
+                            new_ownership,
+                        )
+                        batch_source_commit = create_batch_source_commit(
+                            line_changes.path,
+                            file_buffer_override=source_with_provenance.source_buffer,
+                        )
+                        batch_sources = load_session_batch_sources()
+                        batch_sources[line_changes.path] = batch_source_commit
+                        save_session_batch_sources(batch_sources)
+            except ValueError as e:
+                exit_with_error(
+                    _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
+                      "File: {file}\n"
+                      "Batch: {batch}\n"
+                      "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
                 )
-                remapped_existing_ownership = _remap_batch_ownership_with_source_line_map(
-                    ownership=existing_ownership,
-                    source_line_map=advanced_source.source_line_map,
-                )
-                refreshed_selected_lines = _refresh_selected_lines_against_source_content(
-                    rewritten_selected_lines,
-                    source_content=advanced_source.content,
-                    working_content=rewritten_working_content,
-                    working_line_map=advanced_source.working_line_map,
-                )
-                new_ownership = translate_lines_to_batch_ownership(refreshed_selected_lines)
-                ownership = merge_batch_ownership(remapped_existing_ownership, new_ownership)
+
+            file_mode = _detect_file_mode(line_changes.path)
+
+            if batch_source_commit is None:
                 batch_source_commit = create_batch_source_commit(
                     line_changes.path,
-                    file_content_override=advanced_source.content,
+                    file_buffer_override=rewritten_working_lines,
                 )
                 batch_sources = load_session_batch_sources()
                 batch_sources[line_changes.path] = batch_source_commit
                 save_session_batch_sources(batch_sources)
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\n"
-                  "Batch: {batch}\n"
-                  "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
-            )
 
-        file_mode = _detect_file_mode(line_changes.path)
-
-        if batch_source_commit is None:
-            batch_source_commit = create_batch_source_commit(
+            snapshot_file_if_untracked(line_changes.path)
+            add_file_to_batch(
+                batch_name,
                 line_changes.path,
-                file_content_override=rewritten_working_content,
+                ownership,
+                file_mode,
+                batch_source_commit=batch_source_commit,
             )
-            batch_sources = load_session_batch_sources()
-            batch_sources[line_changes.path] = batch_source_commit
-            save_session_batch_sources(batch_sources)
 
-        snapshot_file_if_untracked(line_changes.path)
-        add_file_to_batch(
-            batch_name,
-            line_changes.path,
-            ownership,
-            file_mode,
-            batch_source_commit=batch_source_commit,
-        )
-
-        rewritten_selected_ids = {
-            line.id for line in rewritten_selected_lines if line.id is not None
-        }
-        target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
-            rewritten_line_changes,
-            rewritten_selected_ids,
-            rewritten_working_content,
-        )
+            rewritten_selected_ids = {
+                line.id for line in rewritten_selected_lines if line.id is not None
+            }
+            target_working_buffer = build_target_working_tree_buffer_from_lines(
+                rewritten_line_changes,
+                rewritten_selected_ids,
+                rewritten_working_lines,
+                working_has_trailing_newline=_buffer_ends_with_lf(rewritten_working_lines),
+            )
 
     except Exception:
-        working_file_path.write_bytes(working_bytes)
+        if target_working_buffer is not None:
+            target_working_buffer.close()
         raise
 
-    working_file_path.write_bytes(target_working_content)
+    assert target_working_buffer is not None
+    with target_working_buffer:
+        write_buffer_to_path(working_file_path, target_working_buffer)
 
     if not quiet:
         print(

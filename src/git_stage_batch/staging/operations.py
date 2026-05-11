@@ -178,23 +178,6 @@ def build_target_index_buffer_from_lines(
     )
 
 
-def build_target_index_content_from_lines(
-    line_changes: LineLevelChange,
-    include_ids: set[int],
-    base_lines: Sequence[bytes],
-    *,
-    base_has_trailing_newline: bool,
-) -> bytes:
-    """Build target index content from indexed base content lines."""
-    with build_target_index_buffer_from_lines(
-        line_changes,
-        include_ids,
-        base_lines,
-        base_has_trailing_newline=base_has_trailing_newline,
-    ) as target_buffer:
-        return target_buffer.to_bytes()
-
-
 def build_target_index_buffer_with_replaced_lines(
     line_changes: LineLevelChange,
     replace_ids: set[int],
@@ -346,27 +329,6 @@ def build_target_index_buffer_with_replaced_lines(
     )
 
 
-def build_target_index_content_with_replaced_lines_from_lines(
-    line_changes: LineLevelChange,
-    replace_ids: set[int],
-    replacement_text: str,
-    base_lines: Sequence[bytes],
-    *,
-    base_has_trailing_newline: bool,
-    trim_unchanged_edge_anchors: bool = True,
-) -> bytes:
-    """Build target index content by replacing a span in indexed base lines."""
-    with build_target_index_buffer_with_replaced_lines(
-        line_changes,
-        replace_ids,
-        replacement_text,
-        base_lines,
-        base_has_trailing_newline=base_has_trailing_newline,
-        trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
-    ) as target_buffer:
-        return target_buffer.to_bytes()
-
-
 def _target_working_tree_line_contents(
     line_changes: LineLevelChange,
     discard_ids: set[int],
@@ -453,20 +415,6 @@ def build_target_working_tree_buffer_from_lines(
             working_line_count,
         )
     )
-
-
-def build_target_working_tree_content_from_lines(
-    line_changes: LineLevelChange,
-    discard_ids: set[int],
-    working_lines: Sequence[bytes],
-) -> bytes:
-    """Build target working tree content from indexed working tree lines."""
-    with build_target_working_tree_buffer_from_lines(
-        line_changes,
-        discard_ids,
-        working_lines,
-    ) as target_buffer:
-        return target_buffer.to_bytes()
 
 
 def build_target_working_tree_buffer_with_replaced_lines(
@@ -618,27 +566,6 @@ def build_target_working_tree_buffer_with_replaced_lines(
         has_trailing_newline=trailing_newline,
         add_trailing_newline_when_nonempty=True,
     )
-
-
-def build_target_working_tree_content_with_replaced_lines_from_lines(
-    line_changes: LineLevelChange,
-    replace_ids: set[int],
-    replacement_text: str,
-    working_lines: Sequence[bytes],
-    *,
-    working_has_trailing_newline: bool,
-    trim_unchanged_edge_anchors: bool = True,
-) -> bytes:
-    """Build working tree content by replacing a span in indexed lines."""
-    with build_target_working_tree_buffer_with_replaced_lines(
-        line_changes,
-        replace_ids,
-        replacement_text,
-        working_lines,
-        working_has_trailing_newline=working_has_trailing_newline,
-        trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
-    ) as target_buffer:
-        return target_buffer.to_bytes()
 
 
 def update_index_with_blob_buffer(path: str, buffer: BufferInput) -> None:

@@ -13,6 +13,7 @@ from ..core.line_selection import parse_line_selection
 from ..editor import (
     EditorBuffer,
     choose_line_ending,
+    buffer_has_data,
     restore_line_endings_in_chunks,
 )
 from ..exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
@@ -71,31 +72,18 @@ def _merge_result_line_ending_from_lines(
     return choose_line_ending(primary_lines, fallback_lines)
 
 
-def _detect_line_ending(content: bytes) -> bytes | None:
-    """Return the first line ending style found in content."""
-    for index, byte in enumerate(content):
-        if byte == 13:  # \r
-            if index + 1 < len(content) and content[index + 1] == 10:
-                return b"\r\n"
-            return b"\r"
-        if byte == 10:  # \n
-            return b"\n"
-    return None
-
-
-def _restore_line_endings(content: bytes, line_ending: bytes | None) -> bytes:
-    """Restore normalized LF content to the selected line ending style."""
-    if line_ending in (None, b"\n"):
-        return content
-    return content.replace(b"\n", line_ending)
-
-
-def _merge_result_line_ending(
-    primary_content: bytes,
-    fallback_content: bytes,
+def _discard_result_line_ending_from_lines(
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+    source_lines: Sequence[bytes],
 ) -> bytes | None:
-    """Choose the line ending style for bytes emitted from a merge."""
-    return _detect_line_ending(primary_content) or _detect_line_ending(fallback_content)
+    """Choose the line ending style for line sequence discard output."""
+    result_line_ending = choose_line_ending(working_lines)
+    if result_line_ending is not None:
+        return result_line_ending
+    if buffer_has_data(baseline_lines):
+        return choose_line_ending(baseline_lines)
+    return choose_line_ending(source_lines)
 
 
 @dataclass
@@ -1679,17 +1667,103 @@ def discard_batch(
     Raises:
         MergeError: If inverse operations cannot be reliably performed
     """
-    result_line_ending = _merge_result_line_ending(
+    with discard_batch_as_buffer(
+        batch_source_content,
+        ownership,
         working_content,
-        baseline_content or batch_source_content,
-    )
-    working_normalized = working_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    source_normalized = batch_source_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    baseline_normalized = baseline_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+        baseline_content,
+    ) as buffer:
+        return buffer.to_bytes()
 
-    source_lines = source_normalized.splitlines(keepends=True) if source_normalized else []
-    working_lines = working_normalized.splitlines(keepends=True) if working_normalized else []
-    baseline_lines = baseline_normalized.splitlines(keepends=True) if baseline_normalized else []
+
+def discard_batch_as_buffer(
+    batch_source_content: bytes,
+    ownership: 'BatchOwnership',
+    working_content: bytes,
+    baseline_content: bytes,
+) -> EditorBuffer:
+    """Discard in-memory content and return an editor buffer."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        EditorBuffer.from_bytes(baseline_content) as baseline_lines,
+    ):
+        return discard_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+            baseline_lines,
+        )
+
+
+def discard_batch_from_line_sequences(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+) -> bytes:
+    """Discard ownership from byte-line sequences and restore line endings."""
+    with discard_batch_from_line_sequences_as_buffer(
+        source_lines,
+        ownership,
+        working_lines,
+        baseline_lines,
+    ) as buffer:
+        return buffer.to_bytes()
+
+
+def discard_batch_from_line_sequences_as_buffer(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+) -> EditorBuffer:
+    """Discard ownership and return a buffer with destination line endings."""
+    result_line_ending = _discard_result_line_ending_from_lines(
+        working_lines,
+        baseline_lines,
+        source_lines,
+    )
+    normalized_source_lines = normalize_line_sequence_endings(source_lines)
+    normalized_working_lines = normalize_line_sequence_endings(working_lines)
+    normalized_baseline_lines = normalize_line_sequence_endings(baseline_lines)
+    return EditorBuffer.from_chunks(
+        restore_line_endings_in_chunks(
+            _discard_batch_line_chunks(
+                normalized_source_lines,
+                ownership,
+                normalized_working_lines,
+                normalized_baseline_lines,
+            ),
+            result_line_ending,
+        ),
+    )
+
+
+def discard_batch_lines(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+) -> bytes:
+    """Discard ownership from normalized byte-line sequences."""
+    return b"".join(
+        _discard_batch_line_chunks(
+            source_lines,
+            ownership,
+            working_lines,
+            baseline_lines,
+        )
+    )
+
+
+def _discard_batch_line_chunks(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+) -> Iterator[bytes]:
+    """Discard ownership from normalized byte-line sequences."""
 
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
@@ -1721,10 +1795,7 @@ def discard_batch(
         deletion_claims
     )
 
-    return _restore_line_endings(
-        b"".join(entry.content for entry in realized_entries),
-        result_line_ending,
-    )
+    yield from _realized_entry_content_chunks(realized_entries)
 
 
 def _build_baseline_correspondence(

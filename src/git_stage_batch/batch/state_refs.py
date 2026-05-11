@@ -140,7 +140,6 @@ def sync_batch_state_refs(
     batch_name: str,
     *,
     content_commit: str | None = None,
-    source_contents: dict[str, bytes] | None = None,
     source_buffers: dict[str, _SourceBuffer] | None = None,
 ) -> None:
     """Publish batch metadata and source snapshots into authoritative Git refs."""
@@ -162,10 +161,7 @@ def sync_batch_state_refs(
         "files": {},
     }
 
-    source_buffers = {
-        **(source_contents or {}),
-        **(source_buffers or {}),
-    }
+    source_buffers = source_buffers or {}
     buffer_updates: list[_StateBufferUpdate] = []
 
     with temp_git_index() as env:

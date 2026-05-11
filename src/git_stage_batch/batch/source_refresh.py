@@ -221,22 +221,6 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
     return reannotated_lines
 
 
-def _refresh_selected_lines_against_source_content(
-    selected_lines: list,
-    *,
-    source_content: bytes,
-    working_content: bytes,
-    working_line_map: dict[int, int] | None = None,
-) -> list:
-    """Re-annotate selected lines against source bytes."""
-    return _refresh_selected_lines_against_source_buffer(
-        selected_lines,
-        source_buffer=source_content,
-        working_buffer=working_content,
-        working_line_map=working_line_map,
-    )
-
-
 def _refresh_selected_lines_against_source_buffer(
     selected_lines: list,
     *,

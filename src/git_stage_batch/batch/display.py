@@ -12,9 +12,6 @@ from ..i18n import ngettext
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import get_git_repository_root_path
 from .match import match_lines
-from ..exceptions import MergeError
-from .merge import merge_batch
-from .selection import select_batch_ownership_for_display_ids
 
 if TYPE_CHECKING:
     from .match import LineMapping
@@ -35,87 +32,12 @@ def _encode_text_lines(content: str) -> list[bytes]:
     ]
 
 
-def is_display_line_individually_mergeable(
-    file_meta: dict,
-    batch_source_content: bytes,
-    working_content: bytes,
-    display_id: int,
-) -> bool:
-    """Probe whether a single display line is individually mergeable right now.
-
-    This tests if selecting just this one display line with `--line N` would
-    succeed against the current working tree. It does not test whether ranges
-    or combinations are safe - only individual line mergeability.
-
-    Args:
-        file_meta: Batch metadata for this file
-        batch_source_content: Batch source content as bytes
-        working_content: Current working tree content as bytes
-        display_id: Single display line ID to test
-
-    Returns:
-        True if this single line can be merged individually, False otherwise
-    """
-    try:
-        # Derive the ownership that selecting this one display ID would produce
-        ownership = select_batch_ownership_for_display_ids(
-            file_meta,
-            batch_source_content,
-            {display_id}  # Test just this one ID
-        )
-
-        # If selection produced empty ownership, it's not individually selectable
-        if ownership.is_empty():
-            return False
-
-        # Try the merge with this single-line selection
-        merge_batch(batch_source_content, ownership, working_content)
-
-        # Merge succeeded - this line is individually mergeable
-        return True
-
-    except (MergeError, ValueError, KeyError, Exception):
-        # Any error means this line is not individually mergeable
-        # This includes:
-        # - AtomicUnitError: line is part of atomic unit
-        # - MergeError: merge conflict
-        # - ValueError/KeyError: invalid data
-        # - Other exceptions: unexpected errors
-        return False
-
-
-def build_display_lines_from_batch_source(
-    batch_source_content: str,
-    ownership: 'BatchOwnership',
-    context_lines: int | None = None,
-) -> list[dict]:
-    """Build display representation of batch content with ephemeral line IDs.
-
-    Shows both claimed lines (presence) and deletions (suppression constraints).
-    When applying by line ID, deletions are excluded (metadata), but when viewing
-    the batch, users need to see what was deleted.
-
-    Returns list of dicts with:
-        - id: ephemeral display ID (1, 2, 3, ...) for changed lines, None for context
-        - type: "claimed", "deletion", or "context"
-        - source_line: int (batch source line number, for claimed lines only)
-        - deletion_index: int (for deletions only)
-        - content: str (line content)
-    """
-    return _build_display_lines_from_batch_source_lines(
-        batch_source_content.splitlines(keepends=True),
-        ownership,
-        context_lines=context_lines,
-        source_line_to_text=lambda line: line,
-    )
-
-
 def build_display_lines_from_batch_source_lines(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
     context_lines: int | None = None,
 ) -> list[dict]:
-    """Build display representation from indexed batch-source byte lines."""
+    """Build display representation from indexed batch-source lines."""
     return _build_display_lines_from_batch_source_lines(
         source_lines,
         ownership,

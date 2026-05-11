@@ -1437,17 +1437,20 @@ def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_i
 
     # Now discard selected lines from working tree
     working_file_path = get_git_repository_root_path() / file_path
-    if working_file_path.exists():
-        working_bytes = working_file_path.read_bytes()
-    else:
+    if not working_file_path.exists():
         exit_with_error(_("File not found in working tree: {file}").format(file=file_path))
 
-    # Build new working tree content with selected lines discarded
-    target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
-        line_changes, requested_ids, working_bytes)
+    with EditorBuffer.from_path(working_file_path) as working_lines:
+        target_working_buffer = build_target_working_tree_buffer_from_lines(
+            line_changes,
+            requested_ids,
+            working_lines,
+            working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+        )
 
     # Write back to working tree
-    working_file_path.write_bytes(target_working_content)
+    with target_working_buffer:
+        write_buffer_to_path(working_file_path, target_working_buffer)
 
     if not quiet:
         print(_("Discarded line(s) from file '{file}' to batch '{batch}': {lines}").format(
@@ -1533,18 +1536,21 @@ def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str,
 
     # Now discard those lines from working tree
     working_file_path = get_git_repository_root_path() / line_changes.path
-    if working_file_path.exists():
-        working_bytes = working_file_path.read_bytes()
-    else:
+    if not working_file_path.exists():
         exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
 
-    # Build new working tree content with selected lines discarded
-    target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
-        line_changes, requested_ids, working_bytes)
+    with EditorBuffer.from_path(working_file_path) as working_lines:
+        target_working_buffer = build_target_working_tree_buffer_from_lines(
+            line_changes,
+            requested_ids,
+            working_lines,
+            working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+        )
 
     # Write back to working tree
     log_journal("discard_lines_to_batch_before_write", file_path=str(working_file_path))
-    working_file_path.write_bytes(target_working_content)
+    with target_working_buffer:
+        write_buffer_to_path(working_file_path, target_working_buffer)
     log_journal("discard_lines_to_batch_after_write", file_path=str(working_file_path))
 
     if not quiet:

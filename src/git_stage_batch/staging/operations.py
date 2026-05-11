@@ -942,8 +942,3 @@ def update_index_with_blob_buffer(path: str, buffer: BufferInput) -> None:
         index_before=ls_before,
         index_after=ls_after
     )
-
-
-def update_index_with_blob_content(path: str, content: bytes) -> None:
-    """Update the git index with new bytes for a file."""
-    update_index_with_blob_buffer(path, content)

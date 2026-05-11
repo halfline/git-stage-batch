@@ -2,71 +2,118 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from array import array
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypeVar
 
 
 LineContent = TypeVar("LineContent", bytes, str)
+_MAX_UINT32 = (1 << 32) - 1
+
+
+@dataclass(frozen=True, slots=True)
+class UniqueLinePosition:
+    """Position of a line that appears exactly once in a segment."""
+
+    index: int
+
+
+@dataclass(slots=True)
+class _LineOccurrenceState:
+    """Occurrence state for one line content while scanning a segment."""
+
+    first_index: int
+    is_unique: bool = True
 
 
 @dataclass
 class LineMapping:
     """Alignment between batch source lines and working tree lines."""
 
-    source_to_target: dict[int, int | None]
-    target_to_source: dict[int, int | None]
+    source_to_target: array
+    target_to_source: array
 
     def is_source_line_present(
         self,
         source_line: int
     ) -> bool:
         """Check if a batch source line is present in working tree."""
-        return self.source_to_target.get(source_line) is not None
+        return _lookup_line_mapping(self.source_to_target, source_line) is not None
 
     def get_target_line_from_source_line(
         self,
         source_line: int
     ) -> int | None:
         """Map batch source line to working tree line."""
-        return self.source_to_target.get(source_line)
+        return _lookup_line_mapping(self.source_to_target, source_line)
 
     def get_source_line_from_target_line(
         self,
         target_line: int
     ) -> int | None:
         """Map working tree line to batch source line."""
-        return self.target_to_source.get(target_line)
+        return _lookup_line_mapping(self.target_to_source, target_line)
+
+
+def _line_mapping_typecode(max_line_number: int) -> str:
+    if max_line_number <= _MAX_UINT32:
+        return "I"
+    return "Q"
+
+
+def _new_line_mapping(size: int, max_line_number: int) -> array:
+    return array(_line_mapping_typecode(max_line_number), [0]) * size
+
+
+def _lookup_line_mapping(mapping: array, line_number: int) -> int | None:
+    if line_number < 1 or line_number > len(mapping):
+        return None
+
+    mapped_line = mapping[line_number - 1]
+    if mapped_line == 0:
+        return None
+    return mapped_line
 
 
 def _build_unique_position_map(
-    lines: list[LineContent],
+    lines: Sequence[LineContent],
     start: int,
     end: int
-) -> dict[LineContent, int]:
-    """Return content -> absolute index for lines that appear exactly once.
+) -> dict[LineContent, UniqueLinePosition]:
+    """Return content -> position for lines that appear exactly once.
 
     Args:
-        lines: Full line list.
+        lines: Full line sequence.
         start: Inclusive segment start (0-based).
         end: Exclusive segment end (0-based).
 
     Returns:
         Mapping for uniquely occurring lines within the segment.
     """
-    positions: dict[LineContent, list[int]] = defaultdict(list)
-    unique_positions: dict[LineContent, int]
+    occurrences: dict[LineContent, _LineOccurrenceState]
+    unique_positions: dict[LineContent, UniqueLinePosition]
     index: int
     content: LineContent
-    content_positions: list[int]
+    occurrence: _LineOccurrenceState
+
+    occurrences = {}
 
     for index in range(start, end):
-        positions[lines[index]].append(index)
+        content = lines[index]
+        try:
+            occurrence = occurrences[content]
+        except KeyError:
+            occurrences[content] = _LineOccurrenceState(first_index=index)
+        else:
+            occurrence.is_unique = False
 
     unique_positions = {}
-    for content, content_positions in positions.items():
-        if len(content_positions) == 1:
-            unique_positions[content] = content_positions[0]
+    for content, occurrence in occurrences.items():
+        if occurrence.is_unique:
+            unique_positions[content] = UniqueLinePosition(
+                index=occurrence.first_index
+            )
 
     return unique_positions
 
@@ -126,14 +173,14 @@ def _longest_increasing_subsequence(
 
 
 def _map_equal_prefix(
-    source_lines: list[LineContent],
-    target_lines: list[LineContent],
+    source_lines: Sequence[LineContent],
+    target_lines: Sequence[LineContent],
     source_start: int,
     source_end: int,
     target_start: int,
     target_end: int,
-    source_to_target: dict[int, int | None],
-    target_to_source: dict[int, int | None]
+    source_to_target: array,
+    target_to_source: array
 ) -> tuple[int, int]:
     """Map equal prefix lines and return new segment starts."""
     while (
@@ -141,8 +188,8 @@ def _map_equal_prefix(
         and target_start < target_end
         and source_lines[source_start] == target_lines[target_start]
     ):
-        source_to_target[source_start + 1] = target_start + 1
-        target_to_source[target_start + 1] = source_start + 1
+        source_to_target[source_start] = target_start + 1
+        target_to_source[target_start] = source_start + 1
         source_start += 1
         target_start += 1
 
@@ -150,14 +197,14 @@ def _map_equal_prefix(
 
 
 def _map_equal_suffix(
-    source_lines: list[LineContent],
-    target_lines: list[LineContent],
+    source_lines: Sequence[LineContent],
+    target_lines: Sequence[LineContent],
     source_start: int,
     source_end: int,
     target_start: int,
     target_end: int,
-    source_to_target: dict[int, int | None],
-    target_to_source: dict[int, int | None]
+    source_to_target: array,
+    target_to_source: array
 ) -> tuple[int, int]:
     """Map equal suffix lines and return new segment ends."""
     while (
@@ -165,42 +212,23 @@ def _map_equal_suffix(
         and target_start < target_end
         and source_lines[source_end - 1] == target_lines[target_end - 1]
     ):
-        source_to_target[source_end] = target_end
-        target_to_source[target_end] = source_end
+        source_to_target[source_end - 1] = target_end
+        target_to_source[target_end - 1] = source_end
         source_end -= 1
         target_end -= 1
 
     return source_end, target_end
 
 
-def _mark_unmapped_segment(
-    source_start: int,
-    source_end: int,
-    target_start: int,
-    target_end: int,
-    source_to_target: dict[int, int | None],
-    target_to_source: dict[int, int | None]
-) -> None:
-    """Mark all remaining lines in the segment as unmapped."""
-    source_index: int
-    target_index: int
-
-    for source_index in range(source_start, source_end):
-        source_to_target.setdefault(source_index + 1, None)
-
-    for target_index in range(target_start, target_end):
-        target_to_source.setdefault(target_index + 1, None)
-
-
 def _align_segment(
-    source_lines: list[LineContent],
-    target_lines: list[LineContent],
+    source_lines: Sequence[LineContent],
+    target_lines: Sequence[LineContent],
     source_start: int,
     source_end: int,
     target_start: int,
     target_end: int,
-    source_to_target: dict[int, int | None],
-    target_to_source: dict[int, int | None]
+    source_to_target: array,
+    target_to_source: array
 ) -> None:
     """Conservatively align one source/target segment.
 
@@ -214,12 +242,12 @@ def _align_segment(
     This function is intentionally conservative. It never guesses inside
     structurally ambiguous regions.
     """
-    source_unique: dict[LineContent, int]
-    target_unique: dict[LineContent, int]
+    source_unique: dict[LineContent, UniqueLinePosition]
+    target_unique: dict[LineContent, UniqueLinePosition]
     candidate_pairs: list[tuple[int, int]]
     content: LineContent
-    source_index: int
-    target_index: int | None
+    source_position: UniqueLinePosition
+    target_position: UniqueLinePosition | None
     anchors: list[tuple[int, int]]
     previous_source: int
     previous_target: int
@@ -249,37 +277,26 @@ def _align_segment(
     )
 
     if source_start >= source_end or target_start >= target_end:
-        _mark_unmapped_segment(
-            source_start,
-            source_end,
-            target_start,
-            target_end,
-            source_to_target,
-            target_to_source
-        )
         return
 
     source_unique = _build_unique_position_map(source_lines, source_start, source_end)
     target_unique = _build_unique_position_map(target_lines, target_start, target_end)
 
     candidate_pairs = []
-    for content, source_index in source_unique.items():
-        target_index = target_unique.get(content)
-        if target_index is not None:
-            candidate_pairs.append((source_index, target_index))
+    for content, source_position in source_unique.items():
+        target_position = target_unique.get(content)
+        if target_position is not None:
+            candidate_pairs.append(
+                (
+                    source_position.index,
+                    target_position.index
+                )
+            )
 
     candidate_pairs.sort()
     anchors = _longest_increasing_subsequence(candidate_pairs)
 
     if not anchors:
-        _mark_unmapped_segment(
-            source_start,
-            source_end,
-            target_start,
-            target_end,
-            source_to_target,
-            target_to_source
-        )
         return
 
     previous_source = source_start
@@ -297,8 +314,8 @@ def _align_segment(
             target_to_source
         )
 
-        source_to_target[anchor_source + 1] = anchor_target + 1
-        target_to_source[anchor_target + 1] = anchor_source + 1
+        source_to_target[anchor_source] = anchor_target + 1
+        target_to_source[anchor_target] = anchor_source + 1
 
         previous_source = anchor_source + 1
         previous_target = anchor_target + 1
@@ -316,8 +333,8 @@ def _align_segment(
 
 
 def match_lines(
-    source_lines: list[LineContent],
-    target_lines: list[LineContent]
+    source_lines: Sequence[LineContent],
+    target_lines: Sequence[LineContent]
 ) -> LineMapping:
     """Compute conservative structural alignment between source and target.
 
@@ -339,13 +356,13 @@ def match_lines(
     Returns:
         A bidirectional line mapping with ambiguous lines left unmapped.
     """
-    source_to_target: dict[int, int | None]
-    target_to_source: dict[int, int | None]
-    source_index: int
-    target_index: int
+    source_to_target: array
+    target_to_source: array
+    max_line_number: int
 
-    source_to_target = {}
-    target_to_source = {}
+    max_line_number = max(len(source_lines), len(target_lines))
+    source_to_target = _new_line_mapping(len(source_lines), max_line_number)
+    target_to_source = _new_line_mapping(len(target_lines), max_line_number)
 
     _align_segment(
         source_lines,
@@ -357,12 +374,6 @@ def match_lines(
         source_to_target,
         target_to_source
     )
-
-    for source_index in range(len(source_lines)):
-        source_to_target.setdefault(source_index + 1, None)
-
-    for target_index in range(len(target_lines)):
-        target_to_source.setdefault(target_index + 1, None)
 
     return LineMapping(
         source_to_target=source_to_target,

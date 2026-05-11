@@ -20,9 +20,28 @@ from git_stage_batch.batch.source_refresh import (
 )
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
-    _advance_source_buffer_preserving_existing_presence_with_provenance,
+    _advance_source_lines_preserving_existing_presence,
 )
 from git_stage_batch.core.models import LineEntry
+from git_stage_batch.editor import EditorBuffer
+
+
+def _advance_source_from_content(
+    *,
+    old_source_buffer: bytes,
+    working_buffer: bytes,
+    ownership: BatchOwnership,
+):
+    with (
+        EditorBuffer.from_bytes(old_source_buffer) as old_source_lines,
+        EditorBuffer.from_bytes(working_buffer) as working_lines,
+    ):
+        return _advance_source_lines_preserving_existing_presence(
+            old_lines=old_source_lines,
+            working_lines=working_lines,
+            ownership=ownership,
+        )
+
 
 def test_refreshed_batch_selection_dataclass():
     """Test RefreshedBatchSelection dataclass construction."""
@@ -217,7 +236,7 @@ def test_prepare_batch_ownership_update_with_existing():
 def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
     """Repeated working lines should use known synthesis identity."""
     ownership = BatchOwnership.from_presence_lines(["1,4"], [])
-    with _advance_source_buffer_preserving_existing_presence_with_provenance(
+    with _advance_source_from_content(
         old_source_buffer=b"owned before\nsame\nsame\nowned after\n",
         working_buffer=b"same\nsame\n",
         ownership=ownership,

@@ -9,9 +9,10 @@ from typing import Any
 
 from .ref_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from .validation import validate_batch_name
+from ..editor import EditorBuffer
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import (
-    create_git_blobs,
+    create_git_blob,
     GitIndexEntryUpdate,
     git_commit_tree,
     git_update_index_entries,
@@ -23,11 +24,21 @@ from ..utils.git import (
 from ..utils.paths import get_batch_metadata_file_path
 
 
+_SourceBuffer = bytes | EditorBuffer
+
+
 @dataclass(frozen=True)
-class _StateContentUpdate:
+class _StateBufferUpdate:
     path: str
-    data: bytes
+    data: _SourceBuffer
     mode: str = "100644"
+
+
+def _buffer_chunks(buffer: _SourceBuffer):
+    if isinstance(buffer, EditorBuffer):
+        yield from buffer.byte_chunks()
+    else:
+        yield buffer
 
 
 def get_batch_content_ref_name(batch_name: str) -> str:
@@ -130,6 +141,7 @@ def sync_batch_state_refs(
     *,
     content_commit: str | None = None,
     source_contents: dict[str, bytes] | None = None,
+    source_buffers: dict[str, _SourceBuffer] | None = None,
 ) -> None:
     """Publish batch metadata and source snapshots into authoritative Git refs."""
     validate_batch_name(batch_name)
@@ -150,8 +162,11 @@ def sync_batch_state_refs(
         "files": {},
     }
 
-    source_contents = source_contents or {}
-    content_updates: list[_StateContentUpdate] = []
+    source_buffers = {
+        **(source_contents or {}),
+        **(source_buffers or {}),
+    }
+    buffer_updates: list[_StateBufferUpdate] = []
 
     with temp_git_index() as env:
         for file_path, file_meta in metadata.get("files", {}).items():
@@ -159,22 +174,22 @@ def sync_batch_state_refs(
 
             source_commit = file_meta.get("batch_source_commit")
             if source_commit:
-                source_content = source_contents.get(file_path)
-                if source_content is None:
+                source_buffer = source_buffers.get(file_path)
+                if source_buffer is None:
                     source_result = run_git_command(
                         ["show", f"{source_commit}:{file_path}"],
                         check=False,
                         text_output=False,
                     )
                     if source_result.returncode == 0:
-                        source_content = source_result.stdout
+                        source_buffer = source_result.stdout
 
-                if source_content is not None:
+                if source_buffer is not None:
                     source_path = f"sources/{file_path}"
-                    content_updates.append(
-                        _StateContentUpdate(
+                    buffer_updates.append(
+                        _StateBufferUpdate(
                             path=source_path,
-                            data=source_content,
+                            data=source_buffer,
                             mode=file_meta.get("mode", "100644"),
                         )
                     )
@@ -183,8 +198,11 @@ def sync_batch_state_refs(
             state_metadata["files"][file_path] = state_file_meta
 
         state_json = json.dumps(state_metadata, indent=2).encode("utf-8")
-        content_updates.append(_StateContentUpdate(path="batch.json", data=state_json))
-        blob_shas = create_git_blobs(update.data for update in content_updates)
+        buffer_updates.append(_StateBufferUpdate(path="batch.json", data=state_json))
+        blob_shas = [
+            create_git_blob(_buffer_chunks(update.data))
+            for update in buffer_updates
+        ]
         git_update_index_entries(
             [
                 GitIndexEntryUpdate(
@@ -192,7 +210,7 @@ def sync_batch_state_refs(
                     mode=update.mode,
                     blob_sha=blob_sha,
                 )
-                for update, blob_sha in zip(content_updates, blob_shas, strict=True)
+                for update, blob_sha in zip(buffer_updates, blob_shas, strict=True)
             ],
             env=env,
         )

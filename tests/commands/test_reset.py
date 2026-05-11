@@ -53,6 +53,24 @@ def _presence_line_ids_from_ownership(ownership: BatchOwnership) -> set[int]:
     return line_ids
 
 
+def test_reset_partition_accepts_non_list_line_sequences(line_sequence):
+    """Reset ownership partitioning accepts indexed line sequences."""
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+    source_lines = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+
+    remaining_units, removed_units = reset_module._partition_line_ownership_units(
+        ownership,
+        source_lines,
+        {1},
+        batch_name="mybatch",
+        file_path="test.py",
+    )
+
+    assert remaining_units == []
+    assert len(removed_units) == 1
+    assert removed_units[0].claimed_source_lines == {2}
+
+
 @pytest.fixture
 def temp_git_repo(tmp_path, monkeypatch):
     """Create a temporary git repository for testing."""

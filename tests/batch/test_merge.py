@@ -17,9 +17,8 @@ from git_stage_batch.batch.merge import (
     discard_batch_from_line_sequences_as_buffer,
     merge_batch_from_line_sequences_as_buffer,
     _satisfy_constraints,
-    discard_batch,
-    merge_batch,
 )
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.exceptions import MergeError
 from git_stage_batch.batch.ownership import (
     BaselineReference,
@@ -27,6 +26,49 @@ from git_stage_batch.batch.ownership import (
     DeletionClaim,
     ReplacementUnit,
 )
+
+
+def merge_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+    *,
+    source_to_working_mapping=None,
+) -> bytes:
+    """Return merged bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+            source_to_working_mapping=source_to_working_mapping,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
+
+
+def discard_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+    baseline_content: bytes,
+) -> bytes:
+    """Return discarded bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        EditorBuffer.from_bytes(baseline_content) as baseline_lines,
+        discard_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+            baseline_lines,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
+
 
 class TestMatchLines:
     """Tests for line alignment using difflib.SequenceMatcher."""

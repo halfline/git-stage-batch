@@ -1,6 +1,6 @@
 """Tests for sift command."""
 
-from git_stage_batch.batch.merge import merge_batch
+from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
 
 import subprocess
 import pytest
@@ -25,6 +25,25 @@ from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.exceptions import CommandError, MergeError
+
+
+def merge_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+) -> bytes:
+    """Return merged bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
+
 
 def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
     """Sift ownership derivation accepts indexed byte-line sequences."""

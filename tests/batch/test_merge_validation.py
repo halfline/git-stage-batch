@@ -9,14 +9,54 @@ Tests cover:
 import pytest
 
 from git_stage_batch.batch.merge import (
-    merge_batch,
-    discard_batch,
+    discard_batch_from_line_sequences_as_buffer,
+    merge_batch_from_line_sequences_as_buffer,
     _sequence_present_at_boundary,
     _find_boundary_after_source_line,
     RealizedEntry,
 )
 from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
+
+
+def merge_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+) -> bytes:
+    """Return merged bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
+
+
+def discard_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+    baseline_content: bytes,
+) -> bytes:
+    """Return discarded bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        EditorBuffer.from_bytes(baseline_content) as baseline_lines,
+        discard_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+            baseline_lines,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
 
 
 def test_sequence_present_normalizes_both_sides():

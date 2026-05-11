@@ -8,7 +8,7 @@ import pytest
 
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.query import read_batch_metadata
-from git_stage_batch.batch.merge import merge_batch
+from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
 from git_stage_batch.batch.storage import add_file_to_batch, get_batch_diff, read_file_from_batch
 from git_stage_batch.batch.ownership import (
     BaselineReference,
@@ -17,7 +17,26 @@ from git_stage_batch.batch.ownership import (
     ReplacementUnit,
 )
 from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.utils.git import create_git_blob
+
+
+def merge_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+) -> bytes:
+    """Return merged bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
 
 
 @pytest.fixture

@@ -6,9 +6,27 @@ described in BATCHES.md.
 
 
 from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
-from git_stage_batch.batch.merge import merge_batch
+from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
 from git_stage_batch.batch.storage import _build_realized_buffer_from_lines
 from git_stage_batch.editor import EditorBuffer
+
+
+def merge_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+) -> bytes:
+    """Return merged bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
 
 
 def _build_realized_content_from_bytes(

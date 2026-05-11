@@ -18,6 +18,8 @@ from git_stage_batch.staging.operations import (
     build_target_working_tree_content_bytes_with_replaced_lines,
     build_target_working_tree_content_from_lines,
     build_target_working_tree_buffer_from_lines,
+    build_target_working_tree_buffer_with_replaced_lines,
+    build_target_working_tree_content_with_replaced_lines_from_lines,
     build_target_working_tree_content_with_discarded_lines,
     update_index_with_blob_content,
 )
@@ -785,6 +787,50 @@ class TestBuildTargetIndexContent:
         )
 
         assert result == b"line1\nreplacement\nline3\n"
+
+    def test_working_tree_replacement_accepts_non_list_line_sequences(self, line_sequence):
+        """Working-tree replacement can read from an indexed line sequence."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"tail", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_lines = line_sequence([b"keep\r\n", b"working\r\n", b"tail\r\n"])
+
+        result = build_target_working_tree_content_with_replaced_lines_from_lines(
+            line_changes,
+            {1, 2},
+            "replacement",
+            working_lines,
+            working_has_trailing_newline=True,
+        )
+
+        assert result == b"keep\nreplacement\ntail\n"
+
+    def test_working_tree_replacement_can_return_buffer(self, line_sequence):
+        """Working-tree replacement can return a buffer for streaming callers."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"tail", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_lines = line_sequence([b"keep\r\n", b"working\r\n", b"tail\r\n"])
+
+        with build_target_working_tree_buffer_with_replaced_lines(
+            line_changes,
+            {1, 2},
+            "replacement",
+            working_lines,
+            working_has_trailing_newline=True,
+        ) as result:
+            assert isinstance(result, EditorBuffer)
+            assert result.to_bytes() == b"keep\nreplacement\ntail\n"
 
 
 class TestBuildTargetWorkingTreeContent:

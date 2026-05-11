@@ -6,14 +6,14 @@ import os
 import sys
 from typing import Optional
 
-from ..batch.merge import merge_batch
+from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.query import get_batch_commit_sha
 from ..batch.selection import (
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
-    select_batch_ownership_for_display_ids,
+    select_batch_ownership_for_display_ids_from_lines,
     translate_batch_file_gutter_ids_to_selection_ids,
     translate_atomic_unit_error_to_gutter_ids,
 )
@@ -33,6 +33,8 @@ from ..data.hunk_tracking import (
 )
 from ..editor import (
     EditorBuffer,
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
     write_buffer_to_working_tree_path,
 )
 from ..data.session import snapshot_file_if_untracked
@@ -208,28 +210,8 @@ def command_apply_from_batch(
 
                 text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
-                # Get batch source commit content (as bytes)
-                batch_source_commit = file_meta["batch_source_commit"]
-                batch_source_result = run_git_command(
-                    ["show", f"{batch_source_commit}:{file_path}"],
-                    check=False,
-                    text_output=False
-                )
-                if batch_source_result.returncode != 0:
-                    failed_files.append(file_path)
-                    continue
-                batch_source_content = batch_source_result.stdout
-
-                # Get selected working tree content (as bytes)
                 full_path = repo_root / file_path
                 working_exists = os.path.lexists(full_path)
-                if working_exists:
-                    if full_path.is_symlink():
-                        working_content = os.readlink(os.fsencode(full_path))
-                    else:
-                        working_content = full_path.read_bytes()
-                else:
-                    working_content = b""
 
                 file_mode = mode_for_text_materialization(
                     str(file_meta.get("mode", "100644")),
@@ -240,49 +222,54 @@ def command_apply_from_batch(
                     _write_text_file_from_batch(file_path, None, file_mode, text_change_type)
                     continue
 
-                # Get ownership from metadata, filtered by selected selection IDs if specified
-                try:
-                    ownership = select_batch_ownership_for_display_ids(
-                        file_meta, batch_source_content, selection_ids_to_apply
-                    )
-                except AtomicUnitError as e:
-                    # Translate selection IDs to gutter IDs and exit with user-friendly error
-                    if rendered:
-                        translate_atomic_unit_error_to_gutter_ids(e, rendered, "apply", batch_name)
-                    # No rendered context - show original error
-                    exit_with_error(_("Failed to apply batch '{name}': {error}").format(
-                        name=batch_name,
-                        error=str(e)
-                    ))
+                batch_source_commit = file_meta["batch_source_commit"]
+                batch_source_buffer = load_git_object_as_buffer(
+                    f"{batch_source_commit}:{file_path}"
+                )
+                if batch_source_buffer is None:
+                    failed_files.append(file_path)
+                    continue
 
-                # If nothing selected for this file, skip it
-                if ownership.is_empty():
-                    if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
-                        merged_content = b""
+                with (
+                    batch_source_buffer as batch_source_lines,
+                    load_working_tree_file_as_buffer(file_path) as working_lines,
+                ):
+                    try:
+                        ownership = select_batch_ownership_for_display_ids_from_lines(
+                            file_meta, batch_source_lines, selection_ids_to_apply
+                        )
+                    except AtomicUnitError as e:
+                        if rendered:
+                            translate_atomic_unit_error_to_gutter_ids(e, rendered, "apply", batch_name)
+                        exit_with_error(_("Failed to apply batch '{name}': {error}").format(
+                            name=batch_name,
+                            error=str(e)
+                        ))
+
+                    if ownership.is_empty():
+                        if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
+                            merged_buffer = EditorBuffer.from_bytes(b"")
+                        else:
+                            continue
                     else:
-                        continue
-                else:
-                    # Perform structural merge
-                    merged_content = merge_batch(
-                        batch_source_content,
-                        ownership,
-                        working_content
-                    )
+                        merged_buffer = merge_batch_from_line_sequences_as_buffer(
+                            batch_source_lines,
+                            ownership,
+                            working_lines,
+                        )
 
-                # Write merged content to working tree (bytes). A selected
-                # deleted-text file still represents path absence once the
-                # selected deletion leaves the destination empty.
-                effective_change_type = selected_text_target_change_type(
-                    text_change_type,
-                    selected_ids,
-                    merged_content,
-                )
-                _write_text_file_from_batch(
-                    file_path,
-                    merged_content,
-                    file_mode,
-                    effective_change_type,
-                )
+                with merged_buffer:
+                    effective_change_type = selected_text_target_change_type(
+                        text_change_type,
+                        selected_ids,
+                        merged_buffer,
+                    )
+                    _write_text_file_from_batch(
+                        file_path,
+                        merged_buffer,
+                        file_mode,
+                        effective_change_type,
+                    )
 
             except MergeError:
                 # Merge conflict - batch created from different file version

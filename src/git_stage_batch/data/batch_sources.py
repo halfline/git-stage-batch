@@ -9,7 +9,10 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 
-from ..editor import EditorBuffer
+from ..editor import (
+    EditorBuffer,
+    load_git_object_as_buffer,
+)
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
@@ -52,8 +55,8 @@ def _buffer_preview(buffer: EditorBuffer) -> bytes:
     return b"(empty)"
 
 
-def get_saved_session_file_content(file_path: str) -> bytes:
-    """Get file content as it was at session start.
+def load_saved_session_file_as_buffer(file_path: str) -> EditorBuffer:
+    """Load a file buffer as it was at session start.
 
     For tracked files, extracts from the git stash created by
     initialize_abort_state(). For untracked files, reads from the lazy
@@ -63,10 +66,10 @@ def get_saved_session_file_content(file_path: str) -> bytes:
         file_path: Repository-relative path to the file
 
     Returns:
-        File content as bytes, preserving exact encoding and line endings
+        File buffer, preserving exact encoding and line endings
 
     Raises:
-        CommandError: If file content cannot be retrieved
+        CommandError: If the file buffer cannot be retrieved
     """
     # Check if file was untracked and snapshotted
     snapshot_list_path = get_abort_snapshot_list_file_path()
@@ -76,7 +79,7 @@ def get_saved_session_file_content(file_path: str) -> bytes:
             # Read from snapshot directory
             snapshot_path = get_abort_snapshots_directory_path() / file_path
             if snapshot_path.exists():
-                return snapshot_path.read_bytes()
+                return EditorBuffer.from_path(snapshot_path)
             else:
                 raise CommandError(
                     _("Snapshot for untracked file not found: {file}").format(file=file_path)
@@ -89,9 +92,9 @@ def get_saved_session_file_content(file_path: str) -> bytes:
         if stash_commit:
             # Extract file from stash commit
             # The stash commit contains the working tree state
-            result = run_git_command(["show", f"{stash_commit}:{file_path}"], check=False, text_output=False)
-            if result.returncode == 0:
-                return result.stdout
+            buffer = load_git_object_as_buffer(f"{stash_commit}:{file_path}")
+            if buffer is not None:
+                return buffer
 
     # No stash or file not in stash - file was unchanged at session start
     # Read from baseline (abort HEAD)
@@ -100,12 +103,18 @@ def get_saved_session_file_content(file_path: str) -> bytes:
         raise CommandError(_("No session found"))
 
     baseline_commit = read_text_file_contents(abort_head_path).strip()
-    result = run_git_command(["show", f"{baseline_commit}:{file_path}"], check=False, text_output=False)
-    if result.returncode != 0:
+    buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    if buffer is None:
         # File might not exist in baseline (new file)
-        return b""
+        return EditorBuffer.from_bytes(b"")
 
-    return result.stdout
+    return buffer
+
+
+def get_saved_session_file_content(file_path: str) -> bytes:
+    """Get file content as it was at session start."""
+    with load_saved_session_file_as_buffer(file_path) as buffer:
+        return buffer.to_bytes()
 
 
 def _fast_import_quote_path(file_path: str) -> str:

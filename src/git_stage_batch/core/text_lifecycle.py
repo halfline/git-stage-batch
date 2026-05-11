@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from enum import Enum
 
+from ..editor import buffer_matches
 from ..utils.git import get_git_repository_root_path, run_git_command
+
+
+BufferData = bytes | Sequence[bytes]
 
 
 class TextFileChangeType(str, Enum):
@@ -55,8 +59,8 @@ def resolve_text_change_type(
     *,
     file_path: str,
     baseline_exists: bool,
-    batch_source_content: bytes,
-    realized_content: bytes,
+    batch_source_content: BufferData,
+    realized_content: BufferData,
     requested_change_type: str | TextFileChangeType | None = None,
     working_exists: bool | None = None,
 ) -> TextFileChangeType:
@@ -70,41 +74,53 @@ def resolve_text_change_type(
     if requested == TextFileChangeType.DELETED:
         return (
             TextFileChangeType.DELETED
-            if baseline_exists and realized_content == b"" else
+            if baseline_exists and _buffer_is_empty(realized_content) else
             TextFileChangeType.MODIFIED
         )
 
     if requested == TextFileChangeType.ADDED:
         return (
             TextFileChangeType.ADDED
-            if not baseline_exists and realized_content == batch_source_content
+            if (
+                not baseline_exists
+                and buffer_matches(realized_content, batch_source_content)
+            )
             else TextFileChangeType.MODIFIED
         )
 
     if requested == TextFileChangeType.MODIFIED:
         return TextFileChangeType.MODIFIED
 
-    if not baseline_exists and realized_content == batch_source_content:
+    if (
+        not baseline_exists
+        and buffer_matches(realized_content, batch_source_content)
+    ):
         return TextFileChangeType.ADDED
 
     if working_exists is None:
         working_exists = (get_git_repository_root_path() / file_path).exists()
-    if baseline_exists and not working_exists and realized_content == b"":
+    if baseline_exists and not working_exists and _buffer_is_empty(realized_content):
         return TextFileChangeType.DELETED
 
     return TextFileChangeType.MODIFIED
 
 
+def _buffer_is_empty(buffer: BufferData) -> bool:
+    if isinstance(buffer, bytes):
+        return buffer == b""
+    return not any(buffer)
+
+
 def selected_text_target_change_type(
     text_change_type: str | TextFileChangeType,
     selected_ids: Iterable[int] | None,
-    target_content: bytes,
+    target_content: BufferData,
 ) -> TextFileChangeType:
     """Return the path state for applying selected batch text to a target."""
     text_change_type = normalized_text_change_type(text_change_type)
     if selected_ids is None:
         return text_change_type
-    if text_change_type == TextFileChangeType.DELETED and target_content == b"":
+    if text_change_type == TextFileChangeType.DELETED and _buffer_is_empty(target_content):
         return TextFileChangeType.DELETED
     return TextFileChangeType.MODIFIED
 
@@ -112,13 +128,13 @@ def selected_text_target_change_type(
 def selected_text_discard_change_type(
     text_change_type: str | TextFileChangeType,
     selected_ids: Iterable[int] | None,
-    discarded_content: bytes,
+    discarded_content: BufferData,
     *,
     baseline_exists: bool,
 ) -> TextFileChangeType:
     """Return the path state for discarding selected batch text from a target."""
     text_change_type = normalized_text_change_type(text_change_type)
-    if not baseline_exists and discarded_content == b"":
+    if not baseline_exists and _buffer_is_empty(discarded_content):
         return TextFileChangeType.DELETED
     if selected_ids is None:
         return (

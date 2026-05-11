@@ -6,6 +6,7 @@ from git_stage_batch.batch.ownership import (
     DeletionClaim,
     ReplacementLineRun,
     ReplacementUnit,
+    derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
 )
@@ -33,6 +34,23 @@ def test_translate_lines_creates_deletion_constraints():
     assert len(ownership.replacement_units) == 1
     assert ownership.replacement_units[0].presence_lines == ["1"]
     assert ownership.replacement_units[0].deletion_indices == [0]
+
+
+def test_derive_replacement_line_runs_accepts_non_list_sequences(line_sequence):
+    """Replacement run derivation accepts indexed byte-line sequences."""
+    runs = derive_replacement_line_runs_from_lines(
+        old_file_lines=line_sequence([b"keep\n", b"old value\n"]),
+        new_file_lines=line_sequence([
+            b"keep\n",
+            b"new value 1\n",
+            b"new value 2\n",
+            b"new value 3\n",
+        ]),
+    )
+
+    assert len(runs) == 1
+    assert runs[0].old_line_numbers == (2,)
+    assert runs[0].new_line_numbers == (2, 3, 4)
 
 
 def test_translate_lines_records_multi_line_replacement_unit():

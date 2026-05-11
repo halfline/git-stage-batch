@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 import difflib
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -10,9 +10,17 @@ from typing import TYPE_CHECKING
 
 from .match import LineMapping, match_lines
 from ..core.line_selection import parse_line_selection
+from ..editor import (
+    EditorBuffer,
+    choose_line_ending,
+    restore_line_endings_in_chunks,
+)
 from ..exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
 from ..i18n import _
-from ..utils.text import normalize_line_endings
+from ..utils.text import (
+    normalize_line_sequence_endings,
+    normalize_line_endings,
+)
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership, DeletionClaim
@@ -47,6 +55,20 @@ class RealizedEntry:
 
 
 _BaselineLineEdit = tuple[int, int, list[bytes]]
+
+
+def _realized_entry_content_chunks(entries: Iterable[RealizedEntry]) -> Iterator[bytes]:
+    """Yield content bytes from realized entries."""
+    for entry in entries:
+        yield entry.content
+
+
+def _merge_result_line_ending_from_lines(
+    primary_lines: Sequence[bytes],
+    fallback_lines: Sequence[bytes],
+) -> bytes | None:
+    """Choose the line ending style for line sequence merge output."""
+    return choose_line_ending(primary_lines, fallback_lines)
 
 
 def _detect_line_ending(content: bytes) -> bytes | None:
@@ -1459,15 +1481,105 @@ def merge_batch(
         MergeError: If constraints cannot be reliably satisfied or structural
                     displacement is detected
     """
-    result_line_ending = _merge_result_line_ending(
-        working_content,
+    with merge_batch_as_buffer(
         batch_source_content,
-    )
-    working_normalized = working_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    source_normalized = batch_source_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+        ownership,
+        working_content,
+        source_to_working_mapping=source_to_working_mapping,
+    ) as buffer:
+        return buffer.to_bytes()
 
-    source_lines = source_normalized.splitlines(keepends=True) if source_normalized else []
-    working_lines = working_normalized.splitlines(keepends=True) if working_normalized else []
+
+def merge_batch_as_buffer(
+    batch_source_content: bytes,
+    ownership: 'BatchOwnership',
+    working_content: bytes,
+    *,
+    source_to_working_mapping: LineMapping | None = None,
+) -> EditorBuffer:
+    """Merge in-memory content and return an editor buffer."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+    ):
+        return merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+            source_to_working_mapping=source_to_working_mapping,
+        )
+
+
+def merge_batch_from_line_sequences(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    source_to_working_mapping: LineMapping | None = None,
+) -> bytes:
+    """Merge byte-line sequences and restore the destination line ending style."""
+    with merge_batch_from_line_sequences_as_buffer(
+        source_lines,
+        ownership,
+        working_lines,
+        source_to_working_mapping=source_to_working_mapping,
+    ) as buffer:
+        return buffer.to_bytes()
+
+
+def merge_batch_from_line_sequences_as_buffer(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    source_to_working_mapping: LineMapping | None = None,
+) -> EditorBuffer:
+    """Merge line sequences and return a buffer with destination line endings."""
+    result_line_ending = _merge_result_line_ending_from_lines(
+        working_lines,
+        source_lines,
+    )
+    normalized_source_lines = normalize_line_sequence_endings(source_lines)
+    normalized_working_lines = normalize_line_sequence_endings(working_lines)
+    return EditorBuffer.from_chunks(
+        restore_line_endings_in_chunks(
+            _merge_batch_line_chunks(
+                normalized_source_lines,
+                ownership,
+                normalized_working_lines,
+                source_to_working_mapping=source_to_working_mapping,
+            ),
+            result_line_ending,
+        )
+    )
+
+
+def merge_batch_lines(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    source_to_working_mapping: LineMapping | None = None,
+) -> bytes:
+    """Merge normalized byte-line sequences and return normalized bytes."""
+    return b"".join(
+        _merge_batch_line_chunks(
+            source_lines,
+            ownership,
+            working_lines,
+            source_to_working_mapping=source_to_working_mapping,
+        )
+    )
+
+
+def _merge_batch_line_chunks(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    source_to_working_mapping: LineMapping | None = None,
+) -> Iterator[bytes]:
+    """Merge normalized byte-line sequences and yield normalized chunks."""
 
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
@@ -1481,7 +1593,8 @@ def merge_batch(
         deletion_claims,
     )
     if fallback_chunks is not None:
-        return _restore_line_endings(b"".join(fallback_chunks), result_line_ending)
+        yield from fallback_chunks
+        return
 
     mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
     try:
@@ -1509,13 +1622,11 @@ def merge_batch(
             deletion_claims,
         )
         if fallback_chunks is not None:
-            return _restore_line_endings(b"".join(fallback_chunks), result_line_ending)
+            yield from fallback_chunks
+            return
         raise
 
-    return _restore_line_endings(
-        b"".join(entry.content for entry in realized_entries),
-        result_line_ending,
-    )
+    yield from _realized_entry_content_chunks(realized_entries)
 
 
 def discard_batch(

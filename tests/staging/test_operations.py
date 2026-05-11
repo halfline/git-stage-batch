@@ -15,7 +15,6 @@ from git_stage_batch.staging.operations import (
     build_target_working_tree_buffer_from_lines,
     build_target_working_tree_buffer_with_replaced_lines,
     build_target_working_tree_content_with_replaced_lines_from_lines,
-    build_target_working_tree_content_with_discarded_lines,
     update_index_with_blob_buffer,
 )
 from git_stage_batch.utils.paths import ensure_state_directory_exists
@@ -50,6 +49,21 @@ def _build_target_index_content_text(
         )
     return result.decode("utf-8", errors="surrogateescape")
 
+
+def _build_target_working_tree_content_text(
+    line_changes: LineLevelChange,
+    discard_ids: set[int],
+    working_text: str,
+) -> str:
+    working_content = working_text.encode("utf-8", errors="surrogateescape")
+    with EditorBuffer.from_bytes(working_content) as working_lines:
+        result = build_target_working_tree_content_from_lines(
+            line_changes,
+            discard_ids,
+            working_lines,
+            working_has_trailing_newline=working_text.endswith("\n"),
+        )
+    return result.decode("utf-8", errors="surrogateescape")
 
 class TestBuildTargetIndexContent:
     """Tests for selected-line index content construction."""
@@ -873,7 +887,7 @@ class TestBuildTargetIndexContent:
 
 
 class TestBuildTargetWorkingTreeContent:
-    """Tests for build_target_working_tree_content_with_discarded_lines."""
+    """Tests for selected-line working-tree content construction."""
 
     def test_discard_single_addition(self):
         """Test discarding a single added line."""
@@ -886,7 +900,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nadded line\nline2\n"
 
-        result = build_target_working_tree_content_with_discarded_lines(line_changes, {1}, working_text)
+        result = _build_target_working_tree_content_text(line_changes, {1}, working_text)
 
         # Discarding the addition removes it
         assert result == "line1\nline2\n"
@@ -902,7 +916,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline2\n"  # Line already deleted in working tree
 
-        result = build_target_working_tree_content_with_discarded_lines(line_changes, {1}, working_text)
+        result = _build_target_working_tree_content_text(line_changes, {1}, working_text)
 
         # Discarding the deletion reinserts it
         assert result == "line1\ndeleted line\nline2\n"
@@ -916,7 +930,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline3\n"
 
-        result = build_target_working_tree_content_with_discarded_lines(
+        result = _build_target_working_tree_content_text(
             line_changes,
             {1},
             working_text,
@@ -976,6 +990,7 @@ class TestBuildTargetWorkingTreeContent:
             line_changes,
             {1},
             working_lines,
+            working_has_trailing_newline=True,
         ) as result:
             assert isinstance(result, EditorBuffer)
             assert result.to_bytes() == b"line1\nline2\n"
@@ -998,12 +1013,12 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline3\nline4\nline5\nline7\n"
 
-        first_result = build_target_working_tree_content_with_discarded_lines(
+        first_result = _build_target_working_tree_content_text(
             line_changes,
             {1},
             working_text,
         )
-        second_result = build_target_working_tree_content_with_discarded_lines(
+        second_result = _build_target_working_tree_content_text(
             line_changes,
             {2},
             working_text,
@@ -1023,7 +1038,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nadded line\nline2\n"
 
-        result = build_target_working_tree_content_with_discarded_lines(line_changes, set(), working_text)
+        result = _build_target_working_tree_content_text(line_changes, set(), working_text)
 
         # Not discarding means working tree stays the same
         assert result == "line1\nadded line\nline2\n"
@@ -1039,7 +1054,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline2\n"
 
-        result = build_target_working_tree_content_with_discarded_lines(line_changes, set(), working_text)
+        result = _build_target_working_tree_content_text(line_changes, set(), working_text)
 
         # Not discarding the deletion means it stays deleted
         assert result == "line1\nline2\n"
@@ -1056,7 +1071,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nnew line\nline2\n"
 
-        result = build_target_working_tree_content_with_discarded_lines(line_changes, {1, 2}, working_text)
+        result = _build_target_working_tree_content_text(line_changes, {1, 2}, working_text)
 
         # Discarding both reverts to original
         assert result == "line1\nold line\nline2\n"
@@ -1074,7 +1089,7 @@ class TestBuildTargetWorkingTreeContent:
         working_text = "add1\nadd2\ncontext\nadd3\n"
 
         # Discard only ID 2
-        result = build_target_working_tree_content_with_discarded_lines(line_changes, {2}, working_text)
+        result = _build_target_working_tree_content_text(line_changes, {2}, working_text)
 
         assert result == "add1\ncontext\nadd3\n"
 
@@ -1090,7 +1105,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "add1\nadd2\nadd3\nkept\n"
 
-        result = build_target_working_tree_content_with_discarded_lines(line_changes, {1, 2, 3}, working_text)
+        result = _build_target_working_tree_content_text(line_changes, {1, 2, 3}, working_text)
 
         assert result == "kept\n"
 
@@ -1105,7 +1120,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "added first\nline1\nline2\n"
 
-        result = build_target_working_tree_content_with_discarded_lines(line_changes, {1}, working_text)
+        result = _build_target_working_tree_content_text(line_changes, {1}, working_text)
 
         assert result == "line1\nline2\n"
 
@@ -1119,7 +1134,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline2\n"
 
-        result = build_target_working_tree_content_with_discarded_lines(line_changes, {1}, working_text)
+        result = _build_target_working_tree_content_text(line_changes, {1}, working_text)
 
         assert result.endswith("\n")
 

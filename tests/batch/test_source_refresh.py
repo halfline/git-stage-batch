@@ -13,7 +13,6 @@ from git_stage_batch.commands import include, discard
 from git_stage_batch.batch.source_refresh import (
     RefreshedBatchSelection,
     PreparedBatchUpdate,
-    _refresh_selected_lines_against_source_buffer,
     _refresh_selected_lines_against_source_lines,
     ensure_batch_source_current_for_selection,
     prepare_batch_ownership_update_for_selection,
@@ -252,17 +251,17 @@ def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
             ),
         ]
 
-        refreshed = _refresh_selected_lines_against_source_buffer(
+        refreshed = _refresh_selected_lines_against_source_lines(
             selected_lines,
-            source_buffer=source_with_provenance.source_buffer,
-            working_buffer=None,
+            source_lines=source_with_provenance.source_buffer,
+            working_lines=(),
             working_line_map=source_with_provenance.working_line_map,
         )
 
     assert [line.source_line for line in refreshed] == [3, 4]
 
 
-def test_refresh_selected_lines_buffer_accepts_non_list_line_sequences(line_sequence):
+def test_refresh_selected_lines_accepts_non_list_source_sequences(line_sequence):
     """Source refresh can use already indexed line sequences."""
     selected_lines = [
         LineEntry(
@@ -271,10 +270,10 @@ def test_refresh_selected_lines_buffer_accepts_non_list_line_sequences(line_sequ
         ),
     ]
 
-    refreshed = _refresh_selected_lines_against_source_buffer(
+    refreshed = _refresh_selected_lines_against_source_lines(
         selected_lines,
-        source_buffer=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
-        working_buffer=line_sequence([b"line1\n", b"line3\n"]),
+        source_lines=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
+        working_lines=line_sequence([b"line1\n", b"line3\n"]),
     )
 
     assert refreshed[0].source_line == 3

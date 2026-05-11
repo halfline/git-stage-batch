@@ -167,22 +167,6 @@ def build_target_index_content_with_selected_lines(
     return "\n".join(output_lines) + ("\n" if trailing_newline else "")
 
 
-def build_target_index_content_bytes_with_selected_lines(
-    line_changes: LineLevelChange,
-    include_ids: set[int],
-    base_content: bytes
-) -> bytes:
-    """Bytes-preserving variant of build_target_index_content_with_selected_lines."""
-    with EditorBuffer.from_bytes(base_content) as base_lines:
-        with build_target_index_buffer_from_lines(
-            line_changes,
-            include_ids,
-            base_lines,
-            base_has_trailing_newline=base_content.endswith(b"\n"),
-        ) as target_buffer:
-            return target_buffer.to_bytes()
-
-
 def _target_index_line_payloads(
     line_changes: LineLevelChange,
     include_ids: set[int],

@@ -1303,14 +1303,6 @@ def build_file_hunk_from_buffer(
             pass
 
 
-def build_file_hunk_from_content(
-    file_path: str,
-    file_content: bytes,
-) -> Optional[LineLevelChange]:
-    """Build a file-scoped line view for hypothetical file bytes."""
-    return build_file_hunk_from_buffer(file_path, file_content)
-
-
 def _build_combined_file_line_changes(
     file_path: str,
     patches,

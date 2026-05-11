@@ -13,10 +13,13 @@ from git_stage_batch.batch.merge import (
     _build_realized_entries_for_discard,
     _check_structural_validity,
     _try_apply_baseline_replacement_units,
-    _satisfy_constraints,
+    discard_batch_from_line_sequences_as_buffer,
+    discard_batch_from_line_sequences,
+    discard_batch_lines,
     merge_batch_from_line_sequences_as_buffer,
     merge_batch_from_line_sequences,
     merge_batch_lines,
+    _satisfy_constraints,
     discard_batch,
     merge_batch,
 )
@@ -27,7 +30,6 @@ from git_stage_batch.batch.ownership import (
     DeletionClaim,
     ReplacementUnit,
 )
-
 
 class TestMatchLines:
     """Tests for line alignment using difflib.SequenceMatcher."""
@@ -238,7 +240,6 @@ class TestMergeLineSequences:
         assert region.kind == RegionKind.REPLACE_BY_HUNK
         assert region.baseline_lines == [b"old\n"]
 
-
     def test_merge_lines_accepts_non_list_sequences(self, line_sequence):
         """Merge core accepts indexed byte-line sequences."""
         source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
@@ -277,6 +278,49 @@ class TestMergeLineSequences:
         ) as result:
             assert result.to_bytes() == b"line1\r\nline2\r\nline3\r\n"
 
+    def test_discard_lines_accepts_non_list_sequences(self, line_sequence):
+        """Discard core accepts indexed byte-line sequences."""
+        baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+        source = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+        working = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+
+        result = discard_batch_lines(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+            baseline,
+        )
+
+        assert result == b"line1\nold\nline3\n"
+
+    def test_discard_from_line_sequences_normalizes_and_restores_line_endings(self, line_sequence):
+        """Discard accepts raw indexed lines and preserves the target line endings."""
+        baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+        source = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+        working = line_sequence([b"line1\r\n", b"new\r\n", b"line3\r\n"])
+
+        result = discard_batch_from_line_sequences(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+            baseline,
+        )
+
+        assert result == b"line1\r\nold\r\nline3\r\n"
+
+    def test_discard_from_line_sequences_can_return_buffer(self, line_sequence):
+        """Discard can return a buffer without materializing through the bytes API."""
+        baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+        source = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+        working = line_sequence([b"line1\r\n", b"new\r\n", b"line3\r\n"])
+
+        with discard_batch_from_line_sequences_as_buffer(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+            baseline,
+        ) as result:
+            assert result.to_bytes() == b"line1\r\nold\r\nline3\r\n"
 
 
 class TestMergeBatch:

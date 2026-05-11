@@ -21,7 +21,7 @@ from git_stage_batch.staging.operations import (
     build_target_working_tree_buffer_with_replaced_lines,
     build_target_working_tree_content_with_replaced_lines_from_lines,
     build_target_working_tree_content_with_discarded_lines,
-    update_index_with_blob_content,
+    update_index_with_blob_buffer,
 )
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
@@ -1085,7 +1085,7 @@ class TestBuildTargetWorkingTreeContent:
 
 
 class TestUpdateIndexWithBlobContent:
-    """Tests for update_index_with_blob_content."""
+    """Tests for update_index_with_blob_buffer."""
 
     def test_update_new_file(self, temp_git_repo):
         """Test updating index with a new file."""
@@ -1097,7 +1097,7 @@ class TestUpdateIndexWithBlobContent:
         subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Update index with new file
-        update_index_with_blob_content("newfile.txt", b"new content\n")
+        update_index_with_blob_buffer("newfile.txt", b"new content\n")
 
         # Verify it's in the index
         result = subprocess.run(
@@ -1129,7 +1129,7 @@ class TestUpdateIndexWithBlobContent:
         subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Update the index (not working tree)
-        update_index_with_blob_content("file.txt", b"modified\n")
+        update_index_with_blob_buffer("file.txt", b"modified\n")
 
         # Verify index content changed
         result = subprocess.run(
@@ -1165,7 +1165,7 @@ class TestUpdateIndexWithBlobContent:
         original_mode = result.stdout.split()[0]
 
         # Update content
-        update_index_with_blob_content("script.sh", b"#!/bin/bash\necho goodbye\n")
+        update_index_with_blob_buffer("script.sh", b"#!/bin/bash\necho goodbye\n")
 
         # Verify mode is preserved
         result = subprocess.run(
@@ -1188,7 +1188,7 @@ class TestUpdateIndexWithBlobContent:
         subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Add new file
-        update_index_with_blob_content("newfile.txt", b"content\n")
+        update_index_with_blob_buffer("newfile.txt", b"content\n")
 
         # Check mode
         result = subprocess.run(
@@ -1200,3 +1200,22 @@ class TestUpdateIndexWithBlobContent:
         )
         mode = result.stdout.split()[0]
         assert mode == "100644"
+
+    def test_update_new_file_from_buffer(self, temp_git_repo):
+        """Index updates can read buffers."""
+        ensure_state_directory_exists()
+        (temp_git_repo / "existing.txt").write_text("existing\n")
+        subprocess.run(["git", "add", "existing.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        with EditorBuffer.from_chunks([b"generated\n", b"content\n"]) as buffer:
+            update_index_with_blob_buffer("generated.txt", buffer)
+
+        result = subprocess.run(
+            ["git", "show", ":generated.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == "generated\ncontent\n"

@@ -7,15 +7,11 @@ import pytest
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.staging.operations import (
-    build_target_index_content_bytes_with_selected_lines,
-    build_target_index_content_bytes_with_replaced_lines,
     build_target_index_content_from_lines,
     build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,
     build_target_index_content_with_replaced_lines_from_lines,
     build_target_index_content_with_selected_lines,
-    build_target_working_tree_content_bytes_with_discarded_lines,
-    build_target_working_tree_content_bytes_with_replaced_lines,
     build_target_working_tree_content_from_lines,
     build_target_working_tree_buffer_from_lines,
     build_target_working_tree_buffer_with_replaced_lines,
@@ -215,8 +211,8 @@ class TestBuildTargetIndexContent:
 
         assert result == "line1\n\ninserted\n\nline3\n"
 
-    def test_insertion_only_hunk_keeps_anchor_line_bytes(self):
-        """Bytes-preserving insertion staging should keep the anchor line."""
+    def test_insertion_only_hunk_keeps_anchor_line_from_buffer(self):
+        """Buffered insertion staging should keep the anchor line."""
         header = HunkHeader(2, 0, 3, 2)
         lines = [
             LineEntry(1, "+", None, 3, text_bytes=b"inserted", text="inserted"),
@@ -225,11 +221,13 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"line1\n\nline3\n"
 
-        result = build_target_index_content_bytes_with_selected_lines(
-            line_changes,
-            {1, 2},
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_from_lines(
+                line_changes,
+                {1, 2},
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == b"line1\n\ninserted\n\nline3\n"
 
@@ -341,11 +339,13 @@ class TestBuildTargetIndexContent:
             b"if binary:\n"
         )
 
-        result = build_target_index_content_bytes_with_selected_lines(
-            line_changes,
-            {1, 2, 3, 4, 5},
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_from_lines(
+                line_changes,
+                {1, 2, 3, 4, 5},
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == (
             b"line1\n"
@@ -388,11 +388,13 @@ class TestBuildTargetIndexContent:
             b"line12\n"
         )
 
-        result = build_target_index_content_bytes_with_selected_lines(
-            line_changes,
-            {1},
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_from_lines(
+                line_changes,
+                {1},
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == (
             b"line1\n"
@@ -444,11 +446,13 @@ class TestBuildTargetIndexContent:
             b"old-b\n"
         )
 
-        result = build_target_index_content_bytes_with_selected_lines(
-            line_changes,
-            {1, 2, 3, 4},
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_from_lines(
+                line_changes,
+                {1, 2, 3, 4},
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == (
             b"line1\n"
@@ -476,12 +480,14 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"keep\nold value\n"
 
-        result = build_target_index_content_bytes_with_replaced_lines(
-            line_changes,
-            {1, 2},
-            "staged value",
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_with_replaced_lines_from_lines(
+                line_changes,
+                {1, 2},
+                "staged value",
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == b"keep\nstaged value\n"
 
@@ -505,12 +511,14 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"".join(f"line{i}\n".encode("utf-8") for i in range(1, 21))
 
-        result = build_target_index_content_bytes_with_replaced_lines(
-            line_changes,
-            {1, 2},
-            "staged10",
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_with_replaced_lines_from_lines(
+                line_changes,
+                {1, 2},
+                "staged10",
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == (
             b"line1\n"
@@ -544,12 +552,14 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"line1\n\nline3\n"
 
-        result = build_target_index_content_bytes_with_replaced_lines(
-            line_changes,
-            {1},
-            "replacement",
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_with_replaced_lines_from_lines(
+                line_changes,
+                {1},
+                "replacement",
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == b"line1\n\nreplacement\nline3\n"
 
@@ -571,12 +581,14 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"line1\nline3\nline5\n"
 
-        result = build_target_index_content_bytes_with_replaced_lines(
-            line_changes,
-            {2},
-            "replacement",
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_with_replaced_lines_from_lines(
+                line_changes,
+                {2},
+                "replacement",
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == b"line1\nline3\nreplacement\nline5\n"
 
@@ -623,12 +635,14 @@ class TestBuildTargetIndexContent:
             + ["stage-three-a\n", "stage-three-b\n"]
         )
 
-        result = build_target_index_content_bytes_with_replaced_lines(
-            line_changes,
-            {1, 2, 3, 4, 5, 6},
-            replacement_text,
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_with_replaced_lines_from_lines(
+                line_changes,
+                {1, 2, 3, 4, 5, 6},
+                replacement_text,
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == (
             b"".join(f"line{i}\n".encode("utf-8") for i in range(1, 6))
@@ -649,12 +663,14 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"keep1\nold\nkeep3\nkeep4\n"
 
-        result = build_target_index_content_bytes_with_replaced_lines(
-            line_changes,
-            {1, 2},
-            "keep1\nstaged\nkeep3\nkeep4\n",
-            base_content,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_with_replaced_lines_from_lines(
+                line_changes,
+                {1, 2},
+                "keep1\nstaged\nkeep3\nkeep4\n",
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+            )
 
         assert result == b"keep1\nstaged\nkeep3\nkeep4\n"
 
@@ -715,13 +731,15 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"keep1\nold\nkeep3\nkeep4\n"
 
-        result = build_target_index_content_bytes_with_replaced_lines(
-            line_changes,
-            {1, 2},
-            "keep1\nstaged\nkeep3\nkeep4\n",
-            base_content,
-            trim_unchanged_edge_anchors=False,
-        )
+        with EditorBuffer.from_bytes(base_content) as base_lines:
+            result = build_target_index_content_with_replaced_lines_from_lines(
+                line_changes,
+                {1, 2},
+                "keep1\nstaged\nkeep3\nkeep4\n",
+                base_lines,
+                base_has_trailing_newline=base_content.endswith(b"\n"),
+                trim_unchanged_edge_anchors=False,
+            )
 
         assert result == b"keep1\nkeep1\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"
 
@@ -738,12 +756,14 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_content = b"keep1\nworking\nkeep3\nkeep4\n"
 
-        result = build_target_working_tree_content_bytes_with_replaced_lines(
-            line_changes,
-            {1, 2},
-            "keep1\nstaged\nkeep3\nkeep4\n",
-            working_content,
-        )
+        with EditorBuffer.from_bytes(working_content) as working_lines:
+            result = build_target_working_tree_content_with_replaced_lines_from_lines(
+                line_changes,
+                {1, 2},
+                "keep1\nstaged\nkeep3\nkeep4\n",
+                working_lines,
+                working_has_trailing_newline=working_content.endswith(b"\n"),
+            )
 
         assert result == b"keep1\nstaged\nkeep3\nkeep4\n"
 
@@ -760,13 +780,15 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_content = b"keep1\nworking\nkeep3\nkeep4\n"
 
-        result = build_target_working_tree_content_bytes_with_replaced_lines(
-            line_changes,
-            {1, 2},
-            "keep1\nstaged\nkeep3\nkeep4\n",
-            working_content,
-            trim_unchanged_edge_anchors=False,
-        )
+        with EditorBuffer.from_bytes(working_content) as working_lines:
+            result = build_target_working_tree_content_with_replaced_lines_from_lines(
+                line_changes,
+                {1, 2},
+                "keep1\nstaged\nkeep3\nkeep4\n",
+                working_lines,
+                working_has_trailing_newline=working_content.endswith(b"\n"),
+                trim_unchanged_edge_anchors=False,
+            )
 
         assert result == b"keep1\nkeep1\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"
 
@@ -779,12 +801,14 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_content = b"line1\nline3\n"
 
-        result = build_target_working_tree_content_bytes_with_replaced_lines(
-            line_changes,
-            {1},
-            "replacement",
-            working_content,
-        )
+        with EditorBuffer.from_bytes(working_content) as working_lines:
+            result = build_target_working_tree_content_with_replaced_lines_from_lines(
+                line_changes,
+                {1},
+                "replacement",
+                working_lines,
+                working_has_trailing_newline=working_content.endswith(b"\n"),
+            )
 
         assert result == b"line1\nreplacement\nline3\n"
 
@@ -885,8 +909,8 @@ class TestBuildTargetWorkingTreeContent:
 
         assert result == "line1\ndeleted\nline3\n"
 
-    def test_deletion_only_hunk_keeps_new_anchor_line_bytes(self):
-        """Bytes-preserving deletion discard should keep the anchor line."""
+    def test_deletion_only_hunk_keeps_new_anchor_line_from_buffer(self):
+        """Buffered deletion discard should keep the anchor line."""
         header = HunkHeader(2, 1, 1, 0)
         lines = [
             LineEntry(1, "-", 2, None, text_bytes=b"deleted", text="deleted"),
@@ -894,11 +918,12 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_content = b"line1\nline3\n"
 
-        result = build_target_working_tree_content_bytes_with_discarded_lines(
-            line_changes,
-            {1},
-            working_content,
-        )
+        with EditorBuffer.from_bytes(working_content) as working_lines:
+            result = build_target_working_tree_content_from_lines(
+                line_changes,
+                {1},
+                working_lines,
+            )
 
         assert result == b"line1\ndeleted\nline3\n"
 

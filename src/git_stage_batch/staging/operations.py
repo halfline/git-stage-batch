@@ -587,32 +587,40 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
     working_content: bytes
 ) -> bytes:
     """Bytes-preserving variant of build_target_working_tree_content_with_discarded_lines."""
-    working_lines = working_content.splitlines()
-    output_lines: list[bytes] = []
+    with EditorBuffer.from_bytes(working_content) as working_lines:
+        with build_target_working_tree_buffer_from_lines(
+            line_changes,
+            discard_ids,
+            working_lines,
+        ) as target_buffer:
+            return target_buffer.to_bytes()
 
+
+def _target_working_tree_line_payloads(
+    line_changes: LineLevelChange,
+    discard_ids: set[int],
+    working_lines: Sequence[bytes],
+    working_line_count: int,
+) -> Iterator[bytes]:
     working_pointer = line_changes.header.new_prefix_line_count()
-    working_line_count = len(working_lines)
 
-    def push_output(line: bytes) -> None:
-        output_lines.append(line)
-
-    def copy_unchanged_lines_before(new_line_number: int | None) -> None:
+    def copy_unchanged_lines_before(new_line_number: int | None) -> Iterator[bytes]:
         nonlocal working_pointer
         if new_line_number is None:
             return
         target_index = max(new_line_number - 1, 0)
-        copy_unchanged_lines_until_index(target_index)
+        yield from copy_unchanged_lines_until_index(target_index)
 
-    def copy_unchanged_lines_until_index(target_index: int) -> None:
+    def copy_unchanged_lines_until_index(target_index: int) -> Iterator[bytes]:
         nonlocal working_pointer
         while working_pointer < min(target_index, working_line_count):
-            push_output(working_lines[working_pointer])
+            yield _line_payload_at(working_lines, working_pointer)
             working_pointer += 1
 
-    def copy_remaining_lines_before_deletion(index: int) -> None:
+    def copy_remaining_lines_before_deletion(index: int) -> Iterator[bytes]:
         line_entry = line_changes.lines[index]
         if line_entry.old_line_number is not None:
-            copy_unchanged_lines_until_index(
+            yield from copy_unchanged_lines_until_index(
                 _new_index_for_old_anchor(
                     line_changes,
                     line_entry.old_line_number - 1,
@@ -624,45 +632,73 @@ def build_target_working_tree_content_bytes_with_discarded_lines(
             if _is_synthetic_gap_line(next_entry):
                 return
             if next_entry.new_line_number is not None:
-                copy_unchanged_lines_before(next_entry.new_line_number)
+                yield from copy_unchanged_lines_before(next_entry.new_line_number)
                 return
 
     for index in range(0, min(working_pointer, working_line_count)):
-        push_output(working_lines[index])
+        yield _line_payload_at(working_lines, index)
 
     for index, line_entry in enumerate(line_changes.lines):
-        is_gap_line = (
-            line_entry.kind == " "
-            and line_entry.old_line_number is None
-            and line_entry.new_line_number is None
-        )
-        if is_gap_line:
+        if _is_synthetic_gap_line(line_entry):
             continue
 
         if line_entry.kind == " ":
-            copy_unchanged_lines_before(line_entry.new_line_number)
+            yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if working_pointer < working_line_count:
-                push_output(working_lines[working_pointer])
+                yield _line_payload_at(working_lines, working_pointer)
                 working_pointer += 1
         elif line_entry.kind == "-":
             if line_entry.id in discard_ids:
-                copy_remaining_lines_before_deletion(index)
-                push_output(line_entry.text_bytes)
+                yield from copy_remaining_lines_before_deletion(index)
+                yield line_entry.text_bytes
         elif line_entry.kind == "+":
-            copy_unchanged_lines_before(line_entry.new_line_number)
+            yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if working_pointer < working_line_count:
                 if line_entry.id in discard_ids:
                     working_pointer += 1
                 else:
-                    push_output(working_lines[working_pointer])
+                    yield _line_payload_at(working_lines, working_pointer)
                     working_pointer += 1
 
     while 0 <= working_pointer < working_line_count:
-        push_output(working_lines[working_pointer])
+        yield _line_payload_at(working_lines, working_pointer)
         working_pointer += 1
 
-    trailing_newline = bool(output_lines)
-    return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
+
+def build_target_working_tree_buffer_from_lines(
+    line_changes: LineLevelChange,
+    discard_ids: set[int],
+    working_lines: Sequence[bytes],
+) -> EditorBuffer:
+    """Build target working tree content from indexed working tree lines."""
+    working_line_count = len(working_lines)
+    return edit_lines_as_buffer(
+        working_lines,
+        _target_working_tree_line_payloads(
+            line_changes,
+            discard_ids,
+            working_lines,
+            working_line_count,
+        ),
+        selection_start=0,
+        selection_end=working_line_count,
+        has_trailing_newline=False,
+        add_trailing_newline_when_nonempty=True,
+    )
+
+
+def build_target_working_tree_content_from_lines(
+    line_changes: LineLevelChange,
+    discard_ids: set[int],
+    working_lines: Sequence[bytes],
+) -> bytes:
+    """Build target working tree content from indexed working tree lines."""
+    with build_target_working_tree_buffer_from_lines(
+        line_changes,
+        discard_ids,
+        working_lines,
+    ) as target_buffer:
+        return target_buffer.to_bytes()
 
 
 def build_target_working_tree_content_bytes_with_replaced_lines(

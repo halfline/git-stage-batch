@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 import stat
@@ -77,11 +78,16 @@ from ..data.batch_sources import create_batch_source_commit
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
+from ..editor import (
+    EditorBuffer,
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+)
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_remaining_line_changes_header
 from ..staging.operations import (
-    build_target_index_content_bytes_with_replaced_lines,
+    build_target_index_buffer_with_replaced_lines,
     update_index_with_blob_content,
     update_index_with_blob_buffer,
 )
@@ -212,6 +218,11 @@ def _selected_file_view_is_fresh_for(target_file: str) -> bool:
         _selected_file_view_targets(target_file)
         and not snapshots_are_stale(target_file)
     )
+
+
+def _line_sequence_ends_with_lf(lines: Sequence[bytes]) -> bool:
+    line_count = len(lines)
+    return line_count > 0 and lines[line_count - 1].endswith(b"\n")
 
 
 def _annotate_line_changes_with_working_tree_source(line_changes):
@@ -1025,8 +1036,8 @@ def _apply_include_line_replacement(
     *,
     line_id_specification: str,
     replacement_text: str,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: EditorBuffer,
     trim_unchanged_edge_anchors: bool,
 ) -> None:
     """Stage replacement text for selected lines and record session masking."""
@@ -1043,20 +1054,22 @@ def _apply_include_line_replacement(
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
     try:
-        target_index_content = build_target_index_content_bytes_with_replaced_lines(
+        target_index_buffer = build_target_index_buffer_with_replaced_lines(
             line_changes,
             effective_ids,
             replacement_text,
-            hunk_base_content,
+            hunk_base_lines,
+            base_has_trailing_newline=_line_sequence_ends_with_lf(hunk_base_lines),
             trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
         )
     except ValueError as error:
         exit_with_error(str(error))
 
-    update_index_with_blob_content(line_changes.path, target_index_content)
+    with target_index_buffer:
+        update_index_with_blob_buffer(line_changes.path, target_index_buffer)
     record_consumed_selection(
         line_changes.path,
-        source_content=hunk_source_content,
+        source_buffer=hunk_source_lines,
         selected_lines=selected_lines,
         replacement_mask={
             "deleted_lines": replacement_text.splitlines(),
@@ -1100,17 +1113,19 @@ def command_include_line_as(
         if file is None:
             require_selected_hunk()
             line_changes = load_line_changes_from_state()
-            hunk_base_content = read_file_bytes(get_index_snapshot_file_path())
-            hunk_source_content = read_file_bytes(get_working_tree_snapshot_file_path())
 
-            _apply_include_line_replacement(
-                line_changes,
-                line_id_specification=line_id_specification,
-                replacement_text=replacement_text,
-                hunk_base_content=hunk_base_content,
-                hunk_source_content=hunk_source_content,
-                trim_unchanged_edge_anchors=not no_edge_overlap,
-            )
+            with (
+                EditorBuffer.from_path(get_index_snapshot_file_path()) as hunk_base_lines,
+                EditorBuffer.from_path(get_working_tree_snapshot_file_path()) as hunk_source_lines,
+            ):
+                _apply_include_line_replacement(
+                    line_changes,
+                    line_id_specification=line_id_specification,
+                    replacement_text=replacement_text,
+                    hunk_base_lines=hunk_base_lines,
+                    hunk_source_lines=hunk_source_lines,
+                    trim_unchanged_edge_anchors=not no_edge_overlap,
+                )
 
             write_line_ids_file(get_processed_include_ids_file_path(), set())
             print(
@@ -1148,22 +1163,22 @@ def command_include_line_as(
                     exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
                 annotated_changes = annotate_with_batch_source(target_file, cached_lines)
-            hunk_base_result = run_git_command(
-                ["show", f":{target_file}"],
-                check=False,
-                text_output=False,
-            )
-            hunk_base_content = hunk_base_result.stdout if hunk_base_result.returncode == 0 else b""
-            hunk_source_content = read_file_bytes(get_git_repository_root_path() / target_file)
+            hunk_base_buffer = load_git_object_as_buffer(f":{target_file}")
+            if hunk_base_buffer is None:
+                hunk_base_buffer = EditorBuffer.from_bytes(b"")
 
-            _apply_include_line_replacement(
-                annotated_changes,
-                line_id_specification=line_id_specification,
-                replacement_text=replacement_text,
-                hunk_base_content=hunk_base_content,
-                hunk_source_content=hunk_source_content,
-                trim_unchanged_edge_anchors=not no_edge_overlap,
-            )
+            with (
+                hunk_base_buffer as hunk_base_lines,
+                load_working_tree_file_as_buffer(target_file) as hunk_source_lines,
+            ):
+                _apply_include_line_replacement(
+                    annotated_changes,
+                    line_id_specification=line_id_specification,
+                    replacement_text=replacement_text,
+                    hunk_base_lines=hunk_base_lines,
+                    hunk_source_lines=hunk_source_lines,
+                    trim_unchanged_edge_anchors=not no_edge_overlap,
+                )
 
             if preserve_selected_state:
                 restore_selected_change_state(saved_selected_state)

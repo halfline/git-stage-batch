@@ -6,10 +6,7 @@ from git_stage_batch.utils.paths import (
     get_abort_stash_file_path,
 )
 from git_stage_batch.utils.file_io import write_text_file_contents
-from git_stage_batch.data.batch_sources import (
-    get_saved_session_file_content,
-    load_saved_session_file_as_buffer,
-)
+from git_stage_batch.data.batch_sources import load_saved_session_file_as_buffer
 from git_stage_batch.utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
@@ -94,13 +91,18 @@ def session_with_stash(temp_git_repo):
     return temp_git_repo
 
 
-class TestGetSavedSessionFileContent:
-    """Tests for get_saved_session_file_content function."""
+def _load_saved_session_file_bytes(file_path: str) -> bytes:
+    with load_saved_session_file_as_buffer(file_path) as buffer:
+        return b"".join(buffer.byte_chunks())
+
+
+class TestLoadSavedSessionFileAsBuffer:
+    """Tests for load_saved_session_file_as_buffer."""
 
     def test_retrieves_tracked_file_from_stash(self, session_with_stash):
         """Test retrieving tracked file buffers from stash."""
 
-        content = get_saved_session_file_content("test.txt")
+        content = _load_saved_session_file_bytes("test.txt")
         assert content == b"modified content\n"
 
     def test_loads_tracked_file_from_stash_as_buffer(self, session_with_stash):
@@ -127,7 +129,7 @@ class TestGetSavedSessionFileContent:
         # Record in snapshot list
         write_file_paths_file(get_abort_snapshot_list_file_path(), ["untracked.txt"])
 
-        content = get_saved_session_file_content("untracked.txt")
+        content = _load_saved_session_file_bytes("untracked.txt")
         assert content == b"untracked content\n"
 
     def test_preserves_exact_bytes(self, temp_git_repo):
@@ -147,7 +149,7 @@ class TestGetSavedSessionFileContent:
         # Record in snapshot list
         write_file_paths_file(get_abort_snapshot_list_file_path(), ["mixed.txt"])
 
-        content = get_saved_session_file_content("mixed.txt")
+        content = _load_saved_session_file_bytes("mixed.txt")
         # Exact bytes should be preserved (no line ending normalization)
         assert content == b"line1\r\nline2\rline3\n"
 
@@ -155,7 +157,7 @@ class TestGetSavedSessionFileContent:
         """Test that error is raised when no session exists."""
 
         with pytest.raises(CommandError, match="No session found"):
-            get_saved_session_file_content("test.txt")
+            load_saved_session_file_as_buffer("test.txt")
 
 
 class TestCreateBatchSourceCommit:

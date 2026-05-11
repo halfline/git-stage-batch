@@ -275,37 +275,6 @@ def build_target_index_content_from_lines(
         return target_buffer.to_bytes()
 
 
-def build_target_index_content_bytes_with_replaced_lines(
-    line_changes: LineLevelChange,
-    replace_ids: set[int],
-    replacement_text: str,
-    base_content: bytes,
-    *,
-    trim_unchanged_edge_anchors: bool = True,
-) -> bytes:
-    """Build target index content by replacing one contiguous selected span.
-
-    Unlike ordinary single-hunk views, file-scoped displays can concatenate
-    multiple real hunks and insert synthetic gap markers between them. This
-    implementation therefore replaces the underlying file span from the first
-    selected changed line to the last selected changed line, even when the
-    displayed selection crosses omitted gap markers.
-    """
-    if not replace_ids:
-        return base_content
-
-    with EditorBuffer.from_bytes(base_content) as base_lines:
-        with build_target_index_buffer_with_replaced_lines(
-            line_changes,
-            replace_ids,
-            replacement_text,
-            base_lines,
-            base_has_trailing_newline=base_content.endswith(b"\n"),
-            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
-        ) as target_buffer:
-            return target_buffer.to_bytes()
-
-
 def build_target_index_buffer_with_replaced_lines(
     line_changes: LineLevelChange,
     replace_ids: set[int],

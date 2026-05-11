@@ -14,6 +14,7 @@ from git_stage_batch.batch.ownership import (
     _remap_batch_ownership_with_source_line_map,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
+    remap_batch_ownership_to_new_source_lines,
     remap_batch_ownership_to_new_source,
     translate_lines_to_batch_ownership,
 )
@@ -96,6 +97,26 @@ def test_remap_claimed_lines_to_new_source():
     assert new_ownership.presence_claims[0].source_lines == ["2-3"]
     assert new_ownership.deletions == []
 
+
+def test_remap_claimed_lines_accepts_non_list_line_sequences(line_sequence):
+    """Ownership remapping accepts indexed byte-line sequences."""
+    old_lines = line_sequence([b"line one\n", b"line two\n", b"line three\n"])
+    new_lines = line_sequence([
+        b"new first line\n",
+        b"line one\n",
+        b"line two\n",
+        b"line three\n",
+    ])
+    old_ownership = BatchOwnership.from_presence_lines(["1-2"], [])
+
+    new_ownership = remap_batch_ownership_to_new_source_lines(
+        ownership=old_ownership,
+        old_source_lines=old_lines,
+        new_source_lines=new_lines,
+    )
+
+    assert new_ownership.presence_claims[0].source_lines == ["2-3"]
+    assert new_ownership.deletions == []
 
 def test_remap_deletion_anchors_to_new_source():
     """Test remapping of deletion claim anchors from old source to new source."""

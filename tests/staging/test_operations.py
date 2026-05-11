@@ -11,7 +11,6 @@ from git_stage_batch.staging.operations import (
     build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,
     build_target_index_content_with_replaced_lines_from_lines,
-    build_target_index_content_with_selected_lines,
     build_target_working_tree_content_from_lines,
     build_target_working_tree_buffer_from_lines,
     build_target_working_tree_buffer_with_replaced_lines,
@@ -36,8 +35,24 @@ def temp_git_repo(tmp_path, monkeypatch):
     return repo
 
 
+def _build_target_index_content_text(
+    line_changes: LineLevelChange,
+    include_ids: set[int],
+    base_text: str,
+) -> str:
+    base_content = base_text.encode("utf-8", errors="surrogateescape")
+    with EditorBuffer.from_bytes(base_content) as base_lines:
+        result = build_target_index_content_from_lines(
+            line_changes,
+            include_ids,
+            base_lines,
+            base_has_trailing_newline=base_text.endswith("\n"),
+        )
+    return result.decode("utf-8", errors="surrogateescape")
+
+
 class TestBuildTargetIndexContent:
-    """Tests for build_target_index_content_with_selected_lines."""
+    """Tests for selected-line index content construction."""
 
     def test_include_single_addition(self):
         """Test including a single added line."""
@@ -50,7 +65,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, {1}, base_text)
+        result = _build_target_index_content_text(line_changes, {1}, base_text)
 
         assert result == "line1\nnew line\nline2\n"
 
@@ -65,7 +80,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\ndeleted line\nline2\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, {1}, base_text)
+        result = _build_target_index_content_text(line_changes, {1}, base_text)
 
         assert result == "line1\nline2\n"
 
@@ -80,7 +95,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, set(), base_text)
+        result = _build_target_index_content_text(line_changes, set(), base_text)
 
         # Not including the addition means base stays the same
         assert result == "line1\nline2\n"
@@ -96,7 +111,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\nkept line\nline2\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, set(), base_text)
+        result = _build_target_index_content_text(line_changes, set(), base_text)
 
         # Not including the deletion means line stays
         assert result == "line1\nkept line\nline2\n"
@@ -113,7 +128,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\nold line\nline2\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, {1, 2}, base_text)
+        result = _build_target_index_content_text(line_changes, {1, 2}, base_text)
 
         assert result == "line1\nnew line\nline2\n"
 
@@ -130,7 +145,7 @@ class TestBuildTargetIndexContent:
         base_text = "context\n"
 
         # Include only IDs 1 and 3, skip 2
-        result = build_target_index_content_with_selected_lines(line_changes, {1, 3}, base_text)
+        result = _build_target_index_content_text(line_changes, {1, 3}, base_text)
 
         assert result == "add1\ncontext\nadd3\n"
 
@@ -146,7 +161,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "delete1\ndelete2\ndelete3\nkept\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, {1, 2, 3}, base_text)
+        result = _build_target_index_content_text(line_changes, {1, 2, 3}, base_text)
 
         assert result == "kept\n"
 
@@ -161,7 +176,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, {1}, base_text)
+        result = _build_target_index_content_text(line_changes, {1}, base_text)
 
         assert result == "new first line\nline1\nline2\n"
 
@@ -175,7 +190,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, {1}, base_text)
+        result = _build_target_index_content_text(line_changes, {1}, base_text)
 
         assert result == "line1\nline2\nnew last line\n"
 
@@ -189,7 +204,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = ""
 
-        result = build_target_index_content_with_selected_lines(line_changes, {1, 2}, base_text)
+        result = _build_target_index_content_text(line_changes, {1, 2}, base_text)
 
         assert result == "line1\nline2\n"
 
@@ -203,7 +218,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\n\nline3\n"
 
-        result = build_target_index_content_with_selected_lines(
+        result = _build_target_index_content_text(
             line_changes,
             {1, 2},
             base_text,
@@ -283,7 +298,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, {1}, base_text)
+        result = _build_target_index_content_text(line_changes, {1}, base_text)
 
         assert result.endswith("\n")
 
@@ -298,7 +313,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
 
-        result = build_target_index_content_with_selected_lines(line_changes, set(), base_text)
+        result = _build_target_index_content_text(line_changes, set(), base_text)
 
         # No changes should be applied
         assert result == "line1\nline2\n"

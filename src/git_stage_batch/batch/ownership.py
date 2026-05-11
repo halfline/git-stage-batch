@@ -421,26 +421,12 @@ class ResolvedBatchOwnership:
 
 
 @dataclass
-class AdvancedSourceContent:
-    """Synthesized source content with line provenance from its inputs."""
-
-    content: bytes
-    source_line_map: dict[int, int]
-    working_line_map: dict[int, int]
-
-
-@dataclass
 class SourceContentWithLineProvenance:
     """Synthesized source buffer with line provenance from its inputs."""
 
     source_buffer: EditorBuffer
     source_line_map: dict[int, int]
     working_line_map: dict[int, int]
-
-    @property
-    def content(self) -> bytes:
-        """Return the synthesized source bytes for legacy callers."""
-        return self.source_buffer.to_bytes()
 
     def close(self) -> None:
         """Release the synthesized buffer."""
@@ -462,11 +448,6 @@ class BatchSourceAdvanceResult:
     source_buffer: EditorBuffer
     working_content: bytes | None
     working_line_map: dict[int, int]
-
-    @property
-    def source_content(self) -> bytes:
-        """Return the refreshed source bytes for legacy callers."""
-        return self.source_buffer.to_bytes()
 
     def close(self) -> None:
         """Release the refreshed source buffer."""
@@ -1844,41 +1825,6 @@ def remap_batch_ownership_to_new_source_lines(
     )
 
 
-def _advance_source_content_preserving_existing_presence(
-    old_source_content: bytes,
-    working_content: bytes,
-    ownership: BatchOwnership,
-) -> tuple[bytes, dict[int, int]]:
-    """Build advanced source content without dropping already-owned lines."""
-    with _advance_source_buffer_preserving_existing_presence(
-        old_source_buffer=old_source_content,
-        working_buffer=working_content,
-        ownership=ownership,
-    ) as source_with_provenance:
-        return (
-            source_with_provenance.source_buffer.to_bytes(),
-            source_with_provenance.source_line_map,
-        )
-
-
-def _advance_source_content_preserving_existing_presence_with_provenance(
-    old_source_content: bytes,
-    working_content: bytes,
-    ownership: BatchOwnership,
-) -> AdvancedSourceContent:
-    """Build advanced source content and preserve input line provenance."""
-    with _advance_source_buffer_preserving_existing_presence_with_provenance(
-        old_source_buffer=old_source_content,
-        working_buffer=working_content,
-        ownership=ownership,
-    ) as source_with_provenance:
-        return AdvancedSourceContent(
-            content=source_with_provenance.source_buffer.to_bytes(),
-            source_line_map=source_with_provenance.source_line_map,
-            working_line_map=source_with_provenance.working_line_map,
-        )
-
-
 def _advance_source_buffer_preserving_existing_presence(
     old_source_buffer: bytes | Sequence[bytes],
     working_buffer: bytes | Sequence[bytes],
@@ -2013,35 +1959,13 @@ def _remap_batch_ownership_with_source_line_map(
     )
 
 
-def advance_batch_source_for_file(
-    batch_name: str,
-    file_path: str,
-    old_batch_source_commit: str,
-    existing_ownership: BatchOwnership,
-) -> tuple[str, BatchOwnership, bytes, bytes | None]:
-    """Advance batch source for a file and remap existing ownership."""
-    with advance_batch_source_for_file_with_provenance(
-        batch_name=batch_name,
-        file_path=file_path,
-        old_batch_source_commit=old_batch_source_commit,
-        existing_ownership=existing_ownership,
-        include_working_content=True,
-    ) as result:
-        return (
-            result.batch_source_commit,
-            result.ownership,
-            result.source_content,
-            result.working_content,
-        )
-
-
 def advance_batch_source_for_file_with_provenance(
     batch_name: str,
     file_path: str,
     old_batch_source_commit: str,
     existing_ownership: BatchOwnership,
     *,
-    include_working_content: bool = True,
+    include_working_content: bool = False,
 ) -> BatchSourceAdvanceResult:
     """Advance batch source and expose provenance for re-annotation."""
     repo_root = get_git_repository_root_path()

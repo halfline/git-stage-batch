@@ -710,6 +710,31 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
     trim_unchanged_edge_anchors: bool = True,
 ) -> bytes:
     """Build working tree content by replacing one contiguous selected span."""
+    if not replace_ids:
+        return working_content
+
+    with EditorBuffer.from_bytes(working_content) as working_lines:
+        with build_target_working_tree_buffer_with_replaced_lines(
+            line_changes,
+            replace_ids,
+            replacement_text,
+            working_lines,
+            working_has_trailing_newline=working_content.endswith(b"\n"),
+            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+        ) as target_buffer:
+            return target_buffer.to_bytes()
+
+
+def build_target_working_tree_buffer_with_replaced_lines(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    replacement_text: str,
+    working_lines: Sequence[bytes],
+    *,
+    working_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool = True,
+) -> EditorBuffer:
+    """Build working tree content by replacing a span in indexed lines."""
     def longest_prefix_context_match(
         candidate_lines: list[bytes],
         context_lines: list[bytes],
@@ -731,7 +756,13 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
         return 0
 
     if not replace_ids:
-        return working_content
+        return edit_lines_as_buffer(
+            working_lines,
+            [],
+            selection_start=0,
+            selection_end=0,
+            has_trailing_newline=working_has_trailing_newline,
+        )
 
     changed_ids = sorted(line_changes.changed_line_ids())
     selected_ids = sorted(replace_ids)
@@ -742,7 +773,6 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
     if selected_ids != expected_range:
         raise ValueError("Replacement selection must be one contiguous line range")
 
-    working_lines = working_content.splitlines()
     working_line_count = len(working_lines)
     replacement_bytes = replacement_text.encode("utf-8", errors="surrogateescape")
     replacement_lines = replacement_bytes.splitlines()
@@ -807,8 +837,8 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
         replace_end = replace_start
 
     if trim_unchanged_edge_anchors:
-        before_context = working_lines[:replace_start]
-        after_context = working_lines[replace_end:]
+        before_context = _line_payloads(working_lines, 0, replace_start)
+        after_context = _line_payloads(working_lines, replace_end, working_line_count)
 
         prefix_trim = longest_prefix_context_match(replacement_lines, before_context)
         if prefix_trim:
@@ -832,18 +862,39 @@ def build_target_working_tree_content_bytes_with_replaced_lines(
                 "or pass --no-edge-overlap to keep the edge-overlap text."
             )
 
-    output_lines = (
-        working_lines[:replace_start]
-        + replacement_lines
-        + working_lines[replace_end:]
-    )
-
     trailing_newline = (
         replacement_text.endswith("\n")
-        or working_content.endswith(b"\n")
-        or bool(output_lines)
+        or working_has_trailing_newline
     )
-    return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
+    return edit_lines_as_buffer(
+        working_lines,
+        replacement_lines,
+        selection_start=replace_start,
+        selection_end=replace_end,
+        has_trailing_newline=trailing_newline,
+        add_trailing_newline_when_nonempty=True,
+    )
+
+
+def build_target_working_tree_content_with_replaced_lines_from_lines(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    replacement_text: str,
+    working_lines: Sequence[bytes],
+    *,
+    working_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool = True,
+) -> bytes:
+    """Build working tree content by replacing a span in indexed lines."""
+    with build_target_working_tree_buffer_with_replaced_lines(
+        line_changes,
+        replace_ids,
+        replacement_text,
+        working_lines,
+        working_has_trailing_newline=working_has_trailing_newline,
+        trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+    ) as target_buffer:
+        return target_buffer.to_bytes()
 
 
 def update_index_with_blob_content(path: str, content: bytes) -> None:

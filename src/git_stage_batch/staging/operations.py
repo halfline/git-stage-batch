@@ -2,9 +2,35 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+
 from ..core.models import LineEntry, LineLevelChange
+from ..editor import (
+    EditorBuffer,
+    edit_lines_as_buffer,
+)
 from ..utils.git import create_git_blob, run_git_command
 from ..utils.journal import log_journal
+
+
+def _line_payload(line: bytes) -> bytes:
+    if line.endswith(b"\r\n"):
+        return line[:-2]
+    if line.endswith(b"\n"):
+        return line[:-1]
+    return line
+
+
+def _line_payload_at(lines: Sequence[bytes], index: int) -> bytes:
+    return _line_payload(lines[index])
+
+
+def _line_payloads(
+    lines: Sequence[bytes],
+    start: int,
+    end: int,
+) -> list[bytes]:
+    return [_line_payload_at(lines, index) for index in range(start, end)]
 
 
 def _is_synthetic_gap_line(line_entry: LineEntry) -> bool:
@@ -143,76 +169,122 @@ def build_target_index_content_bytes_with_selected_lines(
     base_content: bytes
 ) -> bytes:
     """Bytes-preserving variant of build_target_index_content_with_selected_lines."""
-    base_lines = base_content.splitlines()
-    output_lines: list[bytes] = []
+    with EditorBuffer.from_bytes(base_content) as base_lines:
+        with build_target_index_buffer_from_lines(
+            line_changes,
+            include_ids,
+            base_lines,
+            base_has_trailing_newline=base_content.endswith(b"\n"),
+        ) as target_buffer:
+            return target_buffer.to_bytes()
+
+
+def _target_index_line_payloads(
+    line_changes: LineLevelChange,
+    include_ids: set[int],
+    base_lines: Sequence[bytes],
+    base_line_count: int,
+) -> Iterator[bytes]:
     pending_additions: list[bytes] = []
 
     base_pointer = line_changes.header.old_prefix_line_count()
-    base_line_count = len(base_lines)
 
-    def push_output(line: bytes) -> None:
-        output_lines.append(line)
-
-    def flush_pending_additions() -> None:
+    def flush_pending_additions() -> Iterator[bytes]:
         if pending_additions:
-            output_lines.extend(pending_additions)
+            yield from pending_additions
             pending_additions.clear()
 
     def base_line_matches(text: bytes) -> bool:
-        return base_pointer < base_line_count and base_lines[base_pointer] == text
+        return (
+            base_pointer < base_line_count
+            and _line_payload_at(base_lines, base_pointer) == text
+        )
 
-    def copy_unchanged_lines_before(old_line_number: int | None) -> None:
+    def copy_unchanged_lines_before(old_line_number: int | None) -> Iterator[bytes]:
         nonlocal base_pointer
         if old_line_number is None:
             return
         target_index = max(old_line_number - 1, 0)
         while base_pointer < min(target_index, base_line_count):
-            push_output(base_lines[base_pointer])
+            yield _line_payload_at(base_lines, base_pointer)
             base_pointer += 1
 
     for index in range(0, min(base_pointer, base_line_count)):
-        push_output(base_lines[index])
+        yield _line_payload_at(base_lines, index)
 
     for line_entry in line_changes.lines:
-        is_gap_line = (
-            line_entry.kind == " "
-            and line_entry.old_line_number is None
-            and line_entry.new_line_number is None
-        )
-        if is_gap_line:
-            flush_pending_additions()
+        if _is_synthetic_gap_line(line_entry):
+            yield from flush_pending_additions()
             continue
 
         if line_entry.kind == " ":
-            copy_unchanged_lines_before(line_entry.old_line_number)
-            flush_pending_additions()
+            yield from copy_unchanged_lines_before(line_entry.old_line_number)
+            yield from flush_pending_additions()
             if base_pointer < base_line_count:
-                push_output(base_lines[base_pointer])
+                yield _line_payload_at(base_lines, base_pointer)
                 base_pointer += 1
         elif line_entry.kind == "-":
-            copy_unchanged_lines_before(line_entry.old_line_number)
-            flush_pending_additions()
+            yield from copy_unchanged_lines_before(line_entry.old_line_number)
+            yield from flush_pending_additions()
             if line_entry.id in include_ids:
                 if base_line_matches(line_entry.text_bytes):
                     base_pointer += 1
             elif base_line_matches(line_entry.text_bytes):
-                push_output(base_lines[base_pointer])
+                yield _line_payload_at(base_lines, base_pointer)
                 base_pointer += 1
         elif line_entry.kind == "+":
             if base_line_matches(line_entry.text_bytes):
-                flush_pending_additions()
-                push_output(base_lines[base_pointer])
+                yield from flush_pending_additions()
+                yield _line_payload_at(base_lines, base_pointer)
                 base_pointer += 1
             elif line_entry.id in include_ids:
                 pending_additions.append(line_entry.text_bytes)
 
-    flush_pending_additions()
+    yield from flush_pending_additions()
     while 0 <= base_pointer < base_line_count:
-        push_output(base_lines[base_pointer])
+        yield _line_payload_at(base_lines, base_pointer)
         base_pointer += 1
 
-    trailing_newline = base_content.endswith(b"\n") or (not base_content and bool(output_lines))
-    return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
+
+def build_target_index_buffer_from_lines(
+    line_changes: LineLevelChange,
+    include_ids: set[int],
+    base_lines: Sequence[bytes],
+    *,
+    base_has_trailing_newline: bool,
+) -> EditorBuffer:
+    """Build target index content from indexed base content lines."""
+    base_line_count = len(base_lines)
+    return edit_lines_as_buffer(
+        base_lines,
+        _target_index_line_payloads(
+            line_changes,
+            include_ids,
+            base_lines,
+            base_line_count,
+        ),
+        selection_start=0,
+        selection_end=base_line_count,
+        has_trailing_newline=base_has_trailing_newline,
+        add_trailing_newline_when_nonempty=base_line_count == 0,
+    )
+
+
+def build_target_index_content_from_lines(
+    line_changes: LineLevelChange,
+    include_ids: set[int],
+    base_lines: Sequence[bytes],
+    *,
+    base_has_trailing_newline: bool,
+) -> bytes:
+    """Build target index content from indexed base content lines."""
+    with build_target_index_buffer_from_lines(
+        line_changes,
+        include_ids,
+        base_lines,
+        base_has_trailing_newline=base_has_trailing_newline,
+    ) as target_buffer:
+        return target_buffer.to_bytes()
 
 
 def build_target_index_content_bytes_with_replaced_lines(

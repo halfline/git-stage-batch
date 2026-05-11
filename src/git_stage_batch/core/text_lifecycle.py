@@ -164,12 +164,12 @@ def sifted_empty_text_path_change_type(
     *,
     target_exists: bool,
     working_exists: bool,
-    target_content: bytes,
+    target_content: BufferData,
     ownership_is_empty: bool,
 ) -> TextFileChangeType:
     """Preserve path-presence-only empty text changes after sift."""
     change_type = normalized_text_change_type(change_type)
-    if not ownership_is_empty or target_content != b"":
+    if not ownership_is_empty or not _buffer_is_empty(target_content):
         return change_type
     if target_exists and not working_exists:
         return TextFileChangeType.ADDED

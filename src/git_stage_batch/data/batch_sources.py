@@ -112,12 +112,6 @@ def load_saved_session_file_as_buffer(file_path: str) -> EditorBuffer:
     return buffer
 
 
-def get_saved_session_file_content(file_path: str) -> bytes:
-    """Get file content as it was at session start."""
-    with load_saved_session_file_as_buffer(file_path) as buffer:
-        return buffer.to_bytes()
-
-
 def _fast_import_quote_path(file_path: str) -> str:
     """Quote a repository path for fast-import commands."""
     raw_path = file_path.encode("utf-8")

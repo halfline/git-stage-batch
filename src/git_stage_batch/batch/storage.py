@@ -382,21 +382,6 @@ def _build_realized_buffer_from_lines(
     )
 
 
-def _build_realized_content_from_lines(
-    base_lines: Sequence[bytes],
-    batch_source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
-) -> bytes:
-    """Build realized batch content from normalized line sequences."""
-    return b"".join(
-        _stream_realized_content_chunks_from_lines(
-            base_lines,
-            batch_source_lines,
-            ownership,
-        )
-    )
-
-
 def _stream_realized_content_chunks_from_lines(
     base_lines: Sequence[bytes],
     batch_source_lines: Sequence[bytes],

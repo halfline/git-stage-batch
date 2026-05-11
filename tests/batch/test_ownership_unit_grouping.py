@@ -7,18 +7,40 @@ display order, not source-line proximity.
 
 from __future__ import annotations
 
-
+from git_stage_batch.batch.display import (
+    build_display_lines_from_batch_source_lines,
+)
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
     DeletionClaim,
-    build_ownership_units_from_display,
-    build_ownership_units_from_batch_source_lines,
+    OwnershipUnit,
     OwnershipUnitKind,
     ReplacementUnit,
+    build_ownership_units_from_batch_source_lines,
     rebuild_ownership_from_units,
 )
-from git_stage_batch.batch.display import build_display_lines_from_batch_source
 from git_stage_batch.batch.selection import select_batch_ownership_for_display_ids_from_lines
+
+
+def _source_lines(content: bytes) -> list[bytes]:
+    return content.splitlines(keepends=True)
+
+
+def _source_lines_from_text(content: str) -> list[bytes]:
+    return [
+        line.encode("utf-8")
+        for line in content.splitlines(keepends=True)
+    ]
+
+
+def _ownership_units_for_source(
+    ownership: BatchOwnership,
+    source: bytes,
+) -> list[OwnershipUnit]:
+    return build_ownership_units_from_batch_source_lines(
+        ownership,
+        _source_lines(source),
+    )
 
 
 def test_display_includes_context_between_separated_claimed_lines():
@@ -26,7 +48,11 @@ def test_display_includes_context_between_separated_claimed_lines():
     batch_source = "def func(\n    arg1,\n    arg2,\n):\n    return arg1\n"
     ownership = BatchOwnership.from_presence_lines(["1,5"], [])
 
-    display_lines = build_display_lines_from_batch_source(batch_source, ownership, context_lines=10)
+    display_lines = build_display_lines_from_batch_source_lines(
+        _source_lines_from_text(batch_source),
+        ownership,
+        context_lines=10,
+    )
 
     assert [line["type"] for line in display_lines] == [
         "claimed",
@@ -47,7 +73,11 @@ def test_display_context_honors_context_lines_limit():
     batch_source = "".join(f"line {i}\n" for i in range(1, 11))
     ownership = BatchOwnership.from_presence_lines(["2,9"], [])
 
-    display_lines = build_display_lines_from_batch_source(batch_source, ownership, context_lines=1)
+    display_lines = build_display_lines_from_batch_source_lines(
+        _source_lines_from_text(batch_source),
+        ownership,
+        context_lines=1,
+    )
 
     assert [line["content"] for line in display_lines] == [
         "line 1\n",
@@ -75,7 +105,11 @@ def test_display_context_zero_omits_unowned_context():
     batch_source = "line 1\nline 2\nline 3\n"
     ownership = BatchOwnership.from_presence_lines(["1,3"], [])
 
-    display_lines = build_display_lines_from_batch_source(batch_source, ownership, context_lines=0)
+    display_lines = build_display_lines_from_batch_source_lines(
+        _source_lines_from_text(batch_source),
+        ownership,
+        context_lines=0,
+    )
 
     assert [line["content"] for line in display_lines] == [
         "line 1\n",
@@ -111,7 +145,7 @@ def test_deletion_followed_by_claimed_becomes_replacement():
         ]
     )
 
-    units = build_ownership_units_from_display(ownership, batch_source)
+    units = _ownership_units_for_source(ownership, batch_source)
 
     # Should have exactly one REPLACEMENT unit
     assert len(units) == 1
@@ -123,7 +157,7 @@ def test_deletion_followed_by_claimed_becomes_replacement():
 
 
 def test_build_ownership_units_accepts_batch_source_line_sequence(line_sequence):
-    """Ownership unit grouping accepts indexed batch-source byte lines."""
+    """Ownership unit grouping accepts indexed batch-source lines."""
     source_lines = line_sequence([
         b"old line 1\n",
         b"old line 2\n",
@@ -189,7 +223,7 @@ def test_claimed_followed_by_deletion_becomes_replacement():
         ]
     )
 
-    units = build_ownership_units_from_display(ownership, batch_source)
+    units = _ownership_units_for_source(ownership, batch_source)
 
     # Should have exactly one REPLACEMENT unit
     assert len(units) == 1
@@ -222,7 +256,7 @@ def test_deletion_without_adjacent_claimed_is_deletion_only():
         ]
     )
 
-    units = build_ownership_units_from_display(ownership, batch_source)
+    units = _ownership_units_for_source(ownership, batch_source)
 
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.DELETION_ONLY
@@ -250,7 +284,7 @@ def test_claimed_without_adjacent_deletion_is_presence_only():
 
     ownership = BatchOwnership.from_presence_lines(["2"], [])
 
-    units = build_ownership_units_from_display(ownership, batch_source)
+    units = _ownership_units_for_source(ownership, batch_source)
 
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.PRESENCE_ONLY
@@ -326,7 +360,7 @@ def test_nearby_in_source_separated_in_display_not_coupled():
         ]
     )
 
-    units = build_ownership_units_from_display(ownership, batch_source)
+    units = _ownership_units_for_source(ownership, batch_source)
 
     # Should have TWO units:
     # - REPLACEMENT (deletion of line 1 + claimed line 2)
@@ -384,7 +418,7 @@ def test_multiple_presence_only_lines_remain_independently_selectable():
 
     ownership = BatchOwnership.from_presence_lines(["1", "3"], [])
 
-    units = build_ownership_units_from_display(ownership, batch_source)
+    units = _ownership_units_for_source(ownership, batch_source)
 
     # Should have TWO separate PRESENCE_ONLY units
     assert len(units) == 2
@@ -429,7 +463,7 @@ def test_multiple_consecutive_deletions_and_claims_form_single_replacement():
         ]
     )
 
-    units = build_ownership_units_from_display(ownership, batch_source)
+    units = _ownership_units_for_source(ownership, batch_source)
 
     # Should be two units:
     # - REPLACEMENT containing deletions + first claimed line
@@ -463,7 +497,7 @@ def test_rebuild_does_not_promote_display_adjacency_to_explicit_metadata():
     )
 
     rebuilt = rebuild_ownership_from_units(
-        build_ownership_units_from_display(ownership, batch_source)
+        _ownership_units_for_source(ownership, batch_source)
     )
 
     assert rebuilt.presence_claims[0].source_lines == ["1"]
@@ -484,7 +518,7 @@ def test_explicit_replacement_unit_overrides_display_adjacency():
         ],
     )
 
-    units = build_ownership_units_from_display(ownership, batch_source)
+    units = _ownership_units_for_source(ownership, batch_source)
 
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.REPLACEMENT
@@ -507,7 +541,7 @@ def test_explicit_replacement_unit_can_group_multiple_claimed_lines():
         ],
     )
 
-    units = build_ownership_units_from_display(ownership, batch_source)
+    units = _ownership_units_for_source(ownership, batch_source)
 
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.REPLACEMENT
@@ -529,7 +563,7 @@ def test_rebuild_preserves_explicit_replacement_units():
     )
 
     rebuilt = rebuild_ownership_from_units(
-        build_ownership_units_from_display(ownership, batch_source)
+        _ownership_units_for_source(ownership, batch_source)
     )
 
     assert rebuilt.presence_claims[0].source_lines == ["1-2"]
@@ -562,7 +596,7 @@ def test_rebuild_preserves_mixed_same_anchor_deletion_order():
     )
 
     rebuilt = rebuild_ownership_from_units(
-        build_ownership_units_from_display(ownership, batch_source)
+        _ownership_units_for_source(ownership, batch_source)
     )
 
     assert rebuilt.deletions == [explicit_deletion, inferred_deletion]
@@ -594,7 +628,7 @@ def test_rebuild_preserves_mixed_same_anchor_order_when_explicit_is_later():
     )
 
     rebuilt = rebuild_ownership_from_units(
-        build_ownership_units_from_display(ownership, batch_source)
+        _ownership_units_for_source(ownership, batch_source)
     )
 
     assert rebuilt.deletions == [inferred_deletion, explicit_deletion]

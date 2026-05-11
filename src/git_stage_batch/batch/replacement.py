@@ -35,20 +35,6 @@ def _format_presence_lines(line_numbers: list[int]) -> list[str]:
     return [format_line_ids(line_numbers)]
 
 
-def build_replacement_batch_view(
-    batch_source_content: bytes,
-    ownership: BatchOwnership,
-    replacement_text: str,
-) -> ReplacementBatchView:
-    """Build a temporary batch-source snapshot and ownership for replacement text."""
-    source_lines = batch_source_content.splitlines(keepends=True)
-    return build_replacement_batch_view_from_lines(
-        source_lines,
-        ownership,
-        replacement_text,
-    )
-
-
 def build_replacement_batch_view_from_lines(
     source_lines: Sequence[bytes],
     ownership: BatchOwnership,

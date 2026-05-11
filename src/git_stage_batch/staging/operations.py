@@ -7,6 +7,10 @@ from collections.abc import Iterator, Sequence
 from ..core.models import LineEntry, LineLevelChange
 from ..editor import (
     EditorBuffer,
+    BufferInput,
+    buffer_byte_chunks,
+    buffer_byte_count,
+    buffer_preview,
     edit_lines_as_buffer,
 )
 from ..utils.git import create_git_blob, run_git_command
@@ -897,9 +901,9 @@ def build_target_working_tree_content_with_replaced_lines_from_lines(
         return target_buffer.to_bytes()
 
 
-def update_index_with_blob_content(path: str, content: bytes) -> None:
+def update_index_with_blob_buffer(path: str, buffer: BufferInput) -> None:
     """
-    Update the git index with new content for a file.
+    Update the git index with a new buffer for a file.
 
     Creates a temporary blob, hashes it, and updates the index entry.
     Preserves the file mode from the existing index entry if available.
@@ -907,7 +911,7 @@ def update_index_with_blob_content(path: str, content: bytes) -> None:
     # Log before state
     ls_before = run_git_command(["ls-files", "--stage", "--", path], check=False).stdout.strip()
 
-    blob_hash = create_git_blob([content])
+    blob_hash = create_git_blob(buffer_byte_chunks(buffer))
 
     file_mode = ""
     try:
@@ -925,12 +929,21 @@ def update_index_with_blob_content(path: str, content: bytes) -> None:
     # Log after state
     ls_after = run_git_command(["ls-files", "--stage", "--", path], check=False).stdout.strip()
     log_journal(
-        "update_index_with_blob_content",
+        "update_index_with_blob_buffer",
         path=path,
-        content_len=len(content),
-        content_preview=content[:200].decode('utf-8', errors='replace') if content else "(empty)",
+        content_len=buffer_byte_count(buffer),
+        buffer_preview=(
+            buffer_preview(buffer).decode('utf-8', errors='replace')
+            if buffer_byte_count(buffer) > 0 else
+            "(empty)"
+        ),
         blob_hash=blob_hash,
         file_mode=file_mode,
         index_before=ls_before,
         index_after=ls_after
     )
+
+
+def update_index_with_blob_content(path: str, content: bytes) -> None:
+    """Update the git index with new bytes for a file."""
+    update_index_with_blob_buffer(path, content)

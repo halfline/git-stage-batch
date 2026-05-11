@@ -7,7 +7,25 @@ described in BATCHES.md.
 
 from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
 from git_stage_batch.batch.merge import merge_batch
-from git_stage_batch.batch.storage import _build_realized_content
+from git_stage_batch.batch.storage import _build_realized_buffer_from_lines
+from git_stage_batch.editor import EditorBuffer
+
+
+def _build_realized_content_from_bytes(
+    baseline_content: bytes,
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+) -> bytes:
+    with (
+        EditorBuffer.from_bytes(baseline_content) as baseline_lines,
+        EditorBuffer.from_bytes(batch_source_content) as batch_source_lines,
+        _build_realized_buffer_from_lines(
+            baseline_lines,
+            batch_source_lines,
+            ownership,
+        ) as realized,
+    ):
+        return realized.to_bytes()
 
 
 class TestDeletionClaimIdentity:
@@ -205,7 +223,7 @@ class TestBytesBasedSemantics:
 
 
 class TestRealizedContentConstruction:
-    """Test _build_realized_content follows constraint semantics."""
+    """Test realized batch content follows constraint semantics."""
 
     def test_realized_content_respects_anchors(self):
         """Realized content construction must honor structural anchors."""
@@ -214,7 +232,7 @@ class TestRealizedContentConstruction:
 
         ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])])
 
-        realized = _build_realized_content(
+        realized = _build_realized_content_from_bytes(
             baseline_content,
             batch_source_content,
             ownership
@@ -238,7 +256,7 @@ class TestRealizedContentConstruction:
         ownership = BatchOwnership.from_presence_lines([], [DeletionClaim(anchor_line=2, content_lines=[b"old value\n"])],
         )
 
-        realized = _build_realized_content(
+        realized = _build_realized_content_from_bytes(
             baseline_content,
             batch_source_content,
             ownership
@@ -259,7 +277,7 @@ class TestRealizedContentConstruction:
             ],
         )
 
-        realized = _build_realized_content(
+        realized = _build_realized_content_from_bytes(
             baseline_content,
             batch_source_content,
             ownership

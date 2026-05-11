@@ -1,13 +1,31 @@
-"""Tests for avoiding duplication in _build_realized_content."""
+"""Tests for avoiding duplication in realized batch content."""
 
 from __future__ import annotations
 
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.storage import (
-    _build_realized_content,
     _build_realized_buffer_from_lines,
     _build_realized_content_from_lines,
 )
+from git_stage_batch.editor import EditorBuffer
+
+
+def _build_realized_content_from_bytes(
+    base_content: bytes,
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+) -> bytes:
+    with (
+        EditorBuffer.from_bytes(base_content) as base_lines,
+        EditorBuffer.from_bytes(batch_source_content) as batch_source_lines,
+        _build_realized_buffer_from_lines(
+            base_lines,
+            batch_source_lines,
+            ownership,
+        ) as result,
+    ):
+        return result.to_bytes()
+
 
 def test_build_realized_content_no_duplication_when_claiming_moved_line():
     """Test that claiming a moved line doesn't duplicate it in realized content.
@@ -25,7 +43,7 @@ def test_build_realized_content_no_duplication_when_claiming_moved_line():
     # Claim line 1 (the moved/added X)
     ownership = BatchOwnership.from_presence_lines(["1"], [])
 
-    result = _build_realized_content(base_content, batch_source_content, ownership)
+    result = _build_realized_content_from_bytes(base_content, batch_source_content, ownership)
     result_lines = result.decode().split('\n')
 
     # Should have: X (claimed), A (base), X (base), B (base)
@@ -49,7 +67,7 @@ def test_build_realized_content_duplicate_line_claimed():
     # Claim line 1 (the added X)
     ownership = BatchOwnership.from_presence_lines(["1"], [])
 
-    result = _build_realized_content(base_content, batch_source_content, ownership)
+    result = _build_realized_content_from_bytes(base_content, batch_source_content, ownership)
     result_lines = result.decode().split('\n')
 
     print(f"Result lines: {result_lines}")
@@ -68,7 +86,7 @@ def test_build_realized_content_simple_insert():
     # Claim line 2 (NEW)
     ownership = BatchOwnership.from_presence_lines(["2"], [])
 
-    result = _build_realized_content(base_content, batch_source_content, ownership)
+    result = _build_realized_content_from_bytes(base_content, batch_source_content, ownership)
     assert result == b"A\nNEW\nB\n"
 
 
@@ -113,7 +131,7 @@ def test_build_realized_content_equal_block_with_unclaimed_insert():
     # Claim nothing (just see equal blocks)
     ownership = BatchOwnership.from_presence_lines([], [])
 
-    result = _build_realized_content(base_content, batch_source_content, ownership)
+    result = _build_realized_content_from_bytes(base_content, batch_source_content, ownership)
 
     # Should get base back unchanged since we didn't claim the insert
     assert result == b"A\nB\nC\n", f"Expected base unchanged, got: {result}"
@@ -130,7 +148,7 @@ def test_build_realized_content_equal_then_claimed_insert():
     # Claim line 3 (NEW)
     ownership = BatchOwnership.from_presence_lines(["3"], [])
 
-    result = _build_realized_content(base_content, batch_source_content, ownership)
+    result = _build_realized_content_from_bytes(base_content, batch_source_content, ownership)
     lines = result.split(b'\n')
 
     # Should have A, B (from equal block), NEW (from insert, claimed)

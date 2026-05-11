@@ -14,9 +14,10 @@ from ..batch.ownership import (
 )
 from ..batch.source_refresh import (
     _refresh_selected_lines_against_new_source,
-    _refresh_selected_lines_against_source_content,
+    _refresh_selected_lines_against_source_buffer,
 )
 from .batch_sources import create_batch_source_commit
+from ..editor import EditorBuffer
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.paths import get_session_consumed_selections_file_path
 
@@ -48,11 +49,17 @@ def read_consumed_file_metadata(file_path: str) -> dict[str, Any] | None:
 def record_consumed_selection(
     file_path: str,
     *,
-    source_content: bytes,
+    source_content: bytes | None = None,
+    source_buffer: bytes | EditorBuffer | None = None,
     selected_lines: list,
     replacement_mask: dict[str, list[str]] | None = None,
 ) -> None:
     """Persist consumed selection ownership for masking across `again`."""
+    if source_buffer is None:
+        if source_content is None:
+            raise TypeError("source_content or source_buffer is required")
+        source_buffer = source_content
+
     metadata = load_consumed_selections_metadata()
     files = metadata.setdefault("files", {})
     existing_file_metadata = read_consumed_file_metadata(file_path)
@@ -61,20 +68,20 @@ def record_consumed_selection(
         existing_ownership = BatchOwnership.from_metadata_dict(existing_file_metadata)
         batch_source_commit = existing_file_metadata["batch_source_commit"]
         if detect_stale_batch_source_for_selection(selected_lines):
-            advance_result = advance_batch_source_for_file_with_provenance(
+            with advance_batch_source_for_file_with_provenance(
                 batch_name="consumed-selections",
                 file_path=file_path,
                 old_batch_source_commit=batch_source_commit,
                 existing_ownership=existing_ownership,
-            )
-            batch_source_commit = advance_result.batch_source_commit
-            existing_ownership = advance_result.ownership
-            selected_lines = _refresh_selected_lines_against_source_content(
-                selected_lines,
-                source_content=advance_result.source_content,
-                working_content=advance_result.working_content,
-                working_line_map=advance_result.working_line_map,
-            )
+            ) as advance_result:
+                batch_source_commit = advance_result.batch_source_commit
+                existing_ownership = advance_result.ownership
+                selected_lines = _refresh_selected_lines_against_source_buffer(
+                    selected_lines,
+                    source_buffer=advance_result.source_buffer,
+                    working_buffer=None,
+                    working_line_map=advance_result.working_line_map,
+                )
         new_ownership = translate_lines_to_batch_ownership(selected_lines)
         merged_ownership = merge_batch_ownership(existing_ownership, new_ownership)
     else:
@@ -83,7 +90,7 @@ def record_consumed_selection(
         merged_ownership = translate_lines_to_batch_ownership(selected_lines)
         batch_source_commit = create_batch_source_commit(
             file_path,
-            file_content_override=source_content,
+            file_buffer_override=source_buffer,
         )
 
     files[file_path] = {

@@ -19,6 +19,10 @@ from ..batch.query import list_batch_names, read_batch_metadata
 from ..core.line_selection import parse_line_selection
 from ..core.models import LineLevelChange
 from ..data.consumed_selections import read_consumed_file_metadata
+from ..editor import (
+    load_git_object_as_buffer_or_empty,
+    load_working_tree_file_as_buffer,
+)
 from ..utils.git import (
     read_git_blob_as_bytes,
     read_git_object_as_lines,
@@ -157,13 +161,15 @@ def _build_file_comparison_from_lines(
 
 def compare_baseline_to_working_tree(file_path: str) -> FileComparison:
     """Compare HEAD:file to the working tree directly."""
-    baseline_lines = read_git_object_as_lines(f"HEAD:{file_path}")
-    working_tree_lines = read_working_tree_file_as_lines(file_path)
-    return _build_file_comparison_from_lines(
-        file_path,
-        baseline_lines=baseline_lines,
-        working_tree_lines=working_tree_lines,
-    )
+    baseline_buffer = load_git_object_as_buffer_or_empty(f"HEAD:{file_path}")
+    working_tree_buffer = load_working_tree_file_as_buffer(file_path)
+
+    with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
+        return _build_file_comparison_from_lines(
+            file_path,
+            baseline_lines=list(baseline_lines),
+            working_tree_lines=list(working_tree_lines),
+        )
 
 
 def enumerate_units_from_file_comparison(

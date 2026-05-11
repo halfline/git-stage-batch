@@ -247,20 +247,6 @@ def derive_semantic_change_runs(
     return replacements + deletions + presences
 
 
-def derive_display_id_run_sets(
-    line_changes: LineLevelChange,
-    *,
-    source_content: bytes,
-    target_content: bytes,
-) -> list[set[int]]:
-    """Map semantic change runs onto display IDs in one rendered selection."""
-    return derive_display_id_run_sets_from_lines(
-        line_changes,
-        source_lines=source_content.splitlines(keepends=True),
-        target_lines=target_content.splitlines(keepends=True),
-    )
-
-
 def derive_display_id_run_sets_from_lines(
     line_changes: LineLevelChange,
     *,

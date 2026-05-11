@@ -6,7 +6,10 @@ from git_stage_batch.utils.paths import (
     get_abort_stash_file_path,
 )
 from git_stage_batch.utils.file_io import write_text_file_contents
-from git_stage_batch.data.batch_sources import get_saved_session_file_content
+from git_stage_batch.data.batch_sources import (
+    get_saved_session_file_content,
+    load_saved_session_file_as_buffer,
+)
 from git_stage_batch.utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
@@ -92,13 +95,21 @@ class TestGetSavedSessionFileContent:
     """Tests for get_saved_session_file_content function."""
 
     def test_retrieves_tracked_file_from_stash(self, session_with_stash):
-        """Test retrieving tracked file content from stash."""
+        """Test retrieving tracked file buffers from stash."""
 
         content = get_saved_session_file_content("test.txt")
         assert content == b"modified content\n"
 
+    def test_loads_tracked_file_from_stash_as_buffer(self, session_with_stash):
+        """Session-start buffers can be loaded without returning bytes."""
+
+        with load_saved_session_file_as_buffer("test.txt") as buffer:
+            assert buffer.byte_count == len(b"modified content\n")
+            assert list(buffer.byte_chunks(9)) == [b"modified ", b"content\n"]
+            assert buffer[0] == b"modified content\n"
+
     def test_retrieves_untracked_file_from_snapshot(self, temp_git_repo):
-        """Test retrieving untracked file content from snapshot."""
+        """Test retrieving untracked file buffers from snapshot."""
 
         # Initialize session
         initialize_abort_state()

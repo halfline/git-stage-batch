@@ -229,14 +229,14 @@ class TestCommandShowFromBatch:
         add_file_to_batch("replacement-batch", "file.txt", ownership, "100644")
 
 
-        original_merge_batch = merge_module.merge_batch
+        original_merge_batch_lines = merge_module.merge_batch_lines
         calls = []
 
-        def counting_merge_batch(*args, **kwargs):
+        def counting_merge_batch_lines(*args, **kwargs):
             calls.append(args)
-            return original_merge_batch(*args, **kwargs)
+            return original_merge_batch_lines(*args, **kwargs)
 
-        monkeypatch.setattr(merge_module, "merge_batch", counting_merge_batch)
+        monkeypatch.setattr(merge_module, "merge_batch_lines", counting_merge_batch_lines)
 
         rendered = render_batch_file_display("replacement-batch", "file.txt")
 
@@ -261,19 +261,56 @@ class TestCommandShowFromBatch:
         )
         add_file_to_batch("display-lines-batch", "file.txt", ownership, "100644")
 
-        original_build = display_module.build_display_lines_from_batch_source
+        original_build = display_module.build_display_lines_from_batch_source_lines
         calls = []
 
         def counting_build(*args, **kwargs):
             calls.append(args)
             return original_build(*args, **kwargs)
 
-        monkeypatch.setattr(display_module, "build_display_lines_from_batch_source", counting_build)
+        monkeypatch.setattr(display_module, "build_display_lines_from_batch_source_lines", counting_build)
 
         rendered = render_batch_file_display("display-lines-batch", "file.txt")
 
         assert rendered is not None
         assert len(calls) == 1
+
+    def test_show_from_streams_batch_source_for_preview(self, temp_git_repo, monkeypatch):
+        """Batch file previews should stream the stored source content."""
+
+        (temp_git_repo / "file.txt").write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "file.txt").write_text("line 1\nnew line\nline 2\n")
+        command_start()
+        command_include_to_batch("preview-batch", quiet=True)
+
+        original_load_git_object_as_buffer = hunk_tracking.load_git_object_as_buffer
+        loaded_revisions = []
+
+        def tracking_load_git_object_as_buffer(revision_path):
+            loaded_revisions.append(revision_path)
+            return original_load_git_object_as_buffer(revision_path)
+
+        original_run_git_command = hunk_tracking.run_git_command
+
+        def rejecting_show_run_git_command(arguments, *args, **kwargs):
+            if arguments and arguments[0] == "show":
+                raise AssertionError("batch source content should be streamed")
+            return original_run_git_command(arguments, *args, **kwargs)
+
+        monkeypatch.setattr(hunk_tracking, "load_git_object_as_buffer", tracking_load_git_object_as_buffer)
+        monkeypatch.setattr(hunk_tracking, "run_git_command", rejecting_show_run_git_command)
+
+        rendered = render_batch_file_display(
+            "preview-batch",
+            "file.txt",
+            probe_mergeability=False,
+        )
+
+        assert rendered is not None
+        assert loaded_revisions
 
     def test_show_from_reuses_line_mapping_across_mergeability_probes(self, temp_git_repo, monkeypatch):
         """Rendering should not rebuild source/working alignment for every unit."""

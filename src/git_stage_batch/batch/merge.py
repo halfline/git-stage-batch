@@ -679,7 +679,7 @@ def _apply_absence_constraints(
     - Found nearby but not at boundary: raise MergeError (structural conflict)
     - Not found: no-op (already suppressed or never existed)
 
-    Realization mode (strict=False) - for _build_realized_content():
+    Realization mode (strict=False) - for realized batch content construction:
     - Used when building display/storage content from baseline
     - Exact match at boundary: suppress
     - Not at boundary: no-op (baseline may not have content there)
@@ -1043,10 +1043,9 @@ def _suppress_at_boundary_for_realization(
     - If sequence matches at exact boundary: suppress it (remove from entries)
     - If sequence not at exact boundary: no-op (baseline may not have content there)
 
-    Used by: _build_realized_content() when building display/storage content from
-    baseline. The baseline may legitimately not have the deletion content at the
-    expected anchor, or may not have it at all. We only suppress if there's an
-    exact structural match.
+    Used when building display/storage content from baseline. The baseline may
+    legitimately not have the deletion content at the expected anchor, or may
+    not have it at all. We only suppress if there's an exact structural match.
 
     Args:
         entries: Realized entries
@@ -2169,115 +2168,3 @@ def _sequence_present_at_boundary(
         normalize_line_endings(entries[boundary + i].content) == normalize_line_endings(sequence[i])
         for i in range(len(sequence))
     )
-
-
-def detect_ownership_conflicts(
-    batch_source_content: bytes,
-    ownerships: list['BatchOwnership']
-) -> None:
-    """Detect and raise error for conflicting ownership constraints.
-
-    Checks for presence vs absence conflicts: when one batch claims a line
-    must be present but another batch wants to delete it.
-
-    Args:
-        batch_source_content: The batch source content (bytes)
-        ownerships: List of batch ownerships to check
-
-    Raises:
-        MergeError: If presence and absence constraints conflict
-    """
-    if len(ownerships) < 2:
-        return
-
-    source_normalized = batch_source_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    source_lines = source_normalized.splitlines(keepends=True)
-
-    for i in range(len(ownerships)):
-        for j in range(i + 1, len(ownerships)):
-            _check_pair_conflicts(source_lines, ownerships[i], ownerships[j])
-
-
-def _check_pair_conflicts(
-    source_lines: Sequence[bytes],
-    ownership_a: 'BatchOwnership',
-    ownership_b: 'BatchOwnership'
-) -> None:
-    """Check for conflicts between two ownerships with anchor awareness.
-
-    This checks if presence and absence constraints actually conflict at their
-    structural locations, not just if the content happens to match.
-
-    A conflict occurs when:
-    - Batch A claims line N (presence)
-    - Batch B has deletion anchored such that it would suppress line N (absence)
-    - The deletion content matches the claimed line
-
-    Same content at different structural locations does not conflict.
-
-    Args:
-        source_lines: Batch source lines (bytes)
-        ownership_a: First ownership
-        ownership_b: Second ownership
-
-    Raises:
-        MergeError: If constraints conflict at same structural location
-    """
-    resolved_a = ownership_a.resolve()
-    resolved_b = ownership_b.resolve()
-
-    _check_presence_vs_absence_conflict(
-        source_lines,
-        resolved_a.presence_line_set,
-        resolved_b.deletion_claims
-    )
-
-    _check_presence_vs_absence_conflict(
-        source_lines,
-        resolved_b.presence_line_set,
-        resolved_a.deletion_claims
-    )
-
-
-def _check_presence_vs_absence_conflict(
-    source_lines: Sequence[bytes],
-    claimed_lines: set[int],
-    deletions: list['DeletionClaim']
-) -> None:
-    """Check if presence claims conflict with deletion claims.
-
-    Args:
-        source_lines: Batch source lines
-        claimed_lines: Set of claimed line numbers
-        deletions: List of deletion claims
-
-    Raises:
-        MergeError: If a claimed line would be suppressed by a deletion
-    """
-    for deletion in deletions:
-        if not deletion.content_lines:
-            continue
-
-        anchor = deletion.anchor_line if deletion.anchor_line is not None else 0
-        deletion_start = anchor + 1
-
-        deletion_normalized = [
-            line.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-            for line in deletion.content_lines
-        ]
-
-        for line_num in claimed_lines:
-            if 1 <= line_num <= len(source_lines):
-                if line_num >= deletion_start and line_num < deletion_start + len(deletion_normalized):
-                    offset = line_num - deletion_start
-                    source_normalized = source_lines[line_num - 1].replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-                    if offset < len(deletion_normalized) and source_normalized == deletion_normalized[offset]:
-                        try:
-                            preview = source_lines[line_num - 1][:50].decode('utf-8', errors='replace').strip()
-                        except Exception:
-                            preview = str(source_lines[line_num - 1][:50])
-                        raise MergeError(
-                            _("Ownership conflict: line {line} is claimed by one batch "
-                              "but would be deleted by another (content: {preview})").format(
-                                line=line_num, preview=preview)
-                        )

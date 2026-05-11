@@ -83,6 +83,7 @@ from ..output import print_line_level_changes, print_remaining_line_changes_head
 from ..staging.operations import (
     build_target_index_content_bytes_with_replaced_lines,
     update_index_with_blob_content,
+    update_index_with_blob_buffer,
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
@@ -671,7 +672,7 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
                 if line_changes is None:
                     exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
-        update_index_with_blob_content(
+        update_index_with_blob_buffer(
             target_file,
             replacement_text.encode("utf-8", errors="surrogateescape"),
         )

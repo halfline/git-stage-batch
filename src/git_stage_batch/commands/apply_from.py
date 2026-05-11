@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import stat
+import os
 import sys
 from typing import Optional
 
@@ -31,22 +31,15 @@ from ..data.file_review_state import (
 from ..data.hunk_tracking import (
     render_batch_file_display,
 )
+from ..editor import (
+    EditorBuffer,
+    write_buffer_to_working_tree_path,
+)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError, BatchMetadataError
 from ..i18n import _
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command
-
-
-def _apply_working_tree_file_mode(full_path, file_mode: str | None) -> None:
-    """Apply a normal Git file mode to a working-tree file."""
-    if file_mode is None:
-        return
-    current_mode = full_path.stat().st_mode
-    if file_mode == "100755":
-        full_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    else:
-        full_path.chmod(current_mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
 
 
 def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: dict) -> None:
@@ -74,7 +67,7 @@ def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: di
 
     change_type = file_meta.get("change_type", "modified")
     if change_type == "deleted":
-        if full_path.exists():
+        if os.path.lexists(full_path):
             full_path.unlink()
             print(_("✓ Deleted binary file: {file}").format(file=file_path), file=sys.stderr)
         return
@@ -92,12 +85,11 @@ def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: di
             "but the batch content is missing"
         )
 
-    # File exists in batch commit - write to working tree
-    binary_content = result.stdout
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(binary_content)
-
-    _apply_working_tree_file_mode(full_path, str(file_meta.get("mode", "100644")))
+    write_buffer_to_working_tree_path(
+        full_path,
+        result.stdout,
+        mode=str(file_meta.get("mode", "100644")),
+    )
 
     if change_type == "added":
         print(_("✓ Applied new binary file: {file}").format(file=file_path), file=sys.stderr)
@@ -107,7 +99,7 @@ def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: di
 
 def _write_text_file_from_batch(
     file_path: str,
-    content: bytes | None,
+    buffer: bytes | EditorBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:
@@ -116,16 +108,14 @@ def _write_text_file_from_batch(
     full_path = repo_root / file_path
 
     if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        if full_path.exists():
+        if os.path.lexists(full_path):
             full_path.unlink()
         return
 
-    if content is None:
+    if buffer is None:
         raise RuntimeError(f"Text file not found in batch content: {file_path}")
 
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(content)
-    _apply_working_tree_file_mode(full_path, file_mode)
+    write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)
 
 
 def command_apply_from_batch(
@@ -232,9 +222,12 @@ def command_apply_from_batch(
 
                 # Get selected working tree content (as bytes)
                 full_path = repo_root / file_path
-                working_exists = full_path.exists()
+                working_exists = os.path.lexists(full_path)
                 if working_exists:
-                    working_content = full_path.read_bytes()
+                    if full_path.is_symlink():
+                        working_content = os.readlink(os.fsencode(full_path))
+                    else:
+                        working_content = full_path.read_bytes()
                 else:
                     working_content = b""
 

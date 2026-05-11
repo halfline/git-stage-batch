@@ -229,14 +229,20 @@ class TestCommandShowFromBatch:
         add_file_to_batch("replacement-batch", "file.txt", ownership, "100644")
 
 
-        original_merge_batch_lines = merge_module.merge_batch_lines
+        original_can_merge_batch_from_line_sequences = (
+            merge_module.can_merge_batch_from_line_sequences
+        )
         calls = []
 
-        def counting_merge_batch_lines(*args, **kwargs):
+        def counting_can_merge_batch_from_line_sequences(*args, **kwargs):
             calls.append(args)
-            return original_merge_batch_lines(*args, **kwargs)
+            return original_can_merge_batch_from_line_sequences(*args, **kwargs)
 
-        monkeypatch.setattr(merge_module, "merge_batch_lines", counting_merge_batch_lines)
+        monkeypatch.setattr(
+            merge_module,
+            "can_merge_batch_from_line_sequences",
+            counting_can_merge_batch_from_line_sequences,
+        )
 
         rendered = render_batch_file_display("replacement-batch", "file.txt")
 

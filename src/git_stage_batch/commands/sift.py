@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..batch.comparison import SemanticChangeKind, derive_semantic_change_runs
-from ..batch.merge import merge_batch_lines
+from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
@@ -53,6 +53,7 @@ from ..core.text_lifecycle import (
 )
 from ..editor import (
     EditorBuffer,
+    buffer_byte_count,
     buffer_matches,
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
@@ -670,7 +671,7 @@ def validate_sifted_text_file_result_from_lines(
             raise MergeError("Sift validation failed: deletion claim has empty content")
 
     try:
-        reconstructed = merge_batch_lines(
+        reconstructed_buffer = merge_batch_from_line_sequences_as_buffer(
             target_lines,
             dest_ownership,
             working_lines,
@@ -680,10 +681,11 @@ def validate_sifted_text_file_result_from_lines(
             f"Sift validation failed: destination representation cannot be merged: {e}"
         ) from e
 
-    target_content = b"".join(target_lines)
-    if reconstructed != target_content:
-        raise MergeError(
-            f"Sift validation failed: applying destination representation does not produce "
-            f"the expected target content. Expected {len(target_content)} bytes, got "
-            f"{len(reconstructed)} bytes."
-        )
+    with reconstructed_buffer as reconstructed:
+        if not buffer_matches(reconstructed, target_lines):
+            target_byte_count = buffer_byte_count(target_lines)
+            raise MergeError(
+                f"Sift validation failed: applying destination representation does not produce "
+                f"the expected target content. Expected {target_byte_count} bytes, got "
+                f"{reconstructed.byte_count} bytes."
+            )

@@ -14,7 +14,6 @@ from .ownership import (
     rebuild_ownership_from_units,
 )
 from ..core.line_selection import parse_line_selection
-from ..editor import EditorBuffer
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns
@@ -331,52 +330,12 @@ def translate_batch_file_gutter_ids_to_selection_ids(
     return selection_ids, rendered_for_messages
 
 
-def select_batch_ownership_for_display_ids(
-    file_meta: dict,
-    batch_source_content: bytes,
-    selected_ids: Optional[set[int]],
-) -> BatchOwnership:
-    """Select ownership from batch file using semantic unit filtering.
-
-    If selected_ids is None, returns full ownership.
-    If selected_ids is provided, performs semantic ownership unit selection:
-    - Builds ownership units from display reconstruction
-    - Selects units matching display IDs
-    - Validates atomic unit boundaries are respected
-    - Rebuilds ownership from selected units
-
-    Args:
-        file_meta: File metadata from batch containing ownership
-        batch_source_content: Batch source content (bytes)
-        selected_ids: Optional set of display line IDs to select
-
-    Returns:
-        BatchOwnership - either full or filtered based on selection
-
-    Raises:
-        MergeError: If atomic ownership unit is partially selected
-    """
-    # Load full ownership from metadata
-    ownership = BatchOwnership.from_metadata_dict(file_meta)
-
-    # If no selection, return full ownership
-    if selected_ids is None:
-        return ownership
-
-    with EditorBuffer.from_bytes(batch_source_content) as batch_source_lines:
-        return _select_batch_ownership_from_lines(
-            ownership,
-            batch_source_lines,
-            selected_ids,
-        )
-
-
 def select_batch_ownership_for_display_ids_from_lines(
     file_meta: dict,
     batch_source_lines: Sequence[bytes],
     selected_ids: Optional[set[int]],
 ) -> BatchOwnership:
-    """Select ownership from indexed batch-source byte lines."""
+    """Select ownership from indexed batch-source lines."""
     ownership = BatchOwnership.from_metadata_dict(file_meta)
     if selected_ids is None:
         return ownership

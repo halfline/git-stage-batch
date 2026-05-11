@@ -673,7 +673,7 @@ def _apply_absence_constraints(
 
     Two enforcement modes controlled by 'strict' parameter:
 
-    Strict mode (strict=True) - for merge_batch():
+    Strict mode (strict=True) - for applying batch ownership:
     - Used when merging into live working tree that may have diverged
     - Exact match at boundary: suppress
     - Found nearby but not at boundary: raise MergeError (structural conflict)
@@ -988,7 +988,7 @@ def _suppress_at_boundary_strict(
     Finding it nearby indicates the batch was created from a different file version
     where the deletion target was positioned differently.
 
-    Used by: merge_batch() when merging into live working tree
+    Used when applying batch ownership to live working tree lines.
 
     Args:
         entries: Realized entries
@@ -1412,91 +1412,6 @@ def _try_apply_baseline_replacement_units(
     return _apply_non_overlapping_baseline_edits(working_lines, edits)
 
 
-def merge_batch(
-    batch_source_content: bytes,
-    ownership: 'BatchOwnership',
-    working_content: bytes,
-    *,
-    source_to_working_mapping: LineMapping | None = None,
-) -> bytes:
-    """Constraint-based batch merge into working tree using structural provenance.
-
-    This implements the architecture described in BATCHES.md:
-    - Presence constraints: claimed lines must appear in result
-    - Absence constraints: forbidden sequences must not appear at anchored boundaries
-    - Structural provenance: track where each line came from in batch-source space
-    - Bytes-based correctness: work with bytes throughout, no lossy decoding
-
-    Algorithm:
-    1. Normalize line endings to LF in bytes
-    2. Resolve ownership into claimed lines and deletion claims
-    3. Validate structural requirements (alignment, claimed region coherence)
-    4. Apply presence constraints, building structured entries with provenance
-    5. Apply absence constraints with exact boundary enforcement and nearby ambiguity check
-    6. Emit final bytes content
-
-    Presence constraints are satisfied by:
-    - Keeping claimed lines if already present in working tree
-    - Adding missing claimed lines at structurally appropriate positions
-    - Tagging each realized entry with its batch-source line (if any)
-
-    Absence constraints are satisfied by two-phase enforcement:
-    - Phase 1: Check if forbidden sequence starts exactly at the anchored boundary
-      - If yes: suppress it
-      - If no: move to phase 2
-    - Phase 2: Conservative nearby ambiguity check within limited window
-      - If forbidden sequence found nearby (not at exact boundary):
-        structural displacement detected, raise MergeError
-      - If not found nearby: constraint already satisfied
-    - If anchor boundary is ambiguous: raise MergeError
-
-    The nearby check is not general fuzzy matching; it is a conservative structural
-    safety check that detects when presence constraint insertions have displaced
-    the deletion target, indicating the batch was created from a different file version.
-
-    Args:
-        batch_source_content: File content from batch source commit (bytes)
-        ownership: BatchOwnership with presence and absence constraints
-        working_content: Current working tree file content (bytes)
-        source_to_working_mapping: Optional precomputed alignment for
-            batch_source_content -> working_content.
-
-    Returns:
-        New working tree content with constraints applied (bytes)
-
-    Raises:
-        MergeError: If constraints cannot be reliably satisfied or structural
-                    displacement is detected
-    """
-    with merge_batch_as_buffer(
-        batch_source_content,
-        ownership,
-        working_content,
-        source_to_working_mapping=source_to_working_mapping,
-    ) as buffer:
-        return buffer.to_bytes()
-
-
-def merge_batch_as_buffer(
-    batch_source_content: bytes,
-    ownership: 'BatchOwnership',
-    working_content: bytes,
-    *,
-    source_to_working_mapping: LineMapping | None = None,
-) -> EditorBuffer:
-    """Merge in-memory content and return an editor buffer."""
-    with (
-        EditorBuffer.from_bytes(batch_source_content) as source_lines,
-        EditorBuffer.from_bytes(working_content) as working_lines,
-    ):
-        return merge_batch_from_line_sequences_as_buffer(
-            source_lines,
-            ownership,
-            working_lines,
-            source_to_working_mapping=source_to_working_mapping,
-        )
-
-
 def merge_batch_from_line_sequences_as_buffer(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
@@ -1600,85 +1515,6 @@ def _merge_batch_line_chunks(
         raise
 
     yield from _realized_entry_content_chunks(realized_entries)
-
-
-def discard_batch(
-    batch_source_content: bytes,
-    ownership: 'BatchOwnership',
-    working_content: bytes,
-    baseline_content: bytes
-) -> bytes:
-    """Constraint-based batch discard: structural inverse of merge_batch.
-
-    This implements the inverse of merge_batch using the same constraint-based model:
-    - Reverse presence constraints: remove/replace batch-owned claimed lines
-    - Restore absence constraints: restore deleted sequences at anchored boundaries
-    - Structural provenance: track where each line came from in batch-source space
-    - Bytes-based correctness: work with bytes throughout, no lossy decoding
-
-    Algorithm:
-    1. Normalize line endings to LF in bytes
-    2. Build structured entries from working tree with source provenance
-    3. Reverse presence constraints: replace claimed lines with baseline or remove
-    4. Restore absence constraints: insert deleted sequences at anchored boundaries
-    5. Emit final bytes content
-
-    Reverse presence constraints:
-    - For each working tree entry corresponding to a claimed source line:
-      - If baseline has a unique mapped line for that source line: replace with baseline
-      - If baseline has no mapped line (batch-added content): remove entirely
-      - If mapping is ambiguous: raise MergeError
-
-    Restore absence constraints:
-    - For each DeletionClaim(anchor_line=N, content_lines=[...]):
-      - Find exact boundary "after source line N" in realized entries
-      - If sequence is not present at boundary: insert it
-      - If sequence is already present: no-op
-      - If anchor not present: skip gracefully (claim not applicable)
-      - If anchor is ambiguous: raise error (structural problem)
-
-    This is the structural inverse of merge_batch: where merge applies constraints,
-    discard reverses them.
-
-    Args:
-        batch_source_content: File content from batch source commit (bytes)
-        ownership: BatchOwnership with presence and absence constraints
-        working_content: Current working tree file content (bytes)
-        baseline_content: File content from baseline commit (bytes)
-
-    Returns:
-        New working tree content with batch effects reversed (bytes)
-
-    Raises:
-        MergeError: If inverse operations cannot be reliably performed
-    """
-    with discard_batch_as_buffer(
-        batch_source_content,
-        ownership,
-        working_content,
-        baseline_content,
-    ) as buffer:
-        return buffer.to_bytes()
-
-
-def discard_batch_as_buffer(
-    batch_source_content: bytes,
-    ownership: 'BatchOwnership',
-    working_content: bytes,
-    baseline_content: bytes,
-) -> EditorBuffer:
-    """Discard in-memory content and return an editor buffer."""
-    with (
-        EditorBuffer.from_bytes(batch_source_content) as source_lines,
-        EditorBuffer.from_bytes(working_content) as working_lines,
-        EditorBuffer.from_bytes(baseline_content) as baseline_lines,
-    ):
-        return discard_batch_from_line_sequences_as_buffer(
-            source_lines,
-            ownership,
-            working_lines,
-            baseline_lines,
-        )
 
 
 def discard_batch_from_line_sequences_as_buffer(

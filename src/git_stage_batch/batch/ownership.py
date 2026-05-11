@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -17,6 +18,7 @@ from ..utils.git import (
     read_git_blobs_as_bytes,
     run_git_command,
 )
+from .comparison import SemanticChangeKind, derive_semantic_change_runs
 from .match import match_lines
 from .merge import _apply_presence_constraints
 
@@ -254,6 +256,29 @@ class ReplacementLineRun:
 
     old_line_numbers: tuple[int, ...]
     new_line_numbers: tuple[int, ...]
+
+
+def derive_replacement_line_runs_from_lines(
+    *,
+    old_file_lines: Sequence[bytes],
+    new_file_lines: Sequence[bytes],
+) -> list[ReplacementLineRun]:
+    """Derive replacement line runs from old/new byte-line sequences."""
+    replacement_runs: list[ReplacementLineRun] = []
+    semantic_runs = derive_semantic_change_runs(old_file_lines, new_file_lines)
+    for run in semantic_runs:
+        if (
+            run.kind == SemanticChangeKind.REPLACEMENT
+            and run.source_run is not None
+            and run.target_run is not None
+        ):
+            replacement_runs.append(
+                ReplacementLineRun(
+                    old_line_numbers=tuple(run.source_run),
+                    new_line_numbers=tuple(run.target_run),
+                )
+            )
+    return replacement_runs
 
 
 @dataclass

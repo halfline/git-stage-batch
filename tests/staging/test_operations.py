@@ -5,9 +5,12 @@ import subprocess
 import pytest
 
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.staging.operations import (
     build_target_index_content_bytes_with_selected_lines,
     build_target_index_content_bytes_with_replaced_lines,
+    build_target_index_content_from_lines,
+    build_target_index_buffer_from_lines,
     build_target_index_content_with_selected_lines,
     build_target_working_tree_content_bytes_with_discarded_lines,
     build_target_working_tree_content_bytes_with_replaced_lines,
@@ -223,6 +226,48 @@ class TestBuildTargetIndexContent:
         )
 
         assert result == b"line1\n\ninserted\n\nline3\n"
+
+    def test_index_selected_lines_accepts_non_list_line_sequences(self, line_sequence):
+        """Index staging can read from an indexed line sequence."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new", text="new"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"line2", text="line2"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_lines = line_sequence([b"line1\r\n", b"old\r\n", b"line2\r\n"])
+
+        result = build_target_index_content_from_lines(
+            line_changes,
+            set(),
+            base_lines,
+            base_has_trailing_newline=True,
+        )
+
+        assert result == b"line1\nold\nline2\n"
+
+    def test_index_selected_lines_can_return_buffer(self, line_sequence):
+        """Index staging can return a buffer for streaming callers."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new", text="new"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"line2", text="line2"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_lines = line_sequence([b"line1\r\n", b"old\r\n", b"line2\r\n"])
+
+        with build_target_index_buffer_from_lines(
+            line_changes,
+            {1, 2},
+            base_lines,
+            base_has_trailing_newline=True,
+        ) as result:
+            assert isinstance(result, EditorBuffer)
+            assert result.to_bytes() == b"line1\nnew\nline2\n"
 
     def test_preserves_trailing_newline(self):
         """Test that trailing newline is preserved from base."""

@@ -9,8 +9,9 @@ from git_stage_batch.batch.ownership import (
     BatchOwnership,
     DeletionClaim,
     ReplacementUnit,
-    _advance_source_content_preserving_existing_presence,
-    _advance_source_content_preserving_existing_presence_with_provenance,
+    _advance_source_buffer_preserving_existing_presence,
+    _advance_source_buffer_preserving_existing_presence_with_provenance,
+    _advance_source_lines_preserving_existing_presence,
     _remap_batch_ownership_with_source_line_map,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
@@ -117,6 +118,7 @@ def test_remap_claimed_lines_accepts_non_list_line_sequences(line_sequence):
 
     assert new_ownership.presence_claims[0].source_lines == ["2-3"]
     assert new_ownership.deletions == []
+
 
 def test_remap_deletion_anchors_to_new_source():
     """Test remapping of deletion claim anchors from old source to new source."""
@@ -364,22 +366,24 @@ def test_merge_ignores_boolean_replacement_unit_deletion_indices():
 
 
 def test_advance_source_preserves_claimed_lines_missing_from_working_tree():
-    """Previously discarded claimed lines remain available in advanced source."""
+    """Previously discarded claimed lines remain available in refreshed source."""
     old_source = b"owned one\nowned two\nremaining change\n"
     working_tree = b"remaining change\nnew later change\n"
     ownership = BatchOwnership.from_presence_lines(["1-2"], [])
 
-    new_source, source_line_map = _advance_source_content_preserving_existing_presence(
-        old_source_content=old_source,
-        working_content=working_tree,
+    with _advance_source_buffer_preserving_existing_presence(
+        old_source_buffer=old_source,
+        working_buffer=working_tree,
         ownership=ownership,
-    )
-    remapped = _remap_batch_ownership_with_source_line_map(
-        ownership,
-        source_line_map,
-    )
+    ) as source_with_provenance:
+        remapped = _remap_batch_ownership_with_source_line_map(
+            ownership,
+            source_with_provenance.source_line_map,
+        )
 
-    assert new_source == b"owned one\nowned two\nremaining change\nnew later change\n"
+        assert source_with_provenance.source_buffer.to_bytes() == (
+            b"owned one\nowned two\nremaining change\nnew later change\n"
+        )
     assert remapped.presence_claims[0].source_lines == ["1-2"]
 
 
@@ -389,18 +393,77 @@ def test_advance_source_tracks_working_line_provenance_for_ambiguous_duplicates(
     working_tree = b"same\nsame\n"
     ownership = BatchOwnership.from_presence_lines(["1,4"], [])
 
-    advanced = _advance_source_content_preserving_existing_presence_with_provenance(
-        old_source_content=old_source,
-        working_content=working_tree,
+    with _advance_source_buffer_preserving_existing_presence_with_provenance(
+        old_source_buffer=old_source,
+        working_buffer=working_tree,
         ownership=ownership,
-    )
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == (
+            b"owned before\nowned after\nsame\nsame\n"
+        )
+        assert source_with_provenance.source_line_map == {
+            1: 1,
+            4: 2,
+        }
+        assert source_with_provenance.working_line_map == {
+            1: 3,
+            2: 4,
+        }
 
-    assert advanced.content == b"owned before\nowned after\nsame\nsame\n"
-    assert advanced.source_line_map == {
-        1: 1,
-        4: 2,
-    }
-    assert advanced.working_line_map == {
-        1: 3,
-        2: 4,
-    }
+
+def test_advance_source_lines_accepts_non_list_line_sequences(line_sequence):
+    """Source construction accepts indexed line sequences."""
+    old_lines = line_sequence([
+        b"owned before\n",
+        b"same\n",
+        b"same\n",
+        b"owned after\n",
+    ])
+    working_lines = line_sequence([b"same\n", b"same\n"])
+    ownership = BatchOwnership.from_presence_lines(["1,4"], [])
+
+    with _advance_source_lines_preserving_existing_presence(
+        old_lines=old_lines,
+        working_lines=working_lines,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == (
+            b"owned before\nowned after\nsame\nsame\n"
+        )
+        assert source_with_provenance.source_line_map == {
+            1: 1,
+            4: 2,
+        }
+        assert source_with_provenance.working_line_map == {
+            1: 3,
+            2: 4,
+        }
+
+
+def test_advance_source_buffer_accepts_non_list_line_sequences(line_sequence):
+    """Source buffer wrapper can use existing line sequences."""
+    old_lines = line_sequence([
+        b"owned before\n",
+        b"same\n",
+        b"same\n",
+        b"owned after\n",
+    ])
+    working_lines = line_sequence([b"same\n", b"same\n"])
+    ownership = BatchOwnership.from_presence_lines(["1,4"], [])
+
+    with _advance_source_buffer_preserving_existing_presence_with_provenance(
+        old_source_buffer=old_lines,
+        working_buffer=working_lines,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == (
+            b"owned before\nowned after\nsame\nsame\n"
+        )
+        assert source_with_provenance.source_line_map == {
+            1: 1,
+            4: 2,
+        }
+        assert source_with_provenance.working_line_map == {
+            1: 3,
+            2: 4,
+        }

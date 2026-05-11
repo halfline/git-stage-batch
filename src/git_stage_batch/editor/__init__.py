@@ -17,11 +17,13 @@ from .line_endings import (
     restore_line_endings,
     restore_line_endings_in_chunks,
 )
-from .edit import edit_lines_as_buffer
+from .edit import Cursor, Editor, edit_lines_as_buffer
 
 __all__ = [
     "EditorBuffer",
     "BufferInput",
+    "Cursor",
+    "Editor",
     "choose_line_ending",
     "buffer_byte_chunks",
     "buffer_byte_count",

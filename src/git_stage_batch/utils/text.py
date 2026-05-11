@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
+from typing import overload
 
 
 def normalize_line_endings(content: bytes) -> bytes:
@@ -25,6 +26,47 @@ def normalize_line_endings(content: bytes) -> bytes:
         b'mac\\nclassic\\n'
     """
     return content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+
+
+def normalize_line_ending(line: bytes) -> bytes:
+    """Normalize one line entry's terminator to LF."""
+    if line.endswith(b'\r\n'):
+        return line[:-2] + b'\n'
+    if line.endswith(b'\r'):
+        return line[:-1] + b'\n'
+    return line
+
+
+class _LineEndingNormalizedSequence(Sequence[bytes]):
+    """Normalize line endings for an existing line sequence on access."""
+
+    def __init__(self, lines: Sequence[bytes]) -> None:
+        self._lines = lines
+
+    def __len__(self) -> int:
+        return len(self._lines)
+
+    @overload
+    def __getitem__(self, index: int) -> bytes: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[bytes]: ...
+
+    def __getitem__(self, index: int | slice) -> bytes | list[bytes]:
+        if isinstance(index, slice):
+            return [self[line_index] for line_index in range(*index.indices(len(self)))]
+
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+
+        return normalize_line_ending(self._lines[index])
+
+
+def normalize_line_sequence_endings(lines: Sequence[bytes]) -> Sequence[bytes]:
+    """Return a line sequence with CRLF/CR terminators normalized to LF."""
+    return _LineEndingNormalizedSequence(lines)
 
 
 def bytes_to_lines(chunks: Iterable[bytes]) -> Iterator[bytes]:

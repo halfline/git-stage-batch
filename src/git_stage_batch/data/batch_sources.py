@@ -48,11 +48,6 @@ class BatchSourceCommit:
     commit_sha: str
     file_buffer: EditorBuffer
 
-    @property
-    def file_content(self) -> bytes:
-        """Return file bytes for legacy callers."""
-        return self.file_buffer.to_bytes()
-
 
 def _buffer_preview(buffer: EditorBuffer) -> bytes:
     """Return a short byte preview for journal logging."""
@@ -351,7 +346,6 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
 def create_batch_source_commit(
     file_path: str,
     *,
-    file_content_override: bytes | None = None,
     file_buffer_override: bytes | EditorBuffer | None = None
 ) -> str:
     """Create batch source commit for a file.
@@ -361,11 +355,10 @@ def create_batch_source_commit(
 
     Args:
         file_path: Repository-relative path to the file
-        file_content_override: Optional exact content to store. Used by legacy
-            byte callers that synthesize a source from current working tree
-            content plus already-owned lines.
-        file_buffer_override: Optional exact buffer to store without first
-            materializing bytes in the caller.
+        file_buffer_override: Optional exact buffer bytes to store. Used by
+            stale-source advancement, where the new source may be synthesized
+            from current working tree content plus already-owned lines rather
+            than the original session-start snapshot.
 
     Returns:
         Batch source commit SHA
@@ -380,11 +373,6 @@ def create_batch_source_commit(
     baseline_result = run_git_command(["cat-file", "-e", f"{baseline_commit}:{file_path}"], check=False)
     file_existed_at_session_start = baseline_result.returncode == 0
 
-    if file_content_override is not None and file_buffer_override is not None:
-        raise CommandError(
-            _("Cannot provide both byte and buffer overrides for batch source")
-        )
-
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
     file_buffer: EditorBuffer | None = None
@@ -398,18 +386,12 @@ def create_batch_source_commit(
                 close_file_buffer = False
             else:
                 file_buffer = EditorBuffer.from_bytes(file_buffer_override)
-        elif file_content_override is not None:
-            file_buffer = EditorBuffer.from_bytes(file_content_override)
         else:
             file_buffer = load_saved_session_file_as_buffer(file_path)
 
         # For new files (didn't exist at session start), use selected working tree content
         # This ensures the batch source has the lines we're actually claiming
-        if (
-            file_content_override is None
-            and file_buffer_override is None
-            and not file_existed_at_session_start
-        ):
+        if file_buffer_override is None and not file_existed_at_session_start:
             if os.path.lexists(full_path):
                 file_buffer.close()
                 file_buffer = load_working_tree_file_as_buffer(file_path)

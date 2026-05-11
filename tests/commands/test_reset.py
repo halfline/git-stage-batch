@@ -531,7 +531,7 @@ class TestResetFromBatch:
 
         wrong_source = create_batch_source_commit(
             "test.py",
-            file_content_override=b"unrelated cache content\n",
+            file_buffer_override=b"unrelated cache content\n",
         )
         save_session_batch_sources({"test.py": wrong_source})
 

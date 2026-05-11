@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import shlex
 import sys
+from collections.abc import Sequence
 
 from ..core.line_selection import format_line_ids
 from ..batch.operations import create_batch
 from ..batch.ownership import (
     BatchOwnership,
-    build_ownership_units_from_display,
+    build_ownership_units_from_batch_source_lines,
     filter_ownership_units_by_display_ids,
     merge_batch_ownership,
     rebuild_ownership_from_units,
@@ -50,8 +51,9 @@ from ..data.hunk_tracking import (
     selected_batch_binary_matches_batch,
 )
 from ..data.undo import undo_checkpoint
+from ..editor import load_git_object_as_buffer
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import require_git_repository, run_git_command
+from ..utils.git import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_batch_metadata_file_path,
@@ -437,24 +439,20 @@ def _reset_line_claims_for_file(
 
     ownership = BatchOwnership.from_metadata_dict(metadata["files"][file_path])
 
-    # Get batch source content for semantic analysis and display reconstruction
+    # Get batch source lines for semantic analysis and display reconstruction
     batch_source_commit = metadata["files"][file_path]["batch_source_commit"]
-    batch_source_result = run_git_command(
-        ["show", f"{batch_source_commit}:{file_path}"],
-        check=False,
-        text_output=False
-    )
-    if batch_source_result.returncode != 0:
+    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
+    if batch_source_buffer is None:
         exit_with_error(_("Failed to read batch source content for {file}").format(file=file_path))
-    batch_source_content = batch_source_result.stdout
 
-    remaining_units = _partition_line_ownership_units(
-        ownership,
-        batch_source_content,
-        lines_to_remove,
-        batch_name=batch_name,
-        file_path=file_path,
-    )[0]
+    with batch_source_buffer as batch_source_lines:
+        remaining_units = _partition_line_ownership_units(
+            ownership,
+            batch_source_lines,
+            lines_to_remove,
+            batch_name=batch_name,
+            file_path=file_path,
+        )[0]
 
     # Step 3: Validate remaining units have valid structure
     validate_ownership_units(remaining_units)
@@ -492,28 +490,25 @@ def _select_line_ownership_for_file(
 
     ownership = BatchOwnership.from_metadata_dict(metadata["files"][file_path])
     batch_source_commit = metadata["files"][file_path]["batch_source_commit"]
-    batch_source_result = run_git_command(
-        ["show", f"{batch_source_commit}:{file_path}"],
-        check=False,
-        text_output=False
-    )
-    if batch_source_result.returncode != 0:
+    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
+    if batch_source_buffer is None:
         exit_with_error(_("Failed to read batch source content for {file}").format(file=file_path))
 
-    _remaining_units, selected_units = _partition_line_ownership_units(
-        ownership,
-        batch_source_result.stdout,
-        lines_to_select,
-        batch_name=batch_name,
-        file_path=file_path,
-    )
+    with batch_source_buffer as batch_source_lines:
+        _remaining_units, selected_units = _partition_line_ownership_units(
+            ownership,
+            batch_source_lines,
+            lines_to_select,
+            batch_name=batch_name,
+            file_path=file_path,
+        )
     validate_ownership_units(selected_units)
     return rebuild_ownership_from_units(selected_units)
 
 
 def _partition_line_ownership_units(
     ownership: BatchOwnership,
-    batch_source_content: bytes,
+    batch_source_lines: Sequence[bytes],
     selected_line_ids: set[int],
     *,
     batch_name: str,
@@ -521,7 +516,10 @@ def _partition_line_ownership_units(
 ):
     """Partition ownership units by selected display line IDs."""
     # This uses the actual display model, not proximity heuristics
-    units = build_ownership_units_from_display(ownership, batch_source_content)
+    units = build_ownership_units_from_batch_source_lines(
+        ownership,
+        batch_source_lines,
+    )
     available_ids = {
         display_id
         for unit in units

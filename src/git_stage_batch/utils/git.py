@@ -462,38 +462,6 @@ def read_git_blob_as_bytes(blob_hash: str) -> bytes | None:
         return None
 
 
-def read_git_object_as_lines(revision_path: str) -> list[bytes]:
-    """Read a git object and split into lines.
-
-    Args:
-        revision_path: Git revision path (e.g., "HEAD:file.txt", "abc123:path/to/file")
-
-    Returns:
-        List of bytes lines, or empty list if object doesn't exist
-    """
-    result = run_git_command(["show", revision_path], check=False, text_output=False)
-    if result.returncode != 0:
-        return []
-    return list(bytes_to_lines([result.stdout]))
-
-
-def read_working_tree_file_as_lines(file_path: str) -> list[bytes]:
-    """Read a working tree file and split into lines.
-
-    Args:
-        file_path: Repository-relative file path
-
-    Returns:
-        List of bytes lines, or empty list if file doesn't exist
-    """
-    repo_root = get_git_repository_root_path()
-    file_full_path = repo_root / file_path
-    try:
-        return list(bytes_to_lines([file_full_path.read_bytes()]))
-    except Exception:
-        return []
-
-
 def require_git_repository() -> None:
     """Verify that we are inside a git repository.
 

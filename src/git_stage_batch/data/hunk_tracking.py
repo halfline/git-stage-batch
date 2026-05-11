@@ -32,6 +32,8 @@ from ..core.diff_parser import (
     write_snapshots_for_selected_file_path,
 )
 from ..editor import (
+    BufferInput,
+    buffer_byte_chunks,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
@@ -1243,8 +1245,11 @@ def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelCha
     )
 
 
-def build_file_hunk_from_content(file_path: str, file_content: bytes) -> Optional[LineLevelChange]:
-    """Build a file-scoped line view for hypothetical file content without writing it."""
+def build_file_hunk_from_buffer(
+    file_path: str,
+    file_buffer: BufferInput,
+) -> Optional[LineLevelChange]:
+    """Build a file-scoped line view for a hypothetical file buffer without writing it."""
     head_result = run_git_command(["show", f"HEAD:{file_path}"], check=False, text_output=False)
     head_content = head_result.stdout if head_result.returncode == 0 else b""
 
@@ -1252,7 +1257,8 @@ def build_file_hunk_from_content(file_path: str, file_content: bytes) -> Optiona
         old_tmp.write(head_content)
         old_path = old_tmp.name
     with tempfile.NamedTemporaryFile(delete=False) as new_tmp:
-        new_tmp.write(file_content)
+        for chunk in buffer_byte_chunks(file_buffer):
+            new_tmp.write(chunk)
         new_path = new_tmp.name
 
     try:
@@ -1295,6 +1301,14 @@ def build_file_hunk_from_content(file_path: str, file_content: bytes) -> Optiona
             os.unlink(new_path)
         except OSError:
             pass
+
+
+def build_file_hunk_from_content(
+    file_path: str,
+    file_content: bytes,
+) -> Optional[LineLevelChange]:
+    """Build a file-scoped line view for hypothetical file bytes."""
+    return build_file_hunk_from_buffer(file_path, file_content)
 
 
 def _build_combined_file_line_changes(

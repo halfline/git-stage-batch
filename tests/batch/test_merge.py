@@ -7,7 +7,12 @@ from git_stage_batch.batch.match import (
     _build_unique_position_map,
     match_lines,
 )
-from git_stage_batch.batch.merge import merge_batch, discard_batch
+from git_stage_batch.batch.merge import (
+    _check_structural_validity,
+    _satisfy_constraints,
+    discard_batch,
+    merge_batch,
+)
 from git_stage_batch.exceptions import MergeError
 from git_stage_batch.batch.ownership import (
     BaselineReference,
@@ -175,6 +180,33 @@ class TestMatchLines:
         # Replace block: source line maps to None in strict mode
         assert mapping.get_target_line_from_source_line(2) is None
         assert mapping.get_source_line_from_target_line(2) is None
+
+
+class TestMergeLineSequences:
+    """Tests for merge helpers accepting non-list line sequences."""
+
+    def test_constraint_helpers_accept_non_list_sequences(self, line_sequence):
+        """Read-only merge helpers only require sized indexable line sequences."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\n", b"line3\n"])
+        mapping = match_lines(source, working)
+
+        _check_structural_validity(
+            mapping,
+            {2},
+            [],
+            source,
+            working,
+        )
+        entries = _satisfy_constraints(
+            source,
+            working,
+            {2},
+            [],
+            source_to_working_mapping=mapping,
+        )
+
+        assert b"".join(entry.content for entry in entries) == b"line1\nline2\nline3\n"
 
 
 class TestMergeBatch:

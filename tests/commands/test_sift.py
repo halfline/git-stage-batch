@@ -14,6 +14,7 @@ from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.include import command_include_to_batch
 import git_stage_batch.commands.sift as sift_module
 from git_stage_batch.commands.sift import (
+    add_sifted_text_file_to_batch,
     build_ownership_from_working_and_target_lines,
     command_sift_batch,
     validate_sifted_text_file_result_from_lines,
@@ -22,6 +23,7 @@ from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch import add_binary_file_to_batch, read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.exceptions import CommandError, MergeError
 
 def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
@@ -60,6 +62,23 @@ def test_validate_sifted_result_accepts_non_list_line_sequences(line_sequence):
         ownership,
         working_lines,
     )
+
+
+def test_add_sifted_text_file_to_batch_persists_target_buffer(temp_git_repo):
+    """Sifted text persistence streams the target buffer into batch storage."""
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+
+    with EditorBuffer.from_chunks([b"# Test\n", b"added\n"]) as target_buffer:
+        add_sifted_text_file_to_batch(
+            "sifted-batch",
+            "README.md",
+            target_buffer,
+            ownership,
+        )
+
+    assert read_file_from_batch("sifted-batch", "README.md") == "# Test\nadded\n"
+    metadata = read_batch_metadata("sifted-batch")
+    assert "batch_source_commit" in metadata["files"]["README.md"]
 
 
 @pytest.fixture

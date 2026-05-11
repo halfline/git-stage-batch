@@ -2,7 +2,11 @@
 
 import pytest
 
-from git_stage_batch.batch.match import match_lines
+from git_stage_batch.batch.match import (
+    UniqueLinePosition,
+    _build_unique_position_map,
+    match_lines,
+)
 from git_stage_batch.batch.merge import merge_batch, discard_batch
 from git_stage_batch.exceptions import MergeError
 from git_stage_batch.batch.ownership import (
@@ -15,6 +19,30 @@ from git_stage_batch.batch.ownership import (
 
 class TestMatchLines:
     """Tests for line alignment using difflib.SequenceMatcher."""
+
+    def test_unique_position_map_returns_structured_positions(self):
+        """Unique line scanning returns positions without duplicate entries."""
+        lines = [b"same\n", b"unique\n", b"same\n", b"other\n"]
+
+        positions = _build_unique_position_map(lines, 0, len(lines))
+
+        assert positions == {
+            b"unique\n": UniqueLinePosition(index=1),
+            b"other\n": UniqueLinePosition(index=3),
+        }
+
+    def test_line_mapping_uses_zero_filled_arrays(self):
+        """Line mappings store one integer slot per line."""
+        source = [b"line1\n", b"line2\n", b"line3\n"]
+        target = [b"line1\n", b"line3\n"]
+
+        mapping = match_lines(source, target)
+
+        assert mapping.source_to_target.typecode in {"I", "Q"}
+        assert mapping.target_to_source.typecode in {"I", "Q"}
+        assert mapping.source_to_target.tolist() == [1, 0, 2]
+        assert mapping.target_to_source.tolist() == [1, 3]
+        assert mapping.get_target_line_from_source_line(2) is None
 
     def test_identical_files(self):
         """Test alignment of identical files."""
@@ -30,6 +58,18 @@ class TestMatchLines:
         assert mapping.get_target_line_from_source_line(1) == 1
         assert mapping.get_target_line_from_source_line(2) == 2
         assert mapping.get_target_line_from_source_line(3) == 3
+
+    def test_accepts_non_list_sequences(self, line_sequence):
+        """match_lines only requires sized indexable line sequences."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        target = line_sequence([b"line1\n", b"extra\n", b"line2\n", b"line3\n"])
+
+        mapping = match_lines(source, target)
+
+        assert mapping.get_target_line_from_source_line(1) == 1
+        assert mapping.get_target_line_from_source_line(2) == 3
+        assert mapping.get_target_line_from_source_line(3) == 4
+        assert mapping.get_source_line_from_target_line(2) is None
 
     def test_working_tree_additions(self):
         """Test alignment when working tree has extra lines."""

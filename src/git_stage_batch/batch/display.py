@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING, TypeVar
 
 from ..core.models import LineLevelChange, LineEntry
 from ..data.batch_sources import get_batch_source_for_file
-from ..editor import load_git_object_as_buffer
+from ..editor import load_git_object_as_buffer, load_working_tree_file_as_buffer
 from ..i18n import ngettext
-from ..utils.file_io import read_text_file_contents
 from ..utils.git import get_git_repository_root_path
 from .match import match_lines
 
@@ -23,13 +22,6 @@ LineForDisplay = TypeVar("LineForDisplay", bytes, str)
 
 def _decode_display_line(line: bytes) -> str:
     return line.decode("utf-8", errors="replace")
-
-
-def _encode_text_lines(content: str) -> list[bytes]:
-    return [
-        line.encode("utf-8", errors="surrogateescape")
-        for line in content.splitlines(keepends=True)
-    ]
 
 
 def build_display_lines_from_batch_source_lines(
@@ -305,21 +297,12 @@ def annotate_with_batch_source(
     if not file_full_path.exists():
         return _fill_source_from_working_tree(line_changes)
 
-    working_content = read_text_file_contents(file_full_path)
-    return annotate_with_batch_source_content(path_value, line_changes, working_content)
-
-
-def annotate_with_batch_source_content(
-    path_value: str,
-    line_changes: LineLevelChange,
-    working_content: str,
-) -> LineLevelChange:
-    """Annotate LineLevelChange with batch source lines for arbitrary content."""
-    return annotate_with_batch_source_working_lines(
-        path_value,
-        line_changes,
-        _encode_text_lines(working_content),
-    )
+    with load_working_tree_file_as_buffer(path_value) as working_lines:
+        return annotate_with_batch_source_working_lines(
+            path_value,
+            line_changes,
+            working_lines,
+        )
 
 
 def annotate_with_batch_source_working_lines(

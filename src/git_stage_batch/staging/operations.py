@@ -303,6 +303,31 @@ def build_target_index_content_bytes_with_replaced_lines(
     selected changed line to the last selected changed line, even when the
     displayed selection crosses omitted gap markers.
     """
+    if not replace_ids:
+        return base_content
+
+    with EditorBuffer.from_bytes(base_content) as base_lines:
+        with build_target_index_buffer_with_replaced_lines(
+            line_changes,
+            replace_ids,
+            replacement_text,
+            base_lines,
+            base_has_trailing_newline=base_content.endswith(b"\n"),
+            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+        ) as target_buffer:
+            return target_buffer.to_bytes()
+
+
+def build_target_index_buffer_with_replaced_lines(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    replacement_text: str,
+    base_lines: Sequence[bytes],
+    *,
+    base_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool = True,
+) -> EditorBuffer:
+    """Build target index content by replacing a span in indexed base lines."""
     def longest_prefix_context_match(
         candidate_lines: list[bytes],
         context_lines: list[bytes],
@@ -324,7 +349,13 @@ def build_target_index_content_bytes_with_replaced_lines(
         return 0
 
     if not replace_ids:
-        return base_content
+        return edit_lines_as_buffer(
+            base_lines,
+            [],
+            selection_start=0,
+            selection_end=0,
+            has_trailing_newline=base_has_trailing_newline,
+        )
 
     changed_ids = sorted(line_changes.changed_line_ids())
     selected_ids = sorted(replace_ids)
@@ -335,7 +366,6 @@ def build_target_index_content_bytes_with_replaced_lines(
     if selected_ids != expected_range:
         raise ValueError("Replacement selection must be one contiguous line range")
 
-    base_lines = base_content.splitlines()
     replacement_bytes = replacement_text.encode("utf-8", errors="surrogateescape")
     replacement_lines = replacement_bytes.splitlines()
     base_line_count = len(base_lines)
@@ -400,8 +430,8 @@ def build_target_index_content_bytes_with_replaced_lines(
         replace_end = replace_start
 
     if trim_unchanged_edge_anchors:
-        before_context = base_lines[:replace_start]
-        after_context = base_lines[replace_end:]
+        before_context = _line_payloads(base_lines, 0, replace_start)
+        after_context = _line_payloads(base_lines, replace_end, base_line_count)
 
         prefix_trim = longest_prefix_context_match(replacement_lines, before_context)
         if prefix_trim:
@@ -425,18 +455,39 @@ def build_target_index_content_bytes_with_replaced_lines(
                 "or pass --no-edge-overlap to keep the edge-overlap text."
             )
 
-    output_lines = (
-        base_lines[:replace_start]
-        + replacement_lines
-        + base_lines[replace_end:]
-    )
-
     trailing_newline = (
         replacement_text.endswith("\n")
-        or base_content.endswith(b"\n")
-        or (not base_content and bool(output_lines))
+        or base_has_trailing_newline
     )
-    return b"\n".join(output_lines) + (b"\n" if trailing_newline else b"")
+    return edit_lines_as_buffer(
+        base_lines,
+        replacement_lines,
+        selection_start=replace_start,
+        selection_end=replace_end,
+        has_trailing_newline=trailing_newline,
+        add_trailing_newline_when_nonempty=base_line_count == 0,
+    )
+
+
+def build_target_index_content_with_replaced_lines_from_lines(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    replacement_text: str,
+    base_lines: Sequence[bytes],
+    *,
+    base_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool = True,
+) -> bytes:
+    """Build target index content by replacing a span in indexed base lines."""
+    with build_target_index_buffer_with_replaced_lines(
+        line_changes,
+        replace_ids,
+        replacement_text,
+        base_lines,
+        base_has_trailing_newline=base_has_trailing_newline,
+        trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+    ) as target_buffer:
+        return target_buffer.to_bytes()
 
 
 def build_target_working_tree_content_with_discarded_lines(

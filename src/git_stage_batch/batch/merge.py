@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 import difflib
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -44,6 +44,9 @@ class RealizedEntry:
     source_line: int | None  # Batch-source line number (1-indexed), or None for working-tree extras
     target_line: int | None = None  # Working-tree line number (1-indexed), when known
     is_claimed: bool = False  # True if from a claimed source line (presence constraint)
+
+
+_BaselineLineEdit = tuple[int, int, list[bytes]]
 
 
 def _detect_line_ending(content: bytes) -> bytes | None:
@@ -1175,15 +1178,40 @@ def _baseline_reference_absence_position(
     return position
 
 
+def _line_sequences_equal(
+    left: Sequence[bytes],
+    right: Sequence[bytes],
+) -> bool:
+    """Return whether two line sequences contain the same bytes."""
+    return len(left) == len(right) and all(
+        left[index] == right[index]
+        for index in range(len(left))
+    )
+
+
+def _line_slice_equals(
+    lines: Sequence[bytes],
+    start: int,
+    expected: Sequence[bytes],
+) -> bool:
+    """Return whether a sequence slice equals the expected byte lines."""
+    if start < 0 or start + len(expected) > len(lines):
+        return False
+    return all(
+        lines[start + offset] == expected[offset]
+        for offset in range(len(expected))
+    )
+
+
 def _try_apply_baseline_absence_constraints(
     working_lines: Sequence[bytes],
     deletion_claims: list['DeletionClaim'],
-) -> bytes | None:
+) -> Iterator[bytes] | None:
     """Apply absence-only constraints by exact baseline coordinates."""
     if not deletion_claims:
         return None
 
-    edits: list[tuple[int, int]] = []
+    edits: list[_BaselineLineEdit] = []
     for claim in deletion_claims:
         if not claim.content_lines:
             continue
@@ -1198,27 +1226,17 @@ def _try_apply_baseline_absence_constraints(
         )
         if position is None:
             return None
-        if working_lines[position:position + len(forbidden_sequence)] != forbidden_sequence:
+        if not _line_slice_equals(working_lines, position, forbidden_sequence):
             return None
-        edits.append((position, position + len(forbidden_sequence)))
+        edits.append((position, position + len(forbidden_sequence), []))
 
-    sorted_edits = sorted(edits, key=lambda edit: edit[0])
-    previous_end = 0
-    for start, end in sorted_edits:
-        if start < previous_end:
-            return None
-        previous_end = end
-
-    result = working_lines[:]
-    for start, end in reversed(sorted_edits):
-        del result[start:end]
-    return b"".join(result)
+    return _apply_non_overlapping_baseline_edits(working_lines, edits)
 
 
 def _baseline_removal_edit(
     claim: 'DeletionClaim',
     working_lines: Sequence[bytes],
-) -> tuple[int, int, list[bytes]] | None:
+) -> _BaselineLineEdit | None:
     if not claim.content_lines:
         return None
 
@@ -1233,15 +1251,15 @@ def _baseline_removal_edit(
     )
     if position is None:
         return None
-    if working_lines[position:position + len(forbidden_sequence)] != forbidden_sequence:
+    if not _line_slice_equals(working_lines, position, forbidden_sequence):
         return None
     return position, position + len(forbidden_sequence), []
 
 
 def _apply_non_overlapping_baseline_edits(
     working_lines: Sequence[bytes],
-    edits: list[tuple[int, int, list[bytes]]],
-) -> bytes | None:
+    edits: list[_BaselineLineEdit],
+) -> Iterator[bytes] | None:
     sorted_edits = sorted(edits, key=lambda edit: (edit[0], edit[1]))
     previous_end = 0
     for start, end, _replacement_lines in sorted_edits:
@@ -1249,10 +1267,22 @@ def _apply_non_overlapping_baseline_edits(
             return None
         previous_end = max(previous_end, end)
 
-    result = working_lines[:]
-    for start, end, replacement_lines in reversed(sorted_edits):
-        result[start:end] = replacement_lines
-    return b"".join(result)
+    return _iter_lines_with_baseline_edits(working_lines, sorted_edits)
+
+
+def _iter_lines_with_baseline_edits(
+    working_lines: Sequence[bytes],
+    sorted_edits: Sequence[_BaselineLineEdit],
+) -> Iterator[bytes]:
+    position = 0
+    for start, end, replacement_lines in sorted_edits:
+        for index in range(position, start):
+            yield working_lines[index]
+        yield from replacement_lines
+        position = end
+
+    for index in range(position, len(working_lines)):
+        yield working_lines[index]
 
 
 def _has_complete_baseline_references(
@@ -1278,7 +1308,7 @@ def _try_apply_baseline_replacement_units(
     ownership: 'BatchOwnership',
     presence_line_set: set[int],
     deletion_claims: list['DeletionClaim'],
-) -> bytes | None:
+) -> Iterator[bytes] | None:
     """Apply baseline-coordinate edits when structural source anchors fail.
 
     This is a conservative fallback for same-source round trips where the batch
@@ -1291,17 +1321,17 @@ def _try_apply_baseline_replacement_units(
         return None
 
     if (
-        source_lines == working_lines
+        _line_sequences_equal(source_lines, working_lines)
         and _has_complete_baseline_references(
             ownership,
             presence_line_set,
             deletion_claims,
         )
     ):
-        return b"".join(working_lines)
+        return iter(working_lines)
 
     replacement_units = getattr(ownership, "replacement_units", [])
-    edits: list[tuple[int, int, list[bytes]]] = []
+    edits: list[_BaselineLineEdit] = []
     unit_claimed_lines: set[int] = set()
     unit_deletion_indices: set[int] = set()
 
@@ -1359,7 +1389,7 @@ def _try_apply_baseline_replacement_units(
                 source_lines[claimed_line - 1]
                 for claimed_line in claimed_lines
             ]
-            if working_lines[position:position + len(insertion_lines)] == insertion_lines:
+            if _line_slice_equals(working_lines, position, insertion_lines):
                 continue
             edits.append((
                 position,
@@ -1443,15 +1473,15 @@ def merge_batch(
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
-    fallback_content = _try_apply_baseline_replacement_units(
+    fallback_chunks = _try_apply_baseline_replacement_units(
         source_lines,
         working_lines,
         ownership,
         presence_line_set,
         deletion_claims,
     )
-    if fallback_content is not None:
-        return _restore_line_endings(fallback_content, result_line_ending)
+    if fallback_chunks is not None:
+        return _restore_line_endings(b"".join(fallback_chunks), result_line_ending)
 
     mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
     try:
@@ -1471,15 +1501,15 @@ def merge_batch(
             source_to_working_mapping=mapping,
         )
     except MergeError:
-        fallback_content = _try_apply_baseline_replacement_units(
+        fallback_chunks = _try_apply_baseline_replacement_units(
             source_lines,
             working_lines,
             ownership,
             presence_line_set,
             deletion_claims,
         )
-        if fallback_content is not None:
-            return _restore_line_endings(fallback_content, result_line_ending)
+        if fallback_chunks is not None:
+            return _restore_line_endings(b"".join(fallback_chunks), result_line_ending)
         raise
 
     return _restore_line_endings(

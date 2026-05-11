@@ -7,10 +7,13 @@ advancement, ownership remapping, cache updates, and line re-annotation.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
 from ..data.batch_sources import load_session_batch_sources, save_session_batch_sources
+from ..editor import EditorBuffer
 from .match import match_lines
 from .ownership import (
     BatchOwnership,
@@ -101,34 +104,33 @@ def ensure_batch_source_current_for_selection(
 
     if is_stale and current_batch_source_commit and existing_ownership:
         # Batch source is stale - advance it and remap existing ownership
-        advance_result = advance_batch_source_for_file_with_provenance(
+        with advance_batch_source_for_file_with_provenance(
             batch_name=batch_name,
             file_path=file_path,
             old_batch_source_commit=current_batch_source_commit,
             existing_ownership=existing_ownership
-        )
+        ) as advance_result:
+            # Update session cache so add_file_to_batch uses the new source.
+            batch_sources = load_session_batch_sources()
+            batch_sources[file_path] = advance_result.batch_source_commit
+            save_session_batch_sources(batch_sources)
 
-        # Update session cache so add_file_to_batch uses the new source.
-        batch_sources = load_session_batch_sources()
-        batch_sources[file_path] = advance_result.batch_source_commit
-        save_session_batch_sources(batch_sources)
+            # Re-annotate lines against the refreshed source. That source may
+            # include already-owned lines that are absent from the
+            # working tree after earlier discard operations.
+            reannotated_lines = _refresh_selected_lines_against_source_buffer(
+                selected_lines,
+                source_buffer=advance_result.source_buffer,
+                working_buffer=None,
+                working_line_map=advance_result.working_line_map,
+            )
 
-        # Re-annotate lines against the actual advanced source. The advanced
-        # source may include already-owned lines that are absent from the
-        # working tree after earlier discard operations.
-        reannotated_lines = _refresh_selected_lines_against_source_content(
-            selected_lines,
-            source_content=advance_result.source_content,
-            working_content=advance_result.working_content,
-            working_line_map=advance_result.working_line_map,
-        )
-
-        return RefreshedBatchSelection(
-            batch_source_commit=advance_result.batch_source_commit,
-            ownership=advance_result.ownership,
-            selected_lines=reannotated_lines,
-            source_was_advanced=True
-        )
+            return RefreshedBatchSelection(
+                batch_source_commit=advance_result.batch_source_commit,
+                ownership=advance_result.ownership,
+                selected_lines=reannotated_lines,
+                source_was_advanced=True
+            )
 
     elif is_stale and current_batch_source_commit and not existing_ownership:
         # Inconsistent state: batch source exists but no ownership
@@ -171,7 +173,7 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
 
     This invariant is maintained by create_batch_source_commit(), which creates
     the first source from the current working tree state. Advanced batch sources
-    use _refresh_selected_lines_against_source_content() instead because they
+    use _refresh_selected_lines_against_source_buffer() instead because they
     may preserve already-owned lines that are absent from the working tree.
 
     For first-time source creation, the mapping is trivial:
@@ -226,16 +228,60 @@ def _refresh_selected_lines_against_source_content(
     working_content: bytes,
     working_line_map: dict[int, int] | None = None,
 ) -> list:
+    """Re-annotate selected lines against source bytes."""
+    return _refresh_selected_lines_against_source_buffer(
+        selected_lines,
+        source_buffer=source_content,
+        working_buffer=working_content,
+        working_line_map=working_line_map,
+    )
+
+
+def _refresh_selected_lines_against_source_buffer(
+    selected_lines: list,
+    *,
+    source_buffer: bytes | Sequence[bytes],
+    working_buffer: bytes | Sequence[bytes] | None,
+    working_line_map: dict[int, int] | None = None,
+) -> list:
     """Re-annotate selected lines against a concrete source snapshot.
 
     If a working-line provenance map is supplied, it describes how the source
-    content was synthesized and is treated as authoritative. Text matching is
+    buffer was synthesized and is treated as authoritative. Text matching is
     used only when no provenance map is available.
     """
+    if working_line_map is not None:
+        return _refresh_selected_lines_against_source_lines(
+            selected_lines,
+            source_lines=(),
+            working_lines=(),
+            working_line_map=working_line_map,
+        )
+
+    if working_buffer is None:
+        raise ValueError("working buffer is required without a working-line map")
+
+    with ExitStack() as stack:
+        source_lines = _as_line_sequence(source_buffer, stack)
+        working_lines = _as_line_sequence(working_buffer, stack)
+        return _refresh_selected_lines_against_source_lines(
+            selected_lines,
+            source_lines=source_lines,
+            working_lines=working_lines,
+            working_line_map=working_line_map,
+        )
+
+
+def _refresh_selected_lines_against_source_lines(
+    selected_lines: list,
+    *,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    working_line_map: dict[int, int] | None = None,
+) -> list:
+    """Re-annotate selected lines against source and working-tree line sequences."""
     mapping = None
     if working_line_map is None:
-        source_lines = source_content.splitlines(keepends=True)
-        working_lines = working_content.splitlines(keepends=True)
         mapping = match_lines(source_lines, working_lines)
 
     def map_working_line(line_number: int | None) -> int | None:
@@ -278,6 +324,15 @@ def _refresh_selected_lines_against_source_content(
         ))
 
     return reannotated_lines
+
+
+def _as_line_sequence(
+    buffer: bytes | Sequence[bytes],
+    stack: ExitStack,
+) -> Sequence[bytes]:
+    if isinstance(buffer, bytes):
+        return stack.enter_context(EditorBuffer.from_bytes(buffer))
+    return buffer
 
 
 def prepare_batch_ownership_update_for_selection(

@@ -13,16 +13,16 @@ from git_stage_batch.commands import include, discard
 from git_stage_batch.batch.source_refresh import (
     RefreshedBatchSelection,
     PreparedBatchUpdate,
-    _refresh_selected_lines_against_source_content,
+    _refresh_selected_lines_against_source_buffer,
+    _refresh_selected_lines_against_source_lines,
     ensure_batch_source_current_for_selection,
     prepare_batch_ownership_update_for_selection,
 )
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
-    _advance_source_content_preserving_existing_presence_with_provenance,
+    _advance_source_buffer_preserving_existing_presence_with_provenance,
 )
 from git_stage_batch.core.models import LineEntry
-
 
 def test_refreshed_batch_selection_dataclass():
     """Test RefreshedBatchSelection dataclass construction."""
@@ -217,30 +217,66 @@ def test_prepare_batch_ownership_update_with_existing():
 def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
     """Repeated working lines should use known synthesis identity."""
     ownership = BatchOwnership.from_presence_lines(["1,4"], [])
-    advanced = _advance_source_content_preserving_existing_presence_with_provenance(
-        old_source_content=b"owned before\nsame\nsame\nowned after\n",
-        working_content=b"same\nsame\n",
+    with _advance_source_buffer_preserving_existing_presence_with_provenance(
+        old_source_buffer=b"owned before\nsame\nsame\nowned after\n",
+        working_buffer=b"same\nsame\n",
         ownership=ownership,
-    )
+    ) as source_with_provenance:
+        selected_lines = [
+            LineEntry(
+                id=1, kind='+', old_line_number=None, new_line_number=1,
+                text_bytes=b"same", text="same", source_line=None
+            ),
+            LineEntry(
+                id=2, kind='+', old_line_number=None, new_line_number=2,
+                text_bytes=b"same", text="same", source_line=None
+            ),
+        ]
+
+        refreshed = _refresh_selected_lines_against_source_buffer(
+            selected_lines,
+            source_buffer=source_with_provenance.source_buffer,
+            working_buffer=None,
+            working_line_map=source_with_provenance.working_line_map,
+        )
+
+    assert [line.source_line for line in refreshed] == [3, 4]
+
+
+def test_refresh_selected_lines_buffer_accepts_non_list_line_sequences(line_sequence):
+    """Source refresh can use already indexed line sequences."""
     selected_lines = [
         LineEntry(
-            id=1, kind='+', old_line_number=None, new_line_number=1,
-            text_bytes=b"same", text="same", source_line=None
-        ),
-        LineEntry(
-            id=2, kind='+', old_line_number=None, new_line_number=2,
-            text_bytes=b"same", text="same", source_line=None
+            id=None, kind=' ', old_line_number=2, new_line_number=2,
+            text_bytes=b"line3", text="line3", source_line=None
         ),
     ]
 
-    refreshed = _refresh_selected_lines_against_source_content(
+    refreshed = _refresh_selected_lines_against_source_buffer(
         selected_lines,
-        source_content=advanced.content,
-        working_content=b"same\nsame\n",
-        working_line_map=advanced.working_line_map,
+        source_buffer=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
+        working_buffer=line_sequence([b"line1\n", b"line3\n"]),
     )
 
-    assert [line.source_line for line in refreshed] == [3, 4]
+    assert refreshed[0].source_line == 3
+
+
+def test_refresh_selected_lines_accepts_non_list_line_sequences(line_sequence):
+    """Source refresh matching only requires sized indexable line sequences."""
+    selected_lines = [
+        LineEntry(
+            id=None, kind=' ', old_line_number=2, new_line_number=2,
+            text_bytes=b"line3", text="line3", source_line=None
+        ),
+    ]
+
+    refreshed = _refresh_selected_lines_against_source_lines(
+        selected_lines,
+        source_lines=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
+        working_lines=line_sequence([b"line1\n", b"line3\n"]),
+    )
+
+    assert refreshed[0].source_line == 3
 
 
 def test_both_commands_use_same_helper_interface():

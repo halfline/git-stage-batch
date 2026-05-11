@@ -621,6 +621,29 @@ def edit_lines_as_buffer(
         raise
 
 
+def export_lines_as_buffer(
+    lines: Iterable[bytes],
+    *,
+    has_trailing_newline: bool = True,
+    add_trailing_newline_when_nonempty: bool = False,
+    line_endings_from: Sequence[bytes] | None = None,
+) -> EditorBuffer:
+    """Export generated lines to a buffer without editor state."""
+    chunks = _line_body_chunks(
+        (_line_body(line) for line in lines),
+        has_trailing_newline=has_trailing_newline,
+        add_trailing_newline_when_nonempty=(
+            add_trailing_newline_when_nonempty
+        ),
+    )
+    if line_endings_from is not None:
+        chunks = restore_line_endings_in_chunks(
+            chunks,
+            detect_line_ending(line_endings_from),
+        )
+    return EditorBuffer.from_chunks(chunks)
+
+
 def _spool_inserted_lines(lines: Iterable[bytes]) -> _InsertedBuffer:
     line_count = 0
 

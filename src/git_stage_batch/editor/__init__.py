@@ -17,7 +17,7 @@ from .line_endings import (
     restore_line_endings,
     restore_line_endings_in_chunks,
 )
-from .edit import Cursor, Editor, edit_lines_as_buffer
+from .edit import Cursor, Editor, edit_lines_as_buffer, export_lines_as_buffer
 from .git import (
     load_git_blob_as_buffer,
     load_git_object_as_buffer,
@@ -44,6 +44,7 @@ __all__ = [
     "load_git_tree_files_as_buffers",
     "load_working_tree_file_as_buffer",
     "edit_lines_as_buffer",
+    "export_lines_as_buffer",
     "restore_line_endings",
     "restore_line_endings_in_chunks",
     "write_buffer_to_path",

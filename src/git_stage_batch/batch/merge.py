@@ -1559,6 +1559,27 @@ def merge_batch_lines(
     )
 
 
+def can_merge_batch_from_line_sequences(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    source_to_working_mapping: LineMapping | None = None,
+) -> bool:
+    """Return whether a normalized line merge can be applied."""
+    try:
+        for _chunk in _merge_batch_line_chunks(
+            source_lines,
+            ownership,
+            working_lines,
+            source_to_working_mapping=source_to_working_mapping,
+        ):
+            pass
+    except MergeError:
+        return False
+    return True
+
+
 def _merge_batch_line_chunks(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',

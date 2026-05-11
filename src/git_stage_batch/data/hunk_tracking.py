@@ -794,12 +794,13 @@ def render_batch_file_display(
                         ownership_for_unit = rebuild_ownership_from_units([unit])
                         if ownership_for_unit.is_empty():
                             continue
-                        batch_merge.merge_batch_lines(
+                        if not batch_merge.can_merge_batch_from_line_sequences(
                             source_match_lines,
                             ownership_for_unit,
                             working_match_lines,
                             source_to_working_mapping=source_to_working_mapping,
-                        )
+                        ):
+                            continue
                         mergeable_ids.update(unit.display_line_ids)
                     except (MergeError, ValueError, KeyError, Exception):
                         # Unit not mergeable - exclude all its lines

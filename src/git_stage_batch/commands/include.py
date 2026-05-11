@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from enum import Enum
 import stat
@@ -11,15 +12,15 @@ import uuid
 
 from ..batch import add_binary_file_to_batch, add_file_to_batch, create_batch, delete_batch
 from ..batch.comparison import (
-    SemanticChangeKind,
-    derive_display_id_run_sets,
-    derive_semantic_change_runs,
+    derive_display_id_run_sets_from_lines,
+    derive_replacement_display_id_run_sets_from_lines,
 )
 from ..batch.display import annotate_with_batch_source
-from ..batch.merge import merge_batch
+from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.ownership import (
     BatchOwnership,
     ReplacementLineRun,
+    derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
 )
 from ..batch.query import read_batch_metadata
@@ -80,6 +81,9 @@ from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..editor import (
     EditorBuffer,
+    BufferInput,
+    buffer_byte_count,
+    buffer_matches,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
@@ -87,8 +91,8 @@ from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_remaining_line_changes_header
 from ..staging.operations import (
+    build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,
-    update_index_with_blob_content,
     update_index_with_blob_buffer,
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
@@ -131,13 +135,13 @@ class TransientIncludeFailureReason(Enum):
 class TransientIncludeResult:
     """Result of staging a live line selection through transient batch ownership."""
 
-    content: bytes | None
+    buffer: BufferInput | None
     failure_reason: TransientIncludeFailureReason | None = None
     failure_detail: str | None = None
 
     @classmethod
-    def success(cls, content: bytes) -> TransientIncludeResult:
-        return cls(content=content)
+    def success(cls, buffer: BufferInput) -> TransientIncludeResult:
+        return cls(buffer=buffer)
 
     @classmethod
     def failure(
@@ -146,7 +150,7 @@ class TransientIncludeResult:
         *,
         detail: str | None = None,
     ) -> TransientIncludeResult:
-        return cls(content=None, failure_reason=reason, failure_detail=detail)
+        return cls(buffer=None, failure_reason=reason, failure_detail=detail)
 
 
 def _record_baseline_references_for_additions(line_changes) -> None:
@@ -251,7 +255,9 @@ def _try_build_index_content_via_transient_batch(
     *,
     line_changes,
     selected_display_ids: set[int],
-    current_index_content: bytes,
+    current_index_lines: Sequence[bytes],
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> TransientIncludeResult:
     """Try staging live lines through transient batch ownership."""
     selected_lines = [
@@ -267,6 +273,7 @@ def _try_build_index_content_via_transient_batch(
     batch_name = f"include-line-{uuid.uuid4().hex}"
     session_sources_existed, session_sources_content = _snapshot_session_batch_sources_file()
     created_batch = False
+    target_index_buffer: EditorBuffer | None = None
 
     try:
         create_batch(batch_name, "Transient include-line selection")
@@ -277,82 +284,90 @@ def _try_build_index_content_via_transient_batch(
             line_changes.lines,
             selected_display_ids,
             replacement_line_runs=_derive_replacement_line_runs(
-                hunk_base_content=read_file_bytes(get_index_snapshot_file_path()),
-                hunk_source_content=read_file_bytes(get_working_tree_snapshot_file_path()),
+                hunk_base_lines=hunk_base_lines,
+                hunk_source_lines=hunk_source_lines,
             ),
         )
         if ownership.is_empty():
             return TransientIncludeResult.failure(
                 TransientIncludeFailureReason.EMPTY_OWNERSHIP
             )
-        full_path = get_git_repository_root_path() / line_changes.path
-        working_content = full_path.read_bytes() if full_path.exists() else b""
-        batch_source_commit = create_batch_source_commit(
-            line_changes.path,
-            file_content_override=working_content,
-        )
-        add_file_to_batch(
-            batch_name,
-            line_changes.path,
-            ownership,
-            _detect_file_mode(line_changes.path),
-            batch_source_commit=batch_source_commit,
-        )
 
-        metadata = read_batch_metadata(batch_name)
-        file_metadata = metadata.get("files", {}).get(line_changes.path)
-        if file_metadata is None:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.MISSING_BATCH_METADATA
+        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
+            batch_source_commit = create_batch_source_commit(
+                line_changes.path,
+                file_buffer_override=working_lines,
             )
-
-        batch_source_commit = file_metadata.get("batch_source_commit")
-        if not batch_source_commit:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.MISSING_BATCH_METADATA
-            )
-
-        source_result = run_git_command(
-            ["show", f"{batch_source_commit}:{line_changes.path}"],
-            check=False,
-            text_output=False,
-        )
-        if source_result.returncode != 0:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.MISSING_BATCH_SOURCE
-            )
-
-        ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        try:
-            target_index_content = merge_batch(
-                source_result.stdout,
+            add_file_to_batch(
+                batch_name,
+                line_changes.path,
                 ownership,
-                current_index_content,
-            )
-        except Exception as error:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.INDEX_MERGE_FAILED,
-                detail=error.__class__.__name__,
+                _detect_file_mode(line_changes.path),
+                batch_source_commit=batch_source_commit,
             )
 
-        try:
-            target_working_content = merge_batch(
-                source_result.stdout,
-                ownership,
-                working_content,
-            )
-        except Exception as error:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
-                detail=error.__class__.__name__,
-            )
-        if target_working_content != working_content:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE
-            )
+            metadata = read_batch_metadata(batch_name)
+            file_metadata = metadata.get("files", {}).get(line_changes.path)
+            if file_metadata is None:
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.MISSING_BATCH_METADATA
+                )
 
-        return TransientIncludeResult.success(target_index_content)
+            batch_source_commit = file_metadata.get("batch_source_commit")
+            if not batch_source_commit:
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.MISSING_BATCH_METADATA
+                )
+
+            source_buffer = load_git_object_as_buffer(
+                f"{batch_source_commit}:{line_changes.path}"
+            )
+            if source_buffer is None:
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.MISSING_BATCH_SOURCE
+                )
+
+            ownership = BatchOwnership.from_metadata_dict(file_metadata)
+            with source_buffer as source_lines:
+                try:
+                    target_index_buffer = merge_batch_from_line_sequences_as_buffer(
+                        source_lines,
+                        ownership,
+                        current_index_lines,
+                    )
+                except Exception as error:
+                    return TransientIncludeResult.failure(
+                        TransientIncludeFailureReason.INDEX_MERGE_FAILED,
+                        detail=error.__class__.__name__,
+                    )
+
+                try:
+                    target_working_buffer = merge_batch_from_line_sequences_as_buffer(
+                        source_lines,
+                        ownership,
+                        working_lines,
+                    )
+                except Exception as error:
+                    target_index_buffer.close()
+                    target_index_buffer = None
+                    return TransientIncludeResult.failure(
+                        TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
+                        detail=error.__class__.__name__,
+                    )
+
+                with target_working_buffer:
+                    if not buffer_matches(working_lines, target_working_buffer):
+                        target_index_buffer.close()
+                        target_index_buffer = None
+                        return TransientIncludeResult.failure(
+                            TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE
+                        )
+
+        assert target_index_buffer is not None
+        return TransientIncludeResult.success(target_index_buffer)
     except Exception as error:
+        if target_index_buffer is not None:
+            target_index_buffer.close()
         return TransientIncludeResult.failure(
             TransientIncludeFailureReason.PREPARATION_FAILED,
             detail=error.__class__.__name__,
@@ -363,10 +378,10 @@ def _try_build_index_content_via_transient_batch(
         _restore_session_batch_sources_file(session_sources_existed, session_sources_content)
 
 
-def _stage_live_line_target_content(file_path: str, target_content: bytes) -> None:
+def _stage_live_line_target_buffer(file_path: str, target_buffer: BufferInput) -> None:
     """Stage the result of live line-level include."""
     full_path = get_git_repository_root_path() / file_path
-    if target_content == b"" and not full_path.exists():
+    if buffer_byte_count(target_buffer) == 0 and not full_path.exists():
         result = git_update_index(
             file_path=file_path,
             force_remove=True,
@@ -381,7 +396,7 @@ def _stage_live_line_target_content(file_path: str, target_content: bytes) -> No
             )
         return
 
-    update_index_with_blob_content(file_path, target_content)
+    update_index_with_blob_buffer(file_path, target_buffer)
 
 
 def _transient_include_failure_message(
@@ -767,48 +782,67 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
         combined_include_ids = already_included_ids | set(requested_ids)
 
-        # Get the selected hunk's base/source snapshots captured when the hunk was loaded.
-        hunk_base_content = read_file_bytes(get_index_snapshot_file_path())
-        hunk_source_content = read_file_bytes(get_working_tree_snapshot_file_path())
+        current_index_buffer = load_git_object_as_buffer(f":{line_changes.path}")
+        if current_index_buffer is None:
+            current_index_buffer = EditorBuffer.from_bytes(b"")
 
-        index_result = run_git_command(
-            ["show", f":{line_changes.path}"],
-            check=False,
-            text_output=False,
-        )
-        current_index_content = index_result.stdout if index_result.returncode == 0 else b""
+        with (
+            EditorBuffer.from_path(get_index_snapshot_file_path()) as hunk_base_lines,
+            EditorBuffer.from_path(get_working_tree_snapshot_file_path()) as hunk_source_lines,
+            current_index_buffer as current_index_lines,
+        ):
+            selected_change_kind = read_selected_change_kind()
+            if selected_change_kind == SelectedChangeKind.FILE:
+                partial_replacement_error = _build_partial_replacement_selection_error(
+                    line_changes,
+                    combined_include_ids,
+                    hunk_base_lines=hunk_base_lines,
+                    hunk_source_lines=hunk_source_lines,
+                )
+                if partial_replacement_error is not None:
+                    exit_with_error(partial_replacement_error)
+                partial_structural_run_error = _build_partial_structural_run_selection_error(
+                    line_changes,
+                    combined_include_ids,
+                    hunk_base_lines=hunk_base_lines,
+                    hunk_source_lines=hunk_source_lines,
+                )
+                if partial_structural_run_error is not None:
+                    exit_with_error(partial_structural_run_error)
 
-        selected_change_kind = read_selected_change_kind()
-        if selected_change_kind == SelectedChangeKind.FILE:
-            partial_replacement_error = _build_partial_replacement_selection_error(
-                line_changes,
-                combined_include_ids,
-                hunk_base_content=hunk_base_content,
-                hunk_source_content=hunk_source_content,
+            transient_result = _try_build_index_content_via_transient_batch(
+                line_changes=line_changes,
+                selected_display_ids=set(combined_include_ids),
+                current_index_lines=current_index_lines,
+                hunk_base_lines=hunk_base_lines,
+                hunk_source_lines=hunk_source_lines,
             )
-            if partial_replacement_error is not None:
-                exit_with_error(partial_replacement_error)
-            partial_structural_run_error = _build_partial_structural_run_selection_error(
-                line_changes,
-                combined_include_ids,
-                hunk_base_content=hunk_base_content,
-                hunk_source_content=hunk_source_content,
-            )
-            if partial_structural_run_error is not None:
-                exit_with_error(partial_structural_run_error)
-
-        transient_result = _try_build_index_content_via_transient_batch(
-            line_changes=line_changes,
-            selected_display_ids=set(combined_include_ids),
-            current_index_content=current_index_content,
-        )
-        if transient_result.content is not None:
+            if (
+                transient_result.buffer is None
+                and transient_result.failure_reason == TransientIncludeFailureReason.INDEX_MERGE_FAILED
+                and buffer_matches(current_index_lines, hunk_base_lines)
+            ):
+                transient_result = TransientIncludeResult.success(
+                    build_target_index_buffer_from_lines(
+                        line_changes,
+                        set(combined_include_ids),
+                        hunk_base_lines,
+                        base_has_trailing_newline=(
+                            _line_sequence_ends_with_lf(hunk_base_lines)
+                        ),
+                    )
+                )
+        if transient_result.buffer is not None:
             log_journal(
                 "include_line_transient_batch_staging_used",
                 file_path=line_changes.path,
                 selected_ids=sorted(combined_include_ids),
             )
-            target_index_content = transient_result.content
+            target_index_buffer_context = (
+                transient_result.buffer
+                if isinstance(transient_result.buffer, EditorBuffer)
+                else nullcontext(transient_result.buffer)
+            )
         else:
             failure_reason = (
                 transient_result.failure_reason
@@ -829,7 +863,8 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
                 )
             )
 
-        _stage_live_line_target_content(line_changes.path, target_index_content)
+        with target_index_buffer_context as target_index_buffer:
+            _stage_live_line_target_buffer(line_changes.path, target_index_buffer)
 
         if preserve_selected_state:
             restore_selected_change_state(saved_selected_state)
@@ -860,68 +895,35 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
 def _derive_replacement_unit_display_ids(
     line_changes,
     *,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> list[set[int]]:
     """Map semantic replacement runs onto display IDs in the current selection."""
-    replacement_units: list[set[int]] = []
-    semantic_runs = derive_semantic_change_runs(
-        hunk_base_content.splitlines(keepends=True),
-        hunk_source_content.splitlines(keepends=True),
+    return derive_replacement_display_id_run_sets_from_lines(
+        line_changes,
+        source_lines=hunk_base_lines,
+        target_lines=hunk_source_lines,
     )
-
-    for run in semantic_runs:
-        if run.kind != SemanticChangeKind.REPLACEMENT:
-            continue
-
-        source_run = set(run.source_run or [])
-        target_run = set(run.target_run or [])
-        display_ids = {
-            line.id
-            for line in line_changes.lines
-            if line.id is not None and (
-                (line.kind == "-" and line.old_line_number in source_run)
-                or (line.kind == "+" and line.new_line_number in target_run)
-            )
-        }
-        if display_ids:
-            replacement_units.append(display_ids)
-
-    return replacement_units
 
 
 def _derive_replacement_line_runs(
     *,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> list[ReplacementLineRun]:
     """Derive replacement runs from before/after file comparison."""
-    replacement_runs: list[ReplacementLineRun] = []
-    semantic_runs = derive_semantic_change_runs(
-        hunk_base_content.splitlines(keepends=True),
-        hunk_source_content.splitlines(keepends=True),
+    return derive_replacement_line_runs_from_lines(
+        old_file_lines=hunk_base_lines,
+        new_file_lines=hunk_source_lines,
     )
-    for run in semantic_runs:
-        if (
-            run.kind == SemanticChangeKind.REPLACEMENT
-            and run.source_run is not None
-            and run.target_run is not None
-        ):
-            replacement_runs.append(
-                ReplacementLineRun(
-                    old_line_numbers=tuple(run.source_run),
-                    new_line_numbers=tuple(run.target_run),
-                )
-            )
-    return replacement_runs
 
 
 def _build_partial_replacement_selection_error(
     line_changes,
     selected_ids: set[int],
     *,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> str | None:
     """Reject contiguous interval selections that tear a replacement unit."""
     if len(selected_ids) <= 1:
@@ -934,8 +936,8 @@ def _build_partial_replacement_selection_error(
 
     replacement_units = _derive_replacement_unit_display_ids(
         line_changes,
-        hunk_base_content=hunk_base_content,
-        hunk_source_content=hunk_source_content,
+        hunk_base_lines=hunk_base_lines,
+        hunk_source_lines=hunk_source_lines,
     )
     for replacement_unit in replacement_units:
         selected_in_unit = selected_ids & replacement_unit
@@ -953,8 +955,8 @@ def _build_partial_structural_run_selection_error(
     line_changes,
     selected_ids: set[int],
     *,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> str | None:
     """Reject contiguous file-scoped selections that only partly include later runs."""
     if len(selected_ids) <= 1:
@@ -965,10 +967,10 @@ def _build_partial_structural_run_selection_error(
     if not is_contiguous_interval:
         return None
 
-    run_sets = derive_display_id_run_sets(
+    run_sets = derive_display_id_run_sets_from_lines(
         line_changes,
-        source_content=hunk_base_content,
-        target_content=hunk_source_content,
+        source_lines=hunk_base_lines,
+        target_lines=hunk_source_lines,
     )
     intersected_runs = [run_set for run_set in run_sets if selected_ids & run_set]
     if len(intersected_runs) <= 1:

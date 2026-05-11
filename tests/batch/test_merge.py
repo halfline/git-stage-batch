@@ -9,6 +9,7 @@ from git_stage_batch.batch.match import (
 )
 from git_stage_batch.batch.merge import (
     _check_structural_validity,
+    _try_apply_baseline_replacement_units,
     _satisfy_constraints,
     discard_batch,
     merge_batch,
@@ -338,6 +339,34 @@ class TestMergeBatch:
         result = merge_batch(source, ownership, working)
 
         assert result == b"line1\nline2\nline4\n"
+
+    def test_baseline_referenced_fallback_yields_line_chunks(self):
+        """Baseline-coordinate fallback returns line content chunks."""
+        source_lines = [b"line1\n", b"line2\n", b"line3\n", b"line4\n"]
+        working_lines = [b"line1\n"]
+        ownership = BatchOwnership.from_presence_lines(
+            ["2,4"],
+            [],
+            baseline_references={
+                line: BaselineReference(
+                    after_line=1,
+                    after_content=b"line1",
+                    before_line=None,
+                    has_before_line=False,
+                )
+                for line in (2, 4)
+            },
+        )
+        fallback_chunks = _try_apply_baseline_replacement_units(
+            source_lines,
+            working_lines,
+            ownership,
+            {2, 4},
+            [],
+        )
+
+        assert fallback_chunks is not None
+        assert list(fallback_chunks) == [b"line1\n", b"line2\n", b"line4\n"]
 
     def test_merge_with_deletion_suppresses_content(self):
         """Test that deletion constraints suppress matching content."""

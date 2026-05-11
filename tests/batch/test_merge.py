@@ -13,6 +13,7 @@ from git_stage_batch.batch.merge import (
     _build_realized_entries_for_discard,
     _check_structural_validity,
     _try_apply_baseline_replacement_units,
+    can_merge_batch_from_line_sequences,
     discard_batch_from_line_sequences_as_buffer,
     discard_batch_from_line_sequences,
     discard_batch_lines,
@@ -252,6 +253,17 @@ class TestMergeLineSequences:
         )
 
         assert result == b"line1\nline2\nline3\n"
+
+    def test_can_merge_accepts_non_list_sequences(self, line_sequence):
+        """Mergeability probes accept indexed line sequences."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\n", b"line3\n"])
+
+        assert can_merge_batch_from_line_sequences(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+        ) is True
 
     def test_merge_from_line_sequences_normalizes_and_restores_line_endings(self, line_sequence):
         """Merge accepts raw indexed lines and preserves the target line endings."""

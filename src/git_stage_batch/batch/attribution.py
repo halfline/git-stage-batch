@@ -8,6 +8,7 @@ content that may not currently be visible in the working tree.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import hashlib
 from dataclasses import dataclass
 from dataclasses import replace
@@ -76,8 +77,8 @@ class FileComparison:
     """Canonical baseline ↔ working-tree comparison for a file."""
 
     file_path: str
-    baseline_lines: list[bytes]
-    working_tree_lines: list[bytes]
+    baseline_lines: Sequence[bytes]
+    working_tree_lines: Sequence[bytes]
     alignment: object
 
 
@@ -139,17 +140,29 @@ def _has_presence_source_lines(file_metadata: dict) -> bool:
     )
 
 
-def compare_baseline_to_working_tree(file_path: str) -> FileComparison:
-    """Compare HEAD:file to the working tree directly."""
-    baseline_lines = read_git_object_as_lines(f"HEAD:{file_path}")
-    working_tree_lines = read_working_tree_file_as_lines(file_path)
+def _build_file_comparison_from_lines(
+    file_path: str,
+    *,
+    baseline_lines: Sequence[bytes],
+    working_tree_lines: Sequence[bytes],
+) -> FileComparison:
     alignment = match_lines(source_lines=baseline_lines, target_lines=working_tree_lines)
-
     return FileComparison(
         file_path=file_path,
         baseline_lines=baseline_lines,
         working_tree_lines=working_tree_lines,
         alignment=alignment,
+    )
+
+
+def compare_baseline_to_working_tree(file_path: str) -> FileComparison:
+    """Compare HEAD:file to the working tree directly."""
+    baseline_lines = read_git_object_as_lines(f"HEAD:{file_path}")
+    working_tree_lines = read_working_tree_file_as_lines(file_path)
+    return _build_file_comparison_from_lines(
+        file_path,
+        baseline_lines=baseline_lines,
+        working_tree_lines=working_tree_lines,
     )
 
 

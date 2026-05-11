@@ -29,6 +29,18 @@ def _line_payload_at(lines: Sequence[bytes], index: int) -> bytes:
     return _line_payload(lines[index])
 
 
+def _line_entry_content(line_entry: LineEntry) -> bytes:
+    return line_entry.text_bytes + (
+        b"\n" if line_entry.has_trailing_newline else b""
+    )
+
+
+def _line_content_at(lines: Sequence[bytes], index: int) -> bytes:
+    return _line_payload(lines[index]) + (
+        b"\n" if lines[index].endswith(b"\n") else b""
+    )
+
+
 def _line_payloads(
     lines: Sequence[bytes],
     start: int,
@@ -167,7 +179,7 @@ def build_target_index_content_with_selected_lines(
     return "\n".join(output_lines) + ("\n" if trailing_newline else "")
 
 
-def _target_index_line_payloads(
+def _target_index_line_contents(
     line_changes: LineLevelChange,
     include_ids: set[int],
     base_lines: Sequence[bytes],
@@ -194,11 +206,11 @@ def _target_index_line_payloads(
             return
         target_index = max(old_line_number - 1, 0)
         while base_pointer < min(target_index, base_line_count):
-            yield _line_payload_at(base_lines, base_pointer)
+            yield _line_content_at(base_lines, base_pointer)
             base_pointer += 1
 
     for index in range(0, min(base_pointer, base_line_count)):
-        yield _line_payload_at(base_lines, index)
+        yield _line_content_at(base_lines, index)
 
     for line_entry in line_changes.lines:
         if _is_synthetic_gap_line(line_entry):
@@ -209,7 +221,7 @@ def _target_index_line_payloads(
             yield from copy_unchanged_lines_before(line_entry.old_line_number)
             yield from flush_pending_additions()
             if base_pointer < base_line_count:
-                yield _line_payload_at(base_lines, base_pointer)
+                yield _line_content_at(base_lines, base_pointer)
                 base_pointer += 1
         elif line_entry.kind == "-":
             yield from copy_unchanged_lines_before(line_entry.old_line_number)
@@ -218,19 +230,19 @@ def _target_index_line_payloads(
                 if base_line_matches(line_entry.text_bytes):
                     base_pointer += 1
             elif base_line_matches(line_entry.text_bytes):
-                yield _line_payload_at(base_lines, base_pointer)
+                yield _line_content_at(base_lines, base_pointer)
                 base_pointer += 1
         elif line_entry.kind == "+":
             if base_line_matches(line_entry.text_bytes):
                 yield from flush_pending_additions()
-                yield _line_payload_at(base_lines, base_pointer)
+                yield _line_content_at(base_lines, base_pointer)
                 base_pointer += 1
             elif line_entry.id in include_ids:
-                pending_additions.append(line_entry.text_bytes)
+                pending_additions.append(_line_entry_content(line_entry))
 
     yield from flush_pending_additions()
     while 0 <= base_pointer < base_line_count:
-        yield _line_payload_at(base_lines, base_pointer)
+        yield _line_content_at(base_lines, base_pointer)
         base_pointer += 1
 
 
@@ -243,18 +255,13 @@ def build_target_index_buffer_from_lines(
 ) -> EditorBuffer:
     """Build target index content from indexed base content lines."""
     base_line_count = len(base_lines)
-    return edit_lines_as_buffer(
-        base_lines,
-        _target_index_line_payloads(
+    return EditorBuffer.from_chunks(
+        _target_index_line_contents(
             line_changes,
             include_ids,
             base_lines,
             base_line_count,
-        ),
-        selection_start=0,
-        selection_end=base_line_count,
-        has_trailing_newline=base_has_trailing_newline,
-        add_trailing_newline_when_nonempty=base_line_count == 0,
+        )
     )
 
 
@@ -538,7 +545,7 @@ def build_target_working_tree_content_with_discarded_lines(
     return "\n".join(output_lines) + ("\n" if output_lines else "")
 
 
-def _target_working_tree_line_payloads(
+def _target_working_tree_line_contents(
     line_changes: LineLevelChange,
     discard_ids: set[int],
     working_lines: Sequence[bytes],
@@ -556,7 +563,7 @@ def _target_working_tree_line_payloads(
     def copy_unchanged_lines_until_index(target_index: int) -> Iterator[bytes]:
         nonlocal working_pointer
         while working_pointer < min(target_index, working_line_count):
-            yield _line_payload_at(working_lines, working_pointer)
+            yield _line_content_at(working_lines, working_pointer)
             working_pointer += 1
 
     def copy_remaining_lines_before_deletion(index: int) -> Iterator[bytes]:
@@ -578,7 +585,7 @@ def _target_working_tree_line_payloads(
                 return
 
     for index in range(0, min(working_pointer, working_line_count)):
-        yield _line_payload_at(working_lines, index)
+        yield _line_content_at(working_lines, index)
 
     for index, line_entry in enumerate(line_changes.lines):
         if _is_synthetic_gap_line(line_entry):
@@ -587,23 +594,23 @@ def _target_working_tree_line_payloads(
         if line_entry.kind == " ":
             yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if working_pointer < working_line_count:
-                yield _line_payload_at(working_lines, working_pointer)
+                yield _line_content_at(working_lines, working_pointer)
                 working_pointer += 1
         elif line_entry.kind == "-":
             if line_entry.id in discard_ids:
                 yield from copy_remaining_lines_before_deletion(index)
-                yield line_entry.text_bytes
+                yield _line_entry_content(line_entry)
         elif line_entry.kind == "+":
             yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if working_pointer < working_line_count:
                 if line_entry.id in discard_ids:
                     working_pointer += 1
                 else:
-                    yield _line_payload_at(working_lines, working_pointer)
+                    yield _line_content_at(working_lines, working_pointer)
                     working_pointer += 1
 
     while 0 <= working_pointer < working_line_count:
-        yield _line_payload_at(working_lines, working_pointer)
+        yield _line_content_at(working_lines, working_pointer)
         working_pointer += 1
 
 
@@ -611,21 +618,18 @@ def build_target_working_tree_buffer_from_lines(
     line_changes: LineLevelChange,
     discard_ids: set[int],
     working_lines: Sequence[bytes],
+    *,
+    working_has_trailing_newline: bool,
 ) -> EditorBuffer:
     """Build target working tree content from indexed working tree lines."""
     working_line_count = len(working_lines)
-    return edit_lines_as_buffer(
-        working_lines,
-        _target_working_tree_line_payloads(
+    return EditorBuffer.from_chunks(
+        _target_working_tree_line_contents(
             line_changes,
             discard_ids,
             working_lines,
             working_line_count,
-        ),
-        selection_start=0,
-        selection_end=working_line_count,
-        has_trailing_newline=False,
-        add_trailing_newline_when_nonempty=True,
+        )
     )
 
 

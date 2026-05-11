@@ -68,11 +68,16 @@ from ..data.line_state import load_line_changes_from_state
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
 from ..data.session import require_session_started, snapshot_file_if_untracked, snapshot_files_if_untracked
 from ..data.undo import undo_checkpoint
+from ..editor import (
+    EditorBuffer,
+    write_buffer_to_path,
+)
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
 from ..output import print_remaining_line_changes_header
 from ..staging.operations import build_target_working_tree_content_bytes_with_discarded_lines
 from ..staging.operations import build_target_working_tree_content_bytes_with_replaced_lines
+from ..staging.operations import build_target_working_tree_buffer_from_lines
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_command
@@ -493,19 +498,21 @@ def command_discard_line(line_id_specification: str, file: str | None = None) ->
             line_id_specification=line_id_specification,
         )
 
-        # Get selected working tree content
         working_file_path = get_git_repository_root_path() / line_changes.path
-        if working_file_path.exists():
-            working_bytes = working_file_path.read_bytes()
-        else:
+        if not working_file_path.exists():
             exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
 
-        # Build new working tree content with selected lines discarded
-        target_working_content = build_target_working_tree_content_bytes_with_discarded_lines(
-            line_changes, set(requested_ids), working_bytes)
+        with EditorBuffer.from_path(working_file_path) as working_lines:
+            target_working_buffer = build_target_working_tree_buffer_from_lines(
+                line_changes,
+                set(requested_ids),
+                working_lines,
+                working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+            )
 
         # Write back to working tree
-        working_file_path.write_bytes(target_working_content)
+        with target_working_buffer:
+            write_buffer_to_path(working_file_path, target_working_buffer)
 
         # After modifying working tree, recalculate hunk for the SAME file
         print(

@@ -22,6 +22,7 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import (
     advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
+    build_file_hunk_from_buffer,
     clear_selected_change_state_files,
     fetch_next_change,
     recalculate_selected_hunk_for_file,
@@ -30,6 +31,7 @@ from git_stage_batch.data.hunk_tracking import (
     require_selected_hunk,
     snapshots_are_stale,
 )
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.utils.file_io import append_lines_to_file
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -100,6 +102,35 @@ class TestClearCurrentHunkStateFiles:
         """Test that clearing works even when files don't exist."""
         # Should not raise error when files don't exist
         clear_selected_change_state_files()
+
+
+def test_build_file_hunk_from_buffer_accepts_buffer(temp_git_repo):
+    """Hypothetical file views can read generated buffers."""
+    test_file = temp_git_repo / "test.txt"
+    test_file.write_text("line1\nline2\n")
+    subprocess.run(
+        ["git", "add", "test.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add test file"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+
+    with EditorBuffer.from_chunks([b"line1\nchanged\n"]) as buffer:
+        line_changes = build_file_hunk_from_buffer("test.txt", buffer)
+
+    assert line_changes is not None
+    assert [line.text for line in line_changes.lines if line.kind == "-"] == [
+        "line2"
+    ]
+    assert [line.text for line in line_changes.lines if line.kind == "+"] == [
+        "changed"
+    ]
 
 
 class TestFindAndCacheNextUnblockedHunk:

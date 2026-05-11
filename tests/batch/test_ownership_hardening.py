@@ -8,11 +8,13 @@ import pytest
 import git_stage_batch.batch.attribution as attribution_module
 from git_stage_batch.batch.attribution import (
     AttributionUnitKind,
+    FileComparison,
     compare_baseline_to_working_tree,
     enumerate_units_from_file_comparison,
     build_file_attribution,
     project_attribution_to_diff,
 )
+from git_stage_batch.batch.match import match_lines
 from git_stage_batch.core.diff_parser import (
     build_line_changes_from_patch_bytes,
 )
@@ -56,6 +58,29 @@ def _create_batch_source_commit(repo, path: str, content: str) -> str:
         capture_output=True,
     )
     return commit
+
+def test_file_comparison_accepts_non_list_line_sequences(line_sequence):
+    """Attribution comparison only requires sized indexable line sequences."""
+    baseline_lines = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+    working_tree_lines = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+    comparison = FileComparison(
+        file_path="test.txt",
+        baseline_lines=baseline_lines,
+        working_tree_lines=working_tree_lines,
+        alignment=match_lines(baseline_lines, working_tree_lines),
+    )
+    units_map = {}
+
+    enumerate_units_from_file_comparison(comparison, units_map)
+
+    replacement_units = [
+        unit
+        for unit in units_map.values()
+        if unit.kind == AttributionUnitKind.REPLACEMENT
+    ]
+    assert len(replacement_units) == 1
+    assert replacement_units[0].deletion_content == b"old\n"
+    assert replacement_units[0].claimed_content == b"new\n"
 
 
 def test_legacy_claimed_lines_metadata_owns_presence_units(temp_repo, monkeypatch):

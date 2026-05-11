@@ -619,7 +619,12 @@ def _batch_commit_parents(batch_name: str) -> list[str]:
     return parents
 
 
-def _remove_file_from_batch_commit(batch_name: str, file_path: str) -> None:
+def _remove_file_from_batch_commit(
+    batch_name: str,
+    file_path: str,
+    *,
+    source_buffers: dict[str, EditorBuffer] | None = None,
+) -> None:
     """Remove a file from batch commit tree (for deletions).
 
     Creates a new batch commit with the file removed from the tree.
@@ -648,10 +653,21 @@ def _remove_file_from_batch_commit(batch_name: str, file_path: str) -> None:
     )
 
     from .state_refs import sync_batch_state_refs
-    sync_batch_state_refs(batch_name, content_commit=commit_sha)
+    sync_batch_state_refs(
+        batch_name,
+        content_commit=commit_sha,
+        source_buffers=source_buffers,
+    )
 
 
-def _update_batch_commit(batch_name: str, file_path: str, blob_sha: str, file_mode: str) -> None:
+def _update_batch_commit(
+    batch_name: str,
+    file_path: str,
+    blob_sha: str,
+    file_mode: str,
+    *,
+    source_buffers: dict[str, EditorBuffer] | None = None,
+) -> None:
     """Update batch commit tree with new/updated file.
 
     Creates a new batch commit with parents=[baseline, ...batch sources].
@@ -677,7 +693,11 @@ def _update_batch_commit(batch_name: str, file_path: str, blob_sha: str, file_mo
     )
 
     from .state_refs import sync_batch_state_refs
-    sync_batch_state_refs(batch_name, content_commit=commit_sha)
+    sync_batch_state_refs(
+        batch_name,
+        content_commit=commit_sha,
+        source_buffers=source_buffers,
+    )
 
 
 def read_file_from_batch(batch_name: str, file_path: str) -> Optional[str]:

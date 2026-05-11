@@ -17,6 +17,7 @@ from .line_endings import (
     restore_line_endings,
     restore_line_endings_in_chunks,
 )
+from .edit import edit_lines_as_buffer
 
 __all__ = [
     "EditorBuffer",
@@ -28,6 +29,7 @@ __all__ = [
     "buffer_matches",
     "buffer_preview",
     "detect_line_ending",
+    "edit_lines_as_buffer",
     "restore_line_endings",
     "restore_line_endings_in_chunks",
     "write_buffer_to_path",

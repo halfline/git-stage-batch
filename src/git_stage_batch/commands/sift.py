@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Optional
 
 from ..batch.comparison import SemanticChangeKind, derive_semantic_change_runs
-from ..batch.merge import merge_batch
+from ..batch.merge import merge_batch_lines
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
@@ -50,8 +51,10 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     sifted_empty_text_path_change_type,
 )
+from ..editor import EditorBuffer
 from ..exceptions import BatchMetadataError, exit_with_error
 from ..i18n import _
+from ..utils.text import normalize_line_sequence_endings
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
     create_git_blob,
@@ -493,29 +496,36 @@ def _compute_sifted_text_file(
     if target_exists == working_exists and working_content == target_content:
         return None
 
-    new_ownership = build_ownership_from_working_to_target_delta(
-        working_content=working_content,
-        target_content=target_content,
-    )
-    if new_ownership is None or new_ownership.is_empty():
-        result_change_type = sifted_empty_text_path_change_type(
-            change_type,
-            target_exists=target_exists,
-            working_exists=working_exists,
-            target_content=target_content,
-            ownership_is_empty=True,
-        )
-        if result_change_type == TextFileChangeType.MODIFIED:
-            return None
-        new_ownership = BatchOwnership([], [])
-    else:
-        result_change_type = change_type
+    with (
+        EditorBuffer.from_bytes(working_content) as working_content_lines,
+        EditorBuffer.from_bytes(target_content) as target_content_lines,
+    ):
+        working_lines = normalize_line_sequence_endings(working_content_lines)
+        target_lines = normalize_line_sequence_endings(target_content_lines)
 
-    _validate_sifted_text_file_result(
-        target_content=target_content,
-        dest_ownership=new_ownership,
-        working_content=working_content,
-    )
+        new_ownership = build_ownership_from_working_and_target_lines(
+            working_lines=working_lines,
+            target_lines=target_lines,
+        )
+        if new_ownership is None or new_ownership.is_empty():
+            result_change_type = sifted_empty_text_path_change_type(
+                change_type,
+                target_exists=target_exists,
+                working_exists=working_exists,
+                target_content=target_content,
+                ownership_is_empty=True,
+            )
+            if result_change_type == TextFileChangeType.MODIFIED:
+                return None
+            new_ownership = BatchOwnership([], [])
+        else:
+            result_change_type = change_type
+
+        validate_sifted_text_file_result_from_lines(
+            target_lines=target_lines,
+            dest_ownership=new_ownership,
+            working_lines=working_lines,
+        )
 
     return {
         "type": "text",
@@ -531,18 +541,21 @@ def build_ownership_from_working_to_target_delta(
     target_content: bytes,
 ) -> Optional[BatchOwnership]:
     """Build ownership describing changes needed to turn working into target."""
-    working_normalized = working_content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-    target_normalized = target_content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    with (
+        EditorBuffer.from_bytes(working_content) as working_content_lines,
+        EditorBuffer.from_bytes(target_content) as target_content_lines,
+    ):
+        return build_ownership_from_working_and_target_lines(
+            normalize_line_sequence_endings(working_content_lines),
+            normalize_line_sequence_endings(target_content_lines),
+        )
 
-    if working_normalized:
-        working_lines = working_normalized.splitlines(keepends=True)
-    else:
-        working_lines = []
 
-    if target_normalized:
-        target_lines = target_normalized.splitlines(keepends=True)
-    else:
-        target_lines = []
+def build_ownership_from_working_and_target_lines(
+    working_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+) -> Optional[BatchOwnership]:
+    """Build ownership from normalized working and target byte-line sequences."""
 
     semantic_runs = derive_semantic_change_runs(
         source_lines=working_lines,
@@ -592,19 +605,13 @@ def build_ownership_from_working_to_target_delta(
     )
 
 
-
-def _validate_sifted_text_file_result(
-    target_content: bytes,
+def validate_sifted_text_file_result_from_lines(
+    target_lines: Sequence[bytes],
     dest_ownership: BatchOwnership,
-    working_content: bytes,
+    working_lines: Sequence[bytes],
 ) -> None:
-    """Validate that a sifted destination representation is semantically correct."""
+    """Validate a sifted representation against normalized byte-line sequences."""
     resolved = dest_ownership.resolve()
-    target_normalized = target_content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-    if target_normalized:
-        target_lines = target_normalized.splitlines(keepends=True)
-    else:
-        target_lines = []
 
     for claimed_line in resolved.presence_line_set:
         if claimed_line < 1 or claimed_line > len(target_lines):
@@ -624,16 +631,17 @@ def _validate_sifted_text_file_result(
             raise MergeError("Sift validation failed: deletion claim has empty content")
 
     try:
-        reconstructed = merge_batch(
-            batch_source_content=target_content,
-            ownership=dest_ownership,
-            working_content=working_content,
+        reconstructed = merge_batch_lines(
+            target_lines,
+            dest_ownership,
+            working_lines,
         )
     except MergeError as e:
         raise MergeError(
             f"Sift validation failed: destination representation cannot be merged: {e}"
         ) from e
 
+    target_content = b"".join(target_lines)
     if reconstructed != target_content:
         raise MergeError(
             f"Sift validation failed: applying destination representation does not produce "

@@ -2,7 +2,12 @@
 
 import pytest
 
-from git_stage_batch.utils.text import bytes_to_lines
+from git_stage_batch.utils.text import (
+    bytes_to_lines,
+    normalize_line_ending,
+    normalize_line_endings,
+    normalize_line_sequence_endings,
+)
 
 
 class TestBytesToLines:
@@ -98,3 +103,80 @@ class TestBytesToLines:
         """Test that non-bytes input raises TypeError."""
         with pytest.raises(TypeError, match="expected bytes-like object"):
             list(bytes_to_lines(["not bytes"]))
+
+
+class TestNormalizeLineSequenceEndings:
+    """Tests for lazy line-ending normalization over line sequences."""
+
+    def test_normalizes_line_endings_on_access(self, line_sequence):
+        """Line sequences are normalized without requiring a list input."""
+        lines = line_sequence([b"one\r\n", b"two\r", b"three\n", b"four"])
+        normalized = normalize_line_sequence_endings(lines)
+
+        assert normalized[0] == b"one\n"
+        assert normalized[1] == b"two\n"
+        assert normalized[2] == b"three\n"
+        assert normalized[3] == b"four"
+
+    def test_normalizes_only_line_terminators(self, line_sequence):
+        """Embedded carriage returns remain content in line sequences."""
+        lines = line_sequence([b"one\rtwo\n", b"three\rfour\r\n"])
+        normalized = normalize_line_sequence_endings(lines)
+
+        assert normalized[0] == b"one\rtwo\n"
+        assert normalized[1] == b"three\rfour\n"
+
+    def test_supports_slices(self, line_sequence):
+        """Normalized line sequences support slice access."""
+        lines = line_sequence([b"one\r\n", b"two\r", b"three\n"])
+        normalized = normalize_line_sequence_endings(lines)
+
+        assert normalized[0:2] == [b"one\n", b"two\n"]
+
+    def test_negative_indexes_follow_sequence_rules(self, line_sequence):
+        """Normalized line sequences support negative indexes."""
+        lines = line_sequence([b"one\r\n", b"two\r"])
+        normalized = normalize_line_sequence_endings(lines)
+
+        assert normalized[-1] == b"two\n"
+        with pytest.raises(IndexError):
+            normalized[-3]
+
+    def test_repeated_access_does_not_cache_normalized_lines(self, line_sequence):
+        """Repeated CRLF access returns equivalent but independent bytes."""
+        lines = line_sequence([b"one\r\n"])
+        normalized = normalize_line_sequence_endings(lines)
+
+        assert normalized[0] == b"one\n"
+        assert normalized[0] == b"one\n"
+        assert normalized[0] is not normalized[0]
+
+
+class TestNormalizeLineEnding:
+    """Tests for single-line terminator normalization."""
+
+    def test_returns_lf_lines_unchanged(self):
+        """LF-terminated and unterminated lines are already normalized."""
+        line = b"one\n"
+        unterminated = b"two"
+
+        assert normalize_line_ending(line) is line
+        assert normalize_line_ending(unterminated) is unterminated
+
+    def test_rewrites_crlf_and_cr_terminators(self):
+        """CRLF and CR terminators normalize to LF."""
+        assert normalize_line_ending(b"one\r\n") == b"one\n"
+        assert normalize_line_ending(b"two\r") == b"two\n"
+
+    def test_preserves_embedded_carriage_returns(self):
+        """Only the line terminator is normalized."""
+        assert normalize_line_ending(b"one\rtwo\r\n") == b"one\rtwo\n"
+        assert normalize_line_ending(b"one\rtwo\n") == b"one\rtwo\n"
+
+
+class TestNormalizeLineEndings:
+    """Tests for whole-buffer line-ending normalization."""
+
+    def test_normalizes_embedded_carriage_returns(self):
+        """Whole-buffer normalization still rewrites every CR."""
+        assert normalize_line_endings(b"one\rtwo\r\n") == b"one\ntwo\n"

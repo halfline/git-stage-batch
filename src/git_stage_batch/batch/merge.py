@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import difflib
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -136,8 +137,8 @@ def _check_structural_validity(
     line_mapping: LineMapping,
     claimed_lines: set[int],
     deletions: list,  # list[DeletionClaim]
-    source_lines: list[bytes],
-    target_lines: list[bytes]
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes]
 ) -> None:
     """Validate that batch can be safely applied given structural alignment.
 
@@ -243,8 +244,8 @@ def _check_claimed_region_compatibility(
     line_mapping: LineMapping,
     claimed_lines: set[int],
     deletions: list,  # list[DeletionClaim]
-    source_lines: list[bytes],
-    target_lines: list[bytes]
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes]
 ) -> None:
     """Check if claimed lines come from source regions with structurally coherent context.
 
@@ -301,7 +302,7 @@ def _check_claimed_region_compatibility(
 def _get_missing_claimed_lines(
     line_mapping: LineMapping,
     claimed_lines: set[int],
-    source_lines: list[bytes]
+    source_lines: Sequence[bytes]
 ) -> list[int]:
     """Return claimed source lines that are not present in the working tree."""
     missing_claimed = []
@@ -364,8 +365,8 @@ def _collect_claimed_run_interval_facts(
     run_start: int,
     run_end: int,
     line_mapping: LineMapping,
-    source_lines: list[bytes],
-    target_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
     deletions: list
 ) -> ClaimedRunIntervalFacts:
     """Collect explicit structural facts about one missing claimed run."""
@@ -535,8 +536,8 @@ def _is_claimed_run_structurally_coherent(
 
 
 def _apply_presence_constraints(
-    source_lines: list[bytes],
-    working_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     presence_line_set: set[int],
     *,
     source_to_working_mapping: LineMapping | None = None,
@@ -730,8 +731,8 @@ def _missing_claimed_lines(
 
 
 def _satisfy_constraints(
-    source_lines: list[bytes],
-    working_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     presence_line_set: set[int],
     deletion_claims: list['DeletionClaim'],
     *,
@@ -1089,7 +1090,7 @@ def _reference_line_matches(
 
 def _baseline_reference_insertion_position(
     reference,
-    working_lines: list[bytes],
+    working_lines: Sequence[bytes],
 ) -> int | None:
     """Return the proven insertion position for a baseline reference."""
     if reference is None or not getattr(reference, "has_after_line", False):
@@ -1134,7 +1135,7 @@ def _baseline_reference_insertion_position(
 
 def _baseline_reference_absence_position(
     reference,
-    working_lines: list[bytes],
+    working_lines: Sequence[bytes],
     sequence_length: int,
 ) -> int | None:
     """Return the proven removal position for a baseline reference."""
@@ -1175,7 +1176,7 @@ def _baseline_reference_absence_position(
 
 
 def _try_apply_baseline_absence_constraints(
-    working_lines: list[bytes],
+    working_lines: Sequence[bytes],
     deletion_claims: list['DeletionClaim'],
 ) -> bytes | None:
     """Apply absence-only constraints by exact baseline coordinates."""
@@ -1216,7 +1217,7 @@ def _try_apply_baseline_absence_constraints(
 
 def _baseline_removal_edit(
     claim: 'DeletionClaim',
-    working_lines: list[bytes],
+    working_lines: Sequence[bytes],
 ) -> tuple[int, int, list[bytes]] | None:
     if not claim.content_lines:
         return None
@@ -1238,7 +1239,7 @@ def _baseline_removal_edit(
 
 
 def _apply_non_overlapping_baseline_edits(
-    working_lines: list[bytes],
+    working_lines: Sequence[bytes],
     edits: list[tuple[int, int, list[bytes]]],
 ) -> bytes | None:
     sorted_edits = sorted(edits, key=lambda edit: (edit[0], edit[1]))
@@ -1272,8 +1273,8 @@ def _has_complete_baseline_references(
 
 
 def _try_apply_baseline_replacement_units(
-    source_lines: list[bytes],
-    working_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
     presence_line_set: set[int],
     deletion_claims: list['DeletionClaim'],
@@ -1586,8 +1587,8 @@ def discard_batch(
 
 
 def _build_baseline_correspondence(
-    baseline_lines: list[bytes],
-    source_lines: list[bytes]
+    baseline_lines: Sequence[bytes],
+    source_lines: Sequence[bytes]
 ) -> BaselineCorrespondence:
     """Build restoration correspondence from source lines to baseline regions.
 
@@ -1723,8 +1724,8 @@ def _build_baseline_correspondence(
 
 
 def _build_realized_entries_for_discard(
-    source_lines: list[bytes],
-    working_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     working_to_source: 'LineMapping'
 ) -> list[RealizedEntry]:
     """Build structured entries from working tree with source provenance.
@@ -1986,7 +1987,7 @@ def detect_ownership_conflicts(
 
 
 def _check_pair_conflicts(
-    source_lines: list[bytes],
+    source_lines: Sequence[bytes],
     ownership_a: 'BatchOwnership',
     ownership_b: 'BatchOwnership'
 ) -> None:
@@ -2027,7 +2028,7 @@ def _check_pair_conflicts(
 
 
 def _check_presence_vs_absence_conflict(
-    source_lines: list[bytes],
+    source_lines: Sequence[bytes],
     claimed_lines: set[int],
     deletions: list['DeletionClaim']
 ) -> None:

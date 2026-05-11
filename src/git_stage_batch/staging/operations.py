@@ -538,21 +538,6 @@ def build_target_working_tree_content_with_discarded_lines(
     return "\n".join(output_lines) + ("\n" if output_lines else "")
 
 
-def build_target_working_tree_content_bytes_with_discarded_lines(
-    line_changes: LineLevelChange,
-    discard_ids: set[int],
-    working_content: bytes
-) -> bytes:
-    """Bytes-preserving variant of build_target_working_tree_content_with_discarded_lines."""
-    with EditorBuffer.from_bytes(working_content) as working_lines:
-        with build_target_working_tree_buffer_from_lines(
-            line_changes,
-            discard_ids,
-            working_lines,
-        ) as target_buffer:
-            return target_buffer.to_bytes()
-
-
 def _target_working_tree_line_payloads(
     line_changes: LineLevelChange,
     discard_ids: set[int],

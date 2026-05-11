@@ -1173,11 +1173,11 @@ class OwnershipUnit:
     preserves_replacement_unit: bool = False
 
 
-def build_ownership_units_from_display(
+def build_ownership_units_from_batch_source_lines(
     ownership: BatchOwnership,
-    batch_source_content: bytes
+    batch_source_lines: Sequence[bytes],
 ) -> list[OwnershipUnit]:
-    """Build semantic ownership units from reconstructed display lines.
+    """Build semantic ownership units from indexed batch-source lines.
 
     Persisted replacement metadata is honored first, so captured replacements
     remain whole atomic units even if their lines are no longer display-adjacent.
@@ -1186,10 +1186,10 @@ def build_ownership_units_from_display(
     actually sees in the batch display.
 
     Grouping rules:
-    - Deletion block immediately followed by claimed line → REPLACEMENT unit (atomic)
-    - Claimed line immediately followed by deletion block → REPLACEMENT unit (atomic)
-    - Deletion block with no adjacent claimed line → DELETION_ONLY unit (atomic)
-    - Claimed line with no adjacent deletion → PRESENCE_ONLY unit (non-atomic)
+    - Deletion block immediately followed by claimed line -> REPLACEMENT unit (atomic)
+    - Claimed line immediately followed by deletion block -> REPLACEMENT unit (atomic)
+    - Deletion block with no adjacent claimed line -> DELETION_ONLY unit (atomic)
+    - Claimed line with no adjacent deletion -> PRESENCE_ONLY unit (non-atomic)
 
     For fallback display-adjacent grouping, claimed lines are processed
     individually (not as blocks) to preserve fine-grained reset capability.
@@ -1199,28 +1199,7 @@ def build_ownership_units_from_display(
 
     "Adjacent" means consecutive in the display_lines sequence with no intervening
     entries of a different type. Source-line proximity is not considered.
-
-    Args:
-        ownership: BatchOwnership to analyze
-        batch_source_content: Batch source content (bytes)
-
-    Returns:
-        List of semantic ownership units with real display IDs
-
-    Source lines are decoded with errors='replace' during display
-    reconstruction. This limits line-level reset to textual content.
     """
-    return build_ownership_units_from_batch_source_lines(
-        ownership,
-        batch_source_content.splitlines(keepends=True),
-    )
-
-
-def build_ownership_units_from_batch_source_lines(
-    ownership: BatchOwnership,
-    batch_source_lines: Sequence[bytes],
-) -> list[OwnershipUnit]:
-    """Build semantic ownership units from indexed batch-source byte lines."""
     from ..batch.display import build_display_lines_from_batch_source_lines
 
     display_lines = build_display_lines_from_batch_source_lines(
@@ -1238,7 +1217,8 @@ def build_ownership_units_from_display_lines(
 
     This is the fast path for callers that already need display lines for
     rendering.  It preserves the same grouping rules as
-    build_ownership_units_from_display() without rebuilding the display model.
+    build_ownership_units_from_batch_source_lines() without rebuilding the
+    display model.
     """
     units, consumed_claimed_lines, consumed_deletion_indices = (
         _build_explicit_replacement_units_from_display_lines(

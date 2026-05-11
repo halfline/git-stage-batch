@@ -18,6 +18,7 @@ from git_stage_batch.batch.ownership import (
     rebuild_ownership_from_units,
 )
 from git_stage_batch.batch.display import build_display_lines_from_batch_source
+from git_stage_batch.batch.selection import select_batch_ownership_for_display_ids_from_lines
 
 
 def test_display_includes_context_between_separated_claimed_lines():
@@ -141,6 +142,26 @@ def test_build_ownership_units_accepts_batch_source_line_sequence(line_sequence)
     assert units[0].kind == OwnershipUnitKind.REPLACEMENT
     assert units[0].is_atomic is True
     assert units[0].claimed_source_lines == {1}
+
+
+def test_select_batch_ownership_accepts_batch_source_line_sequence(line_sequence):
+    """Line selection can reconstruct ownership from indexed batch-source lines."""
+    source_lines = line_sequence([
+        b"line 1\n",
+        b"line 2\n",
+        b"line 3\n",
+    ])
+    ownership = BatchOwnership.from_presence_lines(["1,3"], [])
+    file_meta = ownership.to_metadata_dict()
+
+    selected = select_batch_ownership_for_display_ids_from_lines(
+        file_meta,
+        source_lines,
+        {2},
+    )
+
+    assert selected.presence_line_set() == {3}
+
 
 def test_claimed_followed_by_deletion_becomes_replacement():
     """Test claimed line immediately followed by deletion block forms REPLACEMENT unit."""

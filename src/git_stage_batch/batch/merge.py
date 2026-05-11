@@ -1497,23 +1497,6 @@ def merge_batch_as_buffer(
         )
 
 
-def merge_batch_from_line_sequences(
-    source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
-    working_lines: Sequence[bytes],
-    *,
-    source_to_working_mapping: LineMapping | None = None,
-) -> bytes:
-    """Merge byte-line sequences and restore the destination line ending style."""
-    with merge_batch_from_line_sequences_as_buffer(
-        source_lines,
-        ownership,
-        working_lines,
-        source_to_working_mapping=source_to_working_mapping,
-    ) as buffer:
-        return buffer.to_bytes()
-
-
 def merge_batch_from_line_sequences_as_buffer(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
@@ -1698,22 +1681,6 @@ def discard_batch_as_buffer(
         )
 
 
-def discard_batch_from_line_sequences(
-    source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
-    working_lines: Sequence[bytes],
-    baseline_lines: Sequence[bytes],
-) -> bytes:
-    """Discard ownership from byte-line sequences and restore line endings."""
-    with discard_batch_from_line_sequences_as_buffer(
-        source_lines,
-        ownership,
-        working_lines,
-        baseline_lines,
-    ) as buffer:
-        return buffer.to_bytes()
-
-
 def discard_batch_from_line_sequences_as_buffer(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
@@ -1739,23 +1706,6 @@ def discard_batch_from_line_sequences_as_buffer(
             ),
             result_line_ending,
         ),
-    )
-
-
-def discard_batch_lines(
-    source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
-    working_lines: Sequence[bytes],
-    baseline_lines: Sequence[bytes],
-) -> bytes:
-    """Discard ownership from normalized byte-line sequences."""
-    return b"".join(
-        _discard_batch_line_chunks(
-            source_lines,
-            ownership,
-            working_lines,
-            baseline_lines,
-        )
     )
 
 

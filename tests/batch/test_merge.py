@@ -19,7 +19,6 @@ from git_stage_batch.batch.merge import (
     discard_batch_lines,
     merge_batch_from_line_sequences_as_buffer,
     merge_batch_from_line_sequences,
-    merge_batch_lines,
     _satisfy_constraints,
     discard_batch,
     merge_batch,
@@ -240,19 +239,6 @@ class TestMergeLineSequences:
         assert region is not None
         assert region.kind == RegionKind.REPLACE_BY_HUNK
         assert region.baseline_lines == [b"old\n"]
-
-    def test_merge_lines_accepts_non_list_sequences(self, line_sequence):
-        """Merge core accepts indexed byte-line sequences."""
-        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
-        working = line_sequence([b"line1\n", b"line3\n"])
-
-        result = merge_batch_lines(
-            source,
-            BatchOwnership.from_presence_lines(["2"], []),
-            working,
-        )
-
-        assert result == b"line1\nline2\nline3\n"
 
     def test_can_merge_accepts_non_list_sequences(self, line_sequence):
         """Mergeability probes accept indexed line sequences."""

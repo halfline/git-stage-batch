@@ -14,7 +14,11 @@ from .query import get_batch_baseline_commit, get_batch_commit_sha, read_batch_m
 from .state_refs import read_file_backed_batch_metadata
 from .validation import batch_exists, validate_batch_name
 from ..core.models import BinaryFileChange
-from ..core.text_lifecycle import TextFileChangeType, resolve_text_change_type
+from ..core.text_lifecycle import (
+    TextFileChangeType,
+    normalized_text_change_type,
+    resolve_text_change_type,
+)
 from ..data.batch_sources import (
     create_batch_source_commit,
     create_batch_source_commits,
@@ -24,13 +28,13 @@ from ..data.batch_sources import (
 )
 from ..editor import (
     EditorBuffer,
+    load_git_tree_files_as_buffers,
     restore_line_endings_in_chunks,
     detect_line_ending,
 )
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
     create_git_blob,
-    create_git_blobs,
     GitIndexEntryUpdate,
     get_git_repository_root_path,
     git_commit_tree,
@@ -38,7 +42,6 @@ from ..utils.git import (
     git_update_index,
     git_update_index_entries,
     git_write_tree,
-    read_git_tree_file_contents,
     run_git_command,
     temp_git_index,
 )
@@ -118,122 +121,159 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
     batch_sources = load_session_batch_sources()
     batch_sources_changed = False
     batch_source_commits: dict[str, str] = {}
-    batch_source_contents: dict[str, bytes] = {}
+    batch_source_buffers: dict[str, EditorBuffer] = {}
     missing_source_paths: list[str] = []
+    managed_buffers: list[EditorBuffer] = []
 
-    for update in updates:
-        batch_source_commit = update.batch_source_commit or batch_sources.get(update.file_path)
-        if batch_source_commit:
-            batch_source_commits[update.file_path] = batch_source_commit
-        else:
-            missing_source_paths.append(update.file_path)
+    def manage_buffers(
+        buffers: dict[str, EditorBuffer],
+    ) -> dict[str, EditorBuffer]:
+        managed_buffers.extend(buffers.values())
+        return buffers
 
-    created_sources = create_batch_source_commits(missing_source_paths)
-    if created_sources:
-        batch_sources_changed = True
-        for file_path, source in created_sources.items():
-            batch_sources[file_path] = source.commit_sha
-            batch_source_commits[file_path] = source.commit_sha
-            batch_source_contents[file_path] = source.file_content
+    try:
+        for update in updates:
+            batch_source_commit = update.batch_source_commit or batch_sources.get(update.file_path)
+            if batch_source_commit:
+                batch_source_commits[update.file_path] = batch_source_commit
+            else:
+                missing_source_paths.append(update.file_path)
 
-    update_paths = [update.file_path for update in updates]
-    baseline_contents = read_git_tree_file_contents(baseline_commit, update_paths)
+        created_sources = create_batch_source_commits(missing_source_paths)
+        if created_sources:
+            batch_sources_changed = True
+            for file_path, source in created_sources.items():
+                batch_sources[file_path] = source.commit_sha
+                batch_source_commits[file_path] = source.commit_sha
+                batch_source_buffers[file_path] = source.file_buffer
+                managed_buffers.append(source.file_buffer)
 
-    existing_source_paths_by_commit: dict[str, list[str]] = {}
-    for update in updates:
-        if update.file_path in batch_source_contents:
-            continue
-        existing_source_paths_by_commit.setdefault(
-            batch_source_commits[update.file_path],
-            [],
-        ).append(update.file_path)
-
-    for source_commit, source_paths in existing_source_paths_by_commit.items():
-        batch_source_contents.update(
-            read_git_tree_file_contents(source_commit, source_paths)
+        update_paths = [update.file_path for update in updates]
+        baseline_buffers = manage_buffers(
+            load_git_tree_files_as_buffers(baseline_commit, update_paths)
         )
 
-    with temp_git_index() as env:
-        existing_commit = get_batch_commit_sha(batch_name)
-        if existing_commit:
-            git_read_tree(existing_commit, env=env)
-
-        index_updates: list[GitIndexEntryUpdate] = []
-        realized_contents: list[bytes] = []
-        realized_content_indexes: list[int] = []
+        existing_source_paths_by_commit: dict[str, list[str]] = {}
         for update in updates:
-            file_path = update.file_path
-            batch_source_commit = batch_source_commits[file_path]
-            baseline_exists = file_path in baseline_contents
-            base_content = baseline_contents.get(file_path, b"")
-            batch_source_content = batch_source_contents.get(file_path, b"")
+            if update.file_path in batch_source_buffers:
+                continue
+            existing_source_paths_by_commit.setdefault(
+                batch_source_commits[update.file_path],
+                [],
+            ).append(update.file_path)
 
-            realized_content_bytes = _build_realized_content(
-                base_content,
-                batch_source_content,
-                update.ownership,
+        for source_commit, source_paths in existing_source_paths_by_commit.items():
+            batch_source_buffers.update(
+                manage_buffers(load_git_tree_files_as_buffers(source_commit, source_paths))
             )
 
-            text_change_type = resolve_text_change_type(
-                file_path=file_path,
-                baseline_exists=baseline_exists,
-                batch_source_content=batch_source_content,
-                realized_content=realized_content_bytes,
-                requested_change_type=update.change_type,
-            )
+        empty_buffer = EditorBuffer.from_bytes(b"")
+        managed_buffers.append(empty_buffer)
 
-            file_metadata = {
-                "batch_source_commit": batch_source_commit,
-                **update.ownership.to_metadata_dict(),
-                "mode": update.file_mode
-            }
-            if text_change_type != TextFileChangeType.MODIFIED:
-                file_metadata["change_type"] = text_change_type.value
-            metadata["files"][file_path] = file_metadata
+        with temp_git_index() as env:
+            existing_commit = get_batch_commit_sha(batch_name)
+            if existing_commit:
+                git_read_tree(existing_commit, env=env)
 
-            if text_change_type == TextFileChangeType.DELETED:
-                index_updates.append(
-                    GitIndexEntryUpdate(file_path=file_path, force_remove=True)
+            index_updates: list[GitIndexEntryUpdate] = []
+            realized_buffers: list[EditorBuffer] = []
+            realized_buffer_indexes: list[int] = []
+            for update in updates:
+                file_path = update.file_path
+                batch_source_commit = batch_source_commits[file_path]
+                baseline_exists = file_path in baseline_buffers
+                base_buffer = baseline_buffers.get(file_path, empty_buffer)
+                batch_source_buffer = batch_source_buffers.get(file_path, empty_buffer)
+
+                realized_buffer = _build_realized_buffer_from_lines(
+                    base_buffer,
+                    batch_source_buffer,
+                    update.ownership,
                 )
-            else:
-                realized_content_indexes.append(len(index_updates))
-                realized_contents.append(realized_content_bytes)
-                index_updates.append(
-                    GitIndexEntryUpdate(
-                        file_path=file_path,
-                        mode=update.file_mode,
+                managed_buffers.append(realized_buffer)
+
+                requested_change_type = (
+                    None if update.change_type is None else
+                    normalized_text_change_type(update.change_type)
+                )
+                needs_source_content = (
+                    not baseline_exists
+                    and requested_change_type in (None, TextFileChangeType.ADDED)
+                )
+                text_change_type = resolve_text_change_type(
+                    file_path=file_path,
+                    baseline_exists=baseline_exists,
+                    batch_source_content=(
+                        batch_source_buffer
+                        if needs_source_content else
+                        b""
+                    ),
+                    realized_content=realized_buffer,
+                    requested_change_type=update.change_type,
+                )
+
+                file_metadata = {
+                    "batch_source_commit": batch_source_commit,
+                    **update.ownership.to_metadata_dict(),
+                    "mode": update.file_mode
+                }
+                if text_change_type != TextFileChangeType.MODIFIED:
+                    file_metadata["change_type"] = text_change_type.value
+                metadata["files"][file_path] = file_metadata
+
+                if text_change_type == TextFileChangeType.DELETED:
+                    index_updates.append(
+                        GitIndexEntryUpdate(file_path=file_path, force_remove=True)
                     )
+                else:
+                    realized_buffer_indexes.append(len(index_updates))
+                    realized_buffers.append(realized_buffer)
+                    index_updates.append(
+                        GitIndexEntryUpdate(
+                            file_path=file_path,
+                            mode=update.file_mode,
+                        )
+                    )
+
+            blob_shas = [
+                create_git_blob(buffer.byte_chunks())
+                for buffer in realized_buffers
+            ]
+            for index_update_index, blob_sha in zip(
+                realized_buffer_indexes,
+                blob_shas,
+                strict=True,
+            ):
+                index_update = index_updates[index_update_index]
+                index_updates[index_update_index] = GitIndexEntryUpdate(
+                    file_path=index_update.file_path,
+                    mode=index_update.mode,
+                    blob_sha=blob_sha,
                 )
+            git_update_index_entries(index_updates, env=env)
 
-        blob_shas = create_git_blobs(realized_contents)
-        for index_update_index, blob_sha in zip(realized_content_indexes, blob_shas, strict=True):
-            index_update = index_updates[index_update_index]
-            index_updates[index_update_index] = GitIndexEntryUpdate(
-                file_path=index_update.file_path,
-                mode=index_update.mode,
-                blob_sha=blob_sha,
-            )
-        git_update_index_entries(index_updates, env=env)
+            metadata_path = get_batch_metadata_file_path(batch_name)
+            write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+            if batch_sources_changed:
+                save_session_batch_sources(batch_sources)
 
-        metadata_path = get_batch_metadata_file_path(batch_name)
-        write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
-        if batch_sources_changed:
-            save_session_batch_sources(batch_sources)
+            tree_sha = git_write_tree(env=env)
 
-        tree_sha = git_write_tree(env=env)
+        commit_sha = git_commit_tree(
+            tree_sha,
+            parents=_batch_commit_parents(batch_name),
+            message=f"Batch: {batch_name}",
+        )
 
-    commit_sha = git_commit_tree(
-        tree_sha,
-        parents=_batch_commit_parents(batch_name),
-        message=f"Batch: {batch_name}",
-    )
-
-    from .state_refs import sync_batch_state_refs
-    sync_batch_state_refs(
-        batch_name,
-        content_commit=commit_sha,
-        source_contents=batch_source_contents,
-    )
+        from .state_refs import sync_batch_state_refs
+        sync_batch_state_refs(
+            batch_name,
+            content_commit=commit_sha,
+            source_buffers=batch_source_buffers,
+        )
+    finally:
+        for buffer in managed_buffers:
+            buffer.close()
 
 
 def add_binary_file_to_batch(
@@ -443,7 +483,7 @@ def _suppress_sequence_at_position_bytes(
     This is position-specific, not global removal.
 
     Args:
-        lines: File content as list of byte lines
+        lines: File content split into lines
         sequence: Byte sequence to suppress
         position: 0-indexed position to check (sequence should start here)
 

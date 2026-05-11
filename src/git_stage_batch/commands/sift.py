@@ -576,21 +576,6 @@ def _compute_sifted_text_file(
 
 
 
-def build_ownership_from_working_to_target_delta(
-    working_content: bytes,
-    target_content: bytes,
-) -> Optional[BatchOwnership]:
-    """Build ownership describing changes needed to turn working into target."""
-    with (
-        EditorBuffer.from_bytes(working_content) as working_content_lines,
-        EditorBuffer.from_bytes(target_content) as target_content_lines,
-    ):
-        return build_ownership_from_working_and_target_lines(
-            normalize_line_sequence_endings(working_content_lines),
-            normalize_line_sequence_endings(target_content_lines),
-        )
-
-
 def build_ownership_from_working_and_target_lines(
     working_lines: Sequence[bytes],
     target_lines: Sequence[bytes],

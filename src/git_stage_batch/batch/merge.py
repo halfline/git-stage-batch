@@ -1541,24 +1541,6 @@ def merge_batch_from_line_sequences_as_buffer(
     )
 
 
-def merge_batch_lines(
-    source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
-    working_lines: Sequence[bytes],
-    *,
-    source_to_working_mapping: LineMapping | None = None,
-) -> bytes:
-    """Merge normalized byte-line sequences and return normalized bytes."""
-    return b"".join(
-        _merge_batch_line_chunks(
-            source_lines,
-            ownership,
-            working_lines,
-            source_to_working_mapping=source_to_working_mapping,
-        )
-    )
-
-
 def can_merge_batch_from_line_sequences(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',

@@ -1182,20 +1182,26 @@ def build_ownership_units_from_display(
     Returns:
         List of semantic ownership units with real display IDs
 
-    Note:
-        Decoding with errors='replace' is lossy but necessary for display
-        reconstruction. This limits line-level reset to textual content.
-        If non-UTF-8 binary content needs reset support, the display model
-        would need enhancement.
+    Source lines are decoded with errors='replace' during display
+    reconstruction. This limits line-level reset to textual content.
     """
-    from ..batch.display import build_display_lines_from_batch_source
+    return build_ownership_units_from_batch_source_lines(
+        ownership,
+        batch_source_content.splitlines(keepends=True),
+    )
 
-    # Decode content for display reconstruction (lossy for non-UTF-8)
-    batch_source_str = batch_source_content.decode('utf-8', errors='replace')
 
-    # Reconstruct actual display lines (what user sees)
-    display_lines = build_display_lines_from_batch_source(batch_source_str, ownership)
+def build_ownership_units_from_batch_source_lines(
+    ownership: BatchOwnership,
+    batch_source_lines: Sequence[bytes],
+) -> list[OwnershipUnit]:
+    """Build semantic ownership units from indexed batch-source byte lines."""
+    from ..batch.display import build_display_lines_from_batch_source_lines
 
+    display_lines = build_display_lines_from_batch_source_lines(
+        batch_source_lines,
+        ownership,
+    )
     return build_ownership_units_from_display_lines(ownership, display_lines)
 
 

@@ -12,6 +12,7 @@ from git_stage_batch.batch.ownership import (
     BatchOwnership,
     DeletionClaim,
     build_ownership_units_from_display,
+    build_ownership_units_from_batch_source_lines,
     OwnershipUnitKind,
     ReplacementUnit,
     rebuild_ownership_from_units,
@@ -119,6 +120,27 @@ def test_deletion_followed_by_claimed_becomes_replacement():
     assert len(units[0].deletion_claims) == 1
     assert units[0].claimed_source_lines == {1}
 
+
+def test_build_ownership_units_accepts_batch_source_line_sequence(line_sequence):
+    """Ownership unit grouping accepts indexed batch-source byte lines."""
+    source_lines = line_sequence([
+        b"old line 1\n",
+        b"old line 2\n",
+        b"old line 3\n",
+    ])
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
+            DeletionClaim(anchor_line=None, content_lines=[b"old line 1\n"])
+        ],
+    )
+
+    units = build_ownership_units_from_batch_source_lines(ownership, source_lines)
+
+    assert len(units) == 1
+    assert units[0].kind == OwnershipUnitKind.REPLACEMENT
+    assert units[0].is_atomic is True
+    assert units[0].claimed_source_lines == {1}
 
 def test_claimed_followed_by_deletion_becomes_replacement():
     """Test claimed line immediately followed by deletion block forms REPLACEMENT unit."""

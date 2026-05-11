@@ -8,6 +8,9 @@ from git_stage_batch.batch.match import (
     match_lines,
 )
 from git_stage_batch.batch.merge import (
+    RegionKind,
+    _build_baseline_correspondence,
+    _build_realized_entries_for_discard,
     _check_structural_validity,
     _try_apply_baseline_replacement_units,
     _satisfy_constraints,
@@ -211,6 +214,30 @@ class TestMergeLineSequences:
         )
 
         assert b"".join(entry.content for entry in entries) == b"line1\nline2\nline3\n"
+
+    def test_discard_entry_builder_accepts_non_list_sequences(self, line_sequence):
+        """Discard entry construction only requires sized iterable line sequences."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\n", b"line3\n"])
+        mapping = match_lines(source, working)
+
+        entries = _build_realized_entries_for_discard(source, working, mapping)
+
+        assert [entry.content for entry in entries] == [b"line1\n", b"line3\n"]
+        assert [entry.source_line for entry in entries] == [1, 3]
+
+    def test_baseline_correspondence_accepts_non_list_sequences(self, line_sequence):
+        """Baseline correspondence accepts sized sliceable line sequences."""
+        baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+        source = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+
+        correspondence = _build_baseline_correspondence(baseline, source)
+        region = correspondence.get_region_for_source_line(2)
+
+        assert region is not None
+        assert region.kind == RegionKind.REPLACE_BY_HUNK
+        assert region.baseline_lines == [b"old\n"]
+
 
     def test_merge_lines_accepts_non_list_sequences(self, line_sequence):
         """Merge core accepts indexed byte-line sequences."""

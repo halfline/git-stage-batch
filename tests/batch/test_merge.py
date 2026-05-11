@@ -11,6 +11,9 @@ from git_stage_batch.batch.merge import (
     _check_structural_validity,
     _try_apply_baseline_replacement_units,
     _satisfy_constraints,
+    merge_batch_from_line_sequences_as_buffer,
+    merge_batch_from_line_sequences,
+    merge_batch_lines,
     discard_batch,
     merge_batch,
 )
@@ -208,6 +211,45 @@ class TestMergeLineSequences:
         )
 
         assert b"".join(entry.content for entry in entries) == b"line1\nline2\nline3\n"
+
+    def test_merge_lines_accepts_non_list_sequences(self, line_sequence):
+        """Merge core accepts indexed byte-line sequences."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\n", b"line3\n"])
+
+        result = merge_batch_lines(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+        )
+
+        assert result == b"line1\nline2\nline3\n"
+
+    def test_merge_from_line_sequences_normalizes_and_restores_line_endings(self, line_sequence):
+        """Merge accepts raw indexed lines and preserves the target line endings."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\r\n", b"line3\r\n"])
+
+        result = merge_batch_from_line_sequences(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+        )
+
+        assert result == b"line1\r\nline2\r\nline3\r\n"
+
+    def test_merge_from_line_sequences_can_return_buffer(self, line_sequence):
+        """Merge can return a buffer without materializing through the bytes API."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\r\n", b"line3\r\n"])
+
+        with merge_batch_from_line_sequences_as_buffer(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+        ) as result:
+            assert result.to_bytes() == b"line1\r\nline2\r\nline3\r\n"
+
 
 
 class TestMergeBatch:

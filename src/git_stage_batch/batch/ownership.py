@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from enum import Enum
 
 from ..core.line_selection import format_line_ids, parse_line_selection
 from ..core.models import LineEntry
 from ..data.batch_sources import create_batch_source_commit
-from ..editor import EditorBuffer
+from ..editor import (
+    EditorBuffer,
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+)
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
 from ..utils.git import (
@@ -17,7 +22,6 @@ from ..utils.git import (
     get_git_repository_root_path,
     read_git_blob,
     read_git_blobs_as_bytes,
-    run_git_command,
 )
 from .comparison import SemanticChangeKind, derive_semantic_change_runs
 from .match import match_lines
@@ -426,14 +430,53 @@ class AdvancedSourceContent:
 
 
 @dataclass
+class SourceContentWithLineProvenance:
+    """Synthesized source buffer with line provenance from its inputs."""
+
+    source_buffer: EditorBuffer
+    source_line_map: dict[int, int]
+    working_line_map: dict[int, int]
+
+    @property
+    def content(self) -> bytes:
+        """Return the synthesized source bytes for legacy callers."""
+        return self.source_buffer.to_bytes()
+
+    def close(self) -> None:
+        """Release the synthesized buffer."""
+        self.source_buffer.close()
+
+    def __enter__(self) -> SourceContentWithLineProvenance:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+
+@dataclass
 class BatchSourceAdvanceResult:
     """Result of advancing one file's batch source."""
 
     batch_source_commit: str
     ownership: BatchOwnership
-    source_content: bytes
-    working_content: bytes
+    source_buffer: EditorBuffer
+    working_content: bytes | None
     working_line_map: dict[int, int]
+
+    @property
+    def source_content(self) -> bytes:
+        """Return the refreshed source bytes for legacy callers."""
+        return self.source_buffer.to_bytes()
+
+    def close(self) -> None:
+        """Release the refreshed source buffer."""
+        self.source_buffer.close()
+
+    def __enter__(self) -> BatchSourceAdvanceResult:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
 
 
 def _deletion_signature(deletion: DeletionClaim) -> tuple[int | None, bytes]:
@@ -1806,22 +1849,16 @@ def _advance_source_content_preserving_existing_presence(
     working_content: bytes,
     ownership: BatchOwnership,
 ) -> tuple[bytes, dict[int, int]]:
-    """Build advanced source content without dropping already-owned lines.
-
-    When discard-to-batch is run repeatedly for hunks in the same file, earlier
-    owned additions may have been reverse-applied out of the working tree. A
-    stale-source refresh must keep those lines in the new batch source or the
-    batch would lose the data it already owns.
-
-    Returns:
-        Tuple of (new source bytes, old source line -> new source line map).
-    """
-    advanced = _advance_source_content_preserving_existing_presence_with_provenance(
-        old_source_content=old_source_content,
-        working_content=working_content,
+    """Build advanced source content without dropping already-owned lines."""
+    with _advance_source_buffer_preserving_existing_presence(
+        old_source_buffer=old_source_content,
+        working_buffer=working_content,
         ownership=ownership,
-    )
-    return advanced.content, advanced.source_line_map
+    ) as source_with_provenance:
+        return (
+            source_with_provenance.source_buffer.to_bytes(),
+            source_with_provenance.source_line_map,
+        )
 
 
 def _advance_source_content_preserving_existing_presence_with_provenance(
@@ -1830,8 +1867,59 @@ def _advance_source_content_preserving_existing_presence_with_provenance(
     ownership: BatchOwnership,
 ) -> AdvancedSourceContent:
     """Build advanced source content and preserve input line provenance."""
-    old_lines = old_source_content.splitlines(keepends=True)
-    working_lines = working_content.splitlines(keepends=True)
+    with _advance_source_buffer_preserving_existing_presence_with_provenance(
+        old_source_buffer=old_source_content,
+        working_buffer=working_content,
+        ownership=ownership,
+    ) as source_with_provenance:
+        return AdvancedSourceContent(
+            content=source_with_provenance.source_buffer.to_bytes(),
+            source_line_map=source_with_provenance.source_line_map,
+            working_line_map=source_with_provenance.working_line_map,
+        )
+
+
+def _advance_source_buffer_preserving_existing_presence(
+    old_source_buffer: bytes | Sequence[bytes],
+    working_buffer: bytes | Sequence[bytes],
+    ownership: BatchOwnership,
+) -> SourceContentWithLineProvenance:
+    """Build source buffer without dropping already-owned lines.
+
+    When discard-to-batch is run repeatedly for hunks in the same file, earlier
+    owned additions may have been reverse-applied out of the working tree. A
+    stale-source refresh must keep those lines in the new batch source or the
+    batch would lose the data it already owns.
+    """
+    return _advance_source_buffer_preserving_existing_presence_with_provenance(
+        old_source_buffer=old_source_buffer,
+        working_buffer=working_buffer,
+        ownership=ownership,
+    )
+
+
+def _advance_source_buffer_preserving_existing_presence_with_provenance(
+    old_source_buffer: bytes | Sequence[bytes],
+    working_buffer: bytes | Sequence[bytes],
+    ownership: BatchOwnership,
+) -> SourceContentWithLineProvenance:
+    """Build source buffer and preserve input line provenance."""
+    with ExitStack() as stack:
+        old_lines = _as_line_sequence(old_source_buffer, stack)
+        working_lines = _as_line_sequence(working_buffer, stack)
+        return _advance_source_lines_preserving_existing_presence(
+            old_lines=old_lines,
+            working_lines=working_lines,
+            ownership=ownership,
+        )
+
+
+def _advance_source_lines_preserving_existing_presence(
+    old_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+) -> SourceContentWithLineProvenance:
+    """Build source content with provenance from line sequences."""
     presence_lines = ownership.presence_line_set()
 
     entries = _apply_presence_constraints(
@@ -1848,11 +1936,20 @@ def _advance_source_content_preserving_existing_presence_with_provenance(
         if entry.target_line is not None:
             working_line_map[entry.target_line] = index
 
-    return AdvancedSourceContent(
-        content=b"".join(entry.content for entry in entries),
+    return SourceContentWithLineProvenance(
+        source_buffer=EditorBuffer.from_chunks(entry.content for entry in entries),
         source_line_map=source_line_map,
         working_line_map=working_line_map,
     )
+
+
+def _as_line_sequence(
+    buffer: bytes | Sequence[bytes],
+    stack: ExitStack,
+) -> Sequence[bytes]:
+    if isinstance(buffer, bytes):
+        return stack.enter_context(EditorBuffer.from_bytes(buffer))
+    return buffer
 
 
 def _remap_batch_ownership_with_source_line_map(
@@ -1921,41 +2018,21 @@ def advance_batch_source_for_file(
     file_path: str,
     old_batch_source_commit: str,
     existing_ownership: BatchOwnership,
-) -> tuple[str, BatchOwnership, bytes, bytes]:
-    """Advance batch source for a file and remap existing ownership.
-
-    Creates a new batch source commit from current working tree content plus
-    any already-owned presence lines that are no longer in the working tree,
-    then remaps the existing ownership from old source space to new source space.
-
-    This operation is scoped to a specific batch and file - other batches that
-    reference the same file are not affected.
-
-    Args:
-        batch_name: Name of batch being updated
-        file_path: Path to file within repository
-        old_batch_source_commit: Current batch source commit SHA
-        existing_ownership: Existing ownership in old source space
-
-    Returns:
-        Tuple of (new_batch_source_commit, remapped_ownership,
-        new_source_content, working_tree_content)
-
-    Raises:
-        ValueError: If remapping is ambiguous or working tree content unavailable
-    """
-    result = advance_batch_source_for_file_with_provenance(
+) -> tuple[str, BatchOwnership, bytes, bytes | None]:
+    """Advance batch source for a file and remap existing ownership."""
+    with advance_batch_source_for_file_with_provenance(
         batch_name=batch_name,
         file_path=file_path,
         old_batch_source_commit=old_batch_source_commit,
         existing_ownership=existing_ownership,
-    )
-    return (
-        result.batch_source_commit,
-        result.ownership,
-        result.source_content,
-        result.working_content,
-    )
+        include_working_content=True,
+    ) as result:
+        return (
+            result.batch_source_commit,
+            result.ownership,
+            result.source_content,
+            result.working_content,
+        )
 
 
 def advance_batch_source_for_file_with_provenance(
@@ -1963,22 +2040,10 @@ def advance_batch_source_for_file_with_provenance(
     file_path: str,
     old_batch_source_commit: str,
     existing_ownership: BatchOwnership,
+    *,
+    include_working_content: bool = True,
 ) -> BatchSourceAdvanceResult:
     """Advance batch source and expose provenance for re-annotation."""
-    # Read old batch source content
-    old_source_result = run_git_command(
-        ["show", f"{old_batch_source_commit}:{file_path}"],
-        text_output=False,
-        check=False
-    )
-    if old_source_result.returncode != 0:
-        raise ValueError(
-            f"Cannot read old batch source for {file_path} at {old_batch_source_commit}: "
-            f"{old_source_result.stderr}"
-        )
-    old_source_content = old_source_result.stdout
-
-    # Read current working tree content
     repo_root = get_git_repository_root_path()
     working_file_path = repo_root / file_path
     if not working_file_path.exists():
@@ -1986,34 +2051,54 @@ def advance_batch_source_for_file_with_provenance(
             f"Cannot advance batch source for {file_path}: "
             f"file does not exist in working tree"
         )
-    working_content = working_file_path.read_bytes()
 
-    advanced_source = _advance_source_content_preserving_existing_presence_with_provenance(
-        old_source_content=old_source_content,
-        working_content=working_content,
-        ownership=existing_ownership,
+    old_source_buffer = load_git_object_as_buffer(
+        f"{old_batch_source_commit}:{file_path}"
     )
+    if old_source_buffer is None:
+        raise ValueError(
+            f"Cannot read old batch source for {file_path} at {old_batch_source_commit}"
+        )
 
-    # Create new batch source commit from the advanced source. This is
-    # intentionally different from initial batch-source creation, which uses the
-    # session-start snapshot for abort/discard correctness.
-    new_batch_source_commit = create_batch_source_commit(
-        file_path,
-        file_content_override=advanced_source.content
-    )
+    source_with_provenance: SourceContentWithLineProvenance | None = None
+    try:
+        with (
+            old_source_buffer as old_source_lines,
+            load_working_tree_file_as_buffer(file_path) as working_lines,
+        ):
+            source_with_provenance = _advance_source_lines_preserving_existing_presence(
+                old_lines=old_source_lines,
+                working_lines=working_lines,
+                ownership=existing_ownership,
+            )
+            working_content = (
+                working_lines.to_bytes() if include_working_content else None
+            )
 
-    # Remap ownership using provenance produced while constructing the advanced
-    # source. This preserves already-owned lines that no longer exist in the
-    # working tree after earlier discard operations.
-    remapped_ownership = _remap_batch_ownership_with_source_line_map(
-        ownership=existing_ownership,
-        source_line_map=advanced_source.source_line_map,
-    )
+        # Create new batch source commit from the refreshed source. This is
+        # intentionally different from initial batch-source creation, which uses the
+        # session-start snapshot for abort/discard correctness.
+        new_batch_source_commit = create_batch_source_commit(
+            file_path,
+            file_buffer_override=source_with_provenance.source_buffer
+        )
 
-    return BatchSourceAdvanceResult(
-        batch_source_commit=new_batch_source_commit,
-        ownership=remapped_ownership,
-        source_content=advanced_source.content,
-        working_content=working_content,
-        working_line_map=advanced_source.working_line_map,
-    )
+        # Remap ownership using provenance produced while constructing the refreshed
+        # source. This preserves already-owned lines that no longer exist in the
+        # working tree after earlier discard operations.
+        remapped_ownership = _remap_batch_ownership_with_source_line_map(
+            ownership=existing_ownership,
+            source_line_map=source_with_provenance.source_line_map,
+        )
+
+        return BatchSourceAdvanceResult(
+            batch_source_commit=new_batch_source_commit,
+            ownership=remapped_ownership,
+            source_buffer=source_with_provenance.source_buffer,
+            working_content=working_content,
+            working_line_map=source_with_provenance.working_line_map,
+        )
+    except Exception:
+        if source_with_provenance is not None:
+            source_with_provenance.close()
+        raise

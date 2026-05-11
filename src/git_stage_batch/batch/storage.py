@@ -364,57 +364,6 @@ def add_binary_file_to_batch(
         _remove_file_from_batch_commit(batch_name, file_path)
 
 
-def _build_realized_content(
-    base_content: bytes,
-    batch_source_content: bytes,
-    ownership: 'BatchOwnership'
-) -> bytes:
-    """Build realized batch content using constraint-based structural model.
-
-    This uses the same semantic model as merge_batch:
-    - Conservative structural alignment via match_lines
-    - Presence constraints applied with provenance tracking
-    - Absence constraints enforced at exact anchored boundaries
-
-    The realization answers: what would the file look like if only this batch's
-    claimed changes were applied to baseline?
-
-    This is semantically equivalent to merge_batch(batch_source, ownership, baseline)
-    but returns bytes directly instead of decoding to str.
-
-    Args:
-        base_content: Content from baseline commit (bytes)
-        batch_source_content: Content from batch source commit (bytes)
-        ownership: BatchOwnership specifying claimed lines and deletion constraints
-
-    Returns:
-        Realized batch content as bytes (full file for display)
-    """
-    with (
-        EditorBuffer.from_bytes(base_content or b"") as base_lines,
-        EditorBuffer.from_bytes(batch_source_content or b"") as source_lines,
-    ):
-        return _build_realized_content_from_buffers(
-            base_lines,
-            source_lines,
-            ownership,
-        )
-
-
-def _build_realized_content_from_buffers(
-    base_lines: Sequence[bytes],
-    batch_source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
-) -> bytes:
-    """Build realized batch content from indexed line sequences."""
-    with _build_realized_buffer_from_lines(
-        base_lines,
-        batch_source_lines,
-        ownership,
-    ) as buffer:
-        return buffer.to_bytes()
-
-
 def _build_realized_buffer_from_lines(
     base_lines: Sequence[bytes],
     batch_source_lines: Sequence[bytes],

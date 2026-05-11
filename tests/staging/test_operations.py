@@ -16,6 +16,8 @@ from git_stage_batch.staging.operations import (
     build_target_index_content_with_selected_lines,
     build_target_working_tree_content_bytes_with_discarded_lines,
     build_target_working_tree_content_bytes_with_replaced_lines,
+    build_target_working_tree_content_from_lines,
+    build_target_working_tree_buffer_from_lines,
     build_target_working_tree_content_with_discarded_lines,
     update_index_with_blob_content,
 )
@@ -853,6 +855,44 @@ class TestBuildTargetWorkingTreeContent:
         )
 
         assert result == b"line1\ndeleted\nline3\n"
+
+    def test_working_tree_discard_accepts_non_list_line_sequences(self, line_sequence):
+        """Working-tree discard can read from an indexed line sequence."""
+        header = HunkHeader(1, 2, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "+", None, 2, text_bytes=b"added", text="added"),
+            LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_lines = line_sequence([b"line1\r\n", b"added\r\n", b"line2\r\n"])
+
+        result = build_target_working_tree_content_from_lines(
+            line_changes,
+            {1},
+            working_lines,
+        )
+
+        assert result == b"line1\nline2\n"
+
+    def test_working_tree_discard_can_return_buffer(self, line_sequence):
+        """Working-tree discard can return a buffer for streaming callers."""
+        header = HunkHeader(1, 2, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(1, "+", None, 2, text_bytes=b"added", text="added"),
+            LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_lines = line_sequence([b"line1\r\n", b"added\r\n", b"line2\r\n"])
+
+        with build_target_working_tree_buffer_from_lines(
+            line_changes,
+            {1},
+            working_lines,
+        ) as result:
+            assert isinstance(result, EditorBuffer)
+            assert result.to_bytes() == b"line1\nline2\n"
 
     def test_file_scoped_deletion_uses_prior_change_delta(self):
         """File-scoped deletions should keep anchors after prior hunks."""

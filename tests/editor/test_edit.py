@@ -11,6 +11,7 @@ from git_stage_batch.editor import (
     EditorBuffer,
     Editor,
     edit_lines_as_buffer,
+    export_lines_as_buffer,
 )
 
 
@@ -105,6 +106,33 @@ def test_edit_lines_as_buffer_validates_selection(line_sequence):
             selection_end=1,
             has_trailing_newline=True,
         )
+
+
+def test_export_lines_as_buffer_exports_generated_lines():
+    """Generated line exports render without editor selection state."""
+    lines = (line for line in [b"one\r\n", b"two\r"])
+
+    with export_lines_as_buffer(lines, has_trailing_newline=True) as buffer:
+        assert isinstance(buffer, EditorBuffer)
+        assert buffer.to_bytes() == b"one\ntwo\r\n"
+
+
+def test_export_lines_as_buffer_keeps_empty_output_empty():
+    """Trailing-newline state does not create content for empty output."""
+    with export_lines_as_buffer([], has_trailing_newline=True) as buffer:
+        assert buffer.to_bytes() == b""
+
+
+def test_export_lines_as_buffer_restores_line_endings(line_sequence):
+    """Generated line exports can follow another buffer's line endings."""
+    line_endings_source = line_sequence([b"base\r\n"])
+
+    with export_lines_as_buffer(
+        [b"one\n", b"two\n"],
+        has_trailing_newline=True,
+        line_endings_from=line_endings_source,
+    ) as buffer:
+        assert buffer.to_bytes() == b"one\r\ntwo\r\n"
 
 
 def test_editor_replaces_selected_lines(line_sequence):

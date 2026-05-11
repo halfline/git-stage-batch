@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import stat
+import os
 import sys
 from typing import Optional
 
@@ -32,6 +32,11 @@ from ..data.file_review_state import (
 from ..data.hunk_tracking import (
     render_batch_file_display,
 )
+from ..editor import (
+    EditorBuffer,
+    buffer_byte_chunks,
+    write_buffer_to_working_tree_path,
+)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import (
@@ -42,7 +47,7 @@ from ..exceptions import (
     exit_with_error,
 )
 from ..i18n import _
-from ..staging.operations import update_index_with_blob_content
+from ..staging.operations import update_index_with_blob_buffer
 from ..utils.git import (
     create_git_blob,
     get_git_repository_root_path,
@@ -97,42 +102,33 @@ def _stage_binary_file_from_batch(
     run_git_command(["update-index", "--add", "--cacheinfo", str(file_mode), blob_hash, file_path])
 
 
-def _apply_working_tree_file_mode(full_path, file_mode: str) -> None:
-    """Apply a normal Git file mode to a working-tree file."""
-    current_mode = full_path.stat().st_mode
-    if file_mode == "100755":
-        full_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    else:
-        full_path.chmod(current_mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
-
-
 def _stage_text_file_from_batch(
     file_path: str,
-    content: bytes | None,
+    buffer: bytes | EditorBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:
-    """Stage text content, optionally forcing the batch target mode."""
+    """Stage a text buffer, optionally forcing the batch target mode."""
     if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
         result = run_git_command(["update-index", "--force-remove", "--", file_path], check=False)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to stage text deletion for {file_path}: {result.stderr}")
         return
 
-    if content is None:
+    if buffer is None:
         raise RuntimeError(f"Text file not found in batch content: {file_path}")
 
     if file_mode is None:
-        update_index_with_blob_content(file_path, content)
+        update_index_with_blob_buffer(file_path, buffer)
         return
 
-    blob_hash = create_git_blob([content])
+    blob_hash = create_git_blob(buffer_byte_chunks(buffer))
     run_git_command(["update-index", "--add", "--cacheinfo", file_mode, blob_hash, file_path])
 
 
 def _write_text_file_from_batch(
     file_path: str,
-    content: bytes | None,
+    buffer: bytes | EditorBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:
@@ -141,17 +137,14 @@ def _write_text_file_from_batch(
     full_path = repo_root / file_path
 
     if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        if full_path.exists():
+        if os.path.lexists(full_path):
             full_path.unlink()
         return
 
-    if content is None:
+    if buffer is None:
         raise RuntimeError(f"Text file not found in batch content: {file_path}")
 
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(content)
-    if file_mode is not None:
-        _apply_working_tree_file_mode(full_path, file_mode)
+    write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)
 
 
 def _write_binary_file_from_batch(
@@ -165,16 +158,18 @@ def _write_binary_file_from_batch(
     change_type = file_meta.get("change_type", "modified")
 
     if change_type == "deleted":
-        if full_path.exists():
+        if os.path.lexists(full_path):
             full_path.unlink()
         return
 
     if batch_content is None:
         raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
 
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(batch_content)
-    _apply_working_tree_file_mode(full_path, str(file_meta.get("mode", "100644")))
+    write_buffer_to_working_tree_path(
+        full_path,
+        batch_content,
+        mode=str(file_meta.get("mode", "100644")),
+    )
 
 
 def _require_contiguous_display_selection(selected_ids: set[int]) -> None:
@@ -312,9 +307,12 @@ def command_include_from_batch(
 
                 # Get selected working tree content (as bytes)
                 full_path = repo_root / file_path
-                working_exists = full_path.exists()
+                working_exists = os.path.lexists(full_path)
                 if working_exists:
-                    working_content = full_path.read_bytes()
+                    if full_path.is_symlink():
+                        working_content = os.readlink(os.fsencode(full_path))
+                    else:
+                        working_content = full_path.read_bytes()
                 else:
                     working_content = b""
 

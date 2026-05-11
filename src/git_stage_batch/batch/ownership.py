@@ -9,6 +9,7 @@ from enum import Enum
 from ..core.line_selection import format_line_ids, parse_line_selection
 from ..core.models import LineEntry
 from ..data.batch_sources import create_batch_source_commit
+from ..editor import EditorBuffer
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
 from ..utils.git import (
@@ -1718,12 +1719,24 @@ def remap_batch_ownership_to_new_source(
     Raises:
         ValueError: If remapping is ambiguous or impossible
     """
-    # Parse old content into lines
-    old_lines = old_source_content.splitlines(keepends=True)
-    new_lines = new_source_content.splitlines(keepends=True)
+    with (
+        EditorBuffer.from_bytes(old_source_content) as old_source_lines,
+        EditorBuffer.from_bytes(new_source_content) as new_source_lines,
+    ):
+        return remap_batch_ownership_to_new_source_lines(
+            ownership=ownership,
+            old_source_lines=old_source_lines,
+            new_source_lines=new_source_lines,
+        )
 
-    # Build mapping from old source line numbers to new source line numbers
-    mapping = match_lines(old_lines, new_lines)
+
+def remap_batch_ownership_to_new_source_lines(
+    ownership: BatchOwnership,
+    old_source_lines: Sequence[bytes],
+    new_source_lines: Sequence[bytes],
+) -> BatchOwnership:
+    """Remap batch ownership between old and new source line sequences."""
+    mapping = match_lines(old_source_lines, new_source_lines)
 
     # Remap presence lines
     old_presence = ownership.presence_line_set()

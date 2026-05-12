@@ -106,7 +106,7 @@ from ..utils.git import (
     git_update_index,
     require_git_repository,
     run_git_command,
-    stream_git_command,
+    stream_git_diff,
 )
 from ..utils.journal import log_journal
 from ..utils.paths import (
@@ -586,7 +586,7 @@ def command_include_file(
         # makes later manual unstaging look like stale skipped work, which breaks
         # follow-up `show --files` / `include --files` passes in the same session.
         hunks_staged = 0
-        for patch in parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])):
+        for patch in parse_unified_diff_streaming(stream_git_diff()):
             if isinstance(patch, BinaryFileChange):
                 file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
                 if file_path != target_file:
@@ -1378,7 +1378,7 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     # Collect ALL hunks from this file (live working tree state)
     all_lines_to_batch = []
 
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])):
+    for patch in parse_unified_diff_streaming(stream_git_diff(base="HEAD", context_lines=get_context_lines(), paths=[file_path])):
         hunk_lines = build_line_changes_from_patch_lines(
             patch.lines,
             annotator=annotate_with_batch_source,
@@ -1617,7 +1617,7 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     # Stream diff to find first non-blocked hunk
     selected_patch = None
     selected_hash = None
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+    for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
         if isinstance(patch, BinaryFileChange):
             patch_hash = compute_binary_file_hash(patch)
             if patch_hash not in blocked_hashes:
@@ -1648,7 +1648,7 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
 
     if file_only:
         # Collect ALL hunks from this file
-        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
             if patch.new_path != file_path:
                 continue
 

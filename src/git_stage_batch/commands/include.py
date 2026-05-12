@@ -32,11 +32,9 @@ from ..batch.selection import (
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
-    build_line_changes_from_patch_bytes,
     build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
 )
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
 from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
 from ..core.line_selection import (
     format_line_ids,
@@ -100,6 +98,7 @@ from ..staging.operations import (
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import (
     append_lines_to_file,
+    read_text_file_line_set,
     read_text_file_contents,
 )
 from ..utils.git import (
@@ -1613,8 +1612,7 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
 
     # Load blocklist
     blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines())
+    blocked_hashes = read_text_file_line_set(blocklist_path)
 
     # Stream diff to find first non-blocked hunk
     selected_patch = None
@@ -1627,8 +1625,7 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
                 return
             continue
 
-        patch_bytes = patch.to_patch_bytes()
-        patch_hash = compute_stable_hunk_hash(patch_bytes)
+        patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
         if patch_hash not in blocked_hashes:
             selected_patch = patch
             selected_hash = patch_hash
@@ -1655,24 +1652,28 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
             if patch.new_path != file_path:
                 continue
 
-            patch_bytes_loop = patch.to_patch_bytes()
-            patch_hash = compute_stable_hunk_hash(patch_bytes_loop)
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
             if patch_hash in blocked_hashes:
                 continue
 
             # Parse hunk to get lines
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes_loop, annotator=annotate_with_batch_source)
+            line_changes = build_line_changes_from_patch_lines(
+                patch.lines,
+                annotator=annotate_with_batch_source,
+            )
             all_lines_to_batch.extend(line_changes.lines)
             all_display_ids_to_batch.update(line.id for line in line_changes.lines if line.id is not None)
-            patches_to_process.append((patch_bytes_loop, patch_hash))
+            patches_to_process.append((patch.lines, patch_hash))
     else:
         # Just selected hunk
-        patch_bytes_selected = selected_patch.to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes_selected, annotator=annotate_with_batch_source)
+        line_changes = build_line_changes_from_patch_lines(
+            selected_patch.lines,
+            annotator=annotate_with_batch_source,
+        )
         all_lines_to_batch = line_changes.lines
         all_display_ids_to_batch = {line.id for line in line_changes.lines if line.id is not None}
-        patches_to_process = [(patch_bytes_selected, selected_hash)]
+        patches_to_process = [(selected_patch.lines, selected_hash)]
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
@@ -1700,12 +1701,12 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
         add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
     # Mark hunks as processed
-    for patch_bytes_item, patch_hash in patches_to_process:
+    for patch_lines, patch_hash in patches_to_process:
         # Mark this hunk as processed
         append_lines_to_file(blocklist_path, [patch_hash])
 
         # Record hunk as skipped for progress tracking
-        hunk_lines = build_line_changes_from_patch_bytes(patch_bytes_item)
+        hunk_lines = build_line_changes_from_patch_lines(patch_lines)
         record_hunk_skipped(hunk_lines, patch_hash)
 
     # Print success message

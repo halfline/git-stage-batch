@@ -1302,8 +1302,7 @@ def _command_discard_file_to_batch(
 
     # Load blocklist
     blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines())
+    blocked_hashes = read_text_file_line_set(blocklist_path)
 
     # Detect file mode
     file_mode = _detect_file_mode(file_path)
@@ -1313,16 +1312,18 @@ def _command_discard_file_to_batch(
     patches_to_discard = []
 
     for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])):
-        patch_bytes_loop = patch.to_patch_bytes()
-        patch_hash = compute_stable_hunk_hash(patch_bytes_loop)
+        patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
         if patch_hash in blocked_hashes:
             continue
 
         # Parse hunk to get lines
-        hunk_lines = build_line_changes_from_patch_bytes(patch_bytes_loop, annotator=annotate_with_batch_source)
+        hunk_lines = build_line_changes_from_patch_lines(
+            patch.lines,
+            annotator=annotate_with_batch_source,
+        )
         all_lines_to_batch.extend(hunk_lines.lines)
-        patches_to_discard.append((patch_bytes_loop, patch_hash))
+        patches_to_discard.append((patch.lines, patch_hash))
 
     if not all_lines_to_batch:
         # Special case: empty text lifecycle changes have no hunk body.
@@ -1393,19 +1394,25 @@ def _command_discard_file_to_batch(
         )
 
     # Record hunks as discarded for progress tracking
-    for patch_bytes, patch_hash in patches_to_discard:
+    for _patch_lines, patch_hash in patches_to_discard:
         record_hunk_discarded(patch_hash)
 
     # Discard from working tree (reverse patches)
-    for patch_bytes_item, patch_hash in patches_to_discard:
-        log_journal("discard_file_to_batch_before_git_apply", batch_name=batch_name, patch_hash=patch_hash, file_path=file_path, patch_content=patch_bytes_item.decode("utf-8", errors="replace"))
+    for patch_lines_item, patch_hash in patches_to_discard:
+        log_journal(
+            "discard_file_to_batch_before_git_apply",
+            batch_name=batch_name,
+            patch_hash=patch_hash,
+            file_path=file_path,
+            patch_line_count=len(patch_lines_item),
+        )
 
         exit_code = 0
         stderr_chunks = []
 
         for event in stream_command(
             ["git", "apply", "--reverse", "--unidiff-zero"],
-            stdin_chunks=[patch_bytes_item]
+            stdin_chunks=patch_lines_item,
         ):
             if isinstance(event, ExitEvent):
                 exit_code = event.exit_code

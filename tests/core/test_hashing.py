@@ -1,7 +1,10 @@
 """Tests for hunk hashing."""
 
 
-from git_stage_batch.core.hashing import compute_stable_hunk_hash
+from git_stage_batch.core.hashing import (
+    compute_stable_hunk_hash,
+    compute_stable_hunk_hash_from_lines,
+)
 
 
 class TestComputeStableHunkHash:
@@ -77,3 +80,21 @@ class TestComputeStableHunkHash:
         # Should handle unicode without error
         assert len(hash_value) == 40
         assert all(c in "0123456789abcdef" for c in hash_value)
+
+    def test_line_iterable_matches_list_hash(self):
+        """Patch line iterables produce the same hunk hash as lists."""
+        patch = b"""--- a/file
++++ b/file
+@@ -1 +1 @@
+-old
++new
+"""
+
+        hash_from_list = compute_stable_hunk_hash_from_lines(
+            patch.splitlines(keepends=True)
+        )
+        hash_from_lines = compute_stable_hunk_hash_from_lines(
+            line for line in patch.splitlines(keepends=True)
+        )
+
+        assert hash_from_lines == hash_from_list

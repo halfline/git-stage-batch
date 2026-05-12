@@ -752,7 +752,25 @@ def render_batch_file_display(
 
     # Get batch source commit and ownership
     batch_source_commit = file_meta["batch_source_commit"]
-    ownership = BatchOwnership.from_metadata_dict(file_meta)
+    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+        return _render_batch_file_display_from_ownership(
+            batch_source_commit=batch_source_commit,
+            file_path=file_path,
+            file_meta=file_meta,
+            ownership=ownership,
+            probe_mergeability=probe_mergeability,
+        )
+
+
+def _render_batch_file_display_from_ownership(
+    *,
+    batch_source_commit: str,
+    file_path: str,
+    file_meta: dict,
+    ownership: BatchOwnership,
+    probe_mergeability: bool,
+) -> Optional['RenderedBatchDisplay']:
+    """Render batch file display from already-acquired ownership metadata."""
 
     batch_source_buffer = load_git_object_as_buffer(
         f"{batch_source_commit}:{file_path}"

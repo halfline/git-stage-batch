@@ -351,7 +351,7 @@ def test_refresh_selected_lines_accepts_non_list_line_sequences(line_sequence):
 
 
 def test_both_commands_use_same_helper_interface():
-    """Test that both include and discard use prepare_batch_ownership_update_for_selection.
+    """Test that both include and discard use acquired update preparation.
 
     This test verifies the refactoring succeeded: both command paths now use
     the same centralized helper instead of duplicated inline logic.
@@ -363,12 +363,14 @@ def test_both_commands_use_same_helper_interface():
     discard_source = inspect.getsource(discard)
 
     # Both should import from batch.source_refresh
-    assert "from ..batch.source_refresh import prepare_batch_ownership_update_for_selection" in include_source
-    assert "from ..batch.source_refresh import prepare_batch_ownership_update_for_selection" in discard_source
+    assert "from ..batch.source_refresh import acquire_batch_ownership_update_for_selection" in include_source
+    assert "from ..batch.source_refresh import acquire_batch_ownership_update_for_selection" in discard_source
 
-    # Both should call prepare_batch_ownership_update_for_selection
-    assert "prepare_batch_ownership_update_for_selection(" in include_source
-    assert "prepare_batch_ownership_update_for_selection(" in discard_source
+    # Both should call acquire_batch_ownership_update_for_selection
+    assert "acquire_batch_ownership_update_for_selection(" in include_source
+    assert "acquire_batch_ownership_update_for_selection(" in discard_source
+    assert "prepare_batch_ownership_update_for_selection(" not in include_source
+    assert "prepare_batch_ownership_update_for_selection(" not in discard_source
 
     # Neither should have the old inline implementation pattern
     # (checking they don't manually handle stale source advancement)

@@ -403,21 +403,6 @@ def list_git_tree_blobs(treeish: str, file_paths: Iterable[str]) -> dict[str, Gi
     return entries
 
 
-def read_git_blob_as_bytes(blob_hash: str) -> bytes | None:
-    """Read a git blob object as bytes.
-
-    Args:
-        blob_hash: SHA-1 hash of the blob to read
-
-    Returns:
-        Blob content as bytes, or None if blob doesn't exist or read fails
-    """
-    try:
-        return b"".join(read_git_blob(blob_hash))
-    except RuntimeError:
-        return None
-
-
 def require_git_repository() -> None:
     """Verify that we are inside a git repository.
 

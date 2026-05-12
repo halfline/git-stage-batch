@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from contextlib import ExitStack
-from typing import Iterable, Iterator, Optional, Union
+from typing import Iterable, Iterator, Union
 
 from .models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, SingleHunkPatch
 from ..editor import (
@@ -17,7 +17,7 @@ from ..editor import (
 )
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.git import get_git_repository_root_path, stream_git_command
+from ..utils.git import get_git_repository_root_path
 from ..utils.journal import log_journal
 from ..utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
 
@@ -334,32 +334,6 @@ def _buffer_line_count(buffer: EditorBuffer) -> int:
     if last_byte in (ord("\n"), ord("\r")):
         return line_breaks
     return line_breaks + 1
-
-
-def get_first_matching_file_from_diff(
-    context_lines: int,
-    predicate: Optional[Callable[[bytes], bool]] = None
-) -> Optional[str]:
-    """Stream git diff and find the first file with a hunk matching the predicate.
-
-    Args:
-        context_lines: Number of context lines for diff (-U parameter)
-        predicate: Optional function that takes patch bytes and returns True if
-                   the hunk counts as a match. If None, returns first file.
-
-    Returns:
-        File path if a matching file is found, None otherwise
-    """
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{context_lines}", "--no-color"])):
-        if predicate is None:
-            return patch.new_path
-
-        # Get patch bytes for predicate
-        patch_bytes = patch.to_patch_bytes()
-        if predicate(patch_bytes):
-            return patch.new_path
-
-    return None
 
 
 def build_line_changes_from_patch_lines(

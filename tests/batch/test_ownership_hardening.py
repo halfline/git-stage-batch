@@ -99,7 +99,9 @@ def test_file_comparison_accepts_non_list_line_sequences(line_sequence):
         if unit.kind == AttributionUnitKind.REPLACEMENT
     ]
     assert len(replacement_units) == 1
-    assert replacement_units[0].deletion_content == b"old\n"
+    assert replacement_units[0].deletion_content is None
+    assert replacement_units[0].deletion_fingerprint is not None
+    assert replacement_units[0].deletion_fingerprint.byte_count == 4
     assert replacement_units[0].claimed_content == b"new\n"
 
 

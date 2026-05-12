@@ -302,34 +302,6 @@ def create_git_blob(content_chunks: Iterable[bytes]) -> str:
     return blob_sha
 
 
-def create_git_blobs(contents: Iterable[bytes]) -> list[str]:
-    """Create several blob objects with one hash-object process."""
-    content_list = list(contents)
-    if not content_list:
-        return []
-
-    with tempfile.TemporaryDirectory(prefix="git-stage-batch-blobs-") as temp_dir:
-        temp_path = Path(temp_dir)
-        path_lines: list[str] = []
-        for index, content in enumerate(content_list):
-            path = temp_path / str(index)
-            path.write_bytes(content)
-            path_lines.append(str(path))
-
-        payload = ("\n".join(path_lines) + "\n").encode("utf-8")
-        result = run_command(
-            ["git", "hash-object", "-w", "--stdin-paths"],
-            [payload],
-        )
-
-    blob_shas = result.stdout.strip().splitlines()
-    if len(blob_shas) != len(content_list):
-        raise RuntimeError(
-            f"git hash-object returned {len(blob_shas)} hashes for {len(content_list)} blobs"
-        )
-    return blob_shas
-
-
 def read_git_blob(blob_sha: str) -> Iterator[bytes]:
     """Read a git blob object as a stream.
 

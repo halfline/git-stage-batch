@@ -40,7 +40,11 @@ We follow strict commit message conventions to maintain a clear and understandab
 ### Key Principles
 
 - **Write for drive-by reviewers with limited context.** Assume the reader does not know the project well.
+- **Write from the maintainer's voice to a casual reader.** The commit message is a maintainer explaining the change to someone unfamiliar with the codebase.
 - **Tell a story.** The events in history are connected, and that connection should be considered when crafting messages. Do not treat each commit as an isolated writing exercise. If a series of commits contribute collectively to a goal, each commit message should describe how it helps achieve that goal. Early commits can foreshadow later commits if it helps tell the story.
+- **Separate independent series.** A dirty worktree can contain multiple unrelated commit series. Split them into separate series with separate opening and concluding commits instead of forcing one message thread across all unstaged changes.
+- **Introduce the series in its first commit.** When a commit opens a multi-commit series, its message should name the larger goal and explain why the series exists, even if the first change is narrow groundwork. Do not limit the opening message to mechanics that only matter to that first change.
+- **Conclude the series in its final commit.** The final commit should make clear that the series has reached its intended goal. Its message should close the thread opened by the first commit instead of only describing the last small change.
 - **Use the tense that reflects the state of the project just before the commit is applied.** When discussing the old behavior, treat it as the selected behavior. When discussing the changes, treat them as new behavior.
 - **Describe problems at the product level, not just the file level.** Focus on what users or maintainers experience, not only what is missing in a specific file or function.
 - **Focus on missing capabilities, not symptoms.** Documentation gaps, code organization, and naming issues are often symptoms. Identify the underlying limitation or missing behavior that motivates the change.
@@ -51,10 +55,13 @@ We follow strict commit message conventions to maintain a clear and understandab
 - **Prefer concrete limitations over vague judgments.** Avoid words like "cumbersome", "better", or "improved" without explaining why.
 - **Do not use `Co-Authored-By` for contributions produced from AI.** Only use it for human co-authors.
 - **Only use the word `this` when referring to the commit itself.** Use `that` or similar for other contexts.
+- **Wrap body paragraphs at 75 characters.**
 - **Be humble and forward thinking.** Avoid words like "comprehensive" or "crucial", and avoid a tone that could sound like bragging or seem short-sighted.
+- **Do not invent concise self-describing labels for internal ideas and use them casually,** expecting the reader to implicitly know what they should mean. Explain things in a way that reduces cognitive load on the reader.
+
 ### Format
 
-Commit messages should follow this three-paragraph structure:
+Commit messages should follow this structure:
 
 #### First Line (Summary)
 
@@ -82,7 +89,7 @@ earlier commits added Spanish and French translations, this paragraph should
 state "The program has Spanish and French translations" not "The program only
 has English messages."
 
-If this is the opening groundwork commit in a feature series, the later
+If this is the opening commit in a feature series, the later
 paragraphs should name the feature goal directly. Do not describe the commit
 as generic cleanup or infrastructure when it is really the first step toward a
 specific user-facing capability.
@@ -107,7 +114,7 @@ Useful tests:
 - Would this problem still exist even if the specific file being edited were perfect?
 - Is this something users would notice, or only maintainers?
 
-For opening groundwork commits in a feature series, prefer framing the problem
+For opening commits in a feature series, prefer framing the problem
 around the missing user-facing capability instead of the missing internal
 helper. For example, "Users cannot replace selected lines with different
 text during include or discard workflows" is usually stronger than "The
@@ -117,41 +124,59 @@ project does not provide generic helpers for transformed selections."
 
 Describe how the commit addresses one part of that problem.
 
-Be precise about scope. If the commit only improves one path (such as the man
+Be precise about scope. If the commit only addresses one path (such as the man
 page, CLI help, or internal structure), say so clearly rather than implying
 the entire problem is solved.
 
 If the commit introduces infrastructure or an early step toward a larger
 feature, describe it as such.
 
+For the first commit in a series, describe how the commit begins moving the
+project toward the larger goal. For the final commit, describe how it completes
+or reaches the goal when that is true.
+
+Start this paragraph with `This commit`.
+
 Use natural prose such as:
 - `This commit addresses that by ...`
-- `This commit improves that by ...`
 - `This commit begins adding support for ... by ...`
 - `This commit lays groundwork for ... by ...`
 
-#### Fourth Paragraph (optional)
+#### Fourth Paragraph
 
-If there will be changes coming up in the near future, say so:
+Use it for every commit except the final one in a multi-commit series.
+Use future tense because the work has not happened yet, and be specific
+about the next step rather than vague.
 
+For example:
 - `Subsequent commits will provide ...`
 - `In the future, <behavior> will change to ...`
+
+The final commit should conclude the series goal introduced by the opening
+commit. Omit future-looking text unless repository-specific guidance requires
+otherwise. Vary the phrasing across a series.
 
 ### Checklist
 
 Before finalizing a commit message, check:
 
+- Does the summary use a fitting prefix and stay under 68 characters?
 - Does the first paragraph describe the program's selected state, not the patch?
 - Does the first paragraph describe the program's state (what it has), not the user's situation (what they must do)?
 - If this is part of a series, does the first paragraph accurately reflect the cumulative state after all previous commits?
+- If the worktree contains multiple independent series, are they split into separate series?
+- If this is the first commit in a series, does the message introduce the whole series goal rather than only the first change?
+- If this is the final commit in a series, does the message conclude the series goal rather than read like another incremental step?
 - Does the second paragraph use the appropriate perspective (maintainer for internal concerns, user for external concerns)?
 - Does the second paragraph describe the real user-visible or maintainer-visible problem?
 - Is the problem broader than just the file being edited?
 - Does the message focus on a missing capability rather than a symptom?
-- If this is the first groundwork commit in a feature series, does the message name the eventual user-facing feature rather than only the internal machinery?
-- Does the third paragraph clearly state what this commit does without overstating its impact?
+- If this is the first commit in a feature series, does the message name the eventual user-facing feature rather than only the internal machinery?
+- Does the third paragraph open with `This commit` and clearly state what this commit does without overstating its impact?
 - If this is part of a series, does it show progression (e.g., "begins", "continues", "completes")?
 - If this is an incremental step, does it clearly say so?
+- If this commit is not the last in the series, does the fourth paragraph name what subsequent commits will do?
+- Do body paragraphs wrap at 75 characters?
 
 ### Example: Single Commit
 
@@ -304,7 +329,7 @@ This commit solves discoverability of interactive mode.
 
 ✅ **Do be precise about scope:**
 ```
-This commit improves discoverability through the man page by ...
+This commit addresses that by documenting the workflow in the man page.
 ```
 
 ❌ **Don't describe the program's state inaccurately in a series:**

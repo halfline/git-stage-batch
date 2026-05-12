@@ -599,8 +599,15 @@ not count as coupling.
   that groundwork separately. If you can tell two plausible stories about the
   same diff, choose the narrower story unless the broader one is required to
   keep the history working.
+- Before planning the first commit, decide whether the unstaged tree contains
+  one series or several independent series. If several are present, outline
+  and commit one series at a time. Do not force unrelated series into one
+  narrative merely because they are all unstaged at the same time.
 - When splitting, make each commit build on the earlier ones in a coherent
   narrative so the series tells a story from start to finish.
+- The first commit in a series must introduce the series goal, not only the
+  narrow mechanics of its own staged change. The final commit must conclude
+  that goal instead of reading like another open-ended step.
 - Treat docs and tests as validation of a behavior change, not proof that the
   behavior changes belong together. If repository hooks require docs-only or
   tests-only commits, keep the code split at the narrower behavioral boundary
@@ -644,6 +651,8 @@ If you spawn a subagent for message drafting:
 3. Give it a self-contained briefing that includes:
    - the current commit's one-clause purpose
    - whether this is a single commit or part of a series
+   - which independent series this commit belongs to when the unstaged tree
+     contains more than one
    - whether this is the final commit in the series
    - the repository-specific message rules already discovered
    - any preferred prefixes already established by history
@@ -786,7 +795,7 @@ the remaining tree to remove dangling references, repeat until a foundation
 layer is isolated, commit that layer, then reapply later layers with
 `include --from BATCH` in dependency order. This is the documented fallback
 when `include --line` would still leave mixed concerns.
-It is also the better choice when `--file --as-stdin` would require
+It is also the preferred choice when `--file --as-stdin` would require
 reconstructing too much earlier text by hand or when the peeled concern should
 be preserved across multiple files as one deferred unit.
 
@@ -904,8 +913,9 @@ This commit [addresses|mitigates|resolves] that [problem] by [precise
 description of what this commit changes and how it solves the problem
 stated above].
 
-[Connect to what comes next. Omit this paragraph only for the final
-commit in the series.]
+[Connect to what comes next. Omit this paragraph for the final
+commit in the series. For the final commit, use the preceding paragraph
+or a short closing paragraph to state that the series goal has been reached.]
 ```
 
 ### First Line (Summary)
@@ -932,7 +942,7 @@ translations, this paragraph should state "The program has Spanish
 and French translations" not "The program only has English
 messages."
 
-If this is the opening groundwork commit in a feature series, the
+If this is the opening commit in a feature series, the
 later paragraphs should name the feature goal directly. Do not
 describe the commit as generic cleanup or infrastructure when it
 is really the first step toward a specific user-facing capability.
@@ -964,7 +974,7 @@ Useful tests:
   edited were perfect?
 - Is this something users would notice, or only maintainers?
 
-For opening groundwork commits in a feature series, prefer framing
+For opening commits in a feature series, prefer framing
 the problem around the missing user-facing capability instead of
 the missing internal helper. For example, "Users cannot replace
 selected lines with different text during include or discard
@@ -975,12 +985,16 @@ generic helpers for transformed selections."
 
 Describe how the commit addresses one part of that problem.
 
-Be precise about scope. If the commit only improves one path (such
+Be precise about scope. If the commit only addresses one path (such
 as the man page, CLI help, or internal structure), say so clearly
 rather than implying the entire problem is solved.
 
 If the commit introduces infrastructure or an early step toward a
 larger feature, describe it as such.
+
+For the first commit in a series, explain how the commit begins moving the
+project toward the larger goal. For the final commit, explain how it completes
+or reaches the goal when that is true.
 
 Start this paragraph with `This commit`.
 
@@ -999,9 +1013,9 @@ For example:
 - `Subsequent commits will provide ...`
 - `In the future, <behavior> will change to ...`
 
-Omit this paragraph for the final commit in the series unless
-repository-specific guidance requires otherwise. Vary the phrasing across a
-series.
+The final commit should conclude the series goal introduced by the opening
+commit. Omit future-looking text unless repository-specific guidance requires
+otherwise. Vary the phrasing across a series.
 
 The most common errors are opening with the problem, merging the
 first and second paragraphs with `but` or `however`, and using
@@ -1028,19 +1042,33 @@ Second paragraph describing the underlying problem.
 
 Third paragraph describing how this commit addresses that problem.
 
-Fourth paragraph optional for near-term follow-up.
+Fourth paragraph for follow-up or final series conclusion when useful.
 ```
 
 ### Key Principles
 
 - Write for drive-by reviewers with limited context. Assume the
   reader does not know the project well.
+- Write from the maintainer's voice to a casual reader. The commit
+  message is a maintainer explaining the change to someone
+  unfamiliar with the codebase.
 - Tell a story. The events in history are connected, and that
   connection should be considered when crafting messages. Do not
   treat each commit as an isolated writing exercise. If a series
   of commits contribute collectively to a goal, each commit
   message should describe how it helps achieve that goal. Early
   commits can foreshadow later commits if it helps tell the story.
+- Separate independent series. A dirty worktree can contain
+  multiple unrelated commit series. Split them into separate
+  series with separate opening and concluding commits instead of
+  forcing one message thread across all unstaged changes.
+- Introduce the series in its first commit. When a commit opens a
+  multi-commit series, its message should name the larger goal and
+  explain why the series exists, even if the first change is narrow
+  groundwork.
+- Conclude the series in its final commit. The final commit should
+  make clear that the series has reached its intended goal instead
+  of only describing the last small change.
 - Use the tense that reflects the state of the project just before
   the commit is applied. When discussing the old behavior, treat
   it as the current behavior. When discussing the changes, treat
@@ -1055,7 +1083,7 @@ Fourth paragraph optional for near-term follow-up.
 - Do not describe secondary effects as the primary problem. Code
   organization, maintainability, or cleanliness are rarely the
   main reason for a change.
-- Be precise about scope. If a change only improves one aspect of
+- Be precise about scope. If a change only addresses one aspect of
   a problem, do not imply it fully solves it.
 - If the commit is a step toward a larger feature, say so
   explicitly. Describe the end goal briefly, then explain how this
@@ -1092,6 +1120,14 @@ Before finalizing a commit message, check:
   has), not the user's situation (what they must do)?
 - If this is part of a series, does the first paragraph accurately
   reflect the cumulative state after all previous commits?
+- If the worktree contains multiple independent series, are they
+  split into separate series?
+- If this is the first commit in a series, does the message
+  introduce the whole series goal rather than only the first
+  change?
+- If this is the final commit in a series, does the message
+  conclude the series goal rather than read like another
+  incremental step?
 - Does the second paragraph use the appropriate perspective
   (maintainer or commit author for internal concerns, user for
   external concerns)?
@@ -1100,7 +1136,7 @@ Before finalizing a commit message, check:
 - Is the problem broader than just the file being edited?
 - Does the message focus on a missing capability rather than a
   symptom?
-- If this is the first groundwork commit in a feature series, does
+- If this is the first commit in a feature series, does
   the message name the eventual user-facing feature rather than
   only the internal machinery?
 - Does the third paragraph open with `This commit` and clearly state
@@ -1250,7 +1286,7 @@ This commit solves discoverability of interactive mode.
 
 ✅ **Do be precise about scope:**
 ```
-This commit improves discoverability through the man page by ...
+This commit addresses that by documenting the workflow in the man page.
 ```
 
 ❌ **Don't describe the program's state inaccurately in a series:**
@@ -1476,3 +1512,53 @@ Better split:
 
 Use this pattern whenever one command picks up multiple independently testable
 behavior fixes. Shared command surface is not enough to merge them.
+
+## Quality Checks
+
+Re-read this section before writing each commit message, especially after a
+long staging session. These checks reiterate the most commonly forgotten
+commit message requirements.
+
+Before committing, verify:
+
+- If the summary line contains `and`, `also`, or describes two actions, the
+  commit combines concerns. Do not commit it.
+- The staged diff is atomic and internally coherent.
+- Unrelated hunks are skipped for later commits.
+- If the worktree contains multiple independent series, they are split into
+  separate series.
+- The summary uses a fitting prefix and stays under 68 characters.
+- The first paragraph describes what the project currently has or provides,
+  not what is missing, broken, or being changed.
+- The first paragraph describes the program's state (what it has), not the
+  user's situation (what they must do).
+- If this is part of a series, the first paragraph reflects the cumulative
+  state after all previous commits.
+- The second paragraph explains the broader problem from the right
+  perspective (maintainer for internal concerns, user for external ones).
+- The third paragraph opens with `This commit` and describes how it addresses
+  the problem.
+- The message reflects a larger series narrative when the work is split across
+  multiple commits.
+- If this is the first commit in a series, the message introduces the whole
+  series goal rather than only the first change.
+- If this is the final commit in a series, the message concludes the series
+  goal rather than reading like another incremental step.
+- If the commit is not the last in the series, the fourth paragraph names what
+  subsequent commits will do.
+- Body paragraphs wrap at 75 characters.
+
+The most common errors are:
+
+1. skipping the first paragraph and opening with the problem
+2. merging the first and second paragraphs with `but` or `however`
+3. using bare imperative voice instead of `This commit ...`
+
+Check for all three before committing.
+
+## Completion
+
+After creating the final commit, report back with:
+
+- how many commits were created
+- the subject line of each commit in order

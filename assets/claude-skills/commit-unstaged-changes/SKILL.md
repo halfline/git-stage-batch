@@ -357,6 +357,10 @@ not count as coupling.
 - If line-level staging still cannot separate concerns cleanly, unpeel the
   feature by peeling layers into named batches. Manual unpeeling is preferable
   to forcing unrelated concerns into one commit.
+- Before planning the first commit, decide whether the unstaged tree contains
+  one series or several independent series. If several are present, outline
+  and commit one series at a time. Do not force unrelated series into one
+  narrative merely because they are all unstaged at the same time.
 - Only combine changes into a single commit when they are genuinely coupled:
   splitting them would leave an intermediate commit broken or unable to build.
   Adjacency in the same file or YAML block is not coupling.
@@ -443,6 +447,8 @@ owned only by this skill.
   prior conversation.
 - The briefing should include:
   - the planned position of this commit in the series
+  - which independent series this commit belongs to when the unstaged tree
+    contains more than one
   - the one-clause purpose of the current commit
   - the exact repository message constraints already discovered
   - whether this is the final commit in the series
@@ -641,8 +647,9 @@ This commit [addresses|mitigates|resolves] that [problem] by [precise
 description of what this commit changes and how it solves the problem
 stated above].
 
-[Connect to what comes next. Omit this paragraph only for the final
-commit in the series.]
+[Connect to what comes next. Omit this paragraph for the final commit in the
+series. For the final commit, use the preceding paragraph or a short closing
+paragraph to state that the series goal has been reached.]
 ```
 
 The most common errors are:
@@ -655,7 +662,8 @@ Check for all three before committing.
 
 ## Commit Message Guidelines
 
-Write for drive-by reviewers with limited context.
+Write for drive-by reviewers with limited context. Write from the
+maintainer's voice to a casual reader who does not know the codebase well.
 
 ### Required structure
 
@@ -670,7 +678,7 @@ Second paragraph describing the underlying problem.
 
 Third paragraph describing how this commit addresses that problem.
 
-Fourth paragraph optional for near-term follow-up.
+Fourth paragraph for follow-up or final series conclusion when useful.
 ```
 
 ### Summary line
@@ -692,6 +700,8 @@ Fourth paragraph optional for near-term follow-up.
 - Do not describe the patch, the user's situation, or future goals here.
 - If the commit is part of a series, reflect the cumulative state after all
   earlier commits in that series.
+- If this is the first commit in a series, later paragraphs should introduce
+  the series goal, even if the first change is narrow groundwork.
 
 ### Second paragraph
 
@@ -710,6 +720,8 @@ Fourth paragraph optional for near-term follow-up.
 - If the commit is an early step toward a larger goal, say so directly.
 - When a commit series is building toward one goal, make that goal explicit
   and explain how the current commit advances the narrative.
+- For the final commit in a series, explain how it completes or reaches the
+  goal when that is true.
 - Use phrasing such as:
   - `This commit addresses that by ...`
   - `This commit begins adding support for ... by ...`
@@ -721,11 +733,23 @@ Fourth paragraph optional for near-term follow-up.
 - Use it for every commit except the final one in a multi-commit series.
 - Use future tense since the work has not happened yet.
 - Be specific about what comes next rather than vague.
+- The final commit should conclude the series goal introduced by the opening
+  commit instead of pointing toward more work.
 
 ## Required principles
 
 - Tell a story. Related commits should read as connected steps, not isolated
   patches.
+- Separate independent series. A dirty worktree can contain multiple unrelated
+  commit series. Split them into separate series with separate opening and
+  concluding commits instead of forcing one message thread across all unstaged
+  changes.
+- Introduce the series in its first commit. When a commit opens a multi-commit
+  series, its message should name the larger goal and explain why the series
+  exists, even if the first change is narrow groundwork.
+- Conclude the series in its final commit. The final commit should make clear
+  that the series has reached its intended goal instead of only describing the
+  last small change.
 - Name the eventual feature goal in early groundwork commits when that explains
   why the work exists.
 - Describe problems at the product level, not only at the file level.
@@ -769,6 +793,8 @@ Before committing, verify:
   commit combines concerns. Do not commit it.
 - The staged diff is atomic and internally coherent.
 - Unrelated hunks are skipped for later commits.
+- If the worktree contains multiple independent series, they are split into
+  separate series.
 - The summary uses a fitting prefix and stays under 68 characters.
 - The first paragraph describes what the project currently has or provides,
   not what is missing, broken, or being changed.
@@ -778,6 +804,10 @@ Before committing, verify:
   the problem.
 - The message reflects a larger series narrative when the work is split across
   multiple commits.
+- If this is the first commit in a series, the message introduces the whole
+  series goal rather than only the first change.
+- If this is the final commit in a series, the message concludes the series
+  goal rather than reading like another incremental step.
 - If the commit is not the last in the series, the fourth paragraph names what
   subsequent commits will do.
 - Body paragraphs wrap at 75 characters.

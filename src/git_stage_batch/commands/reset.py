@@ -312,8 +312,8 @@ def _move_claims_between_batches(
                 )
             copy_file_from_batch_to_batch(source_batch, dest_batch, file_path)
         else:
-            ownership = BatchOwnership.from_metadata_dict(file_meta)
-            _add_ownership_to_destination(dest_batch, file_path, file_meta, ownership)
+            with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+                _add_ownership_to_destination(dest_batch, file_path, file_meta, ownership)
         remove_file_from_batch(source_batch, file_path)
 
 
@@ -328,6 +328,17 @@ def _add_ownership_to_destination(
     dest_file_meta = dest_metadata.get("files", {}).get(file_path)
     batch_source_commit = source_file_meta["batch_source_commit"]
 
+    def add_to_destination(destination_ownership: BatchOwnership) -> None:
+        file_mode = source_file_meta.get("mode", "100644")
+        add_file_to_batch(
+            dest_batch,
+            file_path,
+            destination_ownership,
+            file_mode,
+            batch_source_commit=batch_source_commit,
+            change_type=source_file_meta.get("change_type"),
+        )
+
     if dest_file_meta is not None:
         if dest_file_meta.get("file_type") == "binary":
             exit_with_error(
@@ -341,18 +352,11 @@ def _add_ownership_to_destination(
                     file=file_path
                 )
             )
-        existing = BatchOwnership.from_metadata_dict(dest_file_meta)
-        ownership = merge_batch_ownership(existing, ownership)
+        with BatchOwnership.acquire_for_metadata_dict(dest_file_meta) as existing:
+            add_to_destination(merge_batch_ownership(existing, ownership))
+        return
 
-    file_mode = source_file_meta.get("mode", "100644")
-    add_file_to_batch(
-        dest_batch,
-        file_path,
-        ownership,
-        file_mode,
-        batch_source_commit=batch_source_commit,
-        change_type=source_file_meta.get("change_type"),
-    )
+    add_to_destination(ownership)
 
 
 def _reset_file_claims_from_batch(

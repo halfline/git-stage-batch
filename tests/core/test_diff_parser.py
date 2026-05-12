@@ -7,7 +7,6 @@ import subprocess
 import pytest
 
 from git_stage_batch.core.diff_parser import (
-    build_line_changes_from_patch_bytes,
     build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
@@ -196,7 +195,12 @@ diff --git a/file2.py b/file2.py
 
 
 class TestBuildLineLevelChangeFromPatchText:
-    """Tests for build_line_changes_from_patch_text function."""
+    """Tests for build_line_changes_from_patch_lines function."""
+
+    def _build_line_changes_from_patch_text(self, patch_text: str):
+        return build_line_changes_from_patch_lines(
+            patch_text.encode('utf-8').splitlines(keepends=True)
+        )
 
     def test_build_line_changes_simple_addition(self):
         """Test building LineLevelChange from a simple addition patch."""
@@ -207,7 +211,7 @@ class TestBuildLineLevelChangeFromPatchText:
 +added line
  line2
 """
-        line_changes = build_line_changes_from_patch_bytes(patch_text.encode('utf-8'))
+        line_changes = self._build_line_changes_from_patch_text(patch_text)
 
         assert line_changes.path == "test.txt"
         assert line_changes.header.old_start == 1
@@ -229,7 +233,7 @@ class TestBuildLineLevelChangeFromPatchText:
 -removed line
  keep2
 """
-        line_changes = build_line_changes_from_patch_bytes(patch_text.encode('utf-8'))
+        line_changes = self._build_line_changes_from_patch_text(patch_text)
 
         assert line_changes.path == "file.py"
         changed_ids = line_changes.changed_line_ids()
@@ -247,7 +251,7 @@ class TestBuildLineLevelChangeFromPatchText:
 -old line2
 +new line2
 """
-        line_changes = build_line_changes_from_patch_bytes(patch_text.encode('utf-8'))
+        line_changes = self._build_line_changes_from_patch_text(patch_text)
 
         assert line_changes.path == "code.js"
         changed_ids = line_changes.changed_line_ids()

@@ -138,6 +138,29 @@ def test_deletion_claim_metadata_accepts_non_list_content_lines(
     ]
 
 
+def test_batch_ownership_metadata_acquisition_scopes_deletion_buffers(temp_git_repo):
+    """Acquired ownership should keep deletion content usable only inside."""
+    ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
+            DeletionClaim(
+                anchor_line=None,
+                content_lines=[b"old one\n", b"old two\n"],
+            ),
+        ],
+    )
+    metadata = ownership.to_metadata_dict()
+
+    with BatchOwnership.acquire_for_metadata_dict(metadata) as scoped_ownership:
+        content_lines = scoped_ownership.deletions[0].content_lines
+        assert isinstance(content_lines, EditorBuffer)
+        assert content_lines[0] == b"old one\n"
+        assert content_lines[1] == b"old two\n"
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        content_lines[0]
+
+
 def test_legacy_claimed_lines_metadata_loads_as_presence_claims(temp_git_repo):
     """Old claimed_lines metadata should retain presence ownership."""
     ownership = BatchOwnership.from_metadata_dict({

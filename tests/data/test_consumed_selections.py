@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import LineEntry
 from git_stage_batch.data.consumed_selections import (
@@ -113,3 +114,51 @@ def test_record_consumed_selection_accepts_buffer(temp_git_repo):
         text=True,
     )
     assert result.stdout == "header\nline1\n"
+
+
+def test_record_consumed_selection_rewrites_existing_deletions(temp_git_repo):
+    """Existing consumed deletions should remain serializable when updated."""
+    test_file = temp_git_repo / "test.txt"
+    test_file.write_text("old\nkeep\n")
+    subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+    test_file.write_text("keep\n")
+
+    command_start()
+    record_consumed_selection(
+        "test.txt",
+        source_buffer=b"keep\n",
+        selected_lines=[
+            LineEntry(
+                id=1,
+                kind="-",
+                old_line_number=1,
+                new_line_number=None,
+                text_bytes=b"old",
+                text="old",
+                source_line=None,
+            )
+        ],
+    )
+    record_consumed_selection(
+        "test.txt",
+        source_buffer=b"keep\n",
+        selected_lines=[
+            LineEntry(
+                id=2,
+                kind="+",
+                old_line_number=None,
+                new_line_number=1,
+                text_bytes=b"keep",
+                text="keep",
+                source_line=1,
+            )
+        ],
+    )
+
+    metadata = read_consumed_file_metadata("test.txt")
+    assert metadata is not None
+    ownership = BatchOwnership.from_metadata_dict(metadata)
+    assert ownership.presence_line_set() == {1}
+    assert ownership.deletions[0].content_lines == [b"old\n"]

@@ -7,7 +7,9 @@ import pytest
 
 import git_stage_batch.batch.attribution as attribution_module
 from git_stage_batch.batch.attribution import (
+    AttributedUnit,
     AttributionUnitKind,
+    FileAttribution,
     FileComparison,
     enumerate_units_from_file_comparison,
     build_file_attribution,
@@ -103,6 +105,70 @@ def test_file_comparison_accepts_non_list_line_sequences(line_sequence):
     assert replacement_units[0].deletion_fingerprint is not None
     assert replacement_units[0].deletion_fingerprint.byte_count == 4
     assert replacement_units[0].claimed_content == b"new\n"
+
+
+def test_multi_line_replacement_addition_uses_digest_for_projection(line_sequence):
+    """Attribution can project replacements whose added side is not retained."""
+    baseline_lines = line_sequence([
+        b"line1\n",
+        b"old1\n",
+        b"old2\n",
+        b"line4\n",
+    ])
+    working_tree_lines = line_sequence([
+        b"line1\n",
+        b"new1\n",
+        b"new2\n",
+        b"line4\n",
+    ])
+    comparison = FileComparison(
+        file_path="test.txt",
+        baseline_lines=baseline_lines,
+        working_tree_lines=working_tree_lines,
+        alignment=match_lines(baseline_lines, working_tree_lines),
+    )
+    units_map = {}
+
+    enumerate_units_from_file_comparison(comparison, units_map)
+
+    replacement_unit = next(
+        unit
+        for unit in units_map.values()
+        if unit.kind == AttributionUnitKind.REPLACEMENT
+    )
+    assert replacement_unit.claimed_content is None
+    assert replacement_unit.claimed_fingerprint is not None
+    assert replacement_unit.claimed_fingerprint.byte_count == 10
+    assert replacement_unit.claimed_line_count == 2
+
+    attribution = FileAttribution(
+        file_path="test.txt",
+        units=[
+            AttributedUnit(
+                unit=replacement_unit,
+                owning_batches={"batch"},
+            )
+        ],
+    )
+    patch_bytes = b"""diff --git a/test.txt b/test.txt
+--- a/test.txt
++++ b/test.txt
+@@ -1,4 +1,4 @@
+ line1
+-old1
+-old2
++new1
++new2
+ line4
+"""
+    line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+
+    display_to_unit = project_attribution_to_diff(attribution, line_changes)
+
+    assert {
+        line_changes.lines[index].id
+        for index in display_to_unit
+    } == {1, 2, 3, 4}
 
 
 def test_legacy_claimed_lines_metadata_owns_presence_units(temp_repo, monkeypatch):

@@ -34,7 +34,6 @@ from ..data.hunk_tracking import (
 )
 from ..editor import (
     EditorBuffer,
-    buffer_byte_chunks,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
     write_buffer_to_working_tree_path,
@@ -106,7 +105,7 @@ def _stage_binary_file_from_batch(
 
 def _stage_text_file_from_batch(
     file_path: str,
-    buffer: bytes | EditorBuffer | None,
+    buffer: EditorBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:
@@ -124,13 +123,13 @@ def _stage_text_file_from_batch(
         update_index_with_blob_buffer(file_path, buffer)
         return
 
-    blob_hash = create_git_blob(buffer_byte_chunks(buffer))
+    blob_hash = create_git_blob(buffer.byte_chunks())
     run_git_command(["update-index", "--add", "--cacheinfo", file_mode, blob_hash, file_path])
 
 
 def _write_text_file_from_batch(
     file_path: str,
-    buffer: bytes | EditorBuffer | None,
+    buffer: EditorBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:

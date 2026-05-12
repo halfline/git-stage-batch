@@ -101,7 +101,7 @@ def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: di
 
 def _write_text_file_from_batch(
     file_path: str,
-    buffer: bytes | EditorBuffer | None,
+    buffer: EditorBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:

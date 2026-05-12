@@ -105,14 +105,10 @@ def _discard_text_file_lifecycle_from_batch(file_path: str, baseline_commit: str
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
 
-    result = run_git_command(
-        ["show", f"{baseline_commit}:{file_path}"],
-        check=False,
-        text_output=False,
-    )
-    if result.returncode == 0:
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(result.stdout)
+    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    if baseline_buffer is not None:
+        with baseline_buffer:
+            write_buffer_to_path(full_path, baseline_buffer)
         _restore_working_tree_file_mode(
             full_path,
             _baseline_file_mode(baseline_commit, file_path),

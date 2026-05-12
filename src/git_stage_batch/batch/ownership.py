@@ -382,23 +382,6 @@ class BatchOwnership:
         return data
 
     @classmethod
-    def from_metadata_dict(cls, data: dict) -> BatchOwnership:
-        """Create from metadata dictionary."""
-        deletion_metadata = data.get("deletions", [])
-        presence_metadata = data.get("presence_claims", [])
-        blob_contents = read_git_blobs_as_bytes(
-            [
-                *_deletion_content_blob_ids(deletion_metadata),
-                *_deletion_reference_blob_ids(deletion_metadata),
-                *_presence_claim_reference_blob_ids(presence_metadata),
-            ]
-        )
-        return cls._from_metadata_dict(
-            data,
-            blob_contents=blob_contents,
-        )
-
-    @classmethod
     def acquire_for_metadata_dict(
         cls,
         data: dict,

@@ -445,7 +445,6 @@ class BatchSourceAdvanceResult:
     batch_source_commit: str
     ownership: BatchOwnership
     source_buffer: EditorBuffer
-    working_content: bytes | None
     working_line_map: dict[int, int]
 
     def close(self) -> None:
@@ -1867,8 +1866,6 @@ def advance_batch_source_for_file_with_provenance(
     file_path: str,
     old_batch_source_commit: str,
     existing_ownership: BatchOwnership,
-    *,
-    include_working_content: bool = False,
 ) -> BatchSourceAdvanceResult:
     """Advance batch source and expose provenance for re-annotation."""
     repo_root = get_git_repository_root_path()
@@ -1898,9 +1895,6 @@ def advance_batch_source_for_file_with_provenance(
                 working_lines=working_lines,
                 ownership=existing_ownership,
             )
-            working_content = (
-                working_lines.to_bytes() if include_working_content else None
-            )
 
         # Create new batch source commit from the refreshed source. This is
         # intentionally different from initial batch-source creation, which uses the
@@ -1922,7 +1916,6 @@ def advance_batch_source_for_file_with_provenance(
             batch_source_commit=new_batch_source_commit,
             ownership=remapped_ownership,
             source_buffer=source_with_provenance.source_buffer,
-            working_content=working_content,
             working_line_map=source_with_provenance.working_line_map,
         )
     except Exception:

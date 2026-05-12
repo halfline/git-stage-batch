@@ -1,7 +1,7 @@
 """Tests for hunk navigation, state management, staleness detection, and progress tracking."""
 
 import json
-from git_stage_batch.core.hashing import compute_stable_hunk_hash
+from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
 from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
 from git_stage_batch.utils.paths import get_blocked_files_file_path
 from git_stage_batch.utils.file_io import append_file_path_to_file
@@ -177,7 +177,7 @@ class TestFindAndCacheNextUnblockedHunk:
             capture_output=True,)
         stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
         patches = list(parse_unified_diff_streaming(stdout_bytes.splitlines(keepends=True)))
-        first_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
+        first_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         append_lines_to_file(get_block_list_file_path(), [first_hash])
 
@@ -235,7 +235,7 @@ class TestFindAndCacheNextUnblockedHunk:
             capture_output=True,)
         stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
         patches = list(parse_unified_diff_streaming(stdout_bytes.splitlines(keepends=True)))
-        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
+        hunk_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         append_lines_to_file(get_block_list_file_path(), [hunk_hash])
 
@@ -563,7 +563,7 @@ class TestRecalculateCurrentHunkForFile:
             capture_output=True,)
         stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
         patches = list(parse_unified_diff_streaming(stdout_bytes.splitlines(keepends=True)))
-        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
+        hunk_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         append_lines_to_file(get_block_list_file_path(), [hunk_hash])
 

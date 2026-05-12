@@ -90,7 +90,8 @@ class DeletionClaim:
     Attributes:
         anchor_line: Batch source line after which this deletion claim is anchored
                      (None for start-of-file)
-        content_lines: Exact baseline line content that must be suppressed (as bytes)
+        content_lines: Exact baseline line content that must be suppressed,
+                       with line endings preserved
         baseline_reference: Optional old-file coordinate where this absence
                             claim was selected. This lets same-source batch
                             round trips apply replacement units back to an
@@ -98,7 +99,7 @@ class DeletionClaim:
                             post-change source anchors.
     """
     anchor_line: int | None
-    content_lines: list[bytes]  # Each element is one line with newline preserved
+    content_lines: Sequence[bytes]
     baseline_reference: BaselineReference | None = None
 
     def to_dict(self) -> dict:
@@ -834,9 +835,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
                             None
                         )
                     )
-            # text_bytes has line content with \r preserved but \n stripped (diff format)
-            # Add back \n for proper round-tripping
-            current_deletion_lines.append(line.text_bytes + b'\n')
+            current_deletion_lines.append(_line_entry_content(line))
 
     # Flush any final deletion run
     flush_deletion_run()
@@ -860,6 +859,10 @@ def _old_line_content_by_number(hunk_lines: list[LineEntry]) -> dict[int, bytes]
         for line in hunk_lines
         if line.old_line_number is not None and line.kind in {" ", "-"}
     }
+
+
+def _line_entry_content(line: LineEntry) -> bytes:
+    return line.text_bytes + (b"\n" if line.has_trailing_newline else b"")
 
 
 def _baseline_reference_for_deletion_run(
@@ -957,7 +960,7 @@ def translate_hunk_selection_to_batch_ownership(
             DeletionClaim(
                 anchor_line=selected_old_lines[0].source_line,
                 content_lines=[
-                    old_line.text_bytes + b"\n"
+                    _line_entry_content(old_line)
                     for old_line in selected_old_lines
                 ],
                 baseline_reference=_baseline_reference_for_deletion_run(
@@ -1115,7 +1118,7 @@ def translate_hunk_selection_to_batch_ownership(
             active_replacement_unit = None
             if not current_deletion_lines:
                 current_deletion_anchor = line.source_line
-            current_deletion_lines.append(line.text_bytes + b"\n")
+            current_deletion_lines.append(_line_entry_content(line))
             current_deletion_hunk_lines.append(line)
 
     flush_deletion_run()

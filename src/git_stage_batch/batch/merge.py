@@ -58,6 +58,75 @@ class RealizedEntry:
 _BaselineLineEdit = tuple[int, int, list[bytes]]
 
 
+class _LineRange(Sequence[bytes]):
+    """Indexed view over a contiguous range of lines."""
+
+    def __init__(
+        self,
+        lines: Sequence[bytes],
+        start: int,
+        end: int,
+    ) -> None:
+        if start < 0 or end < start:
+            raise ValueError("invalid line range")
+        self._lines = lines
+        self._start = start
+        self._end = end
+
+    def __len__(self) -> int:
+        return self._end - self._start
+
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+        if isinstance(index, slice):
+            start, stop, step = index.indices(len(self))
+            if step == 1:
+                return _LineRange(
+                    self._lines,
+                    self._start + start,
+                    self._start + stop,
+                )
+            return tuple(self[child_index] for child_index in range(start, stop, step))
+
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+        return self._lines[self._start + index]
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Sequence):
+            return NotImplemented
+        if len(self) != len(other):
+            return False
+        return all(
+            left_line == right_line
+            for left_line, right_line in zip(self, other, strict=True)
+        )
+
+
+class _RealizedEntryContentSequence(Sequence[bytes]):
+    """Indexed view over realized entry content."""
+
+    def __init__(self, entries: Sequence[RealizedEntry]) -> None:
+        self._entries = entries
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+        if isinstance(index, slice):
+            start, stop, step = index.indices(len(self))
+            if step == 1:
+                return _LineRange(self, start, stop)
+            return tuple(self[child_index] for child_index in range(start, stop, step))
+
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+        return self._entries[index].content
+
+
 def _realized_entry_content_chunks(entries: Iterable[RealizedEntry]) -> Iterator[bytes]:
     """Yield content bytes from realized entries."""
     for entry in entries:
@@ -101,7 +170,7 @@ class BaselineRegion:
     """
     source_start_line: int          # 1-based inclusive
     source_end_line: int            # 1-based inclusive
-    baseline_lines: list[bytes]     # baseline content for restoration
+    baseline_lines: Sequence[bytes]  # baseline content for restoration
     kind: RegionKind                # Region restoration kind
     is_ambiguous: bool = False
     region_id: int = 0              # Unique region identifier (assigned during construction)
@@ -703,7 +772,7 @@ def _apply_absence_constraints(
     if not deletion_claims:
         return entries
 
-    result = entries[:]
+    result = entries
 
     suppress_fn = _suppress_at_boundary_strict if strict else _suppress_at_boundary_for_realization
 
@@ -769,7 +838,7 @@ def _satisfy_constraints(
     if not _missing_claimed_lines(realized_entries, presence_line_set):
         return realized_entries
 
-    current_lines = [entry.content for entry in realized_entries]
+    current_lines = _RealizedEntryContentSequence(realized_entries)
     realized_entries = _apply_presence_constraints(
         source_lines,
         current_lines,
@@ -1573,8 +1642,6 @@ def _discard_batch_line_chunks(
     realized_entries = _reverse_presence_constraints(
         realized_entries,
         presence_line_set,
-        source_lines,
-        baseline_lines,
         correspondence
     )
 
@@ -1636,7 +1703,7 @@ def _build_baseline_correspondence(
             region = BaselineRegion(
                 source_start_line=src_start + 1,
                 source_end_line=src_end,
-                baseline_lines=list(baseline_lines[base_start:base_end]),
+                baseline_lines=_LineRange(baseline_lines, base_start, base_end),
                 kind=RegionKind.EQUAL,
                 region_id=next_region_id
             )
@@ -1650,7 +1717,7 @@ def _build_baseline_correspondence(
             region = BaselineRegion(
                 source_start_line=src_start + 1,
                 source_end_line=src_end,
-                baseline_lines=[],
+                baseline_lines=(),
                 kind=RegionKind.INSERT,
                 region_id=next_region_id
             )
@@ -1665,8 +1732,8 @@ def _build_baseline_correspondence(
             src_len = src_end - src_start
 
             if base_len == src_len and base_len > 0:
-                baseline_segment = baseline_lines[base_start:base_end]
-                source_segment = source_lines[src_start:src_end]
+                baseline_segment = _LineRange(baseline_lines, base_start, base_end)
+                source_segment = _LineRange(source_lines, src_start, src_end)
 
                 sub_mapping = match_lines(baseline_segment, source_segment)
 
@@ -1684,7 +1751,7 @@ def _build_baseline_correspondence(
                     region = BaselineRegion(
                         source_start_line=src_start + 1,
                         source_end_line=src_end,
-                        baseline_lines=list(baseline_segment),
+                        baseline_lines=baseline_segment,
                         kind=RegionKind.REPLACE_LINE_BY_LINE,
                         region_id=next_region_id
                     )
@@ -1692,7 +1759,7 @@ def _build_baseline_correspondence(
                     region = BaselineRegion(
                         source_start_line=src_start + 1,
                         source_end_line=src_end,
-                        baseline_lines=list(baseline_segment),
+                        baseline_lines=baseline_segment,
                         kind=RegionKind.REPLACE_BY_HUNK,
                         region_id=next_region_id
                     )
@@ -1707,7 +1774,7 @@ def _build_baseline_correspondence(
                 region = BaselineRegion(
                     source_start_line=src_start + 1,
                     source_end_line=src_end,
-                    baseline_lines=list(baseline_lines[base_start:base_end]),
+                    baseline_lines=_LineRange(baseline_lines, base_start, base_end),
                     kind=RegionKind.REPLACE_BY_HUNK,
                     region_id=next_region_id
                 )
@@ -1759,8 +1826,6 @@ def _build_realized_entries_for_discard(
 def _reverse_presence_constraints(
     entries: list[RealizedEntry],
     presence_line_set: set[int],
-    source_lines: list[bytes],
-    baseline_lines: list[bytes],
     correspondence: BaselineCorrespondence
 ) -> list[RealizedEntry]:
     """Reverse presence constraints: replace/remove batch-owned claimed lines.
@@ -1783,8 +1848,6 @@ def _reverse_presence_constraints(
     Args:
         entries: Realized entries from working tree with source provenance
         presence_line_set: Set of source line numbers that are batch-owned
-        source_lines: Batch source lines (for validation)
-        baseline_lines: Baseline lines (not used directly; in correspondence)
         correspondence: Baseline restoration correspondence
 
     Returns:
@@ -1905,7 +1968,7 @@ def _restore_absence_constraints(
     if not deletion_claims:
         return entries
 
-    result = entries[:]
+    result = entries
 
     for claim in deletion_claims:
         try:

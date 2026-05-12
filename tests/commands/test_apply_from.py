@@ -1,5 +1,7 @@
 """Tests for apply from batch command."""
 
+import os
+
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.batch.ownership import BatchOwnership
@@ -42,6 +44,43 @@ def temp_git_repo(tmp_path, monkeypatch):
 
 class TestCommandApplyFromBatch:
     """Tests for apply from batch command."""
+
+    def test_apply_from_batch_added_symlink_creates_symlink_not_regular_file(
+        self,
+        temp_git_repo,
+    ):
+        """Applying an added symlink batch should create a working-tree symlink."""
+        link_path = temp_git_repo / "link"
+        os.symlink("target", link_path)
+        command_start(quiet=True)
+        command_include_to_batch("test-batch", line_ids="1", file="link", quiet=True)
+
+        link_path.unlink()
+        command_apply_from_batch("test-batch")
+
+        assert os.path.islink(link_path)
+        assert os.readlink(link_path) == "target"
+
+    def test_apply_from_batch_modified_dangling_symlink_does_not_stat_referent(
+        self,
+        temp_git_repo,
+    ):
+        """Applying a symlink batch should not chmod the symlink referent."""
+        link_path = temp_git_repo / "link"
+        os.symlink("oldtarget", link_path)
+        subprocess.run(["git", "add", "link"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add link"], check=True, cwd=temp_git_repo, capture_output=True)
+        link_path.unlink()
+        os.symlink("newtarget", link_path)
+        command_start(quiet=True)
+        command_include_to_batch("test-batch", line_ids="1,2", file="link", quiet=True)
+
+        link_path.unlink()
+        os.symlink("oldtarget", link_path)
+        command_apply_from_batch("test-batch")
+
+        assert os.path.islink(link_path)
+        assert os.readlink(link_path) == "newtarget"
 
     def test_apply_from_batch_modifies_working_tree(self, temp_git_repo):
         """Test applying changes from a batch to working tree."""

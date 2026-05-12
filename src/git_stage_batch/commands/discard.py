@@ -34,13 +34,11 @@ from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.source_refresh import _refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
-    build_line_changes_from_patch_bytes,
     build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
 )
 from ..core.hashing import (
     compute_binary_file_hash,
-    compute_stable_hunk_hash,
     compute_stable_hunk_hash_from_lines,
 )
 from ..core.line_selection import parse_line_selection
@@ -95,7 +93,6 @@ from ..staging.operations import (
 from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import (
     append_lines_to_file,
-    read_file_bytes,
     read_text_file_line_set,
     read_text_file_contents,
 )
@@ -131,6 +128,13 @@ class _TextFileDiscardInput:
 class _CollectedTextFileDiscards:
     inputs_by_file: dict[str, _TextFileDiscardInput]
     files_with_text_patches: set[str]
+
+
+def _patch_lines_contain_line(
+    patch_lines: Sequence[bytes],
+    line_content: bytes,
+) -> bool:
+    return any(line.rstrip(b"\n") == line_content for line in patch_lines)
 
 
 @dataclass(frozen=True)
@@ -1634,7 +1638,6 @@ def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str,
 
 def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, quiet: bool = False) -> int:
     """Save whole hunk or file to batch and discard from working tree (internal helper)."""
-
     log_journal("discard_hunk_to_batch_start", batch_name=batch_name, file_only=file_only, quiet=quiet)
 
     # Auto-create batch if it doesn't exist
@@ -1653,21 +1656,40 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
 
     # Get the file path and hash from currently cached hunk
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-    patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
-    line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
+    with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as selected_patch_lines:
+        return _command_discard_text_hunk_to_batch(
+            batch_name=batch_name,
+            selected_patch_lines=selected_patch_lines,
+            selected_patch_hash=patch_hash,
+            file_only=file_only,
+            quiet=quiet,
+        )
+
+
+def _command_discard_text_hunk_to_batch(
+    *,
+    batch_name: str,
+    selected_patch_lines: Sequence[bytes],
+    selected_patch_hash: str,
+    file_only: bool,
+    quiet: bool,
+) -> int:
+    """Save one cached text patch selection to a batch, then discard it."""
+    line_changes = build_line_changes_from_patch_lines(
+        selected_patch_lines,
+        annotator=annotate_with_batch_source,
+    )
     file_path = line_changes.path
 
     # Load blocklist
     blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines())
+    blocked_hashes = read_text_file_line_set(blocklist_path)
 
     file_mode = _detect_file_mode(file_path)
 
     # Collect all lines to batch (either selected hunk or all hunks from file)
     all_lines_to_batch = []
-    all_display_ids_to_batch = set()
-    patches_to_discard = []
+    patches_to_discard: list[tuple[Sequence[bytes], str]] = []
 
     if file_only:
         # Collect ALL hunks from this file
@@ -1675,22 +1697,22 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
             if patch.new_path != file_path:
                 continue
 
-            patch_bytes_loop = patch.to_patch_bytes()
-            patch_hash = compute_stable_hunk_hash(patch_bytes_loop)
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
             if patch_hash in blocked_hashes:
                 continue
 
             # Parse hunk to get lines
-            hunk_lines = build_line_changes_from_patch_bytes(patch_bytes_loop, annotator=annotate_with_batch_source)
+            hunk_lines = build_line_changes_from_patch_lines(
+                patch.lines,
+                annotator=annotate_with_batch_source,
+            )
             all_lines_to_batch.extend(hunk_lines.lines)
-            all_display_ids_to_batch.update(line.id for line in hunk_lines.lines if line.id is not None)
-            patches_to_discard.append((patch_bytes_loop, patch_hash))
+            patches_to_discard.append((patch.lines, patch_hash))
     else:
         # Just selected hunk (already loaded above)
         all_lines_to_batch = line_changes.lines
-        all_display_ids_to_batch = {line.id for line in line_changes.lines if line.id is not None}
-        patches_to_discard = [(patch_bytes, patch_hash)]
+        patches_to_discard = [(selected_patch_lines, selected_patch_hash)]
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
@@ -1727,22 +1749,37 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     log_journal("discard_hunk_to_batch_after_add", batch_name=batch_name, file_path=file_path)
 
     # Check if this is a new file (before applying patches)
-    is_new_file = any(b"--- /dev/null" in patch_bytes_item for patch_bytes_item, _ in patches_to_discard)
+    is_new_file = any(
+        _patch_lines_contain_line(patch_lines_item, b"--- /dev/null")
+        for patch_lines_item, _ in patches_to_discard
+    )
 
     # Apply reverse patches to discard from working tree
-    for patch_bytes_item, patch_hash in patches_to_discard:
+    for patch_lines_item, patch_hash in patches_to_discard:
         # Check if this is an empty file patch (@@ -0,0 +0,0 @@)
         # Empty file patches are synthetic and cannot be reversed with git apply
-        is_empty_file_patch = b"@@ -0,0 +0,0 @@" in patch_bytes_item
+        is_empty_file_patch = _patch_lines_contain_line(
+            patch_lines_item,
+            b"@@ -0,0 +0,0 @@",
+        )
 
         if not is_empty_file_patch:
-            log_journal("discard_hunk_to_batch_before_git_apply", batch_name=batch_name, patch_hash=patch_hash, file_path=file_path, patch_content=patch_bytes_item.decode("utf-8", errors="replace"))
+            log_journal(
+                "discard_hunk_to_batch_before_git_apply",
+                batch_name=batch_name,
+                patch_hash=patch_hash,
+                file_path=file_path,
+                patch_line_count=len(patch_lines_item),
+            )
 
             # Use stream_command to apply reverse patch
             stderr_chunks = []
             exit_code = 0
 
-            for event in stream_command(["git", "apply", "--reverse", "--unidiff-zero"], [patch_bytes_item]):
+            for event in stream_command(
+                ["git", "apply", "--reverse", "--unidiff-zero"],
+                patch_lines_item,
+            ):
                 if isinstance(event, ExitEvent):
                     exit_code = event.exit_code
                 elif isinstance(event, OutputEvent):
@@ -1779,8 +1816,7 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
             run_git_command(["rm", "--cached", "--quiet", file_path], check=False)
         elif is_new_file:
             # New file: only remove if it's empty after reverse patches
-            content = read_text_file_contents(absolute_path)
-            if not content.strip():
+            if _path_contains_only_whitespace(absolute_path):
                 absolute_path.unlink()
                 run_git_command(["rm", "--cached", "--quiet", file_path], check=False)
         # else: file still exists with content (reverted to HEAD state), leave it alone

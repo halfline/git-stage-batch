@@ -1781,8 +1781,7 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
 def record_hunk_included(hunk_hash: str) -> None:
     """Record that a hunk was included (staged)."""
     included_path = get_included_hunks_file_path()
-    content = read_text_file_contents(included_path)
-    existing = set(content.splitlines()) if content else set()
+    existing = read_text_file_line_set(included_path)
     existing.add(hunk_hash)
     write_text_file_contents(included_path, "\n".join(sorted(existing)) + "\n" if existing else "")
 
@@ -1798,8 +1797,7 @@ def record_hunks_discarded(hunk_hashes: list[str]) -> None:
     if not new_hashes:
         return
     discarded_path = get_discarded_hunks_file_path()
-    content = read_text_file_contents(discarded_path)
-    existing = set(content.splitlines()) if content else set()
+    existing = read_text_file_line_set(discarded_path)
     existing.update(new_hashes)
     write_text_file_contents(discarded_path, "\n".join(sorted(existing)) + "\n" if existing else "")
 

@@ -76,8 +76,6 @@ from ..data.session import require_session_started, snapshot_file_if_untracked, 
 from ..data.undo import undo_checkpoint
 from ..editor import (
     EditorBuffer,
-    BufferInput,
-    buffer_byte_chunks,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
     write_buffer_to_path,
@@ -140,9 +138,9 @@ class DiscardFilesToBatchResult:
     discarded_files: list[str]
 
 
-def _buffer_ends_with_lf(buffer: BufferInput) -> bool:
+def _buffer_ends_with_lf(buffer: EditorBuffer) -> bool:
     last_chunk = b""
-    for chunk in buffer_byte_chunks(buffer):
+    for chunk in buffer.byte_chunks():
         if chunk:
             last_chunk = chunk
     return bool(last_chunk) and last_chunk.endswith(b"\n")

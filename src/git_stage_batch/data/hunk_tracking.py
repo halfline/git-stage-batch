@@ -37,8 +37,6 @@ from ..core.diff_parser import (
     write_snapshots_for_selected_file_path,
 )
 from ..editor import (
-    BufferInput,
-    buffer_byte_chunks,
     EditorBuffer,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -56,8 +54,9 @@ from ..utils.file_io import (
     write_file_bytes,
     write_text_file_contents,
 )
+from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
-from ..utils.text import normalize_line_sequence_endings
+from ..utils.text import bytes_to_lines, normalize_line_sequence_endings
 from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
@@ -1318,52 +1317,32 @@ def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelCha
 
 def build_file_hunk_from_buffer(
     file_path: str,
-    file_buffer: BufferInput,
+    file_buffer: EditorBuffer,
 ) -> Optional[LineLevelChange]:
     """Build a file-scoped line view for a hypothetical file buffer without writing it."""
-    head_result = run_git_command(["show", f"HEAD:{file_path}"], check=False, text_output=False)
-    head_content = head_result.stdout if head_result.returncode == 0 else b""
+    head_buffer = load_git_object_as_buffer(f"HEAD:{file_path}")
 
     with tempfile.NamedTemporaryFile(delete=False) as old_tmp:
-        old_tmp.write(head_content)
+        if head_buffer is not None:
+            with head_buffer:
+                for chunk in head_buffer.byte_chunks():
+                    old_tmp.write(chunk)
         old_path = old_tmp.name
     with tempfile.NamedTemporaryFile(delete=False) as new_tmp:
-        for chunk in buffer_byte_chunks(file_buffer):
+        for chunk in file_buffer.byte_chunks():
             new_tmp.write(chunk)
         new_path = new_tmp.name
 
     try:
-        diff_result = run_git_command(
-            [
-                "diff",
-                "--no-index",
-                f"-U{get_context_lines()}",
-                "--no-color",
-                old_path,
-                new_path,
-            ],
-            check=False,
-            text_output=False,
-        )
-        if diff_result.returncode not in (0, 1):
-            raise subprocess.CalledProcessError(
-                diff_result.returncode,
-                diff_result.args,
-                output=diff_result.stdout,
-                stderr=diff_result.stderr,
-            )
-
-        patch_bytes = diff_result.stdout.replace(
-            f"a{old_path}".encode("utf-8"),
-            f"a/{file_path}".encode("utf-8"),
-        ).replace(
-            f"b{new_path}".encode("utf-8"),
-            f"b/{file_path}".encode("utf-8"),
-        )
-
         return _build_combined_file_line_changes(
             file_path,
-            parse_unified_diff_streaming(patch_bytes.splitlines(keepends=True)),
+            parse_unified_diff_streaming(
+                _stream_no_index_diff_lines(
+                    file_path=file_path,
+                    old_path=old_path,
+                    new_path=new_path,
+                )
+            ),
         )
     finally:
         try:
@@ -1372,6 +1351,56 @@ def build_file_hunk_from_buffer(
             os.unlink(new_path)
         except OSError:
             pass
+
+
+def _stream_no_index_diff_lines(
+    *,
+    file_path: str,
+    old_path: str,
+    new_path: str,
+) -> Generator[bytes, None, None]:
+    arguments = [
+        "git",
+        "diff",
+        "--no-index",
+        f"-U{get_context_lines()}",
+        "--no-color",
+        old_path,
+        new_path,
+    ]
+    stderr_chunks: list[bytes] = []
+    exit_code = 0
+
+    def stdout_chunks() -> Generator[bytes, None, None]:
+        nonlocal exit_code
+
+        for event in stream_command(arguments):
+            if isinstance(event, ExitEvent):
+                exit_code = event.exit_code
+            elif isinstance(event, OutputEvent):
+                if event.fd == 1:
+                    yield event.data
+                elif event.fd == 2:
+                    stderr_chunks.append(event.data)
+
+    old_header = f"a{old_path}".encode("utf-8")
+    new_header = f"b{new_path}".encode("utf-8")
+    rendered_old_header = f"a/{file_path}".encode("utf-8")
+    rendered_new_header = f"b/{file_path}".encode("utf-8")
+
+    for line in bytes_to_lines(stdout_chunks()):
+        yield line.replace(old_header, rendered_old_header).replace(
+            new_header,
+            rendered_new_header,
+        )
+
+    if exit_code not in (0, 1):
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+        raise subprocess.CalledProcessError(
+            exit_code,
+            arguments,
+            stderr=stderr_text,
+        )
 
 
 def _build_combined_file_line_changes(
@@ -1392,8 +1421,7 @@ def _build_combined_file_line_changes(
         if isinstance(single_hunk, BinaryFileChange):
             continue
 
-        patch_bytes = single_hunk.to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(single_hunk.lines)
 
         if previous_old_end is not None and previous_new_end is not None:
             omitted_old_lines = line_changes.header.old_start - previous_old_end

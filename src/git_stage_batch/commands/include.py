@@ -97,7 +97,10 @@ from ..staging.operations import (
     update_index_with_blob_buffer,
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
-from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
+from ..utils.file_io import (
+    append_lines_to_file,
+    read_text_file_contents,
+)
 from ..utils.git import (
     get_git_repository_root_path,
     git_update_index,
@@ -498,9 +501,6 @@ def command_include(*, quiet: bool = False) -> None:
                 advance_to_and_show_next_change()
             return
 
-        # Text hunk - use git apply (item is LineLevelChange here)
-        patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
-
         # Extract filename for user feedback (we already have LineLevelChange in item)
         filename = item.path
 
@@ -508,12 +508,16 @@ def command_include(*, quiet: bool = False) -> None:
         stderr_chunks = []
         exit_code = 0
 
-        for event in stream_command(["git", "apply", "--cached"], [patch_bytes]):
-            if isinstance(event, ExitEvent):
-                exit_code = event.exit_code
-            elif isinstance(event, OutputEvent):
-                if event.fd == 2:  # stderr
-                    stderr_chunks.append(event.data)
+        with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
+            for event in stream_command(
+                ["git", "apply", "--cached"],
+                patch_buffer.byte_chunks(),
+            ):
+                if isinstance(event, ExitEvent):
+                    exit_code = event.exit_code
+                elif isinstance(event, OutputEvent):
+                    if event.fd == 2:  # stderr
+                        stderr_chunks.append(event.data)
 
         if exit_code != 0:
             stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')

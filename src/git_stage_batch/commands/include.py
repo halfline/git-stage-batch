@@ -681,7 +681,7 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
         preserve_selected_state = False
         saved_selected_state = None
 
@@ -692,7 +692,9 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
         else:
             target_file = file
             preserve_selected_state = True
-            saved_selected_state = snapshot_selected_change_state()
+            saved_selected_state = selected_state_stack.enter_context(
+                snapshot_selected_change_state()
+            )
 
         if preserve_selected_state:
             line_changes = cache_unstaged_file_as_single_hunk(target_file)
@@ -705,12 +707,13 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
                 if line_changes is None:
                     exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
-        update_index_with_blob_buffer(
-            target_file,
-            replacement_text.encode("utf-8", errors="surrogateescape"),
-        )
+        with EditorBuffer.from_bytes(
+            replacement_text.encode("utf-8", errors="surrogateescape")
+        ) as replacement_buffer:
+            update_index_with_blob_buffer(target_file, replacement_buffer)
 
         if preserve_selected_state:
+            assert saved_selected_state is not None
             restore_selected_change_state(saved_selected_state)
         else:
             write_line_ids_file(get_processed_include_ids_file_path(), set())

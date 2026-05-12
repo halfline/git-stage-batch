@@ -40,25 +40,26 @@ def test_record_consumed_selection_refreshes_stale_first_selection(temp_git_repo
     test_file.write_text("header\nline1\n")
 
     command_start()
-    record_consumed_selection(
-        "test.txt",
-        source_buffer=b"header\nline1\n",
-        selected_lines=[
-            LineEntry(
-                id=1,
-                kind="+",
-                old_line_number=None,
-                new_line_number=2,
-                text_bytes=b"line1",
-                text="line1",
-                source_line=None,
-            )
-        ],
-        replacement_mask={
-            "deleted_lines": ["staged line"],
-            "added_lines": ["line1"],
-        },
-    )
+    with EditorBuffer.from_bytes(b"header\nline1\n") as source_buffer:
+        record_consumed_selection(
+            "test.txt",
+            source_buffer=source_buffer,
+            selected_lines=[
+                LineEntry(
+                    id=1,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=2,
+                    text_bytes=b"line1",
+                    text="line1",
+                    source_line=None,
+                )
+            ],
+            replacement_mask={
+                "deleted_lines": ["staged line"],
+                "added_lines": ["line1"],
+            },
+        )
 
     metadata = read_consumed_file_metadata("test.txt")
     assert metadata is not None
@@ -126,36 +127,38 @@ def test_record_consumed_selection_rewrites_existing_deletions(temp_git_repo):
     test_file.write_text("keep\n")
 
     command_start()
-    record_consumed_selection(
-        "test.txt",
-        source_buffer=b"keep\n",
-        selected_lines=[
-            LineEntry(
-                id=1,
-                kind="-",
-                old_line_number=1,
-                new_line_number=None,
-                text_bytes=b"old",
-                text="old",
-                source_line=None,
-            )
-        ],
-    )
-    record_consumed_selection(
-        "test.txt",
-        source_buffer=b"keep\n",
-        selected_lines=[
-            LineEntry(
-                id=2,
-                kind="+",
-                old_line_number=None,
-                new_line_number=1,
-                text_bytes=b"keep",
-                text="keep",
-                source_line=1,
-            )
-        ],
-    )
+    with EditorBuffer.from_bytes(b"keep\n") as source_buffer:
+        record_consumed_selection(
+            "test.txt",
+            source_buffer=source_buffer,
+            selected_lines=[
+                LineEntry(
+                    id=1,
+                    kind="-",
+                    old_line_number=1,
+                    new_line_number=None,
+                    text_bytes=b"old",
+                    text="old",
+                    source_line=None,
+                )
+            ],
+        )
+    with EditorBuffer.from_bytes(b"keep\n") as source_buffer:
+        record_consumed_selection(
+            "test.txt",
+            source_buffer=source_buffer,
+            selected_lines=[
+                LineEntry(
+                    id=2,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=1,
+                    text_bytes=b"keep",
+                    text="keep",
+                    source_line=1,
+                )
+            ],
+        )
 
     metadata = read_consumed_file_metadata("test.txt")
     assert metadata is not None

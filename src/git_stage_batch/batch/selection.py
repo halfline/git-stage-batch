@@ -350,23 +350,6 @@ def acquire_batch_ownership_for_display_ids_from_lines(
         )
 
 
-def select_batch_ownership_for_display_ids_from_lines(
-    file_meta: dict,
-    batch_source_lines: Sequence[bytes],
-    selected_ids: Optional[set[int]],
-) -> BatchOwnership:
-    """Select ownership from indexed batch-source lines."""
-    ownership = BatchOwnership.from_metadata_dict(file_meta)
-    if selected_ids is None:
-        return ownership
-
-    return _select_batch_ownership_from_lines(
-        ownership,
-        batch_source_lines,
-        selected_ids,
-    )
-
-
 def _select_batch_ownership_from_lines(
     ownership: BatchOwnership,
     batch_source_lines: Sequence[bytes],

@@ -115,7 +115,7 @@ from .include import (
 
 @dataclass(frozen=True)
 class _PreparedPatchDiscard:
-    patch_bytes: bytes
+    patch_lines: Sequence[bytes]
     patch_hash: str
 
 
@@ -1063,6 +1063,7 @@ def _collect_text_file_discard_inputs(
     files: list[str],
     *,
     blocked_hashes: set[str],
+    patch_stack: ExitStack,
 ) -> _CollectedTextFileDiscards:
     """Collect normal text file discard inputs from one Git diff."""
     if not files:
@@ -1081,13 +1082,12 @@ def _collect_text_file_discard_inputs(
         file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
         files_with_text_patches.add(file_path)
 
-        patch_bytes = patch.to_patch_bytes()
-        patch_hash = compute_stable_hunk_hash(patch_bytes)
+        patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
         if patch_hash in blocked_hashes:
             continue
 
-        hunk_lines = build_line_changes_from_patch_bytes(
-            patch_bytes,
+        hunk_lines = build_line_changes_from_patch_lines(
+            patch.lines,
             annotator=annotate_with_batch_source,
         )
         discard_input = inputs_by_file.get(file_path)
@@ -1102,7 +1102,9 @@ def _collect_text_file_discard_inputs(
         discard_input.all_lines_to_batch.extend(hunk_lines.lines)
         discard_input.patches_to_discard.append(
             _PreparedPatchDiscard(
-                patch_bytes=patch_bytes,
+                patch_lines=patch_stack.enter_context(
+                    EditorBuffer.from_chunks(patch.lines)
+                ),
                 patch_hash=patch_hash,
             )
         )
@@ -1125,12 +1127,12 @@ def _run_reverse_apply_for_prepared_discards(
 
     exit_code = 0
     stderr_chunks = []
-    patch_chunks = [
-        patch.patch_bytes
-        for prepared in prepared_discards
-        for patch in prepared.patches_to_discard
-    ]
-    for event in stream_command(arguments, stdin_chunks=patch_chunks):
+    def patch_chunks():
+        for prepared in prepared_discards:
+            for patch in prepared.patches_to_discard:
+                yield from patch.patch_lines
+
+    for event in stream_command(arguments, stdin_chunks=patch_chunks()):
         if isinstance(event, ExitEvent):
             exit_code = event.exit_code
         elif isinstance(event, OutputEvent) and event.fd == 2:
@@ -1206,16 +1208,10 @@ def command_discard_files_to_batch(
         create_batch(batch_name, "Auto-created")
 
     blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines())
-    metadata = read_batch_metadata(batch_name)
-    collected_discards = _collect_text_file_discard_inputs(
-        files,
-        blocked_hashes=blocked_hashes,
-    )
-
+    blocked_hashes = read_text_file_line_set(blocklist_path)
     prepared_discards: list[_PreparedTextFileDiscardToBatch] = []
     ownership_stack = ExitStack()
+    patch_stack = ExitStack()
     total_hunks = 0
     discarded_files: list[str] = []
 
@@ -1232,6 +1228,13 @@ def command_discard_files_to_batch(
         ownership_stack = ExitStack()
 
     try:
+        metadata = read_batch_metadata(batch_name)
+        collected_discards = _collect_text_file_discard_inputs(
+            files,
+            blocked_hashes=blocked_hashes,
+            patch_stack=patch_stack,
+        )
+
         for file_path in files:
             log_journal("discard_file_to_batch_start", batch_name=batch_name, file_path=file_path, quiet=quiet)
             discard_input = collected_discards.inputs_by_file.get(file_path)
@@ -1256,8 +1259,7 @@ def command_discard_files_to_batch(
                     total_hunks += discarded_hunks
                     discarded_files.append(file_path)
                     metadata = read_batch_metadata(batch_name)
-                    blocklist_text = read_text_file_contents(blocklist_path)
-                    blocked_hashes = set(blocklist_text.splitlines())
+                    blocked_hashes = read_text_file_line_set(blocklist_path)
                 continue
 
             prepared_discards.append(prepared)
@@ -1266,6 +1268,7 @@ def command_discard_files_to_batch(
         flush_prepared()
     finally:
         ownership_stack.close()
+        patch_stack.close()
 
     if quiet and advance:
         advance_to_next_change()

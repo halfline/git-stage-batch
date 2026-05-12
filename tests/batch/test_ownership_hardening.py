@@ -17,7 +17,7 @@ from git_stage_batch.batch.attribution import (
 )
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.core.diff_parser import (
-    build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
 )
 from git_stage_batch.editor import (
     load_git_object_as_buffer_or_empty,
@@ -138,7 +138,7 @@ def test_multi_line_replacement_addition_uses_digest_for_projection(line_sequenc
     )
     assert replacement_unit.claimed_content is None
     assert replacement_unit.claimed_fingerprint is not None
-    assert replacement_unit.claimed_fingerprint.byte_count == 10
+    assert replacement_unit.claimed_fingerprint.byte_count == len(b"new1\nnew2\n")
     assert replacement_unit.claimed_line_count == 2
 
     attribution = FileAttribution(
@@ -150,18 +150,20 @@ def test_multi_line_replacement_addition_uses_digest_for_projection(line_sequenc
             )
         ],
     )
-    patch_bytes = b"""diff --git a/test.txt b/test.txt
---- a/test.txt
-+++ b/test.txt
-@@ -1,4 +1,4 @@
- line1
--old1
--old2
-+new1
-+new2
- line4
-"""
-    line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+    line_changes = build_line_changes_from_patch_lines(
+        (
+            b"diff --git a/test.txt b/test.txt\n"
+            b"--- a/test.txt\n"
+            b"+++ b/test.txt\n"
+            b"@@ -1,4 +1,4 @@\n"
+            b" line1\n"
+            b"-old1\n"
+            b"-old2\n"
+            b"+new1\n"
+            b"+new2\n"
+            b" line4\n"
+        ).splitlines(keepends=True)
+    )
 
     display_to_unit = project_attribution_to_diff(attribution, line_changes)
 
@@ -432,8 +434,7 @@ class TestReplacementProjection:
         ))
         assert len(patches) >= 1
 
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Project attribution onto diff
         display_to_unit = project_attribution_to_diff(attribution, line_changes)
@@ -472,8 +473,7 @@ class TestAnchorConsistency:
             if not patches:
                 continue
 
-            patch_bytes = patches[0].to_patch_bytes()
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+            line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
             # Project attribution
             display_to_unit = project_attribution_to_diff(attribution, line_changes)
@@ -507,8 +507,7 @@ class TestAnchorConsistency:
         patches = list(parse_unified_diff_streaming(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Project
         display_to_unit = project_attribution_to_diff(attribution, line_changes)
@@ -545,8 +544,7 @@ class TestAnchorConsistency:
         patches = list(parse_unified_diff_streaming(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Project
         display_to_unit = project_attribution_to_diff(attribution, line_changes)
@@ -585,8 +583,7 @@ class TestSemanticConsistency:
         patches = list(parse_unified_diff_streaming(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Projection layer
         display_to_unit = project_attribution_to_diff(attribution, line_changes)

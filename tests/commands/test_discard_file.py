@@ -7,7 +7,7 @@ import pytest
 from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.discard import command_discard_file
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.core.hashing import compute_stable_hunk_hash
+from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
 from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import (
@@ -200,7 +200,10 @@ class TestCommandDiscardFile:
             capture_output=True,)
         stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
         patches = list(parse_unified_diff_streaming(stdout_bytes.splitlines(keepends=True)))
-        expected_hashes = {compute_stable_hunk_hash(patch.to_patch_bytes()) for patch in patches}
+        expected_hashes = {
+            compute_stable_hunk_hash_from_lines(patch.lines)
+            for patch in patches
+        }
 
         # Verify we have multiple hunks
         assert len(expected_hashes) >= 2, "Test requires at least 2 hunks"

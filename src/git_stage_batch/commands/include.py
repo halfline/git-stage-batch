@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, replace
 from enum import Enum
+import os
 import stat
 import sys
 import uuid
@@ -28,7 +29,7 @@ from ..batch.selection import (
     line_selection_not_valid_message,
     require_line_selection_in_view,
 )
-from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
+from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
@@ -327,8 +328,10 @@ def _try_build_index_content_via_transient_batch(
                     TransientIncludeFailureReason.MISSING_BATCH_SOURCE
                 )
 
-            ownership = BatchOwnership.from_metadata_dict(file_metadata)
-            with source_buffer as source_lines:
+            with (
+                BatchOwnership.acquire_for_metadata_dict(file_metadata) as ownership,
+                source_buffer as source_lines,
+            ):
                 try:
                     target_index_buffer = merge_batch_from_line_sequences_as_buffer(
                         source_lines,
@@ -381,7 +384,7 @@ def _try_build_index_content_via_transient_batch(
 def _stage_live_line_target_buffer(file_path: str, target_buffer: BufferInput) -> None:
     """Stage the result of live line-level include."""
     full_path = get_git_repository_root_path() / file_path
-    if buffer_byte_count(target_buffer) == 0 and not full_path.exists():
+    if buffer_byte_count(target_buffer) == 0 and not os.path.lexists(full_path):
         result = git_update_index(
             file_path=file_path,
             force_remove=True,
@@ -1280,8 +1283,11 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
 def _detect_file_mode(file_path: str) -> str:
     """Return the current git file mode for a path, defaulting to a regular file."""
     absolute_path = get_git_repository_root_path() / file_path
-    if absolute_path.exists():
-        return "100755" if absolute_path.stat().st_mode & stat.S_IXUSR else "100644"
+    if os.path.lexists(absolute_path):
+        file_status = absolute_path.lstat()
+        if stat.S_ISLNK(file_status.st_mode):
+            return "120000"
+        return "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
 
     ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
     if ls_result.returncode == 0 and ls_result.stdout.strip():
@@ -1385,38 +1391,30 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
+    file_metadata = metadata.get("files", {}).get(file_path)
 
-    if file_path in metadata.get("files", {}):
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=all_lines_to_batch,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot include file to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\nBatch: {batch}\nError: {error}").format(
+                    file=file_path, batch=batch_name, error=str(e))
+            )
 
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=all_lines_to_batch
-        )
+        # Snapshot file before modifying
+        snapshot_file_if_untracked(file_path)
 
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot include file to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\nBatch: {batch}\nError: {error}").format(
-                file=file_path, batch=batch_name, error=str(e))
-        )
-
-    # Snapshot file before modifying
-    snapshot_file_if_untracked(file_path)
-
-    # Save to batch
-    add_file_to_batch(batch_name, file_path, ownership, file_mode)
+        # Save to batch
+        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
     if not quiet:
         print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
@@ -1470,38 +1468,30 @@ def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_i
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
+    file_metadata = metadata.get("files", {}).get(file_path)
 
-    if file_path in metadata.get("files", {}):
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=selected_lines,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\nBatch: {batch}\nError: {error}").format(
+                    file=file_path, batch=batch_name, error=str(e))
+            )
 
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=selected_lines
-        )
+        # Snapshot file before modifying
+        snapshot_file_if_untracked(file_path)
 
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\nBatch: {batch}\nError: {error}").format(
-                file=file_path, batch=batch_name, error=str(e))
-        )
-
-    # Snapshot file before modifying
-    snapshot_file_if_untracked(file_path)
-
-    # Save to batch
-    add_file_to_batch(batch_name, file_path, ownership, file_mode)
+        # Save to batch
+        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
     if not quiet:
         print(_("Included line(s) from file '{file}' to batch '{batch}': {lines}").format(
@@ -1543,37 +1533,34 @@ def _command_include_lines_to_batch(batch_name: str, line_id_specification: str,
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
-
-    if line_changes.path in metadata.get("files", {}):
-        file_metadata = metadata["files"][line_changes.path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
-
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=line_changes.path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=selected_lines
-        )
-
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\nBatch: {batch}\nError: {error}").format(
-                file=line_changes.path, batch=batch_name, error=str(e))
-        )
+    file_metadata = metadata.get("files", {}).get(line_changes.path)
 
     file_mode = _detect_file_mode(line_changes.path)
 
-    # Save to batch using batch source model
-    add_file_to_batch(batch_name, line_changes.path, ownership, file_mode)
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=line_changes.path,
+                    file_metadata=file_metadata,
+                    selected_lines=selected_lines,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\nBatch: {batch}\nError: {error}").format(
+                    file=line_changes.path, batch=batch_name, error=str(e))
+            )
+
+        # Save to batch using batch source model
+        add_file_to_batch(
+            batch_name,
+            line_changes.path,
+            update.ownership_after,
+            file_mode,
+        )
 
     if not quiet:
         print(_("✓ Included line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)
@@ -1678,35 +1665,27 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
+    file_metadata = metadata.get("files", {}).get(file_path)
 
-    if file_path in metadata.get("files", {}):
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=all_lines_to_batch,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot include to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\nBatch: {batch}\nError: {error}").format(
+                    file=file_path, batch=batch_name, error=str(e))
+            )
 
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=all_lines_to_batch
-        )
-
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot include to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\nBatch: {batch}\nError: {error}").format(
-                file=file_path, batch=batch_name, error=str(e))
-        )
-
-    # Save to batch using batch source model (once, with all accumulated data)
-    add_file_to_batch(batch_name, file_path, ownership, file_mode)
+        # Save to batch using batch source model (once, with all accumulated data)
+        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
     # Mark hunks as processed
     for patch_bytes_item, patch_hash in patches_to_process:

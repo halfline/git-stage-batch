@@ -9,7 +9,6 @@ import git_stage_batch.batch.attribution as attribution_module
 from git_stage_batch.batch.attribution import (
     AttributionUnitKind,
     FileComparison,
-    compare_baseline_to_working_tree,
     enumerate_units_from_file_comparison,
     build_file_attribution,
     project_attribution_to_diff,
@@ -17,6 +16,10 @@ from git_stage_batch.batch.attribution import (
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.core.diff_parser import (
     build_line_changes_from_patch_bytes,
+)
+from git_stage_batch.editor import (
+    load_git_object_as_buffer_or_empty,
+    load_working_tree_file_as_buffer,
 )
 from git_stage_batch.utils.git import stream_git_command
 
@@ -58,6 +61,23 @@ def _create_batch_source_commit(repo, path: str, content: str) -> str:
         capture_output=True,
     )
     return commit
+
+
+def _enumerate_units_from_head_and_working_tree(file_path: str):
+    baseline_buffer = load_git_object_as_buffer_or_empty(f"HEAD:{file_path}")
+    working_tree_buffer = load_working_tree_file_as_buffer(file_path)
+
+    with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
+        comparison = FileComparison(
+            file_path=file_path,
+            baseline_lines=baseline_lines,
+            working_tree_lines=working_tree_lines,
+            alignment=match_lines(baseline_lines, working_tree_lines),
+        )
+        units_map = {}
+        enumerate_units_from_file_comparison(comparison, units_map)
+        return units_map
+
 
 def test_file_comparison_accepts_non_list_line_sequences(line_sequence):
     """Attribution comparison only requires sized indexable line sequences."""
@@ -141,9 +161,7 @@ class TestPresenceGranularity:
         test_file.write_text("line1\nline2\nline3\nline4\n")
 
         # Build attribution
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         # Should have THREE separate PRESENCE_ONLY units (lines 2, 3, 4)
         presence_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.PRESENCE_ONLY]
@@ -167,9 +185,7 @@ class TestPresenceGranularity:
 
         test_file.write_text("original\nadd1\nadd2\nadd3\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         presence_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.PRESENCE_ONLY]
 
@@ -192,9 +208,7 @@ class TestReplacementPairing:
         # Replace both deletion targets
         test_file.write_text("line1\nadd1\nline2\nadd2\nline3\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         # Should have exactly 2 REPLACEMENT units
         replacement_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.REPLACEMENT]
@@ -215,9 +229,7 @@ class TestReplacementPairing:
         # One addition where two deletions were
         test_file.write_text("add\nkeep\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         # Should have at most 1 REPLACEMENT (one-to-one pairing)
         replacement_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.REPLACEMENT]
@@ -238,9 +250,7 @@ class TestReplacementPairing:
         # Build units multiple times - should get same result
         results = []
         for _ in range(3):
-            comparison = compare_baseline_to_working_tree("test.txt")
-            units_map = {}
-            enumerate_units_from_file_comparison(comparison, units_map)
+            units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
             replacement_units = sorted(
                 [u for u in units_map.values() if u.kind == AttributionUnitKind.REPLACEMENT],
@@ -269,9 +279,7 @@ class TestAnchorSemantics:
         # Delete target line
         test_file.write_text("header\nkeep1\nkeep2\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         deletion_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.DELETION_ONLY]
         assert len(deletion_units) == 1
@@ -290,9 +298,7 @@ class TestAnchorSemantics:
         # Delete first line
         test_file.write_text("keep\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         deletion_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.DELETION_ONLY]
         assert len(deletion_units) == 1
@@ -315,9 +321,7 @@ class TestPresenceOwnershipIdentity:
         # Add another "same" line
         test_file.write_text("same\nother\nsame\nsame\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         presence_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.PRESENCE_ONLY]
 
@@ -501,9 +505,7 @@ class TestSemanticConsistency:
         test_file.write_text("keep\nnew1\nnew2\nkeep2\n")
 
         # File comparison layer
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         # Attribution layer
         attribution = build_file_attribution("test.txt")

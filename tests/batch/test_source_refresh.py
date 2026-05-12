@@ -14,6 +14,7 @@ from git_stage_batch.batch.source_refresh import (
     RefreshedBatchSelection,
     PreparedBatchUpdate,
     _refresh_selected_lines_against_source_lines,
+    acquire_batch_ownership_update_for_selection,
     ensure_batch_source_current_for_selection,
     prepare_batch_ownership_update_for_selection,
 )
@@ -230,6 +231,58 @@ def test_prepare_batch_ownership_update_with_existing():
     assert result.ownership_after is not None
     # Should merge 1-2 with 3-4
     assert "1-4" in ",".join(result.ownership_after.presence_claims[0].source_lines)
+
+
+def test_acquire_batch_ownership_update_uses_metadata_acquisition(monkeypatch):
+    """Prepared updates can borrow ownership from metadata while open."""
+    existing = BatchOwnership.from_presence_lines(["1"], [])
+    entered = False
+    exited = False
+
+    class OwnershipContext:
+        def __enter__(self):
+            nonlocal entered
+            entered = True
+            return existing
+
+        def __exit__(self, exc_type, exc, traceback):
+            nonlocal exited
+            exited = True
+
+    def acquire_for_metadata_dict(cls, metadata):
+        assert metadata == {"batch_source_commit": "source123"}
+        return OwnershipContext()
+
+    monkeypatch.setattr(
+        BatchOwnership,
+        "acquire_for_metadata_dict",
+        classmethod(acquire_for_metadata_dict),
+    )
+    lines = [
+        LineEntry(
+            id=2,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"line2\n",
+            text="line2\n",
+            source_line=2,
+        ),
+    ]
+
+    with acquire_batch_ownership_update_for_selection(
+        batch_name="test-batch",
+        file_path="test.py",
+        file_metadata={"batch_source_commit": "source123"},
+        selected_lines=lines,
+    ) as result:
+        assert entered is True
+        assert exited is False
+        assert result.batch_source_commit == "source123"
+        assert result.ownership_before is existing
+        assert result.ownership_after.presence_line_set() == {1, 2}
+
+    assert exited is True
 
 
 def test_refresh_selected_lines_uses_synthesized_working_line_provenance():

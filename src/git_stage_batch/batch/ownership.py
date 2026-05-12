@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from hashlib import sha256
 
 from ..core.line_selection import format_line_ids, parse_line_selection
 from ..core.models import LineEntry
@@ -553,9 +554,30 @@ class BatchSourceAdvanceResult:
         self.close()
 
 
-def _deletion_signature(deletion: DeletionClaim) -> tuple[int | None, bytes]:
+@dataclass(frozen=True, slots=True)
+class _DeletionSignature:
+    anchor_line: int | None
+    content_digest: str
+    byte_count: int
+    line_count: int
+
+
+def _deletion_signature(deletion: DeletionClaim) -> _DeletionSignature:
     """Return a stable signature for a deletion claim."""
-    return deletion.anchor_line, b"".join(deletion.content_lines)
+    digest = sha256()
+    byte_count = 0
+    line_count = 0
+    for line in deletion.content_lines:
+        digest.update(line)
+        byte_count += len(line)
+        line_count += 1
+
+    return _DeletionSignature(
+        anchor_line=deletion.anchor_line,
+        content_digest=digest.hexdigest(),
+        byte_count=byte_count,
+        line_count=line_count,
+    )
 
 
 def _baseline_reference_side_score(
@@ -734,7 +756,7 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
     # When batch source advances and ownership is remapped, the same deletion can appear
     # in both existing (remapped) and new (from current diff). We need to deduplicate.
     combined_deletions = []
-    deletion_index_by_signature: dict[tuple[int | None, bytes], int] = {}
+    deletion_index_by_signature: dict[_DeletionSignature, int] = {}
     existing_deletion_index_map: dict[int, int] = {}
     new_deletion_index_map: dict[int, int] = {}
 

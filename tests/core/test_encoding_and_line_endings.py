@@ -15,7 +15,7 @@ import pytest
 
 from git_stage_batch.core.diff_parser import (
     parse_unified_diff_streaming,
-    build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
 )
 from git_stage_batch.core.models import LineEntry
 from git_stage_batch.utils.git import stream_git_command
@@ -64,7 +64,7 @@ class TestCRLFLineEndings:
         patch = patches[0]
 
         # Verify CRLF is preserved in patch bytes
-        patch_bytes = patch.to_patch_bytes()
+        patch_bytes = b"".join(patch.lines)
         # The content lines should have \r preserved (only \n is the diff terminator)
         assert b"line1\r" in patch_bytes or b"modified\r" in patch_bytes
 
@@ -128,8 +128,7 @@ class TestMixedLineEndings:
         assert len(patches) == 1
 
         # Build selected lines
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Find the changed line
         changed_line = None
@@ -141,6 +140,48 @@ class TestMixedLineEndings:
         assert changed_line is not None
         # The \r should be preserved in the content (not stripped)
         assert b"\r" in changed_line.text_bytes or changed_line.text_bytes == b"changed line\r"
+
+
+class TestBareCRContent:
+    """Tests for bare CR bytes within Git-coordinate text lines."""
+
+    def test_include_all_bare_cr_file_preserves_modified_bytes(self, temp_git_repo):
+        """Line-level include should keep bare CR bytes inside one Git line."""
+        test_file = temp_git_repo / "cr.txt"
+        original = b"one\rtwo\r"
+        modified = b"one\rTWO\r"
+
+        test_file.write_bytes(original)
+        subprocess.run(["git", "add", "cr.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(["git", "commit", "-m", "add cr"], check=True, cwd=temp_git_repo)
+
+        test_file.write_bytes(modified)
+        command_start(quiet=True)
+        command_include_line("1,2")
+
+        result = subprocess.run(
+            ["git", "show", ":cr.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        assert result.stdout == modified
+
+    def test_discard_all_bare_cr_file_preserves_original_bytes(self, temp_git_repo):
+        """Line-level discard should restore bare CR bytes inside one Git line."""
+        test_file = temp_git_repo / "cr.txt"
+        original = b"one\rtwo\r"
+        modified = b"one\rTWO\r"
+
+        test_file.write_bytes(original)
+        subprocess.run(["git", "add", "cr.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(["git", "commit", "-m", "add cr"], check=True, cwd=temp_git_repo)
+
+        test_file.write_bytes(modified)
+        command_start(quiet=True)
+        command_discard_line("1,2")
+
+        assert test_file.read_bytes() == original
 
 
 class TestLatin1Encoding:
@@ -166,8 +207,7 @@ class TestLatin1Encoding:
         assert len(patches) == 1
 
         # Build selected lines - should decode with replacement character
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Find the added line
         added_line = None
@@ -191,7 +231,7 @@ class TestLatin1Encoding:
 
         test_file.write_bytes(b"cafe\nna\xefve modified\n")
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
-        expected_patch = patches[0].to_patch_bytes()
+        expected_patch = b"".join(patches[0].lines)
 
         command_start(quiet=True)
 
@@ -328,8 +368,7 @@ class TestInvalidUTF8Sequences:
         assert len(patches) == 1
 
         # Build selected lines
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Find the changed line
         changed_line = None
@@ -361,8 +400,7 @@ class TestLineEndingEdgeCases:
         assert len(patches) == 1
 
         # Git adds "\ No newline at end of file" - we should handle this
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
         assert len(line_changes.lines) > 0
 
     def test_only_carriage_returns(self, temp_git_repo):
@@ -397,7 +435,7 @@ class TestLineEndingEdgeCases:
         patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
         assert len(patches) == 1
 
-        patch_bytes = patches[0].to_patch_bytes()
+        patch_bytes = b"".join(patches[0].lines)
         # Empty line's CRLF should be preserved
         assert b"\r\n" in patch_bytes
 
@@ -438,11 +476,13 @@ class TestDiffParserBytesHandling:
         assert line.text_bytes == b"content with\r in it"
 
     def test_build_line_changes_preserves_non_utf8_bytes(self):
-        """Test that build_line_changes_from_patch_bytes preserves non-UTF-8 bytes."""
+        """Test that build_line_changes_from_patch_lines preserves non-UTF-8 bytes."""
         # Create a patch with Latin-1 bytes (invalid UTF-8)
         patch_bytes = b"--- a/test.txt\n+++ b/test.txt\n@@ -1 +1 @@\n-old\n+caf\xe9\n"
 
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(
+            patch_bytes.splitlines(keepends=True)
+        )
 
         # Find the added line
         added_line = None

@@ -474,15 +474,3 @@ def build_line_changes_from_patch_lines(
         line_changes = annotator(path_value, line_changes)
 
     return line_changes
-
-
-def build_line_changes_from_patch_bytes(
-    patch_bytes: bytes,
-    *,
-    annotator: LineLevelChangeAnnotator | None = None,
-) -> LineLevelChange:
-    """Parse a single-hunk patch byte string into a LineLevelChange structure."""
-    return build_line_changes_from_patch_lines(
-        patch_bytes.splitlines(keepends=True),
-        annotator=annotator,
-    )

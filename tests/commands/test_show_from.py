@@ -281,6 +281,53 @@ class TestCommandShowFromBatch:
         assert rendered is not None
         assert len(calls) == 1
 
+    def test_show_from_uses_scoped_ownership_metadata(self, temp_git_repo, monkeypatch):
+        """Rendering should not require materialized ownership metadata."""
+        (temp_git_repo / "file.txt").write_text("old one\nold two\nkeep\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        (temp_git_repo / "file.txt").write_text("new one\nkeep\n")
+        create_batch("scoped-metadata-batch")
+        add_file_to_batch(
+            "scoped-metadata-batch",
+            "file.txt",
+            BatchOwnership.from_presence_lines(
+                ["1"],
+                [
+                    DeletionClaim(
+                        anchor_line=None,
+                        content_lines=[b"old one\n", b"old two\n"],
+                    )
+                ],
+            ),
+            "100644",
+        )
+
+        def fail_from_metadata_dict(cls, data):
+            raise AssertionError("rendering should use acquired ownership")
+
+        monkeypatch.setattr(
+            BatchOwnership,
+            "from_metadata_dict",
+            classmethod(fail_from_metadata_dict),
+        )
+
+        rendered = render_batch_file_display(
+            "scoped-metadata-batch",
+            "file.txt",
+            probe_mergeability=False,
+        )
+
+        assert rendered is not None
+        deletion_lines = [
+            line for line in rendered.line_changes.lines if line.kind == "-"
+        ]
+        assert [line.text_bytes for line in deletion_lines] == [
+            b"old one",
+            b"old two",
+        ]
+
     def test_show_from_streams_batch_source_for_preview(self, temp_git_repo, monkeypatch):
         """Batch file previews should stream the stored source content."""
 

@@ -510,6 +510,34 @@ class ResolvedBatchOwnership:
     deletion_claims: list[DeletionClaim]  # Separate constraints, not collapsed
 
 
+def detach_batch_ownership(ownership: BatchOwnership) -> BatchOwnership:
+    """Return ownership whose deletion content no longer borrows buffers."""
+    return BatchOwnership(
+        presence_claims=[
+            PresenceClaim(
+                source_lines=claim.source_lines[:],
+                baseline_references=dict(claim.baseline_references),
+            )
+            for claim in ownership.presence_claims
+        ],
+        deletions=[
+            DeletionClaim(
+                anchor_line=deletion.anchor_line,
+                content_lines=list(deletion.content_lines),
+                baseline_reference=deletion.baseline_reference,
+            )
+            for deletion in ownership.deletions
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=unit.presence_lines[:],
+                deletion_indices=unit.deletion_indices[:],
+            )
+            for unit in ownership.replacement_units
+        ],
+    )
+
+
 @dataclass
 class SourceContentWithLineProvenance:
     """Synthesized source buffer with line provenance from its inputs."""

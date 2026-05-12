@@ -21,7 +21,6 @@ from ..i18n import _
 from ..utils.git import (
     create_git_blob,
     get_git_repository_root_path,
-    read_git_blob,
     read_git_blobs_as_bytes,
 )
 from .comparison import SemanticChangeKind, derive_semantic_change_runs
@@ -125,15 +124,9 @@ class DeletionClaim:
         """Deserialize from metadata dictionary."""
         anchor_line = data.get("after_source_line")
         blob_sha = data["blob"]
-        if blob_buffers is not None and blob_sha in blob_buffers:
-            content_lines = blob_buffers[blob_sha]
-        else:
-            blob_content = (
-                blob_contents[blob_sha]
-                if blob_contents is not None and blob_sha in blob_contents
-                else b"".join(read_git_blob(blob_sha))
-            )
-            content_lines = blob_content.splitlines(keepends=True)
+        if blob_buffers is None:
+            raise ValueError("deletion blobs must be loaded before deserialization")
+        content_lines = blob_buffers[blob_sha]
         baseline_metadata = data.get("baseline_reference")
         baseline_reference = (
             BaselineReference.from_dict(baseline_metadata, blob_contents)
@@ -152,9 +145,9 @@ def _read_metadata_blob(
 ) -> bytes | None:
     if blob_sha is None:
         return None
-    if blob_contents is not None and blob_sha in blob_contents:
-        return blob_contents[blob_sha]
-    return b"".join(read_git_blob(blob_sha))
+    if blob_contents is None:
+        raise ValueError("metadata blobs must be loaded before deserialization")
+    return blob_contents[blob_sha]
 
 
 def _baseline_reference_blob_ids(reference_metadata: dict) -> list[str]:

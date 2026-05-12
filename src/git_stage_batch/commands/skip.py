@@ -6,8 +6,8 @@ from dataclasses import replace
 import json
 import sys
 
-from ..core.diff_parser import build_line_changes_from_patch_bytes, parse_unified_diff_streaming
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
+from ..core.diff_parser import build_line_changes_from_patch_lines, parse_unified_diff_streaming
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
 from ..core.line_selection import (
     parse_line_selection,
     read_line_ids_file,
@@ -41,7 +41,12 @@ from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_remaining_line_changes_header
-from ..utils.file_io import append_lines_to_file, read_text_file_contents, write_text_file_contents
+from ..utils.file_io import (
+    append_lines_to_file,
+    read_text_file_line_set,
+    read_text_file_contents,
+    write_text_file_contents,
+)
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.journal import log_journal
 from ..utils.paths import (
@@ -167,8 +172,7 @@ def command_skip_file(
     with undo_checkpoint(f"skip --file {file}".rstrip()):
         # Stream through hunks and skip all from target file.
         blocklist_path = get_block_list_file_path()
-        blocklist_text = read_text_file_contents(blocklist_path)
-        blocked_hashes = set(blocklist_text.splitlines())
+        blocked_hashes = read_text_file_line_set(blocklist_path)
 
         hunks_skipped = 0
         for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
@@ -190,8 +194,7 @@ def command_skip_file(
             if patch.new_path != target_file:
                 continue
 
-            patch_bytes = patch.to_patch_bytes()
-            patch_hash = compute_stable_hunk_hash(patch_bytes)
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
             # Skip if already blocked
             if patch_hash in blocked_hashes:
@@ -201,7 +204,7 @@ def command_skip_file(
             append_lines_to_file(blocklist_path, [patch_hash])
             blocked_hashes.add(patch_hash)
             record_hunk_skipped(
-                build_line_changes_from_patch_bytes(patch_bytes),
+                build_line_changes_from_patch_lines(patch.lines),
                 patch_hash,
             )
             hunks_skipped += 1

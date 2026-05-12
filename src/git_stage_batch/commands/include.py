@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from enum import Enum
+import os
 import stat
 import sys
 import uuid
 
 from ..batch import add_binary_file_to_batch, add_file_to_batch, create_batch, delete_batch
 from ..batch.comparison import (
-    SemanticChangeKind,
-    derive_display_id_run_sets,
-    derive_semantic_change_runs,
+    derive_display_id_run_sets_from_lines,
+    derive_replacement_display_id_run_sets_from_lines,
 )
 from ..batch.display import annotate_with_batch_source
-from ..batch.merge import merge_batch
+from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.ownership import (
     BatchOwnership,
     ReplacementLineRun,
+    derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
 )
 from ..batch.query import read_batch_metadata
@@ -26,13 +29,13 @@ from ..batch.selection import (
     line_selection_not_valid_message,
     require_line_selection_in_view,
 )
-from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
+from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
-    build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
 )
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
 from ..core.line_selection import (
     format_line_ids,
     parse_line_selection,
@@ -77,15 +80,27 @@ from ..data.batch_sources import create_batch_source_commit
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
+from ..editor import (
+    EditorBuffer,
+    buffer_byte_count,
+    buffer_matches,
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+)
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_remaining_line_changes_header
 from ..staging.operations import (
-    build_target_index_content_bytes_with_replaced_lines,
-    update_index_with_blob_content,
+    build_target_index_buffer_from_lines,
+    build_target_index_buffer_with_replaced_lines,
+    update_index_with_blob_buffer,
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
-from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
+from ..utils.file_io import (
+    append_lines_to_file,
+    read_text_file_line_set,
+    read_text_file_contents,
+)
 from ..utils.git import (
     get_git_repository_root_path,
     git_update_index,
@@ -124,13 +139,13 @@ class TransientIncludeFailureReason(Enum):
 class TransientIncludeResult:
     """Result of staging a live line selection through transient batch ownership."""
 
-    content: bytes | None
+    buffer: EditorBuffer | None
     failure_reason: TransientIncludeFailureReason | None = None
     failure_detail: str | None = None
 
     @classmethod
-    def success(cls, content: bytes) -> TransientIncludeResult:
-        return cls(content=content)
+    def success(cls, buffer: EditorBuffer) -> TransientIncludeResult:
+        return cls(buffer=buffer)
 
     @classmethod
     def failure(
@@ -139,7 +154,7 @@ class TransientIncludeResult:
         *,
         detail: str | None = None,
     ) -> TransientIncludeResult:
-        return cls(content=None, failure_reason=reason, failure_detail=detail)
+        return cls(buffer=None, failure_reason=reason, failure_detail=detail)
 
 
 def _record_baseline_references_for_additions(line_changes) -> None:
@@ -213,6 +228,11 @@ def _selected_file_view_is_fresh_for(target_file: str) -> bool:
     )
 
 
+def _line_sequence_ends_with_lf(lines: Sequence[bytes]) -> bool:
+    line_count = len(lines)
+    return line_count > 0 and lines[line_count - 1].endswith(b"\n")
+
+
 def _annotate_line_changes_with_working_tree_source(line_changes):
     if line_changes is None:
         return None
@@ -239,7 +259,9 @@ def _try_build_index_content_via_transient_batch(
     *,
     line_changes,
     selected_display_ids: set[int],
-    current_index_content: bytes,
+    current_index_lines: Sequence[bytes],
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> TransientIncludeResult:
     """Try staging live lines through transient batch ownership."""
     selected_lines = [
@@ -255,6 +277,7 @@ def _try_build_index_content_via_transient_batch(
     batch_name = f"include-line-{uuid.uuid4().hex}"
     session_sources_existed, session_sources_content = _snapshot_session_batch_sources_file()
     created_batch = False
+    target_index_buffer: EditorBuffer | None = None
 
     try:
         create_batch(batch_name, "Transient include-line selection")
@@ -265,82 +288,92 @@ def _try_build_index_content_via_transient_batch(
             line_changes.lines,
             selected_display_ids,
             replacement_line_runs=_derive_replacement_line_runs(
-                hunk_base_content=read_file_bytes(get_index_snapshot_file_path()),
-                hunk_source_content=read_file_bytes(get_working_tree_snapshot_file_path()),
+                hunk_base_lines=hunk_base_lines,
+                hunk_source_lines=hunk_source_lines,
             ),
         )
         if ownership.is_empty():
             return TransientIncludeResult.failure(
                 TransientIncludeFailureReason.EMPTY_OWNERSHIP
             )
-        full_path = get_git_repository_root_path() / line_changes.path
-        working_content = full_path.read_bytes() if full_path.exists() else b""
-        batch_source_commit = create_batch_source_commit(
-            line_changes.path,
-            file_content_override=working_content,
-        )
-        add_file_to_batch(
-            batch_name,
-            line_changes.path,
-            ownership,
-            _detect_file_mode(line_changes.path),
-            batch_source_commit=batch_source_commit,
-        )
 
-        metadata = read_batch_metadata(batch_name)
-        file_metadata = metadata.get("files", {}).get(line_changes.path)
-        if file_metadata is None:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.MISSING_BATCH_METADATA
+        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
+            batch_source_commit = create_batch_source_commit(
+                line_changes.path,
+                file_buffer_override=working_lines,
             )
-
-        batch_source_commit = file_metadata.get("batch_source_commit")
-        if not batch_source_commit:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.MISSING_BATCH_METADATA
-            )
-
-        source_result = run_git_command(
-            ["show", f"{batch_source_commit}:{line_changes.path}"],
-            check=False,
-            text_output=False,
-        )
-        if source_result.returncode != 0:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.MISSING_BATCH_SOURCE
-            )
-
-        ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        try:
-            target_index_content = merge_batch(
-                source_result.stdout,
+            add_file_to_batch(
+                batch_name,
+                line_changes.path,
                 ownership,
-                current_index_content,
-            )
-        except Exception as error:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.INDEX_MERGE_FAILED,
-                detail=error.__class__.__name__,
+                _detect_file_mode(line_changes.path),
+                batch_source_commit=batch_source_commit,
             )
 
-        try:
-            target_working_content = merge_batch(
-                source_result.stdout,
-                ownership,
-                working_content,
-            )
-        except Exception as error:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
-                detail=error.__class__.__name__,
-            )
-        if target_working_content != working_content:
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE
-            )
+            metadata = read_batch_metadata(batch_name)
+            file_metadata = metadata.get("files", {}).get(line_changes.path)
+            if file_metadata is None:
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.MISSING_BATCH_METADATA
+                )
 
-        return TransientIncludeResult.success(target_index_content)
+            batch_source_commit = file_metadata.get("batch_source_commit")
+            if not batch_source_commit:
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.MISSING_BATCH_METADATA
+                )
+
+            source_buffer = load_git_object_as_buffer(
+                f"{batch_source_commit}:{line_changes.path}"
+            )
+            if source_buffer is None:
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.MISSING_BATCH_SOURCE
+                )
+
+            with (
+                BatchOwnership.acquire_for_metadata_dict(file_metadata) as ownership,
+                source_buffer as source_lines,
+            ):
+                try:
+                    target_index_buffer = merge_batch_from_line_sequences_as_buffer(
+                        source_lines,
+                        ownership,
+                        current_index_lines,
+                    )
+                except Exception as error:
+                    return TransientIncludeResult.failure(
+                        TransientIncludeFailureReason.INDEX_MERGE_FAILED,
+                        detail=error.__class__.__name__,
+                    )
+
+                try:
+                    target_working_buffer = merge_batch_from_line_sequences_as_buffer(
+                        source_lines,
+                        ownership,
+                        working_lines,
+                    )
+                except Exception as error:
+                    target_index_buffer.close()
+                    target_index_buffer = None
+                    return TransientIncludeResult.failure(
+                        TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
+                        detail=error.__class__.__name__,
+                    )
+
+                with target_working_buffer:
+                    if not buffer_matches(working_lines, target_working_buffer):
+                        target_index_buffer.close()
+                        target_index_buffer = None
+                        return TransientIncludeResult.failure(
+                            TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE
+                        )
+
+        assert target_index_buffer is not None
+        return TransientIncludeResult.success(target_index_buffer)
     except Exception as error:
+        if target_index_buffer is not None:
+            target_index_buffer.close()
         return TransientIncludeResult.failure(
             TransientIncludeFailureReason.PREPARATION_FAILED,
             detail=error.__class__.__name__,
@@ -351,10 +384,10 @@ def _try_build_index_content_via_transient_batch(
         _restore_session_batch_sources_file(session_sources_existed, session_sources_content)
 
 
-def _stage_live_line_target_content(file_path: str, target_content: bytes) -> None:
+def _stage_live_line_target_buffer(file_path: str, target_buffer: EditorBuffer) -> None:
     """Stage the result of live line-level include."""
     full_path = get_git_repository_root_path() / file_path
-    if target_content == b"" and not full_path.exists():
+    if buffer_byte_count(target_buffer) == 0 and not os.path.lexists(full_path):
         result = git_update_index(
             file_path=file_path,
             force_remove=True,
@@ -369,7 +402,7 @@ def _stage_live_line_target_content(file_path: str, target_content: bytes) -> No
             )
         return
 
-    update_index_with_blob_content(file_path, target_content)
+    update_index_with_blob_buffer(file_path, target_buffer)
 
 
 def _transient_include_failure_message(
@@ -468,9 +501,6 @@ def command_include(*, quiet: bool = False) -> None:
                 advance_to_and_show_next_change()
             return
 
-        # Text hunk - use git apply (item is LineLevelChange here)
-        patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
-
         # Extract filename for user feedback (we already have LineLevelChange in item)
         filename = item.path
 
@@ -478,12 +508,16 @@ def command_include(*, quiet: bool = False) -> None:
         stderr_chunks = []
         exit_code = 0
 
-        for event in stream_command(["git", "apply", "--cached"], [patch_bytes]):
-            if isinstance(event, ExitEvent):
-                exit_code = event.exit_code
-            elif isinstance(event, OutputEvent):
-                if event.fd == 2:  # stderr
-                    stderr_chunks.append(event.data)
+        with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
+            for event in stream_command(
+                ["git", "apply", "--cached"],
+                patch_buffer.byte_chunks(),
+            ):
+                if isinstance(event, ExitEvent):
+                    exit_code = event.exit_code
+                elif isinstance(event, OutputEvent):
+                    if event.fd == 2:  # stderr
+                        stderr_chunks.append(event.data)
 
         if exit_code != 0:
             stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
@@ -574,8 +608,7 @@ def command_include_file(
             if target_file not in patch_paths:
                 continue
 
-            patch_bytes = patch.to_patch_bytes()
-            patch_hash = compute_stable_hunk_hash(patch_bytes)
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
             if patch.old_path != patch.new_path:
                 result = run_git_command(["add", "--", *sorted(patch_paths)], check=False)
@@ -591,7 +624,7 @@ def command_include_file(
             stderr_chunks = []
             exit_code = 0
 
-            for event in stream_command(["git", "apply", "--cached"], [patch_bytes]):
+            for event in stream_command(["git", "apply", "--cached"], patch.lines):
                 if isinstance(event, ExitEvent):
                     exit_code = event.exit_code
                 elif isinstance(event, OutputEvent):
@@ -647,7 +680,7 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
         preserve_selected_state = False
         saved_selected_state = None
 
@@ -658,7 +691,9 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
         else:
             target_file = file
             preserve_selected_state = True
-            saved_selected_state = snapshot_selected_change_state()
+            saved_selected_state = selected_state_stack.enter_context(
+                snapshot_selected_change_state()
+            )
 
         if preserve_selected_state:
             line_changes = cache_unstaged_file_as_single_hunk(target_file)
@@ -671,12 +706,13 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
                 if line_changes is None:
                     exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
-        update_index_with_blob_content(
-            target_file,
-            replacement_text.encode("utf-8", errors="surrogateescape"),
-        )
+        with EditorBuffer.from_bytes(
+            replacement_text.encode("utf-8", errors="surrogateescape")
+        ) as replacement_buffer:
+            update_index_with_blob_buffer(target_file, replacement_buffer)
 
         if preserve_selected_state:
+            assert saved_selected_state is not None
             restore_selected_change_state(saved_selected_state)
         else:
             write_line_ids_file(get_processed_include_ids_file_path(), set())
@@ -713,7 +749,7 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
         preserve_selected_state = False
         saved_selected_state = None
 
@@ -736,7 +772,9 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             else:
                 if file != "" and not selected_file_view_targets_file:
                     preserve_selected_state = True
-                    saved_selected_state = snapshot_selected_change_state()
+                    saved_selected_state = selected_state_stack.enter_context(
+                        snapshot_selected_change_state()
+                    )
 
                 line_changes = cache_unstaged_file_as_single_hunk(target_file)
                 if line_changes is None:
@@ -755,48 +793,63 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
         combined_include_ids = already_included_ids | set(requested_ids)
 
-        # Get the selected hunk's base/source snapshots captured when the hunk was loaded.
-        hunk_base_content = read_file_bytes(get_index_snapshot_file_path())
-        hunk_source_content = read_file_bytes(get_working_tree_snapshot_file_path())
+        current_index_buffer = load_git_object_as_buffer(f":{line_changes.path}")
+        if current_index_buffer is None:
+            current_index_buffer = EditorBuffer.from_bytes(b"")
 
-        index_result = run_git_command(
-            ["show", f":{line_changes.path}"],
-            check=False,
-            text_output=False,
-        )
-        current_index_content = index_result.stdout if index_result.returncode == 0 else b""
+        with (
+            EditorBuffer.from_path(get_index_snapshot_file_path()) as hunk_base_lines,
+            EditorBuffer.from_path(get_working_tree_snapshot_file_path()) as hunk_source_lines,
+            current_index_buffer as current_index_lines,
+        ):
+            selected_change_kind = read_selected_change_kind()
+            if selected_change_kind == SelectedChangeKind.FILE:
+                partial_replacement_error = _build_partial_replacement_selection_error(
+                    line_changes,
+                    combined_include_ids,
+                    hunk_base_lines=hunk_base_lines,
+                    hunk_source_lines=hunk_source_lines,
+                )
+                if partial_replacement_error is not None:
+                    exit_with_error(partial_replacement_error)
+                partial_structural_run_error = _build_partial_structural_run_selection_error(
+                    line_changes,
+                    combined_include_ids,
+                    hunk_base_lines=hunk_base_lines,
+                    hunk_source_lines=hunk_source_lines,
+                )
+                if partial_structural_run_error is not None:
+                    exit_with_error(partial_structural_run_error)
 
-        selected_change_kind = read_selected_change_kind()
-        if selected_change_kind == SelectedChangeKind.FILE:
-            partial_replacement_error = _build_partial_replacement_selection_error(
-                line_changes,
-                combined_include_ids,
-                hunk_base_content=hunk_base_content,
-                hunk_source_content=hunk_source_content,
+            transient_result = _try_build_index_content_via_transient_batch(
+                line_changes=line_changes,
+                selected_display_ids=set(combined_include_ids),
+                current_index_lines=current_index_lines,
+                hunk_base_lines=hunk_base_lines,
+                hunk_source_lines=hunk_source_lines,
             )
-            if partial_replacement_error is not None:
-                exit_with_error(partial_replacement_error)
-            partial_structural_run_error = _build_partial_structural_run_selection_error(
-                line_changes,
-                combined_include_ids,
-                hunk_base_content=hunk_base_content,
-                hunk_source_content=hunk_source_content,
-            )
-            if partial_structural_run_error is not None:
-                exit_with_error(partial_structural_run_error)
-
-        transient_result = _try_build_index_content_via_transient_batch(
-            line_changes=line_changes,
-            selected_display_ids=set(combined_include_ids),
-            current_index_content=current_index_content,
-        )
-        if transient_result.content is not None:
+            if (
+                transient_result.buffer is None
+                and transient_result.failure_reason == TransientIncludeFailureReason.INDEX_MERGE_FAILED
+                and buffer_matches(current_index_lines, hunk_base_lines)
+            ):
+                transient_result = TransientIncludeResult.success(
+                    build_target_index_buffer_from_lines(
+                        line_changes,
+                        set(combined_include_ids),
+                        hunk_base_lines,
+                        base_has_trailing_newline=(
+                            _line_sequence_ends_with_lf(hunk_base_lines)
+                        ),
+                    )
+                )
+        if transient_result.buffer is not None:
             log_journal(
                 "include_line_transient_batch_staging_used",
                 file_path=line_changes.path,
                 selected_ids=sorted(combined_include_ids),
             )
-            target_index_content = transient_result.content
+            target_index_buffer_context = transient_result.buffer
         else:
             failure_reason = (
                 transient_result.failure_reason
@@ -817,9 +870,11 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
                 )
             )
 
-        _stage_live_line_target_content(line_changes.path, target_index_content)
+        with target_index_buffer_context as target_index_buffer:
+            _stage_live_line_target_buffer(line_changes.path, target_index_buffer)
 
         if preserve_selected_state:
+            assert saved_selected_state is not None
             restore_selected_change_state(saved_selected_state)
         else:
             # Update processed include IDs only when the selected display remains
@@ -848,68 +903,35 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
 def _derive_replacement_unit_display_ids(
     line_changes,
     *,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> list[set[int]]:
     """Map semantic replacement runs onto display IDs in the current selection."""
-    replacement_units: list[set[int]] = []
-    semantic_runs = derive_semantic_change_runs(
-        hunk_base_content.splitlines(keepends=True),
-        hunk_source_content.splitlines(keepends=True),
+    return derive_replacement_display_id_run_sets_from_lines(
+        line_changes,
+        source_lines=hunk_base_lines,
+        target_lines=hunk_source_lines,
     )
-
-    for run in semantic_runs:
-        if run.kind != SemanticChangeKind.REPLACEMENT:
-            continue
-
-        source_run = set(run.source_run or [])
-        target_run = set(run.target_run or [])
-        display_ids = {
-            line.id
-            for line in line_changes.lines
-            if line.id is not None and (
-                (line.kind == "-" and line.old_line_number in source_run)
-                or (line.kind == "+" and line.new_line_number in target_run)
-            )
-        }
-        if display_ids:
-            replacement_units.append(display_ids)
-
-    return replacement_units
 
 
 def _derive_replacement_line_runs(
     *,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> list[ReplacementLineRun]:
     """Derive replacement runs from before/after file comparison."""
-    replacement_runs: list[ReplacementLineRun] = []
-    semantic_runs = derive_semantic_change_runs(
-        hunk_base_content.splitlines(keepends=True),
-        hunk_source_content.splitlines(keepends=True),
+    return derive_replacement_line_runs_from_lines(
+        old_file_lines=hunk_base_lines,
+        new_file_lines=hunk_source_lines,
     )
-    for run in semantic_runs:
-        if (
-            run.kind == SemanticChangeKind.REPLACEMENT
-            and run.source_run is not None
-            and run.target_run is not None
-        ):
-            replacement_runs.append(
-                ReplacementLineRun(
-                    old_line_numbers=tuple(run.source_run),
-                    new_line_numbers=tuple(run.target_run),
-                )
-            )
-    return replacement_runs
 
 
 def _build_partial_replacement_selection_error(
     line_changes,
     selected_ids: set[int],
     *,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> str | None:
     """Reject contiguous interval selections that tear a replacement unit."""
     if len(selected_ids) <= 1:
@@ -922,8 +944,8 @@ def _build_partial_replacement_selection_error(
 
     replacement_units = _derive_replacement_unit_display_ids(
         line_changes,
-        hunk_base_content=hunk_base_content,
-        hunk_source_content=hunk_source_content,
+        hunk_base_lines=hunk_base_lines,
+        hunk_source_lines=hunk_source_lines,
     )
     for replacement_unit in replacement_units:
         selected_in_unit = selected_ids & replacement_unit
@@ -941,8 +963,8 @@ def _build_partial_structural_run_selection_error(
     line_changes,
     selected_ids: set[int],
     *,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: Sequence[bytes],
 ) -> str | None:
     """Reject contiguous file-scoped selections that only partly include later runs."""
     if len(selected_ids) <= 1:
@@ -953,10 +975,10 @@ def _build_partial_structural_run_selection_error(
     if not is_contiguous_interval:
         return None
 
-    run_sets = derive_display_id_run_sets(
+    run_sets = derive_display_id_run_sets_from_lines(
         line_changes,
-        source_content=hunk_base_content,
-        target_content=hunk_source_content,
+        source_lines=hunk_base_lines,
+        target_lines=hunk_source_lines,
     )
     intersected_runs = [run_set for run_set in run_sets if selected_ids & run_set]
     if len(intersected_runs) <= 1:
@@ -1024,8 +1046,8 @@ def _apply_include_line_replacement(
     *,
     line_id_specification: str,
     replacement_text: str,
-    hunk_base_content: bytes,
-    hunk_source_content: bytes,
+    hunk_base_lines: Sequence[bytes],
+    hunk_source_lines: EditorBuffer,
     trim_unchanged_edge_anchors: bool,
 ) -> None:
     """Stage replacement text for selected lines and record session masking."""
@@ -1042,20 +1064,22 @@ def _apply_include_line_replacement(
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
     try:
-        target_index_content = build_target_index_content_bytes_with_replaced_lines(
+        target_index_buffer = build_target_index_buffer_with_replaced_lines(
             line_changes,
             effective_ids,
             replacement_text,
-            hunk_base_content,
+            hunk_base_lines,
+            base_has_trailing_newline=_line_sequence_ends_with_lf(hunk_base_lines),
             trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
         )
     except ValueError as error:
         exit_with_error(str(error))
 
-    update_index_with_blob_content(line_changes.path, target_index_content)
+    with target_index_buffer:
+        update_index_with_blob_buffer(line_changes.path, target_index_buffer)
     record_consumed_selection(
         line_changes.path,
-        source_content=hunk_source_content,
+        source_buffer=hunk_source_lines,
         selected_lines=selected_lines,
         replacement_mask={
             "deleted_lines": replacement_text.splitlines(),
@@ -1092,24 +1116,26 @@ def command_include_line_as(
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
         preserve_selected_state = False
         saved_selected_state = None
 
         if file is None:
             require_selected_hunk()
             line_changes = load_line_changes_from_state()
-            hunk_base_content = read_file_bytes(get_index_snapshot_file_path())
-            hunk_source_content = read_file_bytes(get_working_tree_snapshot_file_path())
 
-            _apply_include_line_replacement(
-                line_changes,
-                line_id_specification=line_id_specification,
-                replacement_text=replacement_text,
-                hunk_base_content=hunk_base_content,
-                hunk_source_content=hunk_source_content,
-                trim_unchanged_edge_anchors=not no_edge_overlap,
-            )
+            with (
+                EditorBuffer.from_path(get_index_snapshot_file_path()) as hunk_base_lines,
+                EditorBuffer.from_path(get_working_tree_snapshot_file_path()) as hunk_source_lines,
+            ):
+                _apply_include_line_replacement(
+                    line_changes,
+                    line_id_specification=line_id_specification,
+                    replacement_text=replacement_text,
+                    hunk_base_lines=hunk_base_lines,
+                    hunk_source_lines=hunk_source_lines,
+                    trim_unchanged_edge_anchors=not no_edge_overlap,
+                )
 
             write_line_ids_file(get_processed_include_ids_file_path(), set())
             print(
@@ -1140,31 +1166,35 @@ def command_include_line_as(
             else:
                 if file != "" and not selected_file_view_targets_file:
                     preserve_selected_state = True
-                saved_selected_state = snapshot_selected_change_state() if preserve_selected_state else None
+                saved_selected_state = (
+                    selected_state_stack.enter_context(snapshot_selected_change_state())
+                    if preserve_selected_state else None
+                )
 
                 cached_lines = cache_unstaged_file_as_single_hunk(target_file)
                 if cached_lines is None:
                     exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
                 annotated_changes = annotate_with_batch_source(target_file, cached_lines)
-            hunk_base_result = run_git_command(
-                ["show", f":{target_file}"],
-                check=False,
-                text_output=False,
-            )
-            hunk_base_content = hunk_base_result.stdout if hunk_base_result.returncode == 0 else b""
-            hunk_source_content = read_file_bytes(get_git_repository_root_path() / target_file)
+            hunk_base_buffer = load_git_object_as_buffer(f":{target_file}")
+            if hunk_base_buffer is None:
+                hunk_base_buffer = EditorBuffer.from_bytes(b"")
 
-            _apply_include_line_replacement(
-                annotated_changes,
-                line_id_specification=line_id_specification,
-                replacement_text=replacement_text,
-                hunk_base_content=hunk_base_content,
-                hunk_source_content=hunk_source_content,
-                trim_unchanged_edge_anchors=not no_edge_overlap,
-            )
+            with (
+                hunk_base_buffer as hunk_base_lines,
+                load_working_tree_file_as_buffer(target_file) as hunk_source_lines,
+            ):
+                _apply_include_line_replacement(
+                    annotated_changes,
+                    line_id_specification=line_id_specification,
+                    replacement_text=replacement_text,
+                    hunk_base_lines=hunk_base_lines,
+                    hunk_source_lines=hunk_source_lines,
+                    trim_unchanged_edge_anchors=not no_edge_overlap,
+                )
 
             if preserve_selected_state:
+                assert saved_selected_state is not None
                 restore_selected_change_state(saved_selected_state)
             else:
                 write_line_ids_file(get_processed_include_ids_file_path(), set())
@@ -1262,8 +1292,11 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
 def _detect_file_mode(file_path: str) -> str:
     """Return the current git file mode for a path, defaulting to a regular file."""
     absolute_path = get_git_repository_root_path() / file_path
-    if absolute_path.exists():
-        return "100755" if absolute_path.stat().st_mode & stat.S_IXUSR else "100644"
+    if os.path.lexists(absolute_path):
+        file_status = absolute_path.lstat()
+        if stat.S_ISLNK(file_status.st_mode):
+            return "120000"
+        return "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
 
     ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
     if ls_result.returncode == 0 and ls_result.stdout.strip():
@@ -1346,8 +1379,10 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     all_lines_to_batch = []
 
     for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])):
-        patch_bytes_loop = patch.to_patch_bytes()
-        hunk_lines = build_line_changes_from_patch_bytes(patch_bytes_loop, annotator=annotate_with_batch_source)
+        hunk_lines = build_line_changes_from_patch_lines(
+            patch.lines,
+            annotator=annotate_with_batch_source,
+        )
         all_lines_to_batch.extend(hunk_lines.lines)
 
     if not all_lines_to_batch:
@@ -1367,38 +1402,30 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
+    file_metadata = metadata.get("files", {}).get(file_path)
 
-    if file_path in metadata.get("files", {}):
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=all_lines_to_batch,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot include file to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\nBatch: {batch}\nError: {error}").format(
+                    file=file_path, batch=batch_name, error=str(e))
+            )
 
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=all_lines_to_batch
-        )
+        # Snapshot file before modifying
+        snapshot_file_if_untracked(file_path)
 
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot include file to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\nBatch: {batch}\nError: {error}").format(
-                file=file_path, batch=batch_name, error=str(e))
-        )
-
-    # Snapshot file before modifying
-    snapshot_file_if_untracked(file_path)
-
-    # Save to batch
-    add_file_to_batch(batch_name, file_path, ownership, file_mode)
+        # Save to batch
+        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
     if not quiet:
         print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
@@ -1452,38 +1479,30 @@ def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_i
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
+    file_metadata = metadata.get("files", {}).get(file_path)
 
-    if file_path in metadata.get("files", {}):
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=selected_lines,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\nBatch: {batch}\nError: {error}").format(
+                    file=file_path, batch=batch_name, error=str(e))
+            )
 
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=selected_lines
-        )
+        # Snapshot file before modifying
+        snapshot_file_if_untracked(file_path)
 
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\nBatch: {batch}\nError: {error}").format(
-                file=file_path, batch=batch_name, error=str(e))
-        )
-
-    # Snapshot file before modifying
-    snapshot_file_if_untracked(file_path)
-
-    # Save to batch
-    add_file_to_batch(batch_name, file_path, ownership, file_mode)
+        # Save to batch
+        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
     if not quiet:
         print(_("Included line(s) from file '{file}' to batch '{batch}': {lines}").format(
@@ -1525,37 +1544,34 @@ def _command_include_lines_to_batch(batch_name: str, line_id_specification: str,
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
-
-    if line_changes.path in metadata.get("files", {}):
-        file_metadata = metadata["files"][line_changes.path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
-
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=line_changes.path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=selected_lines
-        )
-
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\nBatch: {batch}\nError: {error}").format(
-                file=line_changes.path, batch=batch_name, error=str(e))
-        )
+    file_metadata = metadata.get("files", {}).get(line_changes.path)
 
     file_mode = _detect_file_mode(line_changes.path)
 
-    # Save to batch using batch source model
-    add_file_to_batch(batch_name, line_changes.path, ownership, file_mode)
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=line_changes.path,
+                    file_metadata=file_metadata,
+                    selected_lines=selected_lines,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\nBatch: {batch}\nError: {error}").format(
+                    file=line_changes.path, batch=batch_name, error=str(e))
+            )
+
+        # Save to batch using batch source model
+        add_file_to_batch(
+            batch_name,
+            line_changes.path,
+            update.ownership_after,
+            file_mode,
+        )
 
     if not quiet:
         print(_("✓ Included line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)
@@ -1596,8 +1612,7 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
 
     # Load blocklist
     blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines())
+    blocked_hashes = read_text_file_line_set(blocklist_path)
 
     # Stream diff to find first non-blocked hunk
     selected_patch = None
@@ -1610,8 +1625,7 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
                 return
             continue
 
-        patch_bytes = patch.to_patch_bytes()
-        patch_hash = compute_stable_hunk_hash(patch_bytes)
+        patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
         if patch_hash not in blocked_hashes:
             selected_patch = patch
             selected_hash = patch_hash
@@ -1638,65 +1652,61 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
             if patch.new_path != file_path:
                 continue
 
-            patch_bytes_loop = patch.to_patch_bytes()
-            patch_hash = compute_stable_hunk_hash(patch_bytes_loop)
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
             if patch_hash in blocked_hashes:
                 continue
 
             # Parse hunk to get lines
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes_loop, annotator=annotate_with_batch_source)
+            line_changes = build_line_changes_from_patch_lines(
+                patch.lines,
+                annotator=annotate_with_batch_source,
+            )
             all_lines_to_batch.extend(line_changes.lines)
             all_display_ids_to_batch.update(line.id for line in line_changes.lines if line.id is not None)
-            patches_to_process.append((patch_bytes_loop, patch_hash))
+            patches_to_process.append((patch.lines, patch_hash))
     else:
         # Just selected hunk
-        patch_bytes_selected = selected_patch.to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes_selected, annotator=annotate_with_batch_source)
+        line_changes = build_line_changes_from_patch_lines(
+            selected_patch.lines,
+            annotator=annotate_with_batch_source,
+        )
         all_lines_to_batch = line_changes.lines
         all_display_ids_to_batch = {line.id for line in line_changes.lines if line.id is not None}
-        patches_to_process = [(patch_bytes_selected, selected_hash)]
+        patches_to_process = [(selected_patch.lines, selected_hash)]
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
+    file_metadata = metadata.get("files", {}).get(file_path)
 
-    if file_path in metadata.get("files", {}):
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=all_lines_to_batch,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot include to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\nBatch: {batch}\nError: {error}").format(
+                    file=file_path, batch=batch_name, error=str(e))
+            )
 
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=all_lines_to_batch
-        )
-
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot include to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\nBatch: {batch}\nError: {error}").format(
-                file=file_path, batch=batch_name, error=str(e))
-        )
-
-    # Save to batch using batch source model (once, with all accumulated data)
-    add_file_to_batch(batch_name, file_path, ownership, file_mode)
+        # Save to batch using batch source model (once, with all accumulated data)
+        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
     # Mark hunks as processed
-    for patch_bytes_item, patch_hash in patches_to_process:
+    for patch_lines, patch_hash in patches_to_process:
         # Mark this hunk as processed
         append_lines_to_file(blocklist_path, [patch_hash])
 
         # Record hunk as skipped for progress tracking
-        hunk_lines = build_line_changes_from_patch_bytes(patch_bytes_item)
+        hunk_lines = build_line_changes_from_patch_lines(patch_lines)
         record_hunk_skipped(hunk_lines, patch_hash)
 
     # Print success message

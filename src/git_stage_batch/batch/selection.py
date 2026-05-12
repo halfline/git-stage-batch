@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING, Optional
 
 from .ownership import (
     BatchOwnership,
-    build_ownership_units_from_display,
+    build_ownership_units_from_batch_source_lines,
     select_ownership_units_by_display_ids,
     validate_ownership_units,
     rebuild_ownership_from_units,
@@ -329,46 +331,35 @@ def translate_batch_file_gutter_ids_to_selection_ids(
     return selection_ids, rendered_for_messages
 
 
-def select_batch_ownership_for_display_ids(
+@contextmanager
+def acquire_batch_ownership_for_display_ids_from_lines(
     file_meta: dict,
-    batch_source_content: bytes,
+    batch_source_lines: Sequence[bytes],
     selected_ids: Optional[set[int]],
+) -> Iterator[BatchOwnership]:
+    """Acquire selected ownership for indexed batch-source lines."""
+    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+        if selected_ids is None:
+            yield ownership
+            return
+
+        yield _select_batch_ownership_from_lines(
+            ownership,
+            batch_source_lines,
+            selected_ids,
+        )
+
+
+def _select_batch_ownership_from_lines(
+    ownership: BatchOwnership,
+    batch_source_lines: Sequence[bytes],
+    selected_ids: set[int],
 ) -> BatchOwnership:
-    """Select ownership from batch file using semantic unit filtering.
-
-    If selected_ids is None, returns full ownership.
-    If selected_ids is provided, performs semantic ownership unit selection:
-    - Builds ownership units from display reconstruction
-    - Selects units matching display IDs
-    - Validates atomic unit boundaries are respected
-    - Rebuilds ownership from selected units
-
-    Args:
-        file_meta: File metadata from batch containing ownership
-        batch_source_content: Batch source content (bytes)
-        selected_ids: Optional set of display line IDs to select
-
-    Returns:
-        BatchOwnership - either full or filtered based on selection
-
-    Raises:
-        MergeError: If atomic ownership unit is partially selected
-    """
-    # Load full ownership from metadata
-    ownership = BatchOwnership.from_metadata_dict(file_meta)
-
-    # If no selection, return full ownership
-    if selected_ids is None:
-        return ownership
-
-    # Build semantic ownership units from display reconstruction
-    units = build_ownership_units_from_display(ownership, batch_source_content)
-
-    # Select units matching the display IDs
+    """Select ownership from reconstructed display units."""
+    units = build_ownership_units_from_batch_source_lines(
+        ownership,
+        batch_source_lines,
+    )
     selected_units = select_ownership_units_by_display_ids(units, selected_ids)
-
-    # Validate selected units have valid structure
     validate_ownership_units(selected_units)
-
-    # Rebuild ownership from selected units
     return rebuild_ownership_from_units(selected_units)

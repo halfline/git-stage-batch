@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import Iterable, Iterator, Optional, Union
+from contextlib import ExitStack
+from typing import Iterable, Iterator, Union
 
 from .models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, SingleHunkPatch
+from ..editor import (
+    EditorBuffer,
+    buffer_byte_count,
+    buffer_preview,
+    load_git_object_as_buffer,
+    write_buffer_to_path,
+)
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.file_io import write_file_bytes
-from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
+from ..utils.git import get_git_repository_root_path
 from ..utils.journal import log_journal
 from ..utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
 
@@ -259,79 +266,85 @@ def parse_unified_diff_streaming(lines: Iterable[bytes]) -> Iterator[Union[Singl
 
 def write_snapshots_for_selected_file_path(file_path: str) -> None:
     """Write snapshots of the file from both the index and working tree."""
-    try:
-        index_version = run_git_command(["show", f":{file_path}"], check=True, text_output=False).stdout
-    except Exception:
-        index_version = b""
+    with ExitStack() as stack:
+        index_version = load_git_object_as_buffer(f":{file_path}")
+        if index_version is None:
+            index_version = EditorBuffer.from_bytes(b"")
+        stack.enter_context(index_version)
 
-    repo_root = get_git_repository_root_path()
-    file_full_path = repo_root / file_path
-    if file_full_path.exists():
-        working_tree_version = file_full_path.read_bytes()
-    else:
-        working_tree_version = b""
+        repo_root = get_git_repository_root_path()
+        file_full_path = repo_root / file_path
+        if file_full_path.exists():
+            working_tree_version = EditorBuffer.from_path(file_full_path)
+        else:
+            working_tree_version = EditorBuffer.from_bytes(b"")
+        stack.enter_context(working_tree_version)
 
-    # When index is empty but working tree has content, check if file exists in HEAD.
-    # For new files (not in HEAD), use empty index snapshot.
-    # For existing files with intent-to-add applied, use HEAD content.
-    if not index_version and working_tree_version:
-        head_check = run_git_command(["cat-file", "-e", f"HEAD:{file_path}"], check=False)
-        if head_check.returncode == 0:
-            # File exists in HEAD, use HEAD content
-            head_version = run_git_command(["show", f"HEAD:{file_path}"], check=False, text_output=False).stdout
-            if head_version:
-                index_version = head_version
+        # When index is empty but working tree has content, check if file exists in HEAD.
+        # For new files (not in HEAD), use empty index snapshot.
+        # For existing files with intent-to-add applied, use HEAD content.
+        if buffer_byte_count(index_version) == 0 and buffer_byte_count(working_tree_version) > 0:
+            head_version = load_git_object_as_buffer(f"HEAD:{file_path}")
+            if head_version is not None:
+                if buffer_byte_count(head_version) > 0:
+                    index_version = stack.enter_context(head_version)
+                else:
+                    head_version.close()
 
-    # Write snapshots as bytes
-    write_file_bytes(get_index_snapshot_file_path(), index_version)
-    write_file_bytes(get_working_tree_snapshot_file_path(), working_tree_version)
+        write_buffer_to_path(get_index_snapshot_file_path(), index_version)
+        write_buffer_to_path(get_working_tree_snapshot_file_path(), working_tree_version)
 
-    log_journal(
-        "write_snapshots_for_selected_file",
-        file_path=file_path,
-        index_len=len(index_version),
-        index_lines=len(index_version.splitlines()) if index_version else 0,
-        index_preview=index_version[:200] if index_version else "(empty)",
-        working_tree_len=len(working_tree_version),
-        working_tree_lines=len(working_tree_version.splitlines()) if working_tree_version else 0
-    )
-
-
-def get_first_matching_file_from_diff(
-    context_lines: int,
-    predicate: Optional[Callable[[bytes], bool]] = None
-) -> Optional[str]:
-    """Stream git diff and find the first file with a hunk matching the predicate.
-
-    Args:
-        context_lines: Number of context lines for diff (-U parameter)
-        predicate: Optional function that takes patch bytes and returns True if
-                   the hunk counts as a match. If None, returns first file.
-
-    Returns:
-        File path if a matching file is found, None otherwise
-    """
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{context_lines}", "--no-color"])):
-        if predicate is None:
-            return patch.new_path
-
-        # Get patch bytes for predicate
-        patch_bytes = patch.to_patch_bytes()
-        if predicate(patch_bytes):
-            return patch.new_path
-
-    return None
+        log_journal(
+            "write_snapshots_for_selected_file",
+            file_path=file_path,
+            index_len=buffer_byte_count(index_version),
+            index_lines=_buffer_line_count(index_version),
+            index_preview=(
+                buffer_preview(index_version)
+                if buffer_byte_count(index_version) > 0 else
+                "(empty)"
+            ),
+            working_tree_len=buffer_byte_count(working_tree_version),
+            working_tree_lines=_buffer_line_count(working_tree_version),
+        )
 
 
-def build_line_changes_from_patch_bytes(
-    patch_bytes: bytes,
+def _buffer_line_count(buffer: EditorBuffer) -> int:
+    """Return a line count for journal metadata without materializing content."""
+    line_breaks = 0
+    seen_data = False
+    pending_cr = False
+    last_byte: int | None = None
+
+    for chunk in buffer.byte_chunks():
+        if not chunk:
+            continue
+
+        seen_data = True
+        chunk_breaks = chunk.count(b"\n") + chunk.count(b"\r") - chunk.count(b"\r\n")
+        if pending_cr and chunk.startswith(b"\n"):
+            chunk_breaks -= 1
+
+        line_breaks += chunk_breaks
+        pending_cr = chunk.endswith(b"\r")
+        last_byte = chunk[-1]
+
+    if not seen_data:
+        return 0
+    if last_byte in (ord("\n"), ord("\r")):
+        return line_breaks
+    return line_breaks + 1
+
+
+def build_line_changes_from_patch_lines(
+    patch_lines: Iterable[bytes],
     *,
     annotator: LineLevelChangeAnnotator | None = None,
 ) -> LineLevelChange:
-    """Parse a single-hunk patch into a LineLevelChange structure.
+    """Parse single-hunk patch lines into a LineLevelChange structure.
 
     Args:
-        patch_bytes: Unified diff patch bytes for a single hunk
+        patch_lines: Unified diff patch lines for a single hunk
         annotator: Optional function to enrich LineLevelChange with provenance metadata
                    (e.g., batch source alignment, 3-way merge base). If None, source_line
                    fields remain None (no provenance).
@@ -342,11 +355,14 @@ def build_line_changes_from_patch_bytes(
     path_value = ""
     old_path_value = ""
     new_path_value = ""
-    captured_header_line_bytes = b""
-    body_lines_bytes: list[bytes] = []
+    hunk_header: HunkHeader | None = None
+    old_line_number = 0
+    new_line_number = 0
+    next_display_id = 0
+    line_entries: list[LineEntry] = []
 
     # Preserve line endings so a parsed hunk can be emitted unchanged.
-    for line_with_ending in patch_bytes.splitlines(keepends=True):
+    for line_with_ending in patch_lines:
         # Strip only \n for comparison (preserve \r in content)
         line = line_with_ending.rstrip(b'\n')
 
@@ -360,11 +376,86 @@ def build_line_changes_from_patch_bytes(
             if new_path_value != "/dev/null" and new_path_value.startswith("b/"):
                 new_path_value = new_path_value[2:]
         elif line.startswith(b"@@ "):
-            captured_header_line_bytes = line
-            body_lines_bytes.append(line)
-        else:
-            if captured_header_line_bytes:
-                body_lines_bytes.append(line)
+            captured_header_line = line.decode('utf-8', errors='replace')
+            header_match = HUNK_HEADER_PATTERN.match(captured_header_line)
+            if not header_match:
+                exit_with_error(f"Bad hunk header: {captured_header_line}")
+
+            old_start = int(header_match.group(1))
+            old_length = int(header_match.group(2) or "1")
+            new_start = int(header_match.group(3))
+            new_length = int(header_match.group(4) or "1")
+            hunk_header = HunkHeader(old_start, old_length, new_start, new_length)
+            old_line_number = old_start
+            new_line_number = new_start
+            next_display_id = 0
+        elif hunk_header is not None:
+            if line.startswith(b"\\ No newline at end of file"):
+                if line_entries:
+                    line_entries[-1].has_trailing_newline = False
+                continue
+            if not line:
+                sign = " "
+                text_bytes = b""
+            else:
+                sign = line[0:1].decode('ascii')  # +, -, or space (always ASCII)
+                text_bytes = line[1:]  # Canonical bytes (without +/- prefix)
+
+            # Decode for display (with replacement for non-UTF-8)
+            text = text_bytes.decode('utf-8', errors='replace')
+
+            if sign == " ":
+                # Context line
+                line_entries.append(LineEntry(
+                    id=None,
+                    kind=" ",
+                    old_line_number=old_line_number,
+                    new_line_number=new_line_number,
+                    text_bytes=text_bytes,
+                    text=text,
+                    source_line=None,
+                ))
+                old_line_number += 1
+                new_line_number += 1
+            elif sign == "-":
+                next_display_id += 1
+                # Deletion: doesn't exist in working tree
+                line_entries.append(LineEntry(
+                    id=next_display_id,
+                    kind="-",
+                    old_line_number=old_line_number,
+                    new_line_number=None,
+                    text_bytes=text_bytes,
+                    text=text,
+                    source_line=None,
+                ))
+                old_line_number += 1
+            elif sign == "+":
+                next_display_id += 1
+                # Addition: exists in working tree
+                line_entries.append(LineEntry(
+                    id=next_display_id,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=new_line_number,
+                    text_bytes=text_bytes,
+                    text=text,
+                    source_line=None,
+                ))
+                new_line_number += 1
+            else:
+                # Treat as context line
+                line_entries.append(LineEntry(
+                    id=None,
+                    kind=" ",
+                    old_line_number=old_line_number,
+                    new_line_number=new_line_number,
+                    text_bytes=text_bytes,
+                    text=text,
+                    source_line=None,
+                ))
+                old_line_number += 1
+                new_line_number += 1
 
     if new_path_value and new_path_value != "/dev/null":
         path_value = new_path_value
@@ -373,91 +464,8 @@ def build_line_changes_from_patch_bytes(
     else:
         path_value = new_path_value or old_path_value or ""
 
-    if not captured_header_line_bytes:
+    if hunk_header is None:
         exit_with_error(_("Failed to parse hunk header."))
-
-    # Decode header to str for regex matching
-    captured_header_line = captured_header_line_bytes.decode('utf-8', errors='replace')
-    header_match = HUNK_HEADER_PATTERN.match(captured_header_line)
-    if not header_match:
-        exit_with_error(f"Bad hunk header: {captured_header_line}")
-
-    old_start = int(header_match.group(1))
-    old_length = int(header_match.group(2) or "1")
-    new_start = int(header_match.group(3))
-    new_length = int(header_match.group(4) or "1")
-    hunk_header = HunkHeader(old_start, old_length, new_start, new_length)
-
-    line_entries: list[LineEntry] = []
-    old_line_number = old_start
-    new_line_number = new_start
-    next_display_id = 0
-
-    for raw in body_lines_bytes[1:]:  # skip header
-        if raw.startswith(b"\\ No newline at end of file"):
-            continue
-        if not raw:
-            sign = " "
-            text_bytes = b""
-        else:
-            sign = raw[0:1].decode('ascii')  # +, -, or space (always ASCII)
-            text_bytes = raw[1:]  # Canonical bytes (without +/- prefix)
-
-        # Decode for display (with replacement for non-UTF-8)
-        text = text_bytes.decode('utf-8', errors='replace')
-
-        if sign == " ":
-            # Context line
-            line_entries.append(LineEntry(
-                id=None,
-                kind=" ",
-                old_line_number=old_line_number,
-                new_line_number=new_line_number,
-                text_bytes=text_bytes,
-                text=text,
-                source_line=None,
-            ))
-            old_line_number += 1
-            new_line_number += 1
-        elif sign == "-":
-            next_display_id += 1
-            # Deletion: doesn't exist in working tree
-            line_entries.append(LineEntry(
-                id=next_display_id,
-                kind="-",
-                old_line_number=old_line_number,
-                new_line_number=None,
-                text_bytes=text_bytes,
-                text=text,
-                source_line=None,
-            ))
-            old_line_number += 1
-        elif sign == "+":
-            next_display_id += 1
-            # Addition: exists in working tree
-            line_entries.append(LineEntry(
-                id=next_display_id,
-                kind="+",
-                old_line_number=None,
-                new_line_number=new_line_number,
-                text_bytes=text_bytes,
-                text=text,
-                source_line=None,
-            ))
-            new_line_number += 1
-        else:
-            # Treat as context line
-            line_entries.append(LineEntry(
-                id=None,
-                kind=" ",
-                old_line_number=old_line_number,
-                new_line_number=new_line_number,
-                text_bytes=text_bytes,
-                text=text,
-                source_line=None,
-            ))
-            old_line_number += 1
-            new_line_number += 1
 
     line_changes = LineLevelChange(path=path_value, header=hunk_header, lines=line_entries)
 

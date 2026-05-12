@@ -9,6 +9,12 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 
+from ..editor import (
+    EditorBuffer,
+    load_git_blob_as_buffer,
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+)
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
@@ -21,7 +27,6 @@ from ..utils.git import (
     git_update_index,
     git_write_tree,
     list_git_tree_blobs,
-    read_git_blobs_as_bytes,
     run_git_command,
     temp_git_index,
     update_git_refs,
@@ -38,14 +43,21 @@ from ..utils.paths import (
 
 @dataclass(frozen=True)
 class BatchSourceCommit:
-    """A per-file batch source commit and the file content it stores."""
+    """A per-file batch source commit and the file buffer it stores."""
 
     commit_sha: str
-    file_content: bytes
+    file_buffer: EditorBuffer
 
 
-def get_saved_session_file_content(file_path: str) -> bytes:
-    """Get file content as it was at session start.
+def _buffer_preview(buffer: EditorBuffer) -> bytes:
+    """Return a short byte preview for journal logging."""
+    for chunk in buffer.byte_chunks(200):
+        return chunk
+    return b"(empty)"
+
+
+def load_saved_session_file_as_buffer(file_path: str) -> EditorBuffer:
+    """Load a file buffer as it was at session start.
 
     For tracked files, extracts from the git stash created by
     initialize_abort_state(). For untracked files, reads from the lazy
@@ -55,10 +67,10 @@ def get_saved_session_file_content(file_path: str) -> bytes:
         file_path: Repository-relative path to the file
 
     Returns:
-        File content as bytes, preserving exact encoding and line endings
+        File buffer, preserving exact encoding and line endings
 
     Raises:
-        CommandError: If file content cannot be retrieved
+        CommandError: If the file buffer cannot be retrieved
     """
     # Check if file was untracked and snapshotted
     snapshot_list_path = get_abort_snapshot_list_file_path()
@@ -68,7 +80,7 @@ def get_saved_session_file_content(file_path: str) -> bytes:
             # Read from snapshot directory
             snapshot_path = get_abort_snapshots_directory_path() / file_path
             if snapshot_path.exists():
-                return snapshot_path.read_bytes()
+                return EditorBuffer.from_path(snapshot_path)
             else:
                 raise CommandError(
                     _("Snapshot for untracked file not found: {file}").format(file=file_path)
@@ -81,9 +93,9 @@ def get_saved_session_file_content(file_path: str) -> bytes:
         if stash_commit:
             # Extract file from stash commit
             # The stash commit contains the working tree state
-            result = run_git_command(["show", f"{stash_commit}:{file_path}"], check=False, text_output=False)
-            if result.returncode == 0:
-                return result.stdout
+            buffer = load_git_object_as_buffer(f"{stash_commit}:{file_path}")
+            if buffer is not None:
+                return buffer
 
     # No stash or file not in stash - file was unchanged at session start
     # Read from baseline (abort HEAD)
@@ -92,12 +104,12 @@ def get_saved_session_file_content(file_path: str) -> bytes:
         raise CommandError(_("No session found"))
 
     baseline_commit = read_text_file_contents(abort_head_path).strip()
-    result = run_git_command(["show", f"{baseline_commit}:{file_path}"], check=False, text_output=False)
-    if result.returncode != 0:
+    buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    if buffer is None:
         # File might not exist in baseline (new file)
-        return b""
+        return EditorBuffer.from_bytes(b"")
 
-    return result.stdout
+    return buffer
 
 
 def _fast_import_quote_path(file_path: str) -> str:
@@ -125,12 +137,12 @@ def _fast_import_quote_path(file_path: str) -> str:
     return '"' + "".join(escaped) + '"'
 
 
-def _read_session_file_contents(
+def _read_session_file_buffers(
     file_paths: list[str],
     *,
     baseline_commit: str,
-) -> tuple[dict[str, bytes], set[str]]:
-    """Read session-start content for several files."""
+) -> tuple[dict[str, EditorBuffer], set[str]]:
+    """Read session-start buffers for several files."""
     unique_file_paths = list(dict.fromkeys(file_paths))
     baseline_blobs = list_git_tree_blobs(baseline_commit, unique_file_paths)
     baseline_existing_files = set(baseline_blobs)
@@ -142,56 +154,54 @@ def _read_session_file_contents(
         set()
     )
 
-    contents: dict[str, bytes] = {}
+    buffers: dict[str, EditorBuffer] = {}
     remaining_paths: list[str] = []
-    snapshot_directory = get_abort_snapshots_directory_path()
-    for file_path in unique_file_paths:
-        if file_path in snapshotted_files:
-            snapshot_path = snapshot_directory / file_path
-            if snapshot_path.exists():
-                contents[file_path] = snapshot_path.read_bytes()
+    try:
+        snapshot_directory = get_abort_snapshots_directory_path()
+        for file_path in unique_file_paths:
+            if file_path in snapshotted_files:
+                snapshot_path = snapshot_directory / file_path
+                if snapshot_path.exists():
+                    buffers[file_path] = EditorBuffer.from_path(snapshot_path)
+                    continue
+                raise CommandError(
+                    _("Snapshot for untracked file not found: {file}").format(file=file_path)
+                )
+            remaining_paths.append(file_path)
+
+        stash_file_path = get_abort_stash_file_path()
+        stash_blobs = {}
+        if stash_file_path.exists():
+            stash_commit = read_text_file_contents(stash_file_path).strip()
+            if stash_commit:
+                stash_blobs = list_git_tree_blobs(stash_commit, remaining_paths)
+
+        repo_root = get_git_repository_root_path()
+        for file_path in remaining_paths:
+            stash_blob = stash_blobs.get(file_path)
+            if stash_blob is not None:
+                buffers[file_path] = load_git_blob_as_buffer(stash_blob.blob_sha)
                 continue
-            raise CommandError(
-                _("Snapshot for untracked file not found: {file}").format(file=file_path)
-            )
-        remaining_paths.append(file_path)
 
-    stash_file_path = get_abort_stash_file_path()
-    stash_blobs = {}
-    if stash_file_path.exists():
-        stash_commit = read_text_file_contents(stash_file_path).strip()
-        if stash_commit:
-            stash_blobs = list_git_tree_blobs(stash_commit, remaining_paths)
+            baseline_blob = baseline_blobs.get(file_path)
+            if baseline_blob is not None:
+                buffers[file_path] = load_git_blob_as_buffer(baseline_blob.blob_sha)
+                continue
 
-    blob_shas = [
-        blob.blob_sha
-        for blob in [
-            *(stash_blobs.get(file_path) for file_path in remaining_paths),
-            *(baseline_blobs.get(file_path) for file_path in remaining_paths),
-        ]
-        if blob is not None
-    ]
-    blob_contents = read_git_blobs_as_bytes(blob_shas)
+            file_full_path = repo_root / file_path
+            if (
+                file_path not in baseline_existing_files
+                and os.path.lexists(file_full_path)
+            ):
+                buffers[file_path] = load_working_tree_file_as_buffer(file_path)
+            else:
+                buffers[file_path] = EditorBuffer.from_bytes(b"")
+    except Exception:
+        for buffer in buffers.values():
+            buffer.close()
+        raise
 
-    repo_root = get_git_repository_root_path()
-    for file_path in remaining_paths:
-        stash_blob = stash_blobs.get(file_path)
-        if stash_blob is not None and stash_blob.blob_sha in blob_contents:
-            contents[file_path] = blob_contents[stash_blob.blob_sha]
-            continue
-
-        baseline_blob = baseline_blobs.get(file_path)
-        if baseline_blob is not None and baseline_blob.blob_sha in blob_contents:
-            contents[file_path] = blob_contents[baseline_blob.blob_sha]
-            continue
-
-        file_full_path = repo_root / file_path
-        if file_path not in baseline_existing_files and file_full_path.exists():
-            contents[file_path] = file_full_path.read_bytes()
-        else:
-            contents[file_path] = b""
-
-    return contents, baseline_existing_files
+    return buffers, baseline_existing_files
 
 
 def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceCommit]:
@@ -201,118 +211,136 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
         return {}
 
     baseline_commit = read_text_file_contents(get_abort_head_file_path()).strip()
-    file_contents, files_existing_at_session_start = _read_session_file_contents(
+    file_buffers, files_existing_at_session_start = _read_session_file_buffers(
         unique_file_paths,
         baseline_commit=baseline_commit,
     )
 
-    repo_root = get_git_repository_root_path()
-    file_modes: dict[str, str] = {}
-    for file_path in unique_file_paths:
-        full_path = repo_root / file_path
-        if full_path.exists():
-            mode = "100755" if full_path.stat().st_mode & stat.S_IXUSR else "100644"
-        else:
-            mode = "100644"
-        file_modes[file_path] = mode
-
-        log_journal(
-            "batch_source_creating",
-            file_path=file_path,
-            baseline_commit=baseline_commit,
-            file_existed_at_session_start=file_path in files_existing_at_session_start,
-            content_len=len(file_contents[file_path]),
-            content_lines=len(file_contents[file_path].splitlines()) if file_contents[file_path] else 0,
-            content_preview=file_contents[file_path][:200] if file_contents[file_path] else b"(empty)",
-        )
-
-    import_id = uuid.uuid4().hex
-    temp_refs = [
-        f"refs/git-stage-batch/tmp/batch-source/{import_id}/{index}"
-        for index, _file_path in enumerate(unique_file_paths)
-    ]
-    blob_mark_start = 1
-    commit_mark_start = blob_mark_start + len(unique_file_paths)
-
-    def fast_import_chunks():
-        for index, file_path in enumerate(unique_file_paths):
-            blob_mark = blob_mark_start + index
-            content = file_contents[file_path]
-            yield f"blob\nmark :{blob_mark}\ndata {len(content)}\n".encode("ascii")
-            yield content
-            yield b"\n"
-
-        for index, file_path in enumerate(unique_file_paths):
-            commit_mark = commit_mark_start + index
-            blob_mark = blob_mark_start + index
-            message = f"Batch source for {file_path}".encode("utf-8")
-            quoted_path = _fast_import_quote_path(file_path)
-            yield (
-                f"commit {temp_refs[index]}\n"
-                f"mark :{commit_mark}\n"
-                "committer Git Stage Batch <git-stage-batch@example.invalid> 0 +0000\n"
-                f"data {len(message)}\n"
-            ).encode("utf-8")
-            yield message
-            yield (
-                f"\nfrom {baseline_commit}\n"
-                f"M {file_modes[file_path]} :{blob_mark} {quoted_path}\n"
-            ).encode("utf-8")
-
-    with tempfile.NamedTemporaryFile(delete=False) as marks_file:
-        marks_path = marks_file.name
-
-    import_succeeded = False
+    return_file_buffers = False
     try:
-        run_command(
-            [
-                "git",
-                "fast-import",
-                "--quiet",
-                "--date-format=raw",
-                f"--export-marks={marks_path}",
-            ],
-            fast_import_chunks(),
-            capture_stdout=False,
-        )
-        import_succeeded = True
-        marks: dict[int, str] = {}
-        with open(marks_path, "r", encoding="ascii") as file:
-            for line in file:
-                mark_text, object_sha = line.strip().split(" ", 1)
-                marks[int(mark_text[1:])] = object_sha
-    finally:
-        if import_succeeded:
-            update_git_refs(deletes=temp_refs, ignore_missing_deletes=False)
-        try:
-            os.unlink(marks_path)
-        except FileNotFoundError:
-            pass
+        repo_root = get_git_repository_root_path()
+        file_modes: dict[str, str] = {}
+        content_stats: dict[str, tuple[int, int]] = {}
+        for file_path in unique_file_paths:
+            full_path = repo_root / file_path
+            if os.path.lexists(full_path):
+                file_status = full_path.lstat()
+                if stat.S_ISLNK(file_status.st_mode):
+                    mode = "120000"
+                else:
+                    mode = "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
+            else:
+                mode = "100644"
+            file_modes[file_path] = mode
 
-    results: dict[str, BatchSourceCommit] = {}
-    for index, file_path in enumerate(unique_file_paths):
-        commit_sha = marks[commit_mark_start + index]
-        results[file_path] = BatchSourceCommit(
-            commit_sha=commit_sha,
-            file_content=file_contents[file_path],
-        )
-        log_journal(
-            "batch_source_created",
-            file_path=file_path,
-            batch_source_commit=commit_sha,
-            blob_sha=marks[blob_mark_start + index],
-            mode=file_modes[file_path],
-            tree=None,
-            verified_content_len=len(file_contents[file_path]),
-            verified_lines=len(file_contents[file_path].splitlines()) if file_contents[file_path] else None,
-        )
-    return results
+            buffer = file_buffers[file_path]
+            buffer_len = buffer.byte_count
+            buffer_lines = len(buffer) if buffer_len else 0
+            content_stats[file_path] = (buffer_len, buffer_lines)
+            log_journal(
+                "batch_source_creating",
+                file_path=file_path,
+                baseline_commit=baseline_commit,
+                file_existed_at_session_start=file_path in files_existing_at_session_start,
+                content_len=buffer_len,
+                content_lines=buffer_lines,
+                buffer_preview=_buffer_preview(buffer),
+            )
+
+        import_id = uuid.uuid4().hex
+        temp_refs = [
+            f"refs/git-stage-batch/tmp/batch-source/{import_id}/{index}"
+            for index, _file_path in enumerate(unique_file_paths)
+        ]
+        blob_mark_start = 1
+        commit_mark_start = blob_mark_start + len(unique_file_paths)
+
+        def fast_import_chunks():
+            for index, file_path in enumerate(unique_file_paths):
+                blob_mark = blob_mark_start + index
+                buffer = file_buffers[file_path]
+                buffer_len, _buffer_lines = content_stats[file_path]
+                yield f"blob\nmark :{blob_mark}\ndata {buffer_len}\n".encode("ascii")
+                yield from buffer.byte_chunks()
+                yield b"\n"
+
+            for index, file_path in enumerate(unique_file_paths):
+                commit_mark = commit_mark_start + index
+                blob_mark = blob_mark_start + index
+                message = f"Batch source for {file_path}".encode("utf-8")
+                quoted_path = _fast_import_quote_path(file_path)
+                yield (
+                    f"commit {temp_refs[index]}\n"
+                    f"mark :{commit_mark}\n"
+                    "committer Git Stage Batch <git-stage-batch@example.invalid> 0 +0000\n"
+                    f"data {len(message)}\n"
+                ).encode("utf-8")
+                yield message
+                yield (
+                    f"\nfrom {baseline_commit}\n"
+                    f"M {file_modes[file_path]} :{blob_mark} {quoted_path}\n"
+                ).encode("utf-8")
+
+        with tempfile.NamedTemporaryFile(delete=False) as marks_file:
+            marks_path = marks_file.name
+
+        import_succeeded = False
+        try:
+            run_command(
+                [
+                    "git",
+                    "fast-import",
+                    "--quiet",
+                    "--date-format=raw",
+                    f"--export-marks={marks_path}",
+                ],
+                fast_import_chunks(),
+                capture_stdout=False,
+            )
+            import_succeeded = True
+            marks: dict[int, str] = {}
+            with open(marks_path, "r", encoding="ascii") as file:
+                for line in file:
+                    mark_text, object_sha = line.strip().split(" ", 1)
+                    marks[int(mark_text[1:])] = object_sha
+        finally:
+            if import_succeeded:
+                update_git_refs(deletes=temp_refs, ignore_missing_deletes=False)
+            try:
+                os.unlink(marks_path)
+            except FileNotFoundError:
+                pass
+
+        results: dict[str, BatchSourceCommit] = {}
+        for index, file_path in enumerate(unique_file_paths):
+            commit_sha = marks[commit_mark_start + index]
+            content_len, content_lines = content_stats[file_path]
+            results[file_path] = BatchSourceCommit(
+                commit_sha=commit_sha,
+                file_buffer=file_buffers[file_path],
+            )
+            log_journal(
+                "batch_source_created",
+                file_path=file_path,
+                batch_source_commit=commit_sha,
+                blob_sha=marks[blob_mark_start + index],
+                mode=file_modes[file_path],
+                tree=None,
+                verified_content_len=content_len,
+                verified_lines=content_lines,
+            )
+        return_file_buffers = True
+        return results
+    finally:
+        if not return_file_buffers:
+            for buffer in file_buffers.values():
+                buffer.close()
 
 
 def create_batch_source_commit(
     file_path: str,
     *,
-    file_content_override: bytes | None = None
+    file_buffer_override: EditorBuffer | None = None
 ) -> str:
     """Create batch source commit for a file.
 
@@ -321,10 +349,10 @@ def create_batch_source_commit(
 
     Args:
         file_path: Repository-relative path to the file
-        file_content_override: Optional exact content to store. Used by stale-source
-            advancement, where the new source may be synthesized from current
-            working tree content plus already-owned lines rather than the
-            original session-start snapshot.
+        file_buffer_override: Optional exact file buffer to store. Used by
+            stale-source advancement, where the new source may be synthesized
+            from current working tree content plus already-owned lines rather
+            than the original session-start snapshot.
 
     Returns:
         Batch source commit SHA
@@ -339,39 +367,49 @@ def create_batch_source_commit(
     baseline_result = run_git_command(["cat-file", "-e", f"{baseline_commit}:{file_path}"], check=False)
     file_existed_at_session_start = baseline_result.returncode == 0
 
-    if file_content_override is not None:
-        file_content = file_content_override
-    else:
-        # Get file content at session start (as bytes)
-        file_content = get_saved_session_file_content(file_path)
-
-    # For new files (didn't exist at session start), use selected working tree content
-    # This ensures the batch source has the lines we're actually claiming
-    if file_content_override is None and not file_existed_at_session_start:
-        repo_root = get_git_repository_root_path()
-        file_full_path = repo_root / file_path
-        if file_full_path.exists():
-            file_content = file_full_path.read_bytes()
-
-    log_journal(
-        "batch_source_creating",
-        file_path=file_path,
-        baseline_commit=baseline_commit,
-        file_existed_at_session_start=file_existed_at_session_start,
-        content_len=len(file_content),
-        content_lines=len(file_content.splitlines()) if file_content else 0,
-        content_preview=file_content[:200] if file_content else b"(empty)"
-    )
-
-    # Create a blob for the file content (already bytes)
-    blob_sha = create_git_blob([file_content])
-
-    # Detect file mode
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
-    if full_path.exists():
-        st = full_path.stat()
-        if st.st_mode & stat.S_IXUSR:
+    file_buffer: EditorBuffer | None = None
+    close_file_buffer = True
+    content_len = 0
+    content_lines = 0
+    try:
+        if file_buffer_override is not None:
+            file_buffer = file_buffer_override
+            close_file_buffer = False
+        else:
+            file_buffer = load_saved_session_file_as_buffer(file_path)
+
+        # For new files (didn't exist at session start), use selected working tree content
+        # This ensures the batch source has the lines we're actually claiming
+        if file_buffer_override is None and not file_existed_at_session_start:
+            if os.path.lexists(full_path):
+                file_buffer.close()
+                file_buffer = load_working_tree_file_as_buffer(file_path)
+
+        content_len = file_buffer.byte_count
+        content_lines = len(file_buffer) if content_len else 0
+        log_journal(
+            "batch_source_creating",
+            file_path=file_path,
+            baseline_commit=baseline_commit,
+            file_existed_at_session_start=file_existed_at_session_start,
+            content_len=content_len,
+            content_lines=content_lines,
+            buffer_preview=_buffer_preview(file_buffer)
+        )
+
+        blob_sha = create_git_blob(file_buffer.byte_chunks())
+    finally:
+        if file_buffer is not None and close_file_buffer:
+            file_buffer.close()
+
+    # Detect file mode
+    if os.path.lexists(full_path):
+        st = full_path.lstat()
+        if stat.S_ISLNK(st.st_mode):
+            mode = "120000"
+        elif st.st_mode & stat.S_IXUSR:
             mode = "100755"
         else:
             mode = "100644"
@@ -389,8 +427,6 @@ def create_batch_source_commit(
         message=f"Batch source for {file_path}",
     )
 
-    # Verify the content in the batch source commit
-    verify_result = run_git_command(["show", f"{batch_source_commit}:{file_path}"], check=False, text_output=False)
     log_journal(
         "batch_source_created",
         file_path=file_path,
@@ -398,8 +434,8 @@ def create_batch_source_commit(
         blob_sha=blob_sha,
         mode=mode,
         tree=new_tree,
-        verified_content_len=len(verify_result.stdout) if verify_result.returncode == 0 else None,
-        verified_lines=len(verify_result.stdout.splitlines()) if verify_result.returncode == 0 else None
+        verified_content_len=content_len,
+        verified_lines=content_lines,
     )
 
     return batch_source_commit

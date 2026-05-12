@@ -7,15 +7,17 @@ import shlex
 from dataclasses import asdict, dataclass
 from enum import Enum
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
 from ..core.actionable_changes import ActionableSelectionReason
 from ..core.line_selection import parse_line_selection
 from ..core.models import ReviewActionGroup
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from ..editor import EditorBuffer
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.file_io import read_file_bytes, read_text_file_contents, write_text_file_contents
+from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.paths import (
     get_index_snapshot_file_path,
     get_last_file_review_state_file_path,
@@ -111,6 +113,17 @@ def _json_hash(payload: Any) -> str:
     return sha256(data.encode("utf-8", errors="surrogateescape")).hexdigest()
 
 
+def _hash_file(path: Path) -> str | None:
+    if not path.exists():
+        return None
+
+    digest = sha256()
+    with EditorBuffer.from_path(path) as buffer:
+        for chunk in buffer.byte_chunks():
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def fingerprint_selected_file_view(
     *,
     source: ReviewSource,
@@ -130,7 +143,7 @@ def fingerprint_selected_file_view(
         ("index", get_index_snapshot_file_path()),
         ("working_tree", get_working_tree_snapshot_file_path()),
     ):
-        snapshots[name] = sha256(read_file_bytes(path)).hexdigest() if path.exists() else None
+        snapshots[name] = _hash_file(path)
     return _json_hash(
         {
             "source": source,

@@ -2,8 +2,23 @@
 
 import pytest
 
-from git_stage_batch.batch.match import match_lines
-from git_stage_batch.batch.merge import merge_batch, discard_batch
+from git_stage_batch.batch.match import (
+    UniqueLinePosition,
+    _build_unique_position_map,
+    match_lines,
+)
+from git_stage_batch.batch.merge import (
+    RegionKind,
+    _build_baseline_correspondence,
+    _build_realized_entries_for_discard,
+    _check_structural_validity,
+    _try_apply_baseline_replacement_units,
+    can_merge_batch_from_line_sequences,
+    discard_batch_from_line_sequences_as_buffer,
+    merge_batch_from_line_sequences_as_buffer,
+    _satisfy_constraints,
+)
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.exceptions import MergeError
 from git_stage_batch.batch.ownership import (
     BaselineReference,
@@ -13,8 +28,74 @@ from git_stage_batch.batch.ownership import (
 )
 
 
+def merge_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+    *,
+    source_to_working_mapping=None,
+) -> bytes:
+    """Return merged bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+            source_to_working_mapping=source_to_working_mapping,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
+
+
+def discard_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+    baseline_content: bytes,
+) -> bytes:
+    """Return discarded bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        EditorBuffer.from_bytes(baseline_content) as baseline_lines,
+        discard_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+            baseline_lines,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
+
+
 class TestMatchLines:
     """Tests for line alignment using difflib.SequenceMatcher."""
+
+    def test_unique_position_map_returns_structured_positions(self):
+        """Unique line scanning returns positions without duplicate entries."""
+        lines = [b"same\n", b"unique\n", b"same\n", b"other\n"]
+
+        positions = _build_unique_position_map(lines, 0, len(lines))
+
+        assert positions == {
+            b"unique\n": UniqueLinePosition(index=1),
+            b"other\n": UniqueLinePosition(index=3),
+        }
+
+    def test_line_mapping_uses_zero_filled_arrays(self):
+        """Line mappings store one integer slot per line."""
+        source = [b"line1\n", b"line2\n", b"line3\n"]
+        target = [b"line1\n", b"line3\n"]
+
+        mapping = match_lines(source, target)
+
+        assert mapping.source_to_target.typecode in {"I", "Q"}
+        assert mapping.target_to_source.typecode in {"I", "Q"}
+        assert mapping.source_to_target.tolist() == [1, 0, 2]
+        assert mapping.target_to_source.tolist() == [1, 3]
+        assert mapping.get_target_line_from_source_line(2) is None
 
     def test_identical_files(self):
         """Test alignment of identical files."""
@@ -30,6 +111,18 @@ class TestMatchLines:
         assert mapping.get_target_line_from_source_line(1) == 1
         assert mapping.get_target_line_from_source_line(2) == 2
         assert mapping.get_target_line_from_source_line(3) == 3
+
+    def test_accepts_non_list_sequences(self, line_sequence):
+        """match_lines only requires sized indexable line sequences."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        target = line_sequence([b"line1\n", b"extra\n", b"line2\n", b"line3\n"])
+
+        mapping = match_lines(source, target)
+
+        assert mapping.get_target_line_from_source_line(1) == 1
+        assert mapping.get_target_line_from_source_line(2) == 3
+        assert mapping.get_target_line_from_source_line(3) == 4
+        assert mapping.get_source_line_from_target_line(2) is None
 
     def test_working_tree_additions(self):
         """Test alignment when working tree has extra lines."""
@@ -135,6 +228,94 @@ class TestMatchLines:
         # Replace block: source line maps to None in strict mode
         assert mapping.get_target_line_from_source_line(2) is None
         assert mapping.get_source_line_from_target_line(2) is None
+
+
+class TestMergeLineSequences:
+    """Tests for merge helpers accepting non-list line sequences."""
+
+    def test_constraint_helpers_accept_non_list_sequences(self, line_sequence):
+        """Read-only merge helpers only require sized indexable line sequences."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\n", b"line3\n"])
+        mapping = match_lines(source, working)
+
+        _check_structural_validity(
+            mapping,
+            {2},
+            [],
+            source,
+            working,
+        )
+        entries = _satisfy_constraints(
+            source,
+            working,
+            {2},
+            [],
+            source_to_working_mapping=mapping,
+        )
+
+        assert b"".join(entry.content for entry in entries) == b"line1\nline2\nline3\n"
+
+    def test_discard_entry_builder_accepts_non_list_sequences(self, line_sequence):
+        """Discard entry construction only requires sized iterable line sequences."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\n", b"line3\n"])
+        mapping = match_lines(source, working)
+
+        entries = _build_realized_entries_for_discard(source, working, mapping)
+
+        assert [entry.content for entry in entries] == [b"line1\n", b"line3\n"]
+        assert [entry.source_line for entry in entries] == [1, 3]
+
+    def test_baseline_correspondence_accepts_non_list_sequences(self, line_sequence):
+        """Baseline correspondence accepts sized sliceable line sequences."""
+        baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+        source = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+
+        correspondence = _build_baseline_correspondence(baseline, source)
+        region = correspondence.get_region_for_source_line(2)
+
+        assert region is not None
+        assert region.kind == RegionKind.REPLACE_BY_HUNK
+        assert tuple(region.baseline_lines) == (b"old\n",)
+        assert not isinstance(region.baseline_lines, list)
+
+    def test_can_merge_accepts_non_list_sequences(self, line_sequence):
+        """Mergeability probes accept indexed line sequences."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\n", b"line3\n"])
+
+        assert can_merge_batch_from_line_sequences(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+        ) is True
+
+    def test_merge_from_line_sequences_can_return_buffer(self, line_sequence):
+        """Merge can return a buffer without materializing through the bytes API."""
+        source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+        working = line_sequence([b"line1\r\n", b"line3\r\n"])
+
+        with merge_batch_from_line_sequences_as_buffer(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+        ) as result:
+            assert result.to_bytes() == b"line1\r\nline2\r\nline3\r\n"
+
+    def test_discard_from_line_sequences_can_return_buffer(self, line_sequence):
+        """Discard can return a buffer without materializing through the bytes API."""
+        baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+        source = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+        working = line_sequence([b"line1\r\n", b"new\r\n", b"line3\r\n"])
+
+        with discard_batch_from_line_sequences_as_buffer(
+            source,
+            BatchOwnership.from_presence_lines(["2"], []),
+            working,
+            baseline,
+        ) as result:
+            assert result.to_bytes() == b"line1\r\nold\r\nline3\r\n"
 
 
 class TestMergeBatch:
@@ -267,6 +448,34 @@ class TestMergeBatch:
 
         assert result == b"line1\nline2\nline4\n"
 
+    def test_baseline_referenced_fallback_yields_line_chunks(self):
+        """Baseline-coordinate fallback returns line content chunks."""
+        source_lines = [b"line1\n", b"line2\n", b"line3\n", b"line4\n"]
+        working_lines = [b"line1\n"]
+        ownership = BatchOwnership.from_presence_lines(
+            ["2,4"],
+            [],
+            baseline_references={
+                line: BaselineReference(
+                    after_line=1,
+                    after_content=b"line1",
+                    before_line=None,
+                    has_before_line=False,
+                )
+                for line in (2, 4)
+            },
+        )
+        fallback_chunks = _try_apply_baseline_replacement_units(
+            source_lines,
+            working_lines,
+            ownership,
+            {2, 4},
+            [],
+        )
+
+        assert fallback_chunks is not None
+        assert list(fallback_chunks) == [b"line1\n", b"line2\n", b"line4\n"]
+
     def test_merge_with_deletion_suppresses_content(self):
         """Test that deletion constraints suppress matching content."""
         source = b"line1\nline2\nline3\n"
@@ -278,6 +487,21 @@ class TestMergeBatch:
         result = merge_batch(source, BatchOwnership([], deletions), working)
 
         # Should remove the unwanted line
+        assert result == b"line1\nline2\nline3\n"
+
+    def test_merge_with_deletion_accepts_non_list_content_lines(self, line_sequence):
+        """Deletion suppression only requires indexed content lines."""
+        source = b"line1\nline2\nline3\n"
+        working = b"unwanted\nline1\nline2\nline3\n"
+        deletions = [
+            DeletionClaim(
+                anchor_line=None,
+                content_lines=line_sequence([b"unwanted\n"]),
+            ),
+        ]
+
+        result = merge_batch(source, BatchOwnership([], deletions), working)
+
         assert result == b"line1\nline2\nline3\n"
 
     def test_baseline_referenced_absence_suppresses_when_source_anchor_missing(self):

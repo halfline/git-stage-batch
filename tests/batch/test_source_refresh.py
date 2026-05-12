@@ -13,15 +13,34 @@ from git_stage_batch.commands import include, discard
 from git_stage_batch.batch.source_refresh import (
     RefreshedBatchSelection,
     PreparedBatchUpdate,
-    _refresh_selected_lines_against_source_content,
+    _refresh_selected_lines_against_source_lines,
+    acquire_batch_ownership_update_for_selection,
     ensure_batch_source_current_for_selection,
     prepare_batch_ownership_update_for_selection,
 )
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
-    _advance_source_content_preserving_existing_presence_with_provenance,
+    _advance_source_lines_preserving_existing_presence,
 )
 from git_stage_batch.core.models import LineEntry
+from git_stage_batch.editor import EditorBuffer
+
+
+def _advance_source_from_content(
+    *,
+    old_source_buffer: bytes,
+    working_buffer: bytes,
+    ownership: BatchOwnership,
+):
+    with (
+        EditorBuffer.from_bytes(old_source_buffer) as old_source_lines,
+        EditorBuffer.from_bytes(working_buffer) as working_lines,
+    ):
+        return _advance_source_lines_preserving_existing_presence(
+            old_lines=old_source_lines,
+            working_lines=working_lines,
+            ownership=ownership,
+        )
 
 
 def test_refreshed_batch_selection_dataclass():
@@ -214,37 +233,125 @@ def test_prepare_batch_ownership_update_with_existing():
     assert "1-4" in ",".join(result.ownership_after.presence_claims[0].source_lines)
 
 
-def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
-    """Repeated working lines should use known synthesis identity."""
-    ownership = BatchOwnership.from_presence_lines(["1,4"], [])
-    advanced = _advance_source_content_preserving_existing_presence_with_provenance(
-        old_source_content=b"owned before\nsame\nsame\nowned after\n",
-        working_content=b"same\nsame\n",
-        ownership=ownership,
+def test_acquire_batch_ownership_update_uses_metadata_acquisition(monkeypatch):
+    """Prepared updates can borrow ownership from metadata while open."""
+    existing = BatchOwnership.from_presence_lines(["1"], [])
+    entered = False
+    exited = False
+
+    class OwnershipContext:
+        def __enter__(self):
+            nonlocal entered
+            entered = True
+            return existing
+
+        def __exit__(self, exc_type, exc, traceback):
+            nonlocal exited
+            exited = True
+
+    def acquire_for_metadata_dict(cls, metadata):
+        assert metadata == {"batch_source_commit": "source123"}
+        return OwnershipContext()
+
+    monkeypatch.setattr(
+        BatchOwnership,
+        "acquire_for_metadata_dict",
+        classmethod(acquire_for_metadata_dict),
     )
-    selected_lines = [
+    lines = [
         LineEntry(
-            id=1, kind='+', old_line_number=None, new_line_number=1,
-            text_bytes=b"same", text="same", source_line=None
-        ),
-        LineEntry(
-            id=2, kind='+', old_line_number=None, new_line_number=2,
-            text_bytes=b"same", text="same", source_line=None
+            id=2,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"line2\n",
+            text="line2\n",
+            source_line=2,
         ),
     ]
 
-    refreshed = _refresh_selected_lines_against_source_content(
-        selected_lines,
-        source_content=advanced.content,
-        working_content=b"same\nsame\n",
-        working_line_map=advanced.working_line_map,
-    )
+    with acquire_batch_ownership_update_for_selection(
+        batch_name="test-batch",
+        file_path="test.py",
+        file_metadata={"batch_source_commit": "source123"},
+        selected_lines=lines,
+    ) as result:
+        assert entered is True
+        assert exited is False
+        assert result.batch_source_commit == "source123"
+        assert result.ownership_before is existing
+        assert result.ownership_after.presence_line_set() == {1, 2}
+
+    assert exited is True
+
+
+def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
+    """Repeated working lines should use known synthesis identity."""
+    ownership = BatchOwnership.from_presence_lines(["1,4"], [])
+    with _advance_source_from_content(
+        old_source_buffer=b"owned before\nsame\nsame\nowned after\n",
+        working_buffer=b"same\nsame\n",
+        ownership=ownership,
+    ) as source_with_provenance:
+        selected_lines = [
+            LineEntry(
+                id=1, kind='+', old_line_number=None, new_line_number=1,
+                text_bytes=b"same", text="same", source_line=None
+            ),
+            LineEntry(
+                id=2, kind='+', old_line_number=None, new_line_number=2,
+                text_bytes=b"same", text="same", source_line=None
+            ),
+        ]
+
+        refreshed = _refresh_selected_lines_against_source_lines(
+            selected_lines,
+            source_lines=source_with_provenance.source_buffer,
+            working_lines=(),
+            working_line_map=source_with_provenance.working_line_map,
+        )
 
     assert [line.source_line for line in refreshed] == [3, 4]
 
 
+def test_refresh_selected_lines_accepts_non_list_source_sequences(line_sequence):
+    """Source refresh can use already indexed line sequences."""
+    selected_lines = [
+        LineEntry(
+            id=None, kind=' ', old_line_number=2, new_line_number=2,
+            text_bytes=b"line3", text="line3", source_line=None
+        ),
+    ]
+
+    refreshed = _refresh_selected_lines_against_source_lines(
+        selected_lines,
+        source_lines=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
+        working_lines=line_sequence([b"line1\n", b"line3\n"]),
+    )
+
+    assert refreshed[0].source_line == 3
+
+
+def test_refresh_selected_lines_accepts_non_list_line_sequences(line_sequence):
+    """Source refresh matching only requires sized indexable line sequences."""
+    selected_lines = [
+        LineEntry(
+            id=None, kind=' ', old_line_number=2, new_line_number=2,
+            text_bytes=b"line3", text="line3", source_line=None
+        ),
+    ]
+
+    refreshed = _refresh_selected_lines_against_source_lines(
+        selected_lines,
+        source_lines=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
+        working_lines=line_sequence([b"line1\n", b"line3\n"]),
+    )
+
+    assert refreshed[0].source_line == 3
+
+
 def test_both_commands_use_same_helper_interface():
-    """Test that both include and discard use prepare_batch_ownership_update_for_selection.
+    """Test that both include and discard use acquired update preparation.
 
     This test verifies the refactoring succeeded: both command paths now use
     the same centralized helper instead of duplicated inline logic.
@@ -256,12 +363,14 @@ def test_both_commands_use_same_helper_interface():
     discard_source = inspect.getsource(discard)
 
     # Both should import from batch.source_refresh
-    assert "from ..batch.source_refresh import prepare_batch_ownership_update_for_selection" in include_source
-    assert "from ..batch.source_refresh import prepare_batch_ownership_update_for_selection" in discard_source
+    assert "from ..batch.source_refresh import acquire_batch_ownership_update_for_selection" in include_source
+    assert "from ..batch.source_refresh import acquire_batch_ownership_update_for_selection" in discard_source
 
-    # Both should call prepare_batch_ownership_update_for_selection
-    assert "prepare_batch_ownership_update_for_selection(" in include_source
-    assert "prepare_batch_ownership_update_for_selection(" in discard_source
+    # Both should call acquire_batch_ownership_update_for_selection
+    assert "acquire_batch_ownership_update_for_selection(" in include_source
+    assert "acquire_batch_ownership_update_for_selection(" in discard_source
+    assert "prepare_batch_ownership_update_for_selection(" not in include_source
+    assert "prepare_batch_ownership_update_for_selection(" not in discard_source
 
     # Neither should have the old inline implementation pattern
     # (checking they don't manually handle stale source advancement)

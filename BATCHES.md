@@ -545,7 +545,7 @@ Two different mechanisms drive what the user sees:
 ### Batch display reconstruction
 
 `show --from <batch>` reconstructs a file's batch view from source content plus
-ownership using `build_display_lines_from_batch_source()` in
+ownership using `build_display_lines_from_batch_source_lines()` in
 `src/git_stage_batch/batch/display.py`.
 
 For a single file, the command caches that reconstructed view as a selected
@@ -652,9 +652,9 @@ selection derived from the reconstructed batch display described above.
 
 ### Ownership units
 
-For text batches, `select_batch_ownership_for_display_ids()` uses
-`build_ownership_units_from_display()` to group reconstructed display lines into
-ownership units:
+For text batches, `select_batch_ownership_for_display_ids_from_lines()` uses
+`build_ownership_units_from_batch_source_lines()` to group reconstructed display
+lines into ownership units:
 
 - `PRESENCE_ONLY`
 - `REPLACEMENT`

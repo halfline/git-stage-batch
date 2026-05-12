@@ -1,13 +1,21 @@
 """Tests for include command."""
 
+import os
 import subprocess
 
 import pytest
 
-from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.query import get_batch_commit_sha, read_batch_metadata
 from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.commands import include as include_command
-from git_stage_batch.commands.include import command_include, command_include_line, command_include_line_as, command_include_to_batch
+from git_stage_batch.commands.include import (
+    command_include,
+    command_include_line,
+    command_include_line_as,
+    command_include_to_batch,
+)
+from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
@@ -24,6 +32,18 @@ def _prepare_single_line_change(repo, file_name="test.txt"):
     command_start()
     fetch_next_change()
     return test_file
+
+
+def _reject_materialized_ownership_metadata(monkeypatch):
+    def fail_from_metadata_dict(cls, data):
+        raise AssertionError("include should use acquired ownership metadata")
+
+    monkeypatch.setattr(
+        BatchOwnership,
+        "from_metadata_dict",
+        classmethod(fail_from_metadata_dict),
+        raising=False,
+    )
 
 
 @pytest.fixture
@@ -125,6 +145,32 @@ class TestCommandInclude:
         assert "file1.txt" in result.stdout
         assert "file2.txt" in result.stdout
 
+    def test_include_file_to_batch_uses_scoped_ownership_metadata(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Including into an existing batch should not materialize ownership."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("one\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add readme"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        readme.write_text("two\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("metadata-batch", quiet=True)
+
+        readme.write_text("three\n")
+        _reject_materialized_ownership_metadata(monkeypatch)
+
+        command_include_to_batch("metadata-batch", file="README.md", quiet=True)
+
+        metadata = read_batch_metadata("metadata-batch")
+        file_meta = metadata["files"]["README.md"]
+        assert "presence_claims" in file_meta
+        assert "deletions" in file_meta
+
     def test_include_all_hunks_processed(self, temp_git_repo, capsys):
         """Test include when all hunks have been processed."""
         # Modify README before starting
@@ -146,10 +192,125 @@ class TestCommandInclude:
 class TestCommandIncludeLine:
     """Tests for command_include_line."""
 
+    def test_include_line_symlink_reads_link_target_not_referent(
+        self,
+        temp_git_repo,
+    ):
+        """Line include should stage a symlink target, not its referent bytes."""
+        link_path = temp_git_repo / "link"
+        os.symlink("oldtarget", link_path)
+        subprocess.run(["git", "add", "link"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add link"], check=True, cwd=temp_git_repo, capture_output=True)
+        link_path.unlink()
+        os.symlink("newtarget", link_path)
+        (temp_git_repo / "newtarget").write_bytes(b"contents of target\n")
+
+        command_start(quiet=True)
+        command_include_line("1,2")
+
+        blob_result = subprocess.run(
+            ["git", "show", ":link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        mode_result = subprocess.run(
+            ["git", "ls-files", "-s", "--", "link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert blob_result.stdout == b"newtarget"
+        assert mode_result.stdout.split()[0] == "120000"
+
+    def test_include_to_batch_symlink_preserves_mode(self, temp_git_repo):
+        """Line include to a batch should keep symlink mode and target bytes."""
+        link_path = temp_git_repo / "link"
+        os.symlink("oldtarget", link_path)
+        subprocess.run(["git", "add", "link"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add link"], check=True, cwd=temp_git_repo, capture_output=True)
+        link_path.unlink()
+        os.symlink("newtarget", link_path)
+        (temp_git_repo / "newtarget").write_bytes(b"contents of target\n")
+
+        command_start(quiet=True)
+        command_include_to_batch("symlink-batch", line_ids="1,2", file="link", quiet=True)
+
+        batch_sha = get_batch_commit_sha("symlink-batch")
+        assert batch_sha is not None
+        blob_result = subprocess.run(
+            ["git", "show", f"{batch_sha}:link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        mode_result = subprocess.run(
+            ["git", "ls-tree", batch_sha, "--", "link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert blob_result.stdout == b"newtarget"
+        assert mode_result.stdout.split()[0] == "120000"
+
+    def test_replacement_analysis_accepts_non_list_line_sequences(self, line_sequence):
+        """Include replacement analysis can read from indexed content sequences."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new", text="new"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"tail", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_lines = line_sequence([b"keep\r\n", b"old\r\n", b"tail\r\n"])
+        source_lines = line_sequence([b"keep\r\n", b"new\r\n", b"tail\r\n"])
+
+        display_runs = include_command._derive_replacement_unit_display_ids(
+            line_changes,
+            hunk_base_lines=base_lines,
+            hunk_source_lines=source_lines,
+        )
+        line_runs = include_command._derive_replacement_line_runs(
+            hunk_base_lines=base_lines,
+            hunk_source_lines=source_lines,
+        )
+
+        assert display_runs == [{1, 2}]
+        assert len(line_runs) == 1
+        assert line_runs[0].old_line_numbers == (2,)
+        assert line_runs[0].new_line_numbers == (2,)
+
     def test_include_line_requires_selected_hunk(self, temp_git_repo):
         """Test that include --line requires an active hunk."""
         with pytest.raises(CommandError):
             command_include_line("1")
+
+    def test_include_line_replacement_at_eof_without_newline_preserves_index_bytes(
+        self,
+        temp_git_repo,
+    ):
+        """Line include should replace a final unterminated line exactly."""
+        test_file = temp_git_repo / "f.txt"
+        original = b"a\nb"
+        modified = b"a\nB"
+        test_file.write_bytes(original)
+        subprocess.run(["git", "add", "f.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add f"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_bytes(modified)
+        command_start(quiet=True)
+        command_include_line("1,2")
+
+        result = subprocess.run(
+            ["git", "show", ":f.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        assert result.stdout == modified
 
     def test_include_to_batch_line_captures_worktree_executable_mode(self, temp_git_repo):
         """include --to --line should store chmod changes from the working tree."""
@@ -184,6 +345,52 @@ class TestCommandIncludeLine:
 
         metadata = read_batch_metadata("mode-batch")
         assert metadata["files"]["tool.sh"]["mode"] == "100755"
+
+    def test_include_to_batch_preserves_embedded_cr_bytes(self, temp_git_repo):
+        """Batch storage should not mistake embedded CR bytes for terminators."""
+        test_file = temp_git_repo / "f.txt"
+        original = b"one\rtwo\nthree\n"
+        modified = b"one\rTWO\nthree\n"
+        test_file.write_bytes(original)
+        subprocess.run(["git", "add", "f.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add f"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_bytes(modified)
+        command_start(quiet=True)
+        command_include_to_batch("embedded-cr", file="f.txt", quiet=True)
+
+        batch_sha = get_batch_commit_sha("embedded-cr")
+        assert batch_sha is not None
+        result = subprocess.run(
+            ["git", "show", f"{batch_sha}:f.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        assert result.stdout == modified
+
+    def test_include_to_batch_preserves_missing_final_newline(self, temp_git_repo):
+        """Batch storage should not add a newline to a final replacement line."""
+        test_file = temp_git_repo / "f.txt"
+        original = b"a\nb"
+        modified = b"a\nB"
+        test_file.write_bytes(original)
+        subprocess.run(["git", "add", "f.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add f"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_bytes(modified)
+        command_start(quiet=True)
+        command_include_to_batch("no-final-newline", file="f.txt", quiet=True)
+
+        batch_sha = get_batch_commit_sha("no-final-newline")
+        assert batch_sha is not None
+        result = subprocess.run(
+            ["git", "show", f"{batch_sha}:f.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        assert result.stdout == modified
 
     def test_include_line_stages_single_addition(self, temp_git_repo):
         """Test including a single added line."""

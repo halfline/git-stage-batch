@@ -1,7 +1,7 @@
 """Tests for hunk navigation, state management, staleness detection, and progress tracking."""
 
 import json
-from git_stage_batch.core.hashing import compute_stable_hunk_hash
+from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
 from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
 from git_stage_batch.utils.paths import get_blocked_files_file_path
 from git_stage_batch.utils.file_io import append_file_path_to_file
@@ -22,6 +22,7 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import (
     advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
+    build_file_hunk_from_buffer,
     clear_selected_change_state_files,
     fetch_next_change,
     recalculate_selected_hunk_for_file,
@@ -30,6 +31,7 @@ from git_stage_batch.data.hunk_tracking import (
     require_selected_hunk,
     snapshots_are_stale,
 )
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.utils.file_io import append_lines_to_file
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -102,6 +104,35 @@ class TestClearCurrentHunkStateFiles:
         clear_selected_change_state_files()
 
 
+def test_build_file_hunk_from_buffer_accepts_buffer(temp_git_repo):
+    """Hypothetical file views can read generated buffers."""
+    test_file = temp_git_repo / "test.txt"
+    test_file.write_text("line1\nline2\n")
+    subprocess.run(
+        ["git", "add", "test.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add test file"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+
+    with EditorBuffer.from_chunks([b"line1\nchanged\n"]) as buffer:
+        line_changes = build_file_hunk_from_buffer("test.txt", buffer)
+
+    assert line_changes is not None
+    assert [line.text for line in line_changes.lines if line.kind == "-"] == [
+        "line2"
+    ]
+    assert [line.text for line in line_changes.lines if line.kind == "+"] == [
+        "changed"
+    ]
+
+
 class TestFindAndCacheNextUnblockedHunk:
     """Tests for fetch_next_change()."""
 
@@ -146,7 +177,7 @@ class TestFindAndCacheNextUnblockedHunk:
             capture_output=True,)
         stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
         patches = list(parse_unified_diff_streaming(stdout_bytes.splitlines(keepends=True)))
-        first_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
+        first_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         append_lines_to_file(get_block_list_file_path(), [first_hash])
 
@@ -204,7 +235,7 @@ class TestFindAndCacheNextUnblockedHunk:
             capture_output=True,)
         stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
         patches = list(parse_unified_diff_streaming(stdout_bytes.splitlines(keepends=True)))
-        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
+        hunk_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         append_lines_to_file(get_block_list_file_path(), [hunk_hash])
 
@@ -532,7 +563,7 @@ class TestRecalculateCurrentHunkForFile:
             capture_output=True,)
         stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
         patches = list(parse_unified_diff_streaming(stdout_bytes.splitlines(keepends=True)))
-        hunk_hash = compute_stable_hunk_hash(patches[0].to_patch_bytes())
+        hunk_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         append_lines_to_file(get_block_list_file_path(), [hunk_hash])
 

@@ -8,7 +8,7 @@ from contextlib import nullcontext
 
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.session_lock import acquire_session_lock
+from ..utils.session_lock import acquire_session_lock, wait_for_git_index_lock
 from .argument_parser import parse_command_line
 from .dispatch import dispatch_args
 from .pager import pager_output, should_page_output
@@ -21,10 +21,13 @@ def main() -> None:
         if args is not None:
             if args.working_directory is not None:
                 os.chdir(args.working_directory)
+            skip_session_lock = getattr(args, "prompt_format", None) is not None
+            if not skip_session_lock:
+                wait_for_git_index_lock()
             pager_context = pager_output() if should_page_output(args) else nullcontext()
             lock_context = (
                 nullcontext()
-                if getattr(args, "prompt_format", None) is not None
+                if skip_session_lock
                 else acquire_session_lock()
             )
             with pager_context:

@@ -7,14 +7,21 @@ import pytest
 
 import git_stage_batch.batch.attribution as attribution_module
 from git_stage_batch.batch.attribution import (
+    AttributedUnit,
     AttributionUnitKind,
-    compare_baseline_to_working_tree,
+    FileAttribution,
+    FileComparison,
     enumerate_units_from_file_comparison,
     build_file_attribution,
     project_attribution_to_diff,
 )
+from git_stage_batch.batch.match import match_lines
 from git_stage_batch.core.diff_parser import (
-    build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
+)
+from git_stage_batch.editor import (
+    load_git_object_as_buffer_or_empty,
+    load_working_tree_file_as_buffer,
 )
 from git_stage_batch.utils.git import stream_git_command
 
@@ -56,6 +63,114 @@ def _create_batch_source_commit(repo, path: str, content: str) -> str:
         capture_output=True,
     )
     return commit
+
+
+def _enumerate_units_from_head_and_working_tree(file_path: str):
+    baseline_buffer = load_git_object_as_buffer_or_empty(f"HEAD:{file_path}")
+    working_tree_buffer = load_working_tree_file_as_buffer(file_path)
+
+    with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
+        comparison = FileComparison(
+            file_path=file_path,
+            baseline_lines=baseline_lines,
+            working_tree_lines=working_tree_lines,
+            alignment=match_lines(baseline_lines, working_tree_lines),
+        )
+        units_map = {}
+        enumerate_units_from_file_comparison(comparison, units_map)
+        return units_map
+
+
+def test_file_comparison_accepts_non_list_line_sequences(line_sequence):
+    """Attribution comparison only requires sized indexable line sequences."""
+    baseline_lines = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+    working_tree_lines = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+    comparison = FileComparison(
+        file_path="test.txt",
+        baseline_lines=baseline_lines,
+        working_tree_lines=working_tree_lines,
+        alignment=match_lines(baseline_lines, working_tree_lines),
+    )
+    units_map = {}
+
+    enumerate_units_from_file_comparison(comparison, units_map)
+
+    replacement_units = [
+        unit
+        for unit in units_map.values()
+        if unit.kind == AttributionUnitKind.REPLACEMENT
+    ]
+    assert len(replacement_units) == 1
+    assert replacement_units[0].deletion_content is None
+    assert replacement_units[0].deletion_fingerprint is not None
+    assert replacement_units[0].deletion_fingerprint.byte_count == 4
+    assert replacement_units[0].claimed_content == b"new\n"
+
+
+def test_multi_line_replacement_addition_uses_digest_for_projection(line_sequence):
+    """Attribution can project replacements whose added side is not retained."""
+    baseline_lines = line_sequence([
+        b"line1\n",
+        b"old1\n",
+        b"old2\n",
+        b"line4\n",
+    ])
+    working_tree_lines = line_sequence([
+        b"line1\n",
+        b"new1\n",
+        b"new2\n",
+        b"line4\n",
+    ])
+    comparison = FileComparison(
+        file_path="test.txt",
+        baseline_lines=baseline_lines,
+        working_tree_lines=working_tree_lines,
+        alignment=match_lines(baseline_lines, working_tree_lines),
+    )
+    units_map = {}
+
+    enumerate_units_from_file_comparison(comparison, units_map)
+
+    replacement_unit = next(
+        unit
+        for unit in units_map.values()
+        if unit.kind == AttributionUnitKind.REPLACEMENT
+    )
+    assert replacement_unit.claimed_content is None
+    assert replacement_unit.claimed_fingerprint is not None
+    assert replacement_unit.claimed_fingerprint.byte_count == len(b"new1\nnew2\n")
+    assert replacement_unit.claimed_line_count == 2
+
+    attribution = FileAttribution(
+        file_path="test.txt",
+        units=[
+            AttributedUnit(
+                unit=replacement_unit,
+                owning_batches={"batch"},
+            )
+        ],
+    )
+    line_changes = build_line_changes_from_patch_lines(
+        (
+            b"diff --git a/test.txt b/test.txt\n"
+            b"--- a/test.txt\n"
+            b"+++ b/test.txt\n"
+            b"@@ -1,4 +1,4 @@\n"
+            b" line1\n"
+            b"-old1\n"
+            b"-old2\n"
+            b"+new1\n"
+            b"+new2\n"
+            b" line4\n"
+        ).splitlines(keepends=True)
+    )
+
+    display_to_unit = project_attribution_to_diff(attribution, line_changes)
+
+    assert {
+        line_changes.lines[index].id
+        for index in display_to_unit
+    } == {1, 2, 3, 4}
 
 
 def test_legacy_claimed_lines_metadata_owns_presence_units(temp_repo, monkeypatch):
@@ -116,9 +231,7 @@ class TestPresenceGranularity:
         test_file.write_text("line1\nline2\nline3\nline4\n")
 
         # Build attribution
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         # Should have THREE separate PRESENCE_ONLY units (lines 2, 3, 4)
         presence_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.PRESENCE_ONLY]
@@ -142,9 +255,7 @@ class TestPresenceGranularity:
 
         test_file.write_text("original\nadd1\nadd2\nadd3\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         presence_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.PRESENCE_ONLY]
 
@@ -167,9 +278,7 @@ class TestReplacementPairing:
         # Replace both deletion targets
         test_file.write_text("line1\nadd1\nline2\nadd2\nline3\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         # Should have exactly 2 REPLACEMENT units
         replacement_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.REPLACEMENT]
@@ -190,9 +299,7 @@ class TestReplacementPairing:
         # One addition where two deletions were
         test_file.write_text("add\nkeep\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         # Should have at most 1 REPLACEMENT (one-to-one pairing)
         replacement_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.REPLACEMENT]
@@ -213,9 +320,7 @@ class TestReplacementPairing:
         # Build units multiple times - should get same result
         results = []
         for _ in range(3):
-            comparison = compare_baseline_to_working_tree("test.txt")
-            units_map = {}
-            enumerate_units_from_file_comparison(comparison, units_map)
+            units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
             replacement_units = sorted(
                 [u for u in units_map.values() if u.kind == AttributionUnitKind.REPLACEMENT],
@@ -244,9 +349,7 @@ class TestAnchorSemantics:
         # Delete target line
         test_file.write_text("header\nkeep1\nkeep2\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         deletion_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.DELETION_ONLY]
         assert len(deletion_units) == 1
@@ -265,9 +368,7 @@ class TestAnchorSemantics:
         # Delete first line
         test_file.write_text("keep\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         deletion_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.DELETION_ONLY]
         assert len(deletion_units) == 1
@@ -290,9 +391,7 @@ class TestPresenceOwnershipIdentity:
         # Add another "same" line
         test_file.write_text("same\nother\nsame\nsame\n")
 
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         presence_units = [u for u in units_map.values() if u.kind == AttributionUnitKind.PRESENCE_ONLY]
 
@@ -335,8 +434,7 @@ class TestReplacementProjection:
         ))
         assert len(patches) >= 1
 
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Project attribution onto diff
         display_to_unit = project_attribution_to_diff(attribution, line_changes)
@@ -375,8 +473,7 @@ class TestAnchorConsistency:
             if not patches:
                 continue
 
-            patch_bytes = patches[0].to_patch_bytes()
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+            line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
             # Project attribution
             display_to_unit = project_attribution_to_diff(attribution, line_changes)
@@ -410,8 +507,7 @@ class TestAnchorConsistency:
         patches = list(parse_unified_diff_streaming(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Project
         display_to_unit = project_attribution_to_diff(attribution, line_changes)
@@ -448,8 +544,7 @@ class TestAnchorConsistency:
         patches = list(parse_unified_diff_streaming(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Project
         display_to_unit = project_attribution_to_diff(attribution, line_changes)
@@ -476,9 +571,7 @@ class TestSemanticConsistency:
         test_file.write_text("keep\nnew1\nnew2\nkeep2\n")
 
         # File comparison layer
-        comparison = compare_baseline_to_working_tree("test.txt")
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
+        units_map = _enumerate_units_from_head_and_working_tree("test.txt")
 
         # Attribution layer
         attribution = build_file_attribution("test.txt")
@@ -490,8 +583,7 @@ class TestSemanticConsistency:
         patches = list(parse_unified_diff_streaming(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
-        patch_bytes = patches[0].to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(patches[0].lines)
 
         # Projection layer
         display_to_unit = project_attribution_to_diff(attribution, line_changes)

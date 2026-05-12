@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .models import BinaryFileChange
 
 
-def compute_stable_hunk_hash(patch_bytes: bytes) -> str:
+def compute_stable_hunk_hash_from_lines(patch_lines: Iterable[bytes]) -> str:
     """
-    Compute a stable identity hash for a one-hunk patch.
+    Compute a stable identity hash for a one-hunk patch line sequence.
 
     The hash is based on: path + @@ header + changed lines only (no context).
     Context lines are excluded from the hash to ensure stability when nearby
@@ -20,18 +21,29 @@ def compute_stable_hunk_hash(patch_bytes: bytes) -> str:
     even as the working tree changes.
 
     Args:
-        patch_bytes: Unified diff patch as bytes
+        patch_lines: Unified diff patch lines as bytes
 
     Returns:
         SHA-1 hash (hex string)
     """
     selected_path_bytes = b""
     header_bytes = b""
-    body_lines_bytes: list[bytes] = []
     saw_header = False
+    wrote_hash_prefix = False
+    wrote_changed_line = False
+    digest = hashlib.sha1()
 
-    # Use splitlines(keepends=True) to preserve exact line endings for hashing
-    for line_with_ending in patch_bytes.splitlines(keepends=True):
+    def write_hash_prefix() -> None:
+        nonlocal wrote_hash_prefix
+        if wrote_hash_prefix:
+            return
+        digest.update(selected_path_bytes)
+        digest.update(b"\0")
+        digest.update(header_bytes)
+        digest.update(b"\0")
+        wrote_hash_prefix = True
+
+    for line_with_ending in patch_lines:
         # Strip \n for comparison
         line = line_with_ending.rstrip(b'\n')
 
@@ -52,11 +64,14 @@ def compute_stable_hunk_hash(patch_bytes: bytes) -> str:
         if saw_header:
             # Only include actual changes (+ or -), not context lines (space)
             if line and line[0:1] in (b'+', b'-'):
-                body_lines_bytes.append(line)
+                write_hash_prefix()
+                if wrote_changed_line:
+                    digest.update(b"\n")
+                digest.update(line)
+                wrote_changed_line = True
 
-    # Build hash key from bytes (no encoding needed)
-    key = selected_path_bytes + b"\0" + header_bytes + b"\0" + b'\n'.join(body_lines_bytes)
-    return hashlib.sha1(key).hexdigest()
+    write_hash_prefix()
+    return digest.hexdigest()
 
 
 def compute_binary_file_hash(binary_change: BinaryFileChange) -> str:

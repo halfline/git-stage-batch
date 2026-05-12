@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import subprocess
 import sys
-from dataclasses import replace
+from collections.abc import Sequence
+from contextlib import ExitStack
+from dataclasses import dataclass, replace
 from enum import Enum
 from hashlib import sha256
+from pathlib import Path
 from typing import Generator, Mapping, Optional, Union
 
 from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
@@ -23,13 +27,20 @@ from ..batch.ownership import (
     validate_ownership_units,
 )
 from ..batch.query import get_batch_commit_sha, list_batch_names, read_batch_metadata
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
 from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, RenderedBatchDisplay, ReviewActionGroup
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
-    build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
+)
+from ..editor import (
+    EditorBuffer,
+    buffer_matches,
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+    write_buffer_to_path,
 )
 from ..core.line_selection import write_line_ids_file
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
@@ -37,13 +48,14 @@ from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_binary_file_change
 from .consumed_selections import read_consumed_file_metadata
 from ..utils.file_io import (
-    read_file_bytes,
     read_file_paths_file,
+    read_text_file_line_set,
     read_text_file_contents,
-    write_file_bytes,
     write_text_file_contents,
 )
+from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
+from ..utils.text import bytes_to_lines, normalize_line_sequence_endings
 from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
@@ -83,6 +95,33 @@ _BATCH_MERGE_REVIEW_ACTIONS = (
 _BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
 
 
+@dataclass
+class SelectedChangeStateSnapshot:
+    """Temporary file copy of selected change state."""
+
+    paths: dict[str, Path | None]
+    temporary_directory: tempfile.TemporaryDirectory
+
+    def close(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def __enter__(self) -> SelectedChangeStateSnapshot:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+
+def write_selected_hunk_patch_lines(patch_lines: Sequence[bytes]) -> None:
+    with EditorBuffer.from_chunks(iter(patch_lines)) as patch_buffer:
+        write_buffer_to_path(get_selected_hunk_patch_file_path(), patch_buffer)
+
+
+def _load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
+    with EditorBuffer.from_path(patch_path) as patch_lines:
+        return build_line_changes_from_patch_lines(patch_lines)
+
+
 class SelectedChangeClearReason(str, Enum):
     """Reasons selected change state was intentionally cleared."""
 
@@ -106,23 +145,36 @@ def _selected_change_state_paths():
     }
 
 
-def snapshot_selected_change_state() -> dict[str, bytes | None]:
+def snapshot_selected_change_state() -> SelectedChangeStateSnapshot:
     """Capture the current selected change cache."""
-    return {
-        name: (read_file_bytes(path) if path.exists() else None)
-        for name, path in _selected_change_state_paths().items()
-    }
+    temporary_directory = tempfile.TemporaryDirectory()
+    snapshot_root = Path(temporary_directory.name)
+    snapshot_paths: dict[str, Path | None] = {}
+
+    for name, path in _selected_change_state_paths().items():
+        if not path.exists():
+            snapshot_paths[name] = None
+            continue
+
+        snapshot_path = snapshot_root / name
+        shutil.copyfile(path, snapshot_path)
+        snapshot_paths[name] = snapshot_path
+
+    return SelectedChangeStateSnapshot(
+        paths=snapshot_paths,
+        temporary_directory=temporary_directory,
+    )
 
 
-def restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
+def restore_selected_change_state(snapshot: SelectedChangeStateSnapshot) -> None:
     """Restore a previously captured selected change cache."""
     for name, path in _selected_change_state_paths().items():
-        data = snapshot.get(name)
-        if data is None:
+        snapshot_path = snapshot.paths.get(name)
+        if snapshot_path is None:
             path.unlink(missing_ok=True)
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
+            shutil.copyfile(snapshot_path, path)
 
 
 def clear_selected_change_state_files() -> None:
@@ -556,8 +608,7 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange]]
     if line_changes is not None:
         return line_changes
 
-    patch_bytes = read_file_bytes(patch_path)
-    return build_line_changes_from_patch_bytes(patch_bytes)
+    return _load_line_changes_from_patch_path(patch_path)
 
 
 def get_selected_change_file_path() -> Optional[str]:
@@ -576,8 +627,7 @@ def get_selected_change_file_path() -> Optional[str]:
     if not patch_path.exists():
         return None
 
-    patch_bytes = read_file_bytes(patch_path)
-    line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+    line_changes = _load_line_changes_from_patch_path(patch_path)
     return line_changes.path
 
 
@@ -745,37 +795,77 @@ def render_batch_file_display(
 
     # Get batch source commit and ownership
     batch_source_commit = file_meta["batch_source_commit"]
-    ownership = BatchOwnership.from_metadata_dict(file_meta)
-
-    # Read batch source content (as bytes)
-    batch_source_result = run_git_command(["show", f"{batch_source_commit}:{file_path}"], check=False, text_output=False)
-    if batch_source_result.returncode != 0:
-        return None
-    batch_source_content_bytes = batch_source_result.stdout
-    batch_source_content_str = batch_source_content_bytes.decode('utf-8', errors='replace')
-
-    # Read current working tree content for mergeability probing
-    repo_root = get_git_repository_root_path()
-    working_path = repo_root / file_path
-    if working_path.exists():
-        working_content = working_path.read_bytes()
-    else:
-        working_content = b""
-    source_to_working_mapping = None
-    if probe_mergeability:
-        source_normalized = batch_source_content_bytes.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-        working_normalized = working_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-        source_to_working_mapping = match_lines(
-            source_normalized.splitlines(keepends=True) if source_normalized else [],
-            working_normalized.splitlines(keepends=True) if working_normalized else [],
+    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+        return _render_batch_file_display_from_ownership(
+            batch_source_commit=batch_source_commit,
+            file_path=file_path,
+            file_meta=file_meta,
+            ownership=ownership,
+            probe_mergeability=probe_mergeability,
         )
 
-    # Build display lines (already has correct line IDs matching ownership)
-    display_lines = batch_display.build_display_lines_from_batch_source(
-        batch_source_content_str,
-        ownership,
-        context_lines=get_context_lines(),
+
+def _render_batch_file_display_from_ownership(
+    *,
+    batch_source_commit: str,
+    file_path: str,
+    file_meta: dict,
+    ownership: BatchOwnership,
+    probe_mergeability: bool,
+) -> Optional['RenderedBatchDisplay']:
+    """Render batch file display from already-acquired ownership metadata."""
+
+    batch_source_buffer = load_git_object_as_buffer(
+        f"{batch_source_commit}:{file_path}"
     )
+    if batch_source_buffer is None:
+        return None
+
+    mergeable_ids = set()
+    units = []
+
+    with batch_source_buffer as batch_source_lines:
+        # Build display lines (already has correct line IDs matching ownership)
+        display_lines = batch_display.build_display_lines_from_batch_source_lines(
+            batch_source_lines,
+            ownership,
+            context_lines=get_context_lines(),
+        )
+
+        if probe_mergeability and display_lines:
+            source_match_lines = normalize_line_sequence_endings(batch_source_lines)
+            working_tree_buffer = load_working_tree_file_as_buffer(file_path)
+            with working_tree_buffer as working_tree_lines:
+                working_match_lines = normalize_line_sequence_endings(working_tree_lines)
+                source_to_working_mapping = match_lines(
+                    source_match_lines,
+                    working_match_lines,
+                )
+
+                units = build_ownership_units_from_display_lines(
+                    ownership,
+                    display_lines,
+                )
+
+                # Check each ownership unit once. All lines in an atomic unit
+                # share the same mergeability result.
+                for unit in units:
+                    try:
+                        validate_ownership_units([unit])
+                        ownership_for_unit = rebuild_ownership_from_units([unit])
+                        if ownership_for_unit.is_empty():
+                            continue
+                        if not batch_merge.can_merge_batch_from_line_sequences(
+                            source_match_lines,
+                            ownership_for_unit,
+                            working_match_lines,
+                            source_to_working_mapping=source_to_working_mapping,
+                        ):
+                            continue
+                        mergeable_ids.update(unit.display_line_ids)
+                    except (MergeError, ValueError, KeyError, Exception):
+                        # Unit not mergeable - exclude all its lines
+                        pass
 
     if not display_lines:
         change_type = file_meta.get("change_type", "modified")
@@ -809,36 +899,6 @@ def render_batch_file_display(
             )
         return None
 
-    # Determine which display lines should get gutter IDs
-    # Include:
-    # 1. Individually mergeable lines (can be selected alone)
-    # 2. Lines that are part of atomic units (can be selected together with unit)
-    mergeable_ids = set()
-
-    # Build ownership units to identify atomic groupings. Navigational previews
-    # do not need per-line actionability, so skip the expensive merge probes.
-    units = build_ownership_units_from_display_lines(ownership, display_lines) if probe_mergeability else []
-
-    # Check each ownership unit once.  All lines in an atomic unit share the
-    # same mergeability result, and merge_batch performs the expensive
-    # structural matching internally.
-    for unit in units:
-        try:
-            validate_ownership_units([unit])
-            ownership_for_unit = rebuild_ownership_from_units([unit])
-            if ownership_for_unit.is_empty():
-                continue
-            batch_merge.merge_batch(
-                batch_source_content_bytes,
-                ownership_for_unit,
-                working_content,
-                source_to_working_mapping=source_to_working_mapping,
-            )
-            mergeable_ids.update(unit.display_line_ids)
-        except (MergeError, ValueError, KeyError, Exception):
-            # Unit not mergeable - exclude all its lines
-            pass
-
     # Keep original selection IDs; mergeability is stored separately.
     line_entries = []
     new_line_num = 1
@@ -851,6 +911,7 @@ def render_batch_file_display(
         content_bytes = content.encode('utf-8')
         # Strip only the newline terminator, preserve \r
         text_bytes = content_bytes.rstrip(b'\n')
+        has_trailing_newline = content_bytes.endswith(b'\n')
         # Decode with replacement for display
         text = text_bytes.decode('utf-8', errors='replace')
 
@@ -864,7 +925,8 @@ def render_batch_file_display(
                 new_line_number=new_line_num,
                 text_bytes=text_bytes,
                 text=text,
-                source_line=source_line
+                source_line=source_line,
+                has_trailing_newline=has_trailing_newline,
             ))
             new_line_num += 1
         elif display_line["type"] == "deletion":
@@ -876,7 +938,8 @@ def render_batch_file_display(
                 new_line_number=None,
                 text_bytes=text_bytes,
                 text=text,
-                source_line=None
+                source_line=None,
+                has_trailing_newline=has_trailing_newline,
             ))
         elif display_line["type"] == "context":
             line_entries.append(LineEntry(
@@ -886,7 +949,8 @@ def render_batch_file_display(
                 new_line_number=new_line_num,
                 text_bytes=text_bytes,
                 text=text,
-                source_line=display_line["source_line"]
+                source_line=display_line["source_line"],
+                has_trailing_newline=has_trailing_newline,
             ))
             new_line_num += 1
         elif display_line["type"] == "gap":
@@ -897,7 +961,8 @@ def render_batch_file_display(
                 new_line_number=None,
                 text_bytes=text_bytes,
                 text=text,
-                source_line=None
+                source_line=None,
+                has_trailing_newline=has_trailing_newline,
             ))
 
     # Compute header based on actual line types
@@ -1058,19 +1123,20 @@ def cache_rendered_batch_file_display(
     old_path = "/dev/null" if deletion_count == 0 and addition_count > 0 else f"a/{file_path}"
     new_path = "/dev/null" if addition_count == 0 and deletion_count > 0 else f"b/{file_path}"
 
-    patch_bytes_parts = [
+    patch_lines = [
         f"--- {old_path}\n".encode('utf-8'),
         f"+++ {new_path}\n".encode('utf-8'),
         f"@@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@\n".encode('utf-8')
     ]
     for entry in line_entries:
-        patch_bytes_parts.append(entry.kind.encode('utf-8') + entry.text_bytes + b'\n')
-    patch_bytes = b"".join(patch_bytes_parts)
+        patch_lines.append(entry.kind.encode('utf-8') + entry.text_bytes + b'\n')
+        if not entry.has_trailing_newline:
+            patch_lines.append(b"\\ No newline at end of file\n")
 
-    patch_hash = compute_stable_hunk_hash(patch_bytes)
+    patch_hash = compute_stable_hunk_hash_from_lines(patch_lines)
 
     # Cache the hunk bytes exactly; display strings are derived elsewhere.
-    write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
+    write_selected_hunk_patch_lines(patch_lines)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
     write_selected_change_kind(SelectedChangeKind.BATCH_FILE)
 
@@ -1193,12 +1259,13 @@ def _cache_combined_file_line_changes(
     ]
     for entry in combined_line_changes.lines:
         patch_lines.append(entry.kind.encode("utf-8") + entry.text_bytes + b"\n")
-    patch_bytes = b"".join(patch_lines)
+        if not entry.has_trailing_newline:
+            patch_lines.append(b"\\ No newline at end of file\n")
 
-    patch_hash = compute_stable_hunk_hash(patch_bytes)
+    patch_hash = compute_stable_hunk_hash_from_lines(patch_lines)
 
     # Cache the combined hunk
-    write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
+    write_selected_hunk_patch_lines(patch_lines)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
     write_selected_change_kind(SelectedChangeKind.FILE)
     write_line_ids_file(get_processed_include_ids_file_path(), set())
@@ -1247,50 +1314,34 @@ def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelCha
     )
 
 
-def build_file_hunk_from_content(file_path: str, file_content: bytes) -> Optional[LineLevelChange]:
-    """Build a file-scoped line view for hypothetical file content without writing it."""
-    head_result = run_git_command(["show", f"HEAD:{file_path}"], check=False, text_output=False)
-    head_content = head_result.stdout if head_result.returncode == 0 else b""
+def build_file_hunk_from_buffer(
+    file_path: str,
+    file_buffer: EditorBuffer,
+) -> Optional[LineLevelChange]:
+    """Build a file-scoped line view for a hypothetical file buffer without writing it."""
+    head_buffer = load_git_object_as_buffer(f"HEAD:{file_path}")
 
     with tempfile.NamedTemporaryFile(delete=False) as old_tmp:
-        old_tmp.write(head_content)
+        if head_buffer is not None:
+            with head_buffer:
+                for chunk in head_buffer.byte_chunks():
+                    old_tmp.write(chunk)
         old_path = old_tmp.name
     with tempfile.NamedTemporaryFile(delete=False) as new_tmp:
-        new_tmp.write(file_content)
+        for chunk in file_buffer.byte_chunks():
+            new_tmp.write(chunk)
         new_path = new_tmp.name
 
     try:
-        diff_result = run_git_command(
-            [
-                "diff",
-                "--no-index",
-                f"-U{get_context_lines()}",
-                "--no-color",
-                old_path,
-                new_path,
-            ],
-            check=False,
-            text_output=False,
-        )
-        if diff_result.returncode not in (0, 1):
-            raise subprocess.CalledProcessError(
-                diff_result.returncode,
-                diff_result.args,
-                output=diff_result.stdout,
-                stderr=diff_result.stderr,
-            )
-
-        patch_bytes = diff_result.stdout.replace(
-            f"a{old_path}".encode("utf-8"),
-            f"a/{file_path}".encode("utf-8"),
-        ).replace(
-            f"b{new_path}".encode("utf-8"),
-            f"b/{file_path}".encode("utf-8"),
-        )
-
         return _build_combined_file_line_changes(
             file_path,
-            parse_unified_diff_streaming(patch_bytes.splitlines(keepends=True)),
+            parse_unified_diff_streaming(
+                _stream_no_index_diff_lines(
+                    file_path=file_path,
+                    old_path=old_path,
+                    new_path=new_path,
+                )
+            ),
         )
     finally:
         try:
@@ -1299,6 +1350,56 @@ def build_file_hunk_from_content(file_path: str, file_content: bytes) -> Optiona
             os.unlink(new_path)
         except OSError:
             pass
+
+
+def _stream_no_index_diff_lines(
+    *,
+    file_path: str,
+    old_path: str,
+    new_path: str,
+) -> Generator[bytes, None, None]:
+    arguments = [
+        "git",
+        "diff",
+        "--no-index",
+        f"-U{get_context_lines()}",
+        "--no-color",
+        old_path,
+        new_path,
+    ]
+    stderr_chunks: list[bytes] = []
+    exit_code = 0
+
+    def stdout_chunks() -> Generator[bytes, None, None]:
+        nonlocal exit_code
+
+        for event in stream_command(arguments):
+            if isinstance(event, ExitEvent):
+                exit_code = event.exit_code
+            elif isinstance(event, OutputEvent):
+                if event.fd == 1:
+                    yield event.data
+                elif event.fd == 2:
+                    stderr_chunks.append(event.data)
+
+    old_header = f"a{old_path}".encode("utf-8")
+    new_header = f"b{new_path}".encode("utf-8")
+    rendered_old_header = f"a/{file_path}".encode("utf-8")
+    rendered_new_header = f"b/{file_path}".encode("utf-8")
+
+    for line in bytes_to_lines(stdout_chunks()):
+        yield line.replace(old_header, rendered_old_header).replace(
+            new_header,
+            rendered_new_header,
+        )
+
+    if exit_code not in (0, 1):
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+        raise subprocess.CalledProcessError(
+            exit_code,
+            arguments,
+            stderr=stderr_text,
+        )
 
 
 def _build_combined_file_line_changes(
@@ -1319,8 +1420,7 @@ def _build_combined_file_line_changes(
         if isinstance(single_hunk, BinaryFileChange):
             continue
 
-        patch_bytes = single_hunk.to_patch_bytes()
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = build_line_changes_from_patch_lines(single_hunk.lines)
 
         if previous_old_end is not None and previous_new_end is not None:
             omitted_old_lines = line_changes.header.old_start - previous_old_end
@@ -1363,6 +1463,7 @@ def _build_combined_file_line_changes(
                     text_bytes=line_entry.text_bytes,
                     text=line_entry.text,
                     source_line=line_entry.source_line,
+                    has_trailing_newline=line_entry.has_trailing_newline,
                 )
                 line_id_counter += 1
             else:
@@ -1374,6 +1475,7 @@ def _build_combined_file_line_changes(
                     text_bytes=line_entry.text_bytes,
                     text=line_entry.text,
                     source_line=line_entry.source_line,
+                    has_trailing_newline=line_entry.has_trailing_newline,
                 )
             all_line_entries.append(new_entry)
 
@@ -1407,8 +1509,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
     blocked_files = set(read_file_paths_file(get_blocked_files_file_path()))
 
     # Load blocklist (includes selected iteration)
-    blocklist_content = read_text_file_contents(get_block_list_file_path())
-    blocked_hashes = set(blocklist_content.splitlines())
+    blocked_hashes = read_text_file_line_set(get_block_list_file_path())
 
     # Stream git diff and parse incrementally - stops after first unblocked item found
     try:
@@ -1430,17 +1531,19 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
                 return item
 
             # Handle text hunks (SingleHunkPatch)
-            patch_bytes = item.to_patch_bytes()
-            hunk_hash = compute_stable_hunk_hash(patch_bytes)
+            hunk_hash = compute_stable_hunk_hash_from_lines(item.lines)
             if hunk_hash in blocked_hashes:
                 continue
 
             # Skip hunks from blocked files
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
+            line_changes = build_line_changes_from_patch_lines(
+                item.lines,
+                annotator=annotate_with_batch_source,
+            )
             if line_changes.path in blocked_files:
                 continue
 
-            write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
+            write_selected_hunk_patch_lines(item.lines)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
             write_selected_change_kind(SelectedChangeKind.HUNK)
 
@@ -1493,8 +1596,7 @@ def show_selected_change() -> None:
     # Otherwise, show text hunk
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
-        patch_bytes = read_file_bytes(patch_path)
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = _load_line_changes_from_patch_path(patch_path)
         print_line_level_changes(line_changes)
 
 
@@ -1516,8 +1618,7 @@ def advance_to_and_show_next_change() -> None:
     # Check if a text hunk was cached
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
-        patch_bytes = read_file_bytes(patch_path)
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = _load_line_changes_from_patch_path(patch_path)
         print_line_level_changes(line_changes)
     else:
         print(_("No more hunks to process."), file=sys.stderr)
@@ -1540,32 +1641,34 @@ def snapshots_are_stale(file_path: str) -> bool:
     if not snapshot_base_path.exists() or not snapshot_new_path.exists():
         return True
 
-    # Read cached snapshots as bytes so non-UTF-8 content compares exactly.
-    cached_index_content = read_file_bytes(snapshot_base_path)
-    cached_worktree_content = read_file_bytes(snapshot_new_path)
-
-    # Get selected file content from index
     try:
-        result = run_git_command(["show", f":{file_path}"], check=False, text_output=False)
-        if result.returncode != 0:
-            # File not in index (was deleted, or never added)
-            selected_index_content = b""
-        else:
-            selected_index_content = result.stdout
+        with ExitStack() as stack:
+            cached_index_content = stack.enter_context(
+                EditorBuffer.from_path(snapshot_base_path)
+            )
+            cached_worktree_content = stack.enter_context(
+                EditorBuffer.from_path(snapshot_new_path)
+            )
+
+            selected_index_content = load_git_object_as_buffer(f":{file_path}")
+            if selected_index_content is None:
+                selected_index_content = EditorBuffer.from_bytes(b"")
+            stack.enter_context(selected_index_content)
+
+            repo_root = get_git_repository_root_path()
+            file_full_path = repo_root / file_path
+            if file_full_path.exists():
+                selected_worktree_content = EditorBuffer.from_path(file_full_path)
+            else:
+                selected_worktree_content = EditorBuffer.from_bytes(b"")
+            stack.enter_context(selected_worktree_content)
+
+            return (
+                not buffer_matches(cached_index_content, selected_index_content)
+                or not buffer_matches(cached_worktree_content, selected_worktree_content)
+            )
     except Exception:
         return True  # Error reading means state is stale
-
-    # Get selected file content from working tree
-    repo_root = get_git_repository_root_path()
-    file_full_path = repo_root / file_path
-    try:
-        selected_worktree_content = read_file_bytes(file_full_path) if file_full_path.exists() else b""
-    except Exception:
-        return True  # Error reading means state is stale
-
-    # Compare snapshots with selected state
-    return (cached_index_content != selected_index_content or
-            cached_worktree_content != selected_worktree_content)
 
 
 def require_selected_hunk() -> None:
@@ -1624,8 +1727,7 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
         return
 
     # Load blocklist
-    blocklist_content = read_text_file_contents(get_block_list_file_path())
-    blocked_hashes = set(blocklist_content.splitlines())
+    blocked_hashes = read_text_file_line_set(get_block_list_file_path())
 
     # Stream git diff and parse incrementally - stops after first matching hunk found
     try:
@@ -1633,17 +1735,19 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
             if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
                 continue
 
-            patch_bytes = single_hunk.to_patch_bytes()
-            hunk_hash = compute_stable_hunk_hash(patch_bytes)
+            hunk_hash = compute_stable_hunk_hash_from_lines(single_hunk.lines)
 
             if hunk_hash in blocked_hashes:
                 continue
 
-            write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
+            write_selected_hunk_patch_lines(single_hunk.lines)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
             write_selected_change_kind(SelectedChangeKind.HUNK)
 
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
+            line_changes = build_line_changes_from_patch_lines(
+                single_hunk.lines,
+                annotator=annotate_with_batch_source,
+            )
             write_text_file_contents(get_line_changes_json_file_path(),
                                     json.dumps(convert_line_changes_to_serializable_dict(line_changes),
                                               ensure_ascii=False, indent=0))
@@ -1677,8 +1781,7 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
 def record_hunk_included(hunk_hash: str) -> None:
     """Record that a hunk was included (staged)."""
     included_path = get_included_hunks_file_path()
-    content = read_text_file_contents(included_path)
-    existing = set(content.splitlines()) if content else set()
+    existing = read_text_file_line_set(included_path)
     existing.add(hunk_hash)
     write_text_file_contents(included_path, "\n".join(sorted(existing)) + "\n" if existing else "")
 
@@ -1694,8 +1797,7 @@ def record_hunks_discarded(hunk_hashes: list[str]) -> None:
     if not new_hashes:
         return
     discarded_path = get_discarded_hunks_file_path()
-    content = read_text_file_contents(discarded_path)
-    existing = set(content.splitlines()) if content else set()
+    existing = read_text_file_line_set(discarded_path)
     existing.update(new_hashes)
     write_text_file_contents(discarded_path, "\n".join(sorted(existing)) + "\n" if existing else "")
 

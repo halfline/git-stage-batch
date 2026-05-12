@@ -2,21 +2,29 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from hashlib import sha256
 
 from ..core.line_selection import format_line_ids, parse_line_selection
 from ..core.models import LineEntry
 from ..data.batch_sources import create_batch_source_commit
+from ..editor import (
+    EditorBuffer,
+    buffer_byte_chunks,
+    load_git_blob_as_buffer,
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+)
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
 from ..utils.git import (
     create_git_blob,
     get_git_repository_root_path,
-    read_git_blob,
     read_git_blobs_as_bytes,
-    run_git_command,
 )
+from .comparison import SemanticChangeKind, derive_semantic_change_runs
 from .match import match_lines
 from .merge import _apply_presence_constraints
 
@@ -84,7 +92,8 @@ class DeletionClaim:
     Attributes:
         anchor_line: Batch source line after which this deletion claim is anchored
                      (None for start-of-file)
-        content_lines: Exact baseline line content that must be suppressed (as bytes)
+        content_lines: Exact baseline line content that must be suppressed,
+                       with line endings preserved
         baseline_reference: Optional old-file coordinate where this absence
                             claim was selected. This lets same-source batch
                             round trips apply replacement units back to an
@@ -92,13 +101,12 @@ class DeletionClaim:
                             post-change source anchors.
     """
     anchor_line: int | None
-    content_lines: list[bytes]  # Each element is one line with newline preserved
+    content_lines: Sequence[bytes]
     baseline_reference: BaselineReference | None = None
 
     def to_dict(self) -> dict:
         """Serialize to metadata dictionary."""
-        blob_content = b"".join(self.content_lines)
-        blob_sha = create_git_blob([blob_content])
+        blob_sha = create_git_blob(buffer_byte_chunks(self.content_lines))
         data = {
             "after_source_line": self.anchor_line,
             "blob": blob_sha
@@ -112,16 +120,14 @@ class DeletionClaim:
         cls,
         data: dict,
         blob_contents: dict[str, bytes] | None = None,
+        blob_buffers: dict[str, EditorBuffer] | None = None,
     ) -> DeletionClaim:
         """Deserialize from metadata dictionary."""
         anchor_line = data.get("after_source_line")
         blob_sha = data["blob"]
-        blob_content = (
-            blob_contents[blob_sha]
-            if blob_contents is not None and blob_sha in blob_contents
-            else b"".join(read_git_blob(blob_sha))
-        )
-        content_lines = blob_content.splitlines(keepends=True)
+        if blob_buffers is None:
+            raise ValueError("deletion blobs must be loaded before deserialization")
+        content_lines = blob_buffers[blob_sha]
         baseline_metadata = data.get("baseline_reference")
         baseline_reference = (
             BaselineReference.from_dict(baseline_metadata, blob_contents)
@@ -140,9 +146,9 @@ def _read_metadata_blob(
 ) -> bytes | None:
     if blob_sha is None:
         return None
-    if blob_contents is not None and blob_sha in blob_contents:
-        return blob_contents[blob_sha]
-    return b"".join(read_git_blob(blob_sha))
+    if blob_contents is None:
+        raise ValueError("metadata blobs must be loaded before deserialization")
+    return blob_contents[blob_sha]
 
 
 def _baseline_reference_blob_ids(reference_metadata: dict) -> list[str]:
@@ -221,6 +227,24 @@ def _presence_claim_reference_blob_ids(presence_metadata: list[dict]) -> list[st
     return blob_ids
 
 
+def _deletion_content_blob_ids(deletion_metadata: list[dict]) -> list[str]:
+    return [
+        metadata["blob"]
+        for metadata in deletion_metadata
+        if "blob" in metadata
+    ]
+
+
+def _deletion_reference_blob_ids(deletion_metadata: list[dict]) -> list[str]:
+    return [
+        blob_id
+        for metadata in deletion_metadata
+        for blob_id in _baseline_reference_blob_ids(
+            metadata.get("baseline_reference", {})
+        )
+    ]
+
+
 @dataclass
 class ReplacementUnit:
     """Explicit coupling between presence claims and deletion claims.
@@ -254,6 +278,29 @@ class ReplacementLineRun:
 
     old_line_numbers: tuple[int, ...]
     new_line_numbers: tuple[int, ...]
+
+
+def derive_replacement_line_runs_from_lines(
+    *,
+    old_file_lines: Sequence[bytes],
+    new_file_lines: Sequence[bytes],
+) -> list[ReplacementLineRun]:
+    """Derive replacement line runs from old/new byte-line sequences."""
+    replacement_runs: list[ReplacementLineRun] = []
+    semantic_runs = derive_semantic_change_runs(old_file_lines, new_file_lines)
+    for run in semantic_runs:
+        if (
+            run.kind == SemanticChangeKind.REPLACEMENT
+            and run.source_run is not None
+            and run.target_run is not None
+        ):
+            replacement_runs.append(
+                ReplacementLineRun(
+                    old_line_numbers=tuple(run.source_run),
+                    new_line_numbers=tuple(run.target_run),
+                )
+            )
+    return replacement_runs
 
 
 @dataclass
@@ -329,24 +376,55 @@ class BatchOwnership:
         return data
 
     @classmethod
-    def from_metadata_dict(cls, data: dict) -> BatchOwnership:
-        """Create from metadata dictionary."""
+    def acquire_for_metadata_dict(
+        cls,
+        data: dict,
+    ) -> _BatchOwnershipBuildContext:
+        """Acquire ownership for metadata with buffered deletion blobs."""
+        deletion_metadata = data.get("deletions", [])
+        presence_metadata = data.get("presence_claims", [])
+        blob_buffers: dict[str, EditorBuffer] = {}
+        buffers: list[EditorBuffer] = []
+        try:
+            for blob_sha in _deletion_content_blob_ids(deletion_metadata):
+                if blob_sha in blob_buffers:
+                    continue
+                buffer = load_git_blob_as_buffer(blob_sha)
+                blob_buffers[blob_sha] = buffer
+                buffers.append(buffer)
+
+            blob_contents = read_git_blobs_as_bytes(
+                [
+                    *_deletion_reference_blob_ids(deletion_metadata),
+                    *_presence_claim_reference_blob_ids(presence_metadata),
+                ]
+            )
+            ownership = cls._from_metadata_dict(
+                data,
+                blob_contents=blob_contents,
+                deletion_blob_buffers=blob_buffers,
+            )
+        except Exception:
+            for buffer in buffers:
+                buffer.close()
+            raise
+
+        return _BatchOwnershipBuildContext(
+            ownership=ownership,
+            buffers=buffers,
+        )
+
+    @classmethod
+    def _from_metadata_dict(
+        cls,
+        data: dict,
+        *,
+        blob_contents: dict[str, bytes],
+        deletion_blob_buffers: dict[str, EditorBuffer] | None = None,
+    ) -> BatchOwnership:
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
         legacy_claimed_lines = data.get("claimed_lines", [])
-        blob_contents = read_git_blobs_as_bytes(
-            [
-                *(d["blob"] for d in deletion_metadata if "blob" in d),
-                *(
-                    blob_id
-                    for d in deletion_metadata
-                    for blob_id in _baseline_reference_blob_ids(
-                        d.get("baseline_reference", {})
-                    )
-                ),
-                *_presence_claim_reference_blob_ids(presence_metadata),
-            ]
-        )
         presence_claims = [
             PresenceClaim.from_dict(d, blob_contents)
             for d in presence_metadata
@@ -356,7 +434,8 @@ class BatchOwnership:
                 _parse_line_ranges(legacy_claimed_lines)
             )
         deletions = [
-            DeletionClaim.from_dict(d, blob_contents) for d in deletion_metadata
+            DeletionClaim.from_dict(d, blob_contents, deletion_blob_buffers)
+            for d in deletion_metadata
         ]
         replacement_units = [
             ReplacementUnit.from_dict(d)
@@ -377,6 +456,24 @@ class BatchOwnership:
 
 
 @dataclass
+class _BatchOwnershipBuildContext:
+    """Own buffers borrowed by a scoped BatchOwnership value."""
+
+    ownership: BatchOwnership
+    buffers: list[EditorBuffer]
+
+    def close(self) -> None:
+        for buffer in self.buffers:
+            buffer.close()
+
+    def __enter__(self) -> BatchOwnership:
+        return self.ownership
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+
+@dataclass
 class ResolvedBatchOwnership:
     """Resolved ownership representation for materialization and merge.
 
@@ -390,13 +487,51 @@ class ResolvedBatchOwnership:
     deletion_claims: list[DeletionClaim]  # Separate constraints, not collapsed
 
 
-@dataclass
-class AdvancedSourceContent:
-    """Synthesized source content with line provenance from its inputs."""
+def detach_batch_ownership(ownership: BatchOwnership) -> BatchOwnership:
+    """Return ownership whose deletion content no longer borrows buffers."""
+    return BatchOwnership(
+        presence_claims=[
+            PresenceClaim(
+                source_lines=claim.source_lines[:],
+                baseline_references=dict(claim.baseline_references),
+            )
+            for claim in ownership.presence_claims
+        ],
+        deletions=[
+            DeletionClaim(
+                anchor_line=deletion.anchor_line,
+                content_lines=list(deletion.content_lines),
+                baseline_reference=deletion.baseline_reference,
+            )
+            for deletion in ownership.deletions
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=unit.presence_lines[:],
+                deletion_indices=unit.deletion_indices[:],
+            )
+            for unit in ownership.replacement_units
+        ],
+    )
 
-    content: bytes
+
+@dataclass
+class SourceContentWithLineProvenance:
+    """Synthesized source buffer with line provenance from its inputs."""
+
+    source_buffer: EditorBuffer
     source_line_map: dict[int, int]
     working_line_map: dict[int, int]
+
+    def close(self) -> None:
+        """Release the synthesized buffer."""
+        self.source_buffer.close()
+
+    def __enter__(self) -> SourceContentWithLineProvenance:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
 
 
 @dataclass
@@ -405,14 +540,44 @@ class BatchSourceAdvanceResult:
 
     batch_source_commit: str
     ownership: BatchOwnership
-    source_content: bytes
-    working_content: bytes
+    source_buffer: EditorBuffer
     working_line_map: dict[int, int]
 
+    def close(self) -> None:
+        """Release the refreshed source buffer."""
+        self.source_buffer.close()
 
-def _deletion_signature(deletion: DeletionClaim) -> tuple[int | None, bytes]:
+    def __enter__(self) -> BatchSourceAdvanceResult:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+
+@dataclass(frozen=True, slots=True)
+class _DeletionSignature:
+    anchor_line: int | None
+    content_digest: str
+    byte_count: int
+    line_count: int
+
+
+def _deletion_signature(deletion: DeletionClaim) -> _DeletionSignature:
     """Return a stable signature for a deletion claim."""
-    return deletion.anchor_line, b"".join(deletion.content_lines)
+    digest = sha256()
+    byte_count = 0
+    line_count = 0
+    for line in deletion.content_lines:
+        digest.update(line)
+        byte_count += len(line)
+        line_count += 1
+
+    return _DeletionSignature(
+        anchor_line=deletion.anchor_line,
+        content_digest=digest.hexdigest(),
+        byte_count=byte_count,
+        line_count=line_count,
+    )
 
 
 def _baseline_reference_side_score(
@@ -591,7 +756,7 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
     # When batch source advances and ownership is remapped, the same deletion can appear
     # in both existing (remapped) and new (from current diff). We need to deduplicate.
     combined_deletions = []
-    deletion_index_by_signature: dict[tuple[int | None, bytes], int] = {}
+    deletion_index_by_signature: dict[_DeletionSignature, int] = {}
     existing_deletion_index_map: dict[int, int] = {}
     new_deletion_index_map: dict[int, int] = {}
 
@@ -786,9 +951,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
                             None
                         )
                     )
-            # text_bytes has line content with \r preserved but \n stripped (diff format)
-            # Add back \n for proper round-tripping
-            current_deletion_lines.append(line.text_bytes + b'\n')
+            current_deletion_lines.append(_line_entry_content(line))
 
     # Flush any final deletion run
     flush_deletion_run()
@@ -812,6 +975,10 @@ def _old_line_content_by_number(hunk_lines: list[LineEntry]) -> dict[int, bytes]
         for line in hunk_lines
         if line.old_line_number is not None and line.kind in {" ", "-"}
     }
+
+
+def _line_entry_content(line: LineEntry) -> bytes:
+    return line.text_bytes + (b"\n" if line.has_trailing_newline else b"")
 
 
 def _baseline_reference_for_deletion_run(
@@ -909,7 +1076,7 @@ def translate_hunk_selection_to_batch_ownership(
             DeletionClaim(
                 anchor_line=selected_old_lines[0].source_line,
                 content_lines=[
-                    old_line.text_bytes + b"\n"
+                    _line_entry_content(old_line)
                     for old_line in selected_old_lines
                 ],
                 baseline_reference=_baseline_reference_for_deletion_run(
@@ -1067,7 +1234,7 @@ def translate_hunk_selection_to_batch_ownership(
             active_replacement_unit = None
             if not current_deletion_lines:
                 current_deletion_anchor = line.source_line
-            current_deletion_lines.append(line.text_bytes + b"\n")
+            current_deletion_lines.append(_line_entry_content(line))
             current_deletion_hunk_lines.append(line)
 
     flush_deletion_run()
@@ -1123,11 +1290,11 @@ class OwnershipUnit:
     preserves_replacement_unit: bool = False
 
 
-def build_ownership_units_from_display(
+def build_ownership_units_from_batch_source_lines(
     ownership: BatchOwnership,
-    batch_source_content: bytes
+    batch_source_lines: Sequence[bytes],
 ) -> list[OwnershipUnit]:
-    """Build semantic ownership units from reconstructed display lines.
+    """Build semantic ownership units from indexed batch-source lines.
 
     Persisted replacement metadata is honored first, so captured replacements
     remain whole atomic units even if their lines are no longer display-adjacent.
@@ -1136,10 +1303,10 @@ def build_ownership_units_from_display(
     actually sees in the batch display.
 
     Grouping rules:
-    - Deletion block immediately followed by claimed line → REPLACEMENT unit (atomic)
-    - Claimed line immediately followed by deletion block → REPLACEMENT unit (atomic)
-    - Deletion block with no adjacent claimed line → DELETION_ONLY unit (atomic)
-    - Claimed line with no adjacent deletion → PRESENCE_ONLY unit (non-atomic)
+    - Deletion block immediately followed by claimed line -> REPLACEMENT unit (atomic)
+    - Claimed line immediately followed by deletion block -> REPLACEMENT unit (atomic)
+    - Deletion block with no adjacent claimed line -> DELETION_ONLY unit (atomic)
+    - Claimed line with no adjacent deletion -> PRESENCE_ONLY unit (non-atomic)
 
     For fallback display-adjacent grouping, claimed lines are processed
     individually (not as blocks) to preserve fine-grained reset capability.
@@ -1149,28 +1316,13 @@ def build_ownership_units_from_display(
 
     "Adjacent" means consecutive in the display_lines sequence with no intervening
     entries of a different type. Source-line proximity is not considered.
-
-    Args:
-        ownership: BatchOwnership to analyze
-        batch_source_content: Batch source content (bytes)
-
-    Returns:
-        List of semantic ownership units with real display IDs
-
-    Note:
-        Decoding with errors='replace' is lossy but necessary for display
-        reconstruction. This limits line-level reset to textual content.
-        If non-UTF-8 binary content needs reset support, the display model
-        would need enhancement.
     """
-    from ..batch.display import build_display_lines_from_batch_source
+    from ..batch.display import build_display_lines_from_batch_source_lines
 
-    # Decode content for display reconstruction (lossy for non-UTF-8)
-    batch_source_str = batch_source_content.decode('utf-8', errors='replace')
-
-    # Reconstruct actual display lines (what user sees)
-    display_lines = build_display_lines_from_batch_source(batch_source_str, ownership)
-
+    display_lines = build_display_lines_from_batch_source_lines(
+        batch_source_lines,
+        ownership,
+    )
     return build_ownership_units_from_display_lines(ownership, display_lines)
 
 
@@ -1182,7 +1334,8 @@ def build_ownership_units_from_display_lines(
 
     This is the fast path for callers that already need display lines for
     rendering.  It preserves the same grouping rules as
-    build_ownership_units_from_display() without rebuilding the display model.
+    build_ownership_units_from_batch_source_lines() without rebuilding the
+    display model.
     """
     units, consumed_claimed_lines, consumed_deletion_indices = (
         _build_explicit_replacement_units_from_display_lines(
@@ -1666,33 +1819,13 @@ def _remap_replacement_units(
     )
 
 
-def remap_batch_ownership_to_new_source(
+def remap_batch_ownership_to_new_source_lines(
     ownership: BatchOwnership,
-    old_source_content: bytes,
-    new_source_content: bytes,
+    old_source_lines: Sequence[bytes],
+    new_source_lines: Sequence[bytes],
 ) -> BatchOwnership:
-    """Remap batch ownership from old source space to new source space.
-
-    Uses structural line matching to map presence lines and deletion anchors
-    from the old batch source to the new batch source.
-
-    Args:
-        ownership: Existing ownership in old source space
-        old_source_content: Content of old batch source (as bytes)
-        new_source_content: Content of new batch source (as bytes)
-
-    Returns:
-        Remapped ownership in new source space
-
-    Raises:
-        ValueError: If remapping is ambiguous or impossible
-    """
-    # Parse old content into lines
-    old_lines = old_source_content.splitlines(keepends=True)
-    new_lines = new_source_content.splitlines(keepends=True)
-
-    # Build mapping from old source line numbers to new source line numbers
-    mapping = match_lines(old_lines, new_lines)
+    """Remap batch ownership between old and new source line sequences."""
+    mapping = match_lines(old_source_lines, new_source_lines)
 
     # Remap presence lines
     old_presence = ownership.presence_line_set()
@@ -1757,37 +1890,12 @@ def remap_batch_ownership_to_new_source(
     )
 
 
-def _advance_source_content_preserving_existing_presence(
-    old_source_content: bytes,
-    working_content: bytes,
+def _advance_source_lines_preserving_existing_presence(
+    old_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     ownership: BatchOwnership,
-) -> tuple[bytes, dict[int, int]]:
-    """Build advanced source content without dropping already-owned lines.
-
-    When discard-to-batch is run repeatedly for hunks in the same file, earlier
-    owned additions may have been reverse-applied out of the working tree. A
-    stale-source refresh must keep those lines in the new batch source or the
-    batch would lose the data it already owns.
-
-    Returns:
-        Tuple of (new source bytes, old source line -> new source line map).
-    """
-    advanced = _advance_source_content_preserving_existing_presence_with_provenance(
-        old_source_content=old_source_content,
-        working_content=working_content,
-        ownership=ownership,
-    )
-    return advanced.content, advanced.source_line_map
-
-
-def _advance_source_content_preserving_existing_presence_with_provenance(
-    old_source_content: bytes,
-    working_content: bytes,
-    ownership: BatchOwnership,
-) -> AdvancedSourceContent:
-    """Build advanced source content and preserve input line provenance."""
-    old_lines = old_source_content.splitlines(keepends=True)
-    working_lines = working_content.splitlines(keepends=True)
+) -> SourceContentWithLineProvenance:
+    """Build source content with provenance from line sequences."""
     presence_lines = ownership.presence_line_set()
 
     entries = _apply_presence_constraints(
@@ -1804,8 +1912,8 @@ def _advance_source_content_preserving_existing_presence_with_provenance(
         if entry.target_line is not None:
             working_line_map[entry.target_line] = index
 
-    return AdvancedSourceContent(
-        content=b"".join(entry.content for entry in entries),
+    return SourceContentWithLineProvenance(
+        source_buffer=EditorBuffer.from_chunks(entry.content for entry in entries),
         source_line_map=source_line_map,
         working_line_map=working_line_map,
     )
@@ -1872,48 +1980,6 @@ def _remap_batch_ownership_with_source_line_map(
     )
 
 
-def advance_batch_source_for_file(
-    batch_name: str,
-    file_path: str,
-    old_batch_source_commit: str,
-    existing_ownership: BatchOwnership,
-) -> tuple[str, BatchOwnership, bytes, bytes]:
-    """Advance batch source for a file and remap existing ownership.
-
-    Creates a new batch source commit from current working tree content plus
-    any already-owned presence lines that are no longer in the working tree,
-    then remaps the existing ownership from old source space to new source space.
-
-    This operation is scoped to a specific batch and file - other batches that
-    reference the same file are not affected.
-
-    Args:
-        batch_name: Name of batch being updated
-        file_path: Path to file within repository
-        old_batch_source_commit: Current batch source commit SHA
-        existing_ownership: Existing ownership in old source space
-
-    Returns:
-        Tuple of (new_batch_source_commit, remapped_ownership,
-        new_source_content, working_tree_content)
-
-    Raises:
-        ValueError: If remapping is ambiguous or working tree content unavailable
-    """
-    result = advance_batch_source_for_file_with_provenance(
-        batch_name=batch_name,
-        file_path=file_path,
-        old_batch_source_commit=old_batch_source_commit,
-        existing_ownership=existing_ownership,
-    )
-    return (
-        result.batch_source_commit,
-        result.ownership,
-        result.source_content,
-        result.working_content,
-    )
-
-
 def advance_batch_source_for_file_with_provenance(
     batch_name: str,
     file_path: str,
@@ -1921,20 +1987,6 @@ def advance_batch_source_for_file_with_provenance(
     existing_ownership: BatchOwnership,
 ) -> BatchSourceAdvanceResult:
     """Advance batch source and expose provenance for re-annotation."""
-    # Read old batch source content
-    old_source_result = run_git_command(
-        ["show", f"{old_batch_source_commit}:{file_path}"],
-        text_output=False,
-        check=False
-    )
-    if old_source_result.returncode != 0:
-        raise ValueError(
-            f"Cannot read old batch source for {file_path} at {old_batch_source_commit}: "
-            f"{old_source_result.stderr}"
-        )
-    old_source_content = old_source_result.stdout
-
-    # Read current working tree content
     repo_root = get_git_repository_root_path()
     working_file_path = repo_root / file_path
     if not working_file_path.exists():
@@ -1942,34 +1994,50 @@ def advance_batch_source_for_file_with_provenance(
             f"Cannot advance batch source for {file_path}: "
             f"file does not exist in working tree"
         )
-    working_content = working_file_path.read_bytes()
 
-    advanced_source = _advance_source_content_preserving_existing_presence_with_provenance(
-        old_source_content=old_source_content,
-        working_content=working_content,
-        ownership=existing_ownership,
+    old_source_buffer = load_git_object_as_buffer(
+        f"{old_batch_source_commit}:{file_path}"
     )
+    if old_source_buffer is None:
+        raise ValueError(
+            f"Cannot read old batch source for {file_path} at {old_batch_source_commit}"
+        )
 
-    # Create new batch source commit from the advanced source. This is
-    # intentionally different from initial batch-source creation, which uses the
-    # session-start snapshot for abort/discard correctness.
-    new_batch_source_commit = create_batch_source_commit(
-        file_path,
-        file_content_override=advanced_source.content
-    )
+    source_with_provenance: SourceContentWithLineProvenance | None = None
+    try:
+        with (
+            old_source_buffer as old_source_lines,
+            load_working_tree_file_as_buffer(file_path) as working_lines,
+        ):
+            source_with_provenance = _advance_source_lines_preserving_existing_presence(
+                old_lines=old_source_lines,
+                working_lines=working_lines,
+                ownership=existing_ownership,
+            )
 
-    # Remap ownership using provenance produced while constructing the advanced
-    # source. This preserves already-owned lines that no longer exist in the
-    # working tree after earlier discard operations.
-    remapped_ownership = _remap_batch_ownership_with_source_line_map(
-        ownership=existing_ownership,
-        source_line_map=advanced_source.source_line_map,
-    )
+        # Create new batch source commit from the refreshed source. This is
+        # intentionally different from initial batch-source creation, which uses the
+        # session-start snapshot for abort/discard correctness.
+        new_batch_source_commit = create_batch_source_commit(
+            file_path,
+            file_buffer_override=source_with_provenance.source_buffer
+        )
 
-    return BatchSourceAdvanceResult(
-        batch_source_commit=new_batch_source_commit,
-        ownership=remapped_ownership,
-        source_content=advanced_source.content,
-        working_content=working_content,
-        working_line_map=advanced_source.working_line_map,
-    )
+        # Remap ownership using provenance produced while constructing the refreshed
+        # source. This preserves already-owned lines that no longer exist in the
+        # working tree after earlier discard operations.
+        remapped_ownership = _remap_batch_ownership_with_source_line_map(
+            ownership=existing_ownership,
+            source_line_map=source_with_provenance.source_line_map,
+        )
+
+        return BatchSourceAdvanceResult(
+            batch_source_commit=new_batch_source_commit,
+            ownership=remapped_ownership,
+            source_buffer=source_with_provenance.source_buffer,
+            working_line_map=source_with_provenance.working_line_map,
+        )
+    except Exception:
+        if source_with_provenance is not None:
+            source_with_provenance.close()
+        raise

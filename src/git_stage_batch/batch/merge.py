@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Sequence
 import difflib
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -9,9 +10,18 @@ from typing import TYPE_CHECKING
 
 from .match import LineMapping, match_lines
 from ..core.line_selection import parse_line_selection
+from ..editor import (
+    EditorBuffer,
+    choose_line_ending,
+    buffer_has_data,
+    restore_line_endings_in_chunks,
+)
 from ..exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
 from ..i18n import _
-from ..utils.text import normalize_line_endings
+from ..utils.text import (
+    normalize_line_sequence_endings,
+    normalize_line_endings,
+)
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership, DeletionClaim
@@ -45,31 +55,104 @@ class RealizedEntry:
     is_claimed: bool = False  # True if from a claimed source line (presence constraint)
 
 
-def _detect_line_ending(content: bytes) -> bytes | None:
-    """Return the first line ending style found in content."""
-    for index, byte in enumerate(content):
-        if byte == 13:  # \r
-            if index + 1 < len(content) and content[index + 1] == 10:
-                return b"\r\n"
-            return b"\r"
-        if byte == 10:  # \n
-            return b"\n"
-    return None
+_BaselineLineEdit = tuple[int, int, list[bytes]]
 
 
-def _restore_line_endings(content: bytes, line_ending: bytes | None) -> bytes:
-    """Restore normalized LF content to the selected line ending style."""
-    if line_ending in (None, b"\n"):
-        return content
-    return content.replace(b"\n", line_ending)
+class _LineRange(Sequence[bytes]):
+    """Indexed view over a contiguous range of lines."""
+
+    def __init__(
+        self,
+        lines: Sequence[bytes],
+        start: int,
+        end: int,
+    ) -> None:
+        if start < 0 or end < start:
+            raise ValueError("invalid line range")
+        self._lines = lines
+        self._start = start
+        self._end = end
+
+    def __len__(self) -> int:
+        return self._end - self._start
+
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+        if isinstance(index, slice):
+            start, stop, step = index.indices(len(self))
+            if step == 1:
+                return _LineRange(
+                    self._lines,
+                    self._start + start,
+                    self._start + stop,
+                )
+            return tuple(self[child_index] for child_index in range(start, stop, step))
+
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+        return self._lines[self._start + index]
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Sequence):
+            return NotImplemented
+        if len(self) != len(other):
+            return False
+        return all(
+            left_line == right_line
+            for left_line, right_line in zip(self, other, strict=True)
+        )
 
 
-def _merge_result_line_ending(
-    primary_content: bytes,
-    fallback_content: bytes,
+class _RealizedEntryContentSequence(Sequence[bytes]):
+    """Indexed view over realized entry content."""
+
+    def __init__(self, entries: Sequence[RealizedEntry]) -> None:
+        self._entries = entries
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+        if isinstance(index, slice):
+            start, stop, step = index.indices(len(self))
+            if step == 1:
+                return _LineRange(self, start, stop)
+            return tuple(self[child_index] for child_index in range(start, stop, step))
+
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+        return self._entries[index].content
+
+
+def _realized_entry_content_chunks(entries: Iterable[RealizedEntry]) -> Iterator[bytes]:
+    """Yield content bytes from realized entries."""
+    for entry in entries:
+        yield entry.content
+
+
+def _merge_result_line_ending_from_lines(
+    primary_lines: Sequence[bytes],
+    fallback_lines: Sequence[bytes],
 ) -> bytes | None:
-    """Choose the line ending style for bytes emitted from a merge."""
-    return _detect_line_ending(primary_content) or _detect_line_ending(fallback_content)
+    """Choose the line ending style for line sequence merge output."""
+    return choose_line_ending(primary_lines, fallback_lines)
+
+
+def _discard_result_line_ending_from_lines(
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+    source_lines: Sequence[bytes],
+) -> bytes | None:
+    """Choose the line ending style for line sequence discard output."""
+    result_line_ending = choose_line_ending(working_lines)
+    if result_line_ending is not None:
+        return result_line_ending
+    if buffer_has_data(baseline_lines):
+        return choose_line_ending(baseline_lines)
+    return choose_line_ending(source_lines)
 
 
 @dataclass
@@ -87,7 +170,7 @@ class BaselineRegion:
     """
     source_start_line: int          # 1-based inclusive
     source_end_line: int            # 1-based inclusive
-    baseline_lines: list[bytes]     # baseline content for restoration
+    baseline_lines: Sequence[bytes]  # baseline content for restoration
     kind: RegionKind                # Region restoration kind
     is_ambiguous: bool = False
     region_id: int = 0              # Unique region identifier (assigned during construction)
@@ -136,8 +219,8 @@ def _check_structural_validity(
     line_mapping: LineMapping,
     claimed_lines: set[int],
     deletions: list,  # list[DeletionClaim]
-    source_lines: list[bytes],
-    target_lines: list[bytes]
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes]
 ) -> None:
     """Validate that batch can be safely applied given structural alignment.
 
@@ -243,8 +326,8 @@ def _check_claimed_region_compatibility(
     line_mapping: LineMapping,
     claimed_lines: set[int],
     deletions: list,  # list[DeletionClaim]
-    source_lines: list[bytes],
-    target_lines: list[bytes]
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes]
 ) -> None:
     """Check if claimed lines come from source regions with structurally coherent context.
 
@@ -301,7 +384,7 @@ def _check_claimed_region_compatibility(
 def _get_missing_claimed_lines(
     line_mapping: LineMapping,
     claimed_lines: set[int],
-    source_lines: list[bytes]
+    source_lines: Sequence[bytes]
 ) -> list[int]:
     """Return claimed source lines that are not present in the working tree."""
     missing_claimed = []
@@ -364,8 +447,8 @@ def _collect_claimed_run_interval_facts(
     run_start: int,
     run_end: int,
     line_mapping: LineMapping,
-    source_lines: list[bytes],
-    target_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
     deletions: list
 ) -> ClaimedRunIntervalFacts:
     """Collect explicit structural facts about one missing claimed run."""
@@ -535,8 +618,8 @@ def _is_claimed_run_structurally_coherent(
 
 
 def _apply_presence_constraints(
-    source_lines: list[bytes],
-    working_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     presence_line_set: set[int],
     *,
     source_to_working_mapping: LineMapping | None = None,
@@ -659,13 +742,13 @@ def _apply_absence_constraints(
 
     Two enforcement modes controlled by 'strict' parameter:
 
-    Strict mode (strict=True) - for merge_batch():
+    Strict mode (strict=True) - for applying batch ownership:
     - Used when merging into live working tree that may have diverged
     - Exact match at boundary: suppress
     - Found nearby but not at boundary: raise MergeError (structural conflict)
     - Not found: no-op (already suppressed or never existed)
 
-    Realization mode (strict=False) - for _build_realized_content():
+    Realization mode (strict=False) - for realized batch content construction:
     - Used when building display/storage content from baseline
     - Exact match at boundary: suppress
     - Not at boundary: no-op (baseline may not have content there)
@@ -689,7 +772,7 @@ def _apply_absence_constraints(
     if not deletion_claims:
         return entries
 
-    result = entries[:]
+    result = entries
 
     suppress_fn = _suppress_at_boundary_strict if strict else _suppress_at_boundary_for_realization
 
@@ -730,8 +813,8 @@ def _missing_claimed_lines(
 
 
 def _satisfy_constraints(
-    source_lines: list[bytes],
-    working_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     presence_line_set: set[int],
     deletion_claims: list['DeletionClaim'],
     *,
@@ -755,7 +838,7 @@ def _satisfy_constraints(
     if not _missing_claimed_lines(realized_entries, presence_line_set):
         return realized_entries
 
-    current_lines = [entry.content for entry in realized_entries]
+    current_lines = _RealizedEntryContentSequence(realized_entries)
     realized_entries = _apply_presence_constraints(
         source_lines,
         current_lines,
@@ -974,7 +1057,7 @@ def _suppress_at_boundary_strict(
     Finding it nearby indicates the batch was created from a different file version
     where the deletion target was positioned differently.
 
-    Used by: merge_batch() when merging into live working tree
+    Used when applying batch ownership to live working tree lines.
 
     Args:
         entries: Realized entries
@@ -1029,10 +1112,9 @@ def _suppress_at_boundary_for_realization(
     - If sequence matches at exact boundary: suppress it (remove from entries)
     - If sequence not at exact boundary: no-op (baseline may not have content there)
 
-    Used by: _build_realized_content() when building display/storage content from
-    baseline. The baseline may legitimately not have the deletion content at the
-    expected anchor, or may not have it at all. We only suppress if there's an
-    exact structural match.
+    Used when building display/storage content from baseline. The baseline may
+    legitimately not have the deletion content at the expected anchor, or may
+    not have it at all. We only suppress if there's an exact structural match.
 
     Args:
         entries: Realized entries
@@ -1089,7 +1171,7 @@ def _reference_line_matches(
 
 def _baseline_reference_insertion_position(
     reference,
-    working_lines: list[bytes],
+    working_lines: Sequence[bytes],
 ) -> int | None:
     """Return the proven insertion position for a baseline reference."""
     if reference is None or not getattr(reference, "has_after_line", False):
@@ -1134,7 +1216,7 @@ def _baseline_reference_insertion_position(
 
 def _baseline_reference_absence_position(
     reference,
-    working_lines: list[bytes],
+    working_lines: Sequence[bytes],
     sequence_length: int,
 ) -> int | None:
     """Return the proven removal position for a baseline reference."""
@@ -1174,15 +1256,40 @@ def _baseline_reference_absence_position(
     return position
 
 
+def _line_sequences_equal(
+    left: Sequence[bytes],
+    right: Sequence[bytes],
+) -> bool:
+    """Return whether two line sequences contain the same bytes."""
+    return len(left) == len(right) and all(
+        left[index] == right[index]
+        for index in range(len(left))
+    )
+
+
+def _line_slice_equals(
+    lines: Sequence[bytes],
+    start: int,
+    expected: Sequence[bytes],
+) -> bool:
+    """Return whether a sequence slice equals the expected byte lines."""
+    if start < 0 or start + len(expected) > len(lines):
+        return False
+    return all(
+        lines[start + offset] == expected[offset]
+        for offset in range(len(expected))
+    )
+
+
 def _try_apply_baseline_absence_constraints(
-    working_lines: list[bytes],
+    working_lines: Sequence[bytes],
     deletion_claims: list['DeletionClaim'],
-) -> bytes | None:
+) -> Iterator[bytes] | None:
     """Apply absence-only constraints by exact baseline coordinates."""
     if not deletion_claims:
         return None
 
-    edits: list[tuple[int, int]] = []
+    edits: list[_BaselineLineEdit] = []
     for claim in deletion_claims:
         if not claim.content_lines:
             continue
@@ -1197,27 +1304,17 @@ def _try_apply_baseline_absence_constraints(
         )
         if position is None:
             return None
-        if working_lines[position:position + len(forbidden_sequence)] != forbidden_sequence:
+        if not _line_slice_equals(working_lines, position, forbidden_sequence):
             return None
-        edits.append((position, position + len(forbidden_sequence)))
+        edits.append((position, position + len(forbidden_sequence), []))
 
-    sorted_edits = sorted(edits, key=lambda edit: edit[0])
-    previous_end = 0
-    for start, end in sorted_edits:
-        if start < previous_end:
-            return None
-        previous_end = end
-
-    result = working_lines[:]
-    for start, end in reversed(sorted_edits):
-        del result[start:end]
-    return b"".join(result)
+    return _apply_non_overlapping_baseline_edits(working_lines, edits)
 
 
 def _baseline_removal_edit(
     claim: 'DeletionClaim',
-    working_lines: list[bytes],
-) -> tuple[int, int, list[bytes]] | None:
+    working_lines: Sequence[bytes],
+) -> _BaselineLineEdit | None:
     if not claim.content_lines:
         return None
 
@@ -1232,15 +1329,15 @@ def _baseline_removal_edit(
     )
     if position is None:
         return None
-    if working_lines[position:position + len(forbidden_sequence)] != forbidden_sequence:
+    if not _line_slice_equals(working_lines, position, forbidden_sequence):
         return None
     return position, position + len(forbidden_sequence), []
 
 
 def _apply_non_overlapping_baseline_edits(
-    working_lines: list[bytes],
-    edits: list[tuple[int, int, list[bytes]]],
-) -> bytes | None:
+    working_lines: Sequence[bytes],
+    edits: list[_BaselineLineEdit],
+) -> Iterator[bytes] | None:
     sorted_edits = sorted(edits, key=lambda edit: (edit[0], edit[1]))
     previous_end = 0
     for start, end, _replacement_lines in sorted_edits:
@@ -1248,10 +1345,22 @@ def _apply_non_overlapping_baseline_edits(
             return None
         previous_end = max(previous_end, end)
 
-    result = working_lines[:]
-    for start, end, replacement_lines in reversed(sorted_edits):
-        result[start:end] = replacement_lines
-    return b"".join(result)
+    return _iter_lines_with_baseline_edits(working_lines, sorted_edits)
+
+
+def _iter_lines_with_baseline_edits(
+    working_lines: Sequence[bytes],
+    sorted_edits: Sequence[_BaselineLineEdit],
+) -> Iterator[bytes]:
+    position = 0
+    for start, end, replacement_lines in sorted_edits:
+        for index in range(position, start):
+            yield working_lines[index]
+        yield from replacement_lines
+        position = end
+
+    for index in range(position, len(working_lines)):
+        yield working_lines[index]
 
 
 def _has_complete_baseline_references(
@@ -1272,12 +1381,12 @@ def _has_complete_baseline_references(
 
 
 def _try_apply_baseline_replacement_units(
-    source_lines: list[bytes],
-    working_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
     presence_line_set: set[int],
     deletion_claims: list['DeletionClaim'],
-) -> bytes | None:
+) -> Iterator[bytes] | None:
     """Apply baseline-coordinate edits when structural source anchors fail.
 
     This is a conservative fallback for same-source round trips where the batch
@@ -1290,17 +1399,17 @@ def _try_apply_baseline_replacement_units(
         return None
 
     if (
-        source_lines == working_lines
+        _line_sequences_equal(source_lines, working_lines)
         and _has_complete_baseline_references(
             ownership,
             presence_line_set,
             deletion_claims,
         )
     ):
-        return b"".join(working_lines)
+        return iter(working_lines)
 
     replacement_units = getattr(ownership, "replacement_units", [])
-    edits: list[tuple[int, int, list[bytes]]] = []
+    edits: list[_BaselineLineEdit] = []
     unit_claimed_lines: set[int] = set()
     unit_deletion_indices: set[int] = set()
 
@@ -1358,7 +1467,7 @@ def _try_apply_baseline_replacement_units(
                 source_lines[claimed_line - 1]
                 for claimed_line in claimed_lines
             ]
-            if working_lines[position:position + len(insertion_lines)] == insertion_lines:
+            if _line_slice_equals(working_lines, position, insertion_lines):
                 continue
             edits.append((
                 position,
@@ -1372,85 +1481,77 @@ def _try_apply_baseline_replacement_units(
     return _apply_non_overlapping_baseline_edits(working_lines, edits)
 
 
-def merge_batch(
-    batch_source_content: bytes,
+def merge_batch_from_line_sequences_as_buffer(
+    source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
-    working_content: bytes,
+    working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
-) -> bytes:
-    """Constraint-based batch merge into working tree using structural provenance.
-
-    This implements the architecture described in BATCHES.md:
-    - Presence constraints: claimed lines must appear in result
-    - Absence constraints: forbidden sequences must not appear at anchored boundaries
-    - Structural provenance: track where each line came from in batch-source space
-    - Bytes-based correctness: work with bytes throughout, no lossy decoding
-
-    Algorithm:
-    1. Normalize line endings to LF in bytes
-    2. Resolve ownership into claimed lines and deletion claims
-    3. Validate structural requirements (alignment, claimed region coherence)
-    4. Apply presence constraints, building structured entries with provenance
-    5. Apply absence constraints with exact boundary enforcement and nearby ambiguity check
-    6. Emit final bytes content
-
-    Presence constraints are satisfied by:
-    - Keeping claimed lines if already present in working tree
-    - Adding missing claimed lines at structurally appropriate positions
-    - Tagging each realized entry with its batch-source line (if any)
-
-    Absence constraints are satisfied by two-phase enforcement:
-    - Phase 1: Check if forbidden sequence starts exactly at the anchored boundary
-      - If yes: suppress it
-      - If no: move to phase 2
-    - Phase 2: Conservative nearby ambiguity check within limited window
-      - If forbidden sequence found nearby (not at exact boundary):
-        structural displacement detected, raise MergeError
-      - If not found nearby: constraint already satisfied
-    - If anchor boundary is ambiguous: raise MergeError
-
-    The nearby check is not general fuzzy matching; it is a conservative structural
-    safety check that detects when presence constraint insertions have displaced
-    the deletion target, indicating the batch was created from a different file version.
-
-    Args:
-        batch_source_content: File content from batch source commit (bytes)
-        ownership: BatchOwnership with presence and absence constraints
-        working_content: Current working tree file content (bytes)
-        source_to_working_mapping: Optional precomputed alignment for
-            batch_source_content -> working_content.
-
-    Returns:
-        New working tree content with constraints applied (bytes)
-
-    Raises:
-        MergeError: If constraints cannot be reliably satisfied or structural
-                    displacement is detected
-    """
-    result_line_ending = _merge_result_line_ending(
-        working_content,
-        batch_source_content,
+) -> EditorBuffer:
+    """Merge line sequences and return a buffer with destination line endings."""
+    result_line_ending = _merge_result_line_ending_from_lines(
+        working_lines,
+        source_lines,
     )
-    working_normalized = working_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    source_normalized = batch_source_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    normalized_source_lines = normalize_line_sequence_endings(source_lines)
+    normalized_working_lines = normalize_line_sequence_endings(working_lines)
+    return EditorBuffer.from_chunks(
+        restore_line_endings_in_chunks(
+            _merge_batch_line_chunks(
+                normalized_source_lines,
+                ownership,
+                normalized_working_lines,
+                source_to_working_mapping=source_to_working_mapping,
+            ),
+            result_line_ending,
+        )
+    )
 
-    source_lines = source_normalized.splitlines(keepends=True) if source_normalized else []
-    working_lines = working_normalized.splitlines(keepends=True) if working_normalized else []
+
+def can_merge_batch_from_line_sequences(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    source_to_working_mapping: LineMapping | None = None,
+) -> bool:
+    """Return whether a normalized line merge can be applied."""
+    try:
+        for _chunk in _merge_batch_line_chunks(
+            source_lines,
+            ownership,
+            working_lines,
+            source_to_working_mapping=source_to_working_mapping,
+        ):
+            pass
+    except MergeError:
+        return False
+    return True
+
+
+def _merge_batch_line_chunks(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    source_to_working_mapping: LineMapping | None = None,
+) -> Iterator[bytes]:
+    """Merge normalized byte-line sequences and yield normalized chunks."""
 
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
-    fallback_content = _try_apply_baseline_replacement_units(
+    fallback_chunks = _try_apply_baseline_replacement_units(
         source_lines,
         working_lines,
         ownership,
         presence_line_set,
         deletion_claims,
     )
-    if fallback_content is not None:
-        return _restore_line_endings(fallback_content, result_line_ending)
+    if fallback_chunks is not None:
+        yield from fallback_chunks
+        return
 
     mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
     try:
@@ -1470,84 +1571,56 @@ def merge_batch(
             source_to_working_mapping=mapping,
         )
     except MergeError:
-        fallback_content = _try_apply_baseline_replacement_units(
+        fallback_chunks = _try_apply_baseline_replacement_units(
             source_lines,
             working_lines,
             ownership,
             presence_line_set,
             deletion_claims,
         )
-        if fallback_content is not None:
-            return _restore_line_endings(fallback_content, result_line_ending)
+        if fallback_chunks is not None:
+            yield from fallback_chunks
+            return
         raise
 
-    return _restore_line_endings(
-        b"".join(entry.content for entry in realized_entries),
-        result_line_ending,
-    )
+    yield from _realized_entry_content_chunks(realized_entries)
 
 
-def discard_batch(
-    batch_source_content: bytes,
+def discard_batch_from_line_sequences_as_buffer(
+    source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
-    working_content: bytes,
-    baseline_content: bytes
-) -> bytes:
-    """Constraint-based batch discard: structural inverse of merge_batch.
-
-    This implements the inverse of merge_batch using the same constraint-based model:
-    - Reverse presence constraints: remove/replace batch-owned claimed lines
-    - Restore absence constraints: restore deleted sequences at anchored boundaries
-    - Structural provenance: track where each line came from in batch-source space
-    - Bytes-based correctness: work with bytes throughout, no lossy decoding
-
-    Algorithm:
-    1. Normalize line endings to LF in bytes
-    2. Build structured entries from working tree with source provenance
-    3. Reverse presence constraints: replace claimed lines with baseline or remove
-    4. Restore absence constraints: insert deleted sequences at anchored boundaries
-    5. Emit final bytes content
-
-    Reverse presence constraints:
-    - For each working tree entry corresponding to a claimed source line:
-      - If baseline has a unique mapped line for that source line: replace with baseline
-      - If baseline has no mapped line (batch-added content): remove entirely
-      - If mapping is ambiguous: raise MergeError
-
-    Restore absence constraints:
-    - For each DeletionClaim(anchor_line=N, content_lines=[...]):
-      - Find exact boundary "after source line N" in realized entries
-      - If sequence is not present at boundary: insert it
-      - If sequence is already present: no-op
-      - If anchor not present: skip gracefully (claim not applicable)
-      - If anchor is ambiguous: raise error (structural problem)
-
-    This is the structural inverse of merge_batch: where merge applies constraints,
-    discard reverses them.
-
-    Args:
-        batch_source_content: File content from batch source commit (bytes)
-        ownership: BatchOwnership with presence and absence constraints
-        working_content: Current working tree file content (bytes)
-        baseline_content: File content from baseline commit (bytes)
-
-    Returns:
-        New working tree content with batch effects reversed (bytes)
-
-    Raises:
-        MergeError: If inverse operations cannot be reliably performed
-    """
-    result_line_ending = _merge_result_line_ending(
-        working_content,
-        baseline_content or batch_source_content,
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+) -> EditorBuffer:
+    """Discard ownership and return a buffer with destination line endings."""
+    result_line_ending = _discard_result_line_ending_from_lines(
+        working_lines,
+        baseline_lines,
+        source_lines,
     )
-    working_normalized = working_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    source_normalized = batch_source_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    baseline_normalized = baseline_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    normalized_source_lines = normalize_line_sequence_endings(source_lines)
+    normalized_working_lines = normalize_line_sequence_endings(working_lines)
+    normalized_baseline_lines = normalize_line_sequence_endings(baseline_lines)
+    return EditorBuffer.from_chunks(
+        restore_line_endings_in_chunks(
+            _discard_batch_line_chunks(
+                normalized_source_lines,
+                ownership,
+                normalized_working_lines,
+                normalized_baseline_lines,
+            ),
+            result_line_ending,
+        ),
+    )
 
-    source_lines = source_normalized.splitlines(keepends=True) if source_normalized else []
-    working_lines = working_normalized.splitlines(keepends=True) if working_normalized else []
-    baseline_lines = baseline_normalized.splitlines(keepends=True) if baseline_normalized else []
+
+def _discard_batch_line_chunks(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+) -> Iterator[bytes]:
+    """Discard ownership from normalized byte-line sequences."""
 
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
@@ -1569,8 +1642,6 @@ def discard_batch(
     realized_entries = _reverse_presence_constraints(
         realized_entries,
         presence_line_set,
-        source_lines,
-        baseline_lines,
         correspondence
     )
 
@@ -1579,15 +1650,12 @@ def discard_batch(
         deletion_claims
     )
 
-    return _restore_line_endings(
-        b"".join(entry.content for entry in realized_entries),
-        result_line_ending,
-    )
+    yield from _realized_entry_content_chunks(realized_entries)
 
 
 def _build_baseline_correspondence(
-    baseline_lines: list[bytes],
-    source_lines: list[bytes]
+    baseline_lines: Sequence[bytes],
+    source_lines: Sequence[bytes]
 ) -> BaselineCorrespondence:
     """Build restoration correspondence from source lines to baseline regions.
 
@@ -1635,7 +1703,7 @@ def _build_baseline_correspondence(
             region = BaselineRegion(
                 source_start_line=src_start + 1,
                 source_end_line=src_end,
-                baseline_lines=list(baseline_lines[base_start:base_end]),
+                baseline_lines=_LineRange(baseline_lines, base_start, base_end),
                 kind=RegionKind.EQUAL,
                 region_id=next_region_id
             )
@@ -1649,7 +1717,7 @@ def _build_baseline_correspondence(
             region = BaselineRegion(
                 source_start_line=src_start + 1,
                 source_end_line=src_end,
-                baseline_lines=[],
+                baseline_lines=(),
                 kind=RegionKind.INSERT,
                 region_id=next_region_id
             )
@@ -1664,8 +1732,8 @@ def _build_baseline_correspondence(
             src_len = src_end - src_start
 
             if base_len == src_len and base_len > 0:
-                baseline_segment = baseline_lines[base_start:base_end]
-                source_segment = source_lines[src_start:src_end]
+                baseline_segment = _LineRange(baseline_lines, base_start, base_end)
+                source_segment = _LineRange(source_lines, src_start, src_end)
 
                 sub_mapping = match_lines(baseline_segment, source_segment)
 
@@ -1683,7 +1751,7 @@ def _build_baseline_correspondence(
                     region = BaselineRegion(
                         source_start_line=src_start + 1,
                         source_end_line=src_end,
-                        baseline_lines=list(baseline_segment),
+                        baseline_lines=baseline_segment,
                         kind=RegionKind.REPLACE_LINE_BY_LINE,
                         region_id=next_region_id
                     )
@@ -1691,7 +1759,7 @@ def _build_baseline_correspondence(
                     region = BaselineRegion(
                         source_start_line=src_start + 1,
                         source_end_line=src_end,
-                        baseline_lines=list(baseline_segment),
+                        baseline_lines=baseline_segment,
                         kind=RegionKind.REPLACE_BY_HUNK,
                         region_id=next_region_id
                     )
@@ -1706,7 +1774,7 @@ def _build_baseline_correspondence(
                 region = BaselineRegion(
                     source_start_line=src_start + 1,
                     source_end_line=src_end,
-                    baseline_lines=list(baseline_lines[base_start:base_end]),
+                    baseline_lines=_LineRange(baseline_lines, base_start, base_end),
                     kind=RegionKind.REPLACE_BY_HUNK,
                     region_id=next_region_id
                 )
@@ -1723,8 +1791,8 @@ def _build_baseline_correspondence(
 
 
 def _build_realized_entries_for_discard(
-    source_lines: list[bytes],
-    working_lines: list[bytes],
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     working_to_source: 'LineMapping'
 ) -> list[RealizedEntry]:
     """Build structured entries from working tree with source provenance.
@@ -1758,8 +1826,6 @@ def _build_realized_entries_for_discard(
 def _reverse_presence_constraints(
     entries: list[RealizedEntry],
     presence_line_set: set[int],
-    source_lines: list[bytes],
-    baseline_lines: list[bytes],
     correspondence: BaselineCorrespondence
 ) -> list[RealizedEntry]:
     """Reverse presence constraints: replace/remove batch-owned claimed lines.
@@ -1782,8 +1848,6 @@ def _reverse_presence_constraints(
     Args:
         entries: Realized entries from working tree with source provenance
         presence_line_set: Set of source line numbers that are batch-owned
-        source_lines: Batch source lines (for validation)
-        baseline_lines: Baseline lines (not used directly; in correspondence)
         correspondence: Baseline restoration correspondence
 
     Returns:
@@ -1904,7 +1968,7 @@ def _restore_absence_constraints(
     if not deletion_claims:
         return entries
 
-    result = entries[:]
+    result = entries
 
     for claim in deletion_claims:
         try:
@@ -1956,115 +2020,3 @@ def _sequence_present_at_boundary(
         normalize_line_endings(entries[boundary + i].content) == normalize_line_endings(sequence[i])
         for i in range(len(sequence))
     )
-
-
-def detect_ownership_conflicts(
-    batch_source_content: bytes,
-    ownerships: list['BatchOwnership']
-) -> None:
-    """Detect and raise error for conflicting ownership constraints.
-
-    Checks for presence vs absence conflicts: when one batch claims a line
-    must be present but another batch wants to delete it.
-
-    Args:
-        batch_source_content: The batch source content (bytes)
-        ownerships: List of batch ownerships to check
-
-    Raises:
-        MergeError: If presence and absence constraints conflict
-    """
-    if len(ownerships) < 2:
-        return
-
-    source_normalized = batch_source_content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-    source_lines = source_normalized.splitlines(keepends=True)
-
-    for i in range(len(ownerships)):
-        for j in range(i + 1, len(ownerships)):
-            _check_pair_conflicts(source_lines, ownerships[i], ownerships[j])
-
-
-def _check_pair_conflicts(
-    source_lines: list[bytes],
-    ownership_a: 'BatchOwnership',
-    ownership_b: 'BatchOwnership'
-) -> None:
-    """Check for conflicts between two ownerships with anchor awareness.
-
-    This checks if presence and absence constraints actually conflict at their
-    structural locations, not just if the content happens to match.
-
-    A conflict occurs when:
-    - Batch A claims line N (presence)
-    - Batch B has deletion anchored such that it would suppress line N (absence)
-    - The deletion content matches the claimed line
-
-    Same content at different structural locations does not conflict.
-
-    Args:
-        source_lines: Batch source lines (bytes)
-        ownership_a: First ownership
-        ownership_b: Second ownership
-
-    Raises:
-        MergeError: If constraints conflict at same structural location
-    """
-    resolved_a = ownership_a.resolve()
-    resolved_b = ownership_b.resolve()
-
-    _check_presence_vs_absence_conflict(
-        source_lines,
-        resolved_a.presence_line_set,
-        resolved_b.deletion_claims
-    )
-
-    _check_presence_vs_absence_conflict(
-        source_lines,
-        resolved_b.presence_line_set,
-        resolved_a.deletion_claims
-    )
-
-
-def _check_presence_vs_absence_conflict(
-    source_lines: list[bytes],
-    claimed_lines: set[int],
-    deletions: list['DeletionClaim']
-) -> None:
-    """Check if presence claims conflict with deletion claims.
-
-    Args:
-        source_lines: Batch source lines
-        claimed_lines: Set of claimed line numbers
-        deletions: List of deletion claims
-
-    Raises:
-        MergeError: If a claimed line would be suppressed by a deletion
-    """
-    for deletion in deletions:
-        if not deletion.content_lines:
-            continue
-
-        anchor = deletion.anchor_line if deletion.anchor_line is not None else 0
-        deletion_start = anchor + 1
-
-        deletion_normalized = [
-            line.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-            for line in deletion.content_lines
-        ]
-
-        for line_num in claimed_lines:
-            if 1 <= line_num <= len(source_lines):
-                if line_num >= deletion_start and line_num < deletion_start + len(deletion_normalized):
-                    offset = line_num - deletion_start
-                    source_normalized = source_lines[line_num - 1].replace(b'\r\n', b'\n').replace(b'\r', b'\n')
-                    if offset < len(deletion_normalized) and source_normalized == deletion_normalized[offset]:
-                        try:
-                            preview = source_lines[line_num - 1][:50].decode('utf-8', errors='replace').strip()
-                        except Exception:
-                            preview = str(source_lines[line_num - 1][:50])
-                        raise MergeError(
-                            _("Ownership conflict: line {line} is claimed by one batch "
-                              "but would be deleted by another (content: {preview})").format(
-                                line=line_num, preview=preview)
-                        )

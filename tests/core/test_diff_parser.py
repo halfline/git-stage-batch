@@ -1,6 +1,5 @@
 """Tests for unified diff parser."""
 
-from git_stage_batch.core.diff_parser import get_first_matching_file_from_diff
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 import subprocess
@@ -8,7 +7,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.core.diff_parser import (
-    build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
 )
@@ -195,91 +194,13 @@ diff --git a/file2.py b/file2.py
         assert patches[2].old_path == "file2.py"
 
 
-class TestGetFirstMatchingFileFromDiff:
-    """Tests for get_first_matching_file_from_diff function."""
-
-    @pytest.fixture
-    def temp_git_repo(self, tmp_path, monkeypatch):
-        """Create a temporary git repository for testing."""
-        repo = tmp_path / "test_repo"
-        repo.mkdir()
-        monkeypatch.chdir(repo)
-
-        subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], check=True, cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
-
-        # Create initial commit
-        (repo / "README.md").write_text("# Test\n")
-        subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=repo, capture_output=True)
-
-        return repo
-
-    def test_returns_first_file_when_no_predicate(self, temp_git_repo):
-        """Test that without predicate, returns first file with changes."""
-
-        # Create and commit two files
-        (temp_git_repo / "file1.txt").write_text("original 1\n")
-        (temp_git_repo / "file2.txt").write_text("original 2\n")
-        subprocess.run(["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Modify both files
-        (temp_git_repo / "file1.txt").write_text("modified 1\n")
-        (temp_git_repo / "file2.txt").write_text("modified 2\n")
-
-        result = get_first_matching_file_from_diff(context_lines=3)
-
-        # Should return first file (alphabetically by git)
-        assert result in ["file1.txt", "file2.txt"]
-        assert result is not None
-
-    def test_returns_file_matching_predicate(self, temp_git_repo):
-        """Test that returns first file where predicate matches."""
-
-        # Create and commit two files
-        (temp_git_repo / "file1.txt").write_text("original 1\n")
-        (temp_git_repo / "file2.txt").write_text("original 2\n")
-        subprocess.run(["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Modify both
-        (temp_git_repo / "file1.txt").write_text("modified 1\n")
-        (temp_git_repo / "file2.txt").write_text("contains keyword\n")
-
-        # Predicate that matches only file2
-        def matches_keyword(patch_bytes: bytes) -> bool:
-            return b"keyword" in patch_bytes
-
-        result = get_first_matching_file_from_diff(context_lines=3, predicate=matches_keyword)
-
-        assert result == "file2.txt"
-
-    def test_returns_none_when_no_changes(self, temp_git_repo):
-        """Test that returns None when there are no changes."""
-
-        result = get_first_matching_file_from_diff(context_lines=3)
-
-        assert result is None
-
-    def test_returns_none_when_no_match(self, temp_git_repo):
-        """Test that returns None when predicate never matches."""
-
-        # Create a change
-        (temp_git_repo / "file.txt").write_text("modified\n")
-
-        # Predicate that never matches
-        def never_matches(patch_text: str) -> bool:
-            return False
-
-        result = get_first_matching_file_from_diff(context_lines=3, predicate=never_matches)
-
-        assert result is None
-
-
 class TestBuildLineLevelChangeFromPatchText:
-    """Tests for build_line_changes_from_patch_text function."""
+    """Tests for build_line_changes_from_patch_lines function."""
+
+    def _build_line_changes_from_patch_text(self, patch_text: str):
+        return build_line_changes_from_patch_lines(
+            patch_text.encode('utf-8').splitlines(keepends=True)
+        )
 
     def test_build_line_changes_simple_addition(self):
         """Test building LineLevelChange from a simple addition patch."""
@@ -290,7 +211,7 @@ class TestBuildLineLevelChangeFromPatchText:
 +added line
  line2
 """
-        line_changes = build_line_changes_from_patch_bytes(patch_text.encode('utf-8'))
+        line_changes = self._build_line_changes_from_patch_text(patch_text)
 
         assert line_changes.path == "test.txt"
         assert line_changes.header.old_start == 1
@@ -312,7 +233,7 @@ class TestBuildLineLevelChangeFromPatchText:
 -removed line
  keep2
 """
-        line_changes = build_line_changes_from_patch_bytes(patch_text.encode('utf-8'))
+        line_changes = self._build_line_changes_from_patch_text(patch_text)
 
         assert line_changes.path == "file.py"
         changed_ids = line_changes.changed_line_ids()
@@ -330,12 +251,32 @@ class TestBuildLineLevelChangeFromPatchText:
 -old line2
 +new line2
 """
-        line_changes = build_line_changes_from_patch_bytes(patch_text.encode('utf-8'))
+        line_changes = self._build_line_changes_from_patch_text(patch_text)
 
         assert line_changes.path == "code.js"
         changed_ids = line_changes.changed_line_ids()
         # Should have 4 changed lines (2 deletions + 2 additions)
         assert len(changed_ids) == 4
+
+    def test_build_line_changes_from_line_iterable_matches_list(self):
+        """Patch line iterables produce the same line changes as lists."""
+        patch_bytes = b"""--- a/code.js
++++ b/code.js
+@@ -1,3 +1,3 @@
+ context
+-old line
++new line
+ tail
+"""
+
+        line_changes_from_list = build_line_changes_from_patch_lines(
+            patch_bytes.splitlines(keepends=True)
+        )
+        line_changes_from_lines = build_line_changes_from_patch_lines(
+            line for line in patch_bytes.splitlines(keepends=True)
+        )
+
+        assert line_changes_from_lines == line_changes_from_list
 
 
 class TestWriteSnapshotsForCurrentFilePath:

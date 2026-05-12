@@ -1,7 +1,9 @@
 """Tests for discard command."""
 
+import os
 from unittest.mock import patch
 
+from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
 from git_stage_batch.batch import list_batch_files, read_batch_metadata, read_file_from_batch
 from git_stage_batch.commands.discard import command_discard_to_batch
@@ -28,6 +30,18 @@ def _prepare_single_line_change(repo, file_name="test.txt"):
     command_start()
     fetch_next_change()
     return test_file
+
+
+def _reject_materialized_ownership_metadata(monkeypatch):
+    def fail_from_metadata_dict(cls, data):
+        raise AssertionError("discard should use acquired ownership metadata")
+
+    monkeypatch.setattr(
+        BatchOwnership,
+        "from_metadata_dict",
+        classmethod(fail_from_metadata_dict),
+        raising=False,
+    )
 
 
 @pytest.fixture
@@ -77,6 +91,33 @@ class TestCommandDiscard:
 
         captured = capsys.readouterr()
         assert "Hunk discarded" in captured.err
+
+    def test_discard_only_line_from_intent_to_add_file_leaves_empty_file(
+        self,
+        temp_git_repo,
+    ):
+        """Discarding the only added line should not leave a blank line."""
+        test_file = temp_git_repo / "new.txt"
+        test_file.write_bytes(b"added\n")
+        subprocess.run(
+            ["git", "add", "-N", "new.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        command_start()
+        command_discard_line("1")
+
+        assert test_file.read_bytes() == b""
+        diff_result = subprocess.run(
+            ["git", "diff", "--", "new.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "+added" not in diff_result.stdout
 
     def test_discard_no_changes(self, temp_git_repo, capsys):
         """Test discard when no more hunks remain."""
@@ -179,6 +220,62 @@ class TestCommandDiscard:
 
 class TestCommandDiscardLine:
     """Tests for discard --line command."""
+
+    def test_discard_all_changes_restores_missing_final_newline(
+        self,
+        temp_git_repo,
+    ):
+        """Discard should keep a missing final newline from the old content."""
+        test_file = temp_git_repo / "f.txt"
+        original = b"a\naa"
+        modified = b"b\nc\na\nb\n"
+        test_file.write_bytes(original)
+        subprocess.run(["git", "add", "f.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add f"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_bytes(modified)
+        command_start(quiet=True)
+        command_discard_line("1,2,3,4", file="f.txt")
+
+        assert test_file.read_bytes() == original
+
+    def test_discard_all_changes_restores_present_final_newline(
+        self,
+        temp_git_repo,
+    ):
+        """Discard should keep a present final newline from the old content."""
+        test_file = temp_git_repo / "f.txt"
+        original = b"a\naa\n"
+        modified = b"b\nc\na\nb"
+        test_file.write_bytes(original)
+        subprocess.run(["git", "add", "f.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add f"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_bytes(modified)
+        command_start(quiet=True)
+        command_discard_line("1,2,3,4", file="f.txt")
+
+        assert test_file.read_bytes() == original
+
+    def test_discard_line_symlink_restores_link_without_touching_referent(
+        self,
+        temp_git_repo,
+    ):
+        """Discarding a symlink target change should rewrite the link itself."""
+        link_path = temp_git_repo / "link"
+        target_path = temp_git_repo / "newtarget"
+        os.symlink("oldtarget", link_path)
+        subprocess.run(["git", "add", "link"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add link"], check=True, cwd=temp_git_repo, capture_output=True)
+        link_path.unlink()
+        os.symlink("newtarget", link_path)
+        target_path.write_bytes(b"contents of target\n")
+
+        command_start(quiet=True)
+        command_discard_line("1,2")
+
+        assert os.readlink(link_path) == "oldtarget"
+        assert target_path.read_bytes() == b"contents of target\n"
 
     def test_discard_line_requires_selected_hunk(self, temp_git_repo):
         """Test that discard --line requires an active hunk."""
@@ -437,6 +534,29 @@ class TestCommandDiscardToBatch:
         # Changes should be discarded
         file_txt = temp_git_repo_with_session / "file.txt"
         assert not file_txt.exists()
+
+    def test_discard_file_to_batch_uses_scoped_ownership_metadata(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Discarding into an existing batch should not materialize ownership."""
+        readme = temp_git_repo / "README.md"
+
+        readme.write_text("# Test\none\n")
+        command_start()
+        fetch_next_change()
+        command_discard_to_batch("metadata-batch", quiet=True)
+
+        readme.write_text("# Test\ntwo\n")
+        _reject_materialized_ownership_metadata(monkeypatch)
+
+        command_discard_to_batch("metadata-batch", file="README.md", quiet=True)
+
+        metadata = read_batch_metadata("metadata-batch")
+        file_meta = metadata["files"]["README.md"]
+        assert "presence_claims" in file_meta
+        assert "deletions" in file_meta
 
     def test_discard_to_batch_hunk_captures_worktree_executable_mode(self, temp_git_repo):
         """discard --to should store chmod changes from the working tree."""

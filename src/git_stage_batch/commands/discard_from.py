@@ -7,13 +7,13 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from ..batch.merge import discard_batch
+from ..batch.merge import discard_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import get_validated_baseline_commit, read_validated_batch_metadata
 from ..batch.selection import (
+    acquire_batch_ownership_for_display_ids_from_lines,
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
-    select_batch_ownership_for_display_ids,
     translate_batch_file_gutter_ids_to_selection_ids,
     translate_atomic_unit_error_to_gutter_ids,
 )
@@ -27,6 +27,12 @@ from ..core.text_lifecycle import (
 from ..data.file_review_state import (
     FileReviewAction,
     resolve_batch_source_action_scope,
+)
+from ..editor import (
+    EditorBuffer,
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+    write_buffer_to_path,
 )
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
@@ -74,17 +80,11 @@ def _discard_binary_file_from_batch(file_path: str, baseline_commit: str) -> Non
     full_path = repo_root / file_path
 
     # Read file from baseline commit
-    result = run_git_command(
-        ["show", f"{baseline_commit}:{file_path}"],
-        check=False,
-        text_output=False
-    )
-
-    if result.returncode == 0:
+    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    if baseline_buffer is not None:
         # File exists in baseline - restore it
-        baseline_content = result.stdout
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(baseline_content)
+        with baseline_buffer:
+            write_buffer_to_path(full_path, baseline_buffer)
         _restore_working_tree_file_mode(
             full_path,
             _baseline_file_mode(baseline_commit, file_path),
@@ -105,14 +105,10 @@ def _discard_text_file_lifecycle_from_batch(file_path: str, baseline_commit: str
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
 
-    result = run_git_command(
-        ["show", f"{baseline_commit}:{file_path}"],
-        check=False,
-        text_output=False,
-    )
-    if result.returncode == 0:
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(result.stdout)
+    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    if baseline_buffer is not None:
+        with baseline_buffer:
+            write_buffer_to_path(full_path, baseline_buffer)
         _restore_working_tree_file_mode(
             full_path,
             _baseline_file_mode(baseline_commit, file_path),
@@ -223,34 +219,23 @@ def command_discard_from_batch(
                     _discard_text_file_lifecycle_from_batch(file_path, baseline_commit)
                     continue
 
-                # Get batch source commit content (as bytes)
                 batch_source_commit = file_meta["batch_source_commit"]
-                batch_source_result = run_git_command(
-                    ["show", f"{batch_source_commit}:{file_path}"],
-                    check=False,
-                    text_output=False
+                batch_source_buffer = load_git_object_as_buffer(
+                    f"{batch_source_commit}:{file_path}"
                 )
-                if batch_source_result.returncode != 0:
+                if batch_source_buffer is None:
                     failed_files.append(file_path)
                     continue
-                batch_source_content = batch_source_result.stdout
 
-                # Get baseline content (as bytes)
-                baseline_result = run_git_command(
-                    ["show", f"{baseline_commit}:{file_path}"],
-                    check=False,
-                    text_output=False
+                baseline_buffer = load_git_object_as_buffer(
+                    f"{baseline_commit}:{file_path}"
                 )
-                baseline_exists = baseline_result.returncode == 0
-                baseline_content = baseline_result.stdout if baseline_exists else b""
+                baseline_exists = baseline_buffer is not None
+                if baseline_buffer is None:
+                    baseline_buffer = EditorBuffer.from_bytes(b"")
 
-                # Get selected working tree content (as bytes)
                 full_path = repo_root / file_path
                 working_exists = full_path.exists()
-                if working_exists:
-                    working_content = full_path.read_bytes()
-                else:
-                    working_content = b""
                 baseline_mode = _baseline_file_mode(baseline_commit, file_path)
                 restore_mode = mode_for_text_materialization(
                     baseline_mode,
@@ -258,44 +243,47 @@ def command_discard_from_batch(
                     destination_exists=working_exists,
                 )
 
-                # Get ownership from metadata, filtered by selected selection IDs if specified
-                try:
-                    ownership = select_batch_ownership_for_display_ids(
-                        file_meta, batch_source_content, selection_ids_to_discard
+                with (
+                    batch_source_buffer as batch_source_lines,
+                    baseline_buffer as baseline_lines,
+                    load_working_tree_file_as_buffer(file_path) as working_lines,
+                ):
+                    try:
+                        with acquire_batch_ownership_for_display_ids_from_lines(
+                            file_meta,
+                            batch_source_lines,
+                            selection_ids_to_discard,
+                        ) as ownership:
+                            if ownership.is_empty():
+                                continue
+
+                            discarded_buffer = discard_batch_from_line_sequences_as_buffer(
+                                batch_source_lines,
+                                ownership,
+                                working_lines,
+                                baseline_lines,
+                            )
+                    except AtomicUnitError as e:
+                        if rendered:
+                            translate_atomic_unit_error_to_gutter_ids(e, rendered, "discard from", batch_name)
+                        exit_with_error(_("Failed to discard from batch '{name}': {error}").format(
+                            name=batch_name,
+                            error=str(e),
+                        ))
+
+                with discarded_buffer:
+                    effective_change_type = selected_text_discard_change_type(
+                        text_change_type,
+                        selected_ids,
+                        discarded_buffer,
+                        baseline_exists=baseline_exists,
                     )
-                except AtomicUnitError as e:
-                    if rendered:
-                        translate_atomic_unit_error_to_gutter_ids(e, rendered, "discard from", batch_name)
-                    exit_with_error(_("Failed to discard from batch '{name}': {error}").format(
-                        name=batch_name,
-                        error=str(e),
-                    ))
-
-                # If nothing selected for this file, skip it
-                if ownership.is_empty():
-                    continue
-
-                # Perform structural discard (inverse of merge)
-                discarded_content = discard_batch(
-                    batch_source_content,
-                    ownership,
-                    working_content,
-                    baseline_content
-                )
-
-                effective_change_type = selected_text_discard_change_type(
-                    text_change_type,
-                    selected_ids,
-                    discarded_content,
-                    baseline_exists=baseline_exists,
-                )
-                if effective_change_type == TextFileChangeType.DELETED:
-                    if full_path.exists():
-                        full_path.unlink()
-                else:
-                    full_path.parent.mkdir(parents=True, exist_ok=True)
-                    full_path.write_bytes(discarded_content)
-                    _restore_working_tree_file_mode(full_path, restore_mode)
+                    if effective_change_type == TextFileChangeType.DELETED:
+                        if full_path.exists():
+                            full_path.unlink()
+                    else:
+                        write_buffer_to_path(full_path, discarded_buffer)
+                        _restore_working_tree_file_mode(full_path, restore_mode)
 
             except CommandError:
                 raise

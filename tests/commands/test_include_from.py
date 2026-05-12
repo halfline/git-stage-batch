@@ -1,5 +1,6 @@
 """Tests for include from batch command."""
 
+import os
 import stat
 import subprocess
 
@@ -47,6 +48,26 @@ def temp_git_repo(tmp_path, monkeypatch):
 
 class TestCommandIncludeFromBatch:
     """Tests for include from batch command."""
+
+    def test_include_from_batch_added_symlink_keeps_worktree_and_index_consistent(
+        self,
+        temp_git_repo,
+    ):
+        """Including an added symlink batch should write a symlink and stage one."""
+        link_path = temp_git_repo / "link"
+        os.symlink("target", link_path)
+        command_start(quiet=True)
+        command_include_to_batch("test-batch", line_ids="1", file="link", quiet=True)
+
+        link_path.unlink()
+        command_include_from_batch("test-batch")
+
+        index_entry = run_git_command(["ls-files", "-s", "--", "link"]).stdout
+        blob = run_git_command(["show", ":link"]).stdout
+        assert os.path.islink(link_path)
+        assert os.readlink(link_path) == "target"
+        assert index_entry.split()[0] == "120000"
+        assert blob.encode() == b"target"
 
     def test_include_from_batch_stages_changes(self, temp_git_repo, capsys):
         """Test including changes from a batch stages them."""

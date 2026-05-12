@@ -20,6 +20,7 @@ from git_stage_batch.core.line_selection import parse_line_selection
 from git_stage_batch.core.models import RenderedBatchDisplay, ReviewActionGroup
 from git_stage_batch.data.batch_sources import create_batch_source_commit, save_session_batch_sources
 from git_stage_batch.data.hunk_tracking import fetch_next_change, render_batch_file_display
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
 
 
@@ -51,6 +52,41 @@ def _presence_line_ids_from_ownership(ownership: BatchOwnership) -> set[int]:
         for range_str in claim.source_lines:
             line_ids.update(parse_line_selection(range_str))
     return line_ids
+
+
+def _reject_materialized_ownership_metadata(monkeypatch):
+    def fail_from_metadata_dict(cls, data):
+        raise AssertionError("reset should use acquired ownership metadata")
+
+    monkeypatch.setattr(
+        BatchOwnership,
+        "from_metadata_dict",
+        classmethod(fail_from_metadata_dict),
+        raising=False,
+    )
+
+
+def _ownership_summary_from_metadata(file_meta: dict) -> tuple[set[int], int]:
+    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+        return _presence_line_ids_from_ownership(ownership), len(ownership.deletions)
+
+
+def test_reset_partition_accepts_non_list_line_sequences(line_sequence):
+    """Reset ownership partitioning accepts indexed line sequences."""
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+    source_lines = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+
+    remaining_units, removed_units = reset_module._partition_line_ownership_units(
+        ownership,
+        source_lines,
+        {1},
+        batch_name="mybatch",
+        file_path="test.py",
+    )
+
+    assert remaining_units == []
+    assert len(removed_units) == 1
+    assert removed_units[0].claimed_source_lines == {2}
 
 
 @pytest.fixture
@@ -309,6 +345,48 @@ class TestResetFromBatch:
         batch_line_ids_after = _presence_line_ids_from_metadata(batch_ownership_after)
         assert batch_line_ids_after == {1, 2}
 
+    def test_reset_line_claims_use_scoped_ownership_metadata(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Selected-line reset should not require materialized metadata."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text(
+            "line 1\nline 2\nline 3\nline 4\nline 5\n",
+        )
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text(
+            "line 1 changed\nline 2 changed\nline 3\nline 4\nline 5\n",
+        )
+        command_new_batch("mybatch", "test batch")
+        command_start()
+        add_file_to_batch(
+            "mybatch",
+            "test.py",
+            BatchOwnership.from_presence_lines(
+                ["1", "2"],
+                [
+                    DeletionClaim(
+                        anchor_line=5,
+                        content_lines=[b"removed\n"],
+                    ),
+                ],
+            ),
+            "100644",
+        )
+
+        _reject_materialized_ownership_metadata(monkeypatch)
+
+        command_reset_from_batch("mybatch", line_ids="1", file="test.py")
+
+        metadata_after = read_batch_metadata("mybatch")
+        file_meta = metadata_after["files"]["test.py"]
+        assert _presence_line_ids_from_metadata(file_meta) == {2}
+        assert len(file_meta["deletions"]) == 1
+
     def test_reset_line_claims_do_not_require_live_mergeability(self, temp_git_repo):
         """Resetting batch metadata should not depend on current worktree mergeability."""
         test_file = temp_git_repo / "test.py"
@@ -529,10 +607,11 @@ class TestResetFromBatch:
         metadata_before = read_batch_metadata("mybatch")
         original_source = metadata_before["files"]["test.py"]["batch_source_commit"]
 
-        wrong_source = create_batch_source_commit(
-            "test.py",
-            file_content_override=b"unrelated cache content\n",
-        )
+        with EditorBuffer.from_bytes(b"unrelated cache content\n") as wrong_source_buffer:
+            wrong_source = create_batch_source_commit(
+                "test.py",
+                file_buffer_override=wrong_source_buffer,
+            )
         save_session_batch_sources({"test.py": wrong_source})
 
         command_reset_from_batch("mybatch", line_ids="1", file="test.py")
@@ -581,6 +660,51 @@ class TestResetFromBatch:
         dest_line_ids = _presence_line_ids_from_metadata(dest_after["files"]["test.py"])
         assert dest_line_ids == {1}
 
+    def test_reset_to_moves_selected_replacement_with_scoped_ownership(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Selected reset-to-batch should not return borrowed metadata."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 changed\nline 2 changed\n")
+
+        command_new_batch("source", "source batch")
+        command_start()
+        add_file_to_batch(
+            "source",
+            "test.py",
+            BatchOwnership.from_presence_lines(
+                ["1", "2"],
+                [
+                    DeletionClaim(
+                        anchor_line=None,
+                        content_lines=[b"line 1\n"],
+                    ),
+                ],
+            ),
+            "100644",
+        )
+
+        _reject_materialized_ownership_metadata(monkeypatch)
+
+        command_reset_from_batch("source", line_ids="1,2", file="test.py", to_batch="dest")
+
+        source_after = read_batch_metadata("source")
+        dest_after = read_batch_metadata("dest")
+
+        source_meta = source_after["files"]["test.py"]
+        assert _presence_line_ids_from_metadata(source_meta) == {2}
+        assert source_meta["deletions"] == []
+
+        dest_meta = dest_after["files"]["test.py"]
+        assert _presence_line_ids_from_metadata(dest_meta) == {1}
+        assert len(dest_meta["deletions"]) == 1
+
     def test_reset_to_moves_explicit_file_only(self, temp_git_repo):
         """Test splitting one file out of a multi-file batch."""
 
@@ -618,6 +742,56 @@ class TestResetFromBatch:
         assert "file2.txt" not in dest_after["files"]
         assert read_file_from_batch("source", "file1.txt") is None
         assert read_file_from_batch("dest", "file1.txt") is not None
+
+    def test_reset_to_merges_file_ownership_with_scoped_metadata(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Whole-file reset-to-batch should not materialize ownership."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 changed\nline 2 changed\n")
+
+        command_new_batch("source", "source batch")
+        command_new_batch("dest", "destination batch")
+        command_start()
+        add_file_to_batch(
+            "source",
+            "test.py",
+            BatchOwnership.from_presence_lines(
+                ["1"],
+                [
+                    DeletionClaim(
+                        anchor_line=None,
+                        content_lines=[b"line 1\n"],
+                    ),
+                ],
+            ),
+            "100644",
+        )
+        add_file_to_batch(
+            "dest",
+            "test.py",
+            BatchOwnership.from_presence_lines(["2"], []),
+            "100644",
+        )
+
+        _reject_materialized_ownership_metadata(monkeypatch)
+
+        command_reset_from_batch("source", file="test.py", to_batch="dest")
+
+        source_after = read_batch_metadata("source")
+        dest_after = read_batch_metadata("dest")
+
+        assert "test.py" not in source_after["files"]
+
+        dest_meta = dest_after["files"]["test.py"]
+        assert _presence_line_ids_from_metadata(dest_meta) == {1, 2}
+        assert len(dest_meta["deletions"]) == 1
 
     def test_reset_to_existing_batch_requires_same_baseline(self, temp_git_repo):
         """Test split destination must share the source batch baseline."""
@@ -681,9 +855,11 @@ class TestResetFromBatch:
 
         # Verify initial ownership has both claimed line and deletion
         metadata = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata["files"]["test.py"])
-        assert 1 in _presence_line_ids_from_ownership(file_ownership)
-        assert len(file_ownership.deletions) == 1
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata["files"]["test.py"]
+        )
+        assert 1 in claimed_ids
+        assert deletion_count == 1
 
         # Reset the replacement unit - must select ALL display IDs in the unit
         # Display structure: deletion (ID 1) + claimed line (ID 2) = replacement unit
@@ -784,13 +960,14 @@ class TestResetFromBatch:
 
         # Verify line 3 is removed but lines 1, 5 and deletion remain
         metadata_after = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata_after["files"]["test.py"]
+        )
 
         assert 1 in claimed_ids, "Line 1 should remain"
         assert 3 not in claimed_ids, "Line 3 should be removed"
         assert 5 in claimed_ids, "Line 5 should remain (couples with deletion)"
-        assert len(file_ownership.deletions) == 1, "Deletion should remain (couples with line 5)"
+        assert deletion_count == 1, "Deletion should remain (couples with line 5)"
 
     def test_reset_replacement_unit_keeps_separate_presence_line(self, temp_git_repo):
         """Test that resetting a replacement unit preserves separate presence-only lines."""
@@ -825,12 +1002,13 @@ class TestResetFromBatch:
 
         # Verify line 1 AND its deletion are removed, but line 2 remains
         metadata_after = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata_after["files"]["test.py"]
+        )
 
         assert 1 not in claimed_ids, "Source line 1 should be removed (replacement unit)"
         assert 2 in claimed_ids, "Source line 2 should remain (separate presence-only unit)"
-        assert len(file_ownership.deletions) == 0, "Deletion should be removed with line 1 (replacement unit)"
+        assert deletion_count == 0, "Deletion should be removed with line 1 (replacement unit)"
 
     def test_reset_single_line_from_multi_line_presence_group(self, temp_git_repo):
         """Test that resetting one line from multiple presence-only lines works independently.
@@ -866,13 +1044,14 @@ class TestResetFromBatch:
 
         # Verify only source line 2 is removed, lines 1 and 3 remain
         metadata_after = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata_after["files"]["test.py"]
+        )
 
         assert 1 in claimed_ids, "Source line 1 should remain (separate unit)"
         assert 2 not in claimed_ids, "Source line 2 should be removed (selected)"
         assert 3 in claimed_ids, "Source line 3 should remain (separate unit)"
-        assert len(file_ownership.deletions) == 0, "No deletions in this ownership"
+        assert deletion_count == 0, "No deletions in this ownership"
 
     def test_reset_single_presence_line_after_batch_review(self, temp_git_repo):
         """Batch reviews should not merge adjacent presence-only reset targets."""
@@ -894,10 +1073,11 @@ class TestResetFromBatch:
         command_reset_from_batch("mybatch", line_ids="2")
 
         metadata_after = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata_after["files"]["test.py"]
+        )
 
         assert 1 in claimed_ids
         assert 2 not in claimed_ids
         assert 3 in claimed_ids
-        assert len(file_ownership.deletions) == 0
+        assert deletion_count == 0

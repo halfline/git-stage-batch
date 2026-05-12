@@ -7,6 +7,7 @@ runs, pair them structurally, and emit semantic change units.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -109,8 +110,8 @@ def find_structural_predecessor(
 
 
 def derive_semantic_change_runs(
-    source_lines: list[bytes],
-    target_lines: list[bytes]
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes]
 ) -> list[SemanticChangeRun]:
     """Derive semantic change runs from source ↔ target comparison.
 
@@ -246,18 +247,39 @@ def derive_semantic_change_runs(
     return replacements + deletions + presences
 
 
-def derive_display_id_run_sets(
+def derive_display_id_run_sets_from_lines(
     line_changes: LineLevelChange,
     *,
-    source_content: bytes,
-    target_content: bytes,
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
 ) -> list[set[int]]:
-    """Map semantic change runs onto display IDs in one rendered selection."""
+    """Map semantic change runs from byte-line sequences onto display IDs."""
     semantic_runs = derive_semantic_change_runs(
-        source_content.splitlines(keepends=True),
-        target_content.splitlines(keepends=True),
+        source_lines,
+        target_lines,
     )
+    return _display_id_run_sets_from_semantic_runs(line_changes, semantic_runs)
 
+
+def derive_replacement_display_id_run_sets_from_lines(
+    line_changes: LineLevelChange,
+    *,
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+) -> list[set[int]]:
+    """Map replacement runs from byte-line sequences onto display IDs."""
+    semantic_runs = [
+        run
+        for run in derive_semantic_change_runs(source_lines, target_lines)
+        if run.kind == SemanticChangeKind.REPLACEMENT
+    ]
+    return _display_id_run_sets_from_semantic_runs(line_changes, semantic_runs)
+
+
+def _display_id_run_sets_from_semantic_runs(
+    line_changes: LineLevelChange,
+    semantic_runs: Sequence[SemanticChangeRun],
+) -> list[set[int]]:
     run_sets: list[set[int]] = []
     for run in semantic_runs:
         display_ids = {

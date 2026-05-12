@@ -6,9 +6,9 @@ import json
 import sys
 
 from ..batch.display import annotate_with_batch_source
-from ..core.diff_parser import build_line_changes_from_patch_bytes, parse_unified_diff_streaming
+from ..core.diff_parser import build_line_changes_from_patch_lines, parse_unified_diff_streaming
 from ..core.diff_parser import write_snapshots_for_selected_file_path
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
 from ..core.models import BinaryFileChange
 from ..data.hunk_tracking import (
     SelectedChangeKind,
@@ -22,6 +22,7 @@ from ..data.hunk_tracking import (
     render_file_as_single_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
+    write_selected_hunk_patch_lines,
     write_selected_change_kind,
 )
 from ..data.file_review_state import (
@@ -46,7 +47,10 @@ from ..output.file_review_list import (
     make_file_review_list_entry,
     print_file_review_list,
 )
-from ..utils.file_io import read_text_file_contents, write_file_bytes, write_text_file_contents
+from ..utils.file_io import (
+    read_text_file_line_set,
+    write_text_file_contents,
+)
 from ..utils.git import require_git_repository, stream_git_command
 from ..utils.paths import (
     ensure_state_directory_exists,
@@ -54,7 +58,6 @@ from ..utils.paths import (
     get_context_lines,
     get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
-    get_selected_hunk_patch_file_path,
 )
 
 
@@ -207,8 +210,7 @@ def command_show(
     # Hunk-scoped operation (selected behavior)
     # Load blocklist
     blocklist_path = get_block_list_file_path()
-    blocklist_text = read_text_file_contents(blocklist_path)
-    blocked_hashes = set(blocklist_text.splitlines())
+    blocked_hashes = read_text_file_line_set(blocklist_path)
 
     # Stream diff and show first unblocked hunk
     for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
@@ -222,27 +224,29 @@ def command_show(
                 return
             continue
 
-        patch_bytes = patch.to_patch_bytes()
-        patch_hash = compute_stable_hunk_hash(patch_bytes)
+        patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
         if patch_hash not in blocked_hashes:
-            previous_selected_state = snapshot_selected_change_state()
-            # Cache selected hunk bytes exactly; display text is derived from parsed lines.
-            write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
-            write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
-            write_selected_change_kind(SelectedChangeKind.HUNK)
+            with snapshot_selected_change_state() as previous_selected_state:
+                # Cache selected hunk bytes exactly; display text is derived from parsed lines.
+                write_selected_hunk_patch_lines(patch.lines)
+                write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
+                write_selected_change_kind(SelectedChangeKind.HUNK)
 
-            # Parse and cache line_changes for batch filtering
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
-            write_text_file_contents(get_line_changes_json_file_path(),
-                                    json.dumps(convert_line_changes_to_serializable_dict(line_changes),
-                                              ensure_ascii=False, indent=0))
-            write_snapshots_for_selected_file_path(line_changes.path)
+                # Parse and cache line_changes for batch filtering
+                line_changes = build_line_changes_from_patch_lines(
+                    patch.lines,
+                    annotator=annotate_with_batch_source,
+                )
+                write_text_file_contents(get_line_changes_json_file_path(),
+                                        json.dumps(convert_line_changes_to_serializable_dict(line_changes),
+                                                  ensure_ascii=False, indent=0))
+                write_snapshots_for_selected_file_path(line_changes.path)
 
-            # Apply line-level batch filtering
-            if apply_line_level_batch_filter_to_cached_hunk():
-                # All lines in this hunk are batched, skip to next
-                restore_selected_change_state(previous_selected_state)
-                continue
+                # Apply line-level batch filtering
+                if apply_line_level_batch_filter_to_cached_hunk():
+                    # All lines in this hunk are batched, skip to next
+                    restore_selected_change_state(previous_selected_state)
+                    continue
 
             clear_last_file_review_state()
 

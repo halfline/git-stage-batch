@@ -7,6 +7,8 @@ advancement, ownership remapping, cache updates, and line re-annotation.
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
@@ -101,34 +103,33 @@ def ensure_batch_source_current_for_selection(
 
     if is_stale and current_batch_source_commit and existing_ownership:
         # Batch source is stale - advance it and remap existing ownership
-        advance_result = advance_batch_source_for_file_with_provenance(
+        with advance_batch_source_for_file_with_provenance(
             batch_name=batch_name,
             file_path=file_path,
             old_batch_source_commit=current_batch_source_commit,
             existing_ownership=existing_ownership
-        )
+        ) as advance_result:
+            # Update session cache so add_file_to_batch uses the new source.
+            batch_sources = load_session_batch_sources()
+            batch_sources[file_path] = advance_result.batch_source_commit
+            save_session_batch_sources(batch_sources)
 
-        # Update session cache so add_file_to_batch uses the new source.
-        batch_sources = load_session_batch_sources()
-        batch_sources[file_path] = advance_result.batch_source_commit
-        save_session_batch_sources(batch_sources)
+            # Re-annotate lines against the refreshed source. That source may
+            # include already-owned lines that are absent from the
+            # working tree after earlier discard operations.
+            reannotated_lines = _refresh_selected_lines_against_source_lines(
+                selected_lines,
+                source_lines=advance_result.source_buffer,
+                working_lines=(),
+                working_line_map=advance_result.working_line_map,
+            )
 
-        # Re-annotate lines against the actual advanced source. The advanced
-        # source may include already-owned lines that are absent from the
-        # working tree after earlier discard operations.
-        reannotated_lines = _refresh_selected_lines_against_source_content(
-            selected_lines,
-            source_content=advance_result.source_content,
-            working_content=advance_result.working_content,
-            working_line_map=advance_result.working_line_map,
-        )
-
-        return RefreshedBatchSelection(
-            batch_source_commit=advance_result.batch_source_commit,
-            ownership=advance_result.ownership,
-            selected_lines=reannotated_lines,
-            source_was_advanced=True
-        )
+            return RefreshedBatchSelection(
+                batch_source_commit=advance_result.batch_source_commit,
+                ownership=advance_result.ownership,
+                selected_lines=reannotated_lines,
+                source_was_advanced=True
+            )
 
     elif is_stale and current_batch_source_commit and not existing_ownership:
         # Inconsistent state: batch source exists but no ownership
@@ -171,7 +172,7 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
 
     This invariant is maintained by create_batch_source_commit(), which creates
     the first source from the current working tree state. Advanced batch sources
-    use _refresh_selected_lines_against_source_content() instead because they
+    use _refresh_selected_lines_against_source_lines() instead because they
     may preserve already-owned lines that are absent from the working tree.
 
     For first-time source creation, the mapping is trivial:
@@ -219,23 +220,16 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
     return reannotated_lines
 
 
-def _refresh_selected_lines_against_source_content(
+def _refresh_selected_lines_against_source_lines(
     selected_lines: list,
     *,
-    source_content: bytes,
-    working_content: bytes,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
     working_line_map: dict[int, int] | None = None,
 ) -> list:
-    """Re-annotate selected lines against a concrete source snapshot.
-
-    If a working-line provenance map is supplied, it describes how the source
-    content was synthesized and is treated as authoritative. Text matching is
-    used only when no provenance map is available.
-    """
+    """Re-annotate selected lines against source and working-tree line sequences."""
     mapping = None
     if working_line_map is None:
-        source_lines = source_content.splitlines(keepends=True)
-        working_lines = working_content.splitlines(keepends=True)
         mapping = match_lines(source_lines, working_lines)
 
     def map_working_line(line_number: int | None) -> int | None:
@@ -278,7 +272,6 @@ def _refresh_selected_lines_against_source_content(
         ))
 
     return reannotated_lines
-
 
 def prepare_batch_ownership_update_for_selection(
     batch_name: str,
@@ -336,3 +329,36 @@ def prepare_batch_ownership_update_for_selection(
         ownership_before=refreshed.ownership,
         ownership_after=merged_ownership
     )
+
+
+@contextmanager
+def acquire_batch_ownership_update_for_selection(
+    *,
+    batch_name: str,
+    file_path: str,
+    file_metadata: dict | None,
+    selected_lines: list,
+) -> Iterator[PreparedBatchUpdate]:
+    """Acquire existing ownership metadata while preparing a batch update.
+
+    The yielded ownership may borrow deletion content from acquired metadata,
+    so callers should persist or detach it before leaving the context.
+    """
+    if file_metadata is None:
+        yield prepare_batch_ownership_update_for_selection(
+            batch_name=batch_name,
+            file_path=file_path,
+            current_batch_source_commit=None,
+            existing_ownership=None,
+            selected_lines=selected_lines,
+        )
+        return
+
+    with BatchOwnership.acquire_for_metadata_dict(file_metadata) as existing_ownership:
+        yield prepare_batch_ownership_update_for_selection(
+            batch_name=batch_name,
+            file_path=file_path,
+            current_batch_source_commit=file_metadata.get("batch_source_commit"),
+            existing_ownership=existing_ownership,
+            selected_lines=selected_lines,
+        )

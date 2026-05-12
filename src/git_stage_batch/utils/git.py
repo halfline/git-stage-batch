@@ -302,34 +302,6 @@ def create_git_blob(content_chunks: Iterable[bytes]) -> str:
     return blob_sha
 
 
-def create_git_blobs(contents: Iterable[bytes]) -> list[str]:
-    """Create several blob objects with one hash-object process."""
-    content_list = list(contents)
-    if not content_list:
-        return []
-
-    with tempfile.TemporaryDirectory(prefix="git-stage-batch-blobs-") as temp_dir:
-        temp_path = Path(temp_dir)
-        path_lines: list[str] = []
-        for index, content in enumerate(content_list):
-            path = temp_path / str(index)
-            path.write_bytes(content)
-            path_lines.append(str(path))
-
-        payload = ("\n".join(path_lines) + "\n").encode("utf-8")
-        result = run_command(
-            ["git", "hash-object", "-w", "--stdin-paths"],
-            [payload],
-        )
-
-    blob_shas = result.stdout.strip().splitlines()
-    if len(blob_shas) != len(content_list):
-        raise RuntimeError(
-            f"git hash-object returned {len(blob_shas)} hashes for {len(content_list)} blobs"
-        )
-    return blob_shas
-
-
 def read_git_blob(blob_sha: str) -> Iterator[bytes]:
     """Read a git blob object as a stream.
 
@@ -429,69 +401,6 @@ def list_git_tree_blobs(treeish: str, file_paths: Iterable[str]) -> dict[str, Gi
             blob_sha=metadata[2],
         )
     return entries
-
-
-def read_git_tree_file_contents(treeish: str, file_paths: Iterable[str]) -> dict[str, bytes]:
-    """Read several file contents from a tree with batched object IO."""
-    tree_blobs = list_git_tree_blobs(treeish, file_paths)
-    if not tree_blobs:
-        return {}
-
-    blob_contents = read_git_blobs_as_bytes(
-        blob.blob_sha for blob in tree_blobs.values()
-    )
-    return {
-        file_path: blob_contents[blob.blob_sha]
-        for file_path, blob in tree_blobs.items()
-        if blob.blob_sha in blob_contents
-    }
-
-
-def read_git_blob_as_bytes(blob_hash: str) -> bytes | None:
-    """Read a git blob object as bytes.
-
-    Args:
-        blob_hash: SHA-1 hash of the blob to read
-
-    Returns:
-        Blob content as bytes, or None if blob doesn't exist or read fails
-    """
-    try:
-        return b"".join(read_git_blob(blob_hash))
-    except RuntimeError:
-        return None
-
-
-def read_git_object_as_lines(revision_path: str) -> list[bytes]:
-    """Read a git object and split into lines.
-
-    Args:
-        revision_path: Git revision path (e.g., "HEAD:file.txt", "abc123:path/to/file")
-
-    Returns:
-        List of bytes lines, or empty list if object doesn't exist
-    """
-    result = run_git_command(["show", revision_path], check=False, text_output=False)
-    if result.returncode != 0:
-        return []
-    return list(bytes_to_lines([result.stdout]))
-
-
-def read_working_tree_file_as_lines(file_path: str) -> list[bytes]:
-    """Read a working tree file and split into lines.
-
-    Args:
-        file_path: Repository-relative file path
-
-    Returns:
-        List of bytes lines, or empty list if file doesn't exist
-    """
-    repo_root = get_git_repository_root_path()
-    file_full_path = repo_root / file_path
-    try:
-        return list(bytes_to_lines([file_full_path.read_bytes()]))
-    except Exception:
-        return []
 
 
 def require_git_repository() -> None:

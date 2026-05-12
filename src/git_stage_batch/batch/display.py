@@ -2,91 +2,50 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, TypeVar
 
 from ..core.models import LineLevelChange, LineEntry
 from ..data.batch_sources import get_batch_source_for_file
+from ..editor import load_git_object_as_buffer, load_working_tree_file_as_buffer
 from ..i18n import ngettext
-from ..utils.file_io import read_text_file_contents
-from ..utils.git import get_git_repository_root_path, run_git_command
+from ..utils.git import get_git_repository_root_path
 from .match import match_lines
-from ..exceptions import MergeError
-from .merge import merge_batch
-from .selection import select_batch_ownership_for_display_ids
 
 if TYPE_CHECKING:
     from .match import LineMapping
     from .ownership import BatchOwnership, DeletionClaim
 
 
-def is_display_line_individually_mergeable(
-    file_meta: dict,
-    batch_source_content: bytes,
-    working_content: bytes,
-    display_id: int,
-) -> bool:
-    """Probe whether a single display line is individually mergeable right now.
-
-    This tests if selecting just this one display line with `--line N` would
-    succeed against the current working tree. It does not test whether ranges
-    or combinations are safe - only individual line mergeability.
-
-    Args:
-        file_meta: Batch metadata for this file
-        batch_source_content: Batch source content as bytes
-        working_content: Current working tree content as bytes
-        display_id: Single display line ID to test
-
-    Returns:
-        True if this single line can be merged individually, False otherwise
-    """
-    try:
-        # Derive the ownership that selecting this one display ID would produce
-        ownership = select_batch_ownership_for_display_ids(
-            file_meta,
-            batch_source_content,
-            {display_id}  # Test just this one ID
-        )
-
-        # If selection produced empty ownership, it's not individually selectable
-        if ownership.is_empty():
-            return False
-
-        # Try the merge with this single-line selection
-        merge_batch(batch_source_content, ownership, working_content)
-
-        # Merge succeeded - this line is individually mergeable
-        return True
-
-    except (MergeError, ValueError, KeyError, Exception):
-        # Any error means this line is not individually mergeable
-        # This includes:
-        # - AtomicUnitError: line is part of atomic unit
-        # - MergeError: merge conflict
-        # - ValueError/KeyError: invalid data
-        # - Other exceptions: unexpected errors
-        return False
+LineForDisplay = TypeVar("LineForDisplay", bytes, str)
 
 
-def build_display_lines_from_batch_source(
-    batch_source_content: str,
+def _decode_display_line(line: bytes) -> str:
+    return line.decode("utf-8", errors="replace")
+
+
+def build_display_lines_from_batch_source_lines(
+    source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
     context_lines: int | None = None,
 ) -> list[dict]:
-    """Build display representation of batch content with ephemeral line IDs.
+    """Build display representation from indexed batch-source lines."""
+    return _build_display_lines_from_batch_source_lines(
+        source_lines,
+        ownership,
+        context_lines=context_lines,
+        source_line_to_text=_decode_display_line,
+    )
 
-    Shows both claimed lines (presence) and deletions (suppression constraints).
-    When applying by line ID, deletions are excluded (metadata), but when viewing
-    the batch, users need to see what was deleted.
 
-    Returns list of dicts with:
-        - id: ephemeral display ID (1, 2, 3, ...) for changed lines, None for context
-        - type: "claimed", "deletion", or "context"
-        - source_line: int (batch source line number, for claimed lines only)
-        - deletion_index: int (for deletions only)
-        - content: str (line content)
-    """
-    source_lines = batch_source_content.splitlines(keepends=True)
+def _build_display_lines_from_batch_source_lines(
+    source_lines: Sequence[LineForDisplay],
+    ownership: 'BatchOwnership',
+    context_lines: int | None,
+    *,
+    source_line_to_text: Callable[[LineForDisplay], str],
+) -> list[dict]:
+    """Build display representation from indexed batch-source lines."""
     if context_lines is None:
         context_lines = 0
     claimed_set = ownership.presence_line_set()
@@ -124,16 +83,16 @@ def build_display_lines_from_batch_source(
     ranges: list[tuple[int, int]] = []
     for position in sorted(all_positions):
         start = max(1, position - context_lines)
-        end = min(len(source_lines), position + context_lines)
+        end = position + context_lines
         if start <= end:
             if ranges and start <= ranges[-1][1] + 1:
                 ranges[-1] = (ranges[-1][0], max(ranges[-1][1], end))
             else:
                 ranges.append((start, end))
 
-    if None in deletions_by_position and context_lines > 0 and source_lines:
+    if None in deletions_by_position and context_lines > 0:
         start = 1
-        end = min(len(source_lines), context_lines)
+        end = context_lines
         if ranges and end >= ranges[0][0] - 1:
             ranges[0] = (start, max(ranges[0][1], end))
         else:
@@ -160,13 +119,16 @@ def build_display_lines_from_batch_source(
                 })
 
         for batch_line_num in range(range_start, range_end + 1):
-            if 1 <= batch_line_num <= len(source_lines):
+            source_line = _source_line_or_none(source_lines, batch_line_num)
+            if source_line is not None:
                 if batch_line_num in claimed_set:
                     display_lines.append({
                         "id": display_id,
                         "type": "claimed",
                         "source_line": batch_line_num,
-                        "content": source_lines[batch_line_num - 1]
+                        "content": source_line_to_text(
+                            source_line
+                        )
                     })
                     display_id += 1
                 else:
@@ -174,7 +136,9 @@ def build_display_lines_from_batch_source(
                         "id": None,
                         "type": "context",
                         "source_line": batch_line_num,
-                        "content": source_lines[batch_line_num - 1]
+                        "content": source_line_to_text(
+                            source_line
+                        )
                     })
 
             # Add deletions after this line
@@ -193,6 +157,18 @@ def build_display_lines_from_batch_source(
         previous_range_end = range_end
 
     return display_lines
+
+
+def _source_line_or_none(
+    source_lines: Sequence[LineForDisplay],
+    line_number: int,
+) -> LineForDisplay | None:
+    if line_number < 1:
+        return None
+    try:
+        return source_lines[line_number - 1]
+    except IndexError:
+        return None
 
 
 def _apply_batch_source_mapping(
@@ -236,6 +212,13 @@ def _apply_batch_source_mapping(
                 text_bytes=line.text_bytes,
                 text=line.text,
                 source_line=source_line,
+                baseline_reference_after_line=line.baseline_reference_after_line,
+                baseline_reference_after_text_bytes=line.baseline_reference_after_text_bytes,
+                has_baseline_reference_after=line.has_baseline_reference_after,
+                baseline_reference_before_line=line.baseline_reference_before_line,
+                baseline_reference_before_text_bytes=line.baseline_reference_before_text_bytes,
+                has_baseline_reference_before=line.has_baseline_reference_before,
+                has_trailing_newline=line.has_trailing_newline,
             )
         )
 
@@ -276,6 +259,13 @@ def _fill_source_from_working_tree(line_changes: LineLevelChange) -> LineLevelCh
                 text_bytes=line.text_bytes,
                 text=line.text,
                 source_line=source_line,
+                baseline_reference_after_line=line.baseline_reference_after_line,
+                baseline_reference_after_text_bytes=line.baseline_reference_after_text_bytes,
+                has_baseline_reference_after=line.has_baseline_reference_after,
+                baseline_reference_before_line=line.baseline_reference_before_line,
+                baseline_reference_before_text_bytes=line.baseline_reference_before_text_bytes,
+                has_baseline_reference_before=line.has_baseline_reference_before,
+                has_trailing_newline=line.has_trailing_newline,
             )
         )
 
@@ -307,28 +297,44 @@ def annotate_with_batch_source(
     if not file_full_path.exists():
         return _fill_source_from_working_tree(line_changes)
 
-    working_content = read_text_file_contents(file_full_path)
-    return annotate_with_batch_source_content(path_value, line_changes, working_content)
+    with load_working_tree_file_as_buffer(path_value) as working_lines:
+        return annotate_with_batch_source_working_lines(
+            path_value,
+            line_changes,
+            working_lines,
+        )
 
 
-def annotate_with_batch_source_content(
+def annotate_with_batch_source_working_lines(
     path_value: str,
     line_changes: LineLevelChange,
-    working_content: str,
+    working_lines: Sequence[bytes],
 ) -> LineLevelChange:
-    """Annotate LineLevelChange with batch source lines for arbitrary content."""
+    """Annotate LineLevelChange with indexed working content lines."""
     batch_source_commit = get_batch_source_for_file(path_value)
     if not batch_source_commit:
         return _fill_source_from_working_tree(line_changes)
 
-    batch_source_result = run_git_command(
-        ["show", f"{batch_source_commit}:{path_value}"],
-        check=False,
+    batch_source_buffer = load_git_object_as_buffer(
+        f"{batch_source_commit}:{path_value}"
     )
-    if batch_source_result.returncode != 0:
+    if batch_source_buffer is None:
         return _fill_source_from_working_tree(line_changes)
 
-    source_lines = batch_source_result.stdout.splitlines(keepends=True)
-    working_lines = working_content.splitlines(keepends=True)
-    mapping = match_lines(source_lines, working_lines)
+    with batch_source_buffer as batch_source_lines:
+        return annotate_with_batch_source_lines(
+            line_changes,
+            batch_source_lines=batch_source_lines,
+            working_lines=working_lines,
+        )
+
+
+def annotate_with_batch_source_lines(
+    line_changes: LineLevelChange,
+    *,
+    batch_source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+) -> LineLevelChange:
+    """Annotate LineLevelChange from indexed batch-source and working lines."""
+    mapping = match_lines(batch_source_lines, working_lines)
     return _apply_batch_source_mapping(line_changes, mapping)

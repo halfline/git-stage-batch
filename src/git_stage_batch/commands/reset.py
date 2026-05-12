@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import shlex
 import sys
+from collections.abc import Sequence
 
 from ..core.line_selection import format_line_ids
 from ..batch.operations import create_batch
 from ..batch.ownership import (
     BatchOwnership,
-    build_ownership_units_from_display,
+    build_ownership_units_from_batch_source_lines,
+    detach_batch_ownership,
     filter_ownership_units_by_display_ids,
     merge_batch_ownership,
     rebuild_ownership_from_units,
@@ -50,8 +52,9 @@ from ..data.hunk_tracking import (
     selected_batch_binary_matches_batch,
 )
 from ..data.undo import undo_checkpoint
+from ..editor import load_git_object_as_buffer
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import require_git_repository, run_git_command
+from ..utils.git import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_batch_metadata_file_path,
@@ -309,8 +312,8 @@ def _move_claims_between_batches(
                 )
             copy_file_from_batch_to_batch(source_batch, dest_batch, file_path)
         else:
-            ownership = BatchOwnership.from_metadata_dict(file_meta)
-            _add_ownership_to_destination(dest_batch, file_path, file_meta, ownership)
+            with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+                _add_ownership_to_destination(dest_batch, file_path, file_meta, ownership)
         remove_file_from_batch(source_batch, file_path)
 
 
@@ -325,6 +328,17 @@ def _add_ownership_to_destination(
     dest_file_meta = dest_metadata.get("files", {}).get(file_path)
     batch_source_commit = source_file_meta["batch_source_commit"]
 
+    def add_to_destination(destination_ownership: BatchOwnership) -> None:
+        file_mode = source_file_meta.get("mode", "100644")
+        add_file_to_batch(
+            dest_batch,
+            file_path,
+            destination_ownership,
+            file_mode,
+            batch_source_commit=batch_source_commit,
+            change_type=source_file_meta.get("change_type"),
+        )
+
     if dest_file_meta is not None:
         if dest_file_meta.get("file_type") == "binary":
             exit_with_error(
@@ -338,18 +352,11 @@ def _add_ownership_to_destination(
                     file=file_path
                 )
             )
-        existing = BatchOwnership.from_metadata_dict(dest_file_meta)
-        ownership = merge_batch_ownership(existing, ownership)
+        with BatchOwnership.acquire_for_metadata_dict(dest_file_meta) as existing:
+            add_to_destination(merge_batch_ownership(existing, ownership))
+        return
 
-    file_mode = source_file_meta.get("mode", "100644")
-    add_file_to_batch(
-        dest_batch,
-        file_path,
-        ownership,
-        file_mode,
-        batch_source_commit=batch_source_commit,
-        change_type=source_file_meta.get("change_type"),
-    )
+    add_to_destination(ownership)
 
 
 def _reset_file_claims_from_batch(
@@ -435,48 +442,47 @@ def _reset_line_claims_for_file(
     if metadata["files"][file_path].get("file_type") == "binary":
         exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
 
-    ownership = BatchOwnership.from_metadata_dict(metadata["files"][file_path])
+    file_meta = metadata["files"][file_path]
 
-    # Get batch source content for semantic analysis and display reconstruction
-    batch_source_commit = metadata["files"][file_path]["batch_source_commit"]
-    batch_source_result = run_git_command(
-        ["show", f"{batch_source_commit}:{file_path}"],
-        check=False,
-        text_output=False
-    )
-    if batch_source_result.returncode != 0:
+    # Get batch source lines for semantic analysis and display reconstruction
+    batch_source_commit = file_meta["batch_source_commit"]
+    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
+    if batch_source_buffer is None:
         exit_with_error(_("Failed to read batch source content for {file}").format(file=file_path))
-    batch_source_content = batch_source_result.stdout
 
-    remaining_units = _partition_line_ownership_units(
-        ownership,
-        batch_source_content,
-        lines_to_remove,
-        batch_name=batch_name,
-        file_path=file_path,
-    )[0]
+    with (
+        BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership,
+        batch_source_buffer as batch_source_lines,
+    ):
+        remaining_units = _partition_line_ownership_units(
+            ownership,
+            batch_source_lines,
+            lines_to_remove,
+            batch_name=batch_name,
+            file_path=file_path,
+        )[0]
 
-    # Step 3: Validate remaining units have valid structure
-    validate_ownership_units(remaining_units)
+        # Step 3: Validate remaining units have valid structure
+        validate_ownership_units(remaining_units)
 
-    # Step 4: Rebuild ownership from remaining units
-    new_ownership = rebuild_ownership_from_units(remaining_units)
+        # Step 4: Rebuild ownership from remaining units
+        new_ownership = rebuild_ownership_from_units(remaining_units)
 
-    # Step 5: Persist updated ownership or remove file if empty
-    if new_ownership.is_empty():
-        # No ownership remains - remove file from batch
-        remove_file_from_batch(batch_name, file_path)
-    else:
-        # Update the batch with new ownership
-        file_mode = metadata["files"][file_path].get("mode", "100644")
-        add_file_to_batch(
-            batch_name,
-            file_path,
-            new_ownership,
-            file_mode,
-            batch_source_commit=batch_source_commit,
-            change_type=metadata["files"][file_path].get("change_type"),
-        )
+        # Step 5: Persist updated ownership or remove file if empty
+        if new_ownership.is_empty():
+            # No ownership remains - remove file from batch
+            remove_file_from_batch(batch_name, file_path)
+        else:
+            # Update the batch with new ownership
+            file_mode = file_meta.get("mode", "100644")
+            add_file_to_batch(
+                batch_name,
+                file_path,
+                new_ownership,
+                file_mode,
+                batch_source_commit=batch_source_commit,
+                change_type=file_meta.get("change_type"),
+            )
 
 
 def _select_line_ownership_for_file(
@@ -490,30 +496,30 @@ def _select_line_ownership_for_file(
     if metadata["files"][file_path].get("file_type") == "binary":
         exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
 
-    ownership = BatchOwnership.from_metadata_dict(metadata["files"][file_path])
-    batch_source_commit = metadata["files"][file_path]["batch_source_commit"]
-    batch_source_result = run_git_command(
-        ["show", f"{batch_source_commit}:{file_path}"],
-        check=False,
-        text_output=False
-    )
-    if batch_source_result.returncode != 0:
+    file_meta = metadata["files"][file_path]
+    batch_source_commit = file_meta["batch_source_commit"]
+    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
+    if batch_source_buffer is None:
         exit_with_error(_("Failed to read batch source content for {file}").format(file=file_path))
 
-    _remaining_units, selected_units = _partition_line_ownership_units(
-        ownership,
-        batch_source_result.stdout,
-        lines_to_select,
-        batch_name=batch_name,
-        file_path=file_path,
-    )
-    validate_ownership_units(selected_units)
-    return rebuild_ownership_from_units(selected_units)
+    with (
+        BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership,
+        batch_source_buffer as batch_source_lines,
+    ):
+        _remaining_units, selected_units = _partition_line_ownership_units(
+            ownership,
+            batch_source_lines,
+            lines_to_select,
+            batch_name=batch_name,
+            file_path=file_path,
+        )
+        validate_ownership_units(selected_units)
+        return detach_batch_ownership(rebuild_ownership_from_units(selected_units))
 
 
 def _partition_line_ownership_units(
     ownership: BatchOwnership,
-    batch_source_content: bytes,
+    batch_source_lines: Sequence[bytes],
     selected_line_ids: set[int],
     *,
     batch_name: str,
@@ -521,7 +527,10 @@ def _partition_line_ownership_units(
 ):
     """Partition ownership units by selected display line IDs."""
     # This uses the actual display model, not proximity heuristics
-    units = build_ownership_units_from_display(ownership, batch_source_content)
+    units = build_ownership_units_from_batch_source_lines(
+        ownership,
+        batch_source_lines,
+    )
     available_ids = {
         display_id
         for unit in units

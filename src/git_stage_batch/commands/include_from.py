@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import stat
+import os
 import sys
 from typing import Optional
 
-from ..batch.merge import merge_batch
+from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.query import get_batch_commit_sha
-from ..batch.replacement import build_replacement_batch_view
+from ..batch.replacement import build_replacement_batch_view_from_lines
 from ..batch.selection import (
+    acquire_batch_ownership_for_display_ids_from_lines,
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
-    select_batch_ownership_for_display_ids,
     translate_batch_file_gutter_ids_to_selection_ids,
     translate_atomic_unit_error_to_gutter_ids,
 )
@@ -32,6 +32,12 @@ from ..data.file_review_state import (
 from ..data.hunk_tracking import (
     render_batch_file_display,
 )
+from ..editor import (
+    EditorBuffer,
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+    write_buffer_to_working_tree_path,
+)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import (
@@ -42,7 +48,7 @@ from ..exceptions import (
     exit_with_error,
 )
 from ..i18n import _
-from ..staging.operations import update_index_with_blob_content
+from ..staging.operations import update_index_with_blob_buffer
 from ..utils.git import (
     create_git_blob,
     get_git_repository_root_path,
@@ -55,7 +61,7 @@ def _read_binary_file_from_batch(
     batch_name: str,
     file_path: str,
     file_meta: dict,
-) -> bytes | None:
+) -> EditorBuffer | None:
     """Read one binary batch target, or return None for a stored deletion."""
     batch_commit = get_batch_commit_sha(batch_name)
     if not batch_commit:
@@ -65,21 +71,17 @@ def _read_binary_file_from_batch(
     if change_type == "deleted":
         return None
 
-    result = run_git_command(
-        ["show", f"{batch_commit}:{file_path}"],
-        check=False,
-        text_output=False,
-    )
-    if result.returncode != 0:
+    buffer = load_git_object_as_buffer(f"{batch_commit}:{file_path}")
+    if buffer is None:
         raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
 
-    return result.stdout
+    return buffer
 
 
 def _stage_binary_file_from_batch(
     file_path: str,
     file_meta: dict,
-    batch_content: bytes | None,
+    buffer: EditorBuffer | None,
 ) -> None:
     """Stage one binary batch target into the index."""
     change_type = file_meta.get("change_type", "modified")
@@ -89,50 +91,41 @@ def _stage_binary_file_from_batch(
             raise RuntimeError(f"Failed to stage binary deletion for {file_path}: {result.stderr}")
         return
 
-    if batch_content is None:
+    if buffer is None:
         raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
 
-    blob_hash = create_git_blob([batch_content])
+    blob_hash = create_git_blob(buffer.byte_chunks())
     file_mode = file_meta.get("mode", "100644")
     run_git_command(["update-index", "--add", "--cacheinfo", str(file_mode), blob_hash, file_path])
 
 
-def _apply_working_tree_file_mode(full_path, file_mode: str) -> None:
-    """Apply a normal Git file mode to a working-tree file."""
-    current_mode = full_path.stat().st_mode
-    if file_mode == "100755":
-        full_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    else:
-        full_path.chmod(current_mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
-
-
 def _stage_text_file_from_batch(
     file_path: str,
-    content: bytes | None,
+    buffer: EditorBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:
-    """Stage text content, optionally forcing the batch target mode."""
+    """Stage a text buffer, optionally forcing the batch target mode."""
     if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
         result = run_git_command(["update-index", "--force-remove", "--", file_path], check=False)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to stage text deletion for {file_path}: {result.stderr}")
         return
 
-    if content is None:
+    if buffer is None:
         raise RuntimeError(f"Text file not found in batch content: {file_path}")
 
     if file_mode is None:
-        update_index_with_blob_content(file_path, content)
+        update_index_with_blob_buffer(file_path, buffer)
         return
 
-    blob_hash = create_git_blob([content])
+    blob_hash = create_git_blob(buffer.byte_chunks())
     run_git_command(["update-index", "--add", "--cacheinfo", file_mode, blob_hash, file_path])
 
 
 def _write_text_file_from_batch(
     file_path: str,
-    content: bytes | None,
+    buffer: EditorBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:
@@ -141,23 +134,20 @@ def _write_text_file_from_batch(
     full_path = repo_root / file_path
 
     if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        if full_path.exists():
+        if os.path.lexists(full_path):
             full_path.unlink()
         return
 
-    if content is None:
+    if buffer is None:
         raise RuntimeError(f"Text file not found in batch content: {file_path}")
 
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(content)
-    if file_mode is not None:
-        _apply_working_tree_file_mode(full_path, file_mode)
+    write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)
 
 
 def _write_binary_file_from_batch(
     file_path: str,
     file_meta: dict,
-    batch_content: bytes | None,
+    buffer: EditorBuffer | None,
 ) -> None:
     """Write one binary batch target into the working tree."""
     repo_root = get_git_repository_root_path()
@@ -165,16 +155,18 @@ def _write_binary_file_from_batch(
     change_type = file_meta.get("change_type", "modified")
 
     if change_type == "deleted":
-        if full_path.exists():
+        if os.path.lexists(full_path):
             full_path.unlink()
         return
 
-    if batch_content is None:
+    if buffer is None:
         raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
 
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_bytes(batch_content)
-    _apply_working_tree_file_mode(full_path, str(file_meta.get("mode", "100644")))
+    write_buffer_to_working_tree_path(
+        full_path,
+        buffer,
+        mode=str(file_meta.get("mode", "100644")),
+    )
 
 
 def _require_contiguous_display_selection(selected_ids: set[int]) -> None:
@@ -278,45 +270,25 @@ def command_include_from_batch(
         for file_path, file_meta in files.items():
             try:
                 if file_meta.get("file_type") == "binary":
-                    batch_content = _read_binary_file_from_batch(batch_name, file_path, file_meta)
-                    snapshot_file_if_untracked(file_path)
-                    _stage_binary_file_from_batch(file_path, file_meta, batch_content)
-                    _write_binary_file_from_batch(file_path, file_meta, batch_content)
+                    batch_buffer = _read_binary_file_from_batch(batch_name, file_path, file_meta)
+                    try:
+                        snapshot_file_if_untracked(file_path)
+                        _stage_binary_file_from_batch(file_path, file_meta, batch_buffer)
+                        _write_binary_file_from_batch(file_path, file_meta, batch_buffer)
+                    finally:
+                        if batch_buffer is not None:
+                            batch_buffer.close()
                     continue
 
                 text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
-                # Get batch source commit content (as bytes)
-                batch_source_commit = file_meta["batch_source_commit"]
-                batch_source_result = run_git_command(
-                    ["show", f"{batch_source_commit}:{file_path}"],
-                    check=False,
-                    text_output=False
-                )
-                if batch_source_result.returncode != 0:
-                    failed_files.append(file_path)
-                    continue
-                batch_source_content = batch_source_result.stdout
+                index_buffer = load_git_object_as_buffer(f":{file_path}")
+                index_exists = index_buffer is not None
+                if index_buffer is None:
+                    index_buffer = EditorBuffer.from_bytes(b"")
 
-                # Get selected index content (as bytes)
-                index_result = run_git_command(
-                    ["show", f":{file_path}"],
-                    check=False,
-                    text_output=False
-                )
-                index_exists = index_result.returncode == 0
-                if index_exists:
-                    index_content = index_result.stdout
-                else:
-                    index_content = b""
-
-                # Get selected working tree content (as bytes)
                 full_path = repo_root / file_path
-                working_exists = full_path.exists()
-                if working_exists:
-                    working_content = full_path.read_bytes()
-                else:
-                    working_content = b""
+                working_exists = os.path.lexists(full_path)
 
                 batch_file_mode = str(file_meta.get("mode", "100644"))
                 index_file_mode = mode_for_text_materialization(
@@ -330,85 +302,104 @@ def command_include_from_batch(
                     destination_exists=working_exists,
                 )
                 if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
+                    index_buffer.close()
                     snapshot_file_if_untracked(file_path)
                     _stage_text_file_from_batch(file_path, None, index_file_mode, text_change_type)
                     _write_text_file_from_batch(file_path, None, working_file_mode, text_change_type)
                     continue
 
-                # Get ownership from metadata, filtered by selected selection IDs if specified
-                try:
-                    ownership = select_batch_ownership_for_display_ids(
-                        file_meta, batch_source_content, selection_ids_to_include
-                    )
-                except AtomicUnitError as e:
-                    # Translate selection IDs to gutter IDs and exit with user-friendly error
-                    if rendered:
-                        translate_atomic_unit_error_to_gutter_ids(e, rendered, "include from", batch_name)
-                    # No rendered context - show original error
-                    exit_with_error(_("Failed to include from batch '{name}': {error}").format(
-                        name=batch_name,
-                        error=str(e)
-                    ))
+                batch_source_commit = file_meta["batch_source_commit"]
+                batch_source_buffer = load_git_object_as_buffer(
+                    f"{batch_source_commit}:{file_path}"
+                )
+                if batch_source_buffer is None:
+                    index_buffer.close()
+                    failed_files.append(file_path)
+                    continue
 
-                # If nothing selected for this file, skip it
-                if ownership.is_empty():
-                    if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
-                        merged_index_content = b""
-                        merged_working_content = b""
-                    else:
-                        continue
-                else:
-                    if replacement_text is not None:
-                        try:
-                            batch_source_content, ownership = build_replacement_batch_view(
-                                batch_source_content,
-                                ownership,
-                                replacement_text,
-                            )
-                        except ValueError as e:
-                            exit_with_error(str(e))
+                with (
+                    batch_source_buffer as batch_source_lines,
+                    index_buffer as index_lines,
+                    load_working_tree_file_as_buffer(file_path) as working_lines,
+                ):
+                    try:
+                        with acquire_batch_ownership_for_display_ids_from_lines(
+                            file_meta,
+                            batch_source_lines,
+                            selection_ids_to_include,
+                        ) as ownership:
+                            if ownership.is_empty():
+                                if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
+                                    merged_index_buffer = EditorBuffer.from_bytes(b"")
+                                    merged_working_buffer = EditorBuffer.from_bytes(b"")
+                                else:
+                                    continue
+                            elif replacement_text is not None:
+                                try:
+                                    replacement_view = build_replacement_batch_view_from_lines(
+                                        batch_source_lines,
+                                        ownership,
+                                        replacement_text,
+                                    )
+                                except ValueError as e:
+                                    exit_with_error(str(e))
 
-                    # Perform structural merge against both destinations. include --from
-                    # is the staged form of apply --from, so the working tree must
-                    # receive the selected batch content too.
-                    merged_index_content = merge_batch(
-                        batch_source_content,
-                        ownership,
-                        index_content
-                    )
-                    merged_working_content = merge_batch(
-                        batch_source_content,
-                        ownership,
-                        working_content
-                    )
+                                with replacement_view:
+                                    ownership = replacement_view.ownership
+                                    merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
+                                        replacement_view.source_buffer,
+                                        ownership,
+                                        index_lines,
+                                    )
+                                    merged_working_buffer = merge_batch_from_line_sequences_as_buffer(
+                                        replacement_view.source_buffer,
+                                        ownership,
+                                        working_lines,
+                                    )
+                            else:
+                                merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
+                                    batch_source_lines,
+                                    ownership,
+                                    index_lines,
+                                )
+                                merged_working_buffer = merge_batch_from_line_sequences_as_buffer(
+                                    batch_source_lines,
+                                    ownership,
+                                    working_lines,
+                                )
+                    except AtomicUnitError as e:
+                        if rendered:
+                            translate_atomic_unit_error_to_gutter_ids(e, rendered, "include from", batch_name)
+                        exit_with_error(_("Failed to include from batch '{name}': {error}").format(
+                            name=batch_name,
+                            error=str(e)
+                        ))
 
                 snapshot_file_if_untracked(file_path)
 
-                # Update index and working tree with their independently merged
-                # targets. A selected deleted-text file still represents path
-                # absence once the selected deletion leaves that destination empty.
-                index_change_type = selected_text_target_change_type(
-                    text_change_type,
-                    selected_ids,
-                    merged_index_content,
-                )
-                working_change_type = selected_text_target_change_type(
-                    text_change_type,
-                    selected_ids,
-                    merged_working_content,
-                )
-                _stage_text_file_from_batch(
-                    file_path,
-                    merged_index_content,
-                    index_file_mode,
-                    index_change_type,
-                )
-                _write_text_file_from_batch(
-                    file_path,
-                    merged_working_content,
-                    working_file_mode,
-                    working_change_type,
-                )
+                with merged_index_buffer, merged_working_buffer:
+                    index_change_type = selected_text_target_change_type(
+                        text_change_type,
+                        selected_ids,
+                        merged_index_buffer,
+                    )
+                    working_change_type = selected_text_target_change_type(
+                        text_change_type,
+                        selected_ids,
+                        merged_working_buffer,
+                    )
+                    _stage_text_file_from_batch(
+                        file_path,
+                        merged_index_buffer,
+                        index_file_mode,
+                        index_change_type,
+                    )
+                    _write_text_file_from_batch(
+                        file_path,
+                        merged_working_buffer,
+                        working_file_mode,
+                        working_change_type,
+                    )
 
             except MergeError:
                 # Merge conflict - batch created from different file version

@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Optional
 
 from ..batch.comparison import SemanticChangeKind, derive_semantic_change_runs
-from ..batch.merge import merge_batch
+from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
@@ -38,7 +39,7 @@ from ..batch.state_refs import (
 )
 from ..batch.storage import (
     add_binary_file_to_batch,
-    _build_realized_content,
+    _build_realized_buffer_from_lines,
     _remove_file_from_batch_commit,
     _update_batch_commit,
 )
@@ -50,8 +51,16 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     sifted_empty_text_path_change_type,
 )
+from ..editor import (
+    EditorBuffer,
+    buffer_byte_count,
+    buffer_matches,
+    load_git_object_as_buffer_or_empty,
+    load_working_tree_file_as_buffer,
+)
 from ..exceptions import BatchMetadataError, exit_with_error
 from ..i18n import _
+from ..utils.text import normalize_line_sequence_endings
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
     create_git_blob,
@@ -72,17 +81,17 @@ from ..utils.paths import (
 def create_synthetic_batch_source_commit(
     baseline_commit: str,
     file_path: str,
-    file_content: bytes,
+    file_buffer: EditorBuffer,
     file_mode: str = "100644",
 ) -> str:
     """Create a synthetic batch source commit for a single file.
 
     The created commit has ``baseline_commit`` as its parent, but the file at
-    ``file_path`` contains ``file_content``. Sift uses this to persist target
-    content for text files in a batch-source commit even when that content does
+    ``file_path`` contains ``file_buffer``. Sift uses this to persist target
+    buffers for text files in a batch-source commit even when that content does
     not exist as-is in history.
     """
-    blob_sha = create_git_blob([file_content])
+    blob_sha = create_git_blob(file_buffer.byte_chunks())
 
     with temp_git_index() as env:
         git_read_tree(baseline_commit, env=env)
@@ -100,19 +109,19 @@ def create_synthetic_batch_source_commit(
 def add_sifted_text_file_to_batch(
     batch_name: str,
     file_path: str,
-    target_content: bytes,
+    target_buffer: EditorBuffer,
     ownership: BatchOwnership,
     file_mode: str = "100644",
     change_type: str | None = None,
 ) -> None:
     """Persist a sifted text file into a batch.
 
-    ``target_content`` is the file content the sifted batch wants to realize
+    ``target_buffer`` is the file content the sifted batch wants to realize
     when merged with an appropriate working tree. For sifted text files, the
-    synthetic batch-source commit stores this target content directly, and the
-    batch ref stores the same target content directly.
+    synthetic batch-source commit stores this target buffer directly, and the
+    batch ref stores the same target buffer directly.
 
-    The ownership is expressed in ``target_content`` coordinate space and is
+    The ownership is expressed in ``target_buffer`` coordinate space and is
     validated separately against the working tree before this helper is called.
     """
     validate_batch_name(batch_name)
@@ -127,11 +136,11 @@ def add_sifted_text_file_to_batch(
     batch_source_commit = create_synthetic_batch_source_commit(
         baseline_commit=baseline_commit,
         file_path=file_path,
-        file_content=target_content,
+        file_buffer=target_buffer,
         file_mode=file_mode,
     )
 
-    target_blob_sha = create_git_blob([target_content])
+    target_blob_sha = create_git_blob(target_buffer.byte_chunks())
 
     metadata = read_batch_metadata(batch_name)
     if "files" not in metadata:
@@ -150,10 +159,21 @@ def add_sifted_text_file_to_batch(
     metadata_path = get_batch_metadata_file_path(batch_name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
+    source_buffers = {file_path: target_buffer}
     if text_change_type == TextFileChangeType.DELETED:
-        _remove_file_from_batch_commit(batch_name, file_path)
+        _remove_file_from_batch_commit(
+            batch_name,
+            file_path,
+            source_buffers=source_buffers,
+        )
     else:
-        _update_batch_commit(batch_name, file_path, target_blob_sha, file_mode)
+        _update_batch_commit(
+            batch_name,
+            file_path,
+            target_blob_sha,
+            file_mode,
+            source_buffers=source_buffers,
+        )
 
 
 
@@ -178,6 +198,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
 
     in_place = source_batch == dest_batch
     dest_created = False
+    retained_files = []
 
     if not in_place:
         if batch_exists(dest_batch):
@@ -205,7 +226,6 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
             "files_removed": 0,
             "files_retained": 0,
         }
-        retained_files = []
 
         for file_path, file_meta in source_files.items():
             is_binary = file_meta.get("file_type") == "binary"
@@ -244,13 +264,13 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                         dest_batch,
                         result["binary_change"],
                         file_mode=file_meta.get("mode", "100644"),
-                        file_content_override=result.get("target_content"),
+                        file_buffer_override=result.get("target_buffer"),
                     )
                 else:
                     add_sifted_text_file_to_batch(
                         batch_name=dest_batch,
                         file_path=file_path,
-                        target_content=result["target_content"],
+                        target_buffer=result["target_buffer"],
                         ownership=result["ownership"],
                         file_mode=file_meta.get("mode", "100644"),
                         change_type=result.get("change_type"),
@@ -264,6 +284,8 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                 error=e,
             )
         )
+    finally:
+        _close_sifted_results(retained_files)
 
     if stats["files_retained"] == 0:
         if in_place:
@@ -334,13 +356,13 @@ def _perform_atomic_in_place_sift(
                     temp_batch_name,
                     result["binary_change"],
                     file_mode=file_meta.get("mode", "100644"),
-                    file_content_override=result.get("target_content"),
+                    file_buffer_override=result.get("target_buffer"),
                 )
             else:
                 add_sifted_text_file_to_batch(
                     batch_name=temp_batch_name,
                     file_path=file_path,
-                    target_content=result["target_content"],
+                    target_buffer=result["target_buffer"],
                     ownership=result["ownership"],
                     file_mode=file_meta.get("mode", "100644"),
                     change_type=result.get("change_type"),
@@ -352,7 +374,11 @@ def _perform_atomic_in_place_sift(
             temp_metadata = read_batch_metadata(temp_batch_name)
             metadata_path = get_batch_metadata_file_path(batch_name)
             write_text_file_contents(metadata_path, json.dumps(temp_metadata, indent=2))
-            sync_batch_state_refs(batch_name, content_commit=commit_sha)
+            sync_batch_state_refs(
+                batch_name,
+                content_commit=commit_sha,
+                source_buffers=_source_buffers_from_sift_results(retained_files),
+            )
 
         delete_batch_state_refs(temp_batch_name)
 
@@ -360,6 +386,33 @@ def _perform_atomic_in_place_sift(
         if batch_exists(temp_batch_name):
             delete_batch(temp_batch_name)
         raise
+
+
+def _source_buffers_from_sift_results(
+    retained_files: list,
+) -> dict[str, EditorBuffer]:
+    """Return source buffers held by retained sift results."""
+    source_buffers: dict[str, EditorBuffer] = {}
+    for file_path, _file_meta, result in retained_files:
+        target_buffer = _target_buffer_from_sift_result(result)
+        if target_buffer is not None:
+            source_buffers[file_path] = target_buffer
+    return source_buffers
+
+
+def _close_sifted_results(retained_files: list) -> None:
+    """Close target buffers held by retained sift results."""
+    for _file_path, _file_meta, result in retained_files:
+        target_buffer = _target_buffer_from_sift_result(result)
+        if target_buffer is not None:
+            target_buffer.close()
+
+
+def _target_buffer_from_sift_result(result: dict) -> EditorBuffer | None:
+    target_buffer = result.get("target_buffer")
+    if isinstance(target_buffer, EditorBuffer):
+        return target_buffer
+    return None
 
 
 
@@ -396,44 +449,49 @@ def _compute_sifted_binary_file(
     batch_source_commit = file_meta["batch_source_commit"]
     change_type = file_meta["change_type"]
 
-    batch_source_result = run_git_command(
-        ["show", f"{batch_source_commit}:{file_path}"],
-        check=False,
-        text_output=False,
+    batch_source_buffer = load_git_object_as_buffer_or_empty(
+        f"{batch_source_commit}:{file_path}"
     )
-    if batch_source_result.returncode != 0:
-        batch_source_content = b""
-    else:
-        batch_source_content = batch_source_result.stdout
 
     full_path = repo_root / file_path
     working_exists = full_path.exists()
-    if working_exists:
-        working_content = full_path.read_bytes()
-    else:
-        working_content = b""
+    working_buffer = (
+        EditorBuffer.from_path(full_path)
+        if working_exists else
+        EditorBuffer.from_bytes(b"")
+    )
+    target_buffer: EditorBuffer | None = None
+    try:
+        if change_type == "deleted":
+            if not working_exists:
+                return None
+        elif change_type in ("added", "modified"):
+            if working_exists and buffer_matches(working_buffer, batch_source_buffer):
+                return None
+            target_buffer = batch_source_buffer
+            batch_source_buffer = None
 
-    if change_type == "deleted":
-        if not working_exists:
-            return None
-    elif change_type in ("added", "modified"):
-        if working_exists and working_content == batch_source_content:
-            return None
+        old_path = file_path if change_type != "added" else "/dev/null"
+        new_path = file_path if change_type != "deleted" else "/dev/null"
 
-    old_path = file_path if change_type != "added" else "/dev/null"
-    new_path = file_path if change_type != "deleted" else "/dev/null"
-
-    result = {
-        "type": "binary",
-        "binary_change": BinaryFileChange(
-            old_path=old_path,
-            new_path=new_path,
-            change_type=change_type,
-        ),
-    }
-    if change_type != "deleted":
-        result["target_content"] = batch_source_content
-    return result
+        result = {
+            "type": "binary",
+            "binary_change": BinaryFileChange(
+                old_path=old_path,
+                new_path=new_path,
+                change_type=change_type,
+            ),
+        }
+        if target_buffer is not None:
+            result["target_buffer"] = target_buffer
+            target_buffer = None
+        return result
+    finally:
+        if batch_source_buffer is not None:
+            batch_source_buffer.close()
+        working_buffer.close()
+        if target_buffer is not None:
+            target_buffer.close()
 
 
 
@@ -446,103 +504,90 @@ def _compute_sifted_text_file(
     """Compute a sifted text file result.
 
     Returns a destination ownership in target-content coordinate space plus the
-    target content itself.
+    target buffer itself.
     """
     batch_source_commit = file_meta["batch_source_commit"]
     change_type = normalized_text_change_type(file_meta.get("change_type"))
-
-    batch_source_result = run_git_command(
-        ["show", f"{batch_source_commit}:{file_path}"],
-        check=False,
-        text_output=False,
-    )
-    if batch_source_result.returncode != 0:
-        batch_source_content = b""
-    else:
-        batch_source_content = batch_source_result.stdout
-
     baseline_commit = get_batch_baseline_commit(source_batch)
-    if baseline_commit:
-        baseline_result = run_git_command(
-            ["show", f"{baseline_commit}:{file_path}"],
-            check=False,
-            text_output=False,
-        )
-        if baseline_result.returncode == 0:
-            baseline_content = baseline_result.stdout
-        else:
-            baseline_content = b""
-    else:
-        baseline_content = b""
-
     full_path = repo_root / file_path
-    if full_path.exists():
-        working_content = full_path.read_bytes()
-    else:
-        working_content = b""
-
-    source_ownership = BatchOwnership.from_metadata_dict(file_meta)
-    target_content = _build_realized_content(
-        baseline_content,
-        batch_source_content,
-        source_ownership,
-    )
-
-    target_exists = change_type != TextFileChangeType.DELETED
     working_exists = full_path.exists()
-    if target_exists == working_exists and working_content == target_content:
-        return None
 
-    new_ownership = build_ownership_from_working_to_target_delta(
-        working_content=working_content,
-        target_content=target_content,
+    batch_source_buffer = load_git_object_as_buffer_or_empty(
+        f"{batch_source_commit}:{file_path}"
     )
-    if new_ownership is None or new_ownership.is_empty():
-        result_change_type = sifted_empty_text_path_change_type(
-            change_type,
-            target_exists=target_exists,
-            working_exists=working_exists,
-            target_content=target_content,
-            ownership_is_empty=True,
+    baseline_buffer = (
+        load_git_object_as_buffer_or_empty(f"{baseline_commit}:{file_path}")
+        if baseline_commit is not None else
+        EditorBuffer.from_bytes(b"")
+    )
+    working_buffer = load_working_tree_file_as_buffer(file_path)
+    target_buffer: EditorBuffer | None = None
+
+    with (
+        batch_source_buffer,
+        baseline_buffer,
+        working_buffer,
+        BatchOwnership.acquire_for_metadata_dict(file_meta) as source_ownership,
+    ):
+        target_buffer = _build_realized_buffer_from_lines(
+            baseline_buffer,
+            batch_source_buffer,
+            source_ownership,
         )
-        if result_change_type == TextFileChangeType.MODIFIED:
-            return None
-        new_ownership = BatchOwnership([], [])
-    else:
-        result_change_type = change_type
+        try:
+            target_exists = change_type != TextFileChangeType.DELETED
+            if target_exists == working_exists and buffer_matches(
+                working_buffer,
+                target_buffer,
+            ):
+                return None
 
-    _validate_sifted_text_file_result(
-        target_content=target_content,
-        dest_ownership=new_ownership,
-        working_content=working_content,
-    )
+            working_lines = normalize_line_sequence_endings(working_buffer)
+            target_lines = normalize_line_sequence_endings(target_buffer)
 
-    return {
-        "type": "text",
-        "ownership": new_ownership,
-        "target_content": target_content,
-        "change_type": result_change_type.value,
-    }
+            new_ownership = build_ownership_from_working_and_target_lines(
+                working_lines=working_lines,
+                target_lines=target_lines,
+            )
+            if new_ownership is None or new_ownership.is_empty():
+                result_change_type = sifted_empty_text_path_change_type(
+                    change_type,
+                    target_exists=target_exists,
+                    working_exists=working_exists,
+                    target_content=target_buffer,
+                    ownership_is_empty=True,
+                )
+                if result_change_type == TextFileChangeType.MODIFIED:
+                    return None
+                new_ownership = BatchOwnership([], [])
+            else:
+                result_change_type = change_type
+
+            validate_sifted_text_file_result_from_lines(
+                target_lines=target_lines,
+                dest_ownership=new_ownership,
+                working_lines=working_lines,
+            )
+
+            returned_target_buffer = target_buffer
+            target_buffer = None
+            return {
+                "type": "text",
+                "ownership": new_ownership,
+                "target_buffer": returned_target_buffer,
+                "change_type": result_change_type.value,
+            }
+        finally:
+            if target_buffer is not None:
+                target_buffer.close()
 
 
 
-def build_ownership_from_working_to_target_delta(
-    working_content: bytes,
-    target_content: bytes,
+def build_ownership_from_working_and_target_lines(
+    working_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
 ) -> Optional[BatchOwnership]:
-    """Build ownership describing changes needed to turn working into target."""
-    working_normalized = working_content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-    target_normalized = target_content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-
-    if working_normalized:
-        working_lines = working_normalized.splitlines(keepends=True)
-    else:
-        working_lines = []
-
-    if target_normalized:
-        target_lines = target_normalized.splitlines(keepends=True)
-    else:
-        target_lines = []
+    """Build ownership from normalized working and target byte-line sequences."""
 
     semantic_runs = derive_semantic_change_runs(
         source_lines=working_lines,
@@ -592,19 +637,13 @@ def build_ownership_from_working_to_target_delta(
     )
 
 
-
-def _validate_sifted_text_file_result(
-    target_content: bytes,
+def validate_sifted_text_file_result_from_lines(
+    target_lines: Sequence[bytes],
     dest_ownership: BatchOwnership,
-    working_content: bytes,
+    working_lines: Sequence[bytes],
 ) -> None:
-    """Validate that a sifted destination representation is semantically correct."""
+    """Validate a sifted representation against normalized byte-line sequences."""
     resolved = dest_ownership.resolve()
-    target_normalized = target_content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-    if target_normalized:
-        target_lines = target_normalized.splitlines(keepends=True)
-    else:
-        target_lines = []
 
     for claimed_line in resolved.presence_line_set:
         if claimed_line < 1 or claimed_line > len(target_lines):
@@ -624,19 +663,21 @@ def _validate_sifted_text_file_result(
             raise MergeError("Sift validation failed: deletion claim has empty content")
 
     try:
-        reconstructed = merge_batch(
-            batch_source_content=target_content,
-            ownership=dest_ownership,
-            working_content=working_content,
+        reconstructed_buffer = merge_batch_from_line_sequences_as_buffer(
+            target_lines,
+            dest_ownership,
+            working_lines,
         )
     except MergeError as e:
         raise MergeError(
             f"Sift validation failed: destination representation cannot be merged: {e}"
         ) from e
 
-    if reconstructed != target_content:
-        raise MergeError(
-            f"Sift validation failed: applying destination representation does not produce "
-            f"the expected target content. Expected {len(target_content)} bytes, got "
-            f"{len(reconstructed)} bytes."
-        )
+    with reconstructed_buffer as reconstructed:
+        if not buffer_matches(reconstructed, target_lines):
+            target_byte_count = buffer_byte_count(target_lines)
+            raise MergeError(
+                f"Sift validation failed: applying destination representation does not produce "
+                f"the expected target content. Expected {target_byte_count} bytes, got "
+                f"{reconstructed.byte_count} bytes."
+            )

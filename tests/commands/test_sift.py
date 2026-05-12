@@ -1,24 +1,115 @@
 """Tests for sift command."""
 
-from git_stage_batch.batch.merge import merge_batch
+from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
 
 import subprocess
 import pytest
 
 from git_stage_batch.batch.validation import batch_exists
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.include import command_include_to_batch
 import git_stage_batch.commands.sift as sift_module
-from git_stage_batch.commands.sift import command_sift_batch
+from git_stage_batch.commands.sift import (
+    add_sifted_text_file_to_batch,
+    build_ownership_from_working_and_target_lines,
+    command_sift_batch,
+    validate_sifted_text_file_result_from_lines,
+)
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch import add_binary_file_to_batch, read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.exceptions import CommandError, MergeError
+
+
+def merge_batch(
+    batch_source_content: bytes,
+    ownership: BatchOwnership,
+    working_content: bytes,
+) -> bytes:
+    """Return merged bytes through the buffer-returning production API."""
+    with (
+        EditorBuffer.from_bytes(batch_source_content) as source_lines,
+        EditorBuffer.from_bytes(working_content) as working_lines,
+        merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            working_lines,
+        ) as buffer,
+    ):
+        return buffer.to_bytes()
+
+
+def _reject_materialized_ownership_metadata(monkeypatch):
+    def fail_from_metadata_dict(cls, data):
+        raise AssertionError("sift should use acquired ownership metadata")
+
+    monkeypatch.setattr(
+        BatchOwnership,
+        "from_metadata_dict",
+        classmethod(fail_from_metadata_dict),
+        raising=False,
+    )
+
+
+def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
+    """Sift ownership derivation accepts indexed byte-line sequences."""
+    working_lines = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+    target_lines = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+
+    ownership = build_ownership_from_working_and_target_lines(
+        working_lines,
+        target_lines,
+    )
+
+    assert ownership is not None
+    resolved = ownership.resolve()
+    assert resolved.presence_line_set == {2}
+    assert len(resolved.deletion_claims) == 1
+    assert resolved.deletion_claims[0].content_lines == [b"old\n"]
+
+
+def test_validate_sifted_result_accepts_non_list_line_sequences(line_sequence):
+    """Sift validation accepts indexed byte-line sequences."""
+    target_lines = line_sequence([b"line1\n", b"new\n", b"line3\n"])
+    working_lines = line_sequence([b"line1\n", b"old\n", b"line3\n"])
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            DeletionClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+            ),
+        ],
+    )
+
+    validate_sifted_text_file_result_from_lines(
+        target_lines,
+        ownership,
+        working_lines,
+    )
+
+
+def test_add_sifted_text_file_to_batch_persists_target_buffer(temp_git_repo):
+    """Sifted text persistence streams the target buffer into batch storage."""
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+
+    with EditorBuffer.from_chunks([b"# Test\n", b"added\n"]) as target_buffer:
+        add_sifted_text_file_to_batch(
+            "sifted-batch",
+            "README.md",
+            target_buffer,
+            ownership,
+        )
+
+    assert read_file_from_batch("sifted-batch", "README.md") == "# Test\nadded\n"
+    metadata = read_batch_metadata("sifted-batch")
+    assert "batch_source_commit" in metadata["files"]["README.md"]
 
 
 @pytest.fixture
@@ -78,10 +169,32 @@ class TestSiftBasicBehavior:
         # Verify the ownership reflects only the needed change
         metadata = read_batch_metadata("sifted-batch")
         file_meta = metadata["files"]["README.md"]
-        ownership = BatchOwnership.from_metadata_dict(file_meta)
-        resolved = ownership.resolve()
-        # Should claim line 3 (Line B modified) but not line 2 (Line A modified already present)
-        assert 3 in resolved.presence_line_set
+        with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+            resolved = ownership.resolve()
+            # Should claim line 3 (Line B modified) but not line 2 (Line A modified already present)
+            assert 3 in resolved.presence_line_set
+
+    def test_sift_uses_scoped_ownership_metadata(self, temp_git_repo, monkeypatch):
+        """Sift should not require materialized ownership metadata."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("old\nkeep\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add readme"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        readme.write_text("new\nkeep\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("source-batch")
+
+        readme.write_text("old\nkeep\n")
+        _reject_materialized_ownership_metadata(monkeypatch)
+
+        command_sift_batch("source-batch", "sifted-batch")
+
+        metadata = read_batch_metadata("sifted-batch")
+        file_meta = metadata["files"]["README.md"]
+        assert "presence_claims" in file_meta
+        assert "deletions" in file_meta
 
     def test_sift_empty_when_all_present(self, temp_git_repo):
         """Test that sift produces empty batch when all changes are present."""
@@ -799,15 +912,13 @@ class TestSiftPersistenceModel:
             # Get working content
             working_content = readme.read_bytes()
 
-            # Build ownership
-            ownership = BatchOwnership.from_metadata_dict(file_meta)
-
-            # Merge should produce the realized target
-            merged = merge_batch(
-                batch_source_content=batch_source_content,
-                ownership=ownership,
-                working_content=working_content
-            )
+            with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+                # Merge should produce the realized target
+                merged = merge_batch(
+                    batch_source_content=batch_source_content,
+                    ownership=ownership,
+                    working_content=working_content
+                )
 
             # Should produce the full realized content (both lineX and lineY)
             assert b"lineX" in merged

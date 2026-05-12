@@ -155,19 +155,6 @@ def _build_file_comparison_from_lines(
     )
 
 
-def compare_baseline_to_working_tree(file_path: str) -> FileComparison:
-    """Compare HEAD:file to the working tree directly."""
-    baseline_buffer = load_git_object_as_buffer_or_empty(f"HEAD:{file_path}")
-    working_tree_buffer = load_working_tree_file_as_buffer(file_path)
-
-    with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
-        return _build_file_comparison_from_lines(
-            file_path,
-            baseline_lines=list(baseline_lines),
-            working_tree_lines=list(working_tree_lines),
-        )
-
-
 def enumerate_units_from_file_comparison(
     comparison: FileComparison,
     units_map: dict[str, AttributionUnit],

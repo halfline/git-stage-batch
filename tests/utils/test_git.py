@@ -1,6 +1,7 @@
 """Tests for git command execution utilities."""
 
 from git_stage_batch.utils.git import stream_git_command
+from git_stage_batch.utils.git import stream_git_diff
 from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
 from git_stage_batch.utils.git import read_gitignore_lines
 from git_stage_batch.utils.git import get_gitignore_path
@@ -130,6 +131,75 @@ class TestStreamGitCommand:
         with pytest.raises(subprocess.CalledProcessError):
             # Consume the entire stream to trigger error check
             list(stream_git_command(["invalid-command"]))
+
+
+class TestStreamGitDiff:
+    """Tests for stream_git_diff function."""
+
+    def test_stream_git_diff_reads_cached_diff(self, temp_git_repo):
+        """Test streaming a cached diff through keyword arguments."""
+        test_file = temp_git_repo / "cached.txt"
+        test_file.write_text("cached line\n")
+        subprocess.run(
+            ["git", "add", "cached.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        lines = list(stream_git_diff(cached=True, context_lines=0))
+
+        assert any(line == b"+++ b/cached.txt\n" for line in lines)
+        assert any(line == b"+cached line\n" for line in lines)
+
+    def test_stream_git_diff_accepts_base_target_and_paths(self, temp_git_repo):
+        """Test streaming a path-filtered diff between two commits."""
+        readme = temp_git_repo / "README.md"
+        other_file = temp_git_repo / "other.txt"
+        readme.write_text("# Changed\n")
+        other_file.write_text("other\n")
+        subprocess.run(
+            ["git", "add", "README.md", "other.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Update files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        lines = list(
+            stream_git_diff(
+                base="HEAD~1",
+                target="HEAD",
+                context_lines=0,
+                paths=["README.md"],
+            )
+        )
+
+        assert any(line == b"diff --git a/README.md b/README.md\n" for line in lines)
+        assert any(line == b"+# Changed\n" for line in lines)
+        assert not any(b"other.txt" in line for line in lines)
+
+    def test_stream_git_diff_disables_color_by_default(self, temp_git_repo):
+        """Test default diff output remains uncolored."""
+        run_git_command(["config", "color.ui", "always"])
+        test_file = temp_git_repo / "color.txt"
+        test_file.write_text("color line\n")
+        subprocess.run(
+            ["git", "add", "color.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        lines = list(stream_git_diff(cached=True))
+
+        assert lines
+        assert not any(b"\x1b[" in line for line in lines)
 
 
 class TestGitIndexPlumbing:

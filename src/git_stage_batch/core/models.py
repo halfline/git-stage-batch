@@ -47,13 +47,6 @@ class SingleHunkPatch:
     new_path: str
     lines: list[bytes]  # includes ---/+++ and a single @@ hunk body, with \n terminators
 
-    def to_patch_bytes(self) -> bytes:
-        """Convert the patch to unified diff bytes format.
-
-        Lines already include their \\n terminators, so we just join them.
-        """
-        return b"".join(self.lines)
-
 
 @dataclass
 class BinaryFileChange:

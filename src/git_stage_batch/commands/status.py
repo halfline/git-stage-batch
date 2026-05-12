@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from ..batch.query import read_batch_metadata
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
 from ..core.diff_parser import parse_unified_diff_streaming
 from ..core.models import BinaryFileChange
 from ..data.file_review_state import (
@@ -35,7 +35,12 @@ from ..data.line_state import load_line_changes_from_state
 from ..data.session import get_iteration_count
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.file_io import read_file_paths_file, read_text_file_contents
+from ..utils.file_io import (
+    count_nonblank_text_file_lines,
+    stream_text_file_lines,
+    read_file_paths_file,
+    read_text_file_line_set,
+)
 from ..utils.git import require_git_repository, run_git_command, stream_git_command
 from ..utils.paths import (
     get_block_list_file_path,
@@ -86,8 +91,7 @@ def estimate_remaining_hunks() -> int:
         Number of hunks not yet included, skipped, or discarded
     """
     # Filter out blocked hunks
-    blocklist_content = read_text_file_contents(get_block_list_file_path())
-    blocked_hashes = set(blocklist_content.splitlines()) if blocklist_content else set()
+    blocked_hashes = read_text_file_line_set(get_block_list_file_path())
 
     # Filter out hunks from blocked files
     blocked_files = read_file_paths_file(get_blocked_files_file_path())
@@ -99,7 +103,7 @@ def estimate_remaining_hunks() -> int:
                 hunk_hash = compute_binary_file_hash(patch)
                 file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
             else:
-                hunk_hash = compute_stable_hunk_hash(patch.to_patch_bytes())
+                hunk_hash = compute_stable_hunk_hash_from_lines(patch.lines)
                 file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
             file_path = file_path.removeprefix("a/").removeprefix("b/")
 
@@ -301,16 +305,13 @@ def _read_status_summary() -> dict:
     """Read the complete machine-readable status summary for an active session."""
     iteration = get_iteration_count()
 
-    included_content = read_text_file_contents(get_included_hunks_file_path())
-    included_count = len([h for h in included_content.splitlines() if h.strip()])
-
-    discarded_content = read_text_file_contents(get_discarded_hunks_file_path())
-    discarded_count = len([h for h in discarded_content.splitlines() if h.strip()])
+    included_count = count_nonblank_text_file_lines(get_included_hunks_file_path())
+    discarded_count = count_nonblank_text_file_lines(get_discarded_hunks_file_path())
 
     skipped_hunks = []
     jsonl_path = get_skipped_hunks_jsonl_file_path()
     if jsonl_path.exists():
-        for line in read_text_file_contents(jsonl_path).splitlines():
+        for line in stream_text_file_lines(jsonl_path):
             if line.strip():
                 try:
                     skipped_hunks.append(json.loads(line))

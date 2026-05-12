@@ -46,6 +46,11 @@ def _build_target_index_content_text(
     return result.decode("utf-8", errors="surrogateescape")
 
 
+def _update_index_with_bytes(path: str, data: bytes) -> None:
+    with EditorBuffer.from_bytes(data) as buffer:
+        update_index_with_blob_buffer(path, buffer)
+
+
 def _build_target_working_tree_content_text(
     line_changes: LineLevelChange,
     discard_ids: set[int],
@@ -1221,7 +1226,7 @@ class TestUpdateIndexWithBlobContent:
         subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Update index with new file
-        update_index_with_blob_buffer("newfile.txt", b"new content\n")
+        _update_index_with_bytes("newfile.txt", b"new content\n")
 
         # Verify it's in the index
         result = subprocess.run(
@@ -1253,7 +1258,7 @@ class TestUpdateIndexWithBlobContent:
         subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Update the index (not working tree)
-        update_index_with_blob_buffer("file.txt", b"modified\n")
+        _update_index_with_bytes("file.txt", b"modified\n")
 
         # Verify index content changed
         result = subprocess.run(
@@ -1289,7 +1294,7 @@ class TestUpdateIndexWithBlobContent:
         original_mode = result.stdout.split()[0]
 
         # Update content
-        update_index_with_blob_buffer("script.sh", b"#!/bin/bash\necho goodbye\n")
+        _update_index_with_bytes("script.sh", b"#!/bin/bash\necho goodbye\n")
 
         # Verify mode is preserved
         result = subprocess.run(
@@ -1312,7 +1317,7 @@ class TestUpdateIndexWithBlobContent:
         subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Add new file
-        update_index_with_blob_buffer("newfile.txt", b"content\n")
+        _update_index_with_bytes("newfile.txt", b"content\n")
 
         # Check mode
         result = subprocess.run(

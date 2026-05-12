@@ -277,7 +277,8 @@ class TestMergeLineSequences:
 
         assert region is not None
         assert region.kind == RegionKind.REPLACE_BY_HUNK
-        assert region.baseline_lines == [b"old\n"]
+        assert tuple(region.baseline_lines) == (b"old\n",)
+        assert not isinstance(region.baseline_lines, list)
 
     def test_can_merge_accepts_non_list_sequences(self, line_sequence):
         """Mergeability probes accept indexed line sequences."""

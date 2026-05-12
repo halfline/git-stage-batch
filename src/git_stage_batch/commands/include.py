@@ -36,6 +36,7 @@ from ..core.diff_parser import (
     parse_unified_diff_streaming,
 )
 from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
 from ..core.line_selection import (
     format_line_ids,
     parse_line_selection,
@@ -608,8 +609,7 @@ def command_include_file(
             if target_file not in patch_paths:
                 continue
 
-            patch_bytes = patch.to_patch_bytes()
-            patch_hash = compute_stable_hunk_hash(patch_bytes)
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
             if patch.old_path != patch.new_path:
                 result = run_git_command(["add", "--", *sorted(patch_paths)], check=False)
@@ -625,7 +625,7 @@ def command_include_file(
             stderr_chunks = []
             exit_code = 0
 
-            for event in stream_command(["git", "apply", "--cached"], [patch_bytes]):
+            for event in stream_command(["git", "apply", "--cached"], patch.lines):
                 if isinstance(event, ExitEvent):
                     exit_code = event.exit_code
                 elif isinstance(event, OutputEvent):

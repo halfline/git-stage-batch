@@ -8,6 +8,7 @@ import tempfile
 import subprocess
 import sys
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from enum import Enum
 from hashlib import sha256
@@ -36,6 +37,7 @@ from ..core.diff_parser import (
 )
 from ..editor import (
     EditorBuffer,
+    buffer_matches,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
     write_buffer_to_path,
@@ -46,7 +48,6 @@ from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_binary_file_change
 from .consumed_selections import read_consumed_file_metadata
 from ..utils.file_io import (
-    read_file_bytes,
     read_file_paths_file,
     read_text_file_line_set,
     read_text_file_contents,
@@ -1640,32 +1641,34 @@ def snapshots_are_stale(file_path: str) -> bool:
     if not snapshot_base_path.exists() or not snapshot_new_path.exists():
         return True
 
-    # Read cached snapshots as bytes so non-UTF-8 content compares exactly.
-    cached_index_content = read_file_bytes(snapshot_base_path)
-    cached_worktree_content = read_file_bytes(snapshot_new_path)
-
-    # Get selected file content from index
     try:
-        result = run_git_command(["show", f":{file_path}"], check=False, text_output=False)
-        if result.returncode != 0:
-            # File not in index (was deleted, or never added)
-            selected_index_content = b""
-        else:
-            selected_index_content = result.stdout
+        with ExitStack() as stack:
+            cached_index_content = stack.enter_context(
+                EditorBuffer.from_path(snapshot_base_path)
+            )
+            cached_worktree_content = stack.enter_context(
+                EditorBuffer.from_path(snapshot_new_path)
+            )
+
+            selected_index_content = load_git_object_as_buffer(f":{file_path}")
+            if selected_index_content is None:
+                selected_index_content = EditorBuffer.from_bytes(b"")
+            stack.enter_context(selected_index_content)
+
+            repo_root = get_git_repository_root_path()
+            file_full_path = repo_root / file_path
+            if file_full_path.exists():
+                selected_worktree_content = EditorBuffer.from_path(file_full_path)
+            else:
+                selected_worktree_content = EditorBuffer.from_bytes(b"")
+            stack.enter_context(selected_worktree_content)
+
+            return (
+                not buffer_matches(cached_index_content, selected_index_content)
+                or not buffer_matches(cached_worktree_content, selected_worktree_content)
+            )
     except Exception:
         return True  # Error reading means state is stale
-
-    # Get selected file content from working tree
-    repo_root = get_git_repository_root_path()
-    file_full_path = repo_root / file_path
-    try:
-        selected_worktree_content = read_file_bytes(file_full_path) if file_full_path.exists() else b""
-    except Exception:
-        return True  # Error reading means state is stale
-
-    # Compare snapshots with selected state
-    return (cached_index_content != selected_index_content or
-            cached_worktree_content != selected_worktree_content)
 
 
 def require_selected_hunk() -> None:

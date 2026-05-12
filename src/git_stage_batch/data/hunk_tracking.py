@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import subprocess
 import sys
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from enum import Enum
 from hashlib import sha256
+from pathlib import Path
 from typing import Generator, Mapping, Optional, Union
 
 from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
@@ -90,6 +92,23 @@ _BATCH_MERGE_REVIEW_ACTIONS = (
 _BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
 
 
+@dataclass
+class SelectedChangeStateSnapshot:
+    """Temporary file copy of selected change state."""
+
+    paths: dict[str, Path | None]
+    temporary_directory: tempfile.TemporaryDirectory
+
+    def close(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def __enter__(self) -> SelectedChangeStateSnapshot:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+
 class SelectedChangeClearReason(str, Enum):
     """Reasons selected change state was intentionally cleared."""
 
@@ -113,23 +132,36 @@ def _selected_change_state_paths():
     }
 
 
-def snapshot_selected_change_state() -> dict[str, bytes | None]:
+def snapshot_selected_change_state() -> SelectedChangeStateSnapshot:
     """Capture the current selected change cache."""
-    return {
-        name: (read_file_bytes(path) if path.exists() else None)
-        for name, path in _selected_change_state_paths().items()
-    }
+    temporary_directory = tempfile.TemporaryDirectory()
+    snapshot_root = Path(temporary_directory.name)
+    snapshot_paths: dict[str, Path | None] = {}
+
+    for name, path in _selected_change_state_paths().items():
+        if not path.exists():
+            snapshot_paths[name] = None
+            continue
+
+        snapshot_path = snapshot_root / name
+        shutil.copyfile(path, snapshot_path)
+        snapshot_paths[name] = snapshot_path
+
+    return SelectedChangeStateSnapshot(
+        paths=snapshot_paths,
+        temporary_directory=temporary_directory,
+    )
 
 
-def restore_selected_change_state(snapshot: dict[str, bytes | None]) -> None:
+def restore_selected_change_state(snapshot: SelectedChangeStateSnapshot) -> None:
     """Restore a previously captured selected change cache."""
     for name, path in _selected_change_state_paths().items():
-        data = snapshot.get(name)
-        if data is None:
+        snapshot_path = snapshot.paths.get(name)
+        if snapshot_path is None:
             path.unlink(missing_ok=True)
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
+            shutil.copyfile(snapshot_path, path)
 
 
 def clear_selected_change_state_files() -> None:

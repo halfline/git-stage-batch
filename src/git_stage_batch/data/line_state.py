@@ -38,6 +38,7 @@ def convert_line_changes_to_serializable_dict(line_changes: LineLevelChange) -> 
                 "text_bytes_b64": b64encode(line_entry.text_bytes).decode("ascii"),
                 "text": line_entry.text,
                 "source_line": line_entry.source_line,
+                "has_trailing_newline": line_entry.has_trailing_newline,
             }
             for line_entry in line_changes.lines
         ],
@@ -69,7 +70,8 @@ def load_line_changes_from_state() -> Optional[LineLevelChange]:
                                new_line_number=le["new_lineno"],
                                text_bytes=text_bytes,
                                text=text_bytes.decode("utf-8", errors="replace"),
-                               source_line=le.get("source_line")))
+                               source_line=le.get("source_line"),
+                               has_trailing_newline=le.get("has_trailing_newline", True)))
     return LineLevelChange(path=data["path"], header=header, lines=lines)
 
 

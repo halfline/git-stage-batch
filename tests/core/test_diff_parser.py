@@ -9,6 +9,7 @@ import pytest
 
 from git_stage_batch.core.diff_parser import (
     build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
 )
@@ -336,6 +337,26 @@ class TestBuildLineLevelChangeFromPatchText:
         changed_ids = line_changes.changed_line_ids()
         # Should have 4 changed lines (2 deletions + 2 additions)
         assert len(changed_ids) == 4
+
+    def test_build_line_changes_from_line_iterable_matches_list(self):
+        """Patch line iterables produce the same line changes as lists."""
+        patch_bytes = b"""--- a/code.js
++++ b/code.js
+@@ -1,3 +1,3 @@
+ context
+-old line
++new line
+ tail
+"""
+
+        line_changes_from_list = build_line_changes_from_patch_lines(
+            patch_bytes.splitlines(keepends=True)
+        )
+        line_changes_from_lines = build_line_changes_from_patch_lines(
+            line for line in patch_bytes.splitlines(keepends=True)
+        )
+
+        assert line_changes_from_lines == line_changes_from_list
 
 
 class TestWriteSnapshotsForCurrentFilePath:

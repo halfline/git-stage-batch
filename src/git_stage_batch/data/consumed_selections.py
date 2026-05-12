@@ -58,26 +58,57 @@ def record_consumed_selection(
     files = metadata.setdefault("files", {})
     existing_file_metadata = read_consumed_file_metadata(file_path)
 
+    def persist_selection(
+        *,
+        batch_source_commit: str,
+        ownership: BatchOwnership,
+    ) -> None:
+        files[file_path] = {
+            "batch_source_commit": batch_source_commit,
+            **ownership.to_metadata_dict(),
+        }
+        existing_replacement_masks = (
+            existing_file_metadata.get("replacement_masks", [])
+            if existing_file_metadata else
+            []
+        )
+        if replacement_mask is not None:
+            replacement_masks = existing_replacement_masks[:]
+            replacement_masks.append(replacement_mask)
+            files[file_path]["replacement_masks"] = replacement_masks
+        elif existing_replacement_masks:
+            files[file_path]["replacement_masks"] = existing_replacement_masks
+        write_text_file_contents(
+            get_session_consumed_selections_file_path(),
+            json.dumps(metadata, ensure_ascii=False, indent=2),
+        )
+
     if existing_file_metadata is not None:
-        existing_ownership = BatchOwnership.from_metadata_dict(existing_file_metadata)
-        batch_source_commit = existing_file_metadata["batch_source_commit"]
-        if detect_stale_batch_source_for_selection(selected_lines):
-            with advance_batch_source_for_file_with_provenance(
-                batch_name="consumed-selections",
-                file_path=file_path,
-                old_batch_source_commit=batch_source_commit,
-                existing_ownership=existing_ownership,
-            ) as advance_result:
-                batch_source_commit = advance_result.batch_source_commit
-                existing_ownership = advance_result.ownership
-                selected_lines = _refresh_selected_lines_against_source_lines(
-                    selected_lines,
-                    source_lines=advance_result.source_buffer,
-                    working_lines=(),
-                    working_line_map=advance_result.working_line_map,
-                )
-        new_ownership = translate_lines_to_batch_ownership(selected_lines)
-        merged_ownership = merge_batch_ownership(existing_ownership, new_ownership)
+        with BatchOwnership.acquire_for_metadata_dict(
+            existing_file_metadata
+        ) as existing_ownership:
+            batch_source_commit = existing_file_metadata["batch_source_commit"]
+            if detect_stale_batch_source_for_selection(selected_lines):
+                with advance_batch_source_for_file_with_provenance(
+                    batch_name="consumed-selections",
+                    file_path=file_path,
+                    old_batch_source_commit=batch_source_commit,
+                    existing_ownership=existing_ownership,
+                ) as advance_result:
+                    batch_source_commit = advance_result.batch_source_commit
+                    existing_ownership = advance_result.ownership
+                    selected_lines = _refresh_selected_lines_against_source_lines(
+                        selected_lines,
+                        source_lines=advance_result.source_buffer,
+                        working_lines=(),
+                        working_line_map=advance_result.working_line_map,
+                    )
+            new_ownership = translate_lines_to_batch_ownership(selected_lines)
+            persist_selection(
+                batch_source_commit=batch_source_commit,
+                ownership=merge_batch_ownership(existing_ownership, new_ownership),
+            )
+            return
     else:
         if detect_stale_batch_source_for_selection(selected_lines):
             selected_lines = _refresh_selected_lines_against_new_source(selected_lines)
@@ -87,18 +118,7 @@ def record_consumed_selection(
             file_buffer_override=source_buffer,
         )
 
-    files[file_path] = {
-        "batch_source_commit": batch_source_commit,
-        **merged_ownership.to_metadata_dict(),
-    }
-    existing_replacement_masks = existing_file_metadata.get("replacement_masks", []) if existing_file_metadata else []
-    if replacement_mask is not None:
-        replacement_masks = existing_replacement_masks[:]
-        replacement_masks.append(replacement_mask)
-        files[file_path]["replacement_masks"] = replacement_masks
-    elif existing_replacement_masks:
-        files[file_path]["replacement_masks"] = existing_replacement_masks
-    write_text_file_contents(
-        get_session_consumed_selections_file_path(),
-        json.dumps(metadata, ensure_ascii=False, indent=2),
+    persist_selection(
+        batch_source_commit=batch_source_commit,
+        ownership=merged_ownership,
     )

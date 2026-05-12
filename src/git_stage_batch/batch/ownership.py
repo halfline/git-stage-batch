@@ -11,6 +11,8 @@ from ..core.models import LineEntry
 from ..data.batch_sources import create_batch_source_commit
 from ..editor import (
     EditorBuffer,
+    buffer_byte_chunks,
+    load_git_blob_as_buffer,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
@@ -104,8 +106,7 @@ class DeletionClaim:
 
     def to_dict(self) -> dict:
         """Serialize to metadata dictionary."""
-        blob_content = b"".join(self.content_lines)
-        blob_sha = create_git_blob([blob_content])
+        blob_sha = create_git_blob(buffer_byte_chunks(self.content_lines))
         data = {
             "after_source_line": self.anchor_line,
             "blob": blob_sha
@@ -119,16 +120,20 @@ class DeletionClaim:
         cls,
         data: dict,
         blob_contents: dict[str, bytes] | None = None,
+        blob_buffers: dict[str, EditorBuffer] | None = None,
     ) -> DeletionClaim:
         """Deserialize from metadata dictionary."""
         anchor_line = data.get("after_source_line")
         blob_sha = data["blob"]
-        blob_content = (
-            blob_contents[blob_sha]
-            if blob_contents is not None and blob_sha in blob_contents
-            else b"".join(read_git_blob(blob_sha))
-        )
-        content_lines = blob_content.splitlines(keepends=True)
+        if blob_buffers is not None and blob_sha in blob_buffers:
+            content_lines = blob_buffers[blob_sha]
+        else:
+            blob_content = (
+                blob_contents[blob_sha]
+                if blob_contents is not None and blob_sha in blob_contents
+                else b"".join(read_git_blob(blob_sha))
+            )
+            content_lines = blob_content.splitlines(keepends=True)
         baseline_metadata = data.get("baseline_reference")
         baseline_reference = (
             BaselineReference.from_dict(baseline_metadata, blob_contents)
@@ -226,6 +231,24 @@ def _presence_claim_reference_blob_ids(presence_metadata: list[dict]) -> list[st
             )
         )
     return blob_ids
+
+
+def _deletion_content_blob_ids(deletion_metadata: list[dict]) -> list[str]:
+    return [
+        metadata["blob"]
+        for metadata in deletion_metadata
+        if "blob" in metadata
+    ]
+
+
+def _deletion_reference_blob_ids(deletion_metadata: list[dict]) -> list[str]:
+    return [
+        blob_id
+        for metadata in deletion_metadata
+        for blob_id in _baseline_reference_blob_ids(
+            metadata.get("baseline_reference", {})
+        )
+    ]
 
 
 @dataclass
@@ -363,20 +386,68 @@ class BatchOwnership:
         """Create from metadata dictionary."""
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
-        legacy_claimed_lines = data.get("claimed_lines", [])
         blob_contents = read_git_blobs_as_bytes(
             [
-                *(d["blob"] for d in deletion_metadata if "blob" in d),
-                *(
-                    blob_id
-                    for d in deletion_metadata
-                    for blob_id in _baseline_reference_blob_ids(
-                        d.get("baseline_reference", {})
-                    )
-                ),
+                *_deletion_content_blob_ids(deletion_metadata),
+                *_deletion_reference_blob_ids(deletion_metadata),
                 *_presence_claim_reference_blob_ids(presence_metadata),
             ]
         )
+        return cls._from_metadata_dict(
+            data,
+            blob_contents=blob_contents,
+        )
+
+    @classmethod
+    def acquire_for_metadata_dict(
+        cls,
+        data: dict,
+    ) -> _BatchOwnershipBuildContext:
+        """Acquire ownership for metadata with buffered deletion blobs."""
+        deletion_metadata = data.get("deletions", [])
+        presence_metadata = data.get("presence_claims", [])
+        blob_buffers: dict[str, EditorBuffer] = {}
+        buffers: list[EditorBuffer] = []
+        try:
+            for blob_sha in _deletion_content_blob_ids(deletion_metadata):
+                if blob_sha in blob_buffers:
+                    continue
+                buffer = load_git_blob_as_buffer(blob_sha)
+                blob_buffers[blob_sha] = buffer
+                buffers.append(buffer)
+
+            blob_contents = read_git_blobs_as_bytes(
+                [
+                    *_deletion_reference_blob_ids(deletion_metadata),
+                    *_presence_claim_reference_blob_ids(presence_metadata),
+                ]
+            )
+            ownership = cls._from_metadata_dict(
+                data,
+                blob_contents=blob_contents,
+                deletion_blob_buffers=blob_buffers,
+            )
+        except Exception:
+            for buffer in buffers:
+                buffer.close()
+            raise
+
+        return _BatchOwnershipBuildContext(
+            ownership=ownership,
+            buffers=buffers,
+        )
+
+    @classmethod
+    def _from_metadata_dict(
+        cls,
+        data: dict,
+        *,
+        blob_contents: dict[str, bytes],
+        deletion_blob_buffers: dict[str, EditorBuffer] | None = None,
+    ) -> BatchOwnership:
+        deletion_metadata = data.get("deletions", [])
+        presence_metadata = data.get("presence_claims", [])
+        legacy_claimed_lines = data.get("claimed_lines", [])
         presence_claims = [
             PresenceClaim.from_dict(d, blob_contents)
             for d in presence_metadata
@@ -386,7 +457,8 @@ class BatchOwnership:
                 _parse_line_ranges(legacy_claimed_lines)
             )
         deletions = [
-            DeletionClaim.from_dict(d, blob_contents) for d in deletion_metadata
+            DeletionClaim.from_dict(d, blob_contents, deletion_blob_buffers)
+            for d in deletion_metadata
         ]
         replacement_units = [
             ReplacementUnit.from_dict(d)
@@ -404,6 +476,24 @@ class BatchOwnership:
         Returns presence lines as a set and deletion claims as a list (preserving structure).
         """
         return ResolvedBatchOwnership(self.presence_line_set(), self.deletions)
+
+
+@dataclass
+class _BatchOwnershipBuildContext:
+    """Own buffers borrowed by a scoped BatchOwnership value."""
+
+    ownership: BatchOwnership
+    buffers: list[EditorBuffer]
+
+    def close(self) -> None:
+        for buffer in self.buffers:
+            buffer.close()
+
+    def __enter__(self) -> BatchOwnership:
+        return self.ownership
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
 
 
 @dataclass

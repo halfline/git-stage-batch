@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+import os
 from pathlib import Path
 import stat
 import sys
+from contextlib import ExitStack
 from dataclasses import dataclass
 
 from ..batch import (
@@ -27,7 +30,7 @@ from ..batch.ownership import (
 )
 from ..batch.query import read_batch_metadata
 from ..batch.selection import require_line_selection_in_view
-from ..batch.source_refresh import prepare_batch_ownership_update_for_selection
+from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.source_refresh import _refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
@@ -76,6 +79,7 @@ from ..editor import (
     BufferInput,
     buffer_byte_chunks,
     load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
     write_buffer_to_path,
 )
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
@@ -514,10 +518,10 @@ def command_discard_line(line_id_specification: str, file: str | None = None) ->
         )
 
         working_file_path = get_git_repository_root_path() / line_changes.path
-        if not working_file_path.exists():
+        if not os.path.lexists(working_file_path):
             exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
 
-        with EditorBuffer.from_path(working_file_path) as working_lines:
+        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
             target_working_buffer = build_target_working_tree_buffer_from_lines(
                 line_changes,
                 set(requested_ids),
@@ -720,11 +724,11 @@ def _command_discard_lines_to_batch_as(
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
     working_file_path = get_git_repository_root_path() / line_changes.path
-    if not working_file_path.exists():
+    if not os.path.lexists(working_file_path):
         exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
 
     try:
-        with EditorBuffer.from_path(working_file_path) as working_lines:
+        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
             rewritten_working_buffer = (
                 build_target_working_tree_buffer_with_replaced_lines(
                     line_changes,
@@ -758,95 +762,96 @@ def _command_discard_lines_to_batch_as(
             )
 
             metadata = read_batch_metadata(batch_name)
-            existing_ownership = None
-            current_batch_source = None
+            file_metadata = metadata.get("files", {}).get(line_changes.path)
             batch_source_commit = None
-            if line_changes.path in metadata.get("files", {}):
-                file_metadata = metadata["files"][line_changes.path]
-                existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-                current_batch_source = file_metadata.get("batch_source_commit")
 
-            try:
-                if existing_ownership is None:
-                    update = prepare_batch_ownership_update_for_selection(
-                        batch_name=batch_name,
-                        file_path=line_changes.path,
-                        current_batch_source_commit=current_batch_source,
-                        existing_ownership=existing_ownership,
-                        selected_lines=rewritten_selected_lines,
-                    )
-                    ownership = update.ownership_after
-                    batch_source_commit = update.batch_source_commit
-                else:
-                    old_source_buffer = load_git_object_as_buffer(
-                        f"{current_batch_source}:{line_changes.path}"
-                    )
-                    if old_source_buffer is None:
-                        exit_with_error(
-                            _("Cannot discard lines to batch: failed to read batch source for '{file}'.").format(
-                                file=line_changes.path
+            with ExitStack() as ownership_stack:
+                try:
+                    if file_metadata is None:
+                        update = ownership_stack.enter_context(
+                            acquire_batch_ownership_update_for_selection(
+                                batch_name=batch_name,
+                                file_path=line_changes.path,
+                                file_metadata=None,
+                                selected_lines=rewritten_selected_lines,
                             )
                         )
+                        ownership = update.ownership_after
+                        batch_source_commit = update.batch_source_commit
+                    else:
+                        current_batch_source = file_metadata.get("batch_source_commit")
+                        existing_ownership = ownership_stack.enter_context(
+                            BatchOwnership.acquire_for_metadata_dict(file_metadata)
+                        )
+                        old_source_buffer = load_git_object_as_buffer(
+                            f"{current_batch_source}:{line_changes.path}"
+                        )
+                        if old_source_buffer is None:
+                            exit_with_error(
+                                _("Cannot discard lines to batch: failed to read batch source for '{file}'.").format(
+                                    file=line_changes.path
+                                )
+                            )
 
-                    with (
-                        old_source_buffer as old_source_lines,
-                        _advance_source_lines_preserving_existing_presence(
-                            old_lines=old_source_lines,
-                            working_lines=rewritten_working_lines,
-                            ownership=existing_ownership,
-                        ) as source_with_provenance,
-                    ):
-                        remapped_existing_ownership = _remap_batch_ownership_with_source_line_map(
-                            ownership=existing_ownership,
-                            source_line_map=source_with_provenance.source_line_map,
-                        )
-                        refreshed_selected_lines = _refresh_selected_lines_against_source_lines(
-                            rewritten_selected_lines,
-                            source_lines=source_with_provenance.source_buffer,
-                            working_lines=(),
-                            working_line_map=source_with_provenance.working_line_map,
-                        )
-                        new_ownership = translate_lines_to_batch_ownership(
-                            refreshed_selected_lines
-                        )
-                        ownership = merge_batch_ownership(
-                            remapped_existing_ownership,
-                            new_ownership,
-                        )
-                        batch_source_commit = create_batch_source_commit(
-                            line_changes.path,
-                            file_buffer_override=source_with_provenance.source_buffer,
-                        )
-                        batch_sources = load_session_batch_sources()
-                        batch_sources[line_changes.path] = batch_source_commit
-                        save_session_batch_sources(batch_sources)
-            except ValueError as e:
-                exit_with_error(
-                    _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-                      "File: {file}\n"
-                      "Batch: {batch}\n"
-                      "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
-                )
+                        with (
+                            old_source_buffer as old_source_lines,
+                            _advance_source_lines_preserving_existing_presence(
+                                old_lines=old_source_lines,
+                                working_lines=rewritten_working_lines,
+                                ownership=existing_ownership,
+                            ) as source_with_provenance,
+                        ):
+                            remapped_existing_ownership = _remap_batch_ownership_with_source_line_map(
+                                ownership=existing_ownership,
+                                source_line_map=source_with_provenance.source_line_map,
+                            )
+                            refreshed_selected_lines = _refresh_selected_lines_against_source_lines(
+                                rewritten_selected_lines,
+                                source_lines=source_with_provenance.source_buffer,
+                                working_lines=(),
+                                working_line_map=source_with_provenance.working_line_map,
+                            )
+                            new_ownership = translate_lines_to_batch_ownership(
+                                refreshed_selected_lines
+                            )
+                            ownership = merge_batch_ownership(
+                                remapped_existing_ownership,
+                                new_ownership,
+                            )
+                            batch_source_commit = create_batch_source_commit(
+                                line_changes.path,
+                                file_buffer_override=source_with_provenance.source_buffer,
+                            )
+                            batch_sources = load_session_batch_sources()
+                            batch_sources[line_changes.path] = batch_source_commit
+                            save_session_batch_sources(batch_sources)
+                except ValueError as e:
+                    exit_with_error(
+                        _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
+                          "File: {file}\n"
+                          "Batch: {batch}\n"
+                          "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
+                    )
 
-            file_mode = _detect_file_mode(line_changes.path)
+                file_mode = _detect_file_mode(line_changes.path)
 
-            if batch_source_commit is None:
-                batch_source_commit = create_batch_source_commit(
+                if batch_source_commit is None:
+                    batch_source_commit = create_batch_source_commit(
+                        line_changes.path,
+                        file_buffer_override=rewritten_working_lines,
+                    )
+                    batch_sources = load_session_batch_sources()
+                    batch_sources[line_changes.path] = batch_source_commit
+                    save_session_batch_sources(batch_sources)
+
+                snapshot_file_if_untracked(line_changes.path)
+                add_file_to_batch(
+                    batch_name,
                     line_changes.path,
-                    file_buffer_override=rewritten_working_lines,
+                    ownership,
+                    file_mode,
+                    batch_source_commit=batch_source_commit,
                 )
-                batch_sources = load_session_batch_sources()
-                batch_sources[line_changes.path] = batch_source_commit
-                save_session_batch_sources(batch_sources)
-
-            snapshot_file_if_untracked(line_changes.path)
-            add_file_to_batch(
-                batch_name,
-                line_changes.path,
-                ownership,
-                file_mode,
-                batch_source_commit=batch_source_commit,
-            )
 
             rewritten_selected_ids = {
                 line.id for line in rewritten_selected_lines if line.id is not None
@@ -923,8 +928,11 @@ def _detect_file_mode(file_path: str) -> str:
 def _detect_file_mode_from_root(repo_root: Path, file_path: str) -> str:
     """Return the current git file mode using a known repository root."""
     absolute_path = repo_root / file_path
-    if absolute_path.exists():
-        return "100755" if absolute_path.stat().st_mode & stat.S_IXUSR else "100644"
+    if os.path.lexists(absolute_path):
+        file_status = absolute_path.lstat()
+        if stat.S_ISLNK(file_status.st_mode):
+            return "120000"
+        return "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
 
     ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
     if ls_result.returncode == 0 and ls_result.stdout.strip():
@@ -993,26 +1001,23 @@ def _prepare_text_file_discard_to_batch(
     discard_input: _TextFileDiscardInput,
     *,
     metadata: dict,
+    ownership_stack: ExitStack,
 ) -> _PreparedTextFileDiscardToBatch | None:
     """Prepare one normal text file discard without publishing batch state."""
     if not discard_input.all_lines_to_batch:
         return None
 
     file_path = discard_input.file_path
-    existing_ownership = None
-    current_batch_source = None
-    if file_path in metadata.get("files", {}):
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    file_metadata = metadata.get("files", {}).get(file_path)
 
     try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=discard_input.all_lines_to_batch,
+        update = ownership_stack.enter_context(
+            acquire_batch_ownership_update_for_selection(
+                batch_name=batch_name,
+                file_path=file_path,
+                file_metadata=file_metadata,
+                selected_lines=discard_input.all_lines_to_batch,
+            )
         )
     except ValueError as e:
         exit_with_error(
@@ -1187,50 +1192,57 @@ def command_discard_files_to_batch(
     )
 
     prepared_discards: list[_PreparedTextFileDiscardToBatch] = []
+    ownership_stack = ExitStack()
     total_hunks = 0
     discarded_files: list[str] = []
 
     def flush_prepared() -> None:
         nonlocal metadata, total_hunks
-        nonlocal discarded_files, prepared_discards
-        result = _discard_prepared_text_files_to_batch(batch_name, prepared_discards)
+        nonlocal discarded_files, ownership_stack, prepared_discards
+        with ownership_stack:
+            result = _discard_prepared_text_files_to_batch(batch_name, prepared_discards)
         if result.discarded_hunks:
             total_hunks += result.discarded_hunks
             discarded_files.extend(result.discarded_files)
             metadata = read_batch_metadata(batch_name)
         prepared_discards = []
+        ownership_stack = ExitStack()
 
-    for file_path in files:
-        log_journal("discard_file_to_batch_start", batch_name=batch_name, file_path=file_path, quiet=quiet)
-        discard_input = collected_discards.inputs_by_file.get(file_path)
-        if discard_input is None and file_path in collected_discards.files_with_text_patches:
-            continue
+    try:
+        for file_path in files:
+            log_journal("discard_file_to_batch_start", batch_name=batch_name, file_path=file_path, quiet=quiet)
+            discard_input = collected_discards.inputs_by_file.get(file_path)
+            if discard_input is None and file_path in collected_discards.files_with_text_patches:
+                continue
 
-        prepared = _prepare_text_file_discard_to_batch(
-            batch_name,
-            discard_input,
-            metadata=metadata,
-        ) if discard_input is not None else None
-        if prepared is None:
-            flush_prepared()
-            discarded_hunks = command_discard_to_batch(
+            prepared = _prepare_text_file_discard_to_batch(
                 batch_name,
-                file=file_path,
-                quiet=True,
-                advance=False,
-            )
-            if discarded_hunks > 0:
-                total_hunks += discarded_hunks
-                discarded_files.append(file_path)
-                metadata = read_batch_metadata(batch_name)
-                blocklist_text = read_text_file_contents(blocklist_path)
-                blocked_hashes = set(blocklist_text.splitlines())
-            continue
+                discard_input,
+                metadata=metadata,
+                ownership_stack=ownership_stack,
+            ) if discard_input is not None else None
+            if prepared is None:
+                flush_prepared()
+                discarded_hunks = command_discard_to_batch(
+                    batch_name,
+                    file=file_path,
+                    quiet=True,
+                    advance=False,
+                )
+                if discarded_hunks > 0:
+                    total_hunks += discarded_hunks
+                    discarded_files.append(file_path)
+                    metadata = read_batch_metadata(batch_name)
+                    blocklist_text = read_text_file_contents(blocklist_path)
+                    blocked_hashes = set(blocklist_text.splitlines())
+                continue
 
-        prepared_discards.append(prepared)
-        log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
+            prepared_discards.append(prepared)
+            log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
 
-    flush_prepared()
+        flush_prepared()
+    finally:
+        ownership_stack.close()
 
     if quiet and advance:
         advance_to_next_change()
@@ -1323,39 +1335,36 @@ def _command_discard_file_to_batch(
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
+    file_metadata = metadata.get("files", {}).get(file_path)
 
-    if file_path in metadata.get("files", {}):
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=all_lines_to_batch,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot discard file to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\n"
+                  "Batch: {batch}\n"
+                  "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
+            )
 
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=all_lines_to_batch
+        # Snapshot file before modifying
+        snapshot_file_if_untracked(file_path)
+
+        # Save to batch
+        add_file_to_batch(
+            batch_name,
+            file_path,
+            update.ownership_after,
+            file_mode,
         )
-
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot discard file to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\n"
-              "Batch: {batch}\n"
-              "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
-        )
-
-    # Snapshot file before modifying
-    snapshot_file_if_untracked(file_path)
-
-    # Save to batch
-    add_file_to_batch(batch_name, file_path, ownership, file_mode)
 
     # Record hunks as discarded for progress tracking
     for patch_bytes, patch_hash in patches_to_discard:
@@ -1434,46 +1443,43 @@ def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_i
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
+    file_metadata = metadata.get("files", {}).get(file_path)
 
-    if file_path in metadata.get("files", {}):
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=selected_lines,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\n"
+                  "Batch: {batch}\n"
+                  "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
+            )
 
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=selected_lines
+        # Snapshot file before modifying
+        snapshot_file_if_untracked(file_path)
+
+        # Save to batch
+        add_file_to_batch(
+            batch_name,
+            file_path,
+            update.ownership_after,
+            file_mode,
         )
-
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\n"
-              "Batch: {batch}\n"
-              "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
-        )
-
-    # Snapshot file before modifying
-    snapshot_file_if_untracked(file_path)
-
-    # Save to batch
-    add_file_to_batch(batch_name, file_path, ownership, file_mode)
 
     # Now discard selected lines from working tree
     working_file_path = get_git_repository_root_path() / file_path
-    if not working_file_path.exists():
+    if not os.path.lexists(working_file_path):
         exit_with_error(_("File not found in working tree: {file}").format(file=file_path))
 
-    with EditorBuffer.from_path(working_file_path) as working_lines:
+    with load_working_tree_file_as_buffer(file_path) as working_lines:
         target_working_buffer = build_target_working_tree_buffer_from_lines(
             line_changes,
             requested_ids,
@@ -1527,52 +1533,49 @@ def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str,
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
-
-    if line_changes.path in metadata.get("files", {}):
-        file_metadata = metadata["files"][line_changes.path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
-
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=line_changes.path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=selected_lines
-        )
-
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
-
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\n"
-              "Batch: {batch}\n"
-              "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
-        )
+    file_metadata = metadata.get("files", {}).get(line_changes.path)
 
     file_mode = _detect_file_mode(line_changes.path)
 
-    # add_file_to_batch creates the batch source commit from this snapshot.
-    snapshot_file_if_untracked(line_changes.path)
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=line_changes.path,
+                    file_metadata=file_metadata,
+                    selected_lines=selected_lines,
+                )
+            )
+        except ValueError as e:
+            exit_with_error(
+                _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\n"
+                  "Batch: {batch}\n"
+                  "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
+            )
 
-    log_journal("discard_lines_to_batch_before_add", batch_name=batch_name, file_path=line_changes.path)
+        # add_file_to_batch creates the batch source commit from this snapshot.
+        snapshot_file_if_untracked(line_changes.path)
 
-    # Save to batch using batch source model
-    add_file_to_batch(batch_name, line_changes.path, ownership, file_mode)
+        log_journal("discard_lines_to_batch_before_add", batch_name=batch_name, file_path=line_changes.path)
+
+        # Save to batch using batch source model
+        add_file_to_batch(
+            batch_name,
+            line_changes.path,
+            update.ownership_after,
+            file_mode,
+        )
 
     log_journal("discard_lines_to_batch_after_add", batch_name=batch_name, file_path=line_changes.path)
 
     # Now discard those lines from working tree
     working_file_path = get_git_repository_root_path() / line_changes.path
-    if not working_file_path.exists():
+    if not os.path.lexists(working_file_path):
         exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
 
-    with EditorBuffer.from_path(working_file_path) as working_lines:
+    with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
         target_working_buffer = build_target_working_tree_buffer_from_lines(
             line_changes,
             requested_ids,
@@ -1659,43 +1662,34 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
     metadata = read_batch_metadata(batch_name)
-    existing_ownership = None
-    current_batch_source = None
+    file_metadata = metadata.get("files", {}).get(file_path)
 
-    if file_path in metadata.get("files", {}):
-        # File already in batch - get existing ownership and batch source
-        file_metadata = metadata["files"][file_path]
-        existing_ownership = BatchOwnership.from_metadata_dict(file_metadata)
-        current_batch_source = file_metadata.get("batch_source_commit")
+    with ExitStack() as ownership_stack:
+        try:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=all_lines_to_batch,
+                )
+            )
+        except ValueError as e:
+            # Remapping failed - fail loudly
+            exit_with_error(
+                _("Cannot discard to batch: batch source is stale and remapping failed.\n"
+                  "File: {file}\n"
+                  "Batch: {batch}\n"
+                  "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
+            )
 
-    try:
-        update = prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=current_batch_source,
-            existing_ownership=existing_ownership,
-            selected_lines=all_lines_to_batch
-        )
+        # add_file_to_batch creates the batch source commit from this snapshot.
+        snapshot_file_if_untracked(file_path)
 
-        # Use the prepared ownership for persistence
-        ownership = update.ownership_after
+        log_journal("discard_hunk_to_batch_before_add", batch_name=batch_name, file_path=file_path, num_patches=len(patches_to_discard))
 
-    except ValueError as e:
-        # Remapping failed - fail loudly
-        exit_with_error(
-            _("Cannot discard to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\n"
-              "Batch: {batch}\n"
-              "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
-        )
-
-    # add_file_to_batch creates the batch source commit from this snapshot.
-    snapshot_file_if_untracked(file_path)
-
-    log_journal("discard_hunk_to_batch_before_add", batch_name=batch_name, file_path=file_path, num_patches=len(patches_to_discard))
-
-    # Save to batch using batch source model (once, with all accumulated data)
-    add_file_to_batch(batch_name, file_path, ownership, file_mode)
+        # Save to batch using batch source model (once, with all accumulated data)
+        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
     log_journal("discard_hunk_to_batch_after_add", batch_name=batch_name, file_path=file_path)
 

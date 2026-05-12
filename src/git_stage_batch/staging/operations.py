@@ -7,8 +7,6 @@ from collections.abc import Iterator, Sequence
 from ..core.models import LineEntry, LineLevelChange
 from ..editor import (
     EditorBuffer,
-    BufferInput,
-    buffer_byte_chunks,
     buffer_byte_count,
     buffer_preview,
     edit_lines_as_buffer,
@@ -568,7 +566,7 @@ def build_target_working_tree_buffer_with_replaced_lines(
     )
 
 
-def update_index_with_blob_buffer(path: str, buffer: BufferInput) -> None:
+def update_index_with_blob_buffer(path: str, buffer: EditorBuffer) -> None:
     """
     Update the git index with a new buffer for a file.
 
@@ -578,7 +576,7 @@ def update_index_with_blob_buffer(path: str, buffer: BufferInput) -> None:
     # Log before state
     ls_before = run_git_command(["ls-files", "--stage", "--", path], check=False).stdout.strip()
 
-    blob_hash = create_git_blob(buffer_byte_chunks(buffer))
+    blob_hash = create_git_blob(buffer.byte_chunks())
 
     file_mode = ""
     try:

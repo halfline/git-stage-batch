@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from contextlib import ExitStack
 from enum import Enum
 
-from ..editor import buffer_matches
-from ..utils.git import get_git_repository_root_path, run_git_command
+from ..editor import (
+    EditorBuffer,
+    buffer_byte_count,
+    buffer_matches,
+    load_git_object_as_buffer,
+)
+from ..utils.git import get_git_repository_root_path
 
 
 BufferData = bytes | Sequence[bytes]
@@ -37,21 +43,24 @@ def detect_empty_text_lifecycle_change(
 ) -> TextFileChangeType | None:
     """Return added/deleted for empty text lifecycle diffs with no hunk body."""
     full_path = get_git_repository_root_path() / file_path
-    baseline_result = run_git_command(
-        ["show", f"{baseline_ref}:{file_path}"],
-        check=False,
-        text_output=False,
-    )
 
-    if full_path.exists() and full_path.is_file():
-        if full_path.read_bytes() != b"":
+    with ExitStack() as stack:
+        if full_path.exists() and full_path.is_file():
+            working_buffer = stack.enter_context(EditorBuffer.from_path(full_path))
+            if buffer_byte_count(working_buffer) != 0:
+                return None
+
+            baseline_buffer = load_git_object_as_buffer(f"{baseline_ref}:{file_path}")
+            if baseline_buffer is None:
+                return TextFileChangeType.ADDED
+            baseline_buffer.close()
             return None
-        if baseline_result.returncode != 0:
-            return TextFileChangeType.ADDED
-        return None
 
-    if baseline_result.returncode == 0 and baseline_result.stdout == b"":
-        return TextFileChangeType.DELETED
+        baseline_buffer = load_git_object_as_buffer(f"{baseline_ref}:{file_path}")
+        if baseline_buffer is not None:
+            stack.enter_context(baseline_buffer)
+            if buffer_byte_count(baseline_buffer) == 0:
+                return TextFileChangeType.DELETED
     return None
 
 
@@ -106,9 +115,7 @@ def resolve_text_change_type(
 
 
 def _buffer_is_empty(buffer: BufferData) -> bool:
-    if isinstance(buffer, bytes):
-        return buffer == b""
-    return not any(buffer)
+    return buffer_byte_count(buffer) == 0
 
 
 def selected_text_target_change_type(

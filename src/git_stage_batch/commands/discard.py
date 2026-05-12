@@ -35,6 +35,7 @@ from ..batch.source_refresh import _refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
 )
 from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
@@ -146,6 +147,14 @@ def _buffer_ends_with_lf(buffer: EditorBuffer) -> bool:
     return bool(last_chunk) and last_chunk.endswith(b"\n")
 
 
+def _path_contains_only_whitespace(path: Path) -> bool:
+    with path.open("rb") as file_handle:
+        while chunk := file_handle.read(1024 * 1024):
+            if chunk.strip():
+                return False
+    return True
+
+
 def _load_explicit_file_selection(file_path: str):
     """Return the active file-scoped view for an explicit discard target."""
     reuse_selected_file_view = (
@@ -250,27 +259,33 @@ def command_discard(*, quiet: bool = False) -> None:
             return
 
         # Text hunk - use git apply -R
-        patch_bytes = read_file_bytes(get_selected_hunk_patch_file_path())
+        with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
+            # Extract filename for user feedback and snapshotting
+            line_changes = build_line_changes_from_patch_lines(patch_buffer)
+            filename = line_changes.path
+            is_new_file = any(
+                line.rstrip(b"\n") == b"--- /dev/null"
+                for line in patch_buffer
+            )
 
-        # Extract filename for user feedback and snapshotting
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
-        filename = line_changes.path
+            # Snapshot file if untracked before discarding
+            if filename != "/dev/null":
+                snapshot_file_if_untracked(filename)
 
-        # Snapshot file if untracked before discarding
-        if filename != "/dev/null":
-            snapshot_file_if_untracked(filename)
+            # Apply the hunk in reverse to discard from working tree using streaming
+            log_journal("command_discard_before_git_apply", filename=filename, patch_hash=patch_hash)
+            stderr_chunks = []
+            exit_code = 0
 
-        # Apply the hunk in reverse to discard from working tree using streaming
-        log_journal("command_discard_before_git_apply", filename=filename, patch_hash=patch_hash)
-        stderr_chunks = []
-        exit_code = 0
-
-        for event in stream_command(["git", "apply", "--reverse"], [patch_bytes]):
-            if isinstance(event, ExitEvent):
-                exit_code = event.exit_code
-            elif isinstance(event, OutputEvent):
-                if event.fd == 2:  # stderr
-                    stderr_chunks.append(event.data)
+            for event in stream_command(
+                ["git", "apply", "--reverse"],
+                patch_buffer.byte_chunks(),
+            ):
+                if isinstance(event, ExitEvent):
+                    exit_code = event.exit_code
+                elif isinstance(event, OutputEvent):
+                    if event.fd == 2:  # stderr
+                        stderr_chunks.append(event.data)
 
         stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace') if stderr_chunks else ""
         log_journal("command_discard_after_git_apply", exit_code=exit_code, stderr_len=len(stderr_text), filename=filename)
@@ -282,12 +297,10 @@ def command_discard(*, quiet: bool = False) -> None:
 
         # After reverse-applying a new file, delete it if it became empty
         # (git apply -R on new files empties them but doesn't delete them)
-        is_new_file = b"--- /dev/null" in patch_bytes
         if is_new_file:
             absolute_path = get_git_repository_root_path() / filename
             if absolute_path.exists():
-                content = read_text_file_contents(absolute_path)
-                if not content.strip():  # File is empty
+                if _path_contains_only_whitespace(absolute_path):
                     absolute_path.unlink()
 
         # Add hash to blocklist

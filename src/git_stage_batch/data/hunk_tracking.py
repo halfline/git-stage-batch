@@ -54,7 +54,7 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
-from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
+from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_diff
 from ..utils.text import bytes_to_lines, normalize_line_sequence_endings
 from ..utils.paths import (
     get_block_list_file_path,
@@ -1286,7 +1286,7 @@ def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     return _build_combined_file_line_changes(
         file_path,
         parse_unified_diff_streaming(
-            stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])
+            stream_git_diff(base="HEAD", context_lines=get_context_lines(), paths=[file_path])
         ),
     )
 
@@ -1295,7 +1295,7 @@ def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
     """Render a binary file change for file-scoped display without caching state."""
     try:
         for item in parse_unified_diff_streaming(
-            stream_git_command(["diff", "--no-color", "HEAD", "--", file_path])
+            stream_git_diff(base="HEAD", paths=[file_path])
         ):
             if isinstance(item, BinaryFileChange):
                 return item
@@ -1309,7 +1309,7 @@ def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelCha
     return _build_combined_file_line_changes(
         file_path,
         parse_unified_diff_streaming(
-            stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "--", file_path])
+            stream_git_diff(context_lines=get_context_lines(), paths=[file_path])
         ),
     )
 
@@ -1513,7 +1513,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
 
     # Stream git diff and parse incrementally - stops after first unblocked item found
     try:
-        for item in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for item in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
             # Handle binary files
             if isinstance(item, BinaryFileChange):
                 binary_hash = compute_binary_file_hash(item)
@@ -1731,7 +1731,7 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
 
     # Stream git diff and parse incrementally - stops after first matching hunk found
     try:
-        for single_hunk in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for single_hunk in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
             if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
                 continue
 

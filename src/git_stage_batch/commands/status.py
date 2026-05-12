@@ -41,7 +41,7 @@ from ..utils.file_io import (
     read_file_paths_file,
     read_text_file_line_set,
 )
-from ..utils.git import require_git_repository, run_git_command, stream_git_command
+from ..utils.git import require_git_repository, run_git_command, stream_git_diff
 from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
@@ -98,7 +98,7 @@ def estimate_remaining_hunks() -> int:
 
     remaining = 0
     try:
-        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
             if isinstance(patch, BinaryFileChange):
                 hunk_hash = compute_binary_file_hash(patch)
                 file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path

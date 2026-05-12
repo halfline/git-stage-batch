@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING, Optional
 
@@ -328,6 +329,25 @@ def translate_batch_file_gutter_ids_to_selection_ids(
             )
 
     return selection_ids, rendered_for_messages
+
+
+@contextmanager
+def acquire_batch_ownership_for_display_ids_from_lines(
+    file_meta: dict,
+    batch_source_lines: Sequence[bytes],
+    selected_ids: Optional[set[int]],
+) -> Iterator[BatchOwnership]:
+    """Acquire selected ownership for indexed batch-source lines."""
+    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+        if selected_ids is None:
+            yield ownership
+            return
+
+        yield _select_batch_ownership_from_lines(
+            ownership,
+            batch_source_lines,
+            selected_ids,
+        )
 
 
 def select_batch_ownership_for_display_ids_from_lines(

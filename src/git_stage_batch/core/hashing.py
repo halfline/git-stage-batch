@@ -74,12 +74,6 @@ def compute_stable_hunk_hash_from_lines(patch_lines: Iterable[bytes]) -> str:
     return digest.hexdigest()
 
 
-def compute_stable_hunk_hash(patch_bytes: bytes) -> str:
-    """Compute a stable identity hash for a one-hunk patch byte string."""
-    return compute_stable_hunk_hash_from_lines(
-        patch_bytes.splitlines(keepends=True)
-    )
-
 def compute_binary_file_hash(binary_change: BinaryFileChange) -> str:
     """
     Compute a stable identity hash for a binary file change.

@@ -28,6 +28,7 @@ from ..data.batch_sources import (
 )
 from ..editor import (
     EditorBuffer,
+    load_git_object_as_buffer,
     load_git_tree_files_as_buffers,
     restore_line_endings_in_chunks,
     detect_line_ending,
@@ -545,13 +546,10 @@ def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path:
         _remove_file_from_batch_commit(dest_batch, file_path)
         return
 
-    result = run_git_command(
-        ["show", f"{source_commit}:{file_path}"],
-        check=False,
-        text_output=False,
-    )
-    if result.returncode == 0:
-        blob_sha = create_git_blob([result.stdout])
+    source_buffer = load_git_object_as_buffer(f"{source_commit}:{file_path}")
+    if source_buffer is not None:
+        with source_buffer:
+            blob_sha = create_git_blob(source_buffer.byte_chunks())
         file_mode = file_meta.get("mode", "100644")
         _update_batch_commit(dest_batch, file_path, blob_sha, file_mode)
     else:

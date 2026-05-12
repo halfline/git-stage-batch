@@ -11,10 +11,10 @@ from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.query import get_batch_commit_sha
 from ..batch.replacement import build_replacement_batch_view_from_lines
 from ..batch.selection import (
+    acquire_batch_ownership_for_display_ids_from_lines,
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
-    select_batch_ownership_for_display_ids_from_lines,
     translate_batch_file_gutter_ids_to_selection_ids,
     translate_atomic_unit_error_to_gutter_ids,
 )
@@ -324,9 +324,50 @@ def command_include_from_batch(
                     load_working_tree_file_as_buffer(file_path) as working_lines,
                 ):
                     try:
-                        ownership = select_batch_ownership_for_display_ids_from_lines(
-                            file_meta, batch_source_lines, selection_ids_to_include
-                        )
+                        with acquire_batch_ownership_for_display_ids_from_lines(
+                            file_meta,
+                            batch_source_lines,
+                            selection_ids_to_include,
+                        ) as ownership:
+                            if ownership.is_empty():
+                                if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
+                                    merged_index_buffer = EditorBuffer.from_bytes(b"")
+                                    merged_working_buffer = EditorBuffer.from_bytes(b"")
+                                else:
+                                    continue
+                            elif replacement_text is not None:
+                                try:
+                                    replacement_view = build_replacement_batch_view_from_lines(
+                                        batch_source_lines,
+                                        ownership,
+                                        replacement_text,
+                                    )
+                                except ValueError as e:
+                                    exit_with_error(str(e))
+
+                                with replacement_view:
+                                    ownership = replacement_view.ownership
+                                    merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
+                                        replacement_view.source_buffer,
+                                        ownership,
+                                        index_lines,
+                                    )
+                                    merged_working_buffer = merge_batch_from_line_sequences_as_buffer(
+                                        replacement_view.source_buffer,
+                                        ownership,
+                                        working_lines,
+                                    )
+                            else:
+                                merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
+                                    batch_source_lines,
+                                    ownership,
+                                    index_lines,
+                                )
+                                merged_working_buffer = merge_batch_from_line_sequences_as_buffer(
+                                    batch_source_lines,
+                                    ownership,
+                                    working_lines,
+                                )
                     except AtomicUnitError as e:
                         if rendered:
                             translate_atomic_unit_error_to_gutter_ids(e, rendered, "include from", batch_name)
@@ -334,46 +375,6 @@ def command_include_from_batch(
                             name=batch_name,
                             error=str(e)
                         ))
-
-                    if ownership.is_empty():
-                        if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
-                            merged_index_buffer = EditorBuffer.from_bytes(b"")
-                            merged_working_buffer = EditorBuffer.from_bytes(b"")
-                        else:
-                            continue
-                    elif replacement_text is not None:
-                        try:
-                            replacement_view = build_replacement_batch_view_from_lines(
-                                batch_source_lines,
-                                ownership,
-                                replacement_text,
-                            )
-                        except ValueError as e:
-                            exit_with_error(str(e))
-
-                        with replacement_view:
-                            ownership = replacement_view.ownership
-                            merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
-                                replacement_view.source_buffer,
-                                ownership,
-                                index_lines,
-                            )
-                            merged_working_buffer = merge_batch_from_line_sequences_as_buffer(
-                                replacement_view.source_buffer,
-                                ownership,
-                                working_lines,
-                            )
-                    else:
-                        merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
-                            batch_source_lines,
-                            ownership,
-                            index_lines,
-                        )
-                        merged_working_buffer = merge_batch_from_line_sequences_as_buffer(
-                            batch_source_lines,
-                            ownership,
-                            working_lines,
-                        )
 
                 snapshot_file_if_untracked(file_path)
 

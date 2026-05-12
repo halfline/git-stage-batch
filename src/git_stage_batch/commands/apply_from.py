@@ -41,7 +41,7 @@ from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError, BatchMetadataError
 from ..i18n import _
-from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command
+from ..utils.git import get_git_repository_root_path, require_git_repository
 
 
 def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: dict) -> None:
@@ -75,23 +75,19 @@ def _apply_binary_file_from_batch(batch_name: str, file_path: str, file_meta: di
         return
 
     # Read file from batch commit tree
-    result = run_git_command(
-        ["show", f"{batch_commit}:{file_path}"],
-        check=False,
-        text_output=False
-    )
-
-    if result.returncode != 0:
+    batch_buffer = load_git_object_as_buffer(f"{batch_commit}:{file_path}")
+    if batch_buffer is None:
         raise RuntimeError(
             f"Binary file metadata for {file_path} says {change_type}, "
             "but the batch content is missing"
         )
 
-    write_buffer_to_working_tree_path(
-        full_path,
-        result.stdout,
-        mode=str(file_meta.get("mode", "100644")),
-    )
+    with batch_buffer:
+        write_buffer_to_working_tree_path(
+            full_path,
+            batch_buffer,
+            mode=str(file_meta.get("mode", "100644")),
+        )
 
     if change_type == "added":
         print(_("✓ Applied new binary file: {file}").format(file=file_path), file=sys.stderr)

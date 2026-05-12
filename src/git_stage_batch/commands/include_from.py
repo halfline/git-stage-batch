@@ -61,7 +61,7 @@ def _read_binary_file_from_batch(
     batch_name: str,
     file_path: str,
     file_meta: dict,
-) -> bytes | None:
+) -> EditorBuffer | None:
     """Read one binary batch target, or return None for a stored deletion."""
     batch_commit = get_batch_commit_sha(batch_name)
     if not batch_commit:
@@ -71,21 +71,17 @@ def _read_binary_file_from_batch(
     if change_type == "deleted":
         return None
 
-    result = run_git_command(
-        ["show", f"{batch_commit}:{file_path}"],
-        check=False,
-        text_output=False,
-    )
-    if result.returncode != 0:
+    buffer = load_git_object_as_buffer(f"{batch_commit}:{file_path}")
+    if buffer is None:
         raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
 
-    return result.stdout
+    return buffer
 
 
 def _stage_binary_file_from_batch(
     file_path: str,
     file_meta: dict,
-    batch_content: bytes | None,
+    buffer: EditorBuffer | None,
 ) -> None:
     """Stage one binary batch target into the index."""
     change_type = file_meta.get("change_type", "modified")
@@ -95,10 +91,10 @@ def _stage_binary_file_from_batch(
             raise RuntimeError(f"Failed to stage binary deletion for {file_path}: {result.stderr}")
         return
 
-    if batch_content is None:
+    if buffer is None:
         raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
 
-    blob_hash = create_git_blob([batch_content])
+    blob_hash = create_git_blob(buffer.byte_chunks())
     file_mode = file_meta.get("mode", "100644")
     run_git_command(["update-index", "--add", "--cacheinfo", str(file_mode), blob_hash, file_path])
 
@@ -151,7 +147,7 @@ def _write_text_file_from_batch(
 def _write_binary_file_from_batch(
     file_path: str,
     file_meta: dict,
-    batch_content: bytes | None,
+    buffer: EditorBuffer | None,
 ) -> None:
     """Write one binary batch target into the working tree."""
     repo_root = get_git_repository_root_path()
@@ -163,12 +159,12 @@ def _write_binary_file_from_batch(
             full_path.unlink()
         return
 
-    if batch_content is None:
+    if buffer is None:
         raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
 
     write_buffer_to_working_tree_path(
         full_path,
-        batch_content,
+        buffer,
         mode=str(file_meta.get("mode", "100644")),
     )
 
@@ -274,10 +270,14 @@ def command_include_from_batch(
         for file_path, file_meta in files.items():
             try:
                 if file_meta.get("file_type") == "binary":
-                    batch_content = _read_binary_file_from_batch(batch_name, file_path, file_meta)
-                    snapshot_file_if_untracked(file_path)
-                    _stage_binary_file_from_batch(file_path, file_meta, batch_content)
-                    _write_binary_file_from_batch(file_path, file_meta, batch_content)
+                    batch_buffer = _read_binary_file_from_batch(batch_name, file_path, file_meta)
+                    try:
+                        snapshot_file_if_untracked(file_path)
+                        _stage_binary_file_from_batch(file_path, file_meta, batch_buffer)
+                        _write_binary_file_from_batch(file_path, file_meta, batch_buffer)
+                    finally:
+                        if batch_buffer is not None:
+                            batch_buffer.close()
                     continue
 
                 text_change_type = normalized_text_change_type(file_meta.get("change_type"))

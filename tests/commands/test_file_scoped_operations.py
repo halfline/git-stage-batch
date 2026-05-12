@@ -9,7 +9,7 @@ from git_stage_batch.utils.paths import ensure_state_directory_exists
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.data.line_state import load_line_changes_from_state
-from git_stage_batch.core.hashing import compute_stable_hunk_hash
+from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
 from git_stage_batch.utils.paths import (
     get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
@@ -828,7 +828,11 @@ class TestDiscardToBatchWithFile:
             text=True,
         ).stdout
         get_selected_hunk_patch_file_path().write_text(beta_diff)
-        get_selected_hunk_hash_file_path().write_text(compute_stable_hunk_hash(beta_diff.encode("utf-8")))
+        get_selected_hunk_hash_file_path().write_text(
+            compute_stable_hunk_hash_from_lines(
+                beta_diff.encode("utf-8").splitlines(keepends=True)
+            )
+        )
 
         command_discard_to_batch("displayed", file="")
 

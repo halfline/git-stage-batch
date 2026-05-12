@@ -51,7 +51,7 @@ from ..utils.file_io import (
     read_text_file_line_set,
     write_text_file_contents,
 )
-from ..utils.git import require_git_repository, stream_git_command
+from ..utils.git import require_git_repository, stream_git_diff
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
@@ -213,7 +213,7 @@ def command_show(
     blocked_hashes = read_text_file_line_set(blocklist_path)
 
     # Stream diff and show first unblocked hunk
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+    for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
         if isinstance(patch, BinaryFileChange):
             binary_hash = compute_binary_file_hash(patch)
             if binary_hash not in blocked_hashes:

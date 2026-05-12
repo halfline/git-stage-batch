@@ -30,12 +30,14 @@ from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEnt
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
 )
 from ..editor import (
     BufferInput,
     buffer_byte_chunks,
+    EditorBuffer,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
@@ -107,6 +109,11 @@ class SelectedChangeStateSnapshot:
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
+
+
+def _load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
+    with EditorBuffer.from_path(patch_path) as patch_lines:
+        return build_line_changes_from_patch_lines(patch_lines)
 
 
 class SelectedChangeClearReason(str, Enum):
@@ -595,8 +602,7 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange]]
     if line_changes is not None:
         return line_changes
 
-    patch_bytes = read_file_bytes(patch_path)
-    return build_line_changes_from_patch_bytes(patch_bytes)
+    return _load_line_changes_from_patch_path(patch_path)
 
 
 def get_selected_change_file_path() -> Optional[str]:
@@ -615,8 +621,7 @@ def get_selected_change_file_path() -> Optional[str]:
     if not patch_path.exists():
         return None
 
-    patch_bytes = read_file_bytes(patch_path)
-    line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+    line_changes = _load_line_changes_from_patch_path(patch_path)
     return line_changes.path
 
 
@@ -900,6 +905,7 @@ def _render_batch_file_display_from_ownership(
         content_bytes = content.encode('utf-8')
         # Strip only the newline terminator, preserve \r
         text_bytes = content_bytes.rstrip(b'\n')
+        has_trailing_newline = content_bytes.endswith(b'\n')
         # Decode with replacement for display
         text = text_bytes.decode('utf-8', errors='replace')
 
@@ -913,7 +919,8 @@ def _render_batch_file_display_from_ownership(
                 new_line_number=new_line_num,
                 text_bytes=text_bytes,
                 text=text,
-                source_line=source_line
+                source_line=source_line,
+                has_trailing_newline=has_trailing_newline,
             ))
             new_line_num += 1
         elif display_line["type"] == "deletion":
@@ -925,7 +932,8 @@ def _render_batch_file_display_from_ownership(
                 new_line_number=None,
                 text_bytes=text_bytes,
                 text=text,
-                source_line=None
+                source_line=None,
+                has_trailing_newline=has_trailing_newline,
             ))
         elif display_line["type"] == "context":
             line_entries.append(LineEntry(
@@ -935,7 +943,8 @@ def _render_batch_file_display_from_ownership(
                 new_line_number=new_line_num,
                 text_bytes=text_bytes,
                 text=text,
-                source_line=display_line["source_line"]
+                source_line=display_line["source_line"],
+                has_trailing_newline=has_trailing_newline,
             ))
             new_line_num += 1
         elif display_line["type"] == "gap":
@@ -946,7 +955,8 @@ def _render_batch_file_display_from_ownership(
                 new_line_number=None,
                 text_bytes=text_bytes,
                 text=text,
-                source_line=None
+                source_line=None,
+                has_trailing_newline=has_trailing_newline,
             ))
 
     # Compute header based on actual line types
@@ -1114,6 +1124,8 @@ def cache_rendered_batch_file_display(
     ]
     for entry in line_entries:
         patch_bytes_parts.append(entry.kind.encode('utf-8') + entry.text_bytes + b'\n')
+        if not entry.has_trailing_newline:
+            patch_bytes_parts.append(b"\\ No newline at end of file\n")
     patch_bytes = b"".join(patch_bytes_parts)
 
     patch_hash = compute_stable_hunk_hash(patch_bytes)
@@ -1242,6 +1254,8 @@ def _cache_combined_file_line_changes(
     ]
     for entry in combined_line_changes.lines:
         patch_lines.append(entry.kind.encode("utf-8") + entry.text_bytes + b"\n")
+        if not entry.has_trailing_newline:
+            patch_lines.append(b"\\ No newline at end of file\n")
     patch_bytes = b"".join(patch_lines)
 
     patch_hash = compute_stable_hunk_hash(patch_bytes)
@@ -1416,6 +1430,7 @@ def _build_combined_file_line_changes(
                     text_bytes=line_entry.text_bytes,
                     text=line_entry.text,
                     source_line=line_entry.source_line,
+                    has_trailing_newline=line_entry.has_trailing_newline,
                 )
                 line_id_counter += 1
             else:
@@ -1427,6 +1442,7 @@ def _build_combined_file_line_changes(
                     text_bytes=line_entry.text_bytes,
                     text=line_entry.text,
                     source_line=line_entry.source_line,
+                    has_trailing_newline=line_entry.has_trailing_newline,
                 )
             all_line_entries.append(new_entry)
 
@@ -1546,8 +1562,7 @@ def show_selected_change() -> None:
     # Otherwise, show text hunk
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
-        patch_bytes = read_file_bytes(patch_path)
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = _load_line_changes_from_patch_path(patch_path)
         print_line_level_changes(line_changes)
 
 
@@ -1569,8 +1584,7 @@ def advance_to_and_show_next_change() -> None:
     # Check if a text hunk was cached
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
-        patch_bytes = read_file_bytes(patch_path)
-        line_changes = build_line_changes_from_patch_bytes(patch_bytes)
+        line_changes = _load_line_changes_from_patch_path(patch_path)
         print_line_level_changes(line_changes)
     else:
         print(_("No more hunks to process."), file=sys.stderr)

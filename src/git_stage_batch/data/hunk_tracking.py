@@ -26,12 +26,10 @@ from ..batch.ownership import (
     validate_ownership_units,
 )
 from ..batch.query import get_batch_commit_sha, list_batch_names, read_batch_metadata
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
 from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
 from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, RenderedBatchDisplay, ReviewActionGroup
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
-    build_line_changes_from_patch_bytes,
     build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
@@ -50,8 +48,8 @@ from .consumed_selections import read_consumed_file_metadata
 from ..utils.file_io import (
     read_file_bytes,
     read_file_paths_file,
+    read_text_file_line_set,
     read_text_file_contents,
-    write_file_bytes,
     write_text_file_contents,
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
@@ -1510,8 +1508,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
     blocked_files = set(read_file_paths_file(get_blocked_files_file_path()))
 
     # Load blocklist (includes selected iteration)
-    blocklist_content = read_text_file_contents(get_block_list_file_path())
-    blocked_hashes = set(blocklist_content.splitlines())
+    blocked_hashes = read_text_file_line_set(get_block_list_file_path())
 
     # Stream git diff and parse incrementally - stops after first unblocked item found
     try:
@@ -1533,17 +1530,19 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
                 return item
 
             # Handle text hunks (SingleHunkPatch)
-            patch_bytes = item.to_patch_bytes()
-            hunk_hash = compute_stable_hunk_hash(patch_bytes)
+            hunk_hash = compute_stable_hunk_hash_from_lines(item.lines)
             if hunk_hash in blocked_hashes:
                 continue
 
             # Skip hunks from blocked files
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
+            line_changes = build_line_changes_from_patch_lines(
+                item.lines,
+                annotator=annotate_with_batch_source,
+            )
             if line_changes.path in blocked_files:
                 continue
 
-            write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
+            write_selected_hunk_patch_lines(item.lines)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
             write_selected_change_kind(SelectedChangeKind.HUNK)
 
@@ -1725,8 +1724,7 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
         return
 
     # Load blocklist
-    blocklist_content = read_text_file_contents(get_block_list_file_path())
-    blocked_hashes = set(blocklist_content.splitlines())
+    blocked_hashes = read_text_file_line_set(get_block_list_file_path())
 
     # Stream git diff and parse incrementally - stops after first matching hunk found
     try:
@@ -1734,17 +1732,19 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
             if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
                 continue
 
-            patch_bytes = single_hunk.to_patch_bytes()
-            hunk_hash = compute_stable_hunk_hash(patch_bytes)
+            hunk_hash = compute_stable_hunk_hash_from_lines(single_hunk.lines)
 
             if hunk_hash in blocked_hashes:
                 continue
 
-            write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
+            write_selected_hunk_patch_lines(single_hunk.lines)
             write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
             write_selected_change_kind(SelectedChangeKind.HUNK)
 
-            line_changes = build_line_changes_from_patch_bytes(patch_bytes, annotator=annotate_with_batch_source)
+            line_changes = build_line_changes_from_patch_lines(
+                single_hunk.lines,
+                annotator=annotate_with_batch_source,
+            )
             write_text_file_contents(get_line_changes_json_file_path(),
                                     json.dumps(convert_line_changes_to_serializable_dict(line_changes),
                                               ensure_ascii=False, indent=0))

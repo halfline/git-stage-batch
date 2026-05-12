@@ -520,8 +520,12 @@ def _compute_sifted_text_file(
     working_buffer = load_working_tree_file_as_buffer(file_path)
     target_buffer: EditorBuffer | None = None
 
-    with (batch_source_buffer, baseline_buffer, working_buffer):
-        source_ownership = BatchOwnership.from_metadata_dict(file_meta)
+    with (
+        batch_source_buffer,
+        baseline_buffer,
+        working_buffer,
+        BatchOwnership.acquire_for_metadata_dict(file_meta) as source_ownership,
+    ):
         target_buffer = _build_realized_buffer_from_lines(
             baseline_buffer,
             batch_source_buffer,

@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from hashlib import sha256
@@ -26,6 +27,7 @@ from ..batch.ownership import (
 )
 from ..batch.query import get_batch_commit_sha, list_batch_names, read_batch_metadata
 from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
+from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
 from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, RenderedBatchDisplay, ReviewActionGroup
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
@@ -40,6 +42,7 @@ from ..editor import (
     EditorBuffer,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
+    write_buffer_to_path,
 )
 from ..core.line_selection import write_line_ids_file
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
@@ -109,6 +112,11 @@ class SelectedChangeStateSnapshot:
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
+
+
+def write_selected_hunk_patch_lines(patch_lines: Sequence[bytes]) -> None:
+    with EditorBuffer.from_chunks(iter(patch_lines)) as patch_buffer:
+        write_buffer_to_path(get_selected_hunk_patch_file_path(), patch_buffer)
 
 
 def _load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
@@ -1117,21 +1125,20 @@ def cache_rendered_batch_file_display(
     old_path = "/dev/null" if deletion_count == 0 and addition_count > 0 else f"a/{file_path}"
     new_path = "/dev/null" if addition_count == 0 and deletion_count > 0 else f"b/{file_path}"
 
-    patch_bytes_parts = [
+    patch_lines = [
         f"--- {old_path}\n".encode('utf-8'),
         f"+++ {new_path}\n".encode('utf-8'),
         f"@@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@\n".encode('utf-8')
     ]
     for entry in line_entries:
-        patch_bytes_parts.append(entry.kind.encode('utf-8') + entry.text_bytes + b'\n')
+        patch_lines.append(entry.kind.encode('utf-8') + entry.text_bytes + b'\n')
         if not entry.has_trailing_newline:
-            patch_bytes_parts.append(b"\\ No newline at end of file\n")
-    patch_bytes = b"".join(patch_bytes_parts)
+            patch_lines.append(b"\\ No newline at end of file\n")
 
-    patch_hash = compute_stable_hunk_hash(patch_bytes)
+    patch_hash = compute_stable_hunk_hash_from_lines(patch_lines)
 
     # Cache the hunk bytes exactly; display strings are derived elsewhere.
-    write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
+    write_selected_hunk_patch_lines(patch_lines)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
     write_selected_change_kind(SelectedChangeKind.BATCH_FILE)
 
@@ -1256,12 +1263,11 @@ def _cache_combined_file_line_changes(
         patch_lines.append(entry.kind.encode("utf-8") + entry.text_bytes + b"\n")
         if not entry.has_trailing_newline:
             patch_lines.append(b"\\ No newline at end of file\n")
-    patch_bytes = b"".join(patch_lines)
 
-    patch_hash = compute_stable_hunk_hash(patch_bytes)
+    patch_hash = compute_stable_hunk_hash_from_lines(patch_lines)
 
     # Cache the combined hunk
-    write_file_bytes(get_selected_hunk_patch_file_path(), patch_bytes)
+    write_selected_hunk_patch_lines(patch_lines)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
     write_selected_change_kind(SelectedChangeKind.FILE)
     write_line_ids_file(get_processed_include_ids_file_path(), set())

@@ -49,7 +49,7 @@ def read_consumed_file_metadata(file_path: str) -> dict[str, Any] | None:
 def record_consumed_selection(
     file_path: str,
     *,
-    source_buffer: bytes | EditorBuffer,
+    source_buffer: EditorBuffer,
     selected_lines: list,
     replacement_mask: dict[str, list[str]] | None = None,
 ) -> None:

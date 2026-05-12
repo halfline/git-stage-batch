@@ -324,10 +324,11 @@ def add_binary_file_to_batch(
             current_binary_content = full_path.read_bytes()
         else:
             current_binary_content = file_content_override
-        batch_source_commit = create_batch_source_commit(
-            file_path,
-            file_buffer_override=current_binary_content,
-        )
+        with EditorBuffer.from_bytes(current_binary_content) as current_binary_buffer:
+            batch_source_commit = create_batch_source_commit(
+                file_path,
+                file_buffer_override=current_binary_buffer,
+            )
 
     # For binary files, store the full live file bytes as the realized content.
     # Binary batches are atomic, so the batch commit must carry the exact bytes

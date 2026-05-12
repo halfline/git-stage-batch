@@ -340,7 +340,7 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
 def create_batch_source_commit(
     file_path: str,
     *,
-    file_buffer_override: bytes | EditorBuffer | None = None
+    file_buffer_override: EditorBuffer | None = None
 ) -> str:
     """Create batch source commit for a file.
 
@@ -349,7 +349,7 @@ def create_batch_source_commit(
 
     Args:
         file_path: Repository-relative path to the file
-        file_buffer_override: Optional exact buffer bytes to store. Used by
+        file_buffer_override: Optional exact file buffer to store. Used by
             stale-source advancement, where the new source may be synthesized
             from current working tree content plus already-owned lines rather
             than the original session-start snapshot.
@@ -375,11 +375,8 @@ def create_batch_source_commit(
     content_lines = 0
     try:
         if file_buffer_override is not None:
-            if isinstance(file_buffer_override, EditorBuffer):
-                file_buffer = file_buffer_override
-                close_file_buffer = False
-            else:
-                file_buffer = EditorBuffer.from_bytes(file_buffer_override)
+            file_buffer = file_buffer_override
+            close_file_buffer = False
         else:
             file_buffer = load_saved_session_file_as_buffer(file_path)
 

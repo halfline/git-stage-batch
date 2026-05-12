@@ -323,15 +323,15 @@ def get_first_matching_file_from_diff(
     return None
 
 
-def build_line_changes_from_patch_bytes(
-    patch_bytes: bytes,
+def build_line_changes_from_patch_lines(
+    patch_lines: Iterable[bytes],
     *,
     annotator: LineLevelChangeAnnotator | None = None,
 ) -> LineLevelChange:
-    """Parse a single-hunk patch into a LineLevelChange structure.
+    """Parse single-hunk patch lines into a LineLevelChange structure.
 
     Args:
-        patch_bytes: Unified diff patch bytes for a single hunk
+        patch_lines: Unified diff patch lines for a single hunk
         annotator: Optional function to enrich LineLevelChange with provenance metadata
                    (e.g., batch source alignment, 3-way merge base). If None, source_line
                    fields remain None (no provenance).
@@ -342,11 +342,14 @@ def build_line_changes_from_patch_bytes(
     path_value = ""
     old_path_value = ""
     new_path_value = ""
-    captured_header_line_bytes = b""
-    body_lines_bytes: list[bytes] = []
+    hunk_header: HunkHeader | None = None
+    old_line_number = 0
+    new_line_number = 0
+    next_display_id = 0
+    line_entries: list[LineEntry] = []
 
     # Preserve line endings so a parsed hunk can be emitted unchanged.
-    for line_with_ending in patch_bytes.splitlines(keepends=True):
+    for line_with_ending in patch_lines:
         # Strip only \n for comparison (preserve \r in content)
         line = line_with_ending.rstrip(b'\n')
 
@@ -360,11 +363,86 @@ def build_line_changes_from_patch_bytes(
             if new_path_value != "/dev/null" and new_path_value.startswith("b/"):
                 new_path_value = new_path_value[2:]
         elif line.startswith(b"@@ "):
-            captured_header_line_bytes = line
-            body_lines_bytes.append(line)
-        else:
-            if captured_header_line_bytes:
-                body_lines_bytes.append(line)
+            captured_header_line = line.decode('utf-8', errors='replace')
+            header_match = HUNK_HEADER_PATTERN.match(captured_header_line)
+            if not header_match:
+                exit_with_error(f"Bad hunk header: {captured_header_line}")
+
+            old_start = int(header_match.group(1))
+            old_length = int(header_match.group(2) or "1")
+            new_start = int(header_match.group(3))
+            new_length = int(header_match.group(4) or "1")
+            hunk_header = HunkHeader(old_start, old_length, new_start, new_length)
+            old_line_number = old_start
+            new_line_number = new_start
+            next_display_id = 0
+        elif hunk_header is not None:
+            if line.startswith(b"\\ No newline at end of file"):
+                if line_entries:
+                    line_entries[-1].has_trailing_newline = False
+                continue
+            if not line:
+                sign = " "
+                text_bytes = b""
+            else:
+                sign = line[0:1].decode('ascii')  # +, -, or space (always ASCII)
+                text_bytes = line[1:]  # Canonical bytes (without +/- prefix)
+
+            # Decode for display (with replacement for non-UTF-8)
+            text = text_bytes.decode('utf-8', errors='replace')
+
+            if sign == " ":
+                # Context line
+                line_entries.append(LineEntry(
+                    id=None,
+                    kind=" ",
+                    old_line_number=old_line_number,
+                    new_line_number=new_line_number,
+                    text_bytes=text_bytes,
+                    text=text,
+                    source_line=None,
+                ))
+                old_line_number += 1
+                new_line_number += 1
+            elif sign == "-":
+                next_display_id += 1
+                # Deletion: doesn't exist in working tree
+                line_entries.append(LineEntry(
+                    id=next_display_id,
+                    kind="-",
+                    old_line_number=old_line_number,
+                    new_line_number=None,
+                    text_bytes=text_bytes,
+                    text=text,
+                    source_line=None,
+                ))
+                old_line_number += 1
+            elif sign == "+":
+                next_display_id += 1
+                # Addition: exists in working tree
+                line_entries.append(LineEntry(
+                    id=next_display_id,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=new_line_number,
+                    text_bytes=text_bytes,
+                    text=text,
+                    source_line=None,
+                ))
+                new_line_number += 1
+            else:
+                # Treat as context line
+                line_entries.append(LineEntry(
+                    id=None,
+                    kind=" ",
+                    old_line_number=old_line_number,
+                    new_line_number=new_line_number,
+                    text_bytes=text_bytes,
+                    text=text,
+                    source_line=None,
+                ))
+                old_line_number += 1
+                new_line_number += 1
 
     if new_path_value and new_path_value != "/dev/null":
         path_value = new_path_value
@@ -373,91 +451,8 @@ def build_line_changes_from_patch_bytes(
     else:
         path_value = new_path_value or old_path_value or ""
 
-    if not captured_header_line_bytes:
+    if hunk_header is None:
         exit_with_error(_("Failed to parse hunk header."))
-
-    # Decode header to str for regex matching
-    captured_header_line = captured_header_line_bytes.decode('utf-8', errors='replace')
-    header_match = HUNK_HEADER_PATTERN.match(captured_header_line)
-    if not header_match:
-        exit_with_error(f"Bad hunk header: {captured_header_line}")
-
-    old_start = int(header_match.group(1))
-    old_length = int(header_match.group(2) or "1")
-    new_start = int(header_match.group(3))
-    new_length = int(header_match.group(4) or "1")
-    hunk_header = HunkHeader(old_start, old_length, new_start, new_length)
-
-    line_entries: list[LineEntry] = []
-    old_line_number = old_start
-    new_line_number = new_start
-    next_display_id = 0
-
-    for raw in body_lines_bytes[1:]:  # skip header
-        if raw.startswith(b"\\ No newline at end of file"):
-            continue
-        if not raw:
-            sign = " "
-            text_bytes = b""
-        else:
-            sign = raw[0:1].decode('ascii')  # +, -, or space (always ASCII)
-            text_bytes = raw[1:]  # Canonical bytes (without +/- prefix)
-
-        # Decode for display (with replacement for non-UTF-8)
-        text = text_bytes.decode('utf-8', errors='replace')
-
-        if sign == " ":
-            # Context line
-            line_entries.append(LineEntry(
-                id=None,
-                kind=" ",
-                old_line_number=old_line_number,
-                new_line_number=new_line_number,
-                text_bytes=text_bytes,
-                text=text,
-                source_line=None,
-            ))
-            old_line_number += 1
-            new_line_number += 1
-        elif sign == "-":
-            next_display_id += 1
-            # Deletion: doesn't exist in working tree
-            line_entries.append(LineEntry(
-                id=next_display_id,
-                kind="-",
-                old_line_number=old_line_number,
-                new_line_number=None,
-                text_bytes=text_bytes,
-                text=text,
-                source_line=None,
-            ))
-            old_line_number += 1
-        elif sign == "+":
-            next_display_id += 1
-            # Addition: exists in working tree
-            line_entries.append(LineEntry(
-                id=next_display_id,
-                kind="+",
-                old_line_number=None,
-                new_line_number=new_line_number,
-                text_bytes=text_bytes,
-                text=text,
-                source_line=None,
-            ))
-            new_line_number += 1
-        else:
-            # Treat as context line
-            line_entries.append(LineEntry(
-                id=None,
-                kind=" ",
-                old_line_number=old_line_number,
-                new_line_number=new_line_number,
-                text_bytes=text_bytes,
-                text=text,
-                source_line=None,
-            ))
-            old_line_number += 1
-            new_line_number += 1
 
     line_changes = LineLevelChange(path=path_value, header=hunk_header, lines=line_entries)
 
@@ -466,3 +461,15 @@ def build_line_changes_from_patch_bytes(
         line_changes = annotator(path_value, line_changes)
 
     return line_changes
+
+
+def build_line_changes_from_patch_bytes(
+    patch_bytes: bytes,
+    *,
+    annotator: LineLevelChangeAnnotator | None = None,
+) -> LineLevelChange:
+    """Parse a single-hunk patch byte string into a LineLevelChange structure."""
+    return build_line_changes_from_patch_lines(
+        patch_bytes.splitlines(keepends=True),
+        annotator=annotator,
+    )

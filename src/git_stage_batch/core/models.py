@@ -100,6 +100,7 @@ class LineEntry:
     baseline_reference_before_line: int | None = None
     baseline_reference_before_text_bytes: bytes | None = None
     has_baseline_reference_before: bool = False
+    has_trailing_newline: bool = True
 
 
 @dataclass

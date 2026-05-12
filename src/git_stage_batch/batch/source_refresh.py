@@ -7,7 +7,8 @@ advancement, ownership remapping, cache updates, and line re-annotation.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
@@ -328,3 +329,36 @@ def prepare_batch_ownership_update_for_selection(
         ownership_before=refreshed.ownership,
         ownership_after=merged_ownership
     )
+
+
+@contextmanager
+def acquire_batch_ownership_update_for_selection(
+    *,
+    batch_name: str,
+    file_path: str,
+    file_metadata: dict | None,
+    selected_lines: list,
+) -> Iterator[PreparedBatchUpdate]:
+    """Acquire existing ownership metadata while preparing a batch update.
+
+    The yielded ownership may borrow deletion content from acquired metadata,
+    so callers should persist or detach it before leaving the context.
+    """
+    if file_metadata is None:
+        yield prepare_batch_ownership_update_for_selection(
+            batch_name=batch_name,
+            file_path=file_path,
+            current_batch_source_commit=None,
+            existing_ownership=None,
+            selected_lines=selected_lines,
+        )
+        return
+
+    with BatchOwnership.acquire_for_metadata_dict(file_metadata) as existing_ownership:
+        yield prepare_batch_ownership_update_for_selection(
+            batch_name=batch_name,
+            file_path=file_path,
+            current_batch_source_commit=file_metadata.get("batch_source_commit"),
+            existing_ownership=existing_ownership,
+            selected_lines=selected_lines,
+        )

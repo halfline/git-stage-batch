@@ -735,6 +735,56 @@ class TestResetFromBatch:
         assert read_file_from_batch("source", "file1.txt") is None
         assert read_file_from_batch("dest", "file1.txt") is not None
 
+    def test_reset_to_merges_file_ownership_with_scoped_metadata(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Whole-file reset-to-batch should not materialize ownership."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 changed\nline 2 changed\n")
+
+        command_new_batch("source", "source batch")
+        command_new_batch("dest", "destination batch")
+        command_start()
+        add_file_to_batch(
+            "source",
+            "test.py",
+            BatchOwnership.from_presence_lines(
+                ["1"],
+                [
+                    DeletionClaim(
+                        anchor_line=None,
+                        content_lines=[b"line 1\n"],
+                    ),
+                ],
+            ),
+            "100644",
+        )
+        add_file_to_batch(
+            "dest",
+            "test.py",
+            BatchOwnership.from_presence_lines(["2"], []),
+            "100644",
+        )
+
+        _reject_materialized_ownership_metadata(monkeypatch)
+
+        command_reset_from_batch("source", file="test.py", to_batch="dest")
+
+        source_after = read_batch_metadata("source")
+        dest_after = read_batch_metadata("dest")
+
+        assert "test.py" not in source_after["files"]
+
+        dest_meta = dest_after["files"]["test.py"]
+        assert _presence_line_ids_from_metadata(dest_meta) == {1, 2}
+        assert len(dest_meta["deletions"]) == 1
+
     def test_reset_to_existing_batch_requires_same_baseline(self, temp_git_repo):
         """Test split destination must share the source batch baseline."""
 

@@ -47,7 +47,7 @@ from ..utils.file_io import (
     read_text_file_contents,
     write_text_file_contents,
 )
-from ..utils.git import require_git_repository, stream_git_command
+from ..utils.git import require_git_repository, stream_git_diff
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
@@ -175,7 +175,7 @@ def command_skip_file(
         blocked_hashes = read_text_file_line_set(blocklist_path)
 
         hunks_skipped = 0
-        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
             if isinstance(patch, BinaryFileChange):
                 file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
                 if file_path != target_file:

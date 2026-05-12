@@ -683,8 +683,10 @@ def command_discard_line_as_to_batch(
         operation_parts.append("--no-edge-overlap")
     if file is not None:
         operation_parts.extend(["--file", file])
-    with undo_checkpoint(" ".join(operation_parts)):
-        saved_selected_state = snapshot_selected_change_state()
+    with (
+        undo_checkpoint(" ".join(operation_parts)),
+        snapshot_selected_change_state() as saved_selected_state,
+    ):
         preserve_selected_state = file not in (None, "")
 
         try:

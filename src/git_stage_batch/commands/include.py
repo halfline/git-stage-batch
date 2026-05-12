@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from enum import Enum
 import os
@@ -83,7 +83,6 @@ from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..editor import (
     EditorBuffer,
-    BufferInput,
     buffer_byte_count,
     buffer_matches,
     load_git_object_as_buffer,
@@ -140,12 +139,12 @@ class TransientIncludeFailureReason(Enum):
 class TransientIncludeResult:
     """Result of staging a live line selection through transient batch ownership."""
 
-    buffer: BufferInput | None
+    buffer: EditorBuffer | None
     failure_reason: TransientIncludeFailureReason | None = None
     failure_detail: str | None = None
 
     @classmethod
-    def success(cls, buffer: BufferInput) -> TransientIncludeResult:
+    def success(cls, buffer: EditorBuffer) -> TransientIncludeResult:
         return cls(buffer=buffer)
 
     @classmethod
@@ -385,7 +384,7 @@ def _try_build_index_content_via_transient_batch(
         _restore_session_batch_sources_file(session_sources_existed, session_sources_content)
 
 
-def _stage_live_line_target_buffer(file_path: str, target_buffer: BufferInput) -> None:
+def _stage_live_line_target_buffer(file_path: str, target_buffer: EditorBuffer) -> None:
     """Stage the result of live line-level include."""
     full_path = get_git_repository_root_path() / file_path
     if buffer_byte_count(target_buffer) == 0 and not os.path.lexists(full_path):
@@ -750,7 +749,7 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
         preserve_selected_state = False
         saved_selected_state = None
 
@@ -773,7 +772,9 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             else:
                 if file != "" and not selected_file_view_targets_file:
                     preserve_selected_state = True
-                    saved_selected_state = snapshot_selected_change_state()
+                    saved_selected_state = selected_state_stack.enter_context(
+                        snapshot_selected_change_state()
+                    )
 
                 line_changes = cache_unstaged_file_as_single_hunk(target_file)
                 if line_changes is None:
@@ -848,11 +849,7 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
                 file_path=line_changes.path,
                 selected_ids=sorted(combined_include_ids),
             )
-            target_index_buffer_context = (
-                transient_result.buffer
-                if isinstance(transient_result.buffer, EditorBuffer)
-                else nullcontext(transient_result.buffer)
-            )
+            target_index_buffer_context = transient_result.buffer
         else:
             failure_reason = (
                 transient_result.failure_reason
@@ -877,6 +874,7 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
             _stage_live_line_target_buffer(line_changes.path, target_index_buffer)
 
         if preserve_selected_state:
+            assert saved_selected_state is not None
             restore_selected_change_state(saved_selected_state)
         else:
             # Update processed include IDs only when the selected display remains

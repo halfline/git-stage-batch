@@ -264,7 +264,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                         dest_batch,
                         result["binary_change"],
                         file_mode=file_meta.get("mode", "100644"),
-                        file_content_override=result.get("target_content"),
+                        file_buffer_override=result.get("target_buffer"),
                     )
                 else:
                     add_sifted_text_file_to_batch(
@@ -356,7 +356,7 @@ def _perform_atomic_in_place_sift(
                     temp_batch_name,
                     result["binary_change"],
                     file_mode=file_meta.get("mode", "100644"),
-                    file_content_override=result.get("target_content"),
+                    file_buffer_override=result.get("target_buffer"),
                 )
             else:
                 add_sifted_text_file_to_batch(
@@ -391,7 +391,7 @@ def _perform_atomic_in_place_sift(
 def _source_buffers_from_sift_results(
     retained_files: list,
 ) -> dict[str, EditorBuffer]:
-    """Return text source buffers held by retained sift results."""
+    """Return source buffers held by retained sift results."""
     source_buffers: dict[str, EditorBuffer] = {}
     for file_path, _file_meta, result in retained_files:
         target_buffer = _target_buffer_from_sift_result(result)
@@ -401,7 +401,7 @@ def _source_buffers_from_sift_results(
 
 
 def _close_sifted_results(retained_files: list) -> None:
-    """Close text target buffers held by retained sift results."""
+    """Close target buffers held by retained sift results."""
     for _file_path, _file_meta, result in retained_files:
         target_buffer = _target_buffer_from_sift_result(result)
         if target_buffer is not None:
@@ -409,8 +409,6 @@ def _close_sifted_results(retained_files: list) -> None:
 
 
 def _target_buffer_from_sift_result(result: dict) -> EditorBuffer | None:
-    if result.get("type") != "text":
-        return None
     target_buffer = result.get("target_buffer")
     if isinstance(target_buffer, EditorBuffer):
         return target_buffer
@@ -451,44 +449,49 @@ def _compute_sifted_binary_file(
     batch_source_commit = file_meta["batch_source_commit"]
     change_type = file_meta["change_type"]
 
-    batch_source_result = run_git_command(
-        ["show", f"{batch_source_commit}:{file_path}"],
-        check=False,
-        text_output=False,
+    batch_source_buffer = load_git_object_as_buffer_or_empty(
+        f"{batch_source_commit}:{file_path}"
     )
-    if batch_source_result.returncode != 0:
-        batch_source_content = b""
-    else:
-        batch_source_content = batch_source_result.stdout
 
     full_path = repo_root / file_path
     working_exists = full_path.exists()
-    if working_exists:
-        working_content = full_path.read_bytes()
-    else:
-        working_content = b""
+    working_buffer = (
+        EditorBuffer.from_path(full_path)
+        if working_exists else
+        EditorBuffer.from_bytes(b"")
+    )
+    target_buffer: EditorBuffer | None = None
+    try:
+        if change_type == "deleted":
+            if not working_exists:
+                return None
+        elif change_type in ("added", "modified"):
+            if working_exists and buffer_matches(working_buffer, batch_source_buffer):
+                return None
+            target_buffer = batch_source_buffer
+            batch_source_buffer = None
 
-    if change_type == "deleted":
-        if not working_exists:
-            return None
-    elif change_type in ("added", "modified"):
-        if working_exists and working_content == batch_source_content:
-            return None
+        old_path = file_path if change_type != "added" else "/dev/null"
+        new_path = file_path if change_type != "deleted" else "/dev/null"
 
-    old_path = file_path if change_type != "added" else "/dev/null"
-    new_path = file_path if change_type != "deleted" else "/dev/null"
-
-    result = {
-        "type": "binary",
-        "binary_change": BinaryFileChange(
-            old_path=old_path,
-            new_path=new_path,
-            change_type=change_type,
-        ),
-    }
-    if change_type != "deleted":
-        result["target_content"] = batch_source_content
-    return result
+        result = {
+            "type": "binary",
+            "binary_change": BinaryFileChange(
+                old_path=old_path,
+                new_path=new_path,
+                change_type=change_type,
+            ),
+        }
+        if target_buffer is not None:
+            result["target_buffer"] = target_buffer
+            target_buffer = None
+        return result
+    finally:
+        if batch_source_buffer is not None:
+            batch_source_buffer.close()
+        working_buffer.close()
+        if target_buffer is not None:
+            target_buffer.close()
 
 
 

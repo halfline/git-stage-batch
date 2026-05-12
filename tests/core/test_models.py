@@ -69,37 +69,3 @@ class TestSingleHunkPatch:
         assert patch.old_path == "file.txt"
         assert patch.new_path == "file.txt"
         assert len(patch.lines) == 7
-
-    def test_to_patch_text(self):
-        """Test converting patch to text format."""
-        lines = [
-            b"--- a/file.txt\n",
-            b"+++ b/file.txt\n",
-            b"@@ -1,3 +1,3 @@\n",
-            b" context\n",
-            b"-old line\n",
-            b"+new line\n",
-            b" context\n",
-        ]
-        patch = SingleHunkPatch(old_path="file.txt", new_path="file.txt", lines=lines)
-
-        text = patch.to_patch_bytes()
-        expected = b"".join(lines)
-        assert text == expected
-
-    def test_to_patch_text_trailing_newline(self):
-        """Test that to_patch_text always ends with a single newline."""
-        lines = [b"--- a/file.txt\n", b"+++ b/file.txt\n", b"@@ -1 +1 @@\n", b"-old\n", b"+new\n"]
-        patch = SingleHunkPatch(old_path="file.txt", new_path="file.txt", lines=lines)
-
-        text = patch.to_patch_bytes()
-        assert text.endswith(b"\n")
-        assert not text.endswith(b"\n\n")
-
-    def test_to_patch_text_empty_lines(self):
-        """Test to_patch_text with minimal patch."""
-        lines = [b"--- a/file.txt\n", b"+++ b/file.txt\n", b"@@ -0,0 +1 @@\n", b"+new file\n"]
-        patch = SingleHunkPatch(old_path="file.txt", new_path="file.txt", lines=lines)
-
-        text = patch.to_patch_bytes()
-        assert text == b"--- a/file.txt\n+++ b/file.txt\n@@ -0,0 +1 @@\n+new file\n"

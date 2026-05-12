@@ -34,6 +34,32 @@ def write_text_file_contents(path: Path, data: str) -> None:
     path.write_text(data, encoding="utf-8", errors="surrogateescape")
 
 
+def stream_text_file_lines(path: Path) -> Iterable[str]:
+    """Yield a text file's lines, or no lines if it does not exist."""
+    if not path.exists():
+        return
+    with path.open("r", encoding="utf-8", errors="surrogateescape") as file_handle:
+        yield from file_handle
+
+
+def stream_nonblank_text_file_lines(path: Path) -> Iterable[str]:
+    """Yield stripped nonblank lines from a text file."""
+    for line in stream_text_file_lines(path):
+        stripped = line.strip()
+        if stripped:
+            yield stripped
+
+
+def read_text_file_line_set(path: Path) -> set[str]:
+    """Read stripped nonblank text lines into a set."""
+    return set(stream_nonblank_text_file_lines(path))
+
+
+def count_nonblank_text_file_lines(path: Path) -> int:
+    """Count nonblank text lines without reading the whole file."""
+    return sum(1 for _line in stream_nonblank_text_file_lines(path))
+
+
 def write_file_bytes(path: Path, data: bytes) -> None:
     """Write raw bytes to a file, creating parent directories as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,11 +90,7 @@ def read_file_paths_file(path: Path) -> list[str]:
     Returns:
         Sorted list of unique paths
     """
-    content = read_text_file_contents(path)
-    if not content:
-        return []
-    lines = [line.strip() for line in content.splitlines() if line.strip()]
-    return sorted(set(lines))
+    return sorted(read_text_file_line_set(path))
 
 
 def write_file_paths_file(path: Path, file_paths: Iterable[str]) -> None:

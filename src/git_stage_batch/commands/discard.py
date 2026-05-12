@@ -38,7 +38,11 @@ from ..core.diff_parser import (
     build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
 )
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
+from ..core.hashing import (
+    compute_binary_file_hash,
+    compute_stable_hunk_hash,
+    compute_stable_hunk_hash_from_lines,
+)
 from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange
 from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
@@ -89,7 +93,12 @@ from ..staging.operations import (
     build_target_working_tree_buffer_with_replaced_lines,
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
-from ..utils.file_io import append_lines_to_file, read_file_bytes, read_text_file_contents
+from ..utils.file_io import (
+    append_lines_to_file,
+    read_file_bytes,
+    read_text_file_line_set,
+    read_text_file_contents,
+)
 from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_command
 from ..utils.journal import log_journal
 from ..utils.paths import (
@@ -391,8 +400,7 @@ def command_discard_file(file: str) -> None:
     with undo_checkpoint(f"discard --file {file}".rstrip()):
         # Load blocklist
         blocklist_path = get_block_list_file_path()
-        blocklist_text = read_text_file_contents(blocklist_path)
-        blocked_hashes = set(blocklist_text.splitlines())
+        blocked_hashes = read_text_file_line_set(blocklist_path)
 
         # Snapshot the file if it's untracked (for abort functionality)
         snapshot_file_if_untracked(target_file)
@@ -414,8 +422,7 @@ def command_discard_file(file: str) -> None:
             if patch.new_path != target_file:
                 continue
 
-            patch_bytes = patch.to_patch_bytes()
-            patch_hash = compute_stable_hunk_hash(patch_bytes)
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
             if patch_hash not in blocked_hashes:
                 hashes_to_block.append(patch_hash)

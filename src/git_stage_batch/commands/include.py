@@ -33,6 +33,7 @@ from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     build_line_changes_from_patch_bytes,
+    build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
 )
 from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash
@@ -1379,8 +1380,10 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     all_lines_to_batch = []
 
     for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])):
-        patch_bytes_loop = patch.to_patch_bytes()
-        hunk_lines = build_line_changes_from_patch_bytes(patch_bytes_loop, annotator=annotate_with_batch_source)
+        hunk_lines = build_line_changes_from_patch_lines(
+            patch.lines,
+            annotator=annotate_with_batch_source,
+        )
         all_lines_to_batch.extend(hunk_lines.lines)
 
     if not all_lines_to_batch:

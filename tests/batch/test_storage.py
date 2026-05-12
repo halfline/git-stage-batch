@@ -113,6 +113,31 @@ def test_add_file_to_batch_persists_replacement_units(temp_git_repo):
         ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
     ]
 
+
+def test_deletion_claim_metadata_accepts_non_list_content_lines(
+    temp_git_repo,
+    line_sequence,
+):
+    """Deletion claim metadata only requires indexed content lines."""
+    ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
+            DeletionClaim(
+                anchor_line=None,
+                content_lines=line_sequence([b"old one\n", b"old two\n"]),
+            ),
+        ],
+    )
+
+    metadata = ownership.to_metadata_dict()
+    round_tripped = BatchOwnership.from_metadata_dict(metadata)
+
+    assert round_tripped.deletions[0].content_lines == [
+        b"old one\n",
+        b"old two\n",
+    ]
+
+
 def test_legacy_claimed_lines_metadata_loads_as_presence_claims(temp_git_repo):
     """Old claimed_lines metadata should retain presence ownership."""
     ownership = BatchOwnership.from_metadata_dict({

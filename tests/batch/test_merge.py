@@ -488,6 +488,21 @@ class TestMergeBatch:
         # Should remove the unwanted line
         assert result == b"line1\nline2\nline3\n"
 
+    def test_merge_with_deletion_accepts_non_list_content_lines(self, line_sequence):
+        """Deletion suppression only requires indexed content lines."""
+        source = b"line1\nline2\nline3\n"
+        working = b"unwanted\nline1\nline2\nline3\n"
+        deletions = [
+            DeletionClaim(
+                anchor_line=None,
+                content_lines=line_sequence([b"unwanted\n"]),
+            ),
+        ]
+
+        result = merge_batch(source, BatchOwnership([], deletions), working)
+
+        assert result == b"line1\nline2\nline3\n"
+
     def test_baseline_referenced_absence_suppresses_when_source_anchor_missing(self):
         """Absence-only fallback should use exact baseline coordinates."""
         source = b"line1\nnew context\nline3\n"

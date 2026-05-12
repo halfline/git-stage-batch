@@ -63,14 +63,14 @@ def test_load_git_object_as_buffer_spools_streamed_output(monkeypatch):
     """Git object buffers are loaded from streamed command output."""
     calls = []
 
-    def fake_stream_git_command(arguments):
-        calls.append(arguments)
+    def fake_stream_git_object(revision_path):
+        calls.append(revision_path)
         return iter([b"alpha\nbe", b"ta\n"])
 
-    monkeypatch.setattr(editor_git, "stream_git_command", fake_stream_git_command)
+    monkeypatch.setattr(editor_git, "_stream_git_object", fake_stream_git_object)
 
     with load_git_object_as_buffer("HEAD:file.txt") as buffer:
-        assert calls == [["show", "HEAD:file.txt"]]
+        assert calls == ["HEAD:file.txt"]
         assert buffer.is_mmap_backed is True
         assert buffer[1] == b"beta\n"
 
@@ -78,10 +78,13 @@ def test_load_git_object_as_buffer_spools_streamed_output(monkeypatch):
 def test_load_git_object_as_buffer_returns_none_for_missing_object(monkeypatch):
     """Missing Git objects return None instead of a buffer."""
 
-    def fake_stream_git_command(arguments):
-        raise subprocess.CalledProcessError(128, ["git", *arguments])
+    def fake_stream_git_object(revision_path):
+        raise subprocess.CalledProcessError(
+            128,
+            ["git", "show", revision_path],
+        )
 
-    monkeypatch.setattr(editor_git, "stream_git_command", fake_stream_git_command)
+    monkeypatch.setattr(editor_git, "_stream_git_object", fake_stream_git_object)
 
     assert load_git_object_as_buffer("HEAD:missing.txt") is None
 
@@ -91,10 +94,13 @@ def test_load_git_object_as_buffer_or_empty_returns_empty_for_missing_object(
 ):
     """Missing Git objects can be loaded as empty file buffers."""
 
-    def fake_stream_git_command(arguments):
-        raise subprocess.CalledProcessError(128, ["git", *arguments])
+    def fake_stream_git_object(revision_path):
+        raise subprocess.CalledProcessError(
+            128,
+            ["git", "show", revision_path],
+        )
 
-    monkeypatch.setattr(editor_git, "stream_git_command", fake_stream_git_command)
+    monkeypatch.setattr(editor_git, "_stream_git_object", fake_stream_git_object)
 
     with load_git_object_as_buffer_or_empty("HEAD:missing.txt") as buffer:
         assert len(buffer) == 0

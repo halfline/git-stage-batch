@@ -45,6 +45,17 @@ def merge_batch(
         return buffer.to_bytes()
 
 
+def _reject_materialized_ownership_metadata(monkeypatch):
+    def fail_from_metadata_dict(cls, data):
+        raise AssertionError("sift should use acquired ownership metadata")
+
+    monkeypatch.setattr(
+        BatchOwnership,
+        "from_metadata_dict",
+        classmethod(fail_from_metadata_dict),
+    )
+
+
 def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
     """Sift ownership derivation accepts indexed byte-line sequences."""
     working_lines = line_sequence([b"line1\n", b"old\n", b"line3\n"])
@@ -161,6 +172,28 @@ class TestSiftBasicBehavior:
         resolved = ownership.resolve()
         # Should claim line 3 (Line B modified) but not line 2 (Line A modified already present)
         assert 3 in resolved.presence_line_set
+
+    def test_sift_uses_scoped_ownership_metadata(self, temp_git_repo, monkeypatch):
+        """Sift should not require materialized ownership metadata."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("old\nkeep\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add readme"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        readme.write_text("new\nkeep\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("source-batch")
+
+        readme.write_text("old\nkeep\n")
+        _reject_materialized_ownership_metadata(monkeypatch)
+
+        command_sift_batch("source-batch", "sifted-batch")
+
+        metadata = read_batch_metadata("sifted-batch")
+        file_meta = metadata["files"]["README.md"]
+        assert "presence_claims" in file_meta
+        assert "deletions" in file_meta
 
     def test_sift_empty_when_all_present(self, temp_git_repo):
         """Test that sift produces empty batch when all changes are present."""

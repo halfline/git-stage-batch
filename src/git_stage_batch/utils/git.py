@@ -403,22 +403,6 @@ def list_git_tree_blobs(treeish: str, file_paths: Iterable[str]) -> dict[str, Gi
     return entries
 
 
-def read_git_tree_file_contents(treeish: str, file_paths: Iterable[str]) -> dict[str, bytes]:
-    """Read several file contents from a tree with batched object IO."""
-    tree_blobs = list_git_tree_blobs(treeish, file_paths)
-    if not tree_blobs:
-        return {}
-
-    blob_contents = read_git_blobs_as_bytes(
-        blob.blob_sha for blob in tree_blobs.values()
-    )
-    return {
-        file_path: blob_contents[blob.blob_sha]
-        for file_path, blob in tree_blobs.items()
-        if blob.blob_sha in blob_contents
-    }
-
-
 def read_git_blob_as_bytes(blob_hash: str) -> bytes | None:
     """Read a git blob object as bytes.
 

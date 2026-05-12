@@ -15,6 +15,7 @@ from git_stage_batch.batch.ownership import (
     BatchOwnership,
     DeletionClaim,
     ReplacementUnit,
+    detach_batch_ownership,
 )
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.editor import EditorBuffer
@@ -159,6 +160,40 @@ def test_batch_ownership_metadata_acquisition_scopes_deletion_buffers(temp_git_r
 
     with pytest.raises(ValueError, match="buffer is closed"):
         content_lines[0]
+
+
+def test_detach_batch_ownership_keeps_acquired_deletion_content(temp_git_repo):
+    """Detached ownership should keep acquired deletion content after scope."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
+            DeletionClaim(
+                anchor_line=None,
+                content_lines=[b"old one\n", b"old two\n"],
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
+        ],
+    )
+    metadata = ownership.to_metadata_dict()
+
+    with BatchOwnership.acquire_for_metadata_dict(metadata) as scoped_ownership:
+        detached = detach_batch_ownership(scoped_ownership)
+        content_lines = scoped_ownership.deletions[0].content_lines
+        assert isinstance(content_lines, EditorBuffer)
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        content_lines[0]
+
+    assert detached.deletions[0].content_lines == [
+        b"old one\n",
+        b"old two\n",
+    ]
+    assert detached.presence_line_set() == {1}
+    assert detached.replacement_units == [
+        ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
+    ]
 
 
 def test_legacy_claimed_lines_metadata_loads_as_presence_claims(temp_git_repo):

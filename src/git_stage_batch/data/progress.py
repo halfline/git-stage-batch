@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from ..utils.file_io import read_text_file_contents
+from ..utils.file_io import count_nonblank_text_file_lines, read_text_file_contents
 from ..utils.git import run_git_command
 from ..utils.paths import (
     get_line_changes_json_file_path,
@@ -29,22 +29,13 @@ def get_hunk_counts() -> dict[str, int]:
     discarded_file = get_discarded_hunks_file_path()
 
     # Count included hunks (one per line)
-    included_count = 0
-    if included_file.exists():
-        content = read_text_file_contents(included_file)
-        included_count = len([line for line in content.splitlines() if line.strip()])
+    included_count = count_nonblank_text_file_lines(included_file)
 
     # Count skipped hunks (JSONL format)
-    skipped_count = 0
-    if skipped_file.exists():
-        content = read_text_file_contents(skipped_file)
-        skipped_count = len([line for line in content.splitlines() if line.strip()])
+    skipped_count = count_nonblank_text_file_lines(skipped_file)
 
     # Count discarded hunks (one per line)
-    discarded_count = 0
-    if discarded_file.exists():
-        content = read_text_file_contents(discarded_file)
-        discarded_count = len([line for line in content.splitlines() if line.strip()])
+    discarded_count = count_nonblank_text_file_lines(discarded_file)
 
     # Remaining is harder to determine without running diff, so we set to 0
     # The caller should provide this if needed

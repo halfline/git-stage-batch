@@ -19,7 +19,7 @@ from git_stage_batch.batch.ownership import (
     build_ownership_units_from_batch_source_lines,
     rebuild_ownership_from_units,
 )
-from git_stage_batch.batch.selection import select_batch_ownership_for_display_ids_from_lines
+from git_stage_batch.batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 
 
 def _source_lines(content: bytes) -> list[bytes]:
@@ -188,13 +188,13 @@ def test_select_batch_ownership_accepts_batch_source_line_sequence(line_sequence
     ownership = BatchOwnership.from_presence_lines(["1,3"], [])
     file_meta = ownership.to_metadata_dict()
 
-    selected = select_batch_ownership_for_display_ids_from_lines(
+    with acquire_batch_ownership_for_display_ids_from_lines(
         file_meta,
         source_lines,
         {2},
-    )
+    ) as selected:
+        assert selected.presence_line_set() == {3}
 
-    assert selected.presence_line_set() == {3}
 
 
 def test_claimed_followed_by_deletion_becomes_replacement():

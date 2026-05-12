@@ -460,7 +460,7 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
         preserve_selected_state = False
         saved_selected_state = None
 
@@ -471,7 +471,9 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
         else:
             target_file = file
             preserve_selected_state = True
-            saved_selected_state = snapshot_selected_change_state()
+            saved_selected_state = selected_state_stack.enter_context(
+                snapshot_selected_change_state()
+            )
 
         line_changes = _load_explicit_file_selection(target_file)
         snapshot_file_if_untracked(target_file)
@@ -481,6 +483,7 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
         absolute_path.write_text(replacement_text, encoding="utf-8", errors="surrogateescape")
 
         if preserve_selected_state:
+            assert saved_selected_state is not None
             restore_selected_change_state(saved_selected_state)
         else:
             recalculate_selected_hunk_for_file(line_changes.path)

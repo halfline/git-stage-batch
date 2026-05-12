@@ -18,11 +18,6 @@ def read_text_file_contents(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="surrogateescape") if path.exists() else ""
 
 
-def read_file_bytes(path: Path) -> bytes:
-    """Read a file's raw bytes, returning empty bytes if it doesn't exist."""
-    return path.read_bytes() if path.exists() else b""
-
-
 def write_text_file_contents(path: Path, data: str) -> None:
     """Write text to a file, creating parent directories as needed.
 

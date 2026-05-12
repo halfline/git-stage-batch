@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Iterator, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
@@ -44,6 +45,7 @@ from ..utils.git import (
     git_update_index_entries,
     git_write_tree,
     run_git_command,
+    stream_git_diff,
     temp_git_index,
 )
 from ..utils.paths import get_batch_metadata_file_path
@@ -696,13 +698,13 @@ def get_batch_diff(batch_name: str, context_lines: int = 3) -> bytes:
         empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
         baseline = empty_tree
 
-    # Generate diff as bytes
-    result = run_git_command(
-        ["diff", f"-U{context_lines}", baseline, commit_sha],
-        check=False,
-        text_output=False
-    )
-    if result.returncode != 0:
+    try:
+        return b"".join(
+            stream_git_diff(
+                base=baseline,
+                target=commit_sha,
+                context_lines=context_lines,
+            )
+        )
+    except subprocess.CalledProcessError:
         return b""
-
-    return result.stdout

@@ -311,6 +311,7 @@ class TestCommandShowFromBatch:
             BatchOwnership,
             "from_metadata_dict",
             classmethod(fail_from_metadata_dict),
+            raising=False,
         )
 
         rendered = render_batch_file_display(

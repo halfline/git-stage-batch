@@ -40,6 +40,7 @@ def _reject_materialized_ownership_metadata(monkeypatch):
         BatchOwnership,
         "from_metadata_dict",
         classmethod(fail_from_metadata_dict),
+        raising=False,
     )
 
 

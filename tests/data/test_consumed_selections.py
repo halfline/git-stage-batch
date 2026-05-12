@@ -159,6 +159,6 @@ def test_record_consumed_selection_rewrites_existing_deletions(temp_git_repo):
 
     metadata = read_consumed_file_metadata("test.txt")
     assert metadata is not None
-    ownership = BatchOwnership.from_metadata_dict(metadata)
-    assert ownership.presence_line_set() == {1}
-    assert ownership.deletions[0].content_lines == [b"old\n"]
+    with BatchOwnership.acquire_for_metadata_dict(metadata) as ownership:
+        assert ownership.presence_line_set() == {1}
+        assert list(ownership.deletions[0].content_lines) == [b"old\n"]

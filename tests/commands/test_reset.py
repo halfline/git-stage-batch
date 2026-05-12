@@ -61,7 +61,13 @@ def _reject_materialized_ownership_metadata(monkeypatch):
         BatchOwnership,
         "from_metadata_dict",
         classmethod(fail_from_metadata_dict),
+        raising=False,
     )
+
+
+def _ownership_summary_from_metadata(file_meta: dict) -> tuple[set[int], int]:
+    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+        return _presence_line_ids_from_ownership(ownership), len(ownership.deletions)
 
 
 def test_reset_partition_accepts_non_list_line_sequences(line_sequence):
@@ -847,9 +853,11 @@ class TestResetFromBatch:
 
         # Verify initial ownership has both claimed line and deletion
         metadata = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata["files"]["test.py"])
-        assert 1 in _presence_line_ids_from_ownership(file_ownership)
-        assert len(file_ownership.deletions) == 1
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata["files"]["test.py"]
+        )
+        assert 1 in claimed_ids
+        assert deletion_count == 1
 
         # Reset the replacement unit - must select ALL display IDs in the unit
         # Display structure: deletion (ID 1) + claimed line (ID 2) = replacement unit
@@ -950,13 +958,14 @@ class TestResetFromBatch:
 
         # Verify line 3 is removed but lines 1, 5 and deletion remain
         metadata_after = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata_after["files"]["test.py"]
+        )
 
         assert 1 in claimed_ids, "Line 1 should remain"
         assert 3 not in claimed_ids, "Line 3 should be removed"
         assert 5 in claimed_ids, "Line 5 should remain (couples with deletion)"
-        assert len(file_ownership.deletions) == 1, "Deletion should remain (couples with line 5)"
+        assert deletion_count == 1, "Deletion should remain (couples with line 5)"
 
     def test_reset_replacement_unit_keeps_separate_presence_line(self, temp_git_repo):
         """Test that resetting a replacement unit preserves separate presence-only lines."""
@@ -991,12 +1000,13 @@ class TestResetFromBatch:
 
         # Verify line 1 AND its deletion are removed, but line 2 remains
         metadata_after = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata_after["files"]["test.py"]
+        )
 
         assert 1 not in claimed_ids, "Source line 1 should be removed (replacement unit)"
         assert 2 in claimed_ids, "Source line 2 should remain (separate presence-only unit)"
-        assert len(file_ownership.deletions) == 0, "Deletion should be removed with line 1 (replacement unit)"
+        assert deletion_count == 0, "Deletion should be removed with line 1 (replacement unit)"
 
     def test_reset_single_line_from_multi_line_presence_group(self, temp_git_repo):
         """Test that resetting one line from multiple presence-only lines works independently.
@@ -1032,13 +1042,14 @@ class TestResetFromBatch:
 
         # Verify only source line 2 is removed, lines 1 and 3 remain
         metadata_after = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata_after["files"]["test.py"]
+        )
 
         assert 1 in claimed_ids, "Source line 1 should remain (separate unit)"
         assert 2 not in claimed_ids, "Source line 2 should be removed (selected)"
         assert 3 in claimed_ids, "Source line 3 should remain (separate unit)"
-        assert len(file_ownership.deletions) == 0, "No deletions in this ownership"
+        assert deletion_count == 0, "No deletions in this ownership"
 
     def test_reset_single_presence_line_after_batch_review(self, temp_git_repo):
         """Batch reviews should not merge adjacent presence-only reset targets."""
@@ -1060,10 +1071,11 @@ class TestResetFromBatch:
         command_reset_from_batch("mybatch", line_ids="2")
 
         metadata_after = read_batch_metadata("mybatch")
-        file_ownership = BatchOwnership.from_metadata_dict(metadata_after["files"]["test.py"])
-        claimed_ids = _presence_line_ids_from_ownership(file_ownership)
+        claimed_ids, deletion_count = _ownership_summary_from_metadata(
+            metadata_after["files"]["test.py"]
+        )
 
         assert 1 in claimed_ids
         assert 2 not in claimed_ids
         assert 3 in claimed_ids
-        assert len(file_ownership.deletions) == 0
+        assert deletion_count == 0

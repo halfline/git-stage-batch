@@ -53,6 +53,7 @@ def _reject_materialized_ownership_metadata(monkeypatch):
         BatchOwnership,
         "from_metadata_dict",
         classmethod(fail_from_metadata_dict),
+        raising=False,
     )
 
 
@@ -168,10 +169,10 @@ class TestSiftBasicBehavior:
         # Verify the ownership reflects only the needed change
         metadata = read_batch_metadata("sifted-batch")
         file_meta = metadata["files"]["README.md"]
-        ownership = BatchOwnership.from_metadata_dict(file_meta)
-        resolved = ownership.resolve()
-        # Should claim line 3 (Line B modified) but not line 2 (Line A modified already present)
-        assert 3 in resolved.presence_line_set
+        with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+            resolved = ownership.resolve()
+            # Should claim line 3 (Line B modified) but not line 2 (Line A modified already present)
+            assert 3 in resolved.presence_line_set
 
     def test_sift_uses_scoped_ownership_metadata(self, temp_git_repo, monkeypatch):
         """Sift should not require materialized ownership metadata."""
@@ -911,15 +912,13 @@ class TestSiftPersistenceModel:
             # Get working content
             working_content = readme.read_bytes()
 
-            # Build ownership
-            ownership = BatchOwnership.from_metadata_dict(file_meta)
-
-            # Merge should produce the realized target
-            merged = merge_batch(
-                batch_source_content=batch_source_content,
-                ownership=ownership,
-                working_content=working_content
-            )
+            with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+                # Merge should produce the realized target
+                merged = merge_batch(
+                    batch_source_content=batch_source_content,
+                    ownership=ownership,
+                    working_content=working_content
+                )
 
             # Should produce the full realized content (both lineX and lineY)
             assert b"lineX" in merged

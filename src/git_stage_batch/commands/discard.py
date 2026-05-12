@@ -96,7 +96,7 @@ from ..utils.file_io import (
     read_text_file_line_set,
     read_text_file_contents,
 )
-from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_command
+from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_diff
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
@@ -412,7 +412,7 @@ def command_discard_file(file: str) -> None:
         # Stream through hunks and collect hashes from target file BEFORE removing it
         # (git rm -f will stage the deletion, making hunks disappear from git diff)
         hashes_to_block = []
-        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
             if isinstance(patch, BinaryFileChange):
                 file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
                 if file_path != target_file:
@@ -1078,7 +1078,7 @@ def _collect_text_file_discard_inputs(
     files_with_text_patches: set[str] = set()
 
     for patch in parse_unified_diff_streaming(
-        stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", *files])
+        stream_git_diff(base="HEAD", context_lines=get_context_lines(), paths=files)
     ):
         if isinstance(patch, BinaryFileChange):
             continue
@@ -1315,7 +1315,7 @@ def _command_discard_file_to_batch(
     all_lines_to_batch = []
     patches_to_discard = []
 
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])):
+    for patch in parse_unified_diff_streaming(stream_git_diff(base="HEAD", context_lines=get_context_lines(), paths=[file_path])):
         patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
         if patch_hash in blocked_hashes:
@@ -1693,7 +1693,7 @@ def _command_discard_text_hunk_to_batch(
 
     if file_only:
         # Collect ALL hunks from this file
-        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
             if patch.new_path != file_path:
                 continue
 

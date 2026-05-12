@@ -1116,7 +1116,7 @@ def command_include_line_as(
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
         preserve_selected_state = False
         saved_selected_state = None
 
@@ -1166,7 +1166,10 @@ def command_include_line_as(
             else:
                 if file != "" and not selected_file_view_targets_file:
                     preserve_selected_state = True
-                saved_selected_state = snapshot_selected_change_state() if preserve_selected_state else None
+                saved_selected_state = (
+                    selected_state_stack.enter_context(snapshot_selected_change_state())
+                    if preserve_selected_state else None
+                )
 
                 cached_lines = cache_unstaged_file_as_single_hunk(target_file)
                 if cached_lines is None:
@@ -1191,6 +1194,7 @@ def command_include_line_as(
                 )
 
             if preserve_selected_state:
+                assert saved_selected_state is not None
                 restore_selected_change_state(saved_selected_state)
             else:
                 write_line_ids_file(get_processed_include_ids_file_path(), set())

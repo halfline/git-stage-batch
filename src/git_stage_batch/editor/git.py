@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Iterator
 
 from .buffer import EditorBuffer
+from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.git import (
     get_git_repository_root_path,
     list_git_tree_blobs,
     read_git_blob,
-    stream_git_command,
 )
 
 
@@ -39,7 +40,7 @@ def load_git_tree_files_as_buffers(
 def load_git_object_as_buffer(revision_path: str) -> EditorBuffer | None:
     """Load a Git object as an editor buffer."""
     try:
-        return EditorBuffer.from_chunks(stream_git_command(["show", revision_path]))
+        return EditorBuffer.from_chunks(_stream_git_object(revision_path))
     except subprocess.CalledProcessError:
         return None
 
@@ -62,3 +63,25 @@ def load_working_tree_file_as_buffer(file_path: str) -> EditorBuffer:
         return EditorBuffer.from_path(full_path)
     except OSError:
         return EditorBuffer.from_bytes(b"")
+
+
+def _stream_git_object(revision_path: str) -> Iterator[bytes]:
+    stderr_chunks: list[bytes] = []
+    exit_code = 0
+
+    for event in stream_command(["git", "show", revision_path]):
+        if isinstance(event, ExitEvent):
+            exit_code = event.exit_code
+        elif isinstance(event, OutputEvent):
+            if event.fd == 1:
+                yield event.data
+            elif event.fd == 2:
+                stderr_chunks.append(event.data)
+
+    if exit_code != 0:
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+        raise subprocess.CalledProcessError(
+            exit_code,
+            ["git", "show", revision_path],
+            stderr=stderr_text,
+        )

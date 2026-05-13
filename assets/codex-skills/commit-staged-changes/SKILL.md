@@ -76,6 +76,7 @@ If you spawn a subagent for message drafting:
    - the current commit's one-clause purpose
    - whether this is a single commit or part of a series
    - whether this is the final commit in the series
+   - whether this is the penultimate commit in the series, when known
    - the repository-specific message rules already discovered
    - any preferred prefixes established by history
    - the exact files staged for this commit
@@ -114,7 +115,7 @@ prefix: Summary under 72 chars
 This commit [addresses|mitigates|resolves] that [problem] by
 [precise description of what this commit changes].
 
-[Optional fourth paragraph: what comes next.]
+[Optional fourth paragraph: what comes next, or the final series conclusion.]
 ```
 
 ### Message Rules
@@ -128,8 +129,11 @@ This commit [addresses|mitigates|resolves] that [problem] by
   perspective.
 - The third paragraph starts with `This commit` and precisely explains what
   this commit changes.
-- Add a fourth paragraph only when this commit is part of a larger near-term
-  series and the next step matters.
+- In a multi-commit series, use the fourth paragraph for what comes next or,
+  in the final commit, for the series conclusion.
+- If this is the penultimate commit, refer to the upcoming final commit in the
+  singular, such as `The final commit will ...`, instead of saying
+  `subsequent commits`.
 - Do not use `this` for anything other than `this commit`.
 - Prefer concrete limitations over vague praise.
 

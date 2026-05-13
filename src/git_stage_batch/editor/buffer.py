@@ -7,11 +7,12 @@ import mmap
 import os
 from pathlib import Path
 import tempfile
-from typing import BinaryIO, Iterator, overload
+from typing import BinaryIO, Generic, Iterator, TypeVar, overload
 
 
 _DEFAULT_CHUNK_SIZE = 1024 * 1024
 _BytesLike = bytes | bytearray | memoryview
+_LineT = TypeVar("_LineT")
 
 
 class EditorBuffer(Sequence[bytes]):
@@ -139,6 +140,14 @@ class EditorBuffer(Sequence[bytes]):
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
 
+    def acquire_line(self, index: int) -> _AcquiredBufferLineContext:
+        """Return a context manager for a scoped no-copy line view."""
+        return _AcquiredBufferLineContext(self, index)
+
+    def acquire_lines(self) -> _AcquiredBufferLineSequence:
+        """Return a context manager for scoped no-copy line views."""
+        return _AcquiredBufferLineSequence(self)
+
     def __len__(self) -> int:
         self._scan_all_lines()
         return len(self._line_spans)
@@ -204,12 +213,208 @@ class EditorBuffer(Sequence[bytes]):
             self._scan_complete = True
 
 
-class _BufferLineSliceSequence(Sequence[bytes]):
+class _BufferLineView:
+    """Scoped no-copy view over one editor buffer line."""
+
+    __slots__ = ("_owner", "_start", "_end", "_hash")
+
+    def __init__(
+        self,
+        owner: _AcquiredBufferLineSequence,
+        start: int,
+        end: int,
+    ) -> None:
+        self._owner = owner
+        self._start = start
+        self._end = end
+        self._hash: int | None = None
+
+    def __bytes__(self) -> bytes:
+        view = self._memoryview()
+        try:
+            return bytes(view)
+        finally:
+            view.release()
+
+    def __len__(self) -> int:
+        self._require_active()
+        return self._end - self._start
+
+    @overload
+    def __getitem__(self, index: int) -> int: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> bytes: ...
+
+    def __getitem__(self, index: int | slice) -> int | bytes:
+        view = self._memoryview()
+        try:
+            result = view[index]
+            if isinstance(index, slice):
+                try:
+                    return bytes(result)
+                finally:
+                    result.release()
+            return result
+        finally:
+            view.release()
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _BufferLineView):
+            return self._equals_line_view(other)
+
+        if isinstance(other, (bytes, bytearray, memoryview)):
+            view = self._memoryview()
+            try:
+                return view == other
+            finally:
+                view.release()
+
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        self._require_active()
+        if self._hash is not None:
+            return self._hash
+
+        view = self._memoryview()
+        try:
+            self._hash = hash(view)
+            return self._hash
+        finally:
+            view.release()
+
+    def __repr__(self) -> str:
+        if not self._owner.is_active:
+            return "<EditorBufferLineView closed>"
+        return f"<EditorBufferLineView {bytes(self)!r}>"
+
+    def endswith(self, suffix: _BytesLike | tuple[_BytesLike, ...]) -> bool:
+        """Return whether the line ends with the given bytes-like suffix."""
+        if isinstance(suffix, tuple):
+            return any(self.endswith(item) for item in suffix)
+        if not isinstance(suffix, (bytes, bytearray, memoryview)):
+            raise TypeError("suffix must be bytes-like")
+
+        suffix_bytes = bytes(suffix)
+        if suffix_bytes == b"":
+            self._require_active()
+            return True
+        if len(suffix_bytes) > len(self):
+            return False
+
+        view = self._memoryview()
+        tail = view[len(view) - len(suffix_bytes):]
+        try:
+            return tail == suffix_bytes
+        finally:
+            tail.release()
+            view.release()
+
+    def _require_active(self) -> None:
+        self._owner._require_active()
+
+    def _memoryview(self) -> memoryview:
+        self._require_active()
+        base = memoryview(self._owner.data)
+        try:
+            return base[self._start:self._end]
+        finally:
+            base.release()
+
+    def _equals_line_view(self, other: _BufferLineView) -> bool:
+        left = self._memoryview()
+        try:
+            right = other._memoryview()
+            try:
+                return left == right
+            finally:
+                right.release()
+        finally:
+            left.release()
+
+
+class _AcquiredBufferLineSequence(Sequence[_BufferLineView]):
+    """Context-managed sequence of scoped no-copy editor line views."""
+
+    def __init__(self, buffer: EditorBuffer) -> None:
+        self._buffer = buffer
+        self._active = False
+
+    @property
+    def data(self) -> bytes | mmap.mmap:
+        self._require_active()
+        return self._buffer._data
+
+    @property
+    def is_active(self) -> bool:
+        return self._active and not self._buffer._closed
+
+    def __enter__(self) -> _AcquiredBufferLineSequence:
+        self._buffer._require_open()
+        self._active = True
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self._active = False
+
+    def __len__(self) -> int:
+        self._require_active()
+        return len(self._buffer)
+
+    @overload
+    def __getitem__(self, index: int) -> _BufferLineView: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[_BufferLineView]: ...
+
+    def __getitem__(
+        self,
+        index: int | slice,
+    ) -> _BufferLineView | Sequence[_BufferLineView]:
+        self._require_active()
+        if isinstance(index, slice):
+            return _BufferLineSliceSequence(self, index)
+
+        if index < 0:
+            index += len(self)
+        if index < 0:
+            raise IndexError(index)
+
+        self._buffer._scan_through_line(index)
+        if index >= len(self._buffer._line_spans):
+            raise IndexError(index)
+
+        start, end = self._buffer._line_spans[index]
+        return _BufferLineView(self, start, end)
+
+    def _require_active(self) -> None:
+        if not self._active:
+            raise ValueError("line view is closed")
+        self._buffer._require_open()
+
+
+class _AcquiredBufferLineContext:
+    """Context manager for a single scoped editor line view."""
+
+    def __init__(self, buffer: EditorBuffer, index: int) -> None:
+        self._lines_context = _AcquiredBufferLineSequence(buffer)
+        self._index = index
+
+    def __enter__(self) -> _BufferLineView:
+        lines = self._lines_context.__enter__()
+        return lines[self._index]
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self._lines_context.__exit__(exc_type, exc, traceback)
+
+
+class _BufferLineSliceSequence(Sequence[_LineT], Generic[_LineT]):
     """Lazy slice view over editor buffer lines."""
 
     def __init__(
         self,
-        parent: Sequence[bytes],
+        parent: Sequence[_LineT],
         line_slice: slice,
     ) -> None:
         if line_slice.step == 0:
@@ -221,12 +426,12 @@ class _BufferLineSliceSequence(Sequence[bytes]):
         return len(range(*self._resolved_range()))
 
     @overload
-    def __getitem__(self, index: int) -> bytes: ...
+    def __getitem__(self, index: int) -> _LineT: ...
 
     @overload
-    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
+    def __getitem__(self, index: slice) -> Sequence[_LineT]: ...
 
-    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+    def __getitem__(self, index: int | slice) -> _LineT | Sequence[_LineT]:
         if isinstance(index, slice):
             return _BufferLineSliceSequence(self, index)
 

@@ -153,9 +153,9 @@ def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str)
 
             # Check for batch_source_commit (required for text files)
             if "batch_source_commit" not in file_meta:
-                # Binary files may not have batch_source_commit if they use different storage
-                # Only enforce for non-binary files
-                if file_meta.get("file_type") != "binary":
+                # Atomic files may not have batch_source_commit because they
+                # use whole-entry storage rather than line ownership.
+                if file_meta.get("file_type") not in {"binary", "gitlink"}:
                     raise BatchMetadataError(
                         _("Batch metadata for '{name}' is missing 'batch_source_commit' for file '{file}'.\n"
                           "The metadata file may be corrupted.").format(

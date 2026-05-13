@@ -14,7 +14,7 @@ from .operations import create_batch
 from .query import get_batch_baseline_commit, get_batch_commit_sha, read_batch_metadata
 from .state_refs import read_file_backed_batch_metadata
 from .validation import batch_exists, validate_batch_name
-from ..core.models import BinaryFileChange
+from ..core.models import BinaryFileChange, GitlinkChange
 from ..core.text_lifecycle import (
     TextFileChangeType,
     normalized_text_change_type,
@@ -41,6 +41,7 @@ from ..utils.git import (
     get_git_repository_root_path,
     git_commit_tree,
     git_read_tree,
+    git_update_gitlink,
     git_update_index,
     git_update_index_entries,
     git_write_tree,
@@ -389,6 +390,44 @@ def add_binary_file_to_batch(
             current_binary_buffer.close()
 
 
+def add_gitlink_to_batch(
+    batch_name: str,
+    gitlink_change: GitlinkChange,
+) -> None:
+    """Add a submodule pointer change to a batch as an atomic unit."""
+    validate_batch_name(batch_name)
+
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
+
+    file_path = gitlink_change.path()
+    metadata = read_batch_metadata(batch_name)
+    if "files" not in metadata:
+        metadata["files"] = {}
+
+    metadata["files"][file_path] = {
+        "file_type": "gitlink",
+        "change_type": gitlink_change.change_type,
+        "mode": "160000",
+        "old_oid": gitlink_change.old_oid,
+        "new_oid": gitlink_change.new_oid,
+    }
+
+    metadata_path = get_batch_metadata_file_path(batch_name)
+    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+
+    if gitlink_change.is_deleted_file():
+        _remove_file_from_batch_commit(batch_name, file_path)
+        return
+
+    if gitlink_change.new_oid is None:
+        raise ValueError(
+            "new_oid is required for added or modified submodule pointers"
+        )
+
+    _update_batch_gitlink_commit(batch_name, file_path, gitlink_change.new_oid)
+
+
 def _build_realized_buffer_from_lines(
     base_lines: Sequence[bytes],
     batch_source_lines: Sequence[bytes],
@@ -548,6 +587,17 @@ def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path:
         _remove_file_from_batch_commit(dest_batch, file_path)
         return
 
+    if file_meta.get("file_type") == "gitlink":
+        if file_meta.get("change_type") == "deleted":
+            _remove_file_from_batch_commit(dest_batch, file_path)
+            return
+        oid = file_meta.get("new_oid")
+        if not oid:
+            _remove_file_from_batch_commit(dest_batch, file_path)
+            return
+        _update_batch_gitlink_commit(dest_batch, file_path, oid)
+        return
+
     source_buffer = load_git_object_as_buffer(f"{source_commit}:{file_path}")
     if source_buffer is not None:
         with source_buffer:
@@ -654,6 +704,30 @@ def _update_batch_commit(
         content_commit=commit_sha,
         source_buffers=source_buffers,
     )
+
+
+def _update_batch_gitlink_commit(
+    batch_name: str,
+    file_path: str,
+    oid: str,
+) -> None:
+    """Update batch commit tree with one submodule pointer entry."""
+    with temp_git_index() as env:
+        existing_commit = get_batch_commit_sha(batch_name)
+        if existing_commit:
+            git_read_tree(existing_commit, env=env)
+
+        git_update_gitlink(file_path=file_path, oid=oid, env=env)
+        tree_sha = git_write_tree(env=env)
+
+    commit_sha = git_commit_tree(
+        tree_sha,
+        parents=_batch_commit_parents(batch_name),
+        message=f"Batch: {batch_name}",
+    )
+
+    from .state_refs import sync_batch_state_refs
+    sync_batch_state_refs(batch_name, content_commit=commit_sha)
 
 
 def read_file_from_batch(batch_name: str, file_path: str) -> Optional[str]:

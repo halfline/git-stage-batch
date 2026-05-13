@@ -1,5 +1,6 @@
 """Tests for git command execution utilities."""
 
+from git_stage_batch.utils import git as git_utils
 from git_stage_batch.utils.git import stream_git_command
 from git_stage_batch.utils.git import stream_git_diff
 from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
@@ -25,6 +26,7 @@ from git_stage_batch.utils.git import (
     require_git_repository,
     run_git_command,
     temp_git_index,
+    wait_for_git_index_lock,
 )
 
 
@@ -87,6 +89,140 @@ class TestRunGitCommand:
         result = run_git_command(["rev-parse", "--git-dir"])
 
         assert ".git" in result.stdout
+
+    def test_waits_for_index_lock_by_default(self, monkeypatch):
+        """Index-writing commands should wait for a pre-existing index lock."""
+        calls = []
+        command_env = {"CUSTOM": "1"}
+
+        def fake_wait(*, cwd, env):
+            calls.append(("wait", cwd, env))
+
+        def fake_run_command(arguments, stdin_chunks=None, **kwargs):
+            calls.append(("run", arguments, stdin_chunks, kwargs))
+            return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fake_wait)
+        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+
+        run_git_command(["add", "--", "file.txt"], env=command_env, cwd="/repo")
+
+        assert calls[0] == ("wait", "/repo", command_env)
+        assert calls[1][0] == "run"
+        assert calls[1][3]["env"] is command_env
+
+    def test_disables_optional_locks_for_read_only_commands(self, monkeypatch):
+        """Read-only commands should opt out of Git's optional index refresh locks."""
+        captured = {}
+
+        def fail_wait(**_kwargs):
+            raise AssertionError("read-only command should not wait for the index lock")
+
+        def fake_run_command(arguments, stdin_chunks=None, **kwargs):
+            captured["arguments"] = arguments
+            captured["stdin_chunks"] = stdin_chunks
+            captured["kwargs"] = kwargs
+            return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fail_wait)
+        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+
+        original_env = {"CUSTOM": "1"}
+        run_git_command(["status", "--short"], env=original_env, requires_index_lock=False)
+
+        assert captured["arguments"] == ["git", "status", "--short"]
+        assert captured["kwargs"]["env"]["CUSTOM"] == "1"
+        assert captured["kwargs"]["env"]["GIT_OPTIONAL_LOCKS"] == "0"
+        assert original_env == {"CUSTOM": "1"}
+
+
+class TestWaitForGitIndexLock:
+    """Tests for Git index lock waiting."""
+
+    def test_returns_when_lock_absent(self, tmp_path, monkeypatch):
+        """Absent index locks should not delay command startup."""
+        sleep_calls = []
+
+        monkeypatch.setattr(git_utils, "_git_index_lock_path", lambda **_kwargs: tmp_path / "index.lock")
+        monkeypatch.setattr(git_utils.time, "sleep", lambda duration: sleep_calls.append(duration))
+
+        wait_for_git_index_lock()
+
+        assert sleep_calls == []
+
+    def test_polls_until_lock_disappears(self, tmp_path, monkeypatch):
+        """A transient index lock should delay a locking command until it disappears."""
+        index_lock = tmp_path / "index.lock"
+        index_lock.write_text("")
+        sleep_calls = []
+
+        def fake_sleep(duration):
+            sleep_calls.append(duration)
+            index_lock.unlink()
+
+        monkeypatch.setattr(git_utils, "_git_index_lock_path", lambda **_kwargs: index_lock)
+        monkeypatch.setattr(git_utils.time, "monotonic", lambda: 0.0)
+        monkeypatch.setattr(git_utils.time, "sleep", fake_sleep)
+
+        wait_for_git_index_lock(timeout_seconds=1.0, poll_seconds=0.05)
+
+        assert sleep_calls == [0.05]
+
+    def test_stops_after_timeout(self, tmp_path, monkeypatch):
+        """Persistent index locks should only block for the configured timeout."""
+        index_lock = tmp_path / "index.lock"
+        index_lock.write_text("")
+        times = iter([0.0, 0.0, 0.2])
+        sleep_calls = []
+
+        monkeypatch.setattr(git_utils, "_git_index_lock_path", lambda **_kwargs: index_lock)
+        monkeypatch.setattr(git_utils.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(git_utils.time, "sleep", lambda duration: sleep_calls.append(duration))
+
+        wait_for_git_index_lock(timeout_seconds=0.1, poll_seconds=0.05)
+
+        assert index_lock.exists()
+        assert sleep_calls == [0.05]
+
+    def test_ignores_non_repository(self, monkeypatch):
+        """Lock waiting should defer non-repository errors to the git command."""
+        sleep_calls = []
+
+        def fail_git_directory(**_kwargs):
+            raise subprocess.CalledProcessError(128, ["git", "rev-parse"])
+
+        monkeypatch.setattr(git_utils, "_git_index_lock_path", fail_git_directory)
+        monkeypatch.setattr(git_utils.time, "sleep", lambda duration: sleep_calls.append(duration))
+
+        wait_for_git_index_lock()
+
+        assert sleep_calls == []
+
+    def test_uses_custom_index_file_lock_path(self, tmp_path, monkeypatch):
+        """Temporary index commands should wait on their own index lock."""
+        index_file = tmp_path / "temporary.index"
+        index_lock = Path(f"{index_file}.lock")
+        index_lock.write_text("")
+        sleep_calls = []
+
+        def fail_git_directory(*_args, **_kwargs):
+            raise AssertionError("custom index lock path should not inspect the repository git dir")
+
+        def fake_sleep(duration):
+            sleep_calls.append(duration)
+            index_lock.unlink()
+
+        monkeypatch.setattr(git_utils, "run_command", fail_git_directory)
+        monkeypatch.setattr(git_utils.time, "monotonic", lambda: 0.0)
+        monkeypatch.setattr(git_utils.time, "sleep", fake_sleep)
+
+        wait_for_git_index_lock(
+            env={"GIT_INDEX_FILE": str(index_file)},
+            timeout_seconds=1.0,
+            poll_seconds=0.05,
+        )
+
+        assert sleep_calls == [0.05]
 
 
 class TestStreamGitCommand:

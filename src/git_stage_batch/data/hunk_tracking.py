@@ -1701,7 +1701,6 @@ def _build_combined_file_line_changes(
                         old_line_number=None,
                         new_line_number=None,
                         text_bytes=gap_text.encode("utf-8"),
-                        text=gap_text,
                         source_line=None,
                     )
                 )
@@ -1723,7 +1722,6 @@ def _build_combined_file_line_changes(
                     old_line_number=line_entry.old_line_number,
                     new_line_number=line_entry.new_line_number,
                     text_bytes=line_entry.text_bytes,
-                    text=line_entry.text,
                     source_line=line_entry.source_line,
                     has_trailing_newline=line_entry.has_trailing_newline,
                 )
@@ -1735,7 +1733,6 @@ def _build_combined_file_line_changes(
                     old_line_number=line_entry.old_line_number,
                     new_line_number=line_entry.new_line_number,
                     text_bytes=line_entry.text_bytes,
-                    text=line_entry.text,
                     source_line=line_entry.source_line,
                     has_trailing_newline=line_entry.has_trailing_newline,
                 )

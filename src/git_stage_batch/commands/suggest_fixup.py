@@ -61,7 +61,7 @@ def _get_commit_details(commit_hash: str) -> dict[str, str]:
             "show", "--no-patch",
             "--format=%h%n%H%n%s%n%an%n%ai%n%ar",
             commit_hash
-        ], check=True)
+        ], check=True, requires_index_lock=False)
         lines = show_result.stdout.strip().split('\n')
         if len(lines) >= 6:
             return {
@@ -131,7 +131,8 @@ def _find_next_fixup_candidate(
     try:
         log_result = run_git_command(
             ["log", "-L", f"{min_line},{max_line}:{file_path}", commit_range, "--format=%H", "--max-count=1"],
-            check=True
+            check=True,
+            requires_index_lock=False,
         )
     except subprocess.CalledProcessError:
         return None
@@ -147,7 +148,8 @@ def _show_commit_diff_for_file(commit_hash: str, file_path: str) -> None:
         # Show what this commit changed in the file
         show_result = run_git_command(
             ["show", "--format=", "--color=always" if sys.stdout.isatty() else "--color=never", commit_hash, "--", file_path],
-            check=True
+            check=True,
+            requires_index_lock=False,
         )
         if show_result.stdout.strip():
             print()
@@ -241,7 +243,7 @@ def command_suggest_fixup(
 
     # Validate boundary ref
     try:
-        run_git_command(["rev-parse", "--verify", effective_boundary], check=True)
+        run_git_command(["rev-parse", "--verify", effective_boundary], check=True, requires_index_lock=False)
     except subprocess.CalledProcessError:
         exit_with_error(_("Invalid boundary ref: {boundary}").format(boundary=effective_boundary))
 
@@ -249,7 +251,8 @@ def command_suggest_fixup(
     try:
         rev_list_result = run_git_command(
             ["rev-list", f"{effective_boundary}..HEAD"],
-            check=True
+            check=True,
+            requires_index_lock=False,
         )
     except subprocess.CalledProcessError:
         exit_with_error(_("Failed to get commit range {boundary}..HEAD").format(boundary=effective_boundary))
@@ -290,7 +293,8 @@ def command_suggest_fixup(
             try:
                 show_result = run_git_command(
                     ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                    check=True
+                    check=True,
+                    requires_index_lock=False,
                 )
                 commit_info = show_result.stdout.strip()
             except subprocess.CalledProcessError:
@@ -350,7 +354,8 @@ def command_suggest_fixup(
         try:
             show_result = run_git_command(
                 ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                check=True
+                check=True,
+                requires_index_lock=False,
             )
             commit_info = show_result.stdout.strip()
         except subprocess.CalledProcessError:
@@ -444,7 +449,7 @@ def command_suggest_fixup_line(
 
     # Validate boundary ref
     try:
-        run_git_command(["rev-parse", "--verify", effective_boundary], check=True)
+        run_git_command(["rev-parse", "--verify", effective_boundary], check=True, requires_index_lock=False)
     except subprocess.CalledProcessError:
         exit_with_error(_("Invalid boundary ref: {boundary}").format(boundary=effective_boundary))
 
@@ -452,7 +457,8 @@ def command_suggest_fixup_line(
     try:
         rev_list_result = run_git_command(
             ["rev-list", f"{effective_boundary}..HEAD"],
-            check=True
+            check=True,
+            requires_index_lock=False,
         )
     except subprocess.CalledProcessError:
         exit_with_error(_("Failed to get commit range {boundary}..HEAD").format(boundary=effective_boundary))
@@ -493,7 +499,8 @@ def command_suggest_fixup_line(
             try:
                 show_result = run_git_command(
                     ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                    check=True
+                    check=True,
+                    requires_index_lock=False,
                 )
                 commit_info = show_result.stdout.strip()
             except subprocess.CalledProcessError:
@@ -553,7 +560,8 @@ def command_suggest_fixup_line(
         try:
             show_result = run_git_command(
                 ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                check=True
+                check=True,
+                requires_index_lock=False,
             )
             commit_info = show_result.stdout.strip()
         except subprocess.CalledProcessError:

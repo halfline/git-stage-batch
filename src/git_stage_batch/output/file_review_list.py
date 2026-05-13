@@ -5,7 +5,7 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 
-from ..core.models import BinaryFileChange, LineLevelChange
+from ..core.models import BinaryFileChange, GitlinkChange, LineLevelChange
 from ..i18n import _
 from .file_review import build_file_review_model
 
@@ -21,6 +21,7 @@ class FileReviewListEntry:
     deletion_count: int
     page_count: int
     binary_change_type: str | None = None
+    gitlink_change_type: str | None = None
 
 
 def make_file_review_list_entry(
@@ -61,6 +62,19 @@ def make_binary_file_review_list_entry(binary_change: BinaryFileChange) -> FileR
     )
 
 
+def make_gitlink_file_review_list_entry(gitlink_change: GitlinkChange) -> FileReviewListEntry:
+    """Build a list entry from a gitlink change."""
+    return FileReviewListEntry(
+        path=gitlink_change.path(),
+        change_count=1,
+        changed_line_count=0,
+        addition_count=0,
+        deletion_count=0,
+        page_count=1,
+        gitlink_change_type=gitlink_change.change_type,
+    )
+
+
 def print_file_review_list(
     *,
     source_label: str,
@@ -84,7 +98,14 @@ def print_file_review_list(
     for index, entry in enumerate(entries, start=1):
         change_word = _("change") if entry.change_count == 1 else _("changes")
         page_word = _("page") if entry.page_count == 1 else _("pages")
-        if entry.binary_change_type is not None:
+        if entry.gitlink_change_type is not None:
+            print(
+                f"{index}. {entry.path.ljust(path_width)}  "
+                f"{entry.change_count} {change_word} · "
+                f"submodule pointer {entry.gitlink_change_type} · "
+                f"{entry.page_count} {page_word}"
+            )
+        elif entry.binary_change_type is not None:
             print(
                 f"{index}. {entry.path.ljust(path_width)}  "
                 f"{entry.change_count} {change_word} · "

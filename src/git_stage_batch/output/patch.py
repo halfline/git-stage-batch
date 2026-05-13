@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from .colors import Colors
 
 if TYPE_CHECKING:
-    from ..core.models import BinaryFileChange
+    from ..core.models import BinaryFileChange, GitlinkChange
 
 
 def print_colored_patch(patch_text: str) -> None:
@@ -56,3 +56,32 @@ def print_binary_file_change(binary_change: BinaryFileChange) -> None:
 
     # Print file header
     print(f"{bold}{path}{reset} :: {color}Binary file {change_desc}{reset}")
+
+
+def print_gitlink_change(gitlink_change: GitlinkChange) -> None:
+    """Print a gitlink/submodule pointer change as an atomic unit."""
+    use_color = Colors.enabled()
+
+    path = gitlink_change.path()
+    reset = Colors.RESET if use_color else ""
+    bold = Colors.BOLD if use_color else ""
+
+    if gitlink_change.is_new_file():
+        color = Colors.GREEN if use_color else ""
+        print(f"{bold}{path}{reset} :: {color}Submodule added at {_short_oid(gitlink_change.new_oid)}{reset}")
+        return
+
+    if gitlink_change.is_deleted_file():
+        color = Colors.RED if use_color else ""
+        print(f"{bold}{path}{reset} :: {color}Submodule removed from {_short_oid(gitlink_change.old_oid)}{reset}")
+        return
+
+    color = Colors.YELLOW if use_color else ""
+    print(f"{bold}{path}{reset} :: {color}Submodule pointer modified{reset}")
+    print(f"old {_short_oid(gitlink_change.old_oid)}")
+    print(f"new {_short_oid(gitlink_change.new_oid)}")
+
+
+def _short_oid(oid: str | None) -> str:
+    """Return a compact object id for display."""
+    return oid[:12] if oid else "unknown"

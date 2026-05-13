@@ -452,6 +452,7 @@ owned only by this skill.
   - the one-clause purpose of the current commit
   - the exact repository message constraints already discovered
   - whether this is the final commit in the series
+  - whether this is the penultimate commit in the series, when known
   - the exact files staged for this commit
   - instructions to inspect `git diff --cached`, relevant `git log` history,
     `CONTRIBUTING.md`, and `.git/hooks/commit-msg` if present
@@ -647,9 +648,11 @@ This commit [addresses|mitigates|resolves] that [problem] by [precise
 description of what this commit changes and how it solves the problem
 stated above].
 
-[Connect to what comes next. Omit this paragraph for the final commit in the
-series. For the final commit, use the preceding paragraph or a short closing
-paragraph to state that the series goal has been reached.]
+[Connect to what comes next, or conclude the series when this is the final
+commit. For the penultimate commit, refer to the upcoming final commit in the
+singular, such as "The final commit will ...", instead of saying "subsequent
+commits". For the final commit, use this paragraph to state that the series
+goal has been reached.]
 ```
 
 The most common errors are:
@@ -730,11 +733,14 @@ Fourth paragraph for follow-up or final series conclusion when useful.
 
 ### Fourth paragraph
 
-- Use it for every commit except the final one in a multi-commit series.
-- Use future tense since the work has not happened yet.
+- Use it for every commit in a multi-commit series.
+- For non-final commits, use future tense since the work has not happened yet.
 - Be specific about what comes next rather than vague.
+- For the penultimate commit, refer to the upcoming final commit in the
+  singular, such as `The final commit will ...`, instead of saying
+  `subsequent commits`.
 - The final commit should conclude the series goal introduced by the opening
-  commit instead of pointing toward more work.
+  commit in a fourth paragraph instead of pointing toward more work.
 
 ## Required principles
 
@@ -808,8 +814,10 @@ Before committing, verify:
   series goal rather than only the first change.
 - If this is the final commit in a series, the message concludes the series
   goal rather than reading like another incremental step.
-- If the commit is not the last in the series, the fourth paragraph names what
-  subsequent commits will do.
+- If this is the penultimate commit in the series, the fourth paragraph names
+  what the upcoming final commit will do.
+- If the commit is an earlier non-final step in the series, the fourth
+  paragraph names what subsequent commits will do.
 - Body paragraphs wrap at 75 characters.
 
 ## Completion

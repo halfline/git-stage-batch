@@ -2097,6 +2097,22 @@ def _build_realized_entries_for_discard(
     return result
 
 
+def _count_lines_in_range(line_set: set[int], start_line: int, end_line: int) -> int:
+    line_count = end_line - start_line + 1
+    if line_count <= len(line_set):
+        return sum(
+            1
+            for line_number in range(start_line, end_line + 1)
+            if line_number in line_set
+        )
+
+    return sum(
+        1
+        for line_number in line_set
+        if start_line <= line_number <= end_line
+    )
+
+
 def _reverse_presence_constraints(
     entries: Sequence[RealizedEntry],
     presence_line_set: set[int],
@@ -2173,20 +2189,23 @@ def _reverse_presence_constraints(
 
             elif region.kind == RegionKind.REPLACE_BY_HUNK:
                 if region.region_id not in processed_replace_regions:
-                    source_lines_in_region = set(range(
+                    total_lines_in_region = (
+                        region.source_end_line - region.source_start_line + 1
+                    )
+                    claimed_line_count = _count_lines_in_range(
+                        presence_line_set,
                         region.source_start_line,
-                        region.source_end_line + 1
-                    ))
-                    claimed_lines_in_region = source_lines_in_region & presence_line_set
+                        region.source_end_line
+                    )
 
-                    if claimed_lines_in_region != source_lines_in_region:
+                    if claimed_line_count != total_lines_in_region:
                         raise MergeError(
                             _("Cannot discard partial ownership of by-hunk replace region "
                               "(source lines {start}-{end}): batch owns {owned} of {total} lines").format(
                                 start=region.source_start_line,
                                 end=region.source_end_line,
-                                owned=len(claimed_lines_in_region),
-                                total=len(source_lines_in_region)
+                                owned=claimed_line_count,
+                                total=total_lines_in_region
                             )
                         )
 

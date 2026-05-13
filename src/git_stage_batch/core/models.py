@@ -104,20 +104,18 @@ class GitlinkChange:
         return self.change_type == "modified"
 
 
-@dataclass
+@dataclass(init=False, slots=True)
 class LineEntry:
     """Represents a single line in a hunk with metadata for line-level selection.
 
     Invariant: bytes are canonical, strings are derived.
     - text_bytes: Exact bytes from the diff (without +/- prefix)
-    - text: Decoded for display (UTF-8 with errors='replace')
     """
     id: int | None  # Line ID for selection (None for context lines without changes)
     kind: str  # " " (context), "+" (addition), "-" (deletion)
     old_line_number: int | None  # Line number in old file (None for additions)
     new_line_number: int | None  # Line number in new file (None for deletions)
     text_bytes: bytes  # Canonical line content without the leading +/- marker
-    text: str  # Derived from text_bytes for display (decoded with errors='replace')
     source_line: int | None = None  # Line position in source reference (e.g., batch source, merge base)
     baseline_reference_after_line: int | None = None
     baseline_reference_after_text_bytes: bytes | None = None
@@ -127,8 +125,46 @@ class LineEntry:
     has_baseline_reference_before: bool = False
     has_trailing_newline: bool = True
 
+    def __init__(
+        self,
+        id: int | None,
+        kind: str,
+        old_line_number: int | None,
+        new_line_number: int | None,
+        text_bytes: bytes | None = None,
+        text: str | None = None,
+        source_line: int | None = None,
+        baseline_reference_after_line: int | None = None,
+        baseline_reference_after_text_bytes: bytes | None = None,
+        has_baseline_reference_after: bool = False,
+        baseline_reference_before_line: int | None = None,
+        baseline_reference_before_text_bytes: bytes | None = None,
+        has_baseline_reference_before: bool = False,
+        has_trailing_newline: bool = True,
+    ) -> None:
+        if text_bytes is None:
+            raise TypeError("LineEntry requires text_bytes")
 
-@dataclass
+        self.id = id
+        self.kind = kind
+        self.old_line_number = old_line_number
+        self.new_line_number = new_line_number
+        self.text_bytes = text_bytes
+        self.source_line = source_line
+        self.baseline_reference_after_line = baseline_reference_after_line
+        self.baseline_reference_after_text_bytes = baseline_reference_after_text_bytes
+        self.has_baseline_reference_after = has_baseline_reference_after
+        self.baseline_reference_before_line = baseline_reference_before_line
+        self.baseline_reference_before_text_bytes = baseline_reference_before_text_bytes
+        self.has_baseline_reference_before = has_baseline_reference_before
+        self.has_trailing_newline = has_trailing_newline
+
+    def display_text(self) -> str:
+        """Return display text decoded from canonical bytes."""
+        return self.text_bytes.decode("utf-8", errors="replace")
+
+
+@dataclass(slots=True)
 class LineLevelChange:
     """Represents a hunk with line IDs for line-level selection."""
     path: str

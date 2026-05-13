@@ -1183,7 +1183,7 @@ def _apply_include_line_replacement(
         selected_lines=selected_lines,
         replacement_mask={
             "deleted_lines": replacement_text.splitlines(),
-            "added_lines": [line.text for line in selected_lines if line.kind == "+"],
+            "added_lines": [line.display_text() for line in selected_lines if line.kind == "+"],
         },
     )
 

@@ -935,7 +935,11 @@ def _filter_consumed_replacement_masks(
         nonlocal changed_run
         if not changed_run:
             return
-        run_signature = tuple((line.kind, line.text) for line in changed_run if line.kind in ("+", "-"))
+        run_signature = tuple(
+            (line.kind, line.display_text())
+            for line in changed_run
+            if line.kind in ("+", "-")
+        )
         if run_signature not in normalized_masks:
             filtered_lines.extend(changed_run)
         changed_run = []

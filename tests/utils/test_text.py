@@ -2,6 +2,7 @@
 
 import pytest
 
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.utils.text import (
     bytes_to_lines,
     normalize_line_ending,
@@ -150,6 +151,35 @@ class TestNormalizeLineSequenceEndings:
         assert normalized[0] == b"one\n"
         assert normalized[0] == b"one\n"
         assert normalized[0] is not normalized[0]
+
+    def test_acquired_lf_lines_stay_scoped_views(self):
+        """Normalized acquisitions preserve unchanged acquired lines."""
+        with EditorBuffer.from_bytes(b"one\ntwo\r\nthree\r") as buffer:
+            normalized = normalize_line_sequence_endings(buffer)
+            with normalized.acquire_lines() as acquired:
+                unchanged = acquired[0]
+                crlf_line = acquired[1]
+                cr_line = acquired[2]
+
+                assert unchanged == b"one\n"
+                assert not isinstance(unchanged, bytes)
+                assert bytes(unchanged) == b"one\n"
+                assert crlf_line == b"two\n"
+                assert isinstance(crlf_line, bytes)
+                assert cr_line == b"three\n"
+                assert isinstance(cr_line, bytes)
+
+        with pytest.raises(ValueError, match="line view is closed"):
+            bytes(unchanged)
+
+    def test_acquire_lines_accepts_plain_sequences(self, line_sequence):
+        """Normalized acquisitions work without parent acquisition support."""
+        lines = line_sequence([b"one\r\n", b"two\n"])
+        normalized = normalize_line_sequence_endings(lines)
+
+        with normalized.acquire_lines() as acquired:
+            assert acquired[0] == b"one\n"
+            assert acquired[1] == b"two\n"
 
 
 class TestNormalizeLineEnding:

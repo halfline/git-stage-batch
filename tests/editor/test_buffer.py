@@ -50,6 +50,87 @@ def test_editor_buffer_slices_are_lazy_sequences():
     assert list(nested) == [b"two\n", b"three\n"]
 
 
+def test_editor_buffer_acquires_scoped_line_views():
+    """Acquired line sequences expose bytes-compatible scoped views."""
+    with EditorBuffer.from_bytes(b"alpha\nbeta\r\n") as buffer:
+        with buffer.acquire_lines() as lines:
+            first = lines[0]
+            matching = lines[0]
+            second = lines[1]
+
+            assert len(lines) == 2
+            assert len(first) == len(b"alpha\n")
+            assert not isinstance(first, bytes)
+            assert first == b"alpha\n"
+            assert b"alpha\n" == first
+            assert first == matching
+            assert first != second
+            assert hash(first) == hash(b"alpha\n")
+            assert bytes(first) == b"alpha\n"
+            assert first[0] == ord("a")
+            assert first[:-1] == b"alpha"
+            assert first.endswith(b"\n")
+            assert first.endswith((b"\r\n", b"\n"))
+            assert list(lines[0:2]) == [b"alpha\n", b"beta\r\n"]
+
+
+def test_editor_buffer_acquires_single_scoped_line_view():
+    """Single-line acquisition supports negative indexes."""
+    with EditorBuffer.from_bytes(b"alpha\nbeta\n") as buffer:
+        with buffer.acquire_line(-1) as line:
+            assert not isinstance(line, bytes)
+            assert line == b"beta\n"
+
+
+def test_editor_buffer_slices_acquire_scoped_line_views():
+    """Buffer slices forward scoped line acquisition to their parent."""
+    with EditorBuffer.from_bytes(b"zero\none\ntwo\nthree\n") as buffer:
+        sliced = buffer[-3:-1]
+
+        with sliced.acquire_lines() as lines:
+            first = lines[0]
+            nested = lines[1:]
+
+            assert len(lines) == 2
+            assert not isinstance(first, bytes)
+            assert first == b"one\n"
+            assert list(lines) == [b"one\n", b"two\n"]
+            assert list(nested) == [b"two\n"]
+
+        with pytest.raises(ValueError, match="line view is closed"):
+            bytes(first)
+
+
+def test_editor_buffer_line_views_use_acquisition_lifetime():
+    """Line views reject access after their acquisition scope closes."""
+    with EditorBuffer.from_bytes(b"alpha\n") as buffer:
+        with buffer.acquire_line(0) as line:
+            assert bytes(line) == b"alpha\n"
+
+        with pytest.raises(ValueError, match="line view is closed"):
+            bytes(line)
+        with pytest.raises(ValueError, match="line view is closed"):
+            len(line)
+        with pytest.raises(ValueError, match="line view is closed"):
+            hash(line)
+
+
+def test_editor_buffer_acquired_line_views_do_not_hold_mmap_exports(tmp_path):
+    """Acquired line views release temporary memoryviews before scope exit."""
+    file_path = tmp_path / "buffer.txt"
+    file_path.write_bytes(b"alpha\nbeta\n")
+    buffer = EditorBuffer.from_path(file_path)
+
+    with buffer.acquire_line(0) as line:
+        assert line == b"alpha\n"
+        assert hash(line) == hash(b"alpha\n")
+
+    buffer.close()
+
+    with pytest.raises(ValueError, match="line view is closed"):
+        bytes(line)
+
+
 def test_editor_buffer_slice_uses_parent_lifetime():
     """Buffer slices depend on the parent buffer remaining open."""
     buffer = EditorBuffer.from_bytes(b"one\ntwo\n")

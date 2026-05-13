@@ -26,6 +26,14 @@ from git_stage_batch.batch.ownership import (
     DeletionClaim,
     ReplacementUnit,
 )
+from git_stage_batch.utils.text import normalize_line_sequence_endings
+
+
+class _IndexGuardedEditorBuffer(EditorBuffer):
+    """EditorBuffer variant that rejects public line indexing in tests."""
+
+    def __getitem__(self, index):
+        raise AssertionError("public line indexing should not be used")
 
 
 def merge_batch(
@@ -118,6 +126,43 @@ class TestMatchLines:
         target = line_sequence([b"line1\n", b"extra\n", b"line2\n", b"line3\n"])
 
         mapping = match_lines(source, target)
+
+        assert mapping.get_target_line_from_source_line(1) == 1
+        assert mapping.get_target_line_from_source_line(2) == 3
+        assert mapping.get_target_line_from_source_line(3) == 4
+        assert mapping.get_source_line_from_target_line(2) is None
+
+    def test_acquires_editor_buffer_lines(self):
+        """EditorBuffer inputs are matched through scoped line acquisition."""
+        with (
+            _IndexGuardedEditorBuffer.from_bytes(
+                b"line1\nline2\nline3\n"
+            ) as source,
+            _IndexGuardedEditorBuffer.from_bytes(
+                b"line1\nextra\nline2\nline3\n"
+            ) as target,
+        ):
+            mapping = match_lines(source, target)
+
+        assert mapping.get_target_line_from_source_line(1) == 1
+        assert mapping.get_target_line_from_source_line(2) == 3
+        assert mapping.get_target_line_from_source_line(3) == 4
+        assert mapping.get_source_line_from_target_line(2) is None
+
+    def test_acquires_normalized_editor_buffer_lines(self):
+        """Normalized EditorBuffer inputs forward scoped acquisition."""
+        with (
+            _IndexGuardedEditorBuffer.from_bytes(
+                b"line1\r\nline2\nline3\n"
+            ) as source_buffer,
+            _IndexGuardedEditorBuffer.from_bytes(
+                b"line1\nextra\nline2\nline3\n"
+            ) as target_buffer,
+        ):
+            source = normalize_line_sequence_endings(source_buffer)
+            target = normalize_line_sequence_endings(target_buffer)
+
+            mapping = match_lines(source, target)
 
         assert mapping.get_target_line_from_source_line(1) == 1
         assert mapping.get_target_line_from_source_line(2) == 3

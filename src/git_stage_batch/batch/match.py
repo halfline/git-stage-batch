@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from array import array
-from collections.abc import Sequence
+from collections.abc import Hashable, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Any, TypeVar
 
 
-LineContent = TypeVar("LineContent", bytes, str)
+LineContent = TypeVar("LineContent", bound=Hashable)
 _MAX_UINT32 = (1 << 32) - 1
 
 
@@ -74,6 +75,13 @@ def _lookup_line_mapping(mapping: array, line_number: int) -> int | None:
     if mapped_line == 0:
         return None
     return mapped_line
+
+
+def _acquire_line_sequence(lines: Sequence[LineContent]) -> Any:
+    acquire_lines = getattr(lines, "acquire_lines", None)
+    if acquire_lines is None:
+        return nullcontext(lines)
+    return acquire_lines()
 
 
 def _build_unique_position_map(
@@ -361,21 +369,29 @@ def match_lines(
     source_to_target: array
     target_to_source: array
     max_line_number: int
+    source_line_count: int
+    target_line_count: int
 
-    max_line_number = max(len(source_lines), len(target_lines))
-    source_to_target = _new_line_mapping(len(source_lines), max_line_number)
-    target_to_source = _new_line_mapping(len(target_lines), max_line_number)
+    source_line_count = len(source_lines)
+    target_line_count = len(target_lines)
+    max_line_number = max(source_line_count, target_line_count)
+    source_to_target = _new_line_mapping(source_line_count, max_line_number)
+    target_to_source = _new_line_mapping(target_line_count, max_line_number)
 
-    _align_segment(
-        source_lines,
-        target_lines,
-        0,
-        len(source_lines),
-        0,
-        len(target_lines),
-        source_to_target,
-        target_to_source
-    )
+    with (
+        _acquire_line_sequence(source_lines) as acquired_source_lines,
+        _acquire_line_sequence(target_lines) as acquired_target_lines,
+    ):
+        _align_segment(
+            acquired_source_lines,
+            acquired_target_lines,
+            0,
+            source_line_count,
+            0,
+            target_line_count,
+            source_to_target,
+            target_to_source
+        )
 
     return LineMapping(
         source_to_target=source_to_target,

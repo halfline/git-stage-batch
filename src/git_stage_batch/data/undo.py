@@ -70,8 +70,22 @@ def _changed_worktree_paths() -> list[str]:
     """Return repository-relative paths whose worktree bytes may need undo."""
     paths: set[str] = set()
     commands = [
-        ["diff", "--name-only", "HEAD"],
-        ["diff", "--cached", "--name-only"],
+        [
+            "-c",
+            "diff.ignoreSubmodules=none",
+            "diff",
+            "--ignore-submodules=none",
+            "--name-only",
+            "HEAD",
+        ],
+        [
+            "-c",
+            "diff.ignoreSubmodules=none",
+            "diff",
+            "--ignore-submodules=none",
+            "--cached",
+            "--name-only",
+        ],
         ["ls-files", "--others", "--exclude-standard"],
     ]
     for args in commands:
@@ -81,11 +95,91 @@ def _changed_worktree_paths() -> list[str]:
     return sorted(paths)
 
 
+def _gitlink_oid_from_index(path: str) -> str | None:
+    result = run_git_command(["ls-files", "--stage", "--", path], check=False)
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == "160000":
+            return parts[1]
+    return None
+
+
+def _gitlink_oid_from_head(path: str) -> str | None:
+    result = run_git_command(["ls-tree", "HEAD", "--", path], check=False)
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        metadata, _separator, _entry_path = line.partition("\t")
+        parts = metadata.split()
+        if len(parts) >= 3 and parts[0] == "160000" and parts[1] == "commit":
+            return parts[2]
+    return None
+
+
+def _worktree_commit_oid(path: str) -> str | None:
+    result = run_git_command(
+        ["-C", path, "rev-parse", "--verify", "HEAD^{commit}"],
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _worktree_is_dirty(path: str) -> bool:
+    result = run_git_command(["-C", path, "status", "--porcelain"], check=False)
+    return result.returncode != 0 or bool(result.stdout.strip())
+
+
+def _is_gitlink_path(path: str) -> bool:
+    return _gitlink_oid_from_index(path) is not None or _gitlink_oid_from_head(path) is not None
+
+
+def _snapshot_gitlink_path(path: str) -> dict[str, Any]:
+    index_oid = _gitlink_oid_from_index(path)
+    head_oid = _gitlink_oid_from_head(path)
+    worktree_oid = _worktree_commit_oid(path)
+    return {
+        "path": path,
+        "kind": "gitlink",
+        "exists": index_oid is not None or head_oid is not None or worktree_oid is not None,
+        "mode": "160000",
+        "index_oid": index_oid,
+        "head_oid": head_oid,
+        "worktree_oid": worktree_oid,
+        "dirty": _worktree_is_dirty(path) if worktree_oid is not None else False,
+        "blob": None,
+    }
+
+
+def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
+    worktree_oid = _worktree_commit_oid(path)
+    return {
+        "path": path,
+        "kind": "embedded-repo",
+        "exists": worktree_oid is not None,
+        "mode": "160000",
+        "index_oid": None,
+        "head_oid": None,
+        "worktree_oid": worktree_oid,
+        "dirty": _worktree_is_dirty(path) if worktree_oid is not None else False,
+        "blob": None,
+    }
+
+
 def _snapshot_worktree_paths(paths: list[str]) -> list[dict[str, Any]]:
     repo_root = get_git_repository_root_path()
     worktree_paths: list[dict[str, Any]] = []
     for file_path in sorted(set(paths)):
         full_path = repo_root / file_path
+        if _is_gitlink_path(file_path):
+            worktree_paths.append(_snapshot_gitlink_path(file_path))
+            continue
+        if full_path.is_dir() and (full_path / ".git").exists():
+            worktree_paths.append(_snapshot_embedded_repo_path(file_path))
+            continue
         if os.path.lexists(full_path):
             mode = _file_mode_for_path(full_path)
             worktree_paths.append({
@@ -390,6 +484,23 @@ def _restore_worktree(commit: str, manifest: dict[str, Any]) -> None:
     for entry in manifest.get("worktree_paths", []):
         file_path = entry["path"]
         target_path = repo_root / file_path
+        if entry.get("kind") == "gitlink":
+            worktree_oid = entry.get("worktree_oid")
+            if entry.get("exists", False) and worktree_oid:
+                result = run_git_command(
+                    ["-C", file_path, "checkout", "--detach", worktree_oid],
+                    check=False,
+                )
+                if result.returncode != 0:
+                    raise CommandError(
+                        _("Failed to restore submodule pointer for {file}: {error}").format(
+                            file=file_path,
+                            error=result.stderr,
+                        )
+                    )
+            continue
+        if entry.get("kind") == "embedded-repo":
+            continue
         if not entry.get("exists", False):
             if os.path.lexists(target_path):
                 target_path.unlink()
@@ -486,6 +597,8 @@ def _write_snapshot_commit(
         repo_root = get_git_repository_root_path()
         index_updates: list[GitIndexEntryUpdate] = []
         for entry in worktree_entries:
+            if entry.get("kind") in {"gitlink", "embedded-repo"}:
+                continue
             if not entry.get("exists", False):
                 continue
             blob_sha = entry.get("blob")

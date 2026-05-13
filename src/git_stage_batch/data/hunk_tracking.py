@@ -27,8 +27,20 @@ from ..batch.ownership import (
     validate_ownership_units,
 )
 from ..batch.query import get_batch_commit_sha, list_batch_names, read_batch_metadata
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
-from ..core.models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, RenderedBatchDisplay, ReviewActionGroup
+from ..core.hashing import (
+    compute_binary_file_hash,
+    compute_gitlink_change_hash,
+    compute_stable_hunk_hash_from_lines,
+)
+from ..core.models import (
+    BinaryFileChange,
+    GitlinkChange,
+    LineLevelChange,
+    HunkHeader,
+    LineEntry,
+    RenderedBatchDisplay,
+    ReviewActionGroup,
+)
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
     build_line_changes_from_patch_lines,
@@ -45,7 +57,7 @@ from ..editor import (
 from ..core.line_selection import write_line_ids_file
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes, print_binary_file_change
+from ..output import print_line_level_changes, print_binary_file_change, print_gitlink_change
 from .consumed_selections import read_consumed_file_metadata
 from ..utils.file_io import (
     read_file_paths_file,
@@ -54,7 +66,11 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.command import ExitEvent, OutputEvent, stream_command
-from ..utils.git import get_git_repository_root_path, run_git_command, stream_git_command
+from ..utils.git import (
+    get_git_repository_root_path,
+    run_git_command,
+    stream_git_diff,
+)
 from ..utils.text import bytes_to_lines, normalize_line_sequence_endings
 from ..utils.paths import (
     get_block_list_file_path,
@@ -63,6 +79,7 @@ from ..utils.paths import (
     get_selected_change_clear_reason_file_path,
     get_selected_change_kind_file_path,
     get_selected_binary_file_json_path,
+    get_selected_gitlink_file_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
@@ -83,8 +100,10 @@ class SelectedChangeKind(str, Enum):
     HUNK = "hunk"
     FILE = "file"
     BINARY = "binary"
+    GITLINK = "submodule"
     BATCH_FILE = "batch-file"
     BATCH_BINARY = "batch-binary"
+    BATCH_GITLINK = "batch-submodule"
 
 
 _BATCH_MERGE_REVIEW_ACTIONS = (
@@ -138,6 +157,7 @@ def _selected_change_state_paths():
         "kind": get_selected_change_kind_file_path(),
         "line_state": get_line_changes_json_file_path(),
         "binary": get_selected_binary_file_json_path(),
+        "gitlink": get_selected_gitlink_file_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
         "working_snapshot": get_working_tree_snapshot_file_path(),
         "processed_include_ids": get_processed_include_ids_file_path(),
@@ -386,6 +406,39 @@ def load_selected_binary_file() -> Optional[BinaryFileChange]:
         return None
 
 
+def _read_selected_gitlink_data() -> dict | None:
+    """Read cached gitlink selection data, if structurally valid."""
+    gitlink_path = get_selected_gitlink_file_json_path()
+    if not gitlink_path.exists():
+        return None
+    try:
+        gitlink_data = json.loads(read_text_file_contents(gitlink_path))
+    except json.JSONDecodeError:
+        return None
+    return gitlink_data if isinstance(gitlink_data, dict) else None
+
+
+def load_selected_gitlink_change() -> Optional[GitlinkChange]:
+    """Load the currently cached gitlink change."""
+    if read_selected_change_kind() not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
+        return None
+
+    gitlink_data = _read_selected_gitlink_data()
+    if gitlink_data is None:
+        return None
+
+    try:
+        return GitlinkChange(
+            old_path=gitlink_data["old_path"],
+            new_path=gitlink_data["new_path"],
+            old_oid=gitlink_data.get("old_oid"),
+            new_oid=gitlink_data.get("new_oid"),
+            change_type=gitlink_data["change_type"],
+        )
+    except KeyError:
+        return None
+
+
 def compute_batch_binary_fingerprint(
     batch_name: str,
     file_path: str,
@@ -453,6 +506,47 @@ def cache_binary_file_change(
     )
     if kind == SelectedChangeKind.BINARY:
         write_snapshots_for_selected_file_path(file_path)
+    write_selected_change_kind(kind)
+
+
+def cache_gitlink_change(
+    gitlink_change: GitlinkChange,
+    *,
+    kind: SelectedChangeKind = SelectedChangeKind.GITLINK,
+    batch_name: str | None = None,
+    batch_gitlink_fingerprint: str | None = None,
+) -> None:
+    """Cache a gitlink change as the current selected change."""
+    if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
+        raise ValueError("gitlink selections must use a gitlink selected-change kind")
+    gitlink_data = {
+        "old_path": gitlink_change.old_path,
+        "new_path": gitlink_change.new_path,
+        "old_oid": gitlink_change.old_oid,
+        "new_oid": gitlink_change.new_oid,
+        "change_type": gitlink_change.change_type,
+        "batch_name": batch_name if kind == SelectedChangeKind.BATCH_GITLINK else None,
+        "batch_gitlink_fingerprint": (
+            batch_gitlink_fingerprint
+            if kind == SelectedChangeKind.BATCH_GITLINK else
+            None
+        ),
+    }
+    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
+    get_line_changes_json_file_path().unlink(missing_ok=True)
+    get_selected_binary_file_json_path().unlink(missing_ok=True)
+    get_index_snapshot_file_path().unlink(missing_ok=True)
+    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+    get_processed_include_ids_file_path().unlink(missing_ok=True)
+    get_processed_skip_ids_file_path().unlink(missing_ok=True)
+    write_text_file_contents(
+        get_selected_gitlink_file_json_path(),
+        json.dumps(gitlink_data, ensure_ascii=False, indent=0),
+    )
+    write_text_file_contents(
+        get_selected_hunk_hash_file_path(),
+        compute_gitlink_change_hash(gitlink_change),
+    )
     write_selected_change_kind(kind)
 
 
@@ -544,6 +638,98 @@ def require_current_selected_batch_binary_file_for_batch(
     )
 
 
+def compute_batch_gitlink_fingerprint(
+    file_path: str,
+    file_meta: Mapping[str, object],
+) -> str:
+    """Return a stable identity for the current stored submodule pointer."""
+    payload = {
+        "file_path": file_path,
+        "file_type": file_meta.get("file_type"),
+        "change_type": file_meta.get("change_type"),
+        "mode": file_meta.get("mode"),
+        "old_oid": file_meta.get("old_oid"),
+        "new_oid": file_meta.get("new_oid"),
+    }
+    data = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return sha256(data.encode("utf-8", errors="surrogateescape")).hexdigest()
+
+
+def selected_batch_gitlink_matches_batch(batch_name: str) -> bool:
+    """Return whether the cached batch submodule pointer came from this batch."""
+    if read_selected_change_kind() != SelectedChangeKind.BATCH_GITLINK:
+        return False
+    gitlink_data = _read_selected_gitlink_data()
+    if gitlink_data is None:
+        return False
+    return gitlink_data.get("batch_name") == batch_name
+
+
+def selected_batch_gitlink_file_for_batch(
+    batch_name: str,
+    all_files: Mapping[str, dict],
+) -> str | None:
+    """Return the selected batch submodule pointer if it is still current."""
+    if not selected_batch_gitlink_matches_batch(batch_name):
+        return None
+
+    gitlink_change = load_selected_gitlink_change()
+    if gitlink_change is None:
+        return None
+
+    file_path = gitlink_change.path()
+    file_meta = all_files.get(file_path)
+    if file_meta is None:
+        return None
+    if file_meta.get("file_type") != "gitlink":
+        return None
+    if file_meta.get("change_type") != gitlink_change.change_type:
+        return None
+    if file_meta.get("old_oid") != gitlink_change.old_oid:
+        return None
+    if file_meta.get("new_oid") != gitlink_change.new_oid:
+        return None
+
+    gitlink_data = _read_selected_gitlink_data()
+    if gitlink_data is None:
+        return None
+    cached_fingerprint = gitlink_data.get("batch_gitlink_fingerprint")
+    if not isinstance(cached_fingerprint, str):
+        return None
+    current_fingerprint = compute_batch_gitlink_fingerprint(file_path, file_meta)
+    if current_fingerprint != cached_fingerprint:
+        return None
+
+    return file_path
+
+
+def require_current_selected_batch_gitlink_file_for_batch(
+    batch_name: str,
+    all_files: Mapping[str, dict],
+) -> str | None:
+    """Return selected batch submodule pointer, or refuse if it went stale."""
+    if not selected_batch_gitlink_matches_batch(batch_name):
+        return None
+
+    selected_file = selected_batch_gitlink_file_for_batch(batch_name, all_files)
+    if selected_file is not None:
+        return selected_file
+
+    gitlink_change = load_selected_gitlink_change()
+    file_path = gitlink_change.path() if gitlink_change is not None else "the selected batch submodule pointer"
+    clear_selected_change_state_files()
+    mark_selected_change_cleared_by_stale_batch_selection(
+        batch_name=batch_name,
+        file_path=file_path,
+    )
+    exit_with_error(
+        _(
+            "The selected batch submodule pointer no longer matches batch '{name}'.\n"
+            "Show the batch again before using a pathless batch action."
+        ).format(name=batch_name)
+    )
+
+
 def binary_file_change_is_stale(binary_change: BinaryFileChange) -> bool:
     """Return whether a cached binary selection no longer matches repository state."""
     file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
@@ -559,11 +745,27 @@ def binary_file_change_is_stale(binary_change: BinaryFileChange) -> bool:
     )
 
 
+def gitlink_change_is_stale(gitlink_change: GitlinkChange) -> bool:
+    """Return whether a cached gitlink selection no longer matches Git state."""
+    current_change = render_gitlink_change(gitlink_change.path())
+    if current_change is None:
+        return True
+    return (
+        current_change.old_path != gitlink_change.old_path
+        or current_change.new_path != gitlink_change.new_path
+        or current_change.old_oid != gitlink_change.old_oid
+        or current_change.new_oid != gitlink_change.new_oid
+        or current_change.change_type != gitlink_change.change_type
+    )
+
+
 def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     """Persist the kind of selected change cached in session state."""
     get_selected_change_clear_reason_file_path().unlink(missing_ok=True)
     if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
         get_selected_binary_file_json_path().unlink(missing_ok=True)
+    if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
+        get_selected_gitlink_file_json_path().unlink(missing_ok=True)
     write_text_file_contents(get_selected_change_kind_file_path(), kind)
 
 
@@ -583,9 +785,20 @@ def read_selected_change_kind() -> Optional[SelectedChangeKind]:
         return None
 
 
-def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange]]:
+def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, GitlinkChange]]:
     """Load the currently cached selected change, if any."""
     selected_kind = read_selected_change_kind()
+    gitlink_change = load_selected_gitlink_change()
+    if gitlink_change is not None:
+        if selected_kind == SelectedChangeKind.GITLINK and gitlink_change_is_stale(gitlink_change):
+            raise CommandError(
+                _(
+                    "Selected submodule pointer no longer matches the working tree: {file}.\n"
+                    "Run 'show' again before using a pathless action."
+                ).format(file=gitlink_change.path())
+            )
+        return gitlink_change
+
     binary_file = load_selected_binary_file()
     if binary_file is not None:
         if selected_kind == SelectedChangeKind.BINARY and binary_file_change_is_stale(binary_file):
@@ -619,6 +832,10 @@ def get_selected_change_file_path() -> Optional[str]:
     selected-lines.json is derived state and may lag after display/navigation
     edge cases.
     """
+    gitlink_change = load_selected_gitlink_change()
+    if gitlink_change is not None:
+        return gitlink_change.path()
+
     binary_file = load_selected_binary_file()
     if binary_file is not None:
         return binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
@@ -1286,7 +1503,14 @@ def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     return _build_combined_file_line_changes(
         file_path,
         parse_unified_diff_streaming(
-            stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])
+            stream_git_diff(
+                base="HEAD",
+                context_lines=get_context_lines(),
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+                paths=[file_path],
+            )
         ),
     )
 
@@ -1295,9 +1519,34 @@ def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
     """Render a binary file change for file-scoped display without caching state."""
     try:
         for item in parse_unified_diff_streaming(
-            stream_git_command(["diff", "--no-color", "HEAD", "--", file_path])
+            stream_git_diff(
+                base="HEAD",
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+                paths=[file_path],
+            )
         ):
             if isinstance(item, BinaryFileChange):
+                return item
+    except subprocess.CalledProcessError:
+        return None
+    return None
+
+
+def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
+    """Render a gitlink change for file-scoped display without caching state."""
+    try:
+        for item in parse_unified_diff_streaming(
+            stream_git_diff(
+                base="HEAD",
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+                paths=[file_path],
+            )
+        ):
+            if isinstance(item, GitlinkChange):
                 return item
     except subprocess.CalledProcessError:
         return None
@@ -1309,7 +1558,13 @@ def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelCha
     return _build_combined_file_line_changes(
         file_path,
         parse_unified_diff_streaming(
-            stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "--", file_path])
+            stream_git_diff(
+                context_lines=get_context_lines(),
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+                paths=[file_path],
+            )
         ),
     )
 
@@ -1417,7 +1672,7 @@ def _build_combined_file_line_changes(
     previous_new_end = None
 
     for single_hunk in patches:
-        if isinstance(single_hunk, BinaryFileChange):
+        if isinstance(single_hunk, (BinaryFileChange, GitlinkChange)):
             continue
 
         line_changes = build_line_changes_from_patch_lines(single_hunk.lines)
@@ -1496,7 +1751,7 @@ def _build_combined_file_line_changes(
     )
 
 
-def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
+def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange]:
     """Find the next hunk or binary file that isn't blocked and cache it as selected.
 
     Returns:
@@ -1513,7 +1768,25 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange]:
 
     # Stream git diff and parse incrementally - stops after first unblocked item found
     try:
-        for item in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for item in parse_unified_diff_streaming(
+            stream_git_diff(
+                context_lines=get_context_lines(),
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+            )
+        ):
+            if isinstance(item, GitlinkChange):
+                gitlink_hash = compute_gitlink_change_hash(item)
+                if gitlink_hash in blocked_hashes:
+                    continue
+
+                if item.path() in blocked_files:
+                    continue
+
+                cache_gitlink_change(item)
+                return item
+
             # Handle binary files
             if isinstance(item, BinaryFileChange):
                 binary_hash = compute_binary_file_hash(item)
@@ -1587,6 +1860,11 @@ def show_selected_change() -> None:
     This is a helper for commands that need to display the cached hunk
     without advancing (e.g., start, again).
     """
+    gitlink_change = load_selected_gitlink_change()
+    if gitlink_change is not None:
+        print_gitlink_change(gitlink_change)
+        return
+
     # Check if selected item is a binary file
     binary_file = load_selected_binary_file()
     if binary_file is not None:
@@ -1608,6 +1886,11 @@ def advance_to_and_show_next_change() -> None:
     prints a message to stderr.
     """
     advance_to_next_change()
+
+    gitlink_change = load_selected_gitlink_change()
+    if gitlink_change is not None:
+        print_gitlink_change(gitlink_change)
+        return
 
     # Check if a binary file was cached
     binary_file = load_selected_binary_file()
@@ -1731,8 +2014,26 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
 
     # Stream git diff and parse incrementally - stops after first matching hunk found
     try:
-        for single_hunk in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for single_hunk in parse_unified_diff_streaming(
+            stream_git_diff(
+                context_lines=get_context_lines(),
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+            )
+        ):
             if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
+                continue
+
+            if isinstance(single_hunk, GitlinkChange):
+                gitlink_hash = compute_gitlink_change_hash(single_hunk)
+                if gitlink_hash in blocked_hashes:
+                    continue
+                cache_gitlink_change(single_hunk)
+                print_gitlink_change(single_hunk)
+                return
+
+            if isinstance(single_hunk, BinaryFileChange):
                 continue
 
             hunk_hash = compute_stable_hunk_hash_from_lines(single_hunk.lines)
@@ -1839,6 +2140,24 @@ def record_binary_hunk_skipped(binary_change: BinaryFileChange, hunk_hash: str) 
         "line": None,
         "ids": [],
         "change_type": binary_change.change_type,
+    }
+
+    jsonl_path = get_skipped_hunks_jsonl_file_path()
+    with jsonl_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(metadata) + "\n")
+
+
+def record_gitlink_hunk_skipped(gitlink_change: GitlinkChange, hunk_hash: str) -> None:
+    """Record that a gitlink change was skipped with file-level metadata."""
+    metadata = {
+        "hash": hunk_hash,
+        "file": gitlink_change.path(),
+        "line": None,
+        "ids": [],
+        "type": "submodule",
+        "change_type": gitlink_change.change_type,
+        "old_oid": gitlink_change.old_oid,
+        "new_oid": gitlink_change.new_oid,
     }
 
     jsonl_path = get_skipped_hunks_jsonl_file_path()

@@ -8,17 +8,23 @@ import sys
 from ..batch.display import annotate_with_batch_source
 from ..core.diff_parser import build_line_changes_from_patch_lines, parse_unified_diff_streaming
 from ..core.diff_parser import write_snapshots_for_selected_file_path
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
-from ..core.models import BinaryFileChange
+from ..core.hashing import (
+    compute_binary_file_hash,
+    compute_gitlink_change_hash,
+    compute_stable_hunk_hash_from_lines,
+)
+from ..core.models import BinaryFileChange, GitlinkChange
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
     cache_binary_file_change,
     cache_file_as_single_hunk,
+    cache_gitlink_change,
     clear_selected_change_state_files,
     get_selected_change_file_path,
     mark_selected_change_cleared_by_file_list,
     render_binary_file_change,
+    render_gitlink_change,
     render_file_as_single_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -34,7 +40,7 @@ from ..data.line_state import convert_line_changes_to_serializable_dict, load_li
 from ..data.session import require_session_started
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..output import print_binary_file_change, print_line_level_changes
+from ..output import print_binary_file_change, print_gitlink_change, print_line_level_changes
 from ..output.file_review import (
     build_file_review_model,
     make_file_review_state,
@@ -45,13 +51,14 @@ from ..output.file_review import (
 from ..output.file_review_list import (
     make_binary_file_review_list_entry,
     make_file_review_list_entry,
+    make_gitlink_file_review_list_entry,
     print_file_review_list,
 )
 from ..utils.file_io import (
     read_text_file_line_set,
     write_text_file_contents,
 )
-from ..utils.git import require_git_repository, stream_git_command
+from ..utils.git import require_git_repository, stream_git_diff
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
@@ -84,6 +91,10 @@ def command_show_file_list(files: list[str]) -> None:
         binary_change = render_binary_file_change(file_path)
         if binary_change is not None:
             entries.append(make_binary_file_review_list_entry(binary_change))
+            continue
+        gitlink_change = render_gitlink_change(file_path)
+        if gitlink_change is not None:
+            entries.append(make_gitlink_file_review_list_entry(gitlink_change))
 
     if not entries:
         print(_("No reviewable changes in matched files."), file=sys.stderr)
@@ -135,6 +146,21 @@ def command_show(
 
         preview_lines = render_file_as_single_hunk(target_file)
         binary_change = render_binary_file_change(target_file) if preview_lines is None else None
+        gitlink_change = (
+            render_gitlink_change(target_file)
+            if preview_lines is None and binary_change is None else
+            None
+        )
+        if gitlink_change is not None:
+            if page is not None:
+                exit_with_error(_("File review pages are only available for text changes."))
+            if selectable:
+                clear_last_file_review_state()
+                cache_gitlink_change(gitlink_change)
+            if porcelain:
+                return
+            print_gitlink_change(gitlink_change)
+            return
         if binary_change is not None:
             if page is not None:
                 exit_with_error(_("File review pages are only available for text changes."))
@@ -213,7 +239,24 @@ def command_show(
     blocked_hashes = read_text_file_line_set(blocklist_path)
 
     # Stream diff and show first unblocked hunk
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+    for patch in parse_unified_diff_streaming(
+        stream_git_diff(
+            context_lines=get_context_lines(),
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+        )
+    ):
+        if isinstance(patch, GitlinkChange):
+            gitlink_hash = compute_gitlink_change_hash(patch)
+            if gitlink_hash not in blocked_hashes:
+                cache_gitlink_change(patch)
+                clear_last_file_review_state()
+                if not porcelain:
+                    print_gitlink_change(patch)
+                return
+            continue
+
         if isinstance(patch, BinaryFileChange):
             binary_hash = compute_binary_file_hash(patch)
             if binary_hash not in blocked_hashes:

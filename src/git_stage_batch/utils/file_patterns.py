@@ -96,7 +96,17 @@ def resolve_gitignore_style_patterns(
 
 def list_changed_files() -> list[str]:
     """List repository-relative files currently present in the working-tree diff."""
-    result = run_git_command(["diff", "--name-only", "-z"], text_output=False)
+    result = run_git_command(
+        [
+            "-c",
+            "diff.ignoreSubmodules=none",
+            "diff",
+            "--ignore-submodules=none",
+            "--name-only",
+            "-z",
+        ],
+        text_output=False,
+    )
     return [
         _normalize_path(path.decode("utf-8"))
         for path in result.stdout.split(b"\0")

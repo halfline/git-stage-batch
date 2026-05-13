@@ -96,6 +96,59 @@ def stream_git_command(
         )
 
 
+def stream_git_diff(
+    *,
+    base: str | None = None,
+    target: str | None = None,
+    cached: bool = False,
+    context_lines: int | None = None,
+    no_color: bool = True,
+    full_index: bool = False,
+    ignore_submodules: str | None = None,
+    submodule_format: str | None = None,
+    paths: Iterable[str] = (),
+    stdin_chunks: Iterable[bytes] | None = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> Iterator[bytes]:
+    """Stream a Git diff using keyworded options."""
+    config_arguments = []
+    arguments = []
+    if ignore_submodules is not None:
+        config_arguments.extend(["-c", f"diff.ignoreSubmodules={ignore_submodules}"])
+        arguments.append(f"--ignore-submodules={ignore_submodules}")
+    if submodule_format is not None:
+        config_arguments.extend(["-c", f"diff.submodule={submodule_format}"])
+        arguments.append(f"--submodule={submodule_format}")
+    if full_index:
+        arguments.append("--full-index")
+    if no_color:
+        arguments.append("--no-color")
+    if cached:
+        arguments.append("--cached")
+    if context_lines is not None:
+        arguments.append(f"-U{context_lines}")
+    if base is not None:
+        arguments.append(base)
+    if target is not None:
+        arguments.append(target)
+
+    path_list = list(paths)
+    if path_list:
+        arguments.extend(["--", *path_list])
+
+    return stream_git_command(
+        [
+            *config_arguments,
+            "diff",
+            *arguments,
+        ],
+        stdin_chunks,
+        cwd=cwd,
+        env=env,
+    )
+
+
 def _git_ref_exists(ref_name: str) -> bool:
     result = run_git_command(["rev-parse", "--verify", ref_name], check=False)
     return result.returncode == 0
@@ -199,6 +252,37 @@ def git_update_index(
 
     return run_git_command(
         arguments,
+        check=check,
+        env=env,
+    )
+
+
+def git_update_gitlink(
+    *,
+    file_path: str,
+    oid: str | None,
+    remove: bool = False,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
+    """Update one index entry that stores a submodule commit pointer."""
+    if remove:
+        if oid is not None:
+            raise ValueError("oid cannot be used with remove=True")
+        return git_update_index(
+            file_path=file_path,
+            force_remove=True,
+            check=check,
+            env=env,
+        )
+
+    if oid is None:
+        raise ValueError("oid is required unless remove=True")
+
+    return git_update_index(
+        file_path=file_path,
+        mode="160000",
+        blob_sha=oid,
         check=check,
         env=env,
     )

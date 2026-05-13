@@ -1,7 +1,11 @@
 """Tests for hunk hashing."""
 
 
-from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
+from git_stage_batch.core.hashing import (
+    compute_gitlink_change_hash,
+    compute_stable_hunk_hash_from_lines,
+)
+from git_stage_batch.core.models import GitlinkChange
 
 
 class TestComputeStableHunkHash:
@@ -95,3 +99,41 @@ class TestComputeStableHunkHash:
         )
 
         assert hash_from_lines == hash_from_list
+
+
+class TestComputeGitlinkChangeHash:
+    """Tests for compute_gitlink_change_hash."""
+
+    def test_hash_is_sha256_hex(self):
+        """Gitlink changes produce a SHA-256 identity."""
+        change = GitlinkChange(
+            old_path="sub",
+            new_path="sub",
+            old_oid="1" * 40,
+            new_oid="2" * 40,
+            change_type="modified",
+        )
+
+        hash_value = compute_gitlink_change_hash(change)
+
+        assert len(hash_value) == 64
+        assert all(c in "0123456789abcdef" for c in hash_value)
+
+    def test_oid_changes_affect_hash(self):
+        """Different gitlink targets produce different hashes."""
+        first = GitlinkChange(
+            old_path="sub",
+            new_path="sub",
+            old_oid="1" * 40,
+            new_oid="2" * 40,
+            change_type="modified",
+        )
+        second = GitlinkChange(
+            old_path="sub",
+            new_path="sub",
+            old_oid="1" * 40,
+            new_oid="3" * 40,
+            change_type="modified",
+        )
+
+        assert compute_gitlink_change_hash(first) != compute_gitlink_change_hash(second)

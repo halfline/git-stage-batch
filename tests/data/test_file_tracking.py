@@ -189,3 +189,31 @@ class TestAutoAddUntrackedFiles:
         # Check it was auto-added
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
         assert "my file.txt" in auto_added
+
+    def test_auto_add_skips_untracked_embedded_git_repository(self, temp_git_repo):
+        """Test that untracked embedded repositories are not auto-added."""
+        ensure_state_directory_exists()
+
+        embedded_repo = temp_git_repo / "embedded"
+        embedded_repo.mkdir()
+        subprocess.run(["git", "init"], check=True, cwd=embedded_repo, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=embedded_repo, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=embedded_repo, capture_output=True)
+        (embedded_repo / "file.txt").write_text("content\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=embedded_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=embedded_repo, capture_output=True)
+
+        auto_add_untracked_files()
+
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        assert "embedded" not in auto_added
+        assert "embedded/" not in auto_added
+
+        result = subprocess.run(
+            ["git", "ls-files", "--stage", "--", "embedded"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == ""

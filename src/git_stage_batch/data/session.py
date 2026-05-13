@@ -176,6 +176,9 @@ def snapshot_file_if_untracked(file_path: str) -> None:
     full_path = repo_root / file_path
     if not full_path.exists():
         return  # File doesn't exist
+    if full_path.is_dir():
+        log_journal("skip_untracked_directory_snapshot", file_path=file_path)
+        return
 
     # Save snapshot (use binary copy to handle all file types)
     snapshot_dir = get_abort_snapshots_directory_path()
@@ -231,6 +234,9 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
 
         full_path = repo_root / file_path
         if not full_path.exists():
+            continue
+        if full_path.is_dir():
+            log_journal("skip_untracked_directory_snapshot", file_path=file_path)
             continue
 
         snapshot_path = snapshot_dir / file_path

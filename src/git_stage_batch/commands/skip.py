@@ -7,14 +7,18 @@ import json
 import sys
 
 from ..core.diff_parser import build_line_changes_from_patch_lines, parse_unified_diff_streaming
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
+from ..core.hashing import (
+    compute_binary_file_hash,
+    compute_gitlink_change_hash,
+    compute_stable_hunk_hash_from_lines,
+)
 from ..core.line_selection import (
     parse_line_selection,
     read_line_ids_file,
     write_line_ids_file,
 )
 from ..batch.selection import require_line_selection_in_view
-from ..core.models import BinaryFileChange
+from ..core.models import BinaryFileChange, GitlinkChange
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     advance_to_and_show_next_change,
@@ -24,6 +28,7 @@ from ..data.hunk_tracking import (
     load_selected_change,
     read_selected_change_kind,
     record_binary_hunk_skipped,
+    record_gitlink_hunk_skipped,
     record_hunk_skipped,
     refuse_bare_action_after_file_list,
     require_selected_hunk,
@@ -47,7 +52,7 @@ from ..utils.file_io import (
     read_text_file_contents,
     write_text_file_contents,
 )
-from ..utils.git import require_git_repository, stream_git_command
+from ..utils.git import require_git_repository, stream_git_diff
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
@@ -90,6 +95,26 @@ def command_skip(*, quiet: bool = False) -> None:
         patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
         # Handle based on item type
+        if isinstance(item, GitlinkChange):
+            blocklist_path = get_block_list_file_path()
+            append_lines_to_file(blocklist_path, [patch_hash])
+            record_gitlink_hunk_skipped(item, patch_hash)
+
+            if not quiet:
+                print(
+                    _("✓ Submodule pointer {desc} skipped: {file}").format(
+                        desc=item.change_type,
+                        file=item.path(),
+                    ),
+                    file=sys.stderr,
+                )
+
+            if quiet:
+                advance_to_next_change()
+            else:
+                advance_to_and_show_next_change()
+            return
+
         if isinstance(item, BinaryFileChange):
             # Binary file - just add to blocklist
             file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
@@ -175,7 +200,28 @@ def command_skip_file(
         blocked_hashes = read_text_file_line_set(blocklist_path)
 
         hunks_skipped = 0
-        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for patch in parse_unified_diff_streaming(
+            stream_git_diff(
+                context_lines=get_context_lines(),
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+            )
+        ):
+            if isinstance(patch, GitlinkChange):
+                if patch.path() != target_file:
+                    continue
+
+                patch_hash = compute_gitlink_change_hash(patch)
+                if patch_hash in blocked_hashes:
+                    continue
+
+                append_lines_to_file(blocklist_path, [patch_hash])
+                blocked_hashes.add(patch_hash)
+                record_gitlink_hunk_skipped(patch, patch_hash)
+                hunks_skipped += 1
+                continue
+
             if isinstance(patch, BinaryFileChange):
                 file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
                 if file_path != target_file:

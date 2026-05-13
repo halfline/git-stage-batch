@@ -78,6 +78,16 @@ All batch operations work directly with bytes, not decoded text. This ensures:
 - Correct handling of mixed encodings within a repository
 - Preservation of CRLF line endings in cross-platform workflows
 
+### Submodule Pointers
+
+Submodule pointers are treated as atomic changes. They can be saved
+with `include --to BATCH`, shown with `show --from BATCH`, staged with
+`include --from BATCH`, applied with `apply --from BATCH`, discarded with
+`discard --from BATCH`, and removed from a batch with `reset --from BATCH`.
+
+Because a submodule pointer has no line content in the superproject, `--line`
+is not supported for those entries.
+
 ---
 
 ## `new`

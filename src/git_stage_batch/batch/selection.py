@@ -149,19 +149,19 @@ def resolve_batch_file_scope(
         return all_files
 
 
-def resolve_current_batch_binary_file_scope(
+def resolve_current_batch_atomic_file_scope(
     batch_name: str,
     all_files: dict[str, dict],
     file: Optional[str] = None,
     patterns: Optional[list[str]] = None,
     line_ids: Optional[str] = None,
 ) -> Optional[str]:
-    """Resolve a pathless whole-file batch action through the selected binary.
+    """Resolve a pathless whole-file batch action through an atomic selection.
 
-    A selected batch binary is an atomic current-file selection. Both the bare
-    command and `--file` with no path are pathless whole-file actions, so both
-    must revalidate the cached batch fingerprint before they can narrow to the
-    selected file.
+    Selected batch binaries and submodule pointers are atomic current-file
+    selections. Both the bare command and `--file` with no path are pathless
+    whole-file actions, so both must revalidate cached batch state before
+    narrowing to the selected file.
     """
     if patterns is not None or line_ids is not None or file not in (None, ""):
         return file
@@ -170,13 +170,35 @@ def resolve_current_batch_binary_file_scope(
         SelectedChangeKind,
         read_selected_change_kind,
         require_current_selected_batch_binary_file_for_batch,
+        require_current_selected_batch_gitlink_file_for_batch,
     )
 
-    if read_selected_change_kind() != SelectedChangeKind.BATCH_BINARY:
-        return file
+    selected_kind = read_selected_change_kind()
+    if selected_kind == SelectedChangeKind.BATCH_BINARY:
+        selected_file = require_current_selected_batch_binary_file_for_batch(batch_name, all_files)
+        return selected_file if selected_file is not None else file
+    if selected_kind == SelectedChangeKind.BATCH_GITLINK:
+        selected_file = require_current_selected_batch_gitlink_file_for_batch(batch_name, all_files)
+        return selected_file if selected_file is not None else file
 
-    selected_file = require_current_selected_batch_binary_file_for_batch(batch_name, all_files)
-    return selected_file if selected_file is not None else file
+    return file
+
+
+def resolve_current_batch_binary_file_scope(
+    batch_name: str,
+    all_files: dict[str, dict],
+    file: Optional[str] = None,
+    patterns: Optional[list[str]] = None,
+    line_ids: Optional[str] = None,
+) -> Optional[str]:
+    """Backward-compatible wrapper for atomic batch selections."""
+    return resolve_current_batch_atomic_file_scope(
+        batch_name,
+        all_files,
+        file,
+        patterns,
+        line_ids,
+    )
 
 
 def require_single_file_context_for_line_selection(

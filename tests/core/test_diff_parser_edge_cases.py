@@ -8,7 +8,7 @@ Tests for handling:
 - Mixed scenarios
 """
 
-from git_stage_batch.core.models import BinaryFileChange, SingleHunkPatch
+from git_stage_batch.core.models import BinaryFileChange, GitlinkChange, SingleHunkPatch
 
 from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
 
@@ -227,6 +227,129 @@ Binary files a/old_image.png and /dev/null differ
         assert patches[0].is_new_file() is False
         assert patches[0].is_deleted_file() is True
         assert patches[0].is_modified_file() is False
+
+
+class TestGitlinkFiles:
+    """Test parsing diffs with gitlink/submodule entries."""
+
+    def test_gitlink_modified_with_hunk(self):
+        """Modified gitlink yields an atomic change with hunk oids."""
+        old_oid = b"1111111111111111111111111111111111111111"
+        new_oid = b"2222222222222222222222222222222222222222"
+        diff = b"""\
+diff --git a/sub b/sub
+index 1111111..2222222 160000
+--- a/sub
++++ b/sub
+@@ -1 +1 @@
+-Subproject commit """ + old_oid + b"""
++Subproject commit """ + new_oid + b"""
+"""
+
+        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+
+        assert len(patches) == 1
+        assert isinstance(patches[0], GitlinkChange)
+        assert patches[0].old_path == "sub"
+        assert patches[0].new_path == "sub"
+        assert patches[0].old_oid == old_oid.decode("ascii")
+        assert patches[0].new_oid == new_oid.decode("ascii")
+        assert patches[0].change_type == "modified"
+
+    def test_gitlink_added_with_hunk(self):
+        """Added gitlink yields /dev/null on the old side."""
+        new_oid = b"3333333333333333333333333333333333333333"
+        diff = b"""\
+diff --git a/sub b/sub
+new file mode 160000
+index 0000000..3333333
+--- /dev/null
++++ b/sub
+@@ -0,0 +1 @@
++Subproject commit """ + new_oid + b"""
+"""
+
+        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+
+        assert len(patches) == 1
+        assert isinstance(patches[0], GitlinkChange)
+        assert patches[0].old_path == "/dev/null"
+        assert patches[0].new_path == "sub"
+        assert patches[0].old_oid is None
+        assert patches[0].new_oid == new_oid.decode("ascii")
+        assert patches[0].change_type == "added"
+
+    def test_gitlink_deleted_with_hunk(self):
+        """Deleted gitlink yields /dev/null on the new side."""
+        old_oid = b"4444444444444444444444444444444444444444"
+        diff = b"""\
+diff --git a/sub b/sub
+deleted file mode 160000
+index 4444444..0000000
+--- a/sub
++++ /dev/null
+@@ -1 +0,0 @@
+-Subproject commit """ + old_oid + b"""
+"""
+
+        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+
+        assert len(patches) == 1
+        assert isinstance(patches[0], GitlinkChange)
+        assert patches[0].old_path == "sub"
+        assert patches[0].new_path == "/dev/null"
+        assert patches[0].old_oid == old_oid.decode("ascii")
+        assert patches[0].new_oid is None
+        assert patches[0].change_type == "deleted"
+
+    def test_gitlink_followed_by_text_file(self):
+        """Gitlink parsing consumes its hunk and continues with text."""
+        diff = b"""\
+diff --git a/sub b/sub
+index 1111111111111111111111111111111111111111..2222222222222222222222222222222222222222 160000
+--- a/sub
++++ b/sub
+@@ -1 +1 @@
+-Subproject commit 1111111111111111111111111111111111111111
++Subproject commit 2222222222222222222222222222222222222222
+diff --git a/text.txt b/text.txt
+index abc1234..def5678 100644
+--- a/text.txt
++++ b/text.txt
+@@ -1 +1,2 @@
+ line
++next
+"""
+
+        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+
+        assert len(patches) == 2
+        assert isinstance(patches[0], GitlinkChange)
+        assert isinstance(patches[1], SingleHunkPatch)
+        assert patches[1].new_path == "text.txt"
+
+    def test_gitlink_without_hunk_uses_index_oids(self):
+        """Gitlink without hunk falls back to full index oids."""
+        diff = b"""\
+diff --git a/sub b/sub
+index aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 160000
+diff --git a/text.txt b/text.txt
+index abc1234..def5678 100644
+--- a/text.txt
++++ b/text.txt
+@@ -1 +1,2 @@
+ line
++next
+"""
+
+        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+
+        assert len(patches) == 2
+        assert isinstance(patches[0], GitlinkChange)
+        assert patches[0].old_oid == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        assert patches[0].new_oid == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        assert patches[0].change_type == "modified"
+        assert isinstance(patches[1], SingleHunkPatch)
 
 
 class TestRenamedFiles:

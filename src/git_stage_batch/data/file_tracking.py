@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from ..utils.file_io import append_file_path_to_file, read_file_paths_file
-from ..utils.git import run_git_command
+from ..utils.git import get_git_repository_root_path, run_git_command
 from ..utils.journal import log_journal
 from ..utils.paths import get_auto_added_files_file_path
+
+
+def _is_embedded_git_repository(file_path: str) -> bool:
+    path = get_git_repository_root_path() / file_path.rstrip("/")
+    return path.is_dir() and (path / ".git").exists()
 
 
 def auto_add_untracked_files() -> None:
@@ -30,11 +35,14 @@ def auto_add_untracked_files() -> None:
 
     # Add untracked files that haven't been auto-added yet
     for file_path in untracked_files:
+        if _is_embedded_git_repository(file_path):
+            log_journal("skip_auto_add_embedded_git_repository", file_path=file_path)
+            continue
         if file_path not in auto_added_files:
             # Get before state
             ls_before = run_git_command(["ls-files", "--stage", "--", file_path], check=False).stdout.strip()
 
-            result = run_git_command(["add", "-N", file_path], check=False)
+            result = run_git_command(["add", "-N", "--", file_path], check=False)
             if result.returncode == 0:
                 append_file_path_to_file(auto_added_path, file_path)
 

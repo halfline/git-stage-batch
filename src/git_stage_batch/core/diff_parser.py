@@ -7,7 +7,14 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from typing import Iterable, Iterator, Union
 
-from .models import BinaryFileChange, LineLevelChange, HunkHeader, LineEntry, SingleHunkPatch
+from .models import (
+    BinaryFileChange,
+    GitlinkChange,
+    LineLevelChange,
+    HunkHeader,
+    LineEntry,
+    SingleHunkPatch,
+)
 from ..editor import (
     EditorBuffer,
     buffer_byte_count,
@@ -27,9 +34,109 @@ LineLevelChangeAnnotator = Callable[[str, LineLevelChange], LineLevelChange]
 
 
 HUNK_HEADER_PATTERN = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
+INDEX_LINE_PATTERN = re.compile(br"^index ([0-9a-f]+)\.\.([0-9a-f]+)(?: ([0-7]+))?$")
+SUBPROJECT_COMMIT_PATTERN = re.compile(br"^[+-]Subproject commit ([0-9a-f]+)")
+NULL_OBJECT_PREFIX = "0" * 7
 
 
-def parse_unified_diff_streaming(lines: Iterable[bytes]) -> Iterator[Union[SingleHunkPatch, BinaryFileChange]]:
+def _metadata_indicates_gitlink(metadata_lines: list[bytes]) -> bool:
+    """Return whether diff metadata describes a mode-160000 entry."""
+    for line in metadata_lines:
+        if line in (
+            b"new file mode 160000",
+            b"deleted file mode 160000",
+            b"old mode 160000",
+            b"new mode 160000",
+        ):
+            return True
+        match = INDEX_LINE_PATTERN.match(line)
+        if match is not None and match.group(3) == b"160000":
+            return True
+    return False
+
+
+def _gitlink_oids_from_index(metadata_lines: list[bytes]) -> tuple[str | None, str | None]:
+    """Extract old and new object ids from a gitlink index line."""
+    for line in metadata_lines:
+        match = INDEX_LINE_PATTERN.match(line)
+        if match is not None:
+            return (
+                match.group(1).decode("ascii"),
+                match.group(2).decode("ascii"),
+            )
+    return None, None
+
+
+def _non_null_git_oid(oid: str | None) -> str | None:
+    """Return an object id unless it represents the null side of a diff."""
+    if oid is None:
+        return None
+    if oid.startswith(NULL_OBJECT_PREFIX):
+        return None
+    return oid
+
+
+def _gitlink_old_path(path: str, old_oid: str | None) -> str:
+    """Return /dev/null for the old side of an added gitlink."""
+    return "/dev/null" if _non_null_git_oid(old_oid) is None else path
+
+
+def _gitlink_new_path(path: str, new_oid: str | None) -> str:
+    """Return /dev/null for the new side of a deleted gitlink."""
+    return "/dev/null" if _non_null_git_oid(new_oid) is None else path
+
+
+def _gitlink_change_type(
+    metadata_lines: list[bytes],
+    old_oid: str | None,
+    new_oid: str | None,
+) -> str:
+    """Derive added/modified/deleted from gitlink diff metadata."""
+    if any(line == b"new file mode 160000" for line in metadata_lines):
+        return "added"
+    if any(line == b"deleted file mode 160000" for line in metadata_lines):
+        return "deleted"
+    if _non_null_git_oid(old_oid) is None:
+        return "added"
+    if _non_null_git_oid(new_oid) is None:
+        return "deleted"
+    return "modified"
+
+
+def _consume_gitlink_hunks(
+    next_line: Callable[[], bytes | None],
+    peek_line: Callable[[], bytes | None],
+) -> tuple[str | None, str | None]:
+    """Consume all gitlink hunks for the current file and return full oids."""
+    old_oid = None
+    new_oid = None
+
+    while True:
+        next_l = peek_line()
+        if next_l is None:
+            break
+        next_l_stripped = next_l.rstrip(b"\n")
+        if next_l_stripped.startswith(b"diff --git "):
+            break
+        if next_l_stripped.startswith(b"---"):
+            break
+
+        next_line()
+        if next_l_stripped.startswith(b"-Subproject commit "):
+            match = SUBPROJECT_COMMIT_PATTERN.match(next_l_stripped)
+            if match is not None:
+                old_oid = match.group(1).decode("ascii")
+        elif next_l_stripped.startswith(b"+Subproject commit "):
+            match = SUBPROJECT_COMMIT_PATTERN.match(next_l_stripped)
+            if match is not None:
+                new_oid = match.group(1).decode("ascii")
+
+    return old_oid, new_oid
+
+
+def parse_unified_diff_streaming(
+    lines: Iterable[bytes],
+) -> Iterator[Union[SingleHunkPatch, BinaryFileChange, GitlinkChange]]:
     """Parse a unified diff from a byte line iterator, yielding patches and binary changes.
 
     This is the core streaming parser that accepts any iterable of byte lines
@@ -41,7 +148,8 @@ def parse_unified_diff_streaming(lines: Iterable[bytes]) -> Iterator[Union[Singl
         lines: Iterable of diff lines as bytes (each line includes its \\n terminator)
 
     Yields:
-        SingleHunkPatch objects for text hunks, BinaryFileChange objects for binary files
+        SingleHunkPatch objects for text hunks, BinaryFileChange objects for
+        binary files, and GitlinkChange objects for submodule pointer changes.
     """
     line_iter = iter(lines)
     lookahead = None  # One-line lookahead buffer
@@ -114,8 +222,25 @@ def parse_unified_diff_streaming(lines: Iterable[bytes]) -> Iterator[Union[Singl
                     lookahead = next_l + b'\n'
                     break
 
+            is_gitlink = _metadata_indicates_gitlink(metadata_lines)
+            index_old_oid, index_new_oid = _gitlink_oids_from_index(metadata_lines)
+
             # Handle files without unified diff hunks
             if old_file_line is None:
+                if is_gitlink:
+                    yield GitlinkChange(
+                        old_path=_gitlink_old_path(old_path, index_old_oid),
+                        new_path=_gitlink_new_path(new_path, index_new_oid),
+                        old_oid=_non_null_git_oid(index_old_oid),
+                        new_oid=_non_null_git_oid(index_new_oid),
+                        change_type=_gitlink_change_type(
+                            metadata_lines,
+                            index_old_oid,
+                            index_new_oid,
+                        ),
+                    )
+                    continue
+
                 # Check if this is a binary file
                 # Binary files have lines like "Binary files a/X and b/X differ"
                 is_binary = any(b"Binary files" in m for m in metadata_lines)
@@ -172,6 +297,23 @@ def parse_unified_diff_streaming(lines: Iterable[bytes]) -> Iterator[Union[Singl
             if not plus_line_stripped.startswith(b"+++"):
                 continue
             new_file_line = plus_line_stripped
+
+            if is_gitlink:
+                hunk_old_oid, hunk_new_oid = _consume_gitlink_hunks(next_line, peek_line)
+                old_oid = hunk_old_oid or _non_null_git_oid(index_old_oid)
+                new_oid = hunk_new_oid or _non_null_git_oid(index_new_oid)
+                yield GitlinkChange(
+                    old_path=_gitlink_old_path(old_path, old_oid or index_old_oid),
+                    new_path=_gitlink_new_path(new_path, new_oid or index_new_oid),
+                    old_oid=old_oid,
+                    new_oid=new_oid,
+                    change_type=_gitlink_change_type(
+                        metadata_lines,
+                        old_oid or index_old_oid,
+                        new_oid or index_new_oid,
+                    ),
+                )
+                continue
 
             # Process all hunks for this file
             has_hunks = False

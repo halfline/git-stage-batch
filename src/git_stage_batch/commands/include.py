@@ -11,7 +11,7 @@ import stat
 import sys
 import uuid
 
-from ..batch import add_binary_file_to_batch, add_file_to_batch, create_batch, delete_batch
+from ..batch import add_binary_file_to_batch, add_file_to_batch, add_gitlink_to_batch, create_batch, delete_batch
 from ..batch.comparison import (
     derive_display_id_run_sets_from_lines,
     derive_replacement_display_id_run_sets_from_lines,
@@ -35,14 +35,18 @@ from ..core.diff_parser import (
     build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
 )
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
+from ..core.hashing import (
+    compute_binary_file_hash,
+    compute_gitlink_change_hash,
+    compute_stable_hunk_hash_from_lines,
+)
 from ..core.line_selection import (
     format_line_ids,
     parse_line_selection,
     read_line_ids_file,
     write_line_ids_file,
 )
-from ..core.models import BinaryFileChange
+from ..core.models import BinaryFileChange, GitlinkChange
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
@@ -57,10 +61,12 @@ from ..data.hunk_tracking import (
     read_selected_change_kind,
     recalculate_selected_hunk_for_file,
     record_binary_hunk_skipped,
+    record_gitlink_hunk_skipped,
     record_hunk_included,
     record_hunk_skipped,
     refuse_bare_action_after_file_list,
     render_binary_file_change,
+    render_gitlink_change,
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -104,9 +110,10 @@ from ..utils.file_io import (
 from ..utils.git import (
     get_git_repository_root_path,
     git_update_index,
+    git_update_gitlink,
     require_git_repository,
     run_git_command,
-    stream_git_command,
+    stream_git_diff,
 )
 from ..utils.journal import log_journal
 from ..utils.paths import (
@@ -120,6 +127,29 @@ from ..utils.paths import (
     get_session_batch_sources_file_path,
     get_working_tree_snapshot_file_path,
 )
+
+
+def _update_index_for_gitlink_change(gitlink_change: GitlinkChange):
+    """Stage a submodule pointer change in the index."""
+    file_path = gitlink_change.path()
+    if gitlink_change.is_deleted_file():
+        return git_update_gitlink(
+            file_path=file_path,
+            oid=None,
+            remove=True,
+            check=False,
+        )
+    if gitlink_change.new_oid is None:
+        exit_with_error(
+            _("Cannot stage submodule pointer for {file}: missing target commit.").format(
+                file=file_path,
+            )
+        )
+    return git_update_gitlink(
+        file_path=file_path,
+        oid=gitlink_change.new_oid,
+        check=False,
+    )
 
 
 class TransientIncludeFailureReason(Enum):
@@ -478,6 +508,32 @@ def command_include(*, quiet: bool = False) -> None:
         patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
         # Handle based on item type
+        if isinstance(item, GitlinkChange):
+            result = _update_index_for_gitlink_change(item)
+            if result.returncode != 0:
+                print(
+                    _("Failed to stage submodule pointer: {error}").format(error=result.stderr),
+                    file=sys.stderr,
+                )
+                return
+
+            record_hunk_included(patch_hash)
+
+            if not quiet:
+                print(
+                    _("✓ Submodule pointer {desc}: {file}").format(
+                        desc=item.change_type,
+                        file=item.path(),
+                    ),
+                    file=sys.stderr,
+                )
+
+            if quiet:
+                advance_to_next_change()
+            else:
+                advance_to_and_show_next_change()
+            return
+
         if isinstance(item, BinaryFileChange):
             # Binary file - use git add
             file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
@@ -569,7 +625,16 @@ def command_include_file(
     if file == "":
         target_file = get_selected_change_file_path()
         if target_file is None:
-            diff_result = run_git_command(["diff", "--quiet"], check=False)
+            diff_result = run_git_command(
+                [
+                    "-c",
+                    "diff.ignoreSubmodules=none",
+                    "diff",
+                    "--ignore-submodules=none",
+                    "--quiet",
+                ],
+                check=False,
+            )
             if diff_result.returncode == 0:
                 print(_("No changes to stage."), file=sys.stderr)
             else:
@@ -586,7 +651,30 @@ def command_include_file(
         # makes later manual unstaging look like stale skipped work, which breaks
         # follow-up `show --files` / `include --files` passes in the same session.
         hunks_staged = 0
-        for patch in parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])):
+        submodule_pointers_staged = 0
+        for patch in parse_unified_diff_streaming(
+            stream_git_diff(
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+            )
+        ):
+            if isinstance(patch, GitlinkChange):
+                if patch.path() == target_file:
+                    result = _update_index_for_gitlink_change(patch)
+                    if result.returncode != 0:
+                        print(
+                            _("Failed to stage submodule pointer: {error}").format(
+                                error=result.stderr,
+                            ),
+                            file=sys.stderr,
+                        )
+                        break
+                    record_hunk_included(compute_gitlink_change_hash(patch))
+                    hunks_staged += 1
+                    submodule_pointers_staged += 1
+                continue
+
             if isinstance(patch, BinaryFileChange):
                 file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
                 if file_path != target_file:
@@ -652,11 +740,18 @@ def command_include_file(
         return hunks_staged
 
     # Print summary message
-    msg = ngettext(
-        "✓ Staged {count} hunk from {file}",
-        "✓ Staged {count} hunks from {file}",
-        hunks_staged
-    ).format(count=hunks_staged, file=target_file)
+    if submodule_pointers_staged == hunks_staged:
+        msg = ngettext(
+            "✓ Staged {count} submodule pointer from {file}",
+            "✓ Staged {count} submodule pointers from {file}",
+            hunks_staged,
+        ).format(count=hunks_staged, file=target_file)
+    else:
+        msg = ngettext(
+            "✓ Staged {count} hunk from {file}",
+            "✓ Staged {count} hunks from {file}",
+            hunks_staged
+        ).format(count=hunks_staged, file=target_file)
     print(msg, file=sys.stderr)
 
     # Advance to next file's hunk
@@ -1253,13 +1348,27 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
         if (
             file is None
             and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.GITLINK
+        ):
+            selected_change = load_selected_change()
+            if isinstance(selected_change, GitlinkChange):
+                _command_include_gitlink_to_batch(batch_name, selected_change, quiet=quiet)
+                return
+            else:
+                _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+                return
+        elif (
+            file is None
+            and line_ids is None
             and read_selected_change_kind() == SelectedChangeKind.BINARY
         ):
             selected_change = load_selected_change()
             if isinstance(selected_change, BinaryFileChange):
                 _command_include_binary_to_batch(batch_name, selected_change, quiet=quiet)
+                return
             else:
                 _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+                return
         elif file is not None:
             # File-scoped operation
 
@@ -1360,6 +1469,35 @@ def _command_include_binary_to_batch(
         advance_to_and_show_next_change()
 
 
+def _command_include_gitlink_to_batch(
+    batch_name: str,
+    gitlink_change: GitlinkChange,
+    *,
+    quiet: bool = False,
+) -> None:
+    """Save one submodule pointer change to a batch and mark it processed."""
+    file_path = gitlink_change.path()
+    patch_hash = compute_gitlink_change_hash(gitlink_change)
+
+    add_gitlink_to_batch(batch_name, gitlink_change)
+    append_lines_to_file(get_block_list_file_path(), [patch_hash])
+    record_gitlink_hunk_skipped(gitlink_change, patch_hash)
+
+    if not quiet:
+        print(
+            _("Included submodule pointer '{file}' to batch '{batch}'").format(
+                file=file_path,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+
+    if quiet:
+        advance_to_next_change()
+    else:
+        advance_to_and_show_next_change()
+
+
 def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:
     """Include entire file to batch (internal helper for file-scoped operations)."""
 
@@ -1371,6 +1509,10 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     if binary_change is not None:
         _command_include_binary_to_batch(batch_name, binary_change, quiet=quiet)
         return
+    gitlink_change = render_gitlink_change(file_path)
+    if gitlink_change is not None:
+        _command_include_gitlink_to_batch(batch_name, gitlink_change, quiet=quiet)
+        return
 
     # Detect file mode
     file_mode = _detect_file_mode(file_path)
@@ -1378,7 +1520,13 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     # Collect ALL hunks from this file (live working tree state)
     all_lines_to_batch = []
 
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color", "HEAD", "--", file_path])):
+    for patch in parse_unified_diff_streaming(
+        stream_git_diff(
+            base="HEAD",
+            context_lines=get_context_lines(),
+            paths=[file_path],
+        )
+    ):
         hunk_lines = build_line_changes_from_patch_lines(
             patch.lines,
             annotator=annotate_with_batch_source,
@@ -1439,6 +1587,10 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
 
 def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_id_specification: str, *, quiet: bool = False) -> None:
     """Include specific lines from a file to batch (file-scoped with line IDs)."""
+    if render_gitlink_change(file_path) is not None:
+        exit_with_error(
+            _("Cannot use --lines with submodule pointers. Include the whole pointer instead.")
+        )
 
     reuse_selected_file_view = (
         read_selected_change_kind() == SelectedChangeKind.FILE
@@ -1617,7 +1769,21 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     # Stream diff to find first non-blocked hunk
     selected_patch = None
     selected_hash = None
-    for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+    for patch in parse_unified_diff_streaming(
+        stream_git_diff(
+            context_lines=get_context_lines(),
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+        )
+    ):
+        if isinstance(patch, GitlinkChange):
+            patch_hash = compute_gitlink_change_hash(patch)
+            if patch_hash not in blocked_hashes:
+                _command_include_gitlink_to_batch(batch_name, patch, quiet=quiet)
+                return
+            continue
+
         if isinstance(patch, BinaryFileChange):
             patch_hash = compute_binary_file_hash(patch)
             if patch_hash not in blocked_hashes:
@@ -1648,7 +1814,14 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
 
     if file_only:
         # Collect ALL hunks from this file
-        for patch in parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])):
+        for patch in parse_unified_diff_streaming(
+            stream_git_diff(
+                context_lines=get_context_lines(),
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+            )
+        ):
             if patch.new_path != file_path:
                 continue
 

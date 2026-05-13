@@ -417,6 +417,8 @@ Use \fB\-\-line\fR to filter display to specific line IDs.
 Use \fB\-\-file\fR to open one page-aware batch file review.
 Use \fB\-\-files\fR to list matching batch files; multi-file lists are
 navigational and do not select a hidden batch file.
+Submodule pointer changes are shown as atomic entries; \fB\-\-line\fR is not
+supported for them.
 .TP
 .B include \-\-from \fIBATCH\fR [\fB\-\-line\fR \fILINE_IDS\fR | \fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
 Stage the changes from a batch to the index and write them to the working tree.
@@ -447,6 +449,9 @@ Use \fB\-\-files\fR to reset all matched batch files.
 Use \fB\-\-line\fR with \fB\-\-file\fR to reset specific line claims from a file.
 Use \fB\-\-to\fR to move the reset claims into another batch before removing
 them from the source batch.
+.PP
+Submodule pointers may be saved with \fBinclude \-\-to\fR and later handled
+with whole-entry \fBshow/include/apply/discard/reset \-\-from\fR operations.
 .PP
 The following command uses both \fB\-\-from\fR and \fB\-\-to\fR for batch transformation:
 .TP

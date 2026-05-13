@@ -188,6 +188,11 @@ def get_selected_binary_file_json_path() -> Path:
     return get_selected_state_directory_path() / "binary-file.json"
 
 
+def get_selected_gitlink_file_json_path() -> Path:
+    """Get the path to the selected gitlink JSON file."""
+    return get_selected_state_directory_path() / "gitlink-file.json"
+
+
 def get_abort_head_file_path() -> Path:
     """Get the path to the abort HEAD file for session restoration.
 

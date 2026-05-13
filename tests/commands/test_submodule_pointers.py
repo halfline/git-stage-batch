@@ -342,6 +342,68 @@ def test_include_to_batch_stores_deleted_submodule_pointer(
     assert _git_stdout(["ls-tree", batch_commit, "--", "sub"], cwd=repo) == ""
 
 
+def test_discard_restores_selected_submodule_pointer(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """discard should restore a modified submodule pointer."""
+    repo, old_oid, _new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_discard(quiet=True)
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == old_oid
+    assert _cached_raw_diff(repo) == ""
+    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+
+
+def test_discard_removes_added_submodule_pointer(
+    added_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """discard should remove a selected added submodule pointer."""
+    repo, _new_oid = added_submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_discard(quiet=True)
+
+    assert not (repo / "sub").exists()
+    assert _cached_raw_diff(repo) == ""
+    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+
+
+def test_discard_file_restores_submodule_pointer(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """discard --file should restore a modified submodule pointer."""
+    repo, old_oid, _new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_discard_file("sub")
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == old_oid
+    assert _cached_raw_diff(repo) == ""
+    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+
+
+def test_discard_refuses_dirty_submodule_pointer(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """discard should refuse when the submodule worktree has edits."""
+    repo, _old_oid, new_oid = submodule_pointer_repo
+    (repo / "sub" / "file.txt").write_text("local edit\n")
+
+    command_start(quiet=True)
+
+    with pytest.raises(CommandError, match="local changes"):
+        command_discard(quiet=True)
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
+    assert _cached_raw_diff(repo) == ""
+    assert "Subproject commit" in _git_stdout(
+        ["diff", "--ignore-submodules=none", "--submodule=short", "--", "sub"],
+        cwd=repo,
+    )
+
+
 def _configure_identity(repo: Path) -> None:
     _run(["git", "config", "user.name", "Test User"], cwd=repo)
     _run(["git", "config", "user.email", "test@example.com"], cwd=repo)

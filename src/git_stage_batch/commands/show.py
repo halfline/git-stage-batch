@@ -6,7 +6,7 @@ import json
 import sys
 
 from ..batch.display import annotate_with_batch_source
-from ..core.diff_parser import build_line_changes_from_patch_lines, parse_unified_diff_streaming
+from ..core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ..core.diff_parser import write_snapshots_for_selected_file_path
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -239,66 +239,67 @@ def command_show(
     blocked_hashes = read_text_file_line_set(blocklist_path)
 
     # Stream diff and show first unblocked hunk
-    for patch in parse_unified_diff_streaming(
+    with acquire_unified_diff(
         stream_git_diff(
             context_lines=get_context_lines(),
             full_index=True,
             ignore_submodules="none",
             submodule_format="short",
         )
-    ):
-        if isinstance(patch, GitlinkChange):
-            gitlink_hash = compute_gitlink_change_hash(patch)
-            if gitlink_hash not in blocked_hashes:
-                cache_gitlink_change(patch)
+    ) as patches:
+        for patch in patches:
+            if isinstance(patch, GitlinkChange):
+                gitlink_hash = compute_gitlink_change_hash(patch)
+                if gitlink_hash not in blocked_hashes:
+                    cache_gitlink_change(patch)
+                    clear_last_file_review_state()
+                    if not porcelain:
+                        print_gitlink_change(patch)
+                    return
+                continue
+
+            if isinstance(patch, BinaryFileChange):
+                binary_hash = compute_binary_file_hash(patch)
+                if binary_hash not in blocked_hashes:
+                    cache_binary_file_change(patch)
+                    clear_last_file_review_state()
+                    if not porcelain:
+                        print_binary_file_change(patch)
+                    return
+                continue
+
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
+            if patch_hash not in blocked_hashes:
+                with snapshot_selected_change_state() as previous_selected_state:
+                    # Cache selected hunk bytes exactly; display text is derived from parsed lines.
+                    write_selected_hunk_patch_lines(patch.lines)
+                    write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
+                    write_selected_change_kind(SelectedChangeKind.HUNK)
+
+                    # Parse and cache line_changes for batch filtering
+                    line_changes = build_line_changes_from_patch_lines(
+                        patch.lines,
+                        annotator=annotate_with_batch_source,
+                    )
+                    write_text_file_contents(get_line_changes_json_file_path(),
+                                            json.dumps(convert_line_changes_to_serializable_dict(line_changes),
+                                                      ensure_ascii=False, indent=0))
+                    write_snapshots_for_selected_file_path(line_changes.path)
+
+                    # Apply line-level batch filtering
+                    if apply_line_level_batch_filter_to_cached_hunk():
+                        # All lines in this hunk are batched, skip to next
+                        restore_selected_change_state(previous_selected_state)
+                        continue
+
                 clear_last_file_review_state()
+
+                # Display this unprocessed hunk (unless porcelain mode)
                 if not porcelain:
-                    print_gitlink_change(patch)
+                    line_changes = load_line_changes_from_state()
+                    if line_changes is not None:
+                        print_line_level_changes(line_changes)
                 return
-            continue
-
-        if isinstance(patch, BinaryFileChange):
-            binary_hash = compute_binary_file_hash(patch)
-            if binary_hash not in blocked_hashes:
-                cache_binary_file_change(patch)
-                clear_last_file_review_state()
-                if not porcelain:
-                    print_binary_file_change(patch)
-                return
-            continue
-
-        patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-        if patch_hash not in blocked_hashes:
-            with snapshot_selected_change_state() as previous_selected_state:
-                # Cache selected hunk bytes exactly; display text is derived from parsed lines.
-                write_selected_hunk_patch_lines(patch.lines)
-                write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
-                write_selected_change_kind(SelectedChangeKind.HUNK)
-
-                # Parse and cache line_changes for batch filtering
-                line_changes = build_line_changes_from_patch_lines(
-                    patch.lines,
-                    annotator=annotate_with_batch_source,
-                )
-                write_text_file_contents(get_line_changes_json_file_path(),
-                                        json.dumps(convert_line_changes_to_serializable_dict(line_changes),
-                                                  ensure_ascii=False, indent=0))
-                write_snapshots_for_selected_file_path(line_changes.path)
-
-                # Apply line-level batch filtering
-                if apply_line_level_batch_filter_to_cached_hunk():
-                    # All lines in this hunk are batched, skip to next
-                    restore_selected_change_state(previous_selected_state)
-                    continue
-
-            clear_last_file_review_state()
-
-            # Display this unprocessed hunk (unless porcelain mode)
-            if not porcelain:
-                line_changes = load_line_changes_from_state()
-                if line_changes is not None:
-                    print_line_level_changes(line_changes)
-            return
 
     # Either no changes or all hunks are blocked
     if porcelain:

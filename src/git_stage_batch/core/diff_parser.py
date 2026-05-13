@@ -40,15 +40,6 @@ SUBPROJECT_COMMIT_PATTERN = re.compile(br"^[+-]Subproject commit ([0-9a-f]+)")
 NULL_OBJECT_PREFIX = "0" * 7
 
 
-def detach_single_hunk_patch(patch: SingleHunkPatch) -> SingleHunkPatch:
-    """Return a patch whose line payload is independent of parser-owned buffers."""
-    return SingleHunkPatch(
-        old_path=patch.old_path,
-        new_path=patch.new_path,
-        lines=list(patch.lines),
-    )
-
-
 def _metadata_indicates_gitlink(metadata_lines: list[bytes]) -> bool:
     """Return whether diff metadata describes a mode-160000 entry."""
     for line in metadata_lines:
@@ -496,27 +487,6 @@ class _UnifiedDiffParserBuildContext:
 def acquire_unified_diff(lines: Iterable[bytes]) -> _UnifiedDiffParserBuildContext:
     """Acquire a scoped unified diff parser with parser-owned hunk buffers."""
     return _UnifiedDiffParserBuildContext(lines)
-
-
-def parse_unified_diff_streaming(
-    lines: Iterable[bytes],
-) -> Iterator[UnifiedDiffItem]:
-    """Parse a unified diff and yield detached patches and binary changes.
-
-    This compatibility parser returns SingleHunkPatch values whose lines remain
-    usable after iteration advances. Use acquire_unified_diff() for scoped
-    EditorBuffer-backed hunk payloads.
-    """
-    context = acquire_unified_diff(lines)
-    with context as items:
-        for item in items:
-            if isinstance(item, SingleHunkPatch):
-                detached_item = detach_single_hunk_patch(item)
-                if isinstance(item.lines, EditorBuffer):
-                    context._release_buffer(item.lines)
-                yield detached_item
-            else:
-                yield item
 
 
 def write_snapshots_for_selected_file_path(file_path: str) -> None:

@@ -39,6 +39,15 @@ SUBPROJECT_COMMIT_PATTERN = re.compile(br"^[+-]Subproject commit ([0-9a-f]+)")
 NULL_OBJECT_PREFIX = "0" * 7
 
 
+def detach_single_hunk_patch(patch: SingleHunkPatch) -> SingleHunkPatch:
+    """Return a patch whose line payload is independent of parser-owned buffers."""
+    return SingleHunkPatch(
+        old_path=patch.old_path,
+        new_path=patch.new_path,
+        lines=list(patch.lines),
+    )
+
+
 def _metadata_indicates_gitlink(metadata_lines: list[bytes]) -> bool:
     """Return whether diff metadata describes a mode-160000 entry."""
     for line in metadata_lines:

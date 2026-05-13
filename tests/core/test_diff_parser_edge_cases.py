@@ -1,4 +1,4 @@
-"""Comprehensive edge case tests for parse_unified_diff_streaming.
+"""Comprehensive edge case tests for collect_unified_diff.
 
 Tests for handling:
 - Empty files (new and deleted)
@@ -10,7 +10,7 @@ Tests for handling:
 
 from git_stage_batch.core.models import BinaryFileChange, GitlinkChange, SingleHunkPatch
 
-from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+from tests.diff_parser_helpers import collect_unified_diff
 
 
 class TestEmptyFileDeletion:
@@ -34,7 +34,7 @@ index abc1234..def5678 100644
 +new line
  line3
 """
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         # Should parse the normal.txt patch (empty.txt has no hunks)
         assert len(patches) == 1
@@ -59,7 +59,7 @@ index 0000000..83db48f
 +line2
 +line3
 """
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert patches[0].new_path == "new.txt"
@@ -86,7 +86,7 @@ index abc1234..def5678 100644
  line1
 +line2
 """
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         # Should only parse normal.txt (the empty files have no hunks)
         assert len(patches) == 1
@@ -112,7 +112,7 @@ index abc1234..def5678 100644
  line1
 +line2
 """
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         # Empty files now yield a synthetic patch with @@ -0,0 +0,0 @@
         assert len(patches) == 2
@@ -144,7 +144,7 @@ index abc1234..def5678 100644
 +line2
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         # Should parse both: binary file as BinaryFileChange and text file as SingleHunkPatch
         assert len(patches) == 2
@@ -176,7 +176,7 @@ index ghi789..jkl012 100644
 +lineB
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         # Should parse all three: text, binary, text
         assert len(patches) == 3
@@ -197,7 +197,7 @@ index 0000000..abc1234
 Binary files /dev/null and b/new_image.jpg differ
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert isinstance(patches[0], BinaryFileChange)
@@ -217,7 +217,7 @@ index def5678..0000000
 Binary files a/old_image.png and /dev/null differ
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert isinstance(patches[0], BinaryFileChange)
@@ -246,7 +246,7 @@ index 1111111..2222222 160000
 +Subproject commit """ + new_oid + b"""
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert isinstance(patches[0], GitlinkChange)
@@ -269,7 +269,7 @@ index 0000000..3333333
 +Subproject commit """ + new_oid + b"""
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert isinstance(patches[0], GitlinkChange)
@@ -292,7 +292,7 @@ index 4444444..0000000
 -Subproject commit """ + old_oid + b"""
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert isinstance(patches[0], GitlinkChange)
@@ -321,7 +321,7 @@ index abc1234..def5678 100644
 +next
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 2
         assert isinstance(patches[0], GitlinkChange)
@@ -342,7 +342,7 @@ index abc1234..def5678 100644
 +next
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 2
         assert isinstance(patches[0], GitlinkChange)
@@ -370,7 +370,7 @@ index abc1234..def5678 100644
  line1
 +line2
 """
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         # Should parse other.txt (renamed file has no hunks)
         assert len(patches) == 1
@@ -392,7 +392,7 @@ index abc1234..def5678 100644
 +new line
  line3
 """
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert patches[0].old_path == "old_name.txt"
@@ -416,7 +416,7 @@ index abc1234..def5678 100644
  line1
 +line2
 """
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         # Should parse other.txt (mode change has no hunks)
         assert len(patches) == 1
@@ -436,7 +436,7 @@ index abc1234..def5678
  echo "hello"
 +echo "world"
 """
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert patches[0].new_path == "script.sh"
@@ -484,7 +484,7 @@ index ghi789..jkl012 100644
 +lineB
 """
 
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         # Should parse files with hunks plus binary file and empty new file
         # Expected: new_empty.txt (empty), image.png (binary), normal1.txt, normal2.txt
@@ -526,7 +526,7 @@ index 0000000..7654321
 +def func_b():
 +    return 'B'
 """
-        patches = list(parse_unified_diff_streaming(diff.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
         # Should parse both file_a.py and file_b.py
         # The deleted_intent.py has no hunks
@@ -565,7 +565,7 @@ index mno345..pqr678 100644
 """
         # Take only first patch
         patches = []
-        for patch in parse_unified_diff_streaming(diff.splitlines(keepends=True)):
+        for patch in collect_unified_diff(diff.splitlines(keepends=True)):
             patches.append(patch)
             break
 

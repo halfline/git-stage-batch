@@ -14,10 +14,10 @@ import subprocess
 import pytest
 
 from git_stage_batch.core.diff_parser import (
-    parse_unified_diff_streaming,
     build_line_changes_from_patch_lines,
 )
 from git_stage_batch.core.models import LineEntry
+from tests.diff_parser_helpers import collect_unified_diff
 from git_stage_batch.utils.git import stream_git_command
 
 
@@ -58,7 +58,7 @@ class TestCRLFLineEndings:
         test_file.write_bytes(b"line1\r\nmodified\r\nline3\r\n")
 
         # Parse diff
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", "--no-color"])))
 
         assert len(patches) == 1
         patch = patches[0]
@@ -124,7 +124,7 @@ class TestMixedLineEndings:
         test_file.write_bytes(modified_content)
 
         # Parse diff
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", "--no-color"])))
         assert len(patches) == 1
 
         # Build selected lines
@@ -203,7 +203,7 @@ class TestLatin1Encoding:
         test_file.write_bytes(modified_content)
 
         # Should parse without crashing
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", "--no-color"])))
         assert len(patches) == 1
 
         # Build selected lines - should decode with replacement character
@@ -230,7 +230,7 @@ class TestLatin1Encoding:
         subprocess.run(["git", "commit", "-m", "Add Latin-1"], check=True, cwd=temp_git_repo, capture_output=True)
 
         test_file.write_bytes(b"cafe\nna\xefve modified\n")
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", "--no-color"])))
         expected_patch = b"".join(patches[0].lines)
 
         command_start(quiet=True)
@@ -339,7 +339,7 @@ class TestBinaryContent:
 
         # Git will treat this as binary and show "Binary files differ"
         # Our code should handle this gracefully
-        list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        list(collect_unified_diff(stream_git_command(["diff", "--no-color"])))
 
         # Git doesn't create unified diffs for binary files
         # So we might get 0 patches or a special binary indicator
@@ -364,7 +364,7 @@ class TestInvalidUTF8Sequences:
         test_file.write_bytes(modified_content)
 
         # Should parse without crashing
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", "--no-color"])))
         assert len(patches) == 1
 
         # Build selected lines
@@ -396,7 +396,7 @@ class TestLineEndingEdgeCases:
         test_file.write_bytes(b"line1\nchanged")  # Still no final \n
 
         # Should parse correctly
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", "--no-color"])))
         assert len(patches) == 1
 
         # Git adds "\ No newline at end of file" - we should handle this
@@ -414,7 +414,7 @@ class TestLineEndingEdgeCases:
         test_file.write_bytes(b"line1\rchanged\rline3\r")
 
         # Parse diff
-        list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        list(collect_unified_diff(stream_git_command(["diff", "--no-color"])))
 
         # Git treats CR as part of the line content (not a line separator)
         # So this might show as one big line or git might handle it specially
@@ -432,7 +432,7 @@ class TestLineEndingEdgeCases:
         test_file.write_bytes(b"line1\r\n\r\nchanged\r\n")
 
         # Should parse correctly
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", "--no-color"])))
         assert len(patches) == 1
 
         patch_bytes = b"".join(patches[0].lines)
@@ -454,7 +454,7 @@ class TestDiffParserBytesHandling:
             b"-old\n",
             b"+new\n",
         ]
-        patches = list(parse_unified_diff_streaming(diff_lines))
+        patches = list(collect_unified_diff(diff_lines))
         assert len(patches) == 1
         # Filename should be decoded as UTF-8
         assert "café" in patches[0].new_path

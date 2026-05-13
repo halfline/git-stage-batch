@@ -654,6 +654,7 @@ If you spawn a subagent for message drafting:
    - which independent series this commit belongs to when the unstaged tree
      contains more than one
    - whether this is the final commit in the series
+   - whether this is the penultimate commit in the series, when known
    - the repository-specific message rules already discovered
    - any preferred prefixes already established by history
    - the exact files staged for this commit
@@ -913,9 +914,11 @@ This commit [addresses|mitigates|resolves] that [problem] by [precise
 description of what this commit changes and how it solves the problem
 stated above].
 
-[Connect to what comes next. Omit this paragraph for the final
-commit in the series. For the final commit, use the preceding paragraph
-or a short closing paragraph to state that the series goal has been reached.]
+[Connect to what comes next, or conclude the series when this is the
+final commit. For the penultimate commit, refer to the upcoming final
+commit in the singular, such as "The final commit will ...", instead
+of saying "subsequent commits". For the final commit, use this
+paragraph to state that the series goal has been reached.]
 ```
 
 ### First Line (Summary)
@@ -1005,8 +1008,8 @@ Use natural prose such as:
 
 ### Fourth Paragraph
 
-Use it for every commit except the final one in a multi-commit series.
-Use future tense because the work has not happened yet, and be specific
+Use it for every commit in a multi-commit series. For non-final commits,
+use future tense because the work has not happened yet, and be specific
 about the next step rather than vague.
 
 For example:
@@ -1014,8 +1017,10 @@ For example:
 - `In the future, <behavior> will change to ...`
 
 The final commit should conclude the series goal introduced by the opening
-commit. Omit future-looking text unless repository-specific guidance requires
-otherwise. Vary the phrasing across a series.
+commit in a fourth paragraph instead of pointing toward more work. For the
+penultimate commit, refer to the upcoming final commit in the singular, such
+as `The final commit will ...`, instead of saying `subsequent commits`.
+Vary the phrasing across a series.
 
 The most common errors are opening with the problem, merging the
 first and second paragraphs with `but` or `however`, and using
@@ -1144,7 +1149,9 @@ Before finalizing a commit message, check:
 - If this is part of a series, does it show progression (e.g.,
   "begins", "continues", "completes")?
 - If this is an incremental step, does it clearly say so?
-- If this commit is not the last in the series, does the fourth
+- If this is the penultimate commit in a series, does the fourth paragraph
+  name what the upcoming final commit will do?
+- If this is an earlier non-final commit in a series, does the fourth
   paragraph name what subsequent commits will do?
 - Do body paragraphs wrap at 75 characters?
 
@@ -1544,8 +1551,10 @@ Before committing, verify:
   series goal rather than only the first change.
 - If this is the final commit in a series, the message concludes the series
   goal rather than reading like another incremental step.
-- If the commit is not the last in the series, the fourth paragraph names what
-  subsequent commits will do.
+- If this is the penultimate commit in the series, the fourth paragraph names
+  what the upcoming final commit will do.
+- If the commit is an earlier non-final step in the series, the fourth
+  paragraph names what subsequent commits will do.
 - Body paragraphs wrap at 75 characters.
 
 The most common errors are:

@@ -51,6 +51,7 @@ def _baseline_file_mode(baseline_commit: str, file_path: str) -> str | None:
     result = run_git_command(
         ["ls-tree", baseline_commit, "--", file_path],
         check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0 or not result.stdout.strip():
         return None

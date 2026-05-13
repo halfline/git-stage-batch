@@ -219,8 +219,8 @@ class TestLatin1Encoding:
         assert added_line is not None
         # text_bytes should preserve the Latin-1 bytes
         assert b"\xef" in added_line.text_bytes
-        # text should have replacement character for invalid UTF-8
-        assert "�" in added_line.text or "naive" in added_line.text  # May show replacement char
+        # Display text should have replacement character for invalid UTF-8
+        assert "�" in added_line.display_text() or "naive" in added_line.display_text()  # May show replacement char
 
     def test_latin1_cached_patch_bytes_are_exact(self, temp_git_repo):
         """Selected hunk cache must not replace non-UTF-8 bytes."""

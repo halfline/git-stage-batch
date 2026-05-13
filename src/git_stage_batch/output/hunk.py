@@ -90,7 +90,7 @@ def print_line_level_changes(line_changes: LineLevelChange, *, gutter_to_selecti
             label_padding = " " * label_width
 
         sign_character = line_entry.kind if line_entry.kind in ("+", "-", " ") else " "
-        line_text = f" {sign_character} {line_entry.text}"
+        line_text = f" {sign_character} {line_entry.display_text()}"
 
         if use_color:
             # Print gutter in gray if it has a label, otherwise just padding

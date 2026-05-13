@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from base64 import b64decode
 
 import pytest
 
@@ -80,7 +81,8 @@ class TestConvertLineLevelChangeToSerializableDict:
         assert result["lines"][0]["kind"] == " "
         assert result["lines"][0]["old_lineno"] == 1
         assert result["lines"][0]["new_lineno"] == 1
-        assert result["lines"][0]["text"] == "unchanged line"
+        assert b64decode(result["lines"][0]["text_bytes_b64"]) == b"unchanged line"
+        assert "text" not in result["lines"][0]
 
         # Check removed line
         assert result["lines"][1]["id"] == 1
@@ -158,7 +160,7 @@ class TestLoadLineLevelChangeFromState:
         result = load_line_changes_from_state()
         assert result.lines[0].id is None
         assert result.lines[0].kind == " "
-        assert result.lines[0].text == "unchanged line"
+        assert result.lines[0].display_text() == "unchanged line"
 
         assert result.lines[1].id == 1
         assert result.lines[1].kind == "-"
@@ -169,6 +171,24 @@ class TestLoadLineLevelChangeFromState:
         assert result.lines[2].kind == "+"
         assert result.lines[2].old_line_number is None
         assert result.lines[2].new_line_number == 2
+
+    def test_loads_legacy_text_only_line_entries(self, temp_git_repo, sample_line_changes):
+        """Test that old state files without text_bytes_b64 still load."""
+        patch_path = get_selected_hunk_patch_file_path()
+        json_path = get_line_changes_json_file_path()
+
+        patch_path.write_text("dummy patch")
+        serialized = convert_line_changes_to_serializable_dict(sample_line_changes)
+        for line_data, line_entry in zip(serialized["lines"], sample_line_changes.lines):
+            line_data["text"] = line_entry.display_text()
+            del line_data["text_bytes_b64"]
+        write_text_file_contents(json_path, json.dumps(serialized))
+
+        result = load_line_changes_from_state()
+
+        assert result is not None
+        assert result.lines[0].text_bytes == b"unchanged line"
+        assert result.lines[0].display_text() == "unchanged line"
 
 
 class TestComputeRemainingChangedLineIds:

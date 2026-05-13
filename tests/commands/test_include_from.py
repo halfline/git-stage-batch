@@ -417,7 +417,7 @@ class TestCommandIncludeFromBatch:
         batch_value_gutter = next(
             rendered.selection_id_to_gutter[line.id]
             for line in rendered.line_changes.lines
-            if line.id is not None and line.text == "batch value"
+            if line.id is not None and line.display_text() == "batch value"
         )
 
         command_include_from_batch(
@@ -449,7 +449,7 @@ class TestCommandIncludeFromBatch:
         replacement_gutters = sorted(
             rendered.selection_id_to_gutter[line.id]
             for line in rendered.line_changes.lines
-            if line.id is not None and line.text in {"old value", "batch value"}
+            if line.id is not None and line.display_text() in {"old value", "batch value"}
         )
 
         command_include_from_batch(
@@ -481,7 +481,7 @@ class TestCommandIncludeFromBatch:
         new_one_gutter = next(
             rendered.selection_id_to_gutter[line.id]
             for line in rendered.line_changes.lines
-            if line.id is not None and line.text == "new one"
+            if line.id is not None and line.display_text() == "new one"
         )
 
         with pytest.raises(CommandError, match="must be selected together"):

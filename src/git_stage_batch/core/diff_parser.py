@@ -626,9 +626,6 @@ def build_line_changes_from_patch_lines(
                 sign = line[0:1].decode('ascii')  # +, -, or space (always ASCII)
                 text_bytes = line[1:]  # Canonical bytes (without +/- prefix)
 
-            # Decode for display (with replacement for non-UTF-8)
-            text = text_bytes.decode('utf-8', errors='replace')
-
             if sign == " ":
                 # Context line
                 line_entries.append(LineEntry(
@@ -637,7 +634,6 @@ def build_line_changes_from_patch_lines(
                     old_line_number=old_line_number,
                     new_line_number=new_line_number,
                     text_bytes=text_bytes,
-                    text=text,
                     source_line=None,
                 ))
                 old_line_number += 1
@@ -651,7 +647,6 @@ def build_line_changes_from_patch_lines(
                     old_line_number=old_line_number,
                     new_line_number=None,
                     text_bytes=text_bytes,
-                    text=text,
                     source_line=None,
                 ))
                 old_line_number += 1
@@ -664,7 +659,6 @@ def build_line_changes_from_patch_lines(
                     old_line_number=None,
                     new_line_number=new_line_number,
                     text_bytes=text_bytes,
-                    text=text,
                     source_line=None,
                 ))
                 new_line_number += 1
@@ -676,7 +670,6 @@ def build_line_changes_from_patch_lines(
                     old_line_number=old_line_number,
                     new_line_number=new_line_number,
                     text_bytes=text_bytes,
-                    text=text,
                     source_line=None,
                 ))
                 old_line_number += 1

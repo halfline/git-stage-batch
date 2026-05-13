@@ -935,7 +935,11 @@ def _filter_consumed_replacement_masks(
         nonlocal changed_run
         if not changed_run:
             return
-        run_signature = tuple((line.kind, line.text) for line in changed_run if line.kind in ("+", "-"))
+        run_signature = tuple(
+            (line.kind, line.display_text())
+            for line in changed_run
+            if line.kind in ("+", "-")
+        )
         if run_signature not in normalized_masks:
             filtered_lines.extend(changed_run)
         changed_run = []
@@ -1104,7 +1108,6 @@ def _render_batch_file_display_from_ownership(
                         old_line_number=1 if change_type == "deleted" else None,
                         new_line_number=1 if change_type == "added" else None,
                         text_bytes=b"<empty file>",
-                        text="<empty file>",
                         source_line=None,
                     )
                 ],
@@ -1130,8 +1133,6 @@ def _render_batch_file_display_from_ownership(
         # Strip only the newline terminator, preserve \r
         text_bytes = content_bytes.rstrip(b'\n')
         has_trailing_newline = content_bytes.endswith(b'\n')
-        # Decode with replacement for display
-        text = text_bytes.decode('utf-8', errors='replace')
 
         if display_line["type"] == "claimed":
             # Claimed line from batch source
@@ -1142,7 +1143,6 @@ def _render_batch_file_display_from_ownership(
                 old_line_number=None,
                 new_line_number=new_line_num,
                 text_bytes=text_bytes,
-                text=text,
                 source_line=source_line,
                 has_trailing_newline=has_trailing_newline,
             ))
@@ -1155,7 +1155,6 @@ def _render_batch_file_display_from_ownership(
                 old_line_number=None,  # Not from old file (it's a constraint)
                 new_line_number=None,
                 text_bytes=text_bytes,
-                text=text,
                 source_line=None,
                 has_trailing_newline=has_trailing_newline,
             ))
@@ -1166,7 +1165,6 @@ def _render_batch_file_display_from_ownership(
                 old_line_number=None,
                 new_line_number=new_line_num,
                 text_bytes=text_bytes,
-                text=text,
                 source_line=display_line["source_line"],
                 has_trailing_newline=has_trailing_newline,
             ))
@@ -1178,7 +1176,6 @@ def _render_batch_file_display_from_ownership(
                 old_line_number=None,
                 new_line_number=None,
                 text_bytes=text_bytes,
-                text=text,
                 source_line=None,
                 has_trailing_newline=has_trailing_newline,
             ))
@@ -1704,7 +1701,6 @@ def _build_combined_file_line_changes(
                         old_line_number=None,
                         new_line_number=None,
                         text_bytes=gap_text.encode("utf-8"),
-                        text=gap_text,
                         source_line=None,
                     )
                 )
@@ -1726,7 +1722,6 @@ def _build_combined_file_line_changes(
                     old_line_number=line_entry.old_line_number,
                     new_line_number=line_entry.new_line_number,
                     text_bytes=line_entry.text_bytes,
-                    text=line_entry.text,
                     source_line=line_entry.source_line,
                     has_trailing_newline=line_entry.has_trailing_newline,
                 )
@@ -1738,7 +1733,6 @@ def _build_combined_file_line_changes(
                     old_line_number=line_entry.old_line_number,
                     new_line_number=line_entry.new_line_number,
                     text_bytes=line_entry.text_bytes,
-                    text=line_entry.text,
                     source_line=line_entry.source_line,
                     has_trailing_newline=line_entry.has_trailing_newline,
                 )

@@ -903,7 +903,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
             if line.source_line is None:
                 raise ValueError(
                     f"Cannot translate line to batch ownership: source_line is None "
-                    f"(kind={line.kind!r}, text={line.text!r}). "
+                    f"(kind={line.kind!r}, text={line.display_text()!r}). "
                     f"Batch source is stale and must be advanced before translation."
                 )
 
@@ -1056,7 +1056,7 @@ def translate_hunk_selection_to_batch_ownership(
             if new_line.source_line is None:
                 raise ValueError(
                     f"Cannot translate line to batch ownership: source_line is None "
-                    f"(kind={new_line.kind!r}, text={new_line.text!r}). "
+                    f"(kind={new_line.kind!r}, text={new_line.display_text()!r}). "
                     f"Batch source is stale and must be advanced before translation."
                 )
 
@@ -1189,7 +1189,7 @@ def translate_hunk_selection_to_batch_ownership(
                 if line.source_line is None:
                     raise ValueError(
                         f"Cannot translate line to batch ownership: source_line is None "
-                        f"(kind={line.kind!r}, text={line.text!r}). "
+                        f"(kind={line.kind!r}, text={line.display_text()!r}). "
                         f"Batch source is stale and must be advanced before translation."
                     )
 

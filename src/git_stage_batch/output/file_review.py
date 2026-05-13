@@ -1169,7 +1169,7 @@ def _print_rows(
         else:
             label = f"[#{display_id}]"
         padding = " " * max(0, label_width - len(label))
-        row_text = f" {line.kind} {line.text}"
+        row_text = f" {line.kind} {line.display_text()}"
         if not use_color:
             print(f"{label}{padding}{row_text}")
             continue

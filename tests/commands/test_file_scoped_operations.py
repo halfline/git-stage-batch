@@ -199,7 +199,7 @@ class TestShowFileFlag:
 
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
-        changed_texts = [line.text for line in line_changes.lines if line.kind != " "]
+        changed_texts = [line.display_text() for line in line_changes.lines if line.kind != " "]
         assert "change-one" not in changed_texts
         assert "change-two" in changed_texts
         assert "change-three" in changed_texts
@@ -238,7 +238,7 @@ class TestShowFileFlag:
             selected_ids = [
                 str(line.id)
                 for line in line_changes.lines
-                if line.id is not None and line.text in texts
+                if line.id is not None and line.display_text() in texts
             ]
             assert len(selected_ids) == len(texts)
             return ",".join(selected_ids)
@@ -300,7 +300,7 @@ class TestShowFileFlag:
             selected_ids = [
                 str(line.id)
                 for line in line_changes.lines
-                if line.id is not None and line.text in texts
+                if line.id is not None and line.display_text() in texts
             ]
             assert len(selected_ids) == len(texts)
             return ",".join(selected_ids)
@@ -321,7 +321,7 @@ class TestShowFileFlag:
         command_include_line(body_ids, file="module.py")
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
-        remaining_texts = [line.text for line in line_changes.lines if line.id is not None]
+        remaining_texts = [line.display_text() for line in line_changes.lines if line.id is not None]
         assert "body_call_old()" not in remaining_texts
         assert "body_call_new()" not in remaining_texts
         assert "from old_beta import helper" in remaining_texts
@@ -330,7 +330,7 @@ class TestShowFileFlag:
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
         remaining_ids = [line.id for line in line_changes.lines if line.id is not None]
-        remaining_texts = [line.text for line in line_changes.lines if line.id is not None]
+        remaining_texts = [line.display_text() for line in line_changes.lines if line.id is not None]
         assert remaining_ids == [1, 2]
         assert remaining_texts == [
             "from old_beta import helper",
@@ -398,7 +398,7 @@ class TestShowFileFlag:
 
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
-        changed_texts = [line.text for line in line_changes.lines if line.kind != " "]
+        changed_texts = [line.display_text() for line in line_changes.lines if line.kind != " "]
         assert "change-one" not in changed_texts
         assert "change-two" in changed_texts
         assert "change-three" in changed_texts
@@ -438,7 +438,7 @@ class TestShowFileFlag:
             selected_ids = [
                 str(line.id)
                 for line in line_changes.lines
-                if line.id is not None and line.text in texts
+                if line.id is not None and line.display_text() in texts
             ]
             assert len(selected_ids) == len(texts)
             return ",".join(selected_ids)
@@ -453,7 +453,7 @@ class TestShowFileFlag:
 
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
-        remaining_texts = [line.text for line in line_changes.lines if line.id is not None]
+        remaining_texts = [line.display_text() for line in line_changes.lines if line.id is not None]
         assert "from old_beta import helper" in remaining_texts
         assert "from new_beta import helper" in remaining_texts
         assert "body_call_old()" in remaining_texts
@@ -462,7 +462,7 @@ class TestShowFileFlag:
         body_ids = ",".join(
             str(line.id)
             for line in line_changes.lines
-            if line.id is not None and line.text in {
+            if line.id is not None and line.display_text() in {
                 "body_call_old()",
                 "body_call_new()",
             }
@@ -471,14 +471,14 @@ class TestShowFileFlag:
 
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
-        remaining_texts = [line.text for line in line_changes.lines if line.id is not None]
+        remaining_texts = [line.display_text() for line in line_changes.lines if line.id is not None]
         assert "body_call_old()" not in remaining_texts
         assert "body_call_new()" not in remaining_texts
 
         beta_ids = ",".join(
             str(line.id)
             for line in line_changes.lines
-            if line.id is not None and line.text in {
+            if line.id is not None and line.display_text() in {
                 "from old_beta import helper",
                 "from new_beta import helper",
             }
@@ -528,7 +528,7 @@ class TestShowFileFlag:
         alpha_ids = ",".join(
             str(line.id)
             for line in line_changes.lines
-            if line.id is not None and line.text in {
+            if line.id is not None and line.display_text() in {
                 "from old_alpha import thing",
                 "from new_alpha import thing",
             }
@@ -540,7 +540,7 @@ class TestShowFileFlag:
         body_ids = ",".join(
             str(line.id)
             for line in line_changes.lines
-            if line.id is not None and line.text in {
+            if line.id is not None and line.display_text() in {
                 "body_call_old()",
                 "body_call_new()",
             }
@@ -556,7 +556,7 @@ class TestShowFileFlag:
         command_show_from_batch("body-only")
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
-        non_context_texts = [line.text for line in line_changes.lines if line.id is not None]
+        non_context_texts = [line.display_text() for line in line_changes.lines if line.id is not None]
         assert "body_call_old()" in non_context_texts
         assert "body_call_new()" in non_context_texts
         assert "from old_beta import helper" not in non_context_texts
@@ -591,7 +591,7 @@ class TestShowFileFlag:
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
         visible_ids = [line.id for line in line_changes.lines if line.id is not None]
-        changed_texts = [line.text for line in line_changes.lines if line.id is not None]
+        changed_texts = [line.display_text() for line in line_changes.lines if line.id is not None]
         assert 1 not in visible_ids
         assert "change-one" not in changed_texts
         assert "change-two" in changed_texts
@@ -777,7 +777,7 @@ class TestIncludeToBatchWithFile:
         # Verify it's the correct content (beta2-modified from line ID 2)
         non_context_lines = [line for line in line_changes.lines if line.id is not None and line.kind != " "]
         assert len(non_context_lines) == 1
-        assert "beta2-modified" in non_context_lines[0].text
+        assert "beta2-modified" in non_context_lines[0].display_text()
 
 
 class TestDiscardToBatchWithFile:
@@ -1199,8 +1199,8 @@ class TestFileAndLineIDCombinations:
         # Should have exactly 2 non-context lines (renumbered to 1,2 in batch display)
         assert len([line for line in non_context if line.id is not None]) == 2
         # Verify content
-        assert any("beta2-modified" in line.text for line in non_context)
-        assert any("beta4-new" in line.text for line in non_context)
+        assert any("beta2-modified" in line.display_text() for line in non_context)
+        assert any("beta4-new" in line.display_text() for line in non_context)
 
     def test_discard_specific_lines_from_specific_file(self, multi_file_repo):
         """Should be able to discard specific lines from a specific file."""
@@ -1409,7 +1409,7 @@ class TestExplicitFilePath:
             selected_ids = [
                 str(line.id)
                 for line in line_changes.lines
-                if line.id is not None and line.text in texts
+                if line.id is not None and line.display_text() in texts
             ]
             assert len(selected_ids) == len(texts)
             return ",".join(selected_ids)
@@ -1472,7 +1472,7 @@ class TestExplicitFilePath:
         middle_ids = ",".join(
             str(line.id)
             for line in line_changes.lines
-            if line.id is not None and line.text in {"line21", "middle working"}
+            if line.id is not None and line.display_text() in {"line21", "middle working"}
         )
         assert middle_ids == "3,4"
 
@@ -1645,7 +1645,7 @@ class TestExplicitFilePath:
         helper_def_id = next(
             line.id
             for line in line_changes.lines
-            if line.id is not None and line.text == "def helper():"
+            if line.id is not None and line.display_text() == "def helper():"
         )
         first_changed_id = min(line_changes.changed_line_ids())
         selection = f"{first_changed_id}-{helper_def_id}"

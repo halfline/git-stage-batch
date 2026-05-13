@@ -26,7 +26,12 @@ from ..utils.git import (
 )
 from .comparison import SemanticChangeKind, derive_semantic_change_runs
 from .match import match_lines
-from .merge import _apply_presence_constraints
+from .merge import (
+    _apply_presence_constraints,
+    _entry_source_line_at,
+    _entry_target_line_at,
+    _realized_entry_content_chunks,
+)
 
 
 @dataclass
@@ -1906,14 +1911,17 @@ def _advance_source_lines_preserving_existing_presence(
 
     source_line_map = {}
     working_line_map = {}
-    for index, entry in enumerate(entries, start=1):
-        if entry.source_line is not None:
-            source_line_map[entry.source_line] = index
-        if entry.target_line is not None:
-            working_line_map[entry.target_line] = index
+    for offset in range(len(entries)):
+        index = offset + 1
+        source_line = _entry_source_line_at(entries, offset)
+        target_line = _entry_target_line_at(entries, offset)
+        if source_line is not None:
+            source_line_map[source_line] = index
+        if target_line is not None:
+            working_line_map[target_line] = index
 
     return SourceContentWithLineProvenance(
-        source_buffer=EditorBuffer.from_chunks(entry.content for entry in entries),
+        source_buffer=EditorBuffer.from_chunks(_realized_entry_content_chunks(entries)),
         source_line_map=source_line_map,
         working_line_map=working_line_map,
     )

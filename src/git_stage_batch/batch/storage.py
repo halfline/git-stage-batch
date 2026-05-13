@@ -49,7 +49,7 @@ from ..utils.git import (
 )
 from ..utils.paths import get_batch_metadata_file_path
 from ..utils.text import normalize_line_sequence_endings
-from .merge import _satisfy_constraints
+from .merge import _realized_entry_content_chunks, _satisfy_constraints
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership, DeletionClaim
@@ -465,8 +465,7 @@ def _stream_realized_content_chunks_from_lines(
         strict=False
     )
 
-    for entry in realized_entries:
-        yield entry.content
+    yield from _realized_entry_content_chunks(realized_entries)
 
 
 def _suppress_sequence_at_position_bytes(

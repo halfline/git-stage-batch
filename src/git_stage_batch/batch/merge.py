@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+from array import array
 from collections.abc import Iterable, Iterator, Sequence
 import difflib
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .match import LineMapping, match_lines
 from ..core.line_selection import parse_line_selection
 from ..editor import (
+    Editor,
     EditorBuffer,
     choose_line_ending,
     buffer_has_data,
@@ -19,6 +21,7 @@ from ..editor import (
 from ..exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
 from ..i18n import _
 from ..utils.text import (
+    AcquirableLineSequence,
     normalize_line_sequence_endings,
     normalize_line_endings,
 )
@@ -42,20 +45,234 @@ class RegionKind(Enum):
     REPLACE_BY_HUNK = auto()
 
 
-@dataclass
+@dataclass(slots=True)
 class RealizedEntry:
-    """A line in realized content with structural provenance.
+    """A line view in realized content with structural provenance.
 
     Tracks where each line came from in batch-source space, enabling
     exact anchored boundary resolution for absence constraints.
     """
-    content: bytes  # Line content with newline
+    content: Any  # Line content with newline
     source_line: int | None  # Batch-source line number (1-indexed), or None for working-tree extras
     target_line: int | None = None  # Working-tree line number (1-indexed), when known
     is_claimed: bool = False  # True if from a claimed source line (presence constraint)
 
 
-_BaselineLineEdit = tuple[int, int, list[bytes]]
+class _RealizedEntries(Sequence[RealizedEntry]):
+    """Compact realized content with parallel provenance storage.
+
+    Indexing returns RealizedEntry views for existing helper contracts. Streaming
+    and internal lookups use direct accessors so the result does not retain one
+    Python object per output line.
+    """
+
+    def __init__(self, entries: Iterable[RealizedEntry] = ()) -> None:
+        self._editor = Editor(())
+        self._source_lines = array("Q")
+        self._target_lines = array("Q")
+        self._claimed = bytearray()
+
+        for entry in entries:
+            self.append_entry(entry)
+
+    def __len__(self) -> int:
+        return len(self._source_lines)
+
+    def __getitem__(self, index: int | slice) -> RealizedEntry | _RealizedEntries:
+        if isinstance(index, slice):
+            start, stop, step = index.indices(len(self))
+            if step == 1:
+                return self.slice(start, stop)
+
+            result = _RealizedEntries()
+            for child_index in range(start, stop, step):
+                result.append_from(self, child_index)
+            return result
+
+        index = self._normalize_index(index)
+        return RealizedEntry(
+            content=self._editor[index],
+            source_line=self.source_line_at(index),
+            target_line=self.target_line_at(index),
+            is_claimed=self.is_claimed_at(index),
+        )
+
+    def append(
+        self,
+        content: Any,
+        *,
+        source_line: int | None = None,
+        target_line: int | None = None,
+        is_claimed: bool = False,
+    ) -> None:
+        self._editor.add_lines((content,), start=0, end=1)
+        self._append_metadata(
+            source_line=source_line,
+            target_line=target_line,
+            is_claimed=is_claimed,
+        )
+
+    def append_line_from(
+        self,
+        lines: Sequence[Any],
+        index: int,
+        *,
+        source_line: int | None = None,
+        target_line: int | None = None,
+        is_claimed: bool = False,
+    ) -> None:
+        self._editor.add_lines(lines, start=index, end=index + 1)
+        self._append_metadata(
+            source_line=source_line,
+            target_line=target_line,
+            is_claimed=is_claimed,
+        )
+
+    def _append_metadata(
+        self,
+        *,
+        source_line: int | None,
+        target_line: int | None,
+        is_claimed: bool,
+    ) -> None:
+        self._source_lines.append(source_line or 0)
+        self._target_lines.append(target_line or 0)
+        self._claimed.append(1 if is_claimed else 0)
+
+    def append_entry(self, entry: RealizedEntry) -> None:
+        self.append(
+            entry.content,
+            source_line=entry.source_line,
+            target_line=entry.target_line,
+            is_claimed=entry.is_claimed,
+        )
+
+    def append_from(
+        self,
+        entries: Sequence[RealizedEntry],
+        index: int,
+    ) -> None:
+        if isinstance(entries, _RealizedEntries):
+            index = entries._normalize_index(index)
+            self._editor.add_lines_from_editor(entries._editor, index, index + 1)
+            self._source_lines.append(entries._source_lines[index])
+            self._target_lines.append(entries._target_lines[index])
+            self._claimed.append(entries._claimed[index])
+            return
+
+        self.append_entry(entries[index])
+
+    def content_at(self, index: int) -> Any:
+        return self._editor[self._normalize_index(index)]
+
+    def source_line_at(self, index: int) -> int | None:
+        source_line = self._source_lines[self._normalize_index(index)]
+        if source_line == 0:
+            return None
+        return source_line
+
+    def target_line_at(self, index: int) -> int | None:
+        target_line = self._target_lines[self._normalize_index(index)]
+        if target_line == 0:
+            return None
+        return target_line
+
+    def is_claimed_at(self, index: int) -> bool:
+        return bool(self._claimed[self._normalize_index(index)])
+
+    def content_chunks(self) -> Iterator[bytes]:
+        yield from self._editor.line_chunks()
+
+    def slice(self, start: int, stop: int) -> _RealizedEntries:
+        result = _RealizedEntries()
+        result._append_range_from(self, start, stop)
+        return result
+
+    def without_range(self, start: int, stop: int) -> _RealizedEntries:
+        result = _RealizedEntries()
+        result._append_range_from(self, 0, start)
+        result._append_range_from(self, stop, len(self))
+        return result
+
+    def insert_entries(
+        self,
+        position: int,
+        entries: Sequence[RealizedEntry],
+    ) -> _RealizedEntries:
+        inserted = _as_realized_entries(entries)
+        result = _RealizedEntries()
+        result._append_range_from(self, 0, position)
+        result._append_range_from(inserted, 0, len(inserted))
+        result._append_range_from(self, position, len(self))
+        return result
+
+    def _append_range_from(
+        self,
+        entries: Sequence[RealizedEntry],
+        start: int,
+        stop: int,
+    ) -> None:
+        if start == stop:
+            return
+
+        if isinstance(entries, _RealizedEntries):
+            self._editor.add_lines_from_editor(entries._editor, start, stop)
+            self._source_lines.extend(entries._source_lines[start:stop])
+            self._target_lines.extend(entries._target_lines[start:stop])
+            self._claimed.extend(entries._claimed[start:stop])
+            return
+
+        for index in range(start, stop):
+            self.append_entry(entries[index])
+
+    def _normalize_index(self, index: int) -> int:
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+        return index
+
+
+def _as_realized_entries(entries: Sequence[RealizedEntry]) -> _RealizedEntries:
+    if isinstance(entries, _RealizedEntries):
+        return entries
+    return _RealizedEntries(entries)
+
+
+def _entry_content_at(entries: Sequence[RealizedEntry], index: int) -> Any:
+    if isinstance(entries, _RealizedEntries):
+        return entries.content_at(index)
+    return entries[index].content
+
+
+def _entry_source_line_at(entries: Sequence[RealizedEntry], index: int) -> int | None:
+    if isinstance(entries, _RealizedEntries):
+        return entries.source_line_at(index)
+    return entries[index].source_line
+
+
+def _entry_target_line_at(entries: Sequence[RealizedEntry], index: int) -> int | None:
+    if isinstance(entries, _RealizedEntries):
+        return entries.target_line_at(index)
+    return entries[index].target_line
+
+
+def _entry_is_claimed_at(entries: Sequence[RealizedEntry], index: int) -> bool:
+    if isinstance(entries, _RealizedEntries):
+        return entries.is_claimed_at(index)
+    return entries[index].is_claimed
+
+
+_BaselineLineEdit = tuple[int, int, list[Any]]
+
+
+def _byte_chunks(chunks: Iterable[Any]) -> Iterator[bytes]:
+    for chunk in chunks:
+        yield bytes(chunk)
+
+
+def _normalize_line_content(content: Any) -> bytes:
+    return normalize_line_endings(bytes(content))
 
 
 class _LineRange(Sequence[bytes]):
@@ -124,13 +341,19 @@ class _RealizedEntryContentSequence(Sequence[bytes]):
             index += len(self)
         if index < 0 or index >= len(self):
             raise IndexError(index)
-        return self._entries[index].content
+        return _entry_content_at(self._entries, index)
 
 
-def _realized_entry_content_chunks(entries: Iterable[RealizedEntry]) -> Iterator[bytes]:
+def _realized_entry_content_chunks(
+    entries: Iterable[RealizedEntry],
+) -> Iterator[bytes]:
     """Yield content bytes from realized entries."""
+    if isinstance(entries, _RealizedEntries):
+        yield from entries.content_chunks()
+        return
+
     for entry in entries:
-        yield entry.content
+        yield bytes(entry.content)
 
 
 def _merge_result_line_ending_from_lines(
@@ -623,7 +846,7 @@ def _apply_presence_constraints(
     presence_line_set: set[int],
     *,
     source_to_working_mapping: LineMapping | None = None,
-) -> list[RealizedEntry]:
+) -> _RealizedEntries:
     """Apply presence constraints: ensure all claimed lines exist in result.
 
     Uses structural alignment to determine which claimed lines are already present
@@ -641,19 +864,20 @@ def _apply_presence_constraints(
     mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
 
     if not presence_line_set:
-        result: list[RealizedEntry] = []
-        for working_idx, working_line in enumerate(working_lines):
+        result = _RealizedEntries()
+        for working_idx in range(len(working_lines)):
             source_line = mapping.get_source_line_from_target_line(working_idx + 1)
-            result.append(RealizedEntry(
-                content=working_line,
+            result.append_line_from(
+                working_lines,
+                working_idx,
                 source_line=source_line,
                 target_line=working_idx + 1,
                 is_claimed=False,
-            ))
+            )
         return result
 
     present_claimed: dict[int, int] = {}
-    missing_claimed: dict[int, bytes] = {}
+    missing_claimed: set[int] = set()
 
     for source_line in presence_line_set:
         if 1 <= source_line <= len(source_lines):
@@ -661,22 +885,23 @@ def _apply_presence_constraints(
             if working_line is not None:
                 present_claimed[source_line] = working_line
             else:
-                missing_claimed[source_line] = source_lines[source_line - 1]
+                missing_claimed.add(source_line)
 
     if not missing_claimed:
-        result: list[RealizedEntry] = []
-        for working_idx, working_line in enumerate(working_lines):
+        result = _RealizedEntries()
+        for working_idx in range(len(working_lines)):
             source_line = mapping.get_source_line_from_target_line(working_idx + 1)
             is_claimed = source_line in presence_line_set if source_line else False
-            result.append(RealizedEntry(
-                content=working_line,
+            result.append_line_from(
+                working_lines,
+                working_idx,
                 source_line=source_line,
                 target_line=working_idx + 1,
                 is_claimed=is_claimed,
-            ))
+            )
         return result
 
-    result: list[RealizedEntry] = []
+    result = _RealizedEntries()
     working_idx = 0
 
     for source_line in range(1, len(source_lines) + 1):
@@ -684,56 +909,61 @@ def _apply_presence_constraints(
 
         if working_line is not None:
             while working_idx < working_line - 1:
-                result.append(RealizedEntry(
-                    content=working_lines[working_idx],
+                result.append_line_from(
+                    working_lines,
+                    working_idx,
                     source_line=None,
                     target_line=working_idx + 1,
                     is_claimed=False
-                ))
+                )
                 working_idx += 1
 
             is_claimed = source_line in presence_line_set
             if is_claimed:
-                result.append(RealizedEntry(
-                    content=source_lines[source_line - 1],
+                result.append_line_from(
+                    source_lines,
+                    source_line - 1,
                     source_line=source_line,
                     target_line=working_idx + 1,
                     is_claimed=True
-                ))
+                )
             else:
-                result.append(RealizedEntry(
-                    content=working_lines[working_idx],
+                result.append_line_from(
+                    working_lines,
+                    working_idx,
                     source_line=source_line,
                     target_line=working_idx + 1,
                     is_claimed=False
-                ))
+                )
             working_idx += 1
         else:
             if source_line in missing_claimed:
-                result.append(RealizedEntry(
-                    content=missing_claimed[source_line],
+                result.append_line_from(
+                    source_lines,
+                    source_line - 1,
                     source_line=source_line,
                     is_claimed=True
-                ))
+                )
 
     while working_idx < len(working_lines):
-        result.append(RealizedEntry(
-            content=working_lines[working_idx],
+        result.append_line_from(
+            working_lines,
+            working_idx,
             source_line=None,
             target_line=working_idx + 1,
             is_claimed=False
-        ))
+        )
         working_idx += 1
 
     return result
 
 
 def _apply_absence_constraints(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     deletion_claims: list['DeletionClaim'],
     *,
     strict: bool = True
-) -> list[RealizedEntry]:
+) -> _RealizedEntries:
     """Apply absence constraints with boundary enforcement.
 
     For each deletion claim:
@@ -769,10 +999,9 @@ def _apply_absence_constraints(
         AmbiguousAnchorError: If anchor boundary cannot be determined uniquely
         MergeError: If strict=True and sequence found nearby but not at boundary
     """
+    result = _as_realized_entries(entries)
     if not deletion_claims:
-        return entries
-
-    result = entries
+        return result
 
     suppress_fn = _suppress_at_boundary_strict if strict else _suppress_at_boundary_for_realization
 
@@ -800,15 +1029,15 @@ def _apply_absence_constraints(
 
 
 def _missing_claimed_lines(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     presence_line_set: set[int]
 ) -> set[int]:
     """Return claimed source lines that are not present as claimed entries."""
-    present_claimed = {
-        entry.source_line
-        for entry in entries
-        if entry.is_claimed and entry.source_line is not None
-    }
+    present_claimed = set()
+    for index in range(len(entries)):
+        source_line = _entry_source_line_at(entries, index)
+        if source_line is not None and _entry_is_claimed_at(entries, index):
+            present_claimed.add(source_line)
     return presence_line_set - present_claimed
 
 
@@ -820,7 +1049,7 @@ def _satisfy_constraints(
     *,
     strict: bool = True,
     source_to_working_mapping: LineMapping | None = None,
-) -> list[RealizedEntry]:
+) -> _RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
     realized_entries = _apply_presence_constraints(
         source_lines,
@@ -866,7 +1095,7 @@ def _satisfy_constraints(
 
 
 def _find_realization_fallback_boundary(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     source_line: int | None
 ) -> int:
     """Find a lenient boundary for realization when an anchor is absent.
@@ -880,11 +1109,11 @@ def _find_realization_fallback_boundary(
     if source_line is None:
         return 0
 
-    prior_source_lines = [
-        entry.source_line
-        for entry in entries
-        if entry.source_line is not None and entry.source_line < source_line
-    ]
+    prior_source_lines = []
+    for index in range(len(entries)):
+        entry_source_line = _entry_source_line_at(entries, index)
+        if entry_source_line is not None and entry_source_line < source_line:
+            prior_source_lines.append(entry_source_line)
     if not prior_source_lines:
         return 0
 
@@ -892,7 +1121,7 @@ def _find_realization_fallback_boundary(
 
 
 def _find_boundary_after_source_line(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     source_line: int | None
 ) -> int:
     """Find the index representing the boundary after a source line.
@@ -921,10 +1150,10 @@ def _find_boundary_after_source_line(
     matching_indices = []
     claimed_indices = []
 
-    for i, entry in enumerate(entries):
-        if entry.source_line == source_line:
+    for i in range(len(entries)):
+        if _entry_source_line_at(entries, i) == source_line:
             matching_indices.append(i)
-            if entry.is_claimed:
+            if _entry_is_claimed_at(entries, i):
                 claimed_indices.append(i)
 
     if not matching_indices:
@@ -952,7 +1181,7 @@ def _find_boundary_after_source_line(
 
 
 def _sequence_matches_at_position(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     position: int,
     sequence: list[bytes]
 ) -> bool:
@@ -970,13 +1199,13 @@ def _sequence_matches_at_position(
         return False
 
     return all(
-        normalize_line_endings(entries[position + i].content) == sequence[i]
+        _normalize_line_content(_entry_content_at(entries, position + i)) == sequence[i]
         for i in range(len(sequence))
     )
 
 
 def _find_sequence_nearby(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     position: int,
     sequence: list[bytes],
     window: int = 20
@@ -1002,10 +1231,10 @@ def _find_sequence_nearby(
 
 
 def _remove_sequence_at_position(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     position: int,
     sequence: list[bytes]
-) -> list[RealizedEntry]:
+) -> _RealizedEntries:
     """Remove sequence from entries at exact position.
 
     Args:
@@ -1016,27 +1245,30 @@ def _remove_sequence_at_position(
     Returns:
         New list with sequence removed
     """
-    return entries[:position] + entries[position + len(sequence):]
+    return _as_realized_entries(entries).without_range(
+        position,
+        position + len(sequence),
+    )
 
 
 def _position_after_claimed_insertions_at_boundary(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     position: int
 ) -> int:
     """Return the first position after contiguous claimed entries at boundary."""
     check_pos = position
 
-    while check_pos < len(entries) and entries[check_pos].is_claimed:
+    while check_pos < len(entries) and _entry_is_claimed_at(entries, check_pos):
         check_pos += 1
 
     return check_pos
 
 
 def _suppress_at_boundary_strict(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     position: int,
     forbidden_sequence: list[bytes]
-) -> list[RealizedEntry]:
+) -> _RealizedEntries:
     """Suppress forbidden sequence with strict enforcement for merge operations.
 
     This enforces absence constraints with two-phase checking:
@@ -1098,14 +1330,14 @@ def _suppress_at_boundary_strict(
         )
 
     # Not found - already suppressed or never existed
-    return entries
+    return _as_realized_entries(entries)
 
 
 def _suppress_at_boundary_for_realization(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     position: int,
     forbidden_sequence: list[bytes]
-) -> list[RealizedEntry]:
+) -> _RealizedEntries:
     """Suppress forbidden sequence with lenient enforcement for content realization.
 
     This enforces absence constraints only when exact match exists at boundary:
@@ -1146,12 +1378,12 @@ def _suppress_at_boundary_for_realization(
 
     # Not at boundary - no-op, don't suppress
     # (Baseline might not have this content or it might be elsewhere)
-    return entries
+    return _as_realized_entries(entries)
 
 
-def _line_payload_for_reference_match(content: bytes) -> bytes:
+def _line_payload_for_reference_match(content: Any) -> bytes:
     """Normalize one line for insertion-boundary identity checks."""
-    normalized = normalize_line_endings(content)
+    normalized = _normalize_line_content(content)
     if normalized.endswith(b"\n"):
         return normalized[:-1]
     return normalized
@@ -1516,11 +1748,13 @@ def can_merge_batch_from_line_sequences(
     source_to_working_mapping: LineMapping | None = None,
 ) -> bool:
     """Return whether a normalized line merge can be applied."""
+    normalized_source_lines = normalize_line_sequence_endings(source_lines)
+    normalized_working_lines = normalize_line_sequence_endings(working_lines)
     try:
         for _chunk in _merge_batch_line_chunks(
-            source_lines,
+            normalized_source_lines,
             ownership,
-            working_lines,
+            normalized_working_lines,
             source_to_working_mapping=source_to_working_mapping,
         ):
             pass
@@ -1530,14 +1764,33 @@ def can_merge_batch_from_line_sequences(
 
 
 def _merge_batch_line_chunks(
+    source_lines: AcquirableLineSequence[Any],
+    ownership: 'BatchOwnership',
+    working_lines: AcquirableLineSequence[Any],
+    *,
+    source_to_working_mapping: LineMapping | None = None,
+) -> Iterator[bytes]:
+    """Merge normalized byte-line sequences and yield normalized chunks."""
+    with (
+        source_lines.acquire_lines() as acquired_source_lines,
+        working_lines.acquire_lines() as acquired_working_lines,
+    ):
+        yield from _merge_batch_acquired_line_chunks(
+            acquired_source_lines,
+            ownership,
+            acquired_working_lines,
+            source_to_working_mapping=source_to_working_mapping,
+        )
+
+
+def _merge_batch_acquired_line_chunks(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
 ) -> Iterator[bytes]:
-    """Merge normalized byte-line sequences and yield normalized chunks."""
-
+    """Merge acquired normalized line sequences and yield normalized chunks."""
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
@@ -1550,7 +1803,7 @@ def _merge_batch_line_chunks(
         deletion_claims,
     )
     if fallback_chunks is not None:
-        yield from fallback_chunks
+        yield from _byte_chunks(fallback_chunks)
         return
 
     mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
@@ -1579,7 +1832,7 @@ def _merge_batch_line_chunks(
             deletion_claims,
         )
         if fallback_chunks is not None:
-            yield from fallback_chunks
+            yield from _byte_chunks(fallback_chunks)
             return
         raise
 
@@ -1615,13 +1868,32 @@ def discard_batch_from_line_sequences_as_buffer(
 
 
 def _discard_batch_line_chunks(
+    source_lines: AcquirableLineSequence[Any],
+    ownership: 'BatchOwnership',
+    working_lines: AcquirableLineSequence[Any],
+    baseline_lines: AcquirableLineSequence[Any],
+) -> Iterator[bytes]:
+    """Discard ownership from normalized byte-line sequences."""
+    with (
+        source_lines.acquire_lines() as acquired_source_lines,
+        working_lines.acquire_lines() as acquired_working_lines,
+        baseline_lines.acquire_lines() as acquired_baseline_lines,
+    ):
+        yield from _discard_batch_acquired_line_chunks(
+            acquired_source_lines,
+            ownership,
+            acquired_working_lines,
+            acquired_baseline_lines,
+        )
+
+
+def _discard_batch_acquired_line_chunks(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
     working_lines: Sequence[bytes],
     baseline_lines: Sequence[bytes],
 ) -> Iterator[bytes]:
-    """Discard ownership from normalized byte-line sequences."""
-
+    """Discard ownership from acquired normalized byte-line sequences."""
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
@@ -1794,7 +2066,7 @@ def _build_realized_entries_for_discard(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     working_to_source: 'LineMapping'
-) -> list[RealizedEntry]:
+) -> _RealizedEntries:
     """Build structured entries from working tree with source provenance.
 
     This creates a realized representation of the current working tree content,
@@ -1809,25 +2081,26 @@ def _build_realized_entries_for_discard(
     Returns:
         Realized entries representing working tree with source provenance
     """
-    result: list[RealizedEntry] = []
+    result = _RealizedEntries()
 
-    for working_idx, working_line in enumerate(working_lines):
+    for working_idx in range(len(working_lines)):
         source_line = working_to_source.get_source_line_from_target_line(working_idx + 1)
-        result.append(RealizedEntry(
-            content=working_line,
+        result.append_line_from(
+            working_lines,
+            working_idx,
             source_line=source_line,
             target_line=working_idx + 1,
             is_claimed=False
-        ))
+        )
 
     return result
 
 
 def _reverse_presence_constraints(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     presence_line_set: set[int],
     correspondence: BaselineCorrespondence
-) -> list[RealizedEntry]:
+) -> _RealizedEntries:
     """Reverse presence constraints: replace/remove batch-owned claimed lines.
 
     For each entry in the working tree that corresponds to a claimed source line:
@@ -1856,39 +2129,41 @@ def _reverse_presence_constraints(
     Raises:
         MergeError: If restoration is ambiguous or region not found
     """
-    result: list[RealizedEntry] = []
+    result = _RealizedEntries()
     processed_replace_regions: set[int] = set()
 
-    for entry in entries:
-        if entry.source_line is not None and entry.source_line in presence_line_set:
-            region = correspondence.get_region_for_source_line(entry.source_line)
+    for index in range(len(entries)):
+        source_line = _entry_source_line_at(entries, index)
+        if source_line is not None and source_line in presence_line_set:
+            region = correspondence.get_region_for_source_line(source_line)
 
             if region is None:
                 raise MergeError(
                     _("Cannot discard source line {line}: no baseline restoration region found").format(
-                        line=entry.source_line
+                        line=source_line
                     )
                 )
 
             if region.is_ambiguous:
                 raise MergeError(
                     _("Cannot discard source line {line}: baseline restoration is ambiguous").format(
-                        line=entry.source_line
+                        line=source_line
                     )
                 )
 
             if region.kind in (RegionKind.EQUAL, RegionKind.REPLACE_LINE_BY_LINE):
-                offset = entry.source_line - region.source_start_line
+                offset = source_line - region.source_start_line
                 if 0 <= offset < len(region.baseline_lines):
-                    result.append(RealizedEntry(
-                        content=region.baseline_lines[offset],
+                    result.append_line_from(
+                        region.baseline_lines,
+                        offset,
                         source_line=None,
                         is_claimed=False
-                    ))
+                    )
                 else:
                     raise MergeError(
                         _("Source line {line} offset {offset} outside region bounds").format(
-                            line=entry.source_line, offset=offset
+                            line=source_line, offset=offset
                         )
                     )
 
@@ -1914,12 +2189,13 @@ def _reverse_presence_constraints(
                             )
                         )
 
-                    for baseline_line in region.baseline_lines:
-                        result.append(RealizedEntry(
-                            content=baseline_line,
+                    for baseline_idx in range(len(region.baseline_lines)):
+                        result.append_line_from(
+                            region.baseline_lines,
+                            baseline_idx,
                             source_line=None,
                             is_claimed=False
-                        ))
+                        )
                     processed_replace_regions.add(region.region_id)
 
             else:
@@ -1928,15 +2204,15 @@ def _reverse_presence_constraints(
                 )
 
         else:
-            result.append(entry)
+            result.append_from(entries, index)
 
     return result
 
 
 def _restore_absence_constraints(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     deletion_claims: list['DeletionClaim']
-) -> list[RealizedEntry]:
+) -> _RealizedEntries:
     """Restore absence constraints: insert deleted sequences at anchored boundaries.
 
     For each deletion claim, this function:
@@ -1965,10 +2241,9 @@ def _restore_absence_constraints(
         AmbiguousAnchorError: If anchor boundary is ambiguous
         (MissingAnchorError is caught and skipped gracefully)
     """
+    result = _as_realized_entries(entries)
     if not deletion_claims:
-        return entries
-
-    result = entries
+        return result
 
     for claim in deletion_claims:
         try:
@@ -1981,22 +2256,22 @@ def _restore_absence_constraints(
         if _sequence_present_at_boundary(result, boundary, claim.content_lines):
             continue
 
-        restored_entries = [
-            RealizedEntry(
-                content=line,
+        restored_entries = _RealizedEntries()
+        for line_index in range(len(claim.content_lines)):
+            restored_entries.append_line_from(
+                claim.content_lines,
+                line_index,
                 source_line=None,
-                is_claimed=False
+                is_claimed=False,
             )
-            for line in claim.content_lines
-        ]
 
-        result = result[:boundary] + restored_entries + result[boundary:]
+        result = result.insert_entries(boundary, restored_entries)
 
     return result
 
 
 def _sequence_present_at_boundary(
-    entries: list[RealizedEntry],
+    entries: Sequence[RealizedEntry],
     boundary: int,
     sequence: list[bytes]
 ) -> bool:
@@ -2017,6 +2292,7 @@ def _sequence_present_at_boundary(
         return False
 
     return all(
-        normalize_line_endings(entries[boundary + i].content) == normalize_line_endings(sequence[i])
+        _normalize_line_content(_entry_content_at(entries, boundary + i))
+        == normalize_line_endings(sequence[i])
         for i in range(len(sequence))
     )

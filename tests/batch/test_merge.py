@@ -9,9 +9,13 @@ from git_stage_batch.batch.match import (
 )
 from git_stage_batch.batch.merge import (
     RegionKind,
+    _RealizedEntries,
     _build_baseline_correspondence,
     _build_realized_entries_for_discard,
     _check_structural_validity,
+    _discard_batch_line_chunks,
+    _merge_batch_line_chunks,
+    _realized_entry_content_chunks,
     _try_apply_baseline_replacement_units,
     can_merge_batch_from_line_sequences,
     discard_batch_from_line_sequences_as_buffer,
@@ -34,6 +38,13 @@ class _IndexGuardedEditorBuffer(EditorBuffer):
 
     def __getitem__(self, index):
         raise AssertionError("public line indexing should not be used")
+
+
+class _IndexGuardedRealizedEntries(_RealizedEntries):
+    """Realized entries variant that rejects entry-view indexing in tests."""
+
+    def __getitem__(self, index):
+        raise AssertionError("entry indexing should not be used")
 
 
 def merge_batch(
@@ -299,6 +310,7 @@ class TestMergeLineSequences:
             source_to_working_mapping=mapping,
         )
 
+        assert isinstance(entries, _RealizedEntries)
         assert b"".join(entry.content for entry in entries) == b"line1\nline2\nline3\n"
 
     def test_discard_entry_builder_accepts_non_list_sequences(self, line_sequence):
@@ -309,8 +321,20 @@ class TestMergeLineSequences:
 
         entries = _build_realized_entries_for_discard(source, working, mapping)
 
+        assert isinstance(entries, _RealizedEntries)
         assert [entry.content for entry in entries] == [b"line1\n", b"line3\n"]
         assert [entry.source_line for entry in entries] == [1, 3]
+
+    def test_realized_entry_content_chunks_avoids_entry_views(self):
+        """Realized content streaming should not index compact entry storage."""
+        entries = _IndexGuardedRealizedEntries()
+        entries.append(b"line1\n")
+        entries.append(b"line2\n")
+
+        assert list(_realized_entry_content_chunks(entries)) == [
+            b"line1\n",
+            b"line2\n",
+        ]
 
     def test_baseline_correspondence_accepts_non_list_sequences(self, line_sequence):
         """Baseline correspondence accepts sized sliceable line sequences."""
@@ -361,6 +385,57 @@ class TestMergeLineSequences:
             baseline,
         ) as result:
             assert result.to_bytes() == b"line1\r\nold\r\nline3\r\n"
+
+    def test_merge_chunks_acquire_normalized_editor_buffer_lines(self):
+        """Merge realization uses scoped normalized line acquisition."""
+        with (
+            _IndexGuardedEditorBuffer.from_bytes(
+                b"line1\nline2\nline3\n"
+            ) as source_buffer,
+            _IndexGuardedEditorBuffer.from_bytes(
+                b"line1\nline3\n"
+            ) as working_buffer,
+        ):
+            source = normalize_line_sequence_endings(source_buffer)
+            working = normalize_line_sequence_endings(working_buffer)
+
+            result = b"".join(
+                _merge_batch_line_chunks(
+                    source,
+                    BatchOwnership.from_presence_lines(["2"], []),
+                    working,
+                )
+            )
+
+        assert result == b"line1\nline2\nline3\n"
+
+    def test_discard_chunks_acquire_normalized_editor_buffer_lines(self):
+        """Discard realization uses scoped normalized line acquisition."""
+        with (
+            _IndexGuardedEditorBuffer.from_bytes(
+                b"line1\nnew\nline3\n"
+            ) as source_buffer,
+            _IndexGuardedEditorBuffer.from_bytes(
+                b"line1\nnew\nline3\n"
+            ) as working_buffer,
+            _IndexGuardedEditorBuffer.from_bytes(
+                b"line1\nold\nline3\n"
+            ) as baseline_buffer,
+        ):
+            source = normalize_line_sequence_endings(source_buffer)
+            working = normalize_line_sequence_endings(working_buffer)
+            baseline = normalize_line_sequence_endings(baseline_buffer)
+
+            result = b"".join(
+                _discard_batch_line_chunks(
+                    source,
+                    BatchOwnership.from_presence_lines(["2"], []),
+                    working,
+                    baseline,
+                )
+            )
+
+        assert result == b"line1\nold\nline3\n"
 
 
 class TestMergeBatch:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from typing import SupportsBytes, overload
 
 from .buffer import EditorBuffer
 from .line_endings import detect_line_ending, restore_line_endings_in_chunks
@@ -26,23 +27,35 @@ class _SourceLineSegment:
     end: int | None
 
 
+_BytesLike = bytes | bytearray | memoryview
+_LineLike = _BytesLike | SupportsBytes
+
+
 @dataclass(slots=True)
-class _BufferLineSegment:
-    buffer: EditorBuffer
+class _IndexedLineSegment:
+    lines: Sequence[_LineLike]
     start: int
     end: int
+    owner: Editor | None = None
 
 
-_LineSegment = _SourceLineSegment | _BufferLineSegment
-_BytesLike = bytes | bytearray | memoryview
-_TransformResult = _BytesLike | Iterable[bytes]
+@dataclass(slots=True)
+class _LineSourceRange:
+    lines: Sequence[_LineLike]
+    start: int
+    end: int
+    owner: Editor | None
+
+
+_LineSegment = _SourceLineSegment | _IndexedLineSegment
+_TransformResult = _BytesLike | Iterable[_LineLike]
 _Selection = tuple[int, int | None]
 
 
-class Editor:
+class Editor(Sequence[_LineLike]):
     """Stateful line editor for indexed lines."""
 
-    def __init__(self, source: Sequence[bytes]) -> None:
+    def __init__(self, source: Sequence[_LineLike]) -> None:
         self._source = source
         self._segments: list[_LineSegment] = [
             _SourceLineSegment(0, None),
@@ -53,6 +66,8 @@ class Editor:
         self._cursor_positions: dict[int, int] = {}
         self._next_cursor_id = 0
         self._owned_buffers: list[EditorBuffer] = []
+        self._incoming_editor_leases: dict[Editor, _EditorLease] = {}
+        self._outgoing_editor_leases: set[_EditorLease] = set()
         self._closed = False
 
     def __enter__(self) -> Editor:
@@ -122,16 +137,112 @@ class Editor:
         self._require_open()
         self._selection = (0, None)
 
-    def add_line(self, payload: bytes) -> None:
+    @overload
+    def __getitem__(self, index: int) -> _LineLike: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[_LineLike]: ...
+
+    def __getitem__(self, index: int | slice) -> _LineLike | Sequence[_LineLike]:
+        self._require_open()
+        if isinstance(index, slice):
+            return _SelectedLineSliceSequence(self, index)
+
+        if index < 0:
+            index += len(self)
+        if index < 0:
+            raise IndexError(index)
+
+        try:
+            return self._line_at_position(index)
+        except IndexError as exc:
+            raise IndexError(index) from exc
+
+    def __len__(self) -> int:
+        self._require_open()
+        return self._current_line_count()
+
+    def line_chunks(self) -> Iterator[bytes]:
+        """Yield exact edited lines as byte chunks."""
+        self._require_open()
+        for line in self._lines():
+            yield bytes(line)
+
+    def add_line(self, payload: _LineLike) -> None:
         """Insert or replace with one line."""
         self.add_lines((payload,))
 
-    def add_lines(self, payloads: Iterable[bytes]) -> None:
-        """Insert or replace with generated line payloads."""
+    def add_lines(
+        self,
+        lines: Iterable[_LineLike],
+        *,
+        start: int | None = None,
+        end: int | None = None,
+    ) -> None:
+        """Insert or replace with generated lines or an indexed range."""
         self._require_open()
-        inserted_buffer = _spool_inserted_lines(payloads)
-        self._owned_buffers.append(inserted_buffer.buffer)
-        self._commit_edit(inserted_buffer)
+        range_requested = start is not None or end is not None
+        range_start, range_end = _line_range_bounds(start, end)
+        if range_requested and isinstance(lines, Sequence):
+            validate_end = range_end is not None
+            self._add_line_range(
+                lines,
+                range_start,
+                len(lines) if range_end is None else range_end,
+                validate_end=validate_end,
+            )
+            return
+
+        inserted_lines = _spool_inserted_lines(
+            lines,
+            start=range_start,
+            end=range_end,
+            owner=self,
+        )
+        if inserted_lines.owned_buffer is not None:
+            self._owned_buffers.append(inserted_lines.owned_buffer)
+        self._commit_edit(inserted_lines)
+
+    def add_lines_from_editor(
+        self,
+        editor: Editor,
+        start: int,
+        end: int,
+    ) -> None:
+        """Insert or replace with a range from another editor."""
+        self._require_open()
+        editor._require_open()
+        if start < 0 or end < start:
+            raise ValueError("invalid line range")
+        if end > len(editor):
+            raise ValueError("invalid line range")
+
+        for line_range in editor._line_sources(start, end):
+            self._add_line_range(
+                line_range.lines,
+                line_range.start,
+                line_range.end,
+                owner=line_range.owner,
+                validate_end=False,
+            )
+
+    def _add_line_range(
+        self,
+        lines: Sequence[_LineLike],
+        start: int,
+        end: int,
+        *,
+        owner: Editor | None = None,
+        validate_end: bool = True,
+    ) -> None:
+        _validate_line_range(lines, start, end, validate_end=validate_end)
+
+        self._commit_edit(
+            _InsertedLines(
+                segment=_IndexedLineSegment(lines, start, end, owner or self),
+                line_count=end - start,
+            )
+        )
 
     def add_bytes(self, data: bytes) -> None:
         """Insert raw bytes split on line endings."""
@@ -140,11 +251,17 @@ class Editor:
             raise TypeError(f"expected bytes object, got {type(data).__name__}")
 
         buffer = EditorBuffer.from_bytes(data)
+        line_count = _count_lines_in_bytes(data)
         self._owned_buffers.append(buffer)
         self._commit_edit(
-            _InsertedBuffer(
-                buffer=buffer,
-                line_count=_count_lines_in_bytes(data),
+            _InsertedLines(
+                segment=_IndexedLineSegment(
+                    buffer,
+                    0,
+                    line_count,
+                    self,
+                ),
+                line_count=line_count,
             )
         )
 
@@ -185,6 +302,7 @@ class Editor:
     ) -> EditorBuffer:
         """Materialize final buffer and freeze the editor."""
         self._require_open()
+        self._require_no_editor_borrowers()
         try:
             chunks = _line_body_chunks(
                 self._line_bodies(),
@@ -209,24 +327,22 @@ class Editor:
         if self._closed:
             return
 
+        self._require_no_editor_borrowers()
+        self._release_editor_leases()
         for buffer in self._owned_buffers:
             buffer.close()
         self._closed = True
 
-    def _commit_edit(self, inserted_buffer: _InsertedBuffer | None) -> None:
+    def _commit_edit(self, inserted_lines: _InsertedLines | None) -> None:
         selection_start, selection_end = self._selected_range()
         inserted_line_count = (
-            inserted_buffer.line_count
-            if inserted_buffer is not None
+            inserted_lines.line_count
+            if inserted_lines is not None
             else 0
         )
         inserted_segment = (
-            _BufferLineSegment(
-                inserted_buffer.buffer,
-                0,
-                inserted_buffer.line_count,
-            )
-            if inserted_buffer is not None and inserted_buffer.line_count > 0
+            inserted_lines.segment
+            if inserted_lines is not None and inserted_lines.line_count > 0
             else None
         )
 
@@ -249,6 +365,7 @@ class Editor:
             )
         self._position = selection_start + inserted_line_count
         self._selection = None
+        self._sync_editor_leases()
 
     def _selected_range(self) -> _Selection:
         if self._selection is None:
@@ -361,6 +478,10 @@ class Editor:
                 self._cursor_positions[cursor_id] = position + line_delta
 
     def _line_bodies(self) -> Iterator[bytes]:
+        for line in self._lines():
+            yield _line_body(line)
+
+    def _lines(self) -> Iterator[_LineLike]:
         for segment in self._segments:
             if isinstance(segment, _SourceLineSegment):
                 if segment.end is None:
@@ -370,16 +491,16 @@ class Editor:
                             line = self._source[index]
                         except IndexError:
                             break
-                        yield _line_body(line)
+                        yield line
                         index += 1
                 else:
                     for index in range(segment.start, segment.end):
-                        yield _line_body(self._source[index])
+                        yield self._source[index]
             else:
                 for index in range(segment.start, segment.end):
-                    yield _line_body(segment.buffer[index])
+                    yield segment.lines[index]
 
-    def _line_at_position(self, position: int) -> bytes:
+    def _line_at_position(self, position: int) -> _LineLike:
         destination_position = 0
 
         for segment in self._segments:
@@ -395,10 +516,48 @@ class Editor:
                 segment_index = segment.start + (position - segment_start)
                 if isinstance(segment, _SourceLineSegment):
                     return self._source[segment_index]
-                return segment.buffer[segment_index]
+                return segment.lines[segment_index]
             destination_position = segment_end
 
         raise IndexError(position)
+
+    def _line_sources(
+        self,
+        start: int,
+        end: int,
+    ) -> Iterator[_LineSourceRange]:
+        self._current_line_count()
+
+        destination_position = 0
+        for segment in self._segments:
+            segment_line_count = _known_segment_line_count(segment)
+            segment_end = destination_position + segment_line_count
+
+            if segment_end <= start:
+                destination_position = segment_end
+                continue
+            if destination_position >= end:
+                break
+
+            range_start = max(start, destination_position)
+            range_end = min(end, segment_end)
+            segment_start = segment.start + (range_start - destination_position)
+            segment_stop = segment.start + (range_end - destination_position)
+            if isinstance(segment, _SourceLineSegment):
+                yield _LineSourceRange(
+                    self._source,
+                    segment_start,
+                    segment_stop,
+                    self,
+                )
+            else:
+                yield _LineSourceRange(
+                    segment.lines,
+                    segment_start,
+                    segment_stop,
+                    segment.owner,
+                )
+            destination_position = segment_end
 
     def _destination_position_for_source_line(self, line: int) -> int | None:
         destination_position = 0
@@ -492,11 +651,66 @@ class Editor:
         if self._closed:
             raise ValueError("editor is closed")
 
+    def _require_no_editor_borrowers(self) -> None:
+        if self._outgoing_editor_leases:
+            raise ValueError("editor has active leases")
+
+    def _sync_editor_leases(self) -> None:
+        active_sources: set[Editor] = set()
+        for segment in self._segments:
+            if not isinstance(segment, _IndexedLineSegment):
+                continue
+
+            owner = segment.owner
+            if owner is not None and owner is not self:
+                active_sources.add(owner)
+
+        for source in active_sources:
+            self._borrow_editor(source)
+
+        for source, lease in list(self._incoming_editor_leases.items()):
+            if source not in active_sources:
+                lease.release()
+
+    def _borrow_editor(self, source: Editor) -> None:
+        self._require_open()
+        source._require_open()
+
+        if source is self or source in self._incoming_editor_leases:
+            return
+
+        lease = _EditorLease(source, self)
+        self._incoming_editor_leases[source] = lease
+        source._outgoing_editor_leases.add(lease)
+
+    def _release_editor_leases(self) -> None:
+        for lease in list(self._incoming_editor_leases.values()):
+            lease.release()
+
 
 @dataclass(slots=True)
-class _InsertedBuffer:
-    buffer: EditorBuffer
+class _InsertedLines:
+    segment: _LineSegment
     line_count: int
+    owned_buffer: EditorBuffer | None = None
+
+
+class _EditorLease:
+    """Borrow relationship between editors sharing line segments."""
+
+    def __init__(self, source: Editor, target: Editor) -> None:
+        self._source = source
+        self._target = target
+        self._released = False
+
+    def release(self) -> None:
+        if self._released:
+            return
+
+        self._released = True
+        if self._target._incoming_editor_leases.get(self._source) is self:
+            del self._target._incoming_editor_leases[self._source]
+        self._source._outgoing_editor_leases.discard(self)
 
 
 class _SelectedLineSequence(Sequence[bytes]):
@@ -529,7 +743,7 @@ class _SelectedLineSequence(Sequence[bytes]):
 
         try:
             return normalize_line_ending(
-                self._editor._line_at_position(self._selection_start + index)
+                bytes(self._editor._line_at_position(self._selection_start + index))
             )
         except IndexError as exc:
             raise IndexError(index) from exc
@@ -589,8 +803,8 @@ class _SelectedLineSliceSequence(Sequence[bytes]):
 
 
 def edit_lines_as_buffer(
-    source_lines: Sequence[bytes],
-    edited_lines: Iterable[bytes],
+    source_lines: Sequence[_LineLike],
+    edited_lines: Iterable[_LineLike],
     *,
     selection_start: int,
     selection_end: int,
@@ -622,7 +836,7 @@ def edit_lines_as_buffer(
 
 
 def export_lines_as_buffer(
-    lines: Iterable[bytes],
+    lines: Iterable[_LineLike],
     *,
     has_trailing_newline: bool = True,
     add_trailing_newline_when_nonempty: bool = False,
@@ -644,19 +858,62 @@ def export_lines_as_buffer(
     return EditorBuffer.from_chunks(chunks)
 
 
-def _spool_inserted_lines(lines: Iterable[bytes]) -> _InsertedBuffer:
+def _line_range_bounds(
+    start: int | None,
+    end: int | None,
+) -> tuple[int, int | None]:
+    range_start = 0 if start is None else start
+    if range_start < 0 or (end is not None and end < range_start):
+        raise ValueError("invalid line range")
+    return range_start, end
+
+
+def _validate_line_range(
+    lines: Sequence[_LineLike],
+    start: int,
+    end: int,
+    *,
+    validate_end: bool,
+) -> None:
+    if start < 0 or end < start:
+        raise ValueError("invalid line range")
+
+    if not validate_end or end == start:
+        return
+
+    try:
+        lines[end - 1]
+    except IndexError as exc:
+        raise ValueError("invalid line range") from exc
+
+
+def _spool_inserted_lines(
+    lines: Iterable[_LineLike],
+    *,
+    start: int = 0,
+    end: int | None = None,
+    owner: Editor | None = None,
+) -> _InsertedLines:
+    if start < 0 or (end is not None and end < start):
+        raise ValueError("invalid line range")
+
     line_count = 0
 
     def chunks() -> Iterator[bytes]:
         nonlocal line_count
-        for line in lines:
+        for index, line in enumerate(lines):
+            if index < start:
+                continue
+            if end is not None and index >= end:
+                break
             line_count += 1
             yield _line_body(line) + b"\n"
 
     buffer = EditorBuffer.from_chunks(chunks())
-    return _InsertedBuffer(
-        buffer=buffer,
+    return _InsertedLines(
+        segment=_IndexedLineSegment(buffer, 0, line_count, owner),
         line_count=line_count,
+        owned_buffer=buffer,
     )
 
 
@@ -694,8 +951,14 @@ def _append_segment(
     segments: list[_LineSegment],
     segment: _LineSegment | None,
 ) -> None:
-    if segment is not None and _known_segment_line_count(segment) > 0:
-        segments.append(segment)
+    if segment is None or _known_segment_line_count(segment) == 0:
+        return
+
+    if segments and _segments_are_adjacent(segments[-1], segment):
+        segments[-1].end = segment.end
+        return
+
+    segments.append(segment)
 
 
 def _slice_segment(
@@ -712,21 +975,44 @@ def _slice_segment(
     if end_offset is None:
         raise ValueError("buffer segment slice end is required")
 
-    return _BufferLineSegment(
-        segment.buffer,
+    return _IndexedLineSegment(
+        segment.lines,
         segment.start + start_offset,
         segment.start + end_offset,
+        segment.owner,
     )
 
 
-def _line_body(line: bytes) -> bytes:
-    if not isinstance(line, bytes):
-        raise TypeError(f"expected bytes object, got {type(line).__name__}")
-    if line.endswith(b"\r\n"):
-        return line[:-2]
-    if line.endswith(b"\n"):
-        return line[:-1]
-    return line
+def _segments_are_adjacent(left: _LineSegment, right: _LineSegment) -> bool:
+    if isinstance(left, _SourceLineSegment):
+        return (
+            isinstance(right, _SourceLineSegment)
+            and left.end == right.start
+        )
+
+    return (
+        isinstance(right, _IndexedLineSegment)
+        and left.lines is right.lines
+        and left.owner is right.owner
+        and left.end == right.start
+    )
+
+
+def _line_body(line: _LineLike) -> bytes:
+    line_bytes = _line_bytes(line)
+    if line_bytes.endswith(b"\r\n"):
+        return line_bytes[:-2]
+    if line_bytes.endswith(b"\n"):
+        return line_bytes[:-1]
+    return line_bytes
+
+
+def _line_bytes(line: _LineLike) -> bytes:
+    if isinstance(line, (bytes, bytearray, memoryview)):
+        return bytes(line)
+    if hasattr(line, "__bytes__"):
+        return bytes(line)
+    raise TypeError(f"expected bytes-compatible line, got {type(line).__name__}")
 
 
 def _line_body_chunks(

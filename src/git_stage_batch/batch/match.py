@@ -296,6 +296,8 @@ def _align_segment(
     candidate_pairs.sort()
     anchors = _longest_increasing_subsequence(candidate_pairs)
 
+    del source_unique, target_unique, candidate_pairs
+
     if not anchors:
         return
 

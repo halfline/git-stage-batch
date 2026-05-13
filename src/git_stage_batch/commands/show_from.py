@@ -15,9 +15,11 @@ from ..batch.validation import batch_exists
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     cache_binary_file_change,
+    cache_gitlink_change,
     cache_rendered_batch_file_display,
     clear_selected_change_state_files,
     compute_batch_binary_fingerprint,
+    compute_batch_gitlink_fingerprint,
     mark_selected_change_cleared_by_file_list,
     render_batch_file_display,
 )
@@ -26,7 +28,7 @@ from ..data.file_review_state import (
     clear_last_file_review_state,
     write_last_file_review_state,
 )
-from ..output import print_binary_file_change, print_line_level_changes
+from ..output import print_binary_file_change, print_gitlink_change, print_line_level_changes
 from ..output.file_review import (
     build_file_review_model,
     make_file_review_state,
@@ -34,10 +36,15 @@ from ..output.file_review import (
     print_file_review,
     resolve_default_review_pages,
 )
-from ..output.file_review_list import make_binary_file_review_list_entry, make_file_review_list_entry, print_file_review_list
+from ..output.file_review_list import (
+    make_binary_file_review_list_entry,
+    make_file_review_list_entry,
+    make_gitlink_file_review_list_entry,
+    print_file_review_list,
+)
 from ..exceptions import exit_with_error, BatchMetadataError
 from ..i18n import _
-from ..core.models import BinaryFileChange, LineLevelChange
+from ..core.models import BinaryFileChange, GitlinkChange, LineLevelChange
 from ..utils.git import require_git_repository
 
 
@@ -55,6 +62,22 @@ def _render_batch_binary_file_change(file_path: str, file_meta: dict) -> BinaryF
     return BinaryFileChange(
         old_path="/dev/null" if change_type == "added" else file_path,
         new_path="/dev/null" if change_type == "deleted" else file_path,
+        change_type=change_type,
+    )
+
+
+def _render_batch_gitlink_change(file_path: str, file_meta: dict) -> GitlinkChange | None:
+    """Return an atomic submodule pointer batch change, if the entry is one."""
+    if file_meta.get("file_type") != "gitlink":
+        return None
+    change_type = file_meta.get("change_type")
+    if change_type not in ("added", "modified", "deleted"):
+        return None
+    return GitlinkChange(
+        old_path="/dev/null" if change_type == "added" else file_path,
+        new_path="/dev/null" if change_type == "deleted" else file_path,
+        old_oid=file_meta.get("old_oid"),
+        new_oid=file_meta.get("new_oid"),
         change_type=change_type,
     )
 
@@ -138,6 +161,28 @@ def command_show_from_batch(
                     ),
                 )
             print_binary_file_change(binary_change)
+            return
+
+        gitlink_change = _render_batch_gitlink_change(file_path, files[file_path])
+        if gitlink_change is not None:
+            if selected_ids:
+                exit_with_error(
+                    _("Cannot use --lines with submodule pointers. Run without --lines to view the submodule pointer summary.")
+                )
+            if page is not None:
+                exit_with_error(_("File review pages are only available for text changes."))
+            if selectable:
+                clear_selected_change_state_files()
+                cache_gitlink_change(
+                    gitlink_change,
+                    kind=SelectedChangeKind.BATCH_GITLINK,
+                    batch_name=batch_name,
+                    batch_gitlink_fingerprint=compute_batch_gitlink_fingerprint(
+                        file_path,
+                        files[file_path],
+                    ),
+                )
+            print_gitlink_change(gitlink_change)
             return
 
         rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
@@ -281,6 +326,10 @@ def command_show_from_batch(
         binary_change = _render_batch_binary_file_change(file_path, file_meta)
         if binary_change is not None:
             entries.append(make_binary_file_review_list_entry(binary_change))
+            continue
+        gitlink_change = _render_batch_gitlink_change(file_path, file_meta)
+        if gitlink_change is not None:
+            entries.append(make_gitlink_file_review_list_entry(gitlink_change))
             continue
         rendered = render_batch_file_display(
             batch_name,

@@ -581,6 +581,66 @@ def test_batch_submodule_pointer_actions_refuse_lines(
         command_reset_from_batch("pointers", line_ids="1", file="sub")
 
 
+def test_include_submodule_pointer_undo_redo(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """undo and redo should restore submodule pointer include state."""
+    repo, old_oid, new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include(quiet=True)
+    assert new_oid in _cached_raw_diff(repo)
+    assert _worktree_pointer_diff(repo) == ""
+
+    command_undo(force=True)
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
+    assert _cached_raw_diff(repo) == ""
+    assert "Subproject commit" in _worktree_pointer_diff(repo)
+
+    command_redo(force=True)
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
+    raw_diff = _cached_raw_diff(repo)
+    assert old_oid in raw_diff
+    assert new_oid in raw_diff
+    assert _worktree_pointer_diff(repo) == ""
+
+
+def test_discard_submodule_pointer_undo_redo(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """undo and redo should restore submodule pointer discard state."""
+    repo, old_oid, new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_discard(quiet=True)
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == old_oid
+    assert _worktree_pointer_diff(repo) == ""
+
+    command_undo(force=True)
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
+    assert _cached_raw_diff(repo) == ""
+    assert "Subproject commit" in _worktree_pointer_diff(repo)
+
+    command_redo(force=True)
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == old_oid
+    assert _cached_raw_diff(repo) == ""
+    assert _worktree_pointer_diff(repo) == ""
+
+
+def test_submodule_pointer_undo_refuses_moved_worktree(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """undo should refuse when the nested repository moved after the checkpoint."""
+    repo, old_oid, _new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include(quiet=True)
+    _run(["git", "checkout", "--detach", old_oid], cwd=repo / "sub")
+
+    with pytest.raises(CommandError, match="current state has changed"):
+        command_undo()
+
+
 def _configure_identity(repo: Path) -> None:
     _run(["git", "config", "user.name", "Test User"], cwd=repo)
     _run(["git", "config", "user.email", "test@example.com"], cwd=repo)

@@ -22,10 +22,9 @@ def test_main_with_no_args():
     with patch.object(sys, 'argv', ['git-stage-batch']):
         with patch.object(main_module, "dispatch_args", side_effect=main_module.CommandError("boom", exit_code=1)):
             with patch.object(main_module, "parse_command_line", return_value=Namespace(working_directory=None)):
-                with patch.object(main_module, "wait_for_git_index_lock"):
-                    with pytest.raises(SystemExit) as exc_info:
-                        main_module.main()
-                    assert exc_info.value.code == 1
+                with pytest.raises(SystemExit) as exc_info:
+                    main_module.main()
+                assert exc_info.value.code == 1
 
 
 def test_main_acquires_session_lock_before_dispatch():
@@ -48,43 +47,11 @@ def test_main_acquires_session_lock_before_dispatch():
     with patch.object(sys, "argv", ["git-stage-batch", "status"]):
         with patch.object(main_module, "parse_command_line", return_value=args):
             with patch.object(main_module, "should_page_output", return_value=False):
-                with patch.object(main_module, "wait_for_git_index_lock"):
-                    with patch.object(main_module, "acquire_session_lock", fake_lock):
-                        with patch.object(main_module, "dispatch_args", side_effect=fake_dispatch):
-                            main_module.main()
+                with patch.object(main_module, "acquire_session_lock", fake_lock):
+                    with patch.object(main_module, "dispatch_args", side_effect=fake_dispatch):
+                        main_module.main()
 
     assert events == ["lock-enter", "dispatch", "lock-exit"]
-
-
-def test_main_waits_for_index_lock_before_session_lock():
-    """Normal commands should wait for Git's index lock before session locking."""
-    events = []
-
-    @contextmanager
-    def fake_lock():
-        events.append("lock-enter")
-        try:
-            yield
-        finally:
-            events.append("lock-exit")
-
-    def fake_dispatch(args):
-        events.append("dispatch")
-
-    def fake_wait():
-        events.append("wait-index")
-
-    args = Namespace(working_directory=None)
-
-    with patch.object(sys, "argv", ["git-stage-batch", "status"]):
-        with patch.object(main_module, "parse_command_line", return_value=args):
-            with patch.object(main_module, "should_page_output", return_value=False):
-                with patch.object(main_module, "wait_for_git_index_lock", fake_wait):
-                    with patch.object(main_module, "acquire_session_lock", fake_lock):
-                        with patch.object(main_module, "dispatch_args", side_effect=fake_dispatch):
-                            main_module.main()
-
-    assert events == ["wait-index", "lock-enter", "dispatch", "lock-exit"]
 
 
 def test_main_skips_session_lock_for_prompt_status():
@@ -101,16 +68,11 @@ def test_main_skips_session_lock_for_prompt_status():
             with patch.object(main_module, "should_page_output", return_value=False):
                 with patch.object(
                     main_module,
-                    "wait_for_git_index_lock",
-                    side_effect=AssertionError("prompt status must not wait"),
+                    "acquire_session_lock",
+                    side_effect=AssertionError("prompt status must not lock"),
                 ):
-                    with patch.object(
-                        main_module,
-                        "acquire_session_lock",
-                        side_effect=AssertionError("prompt status must not lock"),
-                    ):
-                        with patch.object(main_module, "dispatch_args", side_effect=fake_dispatch):
-                            main_module.main()
+                    with patch.object(main_module, "dispatch_args", side_effect=fake_dispatch):
+                        main_module.main()
 
     assert events == [("dispatch", "STAGING")]
 
@@ -122,10 +84,9 @@ def test_main_handles_keyboard_interrupt_without_traceback(capsys):
     with patch.object(sys, "argv", ["git-stage-batch", "show"]):
         with patch.object(main_module, "parse_command_line", return_value=args):
             with patch.object(main_module, "should_page_output", return_value=False):
-                with patch.object(main_module, "wait_for_git_index_lock"):
-                    with patch.object(main_module, "dispatch_args", side_effect=KeyboardInterrupt):
-                        with pytest.raises(SystemExit) as exc_info:
-                            main_module.main()
+                with patch.object(main_module, "dispatch_args", side_effect=KeyboardInterrupt):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main_module.main()
 
     assert exc_info.value.code == 130
     captured = capsys.readouterr()

@@ -5,7 +5,7 @@ from git_stage_batch.commands.include import command_include_line
 from git_stage_batch.commands.discard import command_discard_line
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.batch.operations import create_batch
-from git_stage_batch.batch.storage import get_batch_diff
+from git_stage_batch.batch.query import get_batch_baseline_commit, get_batch_commit_sha
 from git_stage_batch.utils.paths import get_selected_hunk_patch_file_path
 import binascii
 
@@ -18,7 +18,15 @@ from git_stage_batch.core.diff_parser import (
 )
 from git_stage_batch.core.models import LineEntry
 from tests.diff_parser_helpers import collect_unified_diff
-from git_stage_batch.utils.git import stream_git_command
+from git_stage_batch.utils.git import stream_git_command, stream_git_diff
+
+
+def _batch_diff(batch_name: str) -> bytes:
+    commit_sha = get_batch_commit_sha(batch_name)
+    assert commit_sha is not None
+    baseline = get_batch_baseline_commit(batch_name)
+    assert baseline is not None
+    return b"".join(stream_git_diff(base=baseline, target=commit_sha))
 
 
 @pytest.fixture
@@ -91,7 +99,7 @@ class TestCRLFLineEndings:
         assert test_file.read_bytes() == original_content
 
         # Apply from batch using git apply directly
-        batch_diff = get_batch_diff("test-batch")
+        batch_diff = _batch_diff("test-batch")
 
         result = subprocess.run(
             ["git", "apply"],
@@ -298,7 +306,7 @@ class TestLatin1Encoding:
         assert test_file.read_bytes() == original
 
         # Apply from batch directly using git apply
-        batch_diff = get_batch_diff("test-batch")
+        batch_diff = _batch_diff("test-batch")
 
         # Debug: check batch diff content
         print(f"\nBatch diff type: {type(batch_diff)}")

@@ -9,7 +9,7 @@ import pytest
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
-from git_stage_batch.batch.storage import add_file_to_batch, get_batch_diff, read_file_from_batch
+from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
 from git_stage_batch.batch.ownership import (
     BaselineReference,
     BatchOwnership,
@@ -402,42 +402,3 @@ def test_read_file_from_batch_nonexistent_file(temp_git_repo):
 
     content = read_file_from_batch("test-batch", "nonexistent.txt")
     assert content is None
-
-
-def test_get_batch_diff_empty_batch(temp_git_repo):
-    """Test getting diff for empty batch shows no changes."""
-    create_batch("test-batch", "Test")
-
-    diff = get_batch_diff("test-batch")
-    # Empty batch starts with HEAD's tree, so no diff (same as baseline)
-    assert diff == b""
-
-
-def test_get_batch_diff_with_file(temp_git_repo):
-    """Test getting diff for batch with file."""
-    create_batch("test-batch", "Test")
-
-    # Claim lines from file.txt
-    ownership = BatchOwnership.from_presence_lines(["1-2"], [])
-    add_file_to_batch("test-batch", "file.txt", ownership)
-
-    diff = get_batch_diff("test-batch")
-    assert b"file.txt" in diff
-    assert b"+line" in diff  # Should show added lines
-
-
-def test_get_batch_diff_nonexistent_batch(temp_git_repo):
-    """Test getting diff for nonexistent batch returns empty string."""
-    diff = get_batch_diff("nonexistent")
-    assert diff == b""
-
-
-def test_get_batch_diff_custom_context(temp_git_repo):
-    """Test getting diff with custom context lines."""
-    create_batch("test-batch", "Test")
-
-    ownership = BatchOwnership.from_presence_lines(["1-3"], [])
-    add_file_to_batch("test-batch", "file.txt", ownership)
-
-    diff = get_batch_diff("test-batch", context_lines=1)
-    assert b"file.txt" in diff

@@ -69,7 +69,17 @@ def get_file_progress() -> tuple[int, int]:
             return (0, 0)
 
         # Get all changed files from git diff
-        result = run_git_command(["diff", "--name-only", "HEAD"], check=False)
+        result = run_git_command(
+            [
+                "-c",
+                "diff.ignoreSubmodules=none",
+                "diff",
+                "--ignore-submodules=none",
+                "--name-only",
+                "HEAD",
+            ],
+            check=False,
+        )
         if result.returncode != 0:
             return (0, 0)
 

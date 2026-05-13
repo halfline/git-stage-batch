@@ -379,7 +379,11 @@ def selected_change_kind_matches_review_source(
     if review_state.source in (ReviewSource.FILE_VS_HEAD, ReviewSource.UNSTAGED):
         return selected_kind == SelectedChangeKind.FILE
     if review_state.source == ReviewSource.BATCH:
-        return selected_kind in (SelectedChangeKind.BATCH_FILE, SelectedChangeKind.BATCH_BINARY)
+        return selected_kind in (
+            SelectedChangeKind.BATCH_FILE,
+            SelectedChangeKind.BATCH_BINARY,
+            SelectedChangeKind.BATCH_GITLINK,
+        )
     return False
 
 
@@ -642,7 +646,11 @@ def _line_action_command(
 def refuse_live_action_for_batch_selection(action: FileReviewAction | str) -> bool:
     """Refuse bare live actions when the current selection came from a batch view."""
     review_action = _coerce_review_action(action)
-    if read_selected_change_kind() not in (SelectedChangeKind.BATCH_FILE, SelectedChangeKind.BATCH_BINARY):
+    if read_selected_change_kind() not in (
+        SelectedChangeKind.BATCH_FILE,
+        SelectedChangeKind.BATCH_BINARY,
+        SelectedChangeKind.BATCH_GITLINK,
+    ):
         return False
 
     review_state = read_last_file_review_state()
@@ -707,7 +715,12 @@ def refuse_ambiguous_bare_action_after_partial_file_review(action: FileReviewAct
 
     selected_kind = read_selected_change_kind()
     if not selected_change_kind_matches_review_source(selected_kind, review_state):
-        if selected_kind in (SelectedChangeKind.FILE, SelectedChangeKind.BATCH_FILE, SelectedChangeKind.BATCH_BINARY):
+        if selected_kind in (
+            SelectedChangeKind.FILE,
+            SelectedChangeKind.BATCH_FILE,
+            SelectedChangeKind.BATCH_BINARY,
+            SelectedChangeKind.BATCH_GITLINK,
+        ):
             _print_stale_or_mismatched_file_review_help(review_action.value, review_state)
         clear_last_file_review_state()
         return False

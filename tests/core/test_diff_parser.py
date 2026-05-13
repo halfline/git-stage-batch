@@ -7,12 +7,35 @@ import subprocess
 import pytest
 
 from git_stage_batch.core.diff_parser import (
+    acquire_unified_diff,
     build_line_changes_from_patch_lines,
+    detach_single_hunk_patch,
     parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
 )
+from git_stage_batch.core.models import SingleHunkPatch
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
+
+
+def _two_hunk_diff_lines() -> list[bytes]:
+    diff = """\
+diff --git a/file.txt b/file.txt
+--- a/file.txt
++++ b/file.txt
+@@ -1,3 +1,3 @@
+ context
+-old 1
++new 1
+ context
+@@ -10,3 +10,3 @@
+ context
+-old 2
++new 2
+ context
+"""
+    return diff.encode("utf-8").splitlines(keepends=True)
 
 
 class TestParseUnifiedDiff:
@@ -44,28 +67,78 @@ index abc123..def456 100644
 
     def test_single_file_multiple_hunks(self):
         """Test parsing a diff with one file and multiple hunks."""
-        diff = """\
-diff --git a/file.txt b/file.txt
---- a/file.txt
-+++ b/file.txt
-@@ -1,3 +1,3 @@
- context
--old 1
-+new 1
- context
-@@ -10,3 +10,3 @@
- context
--old 2
-+new 2
- context
-"""
-        patches = list(parse_unified_diff_streaming(diff.encode('utf-8').splitlines(keepends=True)))
+        patches = list(parse_unified_diff_streaming(_two_hunk_diff_lines()))
 
         assert len(patches) == 2
         assert patches[0].old_path == "file.txt"
         assert patches[1].old_path == "file.txt"
         assert b"@@ -1,3 +1,3 @@" in patches[0].lines[2]
         assert b"@@ -10,3 +10,3 @@" in patches[1].lines[2]
+
+    def test_scoped_parser_uses_editor_buffers(self):
+        """Test scoped parsing returns buffer-backed hunk payloads."""
+        with acquire_unified_diff(_two_hunk_diff_lines()) as patches:
+            patch = next(patches)
+
+            assert isinstance(patch, SingleHunkPatch)
+            assert isinstance(patch.lines, EditorBuffer)
+            assert b"".join(patch.lines).startswith(b"--- a/file.txt\n")
+
+        with pytest.raises(ValueError, match="buffer is closed"):
+            list(patch.lines)
+
+    def test_scoped_parser_releases_previous_hunk_on_advance(self):
+        """Test advancing a scoped parser closes the prior hunk payload."""
+        with acquire_unified_diff(_two_hunk_diff_lines()) as patches:
+            first = next(patches)
+            assert isinstance(first, SingleHunkPatch)
+            assert b"old 1" in b"".join(first.lines)
+
+            second = next(patches)
+            assert isinstance(second, SingleHunkPatch)
+            assert b"old 2" in b"".join(second.lines)
+
+            with pytest.raises(ValueError, match="buffer is closed"):
+                list(first.lines)
+
+        with pytest.raises(ValueError, match="buffer is closed"):
+            list(second.lines)
+
+    def test_detached_scoped_patch_survives_parser_close(self):
+        """Test detached scoped patches keep list-backed line payloads."""
+        with acquire_unified_diff(_two_hunk_diff_lines()) as patches:
+            patch = next(patches)
+            detached = detach_single_hunk_patch(patch)
+
+        assert isinstance(detached.lines, list)
+        assert b"old 1" in b"".join(detached.lines)
+
+    def test_compatibility_parser_returns_detached_patches(self):
+        """Test compatibility parsing keeps patch lines usable after iteration."""
+        patches = list(parse_unified_diff_streaming(_two_hunk_diff_lines()))
+
+        assert isinstance(patches[0].lines, list)
+        assert b"old 1" in b"".join(patches[0].lines)
+
+    def test_scoped_parser_closes_source_on_early_exit(self):
+        """Test closing a scoped parser closes an unfinished source iterator."""
+        source_closed = False
+
+        def source():
+            nonlocal source_closed
+            try:
+                yield from _two_hunk_diff_lines()
+            finally:
+                source_closed = True
+
+        with acquire_unified_diff(source()) as patches:
+            patch = next(patches)
+            assert isinstance(patch, SingleHunkPatch)
+            assert b"old 1" in b"".join(patch.lines)
+
+        assert source_closed
+        with pytest.raises(ValueError, match="buffer is closed"):
+            list(patch.lines)
 
     def test_multiple_files(self):
         """Test parsing a diff with multiple files."""

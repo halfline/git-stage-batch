@@ -83,6 +83,7 @@ from ..data.file_review_state import (
 )
 from ..data.consumed_selections import record_consumed_selection
 from ..data.batch_sources import create_batch_source_commit
+from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
@@ -643,6 +644,7 @@ def command_include_file(
     else:
         # Explicit path provided
         target_file = file
+    auto_add_untracked_files([target_file])
     with undo_checkpoint(f"include --file {file}".rstrip()):
         # Stream through the remaining unstaged hunks for this file.
         #
@@ -789,6 +791,7 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
             saved_selected_state = selected_state_stack.enter_context(
                 snapshot_selected_change_state()
             )
+        auto_add_untracked_files([target_file])
 
         if preserve_selected_state:
             line_changes = cache_unstaged_file_as_single_hunk(target_file)
@@ -859,6 +862,7 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
                     exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
             else:
                 target_file = file
+            auto_add_untracked_files([target_file])
             selected_file_view_targets_file = _selected_file_view_targets(target_file)
             reuse_selected_file_view = _selected_file_view_is_fresh_for(target_file)
             if reuse_selected_file_view:
@@ -1500,6 +1504,7 @@ def _command_include_gitlink_to_batch(
 
 def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:
     """Include entire file to batch (internal helper for file-scoped operations)."""
+    auto_add_untracked_files([file_path])
 
     # Auto-create batch if it doesn't exist
     if not batch_exists(batch_name):

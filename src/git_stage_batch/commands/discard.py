@@ -35,8 +35,8 @@ from ..batch.source_refresh import _refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
 from ..batch.submodule_pointer import discard_submodule_pointer_from_batch
 from ..core.diff_parser import (
+    acquire_unified_diff,
     build_line_changes_from_patch_lines,
-    parse_unified_diff_streaming,
 )
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -497,26 +497,27 @@ def command_discard_file(file: str) -> None:
         # Stream through hunks and collect hashes from target file BEFORE removing it
         # (git rm -f will stage the deletion, making hunks disappear from git diff)
         hashes_to_block = []
-        for patch in parse_unified_diff_streaming(
+        with acquire_unified_diff(
             stream_git_diff(context_lines=get_context_lines())
-        ):
-            if isinstance(patch, BinaryFileChange):
-                file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
-                if file_path != target_file:
+        ) as patches:
+            for patch in patches:
+                if isinstance(patch, BinaryFileChange):
+                    file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+                    if file_path != target_file:
+                        continue
+
+                    patch_hash = compute_binary_file_hash(patch)
+                    if patch_hash not in blocked_hashes:
+                        hashes_to_block.append(patch_hash)
                     continue
 
-                patch_hash = compute_binary_file_hash(patch)
+                if patch.new_path != target_file:
+                    continue
+
+                patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
+
                 if patch_hash not in blocked_hashes:
                     hashes_to_block.append(patch_hash)
-                continue
-
-            if patch.new_path != target_file:
-                continue
-
-            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-
-            if patch_hash not in blocked_hashes:
-                hashes_to_block.append(patch_hash)
 
         # Remove the file from working tree
         result = run_git_command(["rm", "-f", target_file], check=False)
@@ -1170,49 +1171,50 @@ def _collect_text_file_discard_inputs(
     inputs_by_file: dict[str, _TextFileDiscardInput] = {}
     files_with_text_patches: set[str] = set()
 
-    for patch in parse_unified_diff_streaming(
+    with acquire_unified_diff(
         stream_git_diff(
             base="HEAD",
             context_lines=get_context_lines(),
             paths=files,
         )
-    ):
-        if isinstance(patch, GitlinkChange):
-            exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
+    ) as patches:
+        for patch in patches:
+            if isinstance(patch, GitlinkChange):
+                exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
 
-        if isinstance(patch, BinaryFileChange):
-            continue
+            if isinstance(patch, BinaryFileChange):
+                continue
 
-        file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
-        files_with_text_patches.add(file_path)
+            file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+            files_with_text_patches.add(file_path)
 
-        patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-        if patch_hash in blocked_hashes:
-            continue
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
+            if patch_hash in blocked_hashes:
+                continue
 
-        hunk_lines = build_line_changes_from_patch_lines(
-            patch.lines,
-            annotator=annotate_with_batch_source,
-        )
-        discard_input = inputs_by_file.get(file_path)
-        if discard_input is None:
-            discard_input = _TextFileDiscardInput(
-                file_path=file_path,
-                file_mode=_detect_file_mode_from_root(repo_root, file_path),
-                all_lines_to_batch=[],
-                patches_to_discard=[],
+            hunk_lines = build_line_changes_from_patch_lines(
+                patch.lines,
+                annotator=annotate_with_batch_source,
             )
-            inputs_by_file[file_path] = discard_input
-        discard_input.all_lines_to_batch.extend(hunk_lines.lines)
-        discard_input.patches_to_discard.append(
-            _PreparedPatchDiscard(
-                patch_lines=patch_stack.enter_context(
-                    EditorBuffer.from_chunks(patch.lines)
-                ),
-                patch_hash=patch_hash,
+            discard_input = inputs_by_file.get(file_path)
+            if discard_input is None:
+                discard_input = _TextFileDiscardInput(
+                    file_path=file_path,
+                    file_mode=_detect_file_mode_from_root(repo_root, file_path),
+                    all_lines_to_batch=[],
+                    patches_to_discard=[],
+                )
+                inputs_by_file[file_path] = discard_input
+            discard_input.all_lines_to_batch.extend(hunk_lines.lines)
+            discard_input.patches_to_discard.append(
+                _PreparedPatchDiscard(
+                    patch_lines=patch_stack.enter_context(
+                        EditorBuffer.from_chunks(patch.lines)
+                    ),
+                    patch_hash=patch_hash,
+                )
             )
-        )
-        blocked_hashes.add(patch_hash)
+            blocked_hashes.add(patch_hash)
 
     return _CollectedTextFileDiscards(
         inputs_by_file=inputs_by_file,
@@ -1415,151 +1417,156 @@ def _command_discard_file_to_batch(
     # Detect file mode
     file_mode = _detect_file_mode(file_path)
 
-    # Collect ALL hunks from this file (live working tree state)
-    all_lines_to_batch = []
-    patches_to_discard = []
+    with ExitStack() as patch_stack:
+        # Collect ALL hunks from this file (live working tree state)
+        all_lines_to_batch = []
+        patches_to_discard = []
 
-    for patch in parse_unified_diff_streaming(
-        stream_git_diff(
-            base="HEAD",
-            context_lines=get_context_lines(),
-            paths=[file_path],
-        )
-    ):
-        if isinstance(patch, GitlinkChange):
-            exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
+        with acquire_unified_diff(
+            stream_git_diff(
+                base="HEAD",
+                context_lines=get_context_lines(),
+                paths=[file_path],
+            )
+        ) as patches:
+            for patch in patches:
+                if isinstance(patch, GitlinkChange):
+                    exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
 
-        patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
+                patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
-        if patch_hash in blocked_hashes:
-            continue
+                if patch_hash in blocked_hashes:
+                    continue
 
-        # Parse hunk to get lines
-        hunk_lines = build_line_changes_from_patch_lines(
-            patch.lines,
-            annotator=annotate_with_batch_source,
-        )
-        all_lines_to_batch.extend(hunk_lines.lines)
-        patches_to_discard.append((patch.lines, patch_hash))
+                # Parse hunk to get lines
+                hunk_lines = build_line_changes_from_patch_lines(
+                    patch.lines,
+                    annotator=annotate_with_batch_source,
+                )
+                all_lines_to_batch.extend(hunk_lines.lines)
+                patches_to_discard.append((
+                    patch_stack.enter_context(EditorBuffer.from_chunks(patch.lines)),
+                    patch_hash,
+                ))
 
-    if not all_lines_to_batch:
-        # Special case: empty text lifecycle changes have no hunk body.
-        repo_root = get_git_repository_root_path()
-        full_path = repo_root / file_path
-        lifecycle_change_type = detect_empty_text_lifecycle_change(file_path)
-        if lifecycle_change_type is not None:
+        if not all_lines_to_batch:
+            # Special case: empty text lifecycle changes have no hunk body.
+            repo_root = get_git_repository_root_path()
+            full_path = repo_root / file_path
+            lifecycle_change_type = detect_empty_text_lifecycle_change(file_path)
+            if lifecycle_change_type is not None:
+                snapshot_file_if_untracked(file_path)
+                add_file_to_batch(
+                    batch_name,
+                    file_path,
+                    BatchOwnership([], []),
+                    file_mode,
+                    change_type=lifecycle_change_type,
+                )
+
+                if lifecycle_change_type == TextFileChangeType.ADDED:
+                    # Delete from working tree
+                    full_path.unlink()
+
+                    # Remove from index if present (from intent-to-add)
+                    run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
+                else:
+                    run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+
+                if not quiet:
+                    print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
+
+                log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
+                return 1
+
+            if not quiet:
+                print(_("No changes in file '{file}' to discard.").format(file=file_path), file=sys.stderr)
+            return 0
+
+        # Prepare batch ownership update (handles stale source, translation, merge)
+
+        metadata = read_batch_metadata(batch_name)
+        file_metadata = metadata.get("files", {}).get(file_path)
+
+        with ExitStack() as ownership_stack:
+            try:
+                update = ownership_stack.enter_context(
+                    acquire_batch_ownership_update_for_selection(
+                        batch_name=batch_name,
+                        file_path=file_path,
+                        file_metadata=file_metadata,
+                        selected_lines=all_lines_to_batch,
+                    )
+                )
+            except ValueError as e:
+                exit_with_error(
+                    _("Cannot discard file to batch: batch source is stale and remapping failed.\n"
+                      "File: {file}\n"
+                      "Batch: {batch}\n"
+                      "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
+                )
+
+            # Snapshot file before modifying
             snapshot_file_if_untracked(file_path)
+
+            # Save to batch
             add_file_to_batch(
                 batch_name,
                 file_path,
-                BatchOwnership([], []),
+                update.ownership_after,
                 file_mode,
-                change_type=lifecycle_change_type,
             )
 
-            if lifecycle_change_type == TextFileChangeType.ADDED:
-                # Delete from working tree
-                full_path.unlink()
+        # Record hunks as discarded for progress tracking
+        for _patch_lines, patch_hash in patches_to_discard:
+            record_hunk_discarded(patch_hash)
 
-                # Remove from index if present (from intent-to-add)
-                run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
-            else:
-                run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+        # Discard from working tree (reverse patches)
+        for patch_lines_item, patch_hash in patches_to_discard:
+            log_journal(
+                "discard_file_to_batch_before_git_apply",
+                batch_name=batch_name,
+                patch_hash=patch_hash,
+                file_path=file_path,
+                patch_line_count=len(patch_lines_item),
+            )
 
-            if not quiet:
-                print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
+            exit_code = 0
+            stderr_chunks = []
 
-            log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
-            return 1
+            for event in stream_command(
+                ["git", "apply", "--reverse", "--unidiff-zero"],
+                stdin_chunks=patch_lines_item,
+            ):
+                if isinstance(event, ExitEvent):
+                    exit_code = event.exit_code
+                elif isinstance(event, OutputEvent) and event.fd == 2:  # stderr
+                    stderr_chunks.append(event.data)
+
+            if exit_code != 0:
+                stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
+                exit_with_error(_("Failed to discard changes from file: {err}").format(err=stderr_text))
+
+            log_journal("discard_file_to_batch_after_git_apply", batch_name=batch_name, patch_hash=patch_hash, exit_code=exit_code)
+
+        # If file was deleted from working tree, remove from index too
+        repo_root = get_git_repository_root_path()
+        full_path = repo_root / file_path
+        if not full_path.exists():
+            # File was deleted by git apply --reverse, remove from index
+            run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
 
         if not quiet:
-            print(_("No changes in file '{file}' to discard.").format(file=file_path), file=sys.stderr)
-        return 0
+            print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
 
-    # Prepare batch ownership update (handles stale source, translation, merge)
+        log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
 
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(file_path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    file_metadata=file_metadata,
-                    selected_lines=all_lines_to_batch,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot discard file to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\n"
-                  "Batch: {batch}\n"
-                  "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
-            )
-
-        # Snapshot file before modifying
-        snapshot_file_if_untracked(file_path)
-
-        # Save to batch
-        add_file_to_batch(
-            batch_name,
-            file_path,
-            update.ownership_after,
-            file_mode,
-        )
-
-    # Record hunks as discarded for progress tracking
-    for _patch_lines, patch_hash in patches_to_discard:
-        record_hunk_discarded(patch_hash)
-
-    # Discard from working tree (reverse patches)
-    for patch_lines_item, patch_hash in patches_to_discard:
-        log_journal(
-            "discard_file_to_batch_before_git_apply",
-            batch_name=batch_name,
-            patch_hash=patch_hash,
-            file_path=file_path,
-            patch_line_count=len(patch_lines_item),
-        )
-
-        exit_code = 0
-        stderr_chunks = []
-
-        for event in stream_command(
-            ["git", "apply", "--reverse", "--unidiff-zero"],
-            stdin_chunks=patch_lines_item,
-        ):
-            if isinstance(event, ExitEvent):
-                exit_code = event.exit_code
-            elif isinstance(event, OutputEvent) and event.fd == 2:  # stderr
-                stderr_chunks.append(event.data)
-
-        if exit_code != 0:
-            stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
-            exit_with_error(_("Failed to discard changes from file: {err}").format(err=stderr_text))
-
-        log_journal("discard_file_to_batch_after_git_apply", batch_name=batch_name, patch_hash=patch_hash, exit_code=exit_code)
-
-    # If file was deleted from working tree, remove from index too
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-    if not full_path.exists():
-        # File was deleted by git apply --reverse, remove from index
-        run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
-
-    if not quiet:
-        print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
-
-    log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
-
-    # Show next hunk
-    if quiet and advance:
-        advance_to_next_change()
-    elif not quiet:
-        advance_to_and_show_next_change()
-    return len(patches_to_discard)
+        # Show next hunk
+        if quiet and advance:
+            advance_to_next_change()
+        elif not quiet:
+            advance_to_and_show_next_change()
+        return len(patches_to_discard)
 
 
 def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_id_specification: str, *, quiet: bool = False) -> int:
@@ -1802,161 +1809,166 @@ def _command_discard_text_hunk_to_batch(
 
     file_mode = _detect_file_mode(file_path)
 
-    # Collect all lines to batch (either selected hunk or all hunks from file)
-    all_lines_to_batch = []
-    patches_to_discard: list[tuple[Sequence[bytes], str]] = []
+    with ExitStack() as patch_stack:
+        # Collect all lines to batch (either selected hunk or all hunks from file)
+        all_lines_to_batch = []
+        patches_to_discard: list[tuple[Sequence[bytes], str]] = []
 
-    if file_only:
-        # Collect ALL hunks from this file
-        for patch in parse_unified_diff_streaming(
-            stream_git_diff(context_lines=get_context_lines())
-        ):
-            if isinstance(patch, GitlinkChange):
-                exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
+        if file_only:
+            # Collect ALL hunks from this file
+            with acquire_unified_diff(
+                stream_git_diff(context_lines=get_context_lines())
+            ) as patches:
+                for patch in patches:
+                    if isinstance(patch, GitlinkChange):
+                        exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
 
-            if patch.new_path != file_path:
-                continue
+                    if patch.new_path != file_path:
+                        continue
 
-            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
+                    patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
-            if patch_hash in blocked_hashes:
-                continue
+                    if patch_hash in blocked_hashes:
+                        continue
 
-            # Parse hunk to get lines
-            hunk_lines = build_line_changes_from_patch_lines(
-                patch.lines,
-                annotator=annotate_with_batch_source,
-            )
-            all_lines_to_batch.extend(hunk_lines.lines)
-            patches_to_discard.append((patch.lines, patch_hash))
-    else:
-        # Just selected hunk (already loaded above)
-        all_lines_to_batch = line_changes.lines
-        patches_to_discard = [(selected_patch_lines, selected_patch_hash)]
+                    # Parse hunk to get lines
+                    hunk_lines = build_line_changes_from_patch_lines(
+                        patch.lines,
+                        annotator=annotate_with_batch_source,
+                    )
+                    all_lines_to_batch.extend(hunk_lines.lines)
+                    patches_to_discard.append((
+                        patch_stack.enter_context(EditorBuffer.from_chunks(patch.lines)),
+                        patch_hash,
+                    ))
+        else:
+            # Just selected hunk (already loaded above)
+            all_lines_to_batch = line_changes.lines
+            patches_to_discard = [(selected_patch_lines, selected_patch_hash)]
 
-    # Prepare batch ownership update (handles stale source, translation, merge)
+        # Prepare batch ownership update (handles stale source, translation, merge)
 
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(file_path)
+        metadata = read_batch_metadata(batch_name)
+        file_metadata = metadata.get("files", {}).get(file_path)
 
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    file_metadata=file_metadata,
-                    selected_lines=all_lines_to_batch,
+        with ExitStack() as ownership_stack:
+            try:
+                update = ownership_stack.enter_context(
+                    acquire_batch_ownership_update_for_selection(
+                        batch_name=batch_name,
+                        file_path=file_path,
+                        file_metadata=file_metadata,
+                        selected_lines=all_lines_to_batch,
+                    )
                 )
-            )
-        except ValueError as e:
-            # Remapping failed - fail loudly
-            exit_with_error(
-                _("Cannot discard to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\n"
-                  "Batch: {batch}\n"
-                  "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
-            )
+            except ValueError as e:
+                # Remapping failed - fail loudly
+                exit_with_error(
+                    _("Cannot discard to batch: batch source is stale and remapping failed.\n"
+                      "File: {file}\n"
+                      "Batch: {batch}\n"
+                      "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
+                )
 
-        # add_file_to_batch creates the batch source commit from this snapshot.
-        snapshot_file_if_untracked(file_path)
+            # add_file_to_batch creates the batch source commit from this snapshot.
+            snapshot_file_if_untracked(file_path)
 
-        log_journal("discard_hunk_to_batch_before_add", batch_name=batch_name, file_path=file_path, num_patches=len(patches_to_discard))
+            log_journal("discard_hunk_to_batch_before_add", batch_name=batch_name, file_path=file_path, num_patches=len(patches_to_discard))
 
-        # Save to batch using batch source model (once, with all accumulated data)
-        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
+            # Save to batch using batch source model (once, with all accumulated data)
+            add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
-    log_journal("discard_hunk_to_batch_after_add", batch_name=batch_name, file_path=file_path)
+        log_journal("discard_hunk_to_batch_after_add", batch_name=batch_name, file_path=file_path)
 
-    # Check if this is a new file (before applying patches)
-    is_new_file = any(
-        _patch_lines_contain_line(patch_lines_item, b"--- /dev/null")
-        for patch_lines_item, _ in patches_to_discard
-    )
-
-    # Apply reverse patches to discard from working tree
-    for patch_lines_item, patch_hash in patches_to_discard:
-        # Check if this is an empty file patch (@@ -0,0 +0,0 @@)
-        # Empty file patches are synthetic and cannot be reversed with git apply
-        is_empty_file_patch = _patch_lines_contain_line(
-            patch_lines_item,
-            b"@@ -0,0 +0,0 @@",
+        # Check if this is a new file (before applying patches)
+        is_new_file = any(
+            _patch_lines_contain_line(patch_lines_item, b"--- /dev/null")
+            for patch_lines_item, _ in patches_to_discard
         )
 
-        if not is_empty_file_patch:
-            log_journal(
-                "discard_hunk_to_batch_before_git_apply",
-                batch_name=batch_name,
-                patch_hash=patch_hash,
-                file_path=file_path,
-                patch_line_count=len(patch_lines_item),
+        # Apply reverse patches to discard from working tree
+        for patch_lines_item, patch_hash in patches_to_discard:
+            # Check if this is an empty file patch (@@ -0,0 +0,0 @@)
+            # Empty file patches are synthetic and cannot be reversed with git apply
+            is_empty_file_patch = _patch_lines_contain_line(
+                patch_lines_item,
+                b"@@ -0,0 +0,0 @@",
             )
 
-            # Use stream_command to apply reverse patch
-            stderr_chunks = []
-            exit_code = 0
+            if not is_empty_file_patch:
+                log_journal(
+                    "discard_hunk_to_batch_before_git_apply",
+                    batch_name=batch_name,
+                    patch_hash=patch_hash,
+                    file_path=file_path,
+                    patch_line_count=len(patch_lines_item),
+                )
 
-            for event in stream_command(
-                ["git", "apply", "--reverse", "--unidiff-zero"],
-                patch_lines_item,
-            ):
-                if isinstance(event, ExitEvent):
-                    exit_code = event.exit_code
-                elif isinstance(event, OutputEvent):
-                    if event.fd == 2:  # stderr
-                        stderr_chunks.append(event.data)
+                # Use stream_command to apply reverse patch
+                stderr_chunks = []
+                exit_code = 0
 
-            stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace') if stderr_chunks else ""
-            log_journal("discard_hunk_to_batch_after_git_apply", batch_name=batch_name, patch_hash=patch_hash, exit_code=exit_code, stderr_len=len(stderr_text))
+                for event in stream_command(
+                    ["git", "apply", "--reverse", "--unidiff-zero"],
+                    patch_lines_item,
+                ):
+                    if isinstance(event, ExitEvent):
+                        exit_code = event.exit_code
+                    elif isinstance(event, OutputEvent):
+                        if event.fd == 2:  # stderr
+                            stderr_chunks.append(event.data)
 
-            if exit_code != 0:
-                log_journal("discard_hunk_to_batch_git_apply_failed", batch_name=batch_name, patch_hash=patch_hash, exit_code=exit_code, stderr=stderr_text)
-                exit_with_error(_("Failed to apply reverse patch: {error}").format(error=stderr_text))
-        else:
-            log_journal("discard_hunk_to_batch_skipping_empty_patch", batch_name=batch_name, patch_hash=patch_hash)
-        # else: skip reverse for empty files - nothing to reverse, cleanup code below handles file removal
+                stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace') if stderr_chunks else ""
+                log_journal("discard_hunk_to_batch_after_git_apply", batch_name=batch_name, patch_hash=patch_hash, exit_code=exit_code, stderr_len=len(stderr_text))
 
-        # Mark this hunk as processed
-        append_lines_to_file(blocklist_path, [patch_hash])
+                if exit_code != 0:
+                    log_journal("discard_hunk_to_batch_git_apply_failed", batch_name=batch_name, patch_hash=patch_hash, exit_code=exit_code, stderr=stderr_text)
+                    exit_with_error(_("Failed to apply reverse patch: {error}").format(error=stderr_text))
+            else:
+                log_journal("discard_hunk_to_batch_skipping_empty_patch", batch_name=batch_name, patch_hash=patch_hash)
+            # else: skip reverse for empty files - nothing to reverse, cleanup code below handles file removal
 
-        # Record hunk as discarded for progress tracking
-        record_hunk_discarded(patch_hash)
+            # Mark this hunk as processed
+            append_lines_to_file(blocklist_path, [patch_hash])
 
-    # Clean up file and index after discarding to batch
-    # Only remove file if it's actually meant to be gone:
-    # - New file that's now empty after reversal
-    # - File deleted in diff (doesn't exist in working tree after reversal)
-    if is_new_file or file_only:
-        absolute_path = get_git_repository_root_path() / file_path
+            # Record hunk as discarded for progress tracking
+            record_hunk_discarded(patch_hash)
 
-        # Check if file still exists after git apply --reverse
-        if not absolute_path.exists():
-            # File was deleted by reverse patches (was a file deletion diff)
-            # Remove from index to complete the deletion
-            run_git_command(["rm", "--cached", "--quiet", file_path], check=False)
-        elif is_new_file:
-            # New file: only remove if it's empty after reverse patches
-            if _path_contains_only_whitespace(absolute_path):
-                absolute_path.unlink()
+        # Clean up file and index after discarding to batch
+        # Only remove file if it's actually meant to be gone:
+        # - New file that's now empty after reversal
+        # - File deleted in diff (doesn't exist in working tree after reversal)
+        if is_new_file or file_only:
+            absolute_path = get_git_repository_root_path() / file_path
+
+            # Check if file still exists after git apply --reverse
+            if not absolute_path.exists():
+                # File was deleted by reverse patches (was a file deletion diff)
+                # Remove from index to complete the deletion
                 run_git_command(["rm", "--cached", "--quiet", file_path], check=False)
-        # else: file still exists with content (reverted to HEAD state), leave it alone
+            elif is_new_file:
+                # New file: only remove if it's empty after reverse patches
+                if _path_contains_only_whitespace(absolute_path):
+                    absolute_path.unlink()
+                    run_git_command(["rm", "--cached", "--quiet", file_path], check=False)
+            # else: file still exists with content (reverted to HEAD state), leave it alone
 
-    log_journal("discard_hunk_to_batch_success", batch_name=batch_name, file_path=file_path, num_patches=len(patches_to_discard))
+        log_journal("discard_hunk_to_batch_success", batch_name=batch_name, file_path=file_path, num_patches=len(patches_to_discard))
 
-    # Print success message
-    if not quiet:
-        if file_only:
-            msg = ngettext(
-                "✓ {count} hunk from {file} saved to batch '{name}' and discarded",
-                "✓ {count} hunks from {file} saved to batch '{name}' and discarded",
-                len(patches_to_discard)
-            ).format(count=len(patches_to_discard), file=file_path, name=batch_name)
-            print(msg, file=sys.stderr)
+        # Print success message
+        if not quiet:
+            if file_only:
+                msg = ngettext(
+                    "✓ {count} hunk from {file} saved to batch '{name}' and discarded",
+                    "✓ {count} hunks from {file} saved to batch '{name}' and discarded",
+                    len(patches_to_discard)
+                ).format(count=len(patches_to_discard), file=file_path, name=batch_name)
+                print(msg, file=sys.stderr)
+            else:
+                print(_("✓ Hunk saved to batch '{name}' and discarded from working tree").format(name=batch_name), file=sys.stderr)
+
+        if quiet:
+            advance_to_next_change()
         else:
-            print(_("✓ Hunk saved to batch '{name}' and discarded from working tree").format(name=batch_name), file=sys.stderr)
-
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
-    return len(patches_to_discard)
+            advance_to_and_show_next_change()
+        return len(patches_to_discard)

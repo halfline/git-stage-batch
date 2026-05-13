@@ -257,6 +257,37 @@ def git_update_index(
     )
 
 
+def git_update_gitlink(
+    *,
+    file_path: str,
+    oid: str | None,
+    remove: bool = False,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
+    """Update one index entry that stores a submodule commit pointer."""
+    if remove:
+        if oid is not None:
+            raise ValueError("oid cannot be used with remove=True")
+        return git_update_index(
+            file_path=file_path,
+            force_remove=True,
+            check=check,
+            env=env,
+        )
+
+    if oid is None:
+        raise ValueError("oid is required unless remove=True")
+
+    return git_update_index(
+        file_path=file_path,
+        mode="160000",
+        blob_sha=oid,
+        check=check,
+        env=env,
+    )
+
+
 def git_update_index_entries(
     entries: Iterable[GitIndexEntryUpdate],
     *,

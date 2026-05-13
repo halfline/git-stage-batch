@@ -18,6 +18,11 @@ from ..batch.selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
     translate_atomic_unit_error_to_gutter_ids,
 )
+from ..batch.submodule_pointer import (
+    is_batch_submodule_pointer,
+    refuse_batch_submodule_pointer_lines,
+    stage_submodule_pointer_from_batch,
+)
 from ..batch.validation import batch_exists
 from ..core.text_lifecycle import (
     TextFileChangeType,
@@ -241,6 +246,8 @@ def command_include_from_batch(
         file_path_for_check = list(files.keys())[0]  # Single file context enforced above
         if files[file_path_for_check].get("file_type") == "binary":
             exit_with_error(_("Cannot use --lines with binary files. Include the whole file instead."))
+        if is_batch_submodule_pointer(files[file_path_for_check]):
+            refuse_batch_submodule_pointer_lines(_("Include"))
 
     # Translate gutter IDs to selection IDs if line selection is active
     selection_ids_to_include = selected_ids
@@ -278,6 +285,9 @@ def command_include_from_batch(
                     finally:
                         if batch_buffer is not None:
                             batch_buffer.close()
+                    continue
+                if is_batch_submodule_pointer(file_meta):
+                    stage_submodule_pointer_from_batch(file_path, file_meta)
                     continue
 
                 text_change_type = normalized_text_change_type(file_meta.get("change_type"))

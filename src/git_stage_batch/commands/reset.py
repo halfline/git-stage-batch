@@ -30,6 +30,10 @@ from ..batch.storage import (
     copy_file_from_batch_to_batch,
     remove_file_from_batch,
 )
+from ..batch.submodule_pointer import (
+    is_batch_submodule_pointer,
+    refuse_batch_submodule_pointer_lines,
+)
 from ..batch.state_refs import sync_batch_state_refs
 from ..batch.validation import batch_exists, validate_batch_name
 from ..exceptions import MergeError, exit_with_error
@@ -50,6 +54,7 @@ from ..data.hunk_tracking import (
     read_selected_change_kind,
     render_batch_file_display,
     selected_batch_binary_matches_batch,
+    selected_batch_gitlink_matches_batch,
 )
 from ..data.undo import undo_checkpoint
 from ..editor import load_git_object_as_buffer
@@ -164,7 +169,11 @@ def _clear_selected_batch_state_after_batch_mutation(
 ) -> None:
     """Clear selected batch views that point at files changed by reset."""
     selected_kind = read_selected_change_kind()
-    if selected_kind not in (SelectedChangeKind.BATCH_FILE, SelectedChangeKind.BATCH_BINARY):
+    if selected_kind not in (
+        SelectedChangeKind.BATCH_FILE,
+        SelectedChangeKind.BATCH_BINARY,
+        SelectedChangeKind.BATCH_GITLINK,
+    ):
         return
 
     selected_file = get_selected_change_file_path()
@@ -176,6 +185,17 @@ def _clear_selected_batch_state_after_batch_mutation(
             dest_batch is not None and selected_batch_binary_matches_batch(dest_batch)
         ):
             stale_batch = source_batch if selected_batch_binary_matches_batch(source_batch) else dest_batch
+            clear_selected_change_state_files()
+            mark_selected_change_cleared_by_stale_batch_selection(
+                batch_name=stale_batch or source_batch,
+                file_path=selected_file,
+            )
+        return
+    if selected_kind == SelectedChangeKind.BATCH_GITLINK:
+        if selected_batch_gitlink_matches_batch(source_batch) or (
+            dest_batch is not None and selected_batch_gitlink_matches_batch(dest_batch)
+        ):
+            stale_batch = source_batch if selected_batch_gitlink_matches_batch(source_batch) else dest_batch
             clear_selected_change_state_files()
             mark_selected_change_cleared_by_stale_batch_selection(
                 batch_name=stale_batch or source_batch,
@@ -227,6 +247,8 @@ def _translate_reset_line_ids_to_selection_ids(
     file_path = list(files.keys())[0]
     if files[file_path].get("file_type") == "binary":
         exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
+    if is_batch_submodule_pointer(files[file_path]):
+        refuse_batch_submodule_pointer_lines(_("Reset"))
 
     review_groups = fresh_batch_review_selection_groups_for_action(
         batch_name,
@@ -304,7 +326,7 @@ def _move_claims_between_batches(
         return
 
     for file_path, file_meta in files.items():
-        if file_meta.get("file_type") == "binary":
+        if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(file_meta):
             dest_file_meta = read_batch_metadata(dest_batch).get("files", {}).get(file_path)
             if dest_file_meta is not None:
                 exit_with_error(
@@ -441,6 +463,8 @@ def _reset_line_claims_for_file(
     # Get current ownership for the file
     if metadata["files"][file_path].get("file_type") == "binary":
         exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
+    if is_batch_submodule_pointer(metadata["files"][file_path]):
+        refuse_batch_submodule_pointer_lines(_("Reset"))
 
     file_meta = metadata["files"][file_path]
 
@@ -495,6 +519,8 @@ def _select_line_ownership_for_file(
 
     if metadata["files"][file_path].get("file_type") == "binary":
         exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
+    if is_batch_submodule_pointer(metadata["files"][file_path]):
+        refuse_batch_submodule_pointer_lines(_("Reset"))
 
     file_meta = metadata["files"][file_path]
     batch_source_commit = file_meta["batch_source_commit"]

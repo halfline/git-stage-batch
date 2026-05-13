@@ -58,6 +58,9 @@ setup = ["-Dpython_wheel=true"]
 no-build-isolation = true
 preview = true
 
+[tool.pytest.ini_options]
+addopts = ["-n", "auto"]
+
 [tool.uv.extra-build-dependencies]
 git-stage-batch = [
     "meson-python>=0.17.0",

@@ -11,7 +11,7 @@ from ..editor import (
     buffer_preview,
     edit_lines_as_buffer,
 )
-from ..utils.git import create_git_blob, run_git_command
+from ..utils.git import create_git_blob, git_update_index, run_git_command
 from ..utils.journal import log_journal
 
 
@@ -574,13 +574,21 @@ def update_index_with_blob_buffer(path: str, buffer: EditorBuffer) -> None:
     Preserves the file mode from the existing index entry if available.
     """
     # Log before state
-    ls_before = run_git_command(["ls-files", "--stage", "--", path], check=False).stdout.strip()
+    ls_before = run_git_command(
+        ["ls-files", "--stage", "--", path],
+        check=False,
+        requires_index_lock=False,
+    ).stdout.strip()
 
     blob_hash = create_git_blob(buffer.byte_chunks())
 
     file_mode = ""
     try:
-        ls_output = run_git_command(["ls-files", "-s", "--", path], check=False).stdout.strip()
+        ls_output = run_git_command(
+            ["ls-files", "-s", "--", path],
+            check=False,
+            requires_index_lock=False,
+        ).stdout.strip()
         if ls_output:
             file_mode = ls_output.split()[0]
     except Exception:
@@ -589,10 +597,14 @@ def update_index_with_blob_buffer(path: str, buffer: EditorBuffer) -> None:
     if not file_mode:
         file_mode = "100644"
 
-    run_git_command(["update-index", "--add", "--cacheinfo", f"{file_mode},{blob_hash},{path}"])
+    git_update_index(mode=file_mode, blob_sha=blob_hash, file_path=path)
 
     # Log after state
-    ls_after = run_git_command(["ls-files", "--stage", "--", path], check=False).stdout.strip()
+    ls_after = run_git_command(
+        ["ls-files", "--stage", "--", path],
+        check=False,
+        requires_index_lock=False,
+    ).stdout.strip()
     log_journal(
         "update_index_with_blob_buffer",
         path=path,

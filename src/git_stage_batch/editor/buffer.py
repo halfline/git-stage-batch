@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from contextlib import nullcontext
 import mmap
 import os
 from pathlib import Path
 import tempfile
-from typing import BinaryIO, Generic, Iterator, TypeVar, overload
+from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
 
 
 _DEFAULT_CHUNK_SIZE = 1024 * 1024
@@ -425,6 +426,13 @@ class _BufferLineSliceSequence(Sequence[_LineT], Generic[_LineT]):
     def __len__(self) -> int:
         return len(range(*self._resolved_range()))
 
+    def acquire_lines(self) -> Any:
+        """Return a context manager for acquired lines from this slice."""
+        acquire_lines = getattr(self._parent, "acquire_lines", None)
+        if acquire_lines is None:
+            return nullcontext(self)
+        return _AcquiredBufferLineSliceContext(acquire_lines(), self._slice)
+
     @overload
     def __getitem__(self, index: int) -> _LineT: ...
 
@@ -478,6 +486,24 @@ class _BufferLineSliceSequence(Sequence[_LineT], Generic[_LineT]):
 
     def _resolved_range(self) -> tuple[int, int, int]:
         return self._slice.indices(len(self._parent))
+
+
+class _AcquiredBufferLineSliceContext:
+    """Context manager for acquired line views from a slice sequence."""
+
+    def __init__(self, parent_context: Any, line_slice: slice) -> None:
+        self._parent_context = parent_context
+        self._slice = line_slice
+        self._lines: Sequence[Any] | None = None
+
+    def __enter__(self) -> Sequence[Any]:
+        parent = self._parent_context.__enter__()
+        self._lines = _BufferLineSliceSequence(parent, self._slice)
+        return self._lines
+
+    def __exit__(self, exc_type, exc, traceback) -> Any:
+        self._lines = None
+        return self._parent_context.__exit__(exc_type, exc, traceback)
 
 
 def _slice_uses_negative_bounds(line_slice: slice) -> bool:

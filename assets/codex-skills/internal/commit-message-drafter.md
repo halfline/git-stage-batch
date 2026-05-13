@@ -28,6 +28,7 @@ Expect the caller to provide:
 - whether this is a single commit or part of a series
 - the current commit's one-clause purpose
 - whether this is the final commit in the series
+- whether this is the penultimate commit in the series, when known
 - any repository-specific commit rules already discovered
 - any known preferred prefixes
 
@@ -61,8 +62,11 @@ Prefer the smallest number of commands that gives a confident answer.
   project's state during a multi-commit series.
 - The second paragraph describes the underlying problem.
 - The third paragraph explains how this commit addresses that problem.
-- Add a forward-looking fourth paragraph only when the caller says this is not
-  the final commit in the series.
+- For a multi-commit series, include a fourth paragraph. If the caller says
+  this is the final commit, make that paragraph a closing conclusion for the
+  series goal. If the caller says this is the penultimate commit, refer to the
+  upcoming final commit in the singular instead of saying `subsequent commits`.
+  For earlier non-final commits, use future-looking text for what remains.
 - If the caller supplied wording bans or line-length limits, obey them.
 
 ## Output Format

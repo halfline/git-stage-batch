@@ -6,7 +6,7 @@ from dataclasses import replace
 import json
 import sys
 
-from ..core.diff_parser import build_line_changes_from_patch_lines, parse_unified_diff_streaming
+from ..core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
@@ -202,60 +202,61 @@ def command_skip_file(
         blocked_hashes = read_text_file_line_set(blocklist_path)
 
         hunks_skipped = 0
-        for patch in parse_unified_diff_streaming(
+        with acquire_unified_diff(
             stream_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
             )
-        ):
-            if isinstance(patch, GitlinkChange):
-                if patch.path() != target_file:
+        ) as patches:
+            for patch in patches:
+                if isinstance(patch, GitlinkChange):
+                    if patch.path() != target_file:
+                        continue
+
+                    patch_hash = compute_gitlink_change_hash(patch)
+                    if patch_hash in blocked_hashes:
+                        continue
+
+                    append_lines_to_file(blocklist_path, [patch_hash])
+                    blocked_hashes.add(patch_hash)
+                    record_gitlink_hunk_skipped(patch, patch_hash)
+                    hunks_skipped += 1
                     continue
 
-                patch_hash = compute_gitlink_change_hash(patch)
+                if isinstance(patch, BinaryFileChange):
+                    file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+                    if file_path != target_file:
+                        continue
+
+                    patch_hash = compute_binary_file_hash(patch)
+                    if patch_hash in blocked_hashes:
+                        continue
+
+                    append_lines_to_file(blocklist_path, [patch_hash])
+                    blocked_hashes.add(patch_hash)
+                    record_binary_hunk_skipped(patch, patch_hash)
+                    hunks_skipped += 1
+                    continue
+
+                if patch.new_path != target_file:
+                    continue
+
+                patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
+
+                # Skip if already blocked
                 if patch_hash in blocked_hashes:
                     continue
 
+                # Add to blocklist without staging
                 append_lines_to_file(blocklist_path, [patch_hash])
                 blocked_hashes.add(patch_hash)
-                record_gitlink_hunk_skipped(patch, patch_hash)
+                record_hunk_skipped(
+                    build_line_changes_from_patch_lines(patch.lines),
+                    patch_hash,
+                )
                 hunks_skipped += 1
-                continue
-
-            if isinstance(patch, BinaryFileChange):
-                file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
-                if file_path != target_file:
-                    continue
-
-                patch_hash = compute_binary_file_hash(patch)
-                if patch_hash in blocked_hashes:
-                    continue
-
-                append_lines_to_file(blocklist_path, [patch_hash])
-                blocked_hashes.add(patch_hash)
-                record_binary_hunk_skipped(patch, patch_hash)
-                hunks_skipped += 1
-                continue
-
-            if patch.new_path != target_file:
-                continue
-
-            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-
-            # Skip if already blocked
-            if patch_hash in blocked_hashes:
-                continue
-
-            # Add to blocklist without staging
-            append_lines_to_file(blocklist_path, [patch_hash])
-            blocked_hashes.add(patch_hash)
-            record_hunk_skipped(
-                build_line_changes_from_patch_lines(patch.lines),
-                patch_hash,
-            )
-            hunks_skipped += 1
 
         if quiet and advance:
             advance_to_next_change()

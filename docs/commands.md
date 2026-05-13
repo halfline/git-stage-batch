@@ -69,6 +69,9 @@ When `--files` resolves to multiple files, `show` prints a matched-files list wi
 
 For multi-file batches, `show --from BATCH` uses the same matched-files list and repeats `--from BATCH` in the suggested open commands.
 
+Submodule pointer changes are shown as atomic entries. They support whole-entry
+actions, but not `--line`.
+
 **Options:**
 - `--file [PATH]`: Display entire file instead of single hunk
   - Without PATH: uses selected hunk's file

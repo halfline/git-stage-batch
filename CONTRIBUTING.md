@@ -144,17 +144,19 @@ Use natural prose such as:
 
 #### Fourth Paragraph
 
-Use it for every commit except the final one in a multi-commit series.
-Use future tense because the work has not happened yet, and be specific
-about the next step rather than vague.
+Use it for every commit in a multi-commit series. For non-final commits, use
+future tense because the work has not happened yet, and be specific about the
+next step rather than vague.
 
 For example:
 - `Subsequent commits will provide ...`
 - `In the future, <behavior> will change to ...`
 
 The final commit should conclude the series goal introduced by the opening
-commit. Omit future-looking text unless repository-specific guidance requires
-otherwise. Vary the phrasing across a series.
+commit in a fourth paragraph instead of pointing toward more work. For the
+penultimate commit, refer to the upcoming final commit in the singular, such
+as `The final commit will ...`, instead of saying `subsequent commits`.
+Vary the phrasing across a series.
 
 ### Checklist
 
@@ -175,7 +177,8 @@ Before finalizing a commit message, check:
 - Does the third paragraph open with `This commit` and clearly state what this commit does without overstating its impact?
 - If this is part of a series, does it show progression (e.g., "begins", "continues", "completes")?
 - If this is an incremental step, does it clearly say so?
-- If this commit is not the last in the series, does the fourth paragraph name what subsequent commits will do?
+- If this is the penultimate commit in a series, does the fourth paragraph name what the upcoming final commit will do?
+- If this is an earlier non-final commit in a series, does the fourth paragraph name what subsequent commits will do?
 - Do body paragraphs wrap at 75 characters?
 
 ### Example: Single Commit

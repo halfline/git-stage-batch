@@ -567,9 +567,9 @@ def command_include(*, quiet: bool = False) -> None:
                 patch_buffer.byte_chunks(),
                 check=False,
             )
+
         if apply_result.returncode != 0:
             print(_("Failed to apply hunk: {error}").format(error=apply_result.stderr), file=sys.stderr)
-
             return
 
         # Record for progress tracking
@@ -1393,7 +1393,7 @@ def _detect_file_mode(file_path: str) -> str:
             return "120000"
         return "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
 
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False, requires_index_lock=False)
     if ls_result.returncode == 0 and ls_result.stdout.strip():
         parts = ls_result.stdout.strip().split()
         if parts:

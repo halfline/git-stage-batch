@@ -9,9 +9,13 @@ import subprocess
 import sys
 
 from ..batch.query import read_batch_metadata
-from ..core.hashing import compute_binary_file_hash, compute_stable_hunk_hash_from_lines
+from ..core.hashing import (
+    compute_binary_file_hash,
+    compute_gitlink_change_hash,
+    compute_stable_hunk_hash_from_lines,
+)
 from ..core.diff_parser import parse_unified_diff_streaming
-from ..core.models import BinaryFileChange
+from ..core.models import BinaryFileChange, GitlinkChange
 from ..data.file_review_state import (
     FileReviewAction,
     ReviewSource,
@@ -24,7 +28,9 @@ from ..data.hunk_tracking import (
     binary_file_change_is_stale,
     clear_selected_change_state_files,
     format_id_range,
+    gitlink_change_is_stale,
     load_selected_binary_file,
+    load_selected_gitlink_change,
     mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_change_kind,
     selected_batch_binary_batch_name,
@@ -98,8 +104,18 @@ def estimate_remaining_hunks() -> int:
 
     remaining = 0
     try:
-        for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
-            if isinstance(patch, BinaryFileChange):
+        for patch in parse_unified_diff_streaming(
+            stream_git_diff(
+                context_lines=get_context_lines(),
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+            )
+        ):
+            if isinstance(patch, GitlinkChange):
+                hunk_hash = compute_gitlink_change_hash(patch)
+                file_path = patch.path()
+            elif isinstance(patch, BinaryFileChange):
                 hunk_hash = compute_binary_file_hash(patch)
                 file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
             else:
@@ -129,6 +145,8 @@ def _selected_kind_label(selected_kind: str | None) -> str:
         SelectedChangeKind.BATCH_FILE.value: _("Current batch file review:"),
         SelectedChangeKind.BINARY.value: _("Current binary file:"),
         SelectedChangeKind.BATCH_BINARY.value: _("Current batch binary file:"),
+        SelectedChangeKind.GITLINK.value: _("Current submodule pointer:"),
+        SelectedChangeKind.BATCH_GITLINK.value: _("Current batch submodule pointer:"),
     }
     return labels.get(selected_kind or SelectedChangeKind.HUNK.value, _("Current selection:"))
 
@@ -186,6 +204,22 @@ def _read_live_review_display_ids(file_path: str) -> list[int] | None:
 def _read_selected_change_summary() -> tuple[bool, dict | None]:
     """Return whether a non-stale selected change exists and its status summary."""
     selected_kind = read_selected_change_kind()
+    if selected_kind in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
+        gitlink_change = load_selected_gitlink_change()
+        if gitlink_change is None:
+            return False, None
+        if selected_kind == SelectedChangeKind.GITLINK and gitlink_change_is_stale(gitlink_change):
+            return False, None
+        return True, {
+            "kind": selected_kind.value,
+            "file": gitlink_change.path(),
+            "line": None,
+            "ids": [],
+            "change_type": gitlink_change.change_type,
+            "old_oid": gitlink_change.old_oid,
+            "new_oid": gitlink_change.new_oid,
+        }
+
     if selected_kind in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
         binary_file = load_selected_binary_file()
         if binary_file is None:

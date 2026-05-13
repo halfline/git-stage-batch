@@ -17,6 +17,11 @@ from ..batch.selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
     translate_atomic_unit_error_to_gutter_ids,
 )
+from ..batch.submodule_pointer import (
+    apply_submodule_pointer_from_batch,
+    is_batch_submodule_pointer,
+    refuse_batch_submodule_pointer_lines,
+)
 from ..batch.validation import batch_exists
 from ..core.text_lifecycle import (
     TextFileChangeType,
@@ -172,6 +177,8 @@ def command_apply_from_batch(
         file_path_for_check = list(files.keys())[0]  # Single file context enforced above
         if files[file_path_for_check].get("file_type") == "binary":
             exit_with_error(_("Cannot use --lines with binary files. Apply the whole file instead."))
+        if is_batch_submodule_pointer(files[file_path_for_check]):
+            refuse_batch_submodule_pointer_lines(_("Apply"))
 
     # Translate gutter IDs to selection IDs if line selection is active
     selection_ids_to_apply = selected_ids
@@ -196,13 +203,17 @@ def command_apply_from_batch(
 
         for file_path, file_meta in files.items():
             try:
-                # Snapshot file before modifying
-                snapshot_file_if_untracked(file_path)
-
                 # Binary files are atomic units - handle separately without ownership/merge logic
                 if file_meta.get("file_type") == "binary":
+                    snapshot_file_if_untracked(file_path)
                     _apply_binary_file_from_batch(batch_name, file_path, file_meta)
                     continue
+                if is_batch_submodule_pointer(file_meta):
+                    apply_submodule_pointer_from_batch(file_path, file_meta)
+                    continue
+
+                # Snapshot file before modifying
+                snapshot_file_if_untracked(file_path)
 
                 text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 

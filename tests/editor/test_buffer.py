@@ -82,6 +82,25 @@ def test_editor_buffer_acquires_single_scoped_line_view():
             assert line == b"beta\n"
 
 
+def test_editor_buffer_slices_acquire_scoped_line_views():
+    """Buffer slices forward scoped line acquisition to their parent."""
+    with EditorBuffer.from_bytes(b"zero\none\ntwo\nthree\n") as buffer:
+        sliced = buffer[-3:-1]
+
+        with sliced.acquire_lines() as lines:
+            first = lines[0]
+            nested = lines[1:]
+
+            assert len(lines) == 2
+            assert not isinstance(first, bytes)
+            assert first == b"one\n"
+            assert list(lines) == [b"one\n", b"two\n"]
+            assert list(nested) == [b"two\n"]
+
+        with pytest.raises(ValueError, match="line view is closed"):
+            bytes(first)
+
+
 def test_editor_buffer_line_views_use_acquisition_lifetime():
     """Line views reject access after their acquisition scope closes."""
     with EditorBuffer.from_bytes(b"alpha\n") as buffer:

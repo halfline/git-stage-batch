@@ -368,7 +368,11 @@ def _perform_atomic_in_place_sift(
                     change_type=result.get("change_type"),
                 )
 
-        temp_commit = run_git_command(["rev-parse", get_batch_content_ref_name(temp_batch_name)], check=False)
+        temp_commit = run_git_command(
+            ["rev-parse", get_batch_content_ref_name(temp_batch_name)],
+            check=False,
+            requires_index_lock=False,
+        )
         if temp_commit.returncode == 0:
             commit_sha = temp_commit.stdout.strip()
             temp_metadata = read_batch_metadata(temp_batch_name)

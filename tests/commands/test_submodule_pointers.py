@@ -224,6 +224,124 @@ def test_file_list_uses_submodule_pointer_wording(
     assert "gitlink" not in (captured.out + captured.err).lower()
 
 
+def test_include_stages_selected_submodule_pointer(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """include should stage the selected submodule pointer commit."""
+    repo, old_oid, new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include(quiet=True)
+
+    raw_diff = _git_stdout(
+        ["diff", "--cached", "--raw", "--abbrev=40", "--ignore-submodules=none"],
+        cwd=repo,
+    )
+    assert ":160000 160000" in raw_diff
+    assert old_oid in raw_diff
+    assert new_oid in raw_diff
+    assert raw_diff.endswith("\tsub")
+    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+
+
+def test_include_file_stages_submodule_pointer(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """include --file should stage a submodule pointer atomically."""
+    repo, old_oid, new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include_file("sub", quiet=True)
+
+    raw_diff = _git_stdout(
+        ["diff", "--cached", "--raw", "--abbrev=40", "--ignore-submodules=none"],
+        cwd=repo,
+    )
+    assert ":160000 160000" in raw_diff
+    assert old_oid in raw_diff
+    assert new_oid in raw_diff
+    assert raw_diff.endswith("\tsub")
+    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+
+
+def test_include_to_batch_stores_submodule_pointer_entry(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """include --to should store a submodule pointer as a tree entry."""
+    repo, old_oid, new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+
+    file_meta = read_batch_metadata("pointers")["files"]["sub"]
+    assert file_meta["file_type"] == "gitlink"
+    assert file_meta["change_type"] == "modified"
+    assert file_meta["mode"] == "160000"
+    assert file_meta["old_oid"] == old_oid
+    assert file_meta["new_oid"] == new_oid
+
+    batch_commit = get_batch_commit_sha("pointers")
+    assert batch_commit is not None
+    tree_entry = _git_stdout(["ls-tree", batch_commit, "--", "sub"], cwd=repo)
+    assert tree_entry == f"160000 commit {new_oid}\tsub"
+
+
+def test_include_to_batch_finds_submodule_pointer_without_selection_when_config_ignores(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """include --to should find submodule pointers hidden by user config."""
+    repo, old_oid, new_oid = submodule_pointer_repo
+
+    command_include_to_batch("pointers", quiet=True)
+
+    file_meta = read_batch_metadata("pointers")["files"]["sub"]
+    assert file_meta["old_oid"] == old_oid
+    assert file_meta["new_oid"] == new_oid
+    batch_commit = get_batch_commit_sha("pointers")
+    assert batch_commit is not None
+    assert _git_stdout(["ls-tree", batch_commit, "--", "sub"], cwd=repo) == (
+        f"160000 commit {new_oid}\tsub"
+    )
+
+
+def test_include_to_batch_stores_added_submodule_pointer(
+    added_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """include --to should store added submodule pointers atomically."""
+    repo, new_oid = added_submodule_pointer_repo
+
+    command_include_to_batch("pointers", quiet=True)
+
+    file_meta = read_batch_metadata("pointers")["files"]["sub"]
+    assert file_meta["file_type"] == "gitlink"
+    assert file_meta["change_type"] == "added"
+    assert file_meta["old_oid"] is None
+    assert file_meta["new_oid"] == new_oid
+    batch_commit = get_batch_commit_sha("pointers")
+    assert batch_commit is not None
+    assert _git_stdout(["ls-tree", batch_commit, "--", "sub"], cwd=repo) == (
+        f"160000 commit {new_oid}\tsub"
+    )
+
+
+def test_include_to_batch_stores_deleted_submodule_pointer(
+    deleted_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """include --to should store deleted submodule pointers atomically."""
+    repo, old_oid = deleted_submodule_pointer_repo
+
+    command_include_to_batch("pointers", quiet=True)
+
+    file_meta = read_batch_metadata("pointers")["files"]["sub"]
+    assert file_meta["file_type"] == "gitlink"
+    assert file_meta["change_type"] == "deleted"
+    assert file_meta["old_oid"] == old_oid
+    assert file_meta["new_oid"] is None
+    batch_commit = get_batch_commit_sha("pointers")
+    assert batch_commit is not None
+    assert _git_stdout(["ls-tree", batch_commit, "--", "sub"], cwd=repo) == ""
+
+
 def _configure_identity(repo: Path) -> None:
     _run(["git", "config", "user.name", "Test User"], cwd=repo)
     _run(["git", "config", "user.email", "test@example.com"], cwd=repo)

@@ -22,9 +22,13 @@ def _get_index_state(file_path: str | None = None) -> dict[str, Any]:
     """Get selected index state for a file or all files."""
     try:
         if file_path:
-            ls_result = run_git_command(["ls-files", "--stage", "--", file_path], check=False)
+            ls_result = run_git_command(
+                ["ls-files", "--stage", "--", file_path],
+                check=False,
+                requires_index_lock=False,
+            )
         else:
-            ls_result = run_git_command(["ls-files", "--stage"], check=False)
+            ls_result = run_git_command(["ls-files", "--stage"], check=False, requires_index_lock=False)
 
         if ls_result.stdout.strip():
             entries = []
@@ -86,7 +90,7 @@ def log_journal(operation: str, **kwargs: Any) -> None:
             # Get repository path for global journal (to distinguish different repos)
             repo_path = None
             try:
-                result = run_git_command(["rev-parse", "--show-toplevel"], check=False)
+                result = run_git_command(["rev-parse", "--show-toplevel"], check=False, requires_index_lock=False)
                 if result.returncode == 0:
                     repo_path = result.stdout.strip()
             except Exception:

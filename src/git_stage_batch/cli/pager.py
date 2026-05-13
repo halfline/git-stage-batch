@@ -52,7 +52,7 @@ def should_page_output(args: argparse.Namespace) -> bool:
 
 def _resolve_git_pager() -> str | None:
     """Resolve the pager command using Git's own precedence rules."""
-    result = run_git_command(["var", "GIT_PAGER"], check=False)
+    result = run_git_command(["var", "GIT_PAGER"], check=False, requires_index_lock=False)
     if result.returncode != 0:
         return None
 

@@ -3,37 +3,13 @@
 from __future__ import annotations
 
 import fcntl
-import subprocess
-import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from .git import get_git_directory_path
 from .paths import ensure_state_directory_exists, get_session_lock_file_path
 
 _LOCK_DEPTH = 0
 _LOCK_HANDLE = None
-_INDEX_LOCK_WAIT_SECONDS = 2.0
-_INDEX_LOCK_POLL_SECONDS = 0.05
-
-
-def wait_for_git_index_lock(
-    *,
-    timeout_seconds: float = _INDEX_LOCK_WAIT_SECONDS,
-    poll_seconds: float = _INDEX_LOCK_POLL_SECONDS,
-) -> None:
-    """Wait briefly for a pre-existing Git index lock to disappear."""
-    try:
-        index_lock_path = get_git_directory_path() / "index.lock"
-    except subprocess.CalledProcessError:
-        return
-
-    deadline = time.monotonic() + timeout_seconds
-    while index_lock_path.exists():
-        remaining_seconds = deadline - time.monotonic()
-        if remaining_seconds <= 0:
-            return
-        time.sleep(min(poll_seconds, remaining_seconds))
 
 
 @contextmanager

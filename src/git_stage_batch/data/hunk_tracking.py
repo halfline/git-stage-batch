@@ -66,10 +66,10 @@ from ..utils.file_io import (
     read_text_file_contents,
     write_text_file_contents,
 )
-from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.git import (
     get_git_repository_root_path,
     run_git_command,
+    stream_git_command,
     stream_git_diff,
 )
 from ..utils.text import bytes_to_lines, normalize_line_sequence_endings
@@ -453,6 +453,7 @@ def compute_batch_binary_fingerprint(
             blob_result = run_git_command(
                 ["rev-parse", "--verify", f"{batch_commit}:{file_path}"],
                 check=False,
+                requires_index_lock=False,
             )
             if blob_result.returncode == 0:
                 batch_blob = blob_result.stdout.strip()
@@ -1621,7 +1622,6 @@ def _stream_no_index_diff_lines(
     new_path: str,
 ) -> Generator[bytes, None, None]:
     arguments = [
-        "git",
         "diff",
         "--no-index",
         f"-U{get_context_lines()}",
@@ -1635,14 +1635,13 @@ def _stream_no_index_diff_lines(
     def stdout_chunks() -> Generator[bytes, None, None]:
         nonlocal exit_code
 
-        for event in stream_command(arguments):
-            if isinstance(event, ExitEvent):
-                exit_code = event.exit_code
-            elif isinstance(event, OutputEvent):
-                if event.fd == 1:
-                    yield event.data
-                elif event.fd == 2:
-                    stderr_chunks.append(event.data)
+        try:
+            yield from stream_git_command(arguments, requires_index_lock=False)
+        except subprocess.CalledProcessError as error:
+            exit_code = error.returncode
+            stderr = error.stderr
+            if stderr is not None:
+                stderr_chunks.append(stderr.encode("utf-8", errors="replace"))
 
     old_header = f"a{old_path}".encode("utf-8")
     new_header = f"b{new_path}".encode("utf-8")

@@ -25,6 +25,7 @@ from ..exceptions import CommandError
 from ..i18n import _, ngettext
 from ..utils.command import run_command
 from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
+from ..utils.git import run_git_command
 from .completion import command_complete_files
 
 
@@ -122,11 +123,12 @@ def _build_manpath_with_packaged_page(man_root: Path, env: dict[str, str]) -> st
 def _try_git_help_with_environment(env: dict[str, str] | None = None) -> bool:
     """Run git help for git-stage-batch."""
     try:
-        result = run_command(
-            ["git", "help", "stage-batch"],
+        result = run_git_command(
+            ["help", "stage-batch"],
             check=False,
             capture_stdout=False,
             env=env,
+            requires_index_lock=False,
         )
     except (FileNotFoundError, OSError):
         return False

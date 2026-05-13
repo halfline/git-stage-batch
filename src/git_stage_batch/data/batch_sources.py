@@ -18,7 +18,6 @@ from ..editor import (
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
-from ..utils.command import run_command
 from ..utils.git import (
     create_git_blob,
     get_git_repository_root_path,
@@ -286,16 +285,16 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
 
         import_succeeded = False
         try:
-            run_command(
+            run_git_command(
                 [
-                    "git",
                     "fast-import",
                     "--quiet",
                     "--date-format=raw",
                     f"--export-marks={marks_path}",
                 ],
-                fast_import_chunks(),
+                stdin_chunks=fast_import_chunks(),
                 capture_stdout=False,
+                requires_index_lock=False,
             )
             import_succeeded = True
             marks: dict[int, str] = {}
@@ -364,7 +363,11 @@ def create_batch_source_commit(
     baseline_commit = read_text_file_contents(get_abort_head_file_path()).strip()
 
     # Check if file existed at session start
-    baseline_result = run_git_command(["cat-file", "-e", f"{baseline_commit}:{file_path}"], check=False)
+    baseline_result = run_git_command(
+        ["cat-file", "-e", f"{baseline_commit}:{file_path}"],
+        check=False,
+        requires_index_lock=False,
+    )
     file_existed_at_session_start = baseline_result.returncode == 0
 
     repo_root = get_git_repository_root_path()

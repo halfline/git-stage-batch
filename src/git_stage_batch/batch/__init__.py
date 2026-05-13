@@ -21,7 +21,6 @@ from .storage import (
     add_gitlink_to_batch,
     BatchFileUpdate,
     copy_file_from_batch_to_batch,
-    get_batch_diff,
     read_file_from_batch,
 )
 from .validation import batch_exists, validate_batch_name
@@ -38,7 +37,6 @@ __all__ = [
     "delete_batch",
     "get_batch_baseline_commit",
     "get_batch_commit_sha",
-    "get_batch_diff",
     "get_batch_tree_sha",
     "get_validated_baseline_commit",
     "list_batch_files",

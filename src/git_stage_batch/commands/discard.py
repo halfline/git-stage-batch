@@ -33,16 +33,18 @@ from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.source_refresh import _refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
+from ..batch.submodule_pointer import discard_submodule_pointer_from_batch
 from ..core.diff_parser import (
     build_line_changes_from_patch_lines,
     parse_unified_diff_streaming,
 )
 from ..core.hashing import (
     compute_binary_file_hash,
+    compute_gitlink_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
 from ..core.line_selection import parse_line_selection
-from ..core.models import BinaryFileChange
+from ..core.models import BinaryFileChange, GitlinkChange
 from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
@@ -59,6 +61,7 @@ from ..data.hunk_tracking import (
     record_hunks_discarded,
     refuse_bare_action_after_file_list,
     render_binary_file_change,
+    render_gitlink_change,
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -96,7 +99,13 @@ from ..utils.file_io import (
     read_text_file_line_set,
     read_text_file_contents,
 )
-from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command, stream_git_diff
+from ..utils.git import (
+    get_git_repository_root_path,
+    git_update_gitlink,
+    require_git_repository,
+    run_git_command,
+    stream_git_diff,
+)
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
@@ -122,6 +131,39 @@ class _TextFileDiscardInput:
     file_mode: str
     all_lines_to_batch: list
     patches_to_discard: list[_PreparedPatchDiscard]
+
+
+def _discard_gitlink_change(gitlink_change: GitlinkChange) -> None:
+    """Restore one submodule pointer change to its baseline state."""
+    file_path = gitlink_change.path()
+    file_meta = {
+        "file_type": "gitlink",
+        "change_type": gitlink_change.change_type,
+        "old_oid": gitlink_change.old_oid,
+        "new_oid": gitlink_change.new_oid,
+    }
+    discard_submodule_pointer_from_batch(file_path, file_meta)
+
+    if gitlink_change.is_new_file():
+        return
+    if gitlink_change.old_oid is None:
+        exit_with_error(
+            _("Cannot discard submodule pointer for {file}: missing baseline commit.").format(
+                file=file_path,
+            )
+        )
+    index_result = git_update_gitlink(
+        file_path=file_path,
+        oid=gitlink_change.old_oid,
+        check=False,
+    )
+    if index_result.returncode != 0:
+        exit_with_error(
+            _("Failed to update submodule pointer in the index for {file}: {error}").format(
+                file=file_path,
+                error=index_result.stderr,
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -223,6 +265,23 @@ def command_discard(*, quiet: bool = False) -> None:
         patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
         # Handle based on item type
+        if isinstance(item, GitlinkChange):
+            _discard_gitlink_change(item)
+            append_lines_to_file(get_block_list_file_path(), [patch_hash])
+            record_hunk_discarded(patch_hash)
+
+            if not quiet:
+                print(
+                    _("✓ Submodule pointer restored: {file}").format(file=item.path()),
+                    file=sys.stderr,
+                )
+
+            if quiet:
+                advance_to_next_change()
+            else:
+                advance_to_and_show_next_change()
+            return
+
         if isinstance(item, BinaryFileChange):
             # Binary file - restore from HEAD or delete
             file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
@@ -392,7 +451,16 @@ def command_discard_file(file: str) -> None:
     if file == "":
         target_file = get_selected_change_file_path()
         if target_file is None:
-            diff_result = run_git_command(["diff", "--quiet"], check=False)
+            diff_result = run_git_command(
+                [
+                    "-c",
+                    "diff.ignoreSubmodules=none",
+                    "diff",
+                    "--ignore-submodules=none",
+                    "--quiet",
+                ],
+                check=False,
+            )
             if diff_result.returncode == 0:
                 print(_("No more hunks to process."), file=sys.stderr)
             else:
@@ -406,13 +474,29 @@ def command_discard_file(file: str) -> None:
         blocklist_path = get_block_list_file_path()
         blocked_hashes = read_text_file_line_set(blocklist_path)
 
+        gitlink_change = render_gitlink_change(target_file)
+        if gitlink_change is not None:
+            patch_hash = compute_gitlink_change_hash(gitlink_change)
+            _discard_gitlink_change(gitlink_change)
+            if patch_hash not in blocked_hashes:
+                append_lines_to_file(blocklist_path, [patch_hash])
+                record_hunk_discarded(patch_hash)
+            print(
+                _("✓ Submodule pointer restored: {file}").format(file=target_file),
+                file=sys.stderr,
+            )
+            advance_to_and_show_next_change()
+            return
+
         # Snapshot the file if it's untracked (for abort functionality)
         snapshot_file_if_untracked(target_file)
 
         # Stream through hunks and collect hashes from target file BEFORE removing it
         # (git rm -f will stage the deletion, making hunks disappear from git diff)
         hashes_to_block = []
-        for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
+        for patch in parse_unified_diff_streaming(
+            stream_git_diff(context_lines=get_context_lines())
+        ):
             if isinstance(patch, BinaryFileChange):
                 file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
                 if file_path != target_file:
@@ -613,6 +697,12 @@ def command_discard_to_batch(
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
+        if (
+            file is None
+            and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.GITLINK
+        ):
+            exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
         if (
             file is None
             and line_ids is None
@@ -1078,8 +1168,15 @@ def _collect_text_file_discard_inputs(
     files_with_text_patches: set[str] = set()
 
     for patch in parse_unified_diff_streaming(
-        stream_git_diff(base="HEAD", context_lines=get_context_lines(), paths=files)
+        stream_git_diff(
+            base="HEAD",
+            context_lines=get_context_lines(),
+            paths=files,
+        )
     ):
+        if isinstance(patch, GitlinkChange):
+            exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
+
         if isinstance(patch, BinaryFileChange):
             continue
 
@@ -1303,6 +1400,8 @@ def _command_discard_file_to_batch(
     binary_change = render_binary_file_change(file_path)
     if binary_change is not None:
         return _command_discard_binary_to_batch(batch_name, binary_change, quiet=quiet, advance=advance)
+    if render_gitlink_change(file_path) is not None:
+        exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
 
     # Load blocklist
     blocklist_path = get_block_list_file_path()
@@ -1315,7 +1414,16 @@ def _command_discard_file_to_batch(
     all_lines_to_batch = []
     patches_to_discard = []
 
-    for patch in parse_unified_diff_streaming(stream_git_diff(base="HEAD", context_lines=get_context_lines(), paths=[file_path])):
+    for patch in parse_unified_diff_streaming(
+        stream_git_diff(
+            base="HEAD",
+            context_lines=get_context_lines(),
+            paths=[file_path],
+        )
+    ):
+        if isinstance(patch, GitlinkChange):
+            exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
+
         patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
         if patch_hash in blocked_hashes:
@@ -1651,6 +1759,8 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     except NoMoreHunks:
         print(_("No changes to process."), file=sys.stderr)
         return 0
+    if isinstance(selected_item, GitlinkChange):
+        exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
     if isinstance(selected_item, BinaryFileChange):
         return _command_discard_binary_to_batch(batch_name, selected_item, quiet=quiet)
 
@@ -1693,7 +1803,12 @@ def _command_discard_text_hunk_to_batch(
 
     if file_only:
         # Collect ALL hunks from this file
-        for patch in parse_unified_diff_streaming(stream_git_diff(context_lines=get_context_lines())):
+        for patch in parse_unified_diff_streaming(
+            stream_git_diff(context_lines=get_context_lines())
+        ):
+            if isinstance(patch, GitlinkChange):
+                exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
+
             if patch.new_path != file_path:
                 continue
 

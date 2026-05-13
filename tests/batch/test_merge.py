@@ -349,6 +349,20 @@ class TestMergeLineSequences:
         assert tuple(region.baseline_lines) == (b"old\n",)
         assert not isinstance(region.baseline_lines, list)
 
+    def test_baseline_correspondence_looks_up_adjacent_ranges(self):
+        """Baseline correspondence maps source lines through region bounds."""
+        baseline = [b"line1\n", b"line3\n"]
+        source = [b"line1\n", b"line2\n", b"line3\n"]
+
+        correspondence = _build_baseline_correspondence(baseline, source)
+
+        assert correspondence.get_region_for_source_line(0) is None
+        assert correspondence.get_region_for_source_line(1).kind == RegionKind.EQUAL
+        assert correspondence.get_region_for_source_line(2).kind == RegionKind.INSERT
+        assert correspondence.get_region_for_source_line(3).kind == RegionKind.EQUAL
+        assert correspondence.get_region_for_source_line(4) is None
+        assert not hasattr(correspondence, "line_to_region")
+
     def test_can_merge_accepts_non_list_sequences(self, line_sequence):
         """Mergeability probes accept indexed line sequences."""
         source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
@@ -1416,6 +1430,16 @@ class TestDiscardBatch:
 
         # Should restore even lines from baseline
         assert result == b"1\n2\n3\n4\n5\n"
+
+    def test_discard_rejects_partial_by_hunk_ownership(self):
+        """Partial ownership of a by-hunk replace region is unsafe."""
+        baseline = b"A\nold1\nold2\nD\n"
+        batch_source = b"A\nnew1\nnew2\nnew3\nD\n"
+        working = b"A\nnew1\nnew2\nnew3\nD\n"
+        ownership = BatchOwnership.from_presence_lines(["2"], [])
+
+        with pytest.raises(MergeError, match="batch owns 1 of 3 lines"):
+            discard_batch(batch_source, ownership, working, baseline)
 
     def test_discard_insertion_not_present_does_nothing(self):
         """Test that discarding insertion when not in working tree does nothing."""

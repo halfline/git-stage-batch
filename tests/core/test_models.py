@@ -1,7 +1,8 @@
 """Tests for data models."""
 
+import pytest
 
-from git_stage_batch.core.models import HunkHeader, SingleHunkPatch
+from git_stage_batch.core.models import HunkHeader, LineEntry, SingleHunkPatch
 
 
 class TestHunkHeader:
@@ -48,6 +49,22 @@ class TestHunkHeader:
         header = HunkHeader(old_start=10, old_len=2, new_start=9, new_len=0)
 
         assert header.new_prefix_line_count() == 9
+
+
+class TestLineEntry:
+    """Tests for LineEntry data invariants."""
+
+    def test_line_entry_requires_text_bytes(self):
+        """LineEntry does not synthesize bytes from display text."""
+        with pytest.raises(TypeError, match="text_bytes"):
+            LineEntry(1, "+", None, 1, text="caf\xe9")
+
+    def test_line_entry_display_text_is_derived_from_text_bytes(self):
+        """Display text is decoded from canonical bytes."""
+        line = LineEntry(1, "+", None, 1, text_bytes=b"caf\xe9", text="ignored")
+
+        assert line.text_bytes == b"caf\xe9"
+        assert line.display_text() == "caf\ufffd"
 
 
 class TestSingleHunkPatch:

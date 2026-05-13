@@ -116,7 +116,7 @@ class TestCommandIncludeToBatch:
         changed_lines = [line for line in line_changes.lines if line.kind != " "]
         # Should only show line 2 (line 1 was filtered out as batched)
         assert len(changed_lines) == 1
-        assert "Line 2" in changed_lines[0].text
+        assert "Line 2" in changed_lines[0].display_text()
 
         # Batch still contains the line we saved
         content_after = read_file_from_batch("persist-lines-batch", "README.md")

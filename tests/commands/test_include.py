@@ -758,7 +758,7 @@ class TestCommandIncludeLine:
         line_changes = load_line_changes_from_state()
         assert line_changes is not None
         changed_lines = [line for line in line_changes.lines if line.kind != " "]
-        assert any("extra line" in line.text for line in changed_lines)
+        assert any("extra line" in line.display_text() for line in changed_lines)
 
     def test_include_line_as_replaces_disjoint_file_scoped_regions(self, temp_git_repo):
         """File-scoped replacement should accept one contiguous range across regions."""

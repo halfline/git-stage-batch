@@ -79,7 +79,7 @@ class TestCommandDiscardFromBatch:
         new_value_gutter = next(
             rendered.selection_id_to_gutter[line.id]
             for line in rendered.line_changes.lines
-            if line.id is not None and line.text == "new value"
+            if line.id is not None and line.display_text() == "new value"
         )
 
         with pytest.raises(CommandError, match="must be selected together") as exc_info:

@@ -546,7 +546,7 @@ def test_default_discard_line_as_to_batch_keeps_partial_review_guard(
     line_changes = load_line_changes_from_state()
     assert line_changes is not None
     visible_changed_texts = [
-        line.text
+        line.display_text()
         for line in line_changes.lines
         if line.id is not None
     ]
@@ -643,7 +643,7 @@ def test_pathless_include_to_batch_line_filters_file_review_selection(
 
     filtered = load_line_changes_from_state()
     assert filtered is not None
-    assert [line.text for line in filtered.lines if line.id is not None] == ["Y"]
+    assert [line.display_text() for line in filtered.lines if line.id is not None] == ["Y"]
 
     command_include_to_batch("second", line_ids="1", quiet=True)
 
@@ -917,7 +917,7 @@ def test_show_file_resets_processed_skip_ids_before_review_line_action(tmp_path,
     line_changes = load_line_changes_from_state()
     assert line_changes is not None
     visible_changed_texts = [
-        line.text
+        line.display_text()
         for line in line_changes.lines
         if line.id is not None
     ]
@@ -1717,7 +1717,6 @@ def test_pathless_include_from_batch_refuses_when_rerendered_batch_diff_changes(
         changed_lines = [
             replace(
                 line,
-                text="changed after review" if line.id is not None else line.text,
                 text_bytes=b"changed after review" if line.id is not None else line.text_bytes,
             )
             for line in rendered.line_changes.lines

@@ -158,7 +158,7 @@ class TestLoadLineLevelChangeFromState:
         result = load_line_changes_from_state()
         assert result.lines[0].id is None
         assert result.lines[0].kind == " "
-        assert result.lines[0].text == "unchanged line"
+        assert result.lines[0].display_text() == "unchanged line"
 
         assert result.lines[1].id == 1
         assert result.lines[1].kind == "-"

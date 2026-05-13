@@ -125,10 +125,10 @@ def test_build_file_hunk_from_buffer_accepts_buffer(temp_git_repo):
         line_changes = build_file_hunk_from_buffer("test.txt", buffer)
 
     assert line_changes is not None
-    assert [line.text for line in line_changes.lines if line.kind == "-"] == [
+    assert [line.display_text() for line in line_changes.lines if line.kind == "-"] == [
         "line2"
     ]
-    assert [line.text for line in line_changes.lines if line.kind == "+"] == [
+    assert [line.display_text() for line in line_changes.lines if line.kind == "+"] == [
         "changed"
     ]
 

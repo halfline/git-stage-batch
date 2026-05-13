@@ -73,6 +73,37 @@ class BinaryFileChange:
 
 
 @dataclass
+class GitlinkChange:
+    """Represents a change to a gitlink/submodule pointer.
+
+    Gitlinks are tree/index entries with mode 160000 and object type commit.
+    They do not have file content in the superproject, so they are treated as
+    atomic changes.
+    """
+    old_path: str
+    new_path: str
+    old_oid: str | None
+    new_oid: str | None
+    change_type: Literal["added", "modified", "deleted"]
+
+    def path(self) -> str:
+        """Return the repository path that identifies this gitlink change."""
+        return self.new_path if self.new_path != "/dev/null" else self.old_path
+
+    def is_new_file(self) -> bool:
+        """Check if this is a newly added gitlink."""
+        return self.change_type == "added"
+
+    def is_deleted_file(self) -> bool:
+        """Check if this is a deleted gitlink."""
+        return self.change_type == "deleted"
+
+    def is_modified_file(self) -> bool:
+        """Check if this is a modified gitlink."""
+        return self.change_type == "modified"
+
+
+@dataclass
 class LineEntry:
     """Represents a single line in a hunk with metadata for line-level selection.
 

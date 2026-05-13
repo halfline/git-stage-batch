@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .models import BinaryFileChange
+    from .models import BinaryFileChange, GitlinkChange
 
 
 def compute_stable_hunk_hash_from_lines(patch_lines: Iterable[bytes]) -> str:
@@ -94,3 +94,16 @@ def compute_binary_file_hash(binary_change: BinaryFileChange) -> str:
     # Hash: "BINARY:" + path + ":" + change_type
     key = f"BINARY:{path}:{binary_change.change_type}".encode('utf-8')
     return hashlib.sha1(key).hexdigest()
+
+
+def compute_gitlink_change_hash(gitlink_change: GitlinkChange) -> str:
+    """Compute a stable identity hash for an atomic gitlink change."""
+    parts = [
+        "gitlink",
+        gitlink_change.old_path,
+        gitlink_change.new_path,
+        gitlink_change.old_oid or "",
+        gitlink_change.new_oid or "",
+        gitlink_change.change_type,
+    ]
+    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()

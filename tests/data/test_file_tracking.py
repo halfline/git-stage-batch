@@ -123,6 +123,56 @@ class TestAutoAddUntrackedFiles:
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
         assert auto_added.count("file.txt") == 1
 
+    def test_auto_add_accepts_target_paths(self, temp_git_repo):
+        """Test auto-adding only the requested untracked paths."""
+        ensure_state_directory_exists()
+
+        (temp_git_repo / "target.txt").write_text("target\n")
+        (temp_git_repo / "other.txt").write_text("other\n")
+
+        auto_add_untracked_files(["target.txt"])
+
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        assert auto_added == ["target.txt"]
+
+        result = subprocess.run(
+            ["git", "ls-files", "--", "target.txt", "other.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "target.txt" in result.stdout
+        assert "other.txt" not in result.stdout
+
+    def test_auto_add_reruns_for_recorded_untracked_path(self, temp_git_repo):
+        """Test re-adding a recorded path after its intent-to-add entry is removed."""
+        ensure_state_directory_exists()
+
+        (temp_git_repo / "file.txt").write_text("content\n")
+        auto_add_untracked_files()
+
+        subprocess.run(
+            ["git", "restore", "--staged", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        auto_add_untracked_files(["file.txt"])
+
+        auto_added = read_file_paths_file(get_auto_added_files_file_path())
+        assert auto_added.count("file.txt") == 1
+
+        result = subprocess.run(
+            ["git", "ls-files", "--", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout.strip() == "file.txt"
+
     def test_auto_add_handles_no_untracked_files(self, temp_git_repo):
         """Test auto_add when there are no untracked files."""
         ensure_state_directory_exists()

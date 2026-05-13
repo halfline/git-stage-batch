@@ -118,3 +118,44 @@ class TestCommandIncludeFile:
             text=True,
         )
         assert "file2.txt" in result.stdout
+
+    def test_include_file_refreshes_untracked_path_after_external_unstage(
+        self,
+        temp_git_repo,
+        capsys,
+    ):
+        """Test explicit include can recover a recorded path that became untracked again."""
+        (temp_git_repo / "a.txt").write_text("a\n")
+        (temp_git_repo / "b.txt").write_text("b\n")
+
+        command_start()
+        command_include_file(file="a.txt")
+        command_include_file(file="b.txt")
+        capsys.readouterr()
+
+        subprocess.run(
+            ["git", "restore", "--staged", "b.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add a"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        command_include_file(file="b.txt")
+
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout.strip() == "b.txt"
+
+        captured = capsys.readouterr()
+        assert "No hunks staged from b.txt" not in captured.err

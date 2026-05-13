@@ -177,12 +177,23 @@ def test_resolve_live_file_scope_marks_explicit_scope():
 
 def test_resolve_live_file_scope_keeps_single_pattern_scope_kind(monkeypatch):
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["src/parser.py", "notes.txt"])
+    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: [])
 
     scope = argument_parser._resolve_live_file_scope(None, ["*.py"])
 
     assert scope.kind is argument_parser.FileScopeKind.PATTERN
     assert scope.files == ("src/parser.py",)
     assert scope.optional_file() == "src/parser.py"
+
+
+def test_resolve_live_file_scope_matches_untracked_pattern_candidates(monkeypatch):
+    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["src/parser.py"])
+    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: ["notes.txt"])
+
+    scope = argument_parser._resolve_live_file_scope(None, ["*.txt"])
+
+    assert scope.kind is argument_parser.FileScopeKind.PATTERN
+    assert scope.files == ("notes.txt",)
 
 
 def test_resolve_batch_file_scope_marks_implicit_scope():

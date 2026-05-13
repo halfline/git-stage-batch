@@ -18,6 +18,7 @@ from .. import __version__
 from ..batch.validation import batch_exists
 from .. import commands
 from ..batch.query import read_batch_metadata
+from ..data.file_tracking import list_untracked_files
 from ..data.hunk_tracking import advance_to_next_change, show_selected_change
 from ..data.undo import undo_checkpoint
 from ..exceptions import CommandError
@@ -391,7 +392,8 @@ def _resolve_live_file_scope(
     if file_patterns is None:
         return FileScope.implicit() if file_arg is None else FileScope.explicit(file_arg)
 
-    resolved_files = resolve_gitignore_style_patterns(list_changed_files(), file_patterns)
+    candidate_files = list(dict.fromkeys([*list_changed_files(), *list_untracked_files()]))
+    resolved_files = resolve_gitignore_style_patterns(candidate_files, file_patterns)
     if not resolved_files:
         raise CommandError(
             _("No changed files matched: {patterns}").format(

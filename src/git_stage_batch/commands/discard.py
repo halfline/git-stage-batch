@@ -76,6 +76,7 @@ from ..data.file_review_state import (
     resolve_live_to_batch_action_scope,
     ReviewSource,
 )
+from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
 from ..data.session import require_session_started, snapshot_file_if_untracked, snapshot_files_if_untracked
@@ -212,6 +213,7 @@ def _path_contains_only_whitespace(path: Path) -> bool:
 
 def _load_explicit_file_selection(file_path: str):
     """Return the active file-scoped view for an explicit discard target."""
+    auto_add_untracked_files([file_path])
     reuse_selected_file_view = (
         read_selected_change_kind() == SelectedChangeKind.FILE
         and get_selected_change_file_path() == file_path
@@ -469,6 +471,7 @@ def command_discard_file(file: str) -> None:
     else:
         # Explicit path provided
         target_file = file
+    auto_add_untracked_files([target_file])
     with undo_checkpoint(f"discard --file {file}".rstrip()):
         # Load blocklist
         blocklist_path = get_block_list_file_path()
@@ -1305,6 +1308,7 @@ def command_discard_files_to_batch(
 
     if not files:
         return DiscardFilesToBatchResult(discarded_hunks=0, discarded_files=[])
+    auto_add_untracked_files(files)
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
@@ -1390,6 +1394,7 @@ def _command_discard_file_to_batch(
     advance: bool = True,
 ) -> int:
     """Discard entire file to batch (internal helper for file-scoped operations)."""
+    auto_add_untracked_files([file_path])
 
     log_journal("discard_file_to_batch_start", batch_name=batch_name, file_path=file_path, quiet=quiet)
 

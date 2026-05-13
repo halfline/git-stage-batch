@@ -59,6 +59,7 @@ from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_binary_file_change, print_gitlink_change
 from .consumed_selections import read_consumed_file_metadata
+from .file_tracking import auto_add_untracked_files
 from ..utils.file_io import (
     read_file_paths_file,
     read_text_file_line_set,
@@ -1500,6 +1501,7 @@ def _cache_combined_file_line_changes(
 
 def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     """Render all changes for a file as a single hunk without caching state."""
+    auto_add_untracked_files([file_path])
     return _build_combined_file_line_changes(
         file_path,
         parse_unified_diff_streaming(
@@ -1517,6 +1519,7 @@ def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
 
 def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
     """Render a binary file change for file-scoped display without caching state."""
+    auto_add_untracked_files([file_path])
     try:
         for item in parse_unified_diff_streaming(
             stream_git_diff(
@@ -1536,6 +1539,7 @@ def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
 
 def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
     """Render a gitlink change for file-scoped display without caching state."""
+    auto_add_untracked_files([file_path])
     try:
         for item in parse_unified_diff_streaming(
             stream_git_diff(
@@ -1555,6 +1559,7 @@ def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
 
 def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     """Render the remaining unstaged changes for a file as a single hunk."""
+    auto_add_untracked_files([file_path])
     return _build_combined_file_line_changes(
         file_path,
         parse_unified_diff_streaming(

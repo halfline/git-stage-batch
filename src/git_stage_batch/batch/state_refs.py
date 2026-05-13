@@ -80,6 +80,7 @@ def _legacy_batch_commit_sha(batch_name: str) -> str | None:
     result = run_git_command(
         ["rev-parse", "--verify", get_legacy_batch_ref_name(batch_name)],
         check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return None
@@ -111,6 +112,7 @@ def read_batch_state_metadata(batch_name: str) -> dict[str, Any] | None:
     result = run_git_command(
         ["show", f"{get_batch_state_ref_name(batch_name)}:batch.json"],
         check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return None
@@ -130,6 +132,7 @@ def get_authoritative_batch_commit_sha(batch_name: str) -> str | None:
     result = run_git_command(
         ["rev-parse", "--verify", get_batch_content_ref_name(batch_name)],
         check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return None
@@ -219,6 +222,7 @@ def sync_batch_state_refs(
     existing_state = run_git_command(
         ["rev-parse", "--verify", get_batch_state_ref_name(batch_name)],
         check=False,
+        requires_index_lock=False,
     )
     parents = []
     if existing_state.returncode == 0 and existing_state.stdout.strip():

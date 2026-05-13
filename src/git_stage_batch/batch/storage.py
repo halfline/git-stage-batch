@@ -745,7 +745,8 @@ def read_file_from_batch(batch_name: str, file_path: str) -> Optional[str]:
     # Use git show to read file from commit
     result = run_git_command(
         ["show", f"{commit_sha}:{file_path}"],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return None

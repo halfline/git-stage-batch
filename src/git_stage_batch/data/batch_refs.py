@@ -31,7 +31,11 @@ def _list_batch_content_refs() -> dict[str, str]:
         (LEGACY_BATCH_REF_PREFIX, len(LEGACY_BATCH_REF_PREFIX)),
     )
     for prefix, prefix_len in prefixes:
-        result = run_git_command(["for-each-ref", "--format=%(objectname) %(refname)", prefix], check=False)
+        result = run_git_command(
+            ["for-each-ref", "--format=%(objectname) %(refname)", prefix],
+            check=False,
+            requires_index_lock=False,
+        )
         if result.returncode != 0:
             continue
         for line in result.stdout.strip().splitlines():
@@ -47,6 +51,7 @@ def _get_batch_state_ref_commit(batch_name: str) -> str | None:
     result = run_git_command(
         ["rev-parse", "--verify", get_batch_state_ref_name(batch_name)],
         check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return None

@@ -43,8 +43,8 @@ from ..core.models import (
 )
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
+    acquire_unified_diff,
     build_line_changes_from_patch_lines,
-    parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
 )
 from ..editor import (
@@ -1502,26 +1502,27 @@ def _cache_combined_file_line_changes(
 def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     """Render all changes for a file as a single hunk without caching state."""
     auto_add_untracked_files([file_path])
-    return _build_combined_file_line_changes(
-        file_path,
-        parse_unified_diff_streaming(
-            stream_git_diff(
-                base="HEAD",
-                context_lines=get_context_lines(),
-                full_index=True,
-                ignore_submodules="none",
-                submodule_format="short",
-                paths=[file_path],
-            )
-        ),
-    )
+    with acquire_unified_diff(
+        stream_git_diff(
+            base="HEAD",
+            context_lines=get_context_lines(),
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+            paths=[file_path],
+        )
+    ) as patches:
+        return _build_combined_file_line_changes(
+            file_path,
+            patches,
+        )
 
 
 def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
     """Render a binary file change for file-scoped display without caching state."""
     auto_add_untracked_files([file_path])
     try:
-        for item in parse_unified_diff_streaming(
+        with acquire_unified_diff(
             stream_git_diff(
                 base="HEAD",
                 full_index=True,
@@ -1529,9 +1530,10 @@ def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
                 submodule_format="short",
                 paths=[file_path],
             )
-        ):
-            if isinstance(item, BinaryFileChange):
-                return item
+        ) as patches:
+            for item in patches:
+                if isinstance(item, BinaryFileChange):
+                    return item
     except subprocess.CalledProcessError:
         return None
     return None
@@ -1541,7 +1543,7 @@ def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
     """Render a gitlink change for file-scoped display without caching state."""
     auto_add_untracked_files([file_path])
     try:
-        for item in parse_unified_diff_streaming(
+        with acquire_unified_diff(
             stream_git_diff(
                 base="HEAD",
                 full_index=True,
@@ -1549,9 +1551,10 @@ def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
                 submodule_format="short",
                 paths=[file_path],
             )
-        ):
-            if isinstance(item, GitlinkChange):
-                return item
+        ) as patches:
+            for item in patches:
+                if isinstance(item, GitlinkChange):
+                    return item
     except subprocess.CalledProcessError:
         return None
     return None
@@ -1560,18 +1563,19 @@ def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
 def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     """Render the remaining unstaged changes for a file as a single hunk."""
     auto_add_untracked_files([file_path])
-    return _build_combined_file_line_changes(
-        file_path,
-        parse_unified_diff_streaming(
-            stream_git_diff(
-                context_lines=get_context_lines(),
-                full_index=True,
-                ignore_submodules="none",
-                submodule_format="short",
-                paths=[file_path],
-            )
-        ),
-    )
+    with acquire_unified_diff(
+        stream_git_diff(
+            context_lines=get_context_lines(),
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+            paths=[file_path],
+        )
+    ) as patches:
+        return _build_combined_file_line_changes(
+            file_path,
+            patches,
+        )
 
 
 def build_file_hunk_from_buffer(
@@ -1593,16 +1597,17 @@ def build_file_hunk_from_buffer(
         new_path = new_tmp.name
 
     try:
-        return _build_combined_file_line_changes(
-            file_path,
-            parse_unified_diff_streaming(
-                _stream_no_index_diff_lines(
-                    file_path=file_path,
-                    old_path=old_path,
-                    new_path=new_path,
-                )
-            ),
-        )
+        with acquire_unified_diff(
+            _stream_no_index_diff_lines(
+                file_path=file_path,
+                old_path=old_path,
+                new_path=new_path,
+            )
+        ) as patches:
+            return _build_combined_file_line_changes(
+                file_path,
+                patches,
+            )
     finally:
         try:
             import os
@@ -1773,71 +1778,72 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
 
     # Stream git diff and parse incrementally - stops after first unblocked item found
     try:
-        for item in parse_unified_diff_streaming(
+        with acquire_unified_diff(
             stream_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
             )
-        ):
-            if isinstance(item, GitlinkChange):
-                gitlink_hash = compute_gitlink_change_hash(item)
-                if gitlink_hash in blocked_hashes:
+        ) as patches:
+            for item in patches:
+                if isinstance(item, GitlinkChange):
+                    gitlink_hash = compute_gitlink_change_hash(item)
+                    if gitlink_hash in blocked_hashes:
+                        continue
+
+                    if item.path() in blocked_files:
+                        continue
+
+                    cache_gitlink_change(item)
+                    return item
+
+                # Handle binary files
+                if isinstance(item, BinaryFileChange):
+                    binary_hash = compute_binary_file_hash(item)
+                    if binary_hash in blocked_hashes:
+                        continue
+
+                    # Determine file path for blocked files check
+                    file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+                    if file_path in blocked_files:
+                        continue
+
+                    cache_binary_file_change(item)
+
+                    # Return the BinaryFileChange object directly
+                    return item
+
+                # Handle text hunks (SingleHunkPatch)
+                hunk_hash = compute_stable_hunk_hash_from_lines(item.lines)
+                if hunk_hash in blocked_hashes:
                     continue
 
-                if item.path() in blocked_files:
+                # Skip hunks from blocked files
+                line_changes = build_line_changes_from_patch_lines(
+                    item.lines,
+                    annotator=annotate_with_batch_source,
+                )
+                if line_changes.path in blocked_files:
                     continue
 
-                cache_gitlink_change(item)
-                return item
+                write_selected_hunk_patch_lines(item.lines)
+                write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
+                write_selected_change_kind(SelectedChangeKind.HUNK)
 
-            # Handle binary files
-            if isinstance(item, BinaryFileChange):
-                binary_hash = compute_binary_file_hash(item)
-                if binary_hash in blocked_hashes:
+                write_text_file_contents(get_line_changes_json_file_path(),
+                                         json.dumps(convert_line_changes_to_serializable_dict(line_changes),
+                                                    ensure_ascii=False, indent=0))
+                write_snapshots_for_selected_file_path(line_changes.path)
+
+                # Apply line-level batch filtering
+                if apply_line_level_batch_filter_to_cached_hunk():
+                    # All lines were batched, skip this hunk and continue
+                    clear_selected_change_state_files()
                     continue
 
-                # Determine file path for blocked files check
-                file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
-                if file_path in blocked_files:
-                    continue
-
-                cache_binary_file_change(item)
-
-                # Return the BinaryFileChange object directly
-                return item
-
-            # Handle text hunks (SingleHunkPatch)
-            hunk_hash = compute_stable_hunk_hash_from_lines(item.lines)
-            if hunk_hash in blocked_hashes:
-                continue
-
-            # Skip hunks from blocked files
-            line_changes = build_line_changes_from_patch_lines(
-                item.lines,
-                annotator=annotate_with_batch_source,
-            )
-            if line_changes.path in blocked_files:
-                continue
-
-            write_selected_hunk_patch_lines(item.lines)
-            write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
-            write_selected_change_kind(SelectedChangeKind.HUNK)
-
-            write_text_file_contents(get_line_changes_json_file_path(),
-                                     json.dumps(convert_line_changes_to_serializable_dict(line_changes),
-                                                ensure_ascii=False, indent=0))
-            write_snapshots_for_selected_file_path(line_changes.path)
-
-            # Apply line-level batch filtering
-            if apply_line_level_batch_filter_to_cached_hunk():
-                # All lines were batched, skip this hunk and continue
-                clear_selected_change_state_files()
-                continue
-
-            # Return filtered hunk (or original if no filtering applied)
-            return load_line_changes_from_state()
+                # Return filtered hunk (or original if no filtering applied)
+                return load_line_changes_from_state()
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         pass
@@ -2019,58 +2025,59 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
 
     # Stream git diff and parse incrementally - stops after first matching hunk found
     try:
-        for single_hunk in parse_unified_diff_streaming(
+        with acquire_unified_diff(
             stream_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
             )
-        ):
-            if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
-                continue
-
-            if isinstance(single_hunk, GitlinkChange):
-                gitlink_hash = compute_gitlink_change_hash(single_hunk)
-                if gitlink_hash in blocked_hashes:
+        ) as patches:
+            for single_hunk in patches:
+                if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
                     continue
-                cache_gitlink_change(single_hunk)
-                print_gitlink_change(single_hunk)
+
+                if isinstance(single_hunk, GitlinkChange):
+                    gitlink_hash = compute_gitlink_change_hash(single_hunk)
+                    if gitlink_hash in blocked_hashes:
+                        continue
+                    cache_gitlink_change(single_hunk)
+                    print_gitlink_change(single_hunk)
+                    return
+
+                if isinstance(single_hunk, BinaryFileChange):
+                    continue
+
+                hunk_hash = compute_stable_hunk_hash_from_lines(single_hunk.lines)
+
+                if hunk_hash in blocked_hashes:
+                    continue
+
+                write_selected_hunk_patch_lines(single_hunk.lines)
+                write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
+                write_selected_change_kind(SelectedChangeKind.HUNK)
+
+                line_changes = build_line_changes_from_patch_lines(
+                    single_hunk.lines,
+                    annotator=annotate_with_batch_source,
+                )
+                write_text_file_contents(get_line_changes_json_file_path(),
+                                        json.dumps(convert_line_changes_to_serializable_dict(line_changes),
+                                                  ensure_ascii=False, indent=0))
+                write_snapshots_for_selected_file_path(line_changes.path)
+
+                # Apply batch filter to exclude batched lines
+                if apply_line_level_batch_filter_to_cached_hunk():
+                    # All lines were batched, clear the hunk
+                    clear_selected_change_state_files()
+                    print(_("No more lines in this hunk."), file=sys.stderr)
+                    return
+
+                # Display filtered hunk
+                line_changes = load_line_changes_from_state()
+                if line_changes is not None:
+                    print_line_level_changes(line_changes)
                 return
-
-            if isinstance(single_hunk, BinaryFileChange):
-                continue
-
-            hunk_hash = compute_stable_hunk_hash_from_lines(single_hunk.lines)
-
-            if hunk_hash in blocked_hashes:
-                continue
-
-            write_selected_hunk_patch_lines(single_hunk.lines)
-            write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
-            write_selected_change_kind(SelectedChangeKind.HUNK)
-
-            line_changes = build_line_changes_from_patch_lines(
-                single_hunk.lines,
-                annotator=annotate_with_batch_source,
-            )
-            write_text_file_contents(get_line_changes_json_file_path(),
-                                    json.dumps(convert_line_changes_to_serializable_dict(line_changes),
-                                              ensure_ascii=False, indent=0))
-            write_snapshots_for_selected_file_path(line_changes.path)
-
-            # Apply batch filter to exclude batched lines
-            if apply_line_level_batch_filter_to_cached_hunk():
-                # All lines were batched, clear the hunk
-                clear_selected_change_state_files()
-                print(_("No more lines in this hunk."), file=sys.stderr)
-                return
-
-            # Display filtered hunk
-            line_changes = load_line_changes_from_state()
-            if line_changes is not None:
-                print_line_level_changes(line_changes)
-            return
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         clear_selected_change_state_files()

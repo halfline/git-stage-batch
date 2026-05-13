@@ -4,7 +4,64 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import nullcontext
-from typing import Any, overload
+from typing import (
+    Any,
+    ContextManager,
+    Protocol,
+    TypeVar,
+    cast,
+    overload,
+    runtime_checkable,
+)
+
+
+_LineT = TypeVar("_LineT")
+
+
+@runtime_checkable
+class AcquirableLineSequence(Protocol[_LineT]):
+    """Indexed line sequence that can expose scoped line views."""
+
+    def __len__(self) -> int: ...
+
+    @overload
+    def __getitem__(self, index: int) -> _LineT: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[_LineT]: ...
+
+    def acquire_lines(self) -> ContextManager[Sequence[_LineT]]: ...
+
+
+class _PlainAcquirableLineSequence(Sequence[_LineT]):
+    """Acquirable adapter for ordinary indexed line sequences."""
+
+    def __init__(self, lines: Sequence[_LineT]) -> None:
+        self._lines = lines
+
+    def __len__(self) -> int:
+        return len(self._lines)
+
+    @overload
+    def __getitem__(self, index: int) -> _LineT: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[_LineT]: ...
+
+    def __getitem__(self, index: int | slice) -> _LineT | Sequence[_LineT]:
+        return self._lines[index]
+
+    def acquire_lines(self) -> ContextManager[Sequence[_LineT]]:
+        return nullcontext(self)
+
+
+def as_acquirable_line_sequence(
+    lines: Sequence[_LineT],
+) -> AcquirableLineSequence[_LineT]:
+    """Return an indexed line sequence with scoped acquisition support."""
+    if isinstance(lines, AcquirableLineSequence):
+        return cast(AcquirableLineSequence[_LineT], lines)
+    return _PlainAcquirableLineSequence(lines)
 
 
 def normalize_line_endings(content: bytes) -> bytes:

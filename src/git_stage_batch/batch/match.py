@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from array import array
 from collections.abc import Hashable, Sequence
-from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import TypeVar
+
+from ..utils.text import AcquirableLineSequence, as_acquirable_line_sequence
 
 
 LineContent = TypeVar("LineContent", bound=Hashable)
@@ -75,13 +76,6 @@ def _lookup_line_mapping(mapping: array, line_number: int) -> int | None:
     if mapped_line == 0:
         return None
     return mapped_line
-
-
-def _acquire_line_sequence(lines: Sequence[LineContent]) -> Any:
-    acquire_lines = getattr(lines, "acquire_lines", None)
-    if acquire_lines is None:
-        return nullcontext(lines)
-    return acquire_lines()
 
 
 def _build_unique_position_map(
@@ -342,9 +336,9 @@ def _align_segment(
     )
 
 
-def match_lines(
-    source_lines: Sequence[LineContent],
-    target_lines: Sequence[LineContent]
+def match_acquirable_lines(
+    source_lines: AcquirableLineSequence[LineContent],
+    target_lines: AcquirableLineSequence[LineContent]
 ) -> LineMapping:
     """Compute conservative structural alignment between source and target.
 
@@ -379,8 +373,8 @@ def match_lines(
     target_to_source = _new_line_mapping(target_line_count, max_line_number)
 
     with (
-        _acquire_line_sequence(source_lines) as acquired_source_lines,
-        _acquire_line_sequence(target_lines) as acquired_target_lines,
+        source_lines.acquire_lines() as acquired_source_lines,
+        target_lines.acquire_lines() as acquired_target_lines,
     ):
         _align_segment(
             acquired_source_lines,
@@ -396,4 +390,15 @@ def match_lines(
     return LineMapping(
         source_to_target=source_to_target,
         target_to_source=target_to_source
+    )
+
+
+def match_lines(
+    source_lines: Sequence[LineContent],
+    target_lines: Sequence[LineContent]
+) -> LineMapping:
+    """Compute conservative structural alignment between source and target."""
+    return match_acquirable_lines(
+        as_acquirable_line_sequence(source_lines),
+        as_acquirable_line_sequence(target_lines),
     )

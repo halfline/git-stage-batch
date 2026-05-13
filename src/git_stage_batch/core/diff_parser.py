@@ -171,7 +171,7 @@ class _UnifiedDiffParserBuildContext:
             raise ValueError("parser context is closed")
         if self._parser is not None:
             raise RuntimeError("parser context can only be entered once")
-        self._parser = self._parse()
+        self._parser = self._iter_owned()
         return self._parser
 
     def __exit__(self, exc_type, exc, traceback) -> None:
@@ -187,6 +187,26 @@ class _UnifiedDiffParserBuildContext:
         except ValueError:
             return
         buffer.close()
+
+    def _release_item(self, item: UnifiedDiffItem | None) -> None:
+        if isinstance(item, SingleHunkPatch) and isinstance(item.lines, EditorBuffer):
+            self._release_buffer(item.lines)
+
+    def _iter_owned(self) -> Iterator[UnifiedDiffItem]:
+        current_item: UnifiedDiffItem | None = None
+        parser = self._parse()
+
+        try:
+            while True:
+                self._release_item(current_item)
+                current_item = None
+                current_item = next(parser)
+                yield current_item
+        except StopIteration:
+            return
+        finally:
+            self._release_item(current_item)
+            parser.close()
 
     def _build_single_hunk_patch(
         self,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from ..utils.file_io import append_file_path_to_file, read_file_paths_file
-from ..utils.git import get_git_repository_root_path, run_git_command
+from ..utils.git import get_git_repository_root_path, git_add_paths, run_git_command
 from ..utils.journal import log_journal
 from ..utils.paths import get_auto_added_files_file_path
 
@@ -24,7 +24,7 @@ def list_untracked_files(paths: Iterable[str] | None = None) -> list[str]:
             return []
         arguments.extend(["--", *unique_paths])
 
-    result = run_git_command(arguments, check=False)
+    result = run_git_command(arguments, check=False, requires_index_lock=False)
     if result.returncode != 0:
         return []
 
@@ -55,9 +55,13 @@ def auto_add_untracked_files(paths: Iterable[str] | None = None) -> None:
             continue
 
         # Get before state
-        ls_before = run_git_command(["ls-files", "--stage", "--", file_path], check=False).stdout.strip()
+        ls_before = run_git_command(
+            ["ls-files", "--stage", "--", file_path],
+            check=False,
+            requires_index_lock=False,
+        ).stdout.strip()
 
-        result = run_git_command(["add", "-N", "--", file_path], check=False)
+        result = git_add_paths([file_path], intent_to_add=True, check=False)
         if result.returncode == 0:
             already_recorded = file_path in auto_added_files
             if not already_recorded:
@@ -65,7 +69,11 @@ def auto_add_untracked_files(paths: Iterable[str] | None = None) -> None:
                 auto_added_files.add(file_path)
 
             # Get after state
-            ls_after = run_git_command(["ls-files", "--stage", "--", file_path], check=False).stdout.strip()
+            ls_after = run_git_command(
+                ["ls-files", "--stage", "--", file_path],
+                check=False,
+                requires_index_lock=False,
+            ).stdout.strip()
             log_journal(
                 "git_add_intent_to_add",
                 file_path=file_path,

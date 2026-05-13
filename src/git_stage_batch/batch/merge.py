@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from array import array
+from bisect import bisect_right
 from collections.abc import Iterable, Iterator, Sequence
 import difflib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any
 
@@ -402,14 +403,30 @@ class BaselineRegion:
 @dataclass
 class BaselineCorrespondence:
     """Restoration correspondence from source lines back to baseline regions."""
-    line_to_region: dict[int, 'BaselineRegion']
     regions: list['BaselineRegion']
+    _region_start_lines: array = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._region_start_lines = array(
+            "Q",
+            (
+                region.source_start_line
+                for region in self.regions
+            )
+        )
 
     def get_region_for_source_line(
         self,
         source_line: int
     ) -> 'BaselineRegion | None':
-        return self.line_to_region.get(source_line)
+        region_index = bisect_right(self._region_start_lines, source_line) - 1
+        if region_index < 0:
+            return None
+
+        region = self.regions[region_index]
+        if source_line > region.source_end_line:
+            return None
+        return region
 
 
 @dataclass
@@ -1967,7 +1984,6 @@ def _build_baseline_correspondence(
     matcher = difflib.SequenceMatcher(None, baseline_lines, source_lines)
 
     regions: list[BaselineRegion] = []
-    line_to_region: dict[int, BaselineRegion] = {}
     next_region_id = 1
 
     for tag, base_start, base_end, src_start, src_end in matcher.get_opcodes():
@@ -1982,9 +1998,6 @@ def _build_baseline_correspondence(
             next_region_id += 1
             regions.append(region)
 
-            for src_line in range(src_start + 1, src_end + 1):
-                line_to_region[src_line] = region
-
         elif tag == 'insert':
             region = BaselineRegion(
                 source_start_line=src_start + 1,
@@ -1995,9 +2008,6 @@ def _build_baseline_correspondence(
             )
             next_region_id += 1
             regions.append(region)
-
-            for src_line in range(src_start + 1, src_end + 1):
-                line_to_region[src_line] = region
 
         elif tag == 'replace':
             base_len = base_end - base_start
@@ -2039,9 +2049,6 @@ def _build_baseline_correspondence(
                 next_region_id += 1
                 regions.append(region)
 
-                for src_line in range(src_start + 1, src_end + 1):
-                    line_to_region[src_line] = region
-
             else:
                 region = BaselineRegion(
                     source_start_line=src_start + 1,
@@ -2053,13 +2060,7 @@ def _build_baseline_correspondence(
                 next_region_id += 1
                 regions.append(region)
 
-                for src_line in range(src_start + 1, src_end + 1):
-                    line_to_region[src_line] = region
-
-    return BaselineCorrespondence(
-        line_to_region=line_to_region,
-        regions=regions
-    )
+    return BaselineCorrespondence(regions=regions)
 
 
 def _build_realized_entries_for_discard(

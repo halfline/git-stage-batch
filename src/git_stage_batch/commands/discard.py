@@ -102,6 +102,9 @@ from ..utils.file_io import (
 )
 from ..utils.git import (
     get_git_repository_root_path,
+    git_apply_to_worktree,
+    git_checkout_paths,
+    git_remove_paths,
     git_update_gitlink,
     require_git_repository,
     run_git_command,
@@ -302,14 +305,14 @@ def command_discard(*, quiet: bool = False) -> None:
                     log_journal("command_discard_binary_deleted", file_path=file_path)
             elif item.is_deleted_file():
                 # Deleted file: restore from HEAD
-                result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+                result = git_checkout_paths("HEAD", [file_path], check=False)
                 if result.returncode != 0:
                     print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
                     return
                 log_journal("command_discard_binary_restored", file_path=file_path)
             else:
                 # Modified file: restore from HEAD
-                result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+                result = git_checkout_paths("HEAD", [file_path], check=False)
                 if result.returncode != 0:
                     print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
                     return
@@ -346,22 +349,15 @@ def command_discard(*, quiet: bool = False) -> None:
             if filename != "/dev/null":
                 snapshot_file_if_untracked(filename)
 
-            # Apply the hunk in reverse to discard from working tree using streaming
             log_journal("command_discard_before_git_apply", filename=filename, patch_hash=patch_hash)
-            stderr_chunks = []
-            exit_code = 0
-
-            for event in stream_command(
-                ["git", "apply", "--reverse"],
+            apply_result = git_apply_to_worktree(
                 patch_buffer.byte_chunks(),
-            ):
-                if isinstance(event, ExitEvent):
-                    exit_code = event.exit_code
-                elif isinstance(event, OutputEvent):
-                    if event.fd == 2:  # stderr
-                        stderr_chunks.append(event.data)
+                reverse=True,
+                check=False,
+            )
+        exit_code = apply_result.returncode
+        stderr_text = apply_result.stderr or ""
 
-        stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace') if stderr_chunks else ""
         log_journal("command_discard_after_git_apply", exit_code=exit_code, stderr_len=len(stderr_text), filename=filename)
 
         if exit_code != 0:
@@ -410,9 +406,10 @@ def _command_discard_selected_file(*, quiet: bool = False) -> None:
             ["show", f"HEAD:{target_file}"],
             check=False,
             text_output=False,
+            requires_index_lock=False,
         )
         if head_result.returncode == 0:
-            result = run_git_command(["checkout", "HEAD", "--", target_file], check=False)
+            result = git_checkout_paths("HEAD", [target_file], check=False)
             if result.returncode != 0:
                 if not quiet:
                     print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
@@ -462,6 +459,7 @@ def command_discard_file(file: str) -> None:
                     "--quiet",
                 ],
                 check=False,
+                requires_index_lock=False,
             )
             if diff_result.returncode == 0:
                 print(_("No more hunks to process."), file=sys.stderr)
@@ -520,7 +518,7 @@ def command_discard_file(file: str) -> None:
                     hashes_to_block.append(patch_hash)
 
         # Remove the file from working tree
-        result = run_git_command(["rm", "-f", target_file], check=False)
+        result = git_remove_paths([target_file], force=True, check=False)
         if result.returncode != 0:
             print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
             return

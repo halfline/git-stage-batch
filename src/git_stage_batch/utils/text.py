@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
-from typing import overload
+from contextlib import nullcontext
+from typing import Any, overload
 
 
 def normalize_line_endings(content: bytes) -> bytes:
@@ -46,6 +47,13 @@ class _LineEndingNormalizedSequence(Sequence[bytes]):
     def __len__(self) -> int:
         return len(self._lines)
 
+    def acquire_lines(self) -> Any:
+        """Return a scoped normalized line sequence."""
+        acquire_lines = getattr(self._lines, "acquire_lines", None)
+        if acquire_lines is None:
+            return nullcontext(self)
+        return _AcquiredNormalizedLineSequence(acquire_lines())
+
     @overload
     def __getitem__(self, index: int) -> bytes: ...
 
@@ -62,6 +70,39 @@ class _LineEndingNormalizedSequence(Sequence[bytes]):
             raise IndexError(index)
 
         return normalize_line_ending(self._lines[index])
+
+
+class _AcquiredNormalizedLineSequence(Sequence[bytes]):
+    """Context-managed normalized view over acquired line views."""
+
+    def __init__(self, line_context: Any) -> None:
+        self._line_context = line_context
+        self._lines: _LineEndingNormalizedSequence | None = None
+
+    def __enter__(self) -> _AcquiredNormalizedLineSequence:
+        self._lines = _LineEndingNormalizedSequence(self._line_context.__enter__())
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self._lines = None
+        self._line_context.__exit__(exc_type, exc, traceback)
+
+    def __len__(self) -> int:
+        return len(self._require_lines())
+
+    @overload
+    def __getitem__(self, index: int) -> bytes: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[bytes]: ...
+
+    def __getitem__(self, index: int | slice) -> bytes | list[bytes]:
+        return self._require_lines()[index]
+
+    def _require_lines(self) -> _LineEndingNormalizedSequence:
+        if self._lines is None:
+            raise ValueError("line view is closed")
+        return self._lines
 
 
 def normalize_line_sequence_endings(lines: Sequence[bytes]) -> Sequence[bytes]:

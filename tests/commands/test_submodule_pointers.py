@@ -404,6 +404,183 @@ def test_discard_refuses_dirty_submodule_pointer(
     )
 
 
+def test_show_from_batch_renders_submodule_pointer(
+    submodule_pointer_repo: tuple[Path, str, str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """show --from should render a batch submodule pointer atomically."""
+    _repo, old_oid, new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    capsys.readouterr()
+
+    command_show_from_batch("pointers", file="sub")
+    captured = capsys.readouterr()
+
+    assert "sub :: Submodule pointer modified" in captured.out
+    assert f"old {old_oid[:12]}" in captured.out
+    assert f"new {new_oid[:12]}" in captured.out
+    assert "gitlink" not in (captured.out + captured.err).lower()
+    assert read_selected_change_kind() == SelectedChangeKind.BATCH_GITLINK
+    assert read_selected_change_kind().value == "batch-submodule"
+
+    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+        command_show_from_batch("pointers", line_ids="1", file="sub")
+
+
+def test_live_include_refuses_selected_batch_submodule_pointer(
+    submodule_pointer_repo: tuple[Path, str, str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Live include should not act on a selected batch submodule pointer."""
+    repo, _old_oid, _new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    command_show_from_batch("pointers", file="sub")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="came from a batch, not the live working tree"):
+        command_include(quiet=True)
+
+    assert _cached_raw_diff(repo) == ""
+
+
+def test_apply_from_batch_restores_submodule_pointer_worktree(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """apply --from should checkout the stored submodule pointer."""
+    repo, old_oid, new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    _run(["git", "checkout", "--detach", old_oid], cwd=repo / "sub")
+
+    command_apply_from_batch("pointers", file="sub")
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
+    assert _cached_raw_diff(repo) == ""
+    assert "Subproject commit" in _worktree_pointer_diff(repo)
+
+
+def test_include_from_batch_stages_submodule_pointer(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """include --from should stage the stored submodule pointer."""
+    repo, old_oid, new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    _run(["git", "checkout", "--detach", old_oid], cwd=repo / "sub")
+
+    command_include_from_batch("pointers", file="sub")
+
+    raw_diff = _cached_raw_diff(repo)
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
+    assert old_oid in raw_diff
+    assert new_oid in raw_diff
+    assert _worktree_pointer_diff(repo) == ""
+
+
+def test_include_from_batch_stages_added_submodule_pointer(
+    added_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """include --from should stage a stored added submodule pointer."""
+    repo, new_oid = added_submodule_pointer_repo
+
+    command_include_to_batch("pointers", quiet=True)
+
+    command_include_from_batch("pointers", file="sub")
+
+    raw_diff = _cached_raw_diff(repo)
+    assert ":000000 160000" in raw_diff
+    assert new_oid in raw_diff
+    assert _worktree_pointer_diff(repo) == ""
+
+
+def test_apply_from_batch_applies_added_submodule_pointer_as_live_diff(
+    added_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """apply --from should make an added pointer visible without staging it."""
+    repo, new_oid = added_submodule_pointer_repo
+
+    command_include_to_batch("pointers", quiet=True)
+    _run(["git", "update-index", "--force-remove", "--", "sub"], cwd=repo)
+
+    command_apply_from_batch("pointers", file="sub")
+
+    assert _cached_raw_diff(repo) == ""
+    assert new_oid in _worktree_pointer_diff(repo)
+
+
+def test_include_from_batch_stages_deleted_submodule_pointer(
+    deleted_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """include --from should stage a stored deleted submodule pointer."""
+    repo, old_oid = deleted_submodule_pointer_repo
+
+    command_include_to_batch("pointers", quiet=True)
+
+    command_include_from_batch("pointers", file="sub")
+
+    raw_diff = _cached_raw_diff(repo)
+    assert ":160000 000000" in raw_diff
+    assert old_oid in raw_diff
+    assert "0" * 40 in raw_diff
+    assert _worktree_pointer_diff(repo) == ""
+
+
+def test_discard_from_batch_restores_submodule_pointer_baseline(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """discard --from should restore the baseline submodule pointer."""
+    repo, old_oid, _new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+
+    command_discard_from_batch("pointers", file="sub")
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == old_oid
+    assert _cached_raw_diff(repo) == ""
+    assert _worktree_pointer_diff(repo) == ""
+
+
+def test_reset_from_batch_removes_submodule_pointer_claim(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """reset --from should remove a stored submodule pointer claim."""
+    repo, _old_oid, _new_oid = submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+
+    command_reset_from_batch("pointers", file="sub")
+
+    assert "sub" not in read_batch_metadata("pointers").get("files", {})
+    batch_commit = get_batch_commit_sha("pointers")
+    assert batch_commit is not None
+    assert _git_stdout(["ls-tree", batch_commit, "--", "sub"], cwd=repo) == ""
+
+
+def test_batch_submodule_pointer_actions_refuse_lines(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """batch actions should refuse line selection for submodule pointers."""
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+
+    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+        command_apply_from_batch("pointers", line_ids="1", file="sub")
+    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+        command_include_from_batch("pointers", line_ids="1", file="sub")
+    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+        command_discard_from_batch("pointers", line_ids="1", file="sub")
+    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+        command_reset_from_batch("pointers", line_ids="1", file="sub")
+
+
 def _configure_identity(repo: Path) -> None:
     _run(["git", "config", "user.name", "Test User"], cwd=repo)
     _run(["git", "config", "user.email", "test@example.com"], cwd=repo)

@@ -102,7 +102,6 @@ from ..staging.operations import (
     build_target_index_buffer_with_replaced_lines,
     update_index_with_blob_buffer,
 )
-from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import (
     append_lines_to_file,
     read_text_file_line_set,
@@ -110,6 +109,8 @@ from ..utils.file_io import (
 )
 from ..utils.git import (
     get_git_repository_root_path,
+    git_add_paths,
+    git_apply_to_index,
     git_update_index,
     git_update_gitlink,
     require_git_repository,
@@ -540,7 +541,7 @@ def command_include(*, quiet: bool = False) -> None:
             file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
 
             # Stage the binary file using git add
-            result = run_git_command(["add", "--", file_path], check=False)
+            result = git_add_paths([file_path], check=False)
             if result.returncode != 0:
                 print(_("Failed to stage binary file: {error}").format(error=result.stderr), file=sys.stderr)
                 return
@@ -561,24 +562,14 @@ def command_include(*, quiet: bool = False) -> None:
         # Extract filename for user feedback (we already have LineLevelChange in item)
         filename = item.path
 
-        # Apply the hunk to the index using streaming
-        stderr_chunks = []
-        exit_code = 0
-
         with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
-            for event in stream_command(
-                ["git", "apply", "--cached"],
+            apply_result = git_apply_to_index(
                 patch_buffer.byte_chunks(),
-            ):
-                if isinstance(event, ExitEvent):
-                    exit_code = event.exit_code
-                elif isinstance(event, OutputEvent):
-                    if event.fd == 2:  # stderr
-                        stderr_chunks.append(event.data)
+                check=False,
+            )
+        if apply_result.returncode != 0:
+            print(_("Failed to apply hunk: {error}").format(error=apply_result.stderr), file=sys.stderr)
 
-        if exit_code != 0:
-            stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
-            print(_("Failed to apply hunk: {error}").format(error=stderr_text), file=sys.stderr)
             return
 
         # Record for progress tracking
@@ -635,6 +626,7 @@ def command_include_file(
                     "--quiet",
                 ],
                 check=False,
+                requires_index_lock=False,
             )
             if diff_result.returncode == 0:
                 print(_("No changes to stage."), file=sys.stderr)
@@ -683,7 +675,7 @@ def command_include_file(
                     if file_path != target_file:
                         continue
 
-                    result = run_git_command(["add", "--", file_path], check=False)
+                    result = git_add_paths([file_path], check=False)
                     if result.returncode != 0:
                         print(_("Failed to stage binary file: {error}").format(error=result.stderr), file=sys.stderr)
                         break
@@ -702,7 +694,7 @@ def command_include_file(
                 patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
                 if patch.old_path != patch.new_path:
-                    result = run_git_command(["add", "--", *sorted(patch_paths)], check=False)
+                    result = git_add_paths(sorted(patch_paths), check=False)
                     if result.returncode != 0:
                         print(_("Failed to stage file: {error}").format(error=result.stderr), file=sys.stderr)
                         break
@@ -711,25 +703,14 @@ def command_include_file(
                     hunks_staged += 1
                     continue
 
-                # Apply the hunk to the index using streaming
-                stderr_chunks = []
-                exit_code = 0
-
-                for event in stream_command(["git", "apply", "--cached"], patch.lines):
-                    if isinstance(event, ExitEvent):
-                        exit_code = event.exit_code
-                    elif isinstance(event, OutputEvent):
-                        if event.fd == 2:  # stderr
-                            stderr_chunks.append(event.data)
-
-                if exit_code == 0:
+                apply_result = git_apply_to_index(patch.lines, check=False)
+                if apply_result.returncode == 0:
                     # Record for progress tracking
                     record_hunk_included(patch_hash)
 
                     hunks_staged += 1
                 else:
-                    stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
-                    print(_("Failed to apply hunk: {error}").format(error=stderr_text), file=sys.stderr)
+                    print(_("Failed to apply hunk: {error}").format(error=apply_result.stderr), file=sys.stderr)
                     break
 
     if hunks_staged == 0:

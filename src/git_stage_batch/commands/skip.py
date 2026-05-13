@@ -40,6 +40,7 @@ from ..data.file_review_state import (
     refuse_live_action_for_batch_selection,
     resolve_live_line_action_scope,
 )
+from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
@@ -194,6 +195,7 @@ def command_skip_file(
     else:
         target_file = file
 
+    auto_add_untracked_files([target_file])
     with undo_checkpoint(f"skip --file {file}".rstrip()):
         # Stream through hunks and skip all from target file.
         blocklist_path = get_block_list_file_path()
@@ -301,6 +303,7 @@ def command_skip_line(line_id_specification: str, file: str | None = None) -> No
                 exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
         else:
             target_file = file
+        auto_add_untracked_files([target_file])
         from ..data.hunk_tracking import cache_unstaged_file_as_single_hunk
         from ..data.hunk_tracking import render_unstaged_file_as_single_hunk
 

@@ -32,8 +32,8 @@ from ..batch.selection import (
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
+    acquire_unified_diff,
     build_line_changes_from_patch_lines,
-    parse_unified_diff_streaming,
 )
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -654,82 +654,83 @@ def command_include_file(
         # follow-up `show --files` / `include --files` passes in the same session.
         hunks_staged = 0
         submodule_pointers_staged = 0
-        for patch in parse_unified_diff_streaming(
+        with acquire_unified_diff(
             stream_git_diff(
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
             )
-        ):
-            if isinstance(patch, GitlinkChange):
-                if patch.path() == target_file:
-                    result = _update_index_for_gitlink_change(patch)
-                    if result.returncode != 0:
-                        print(
-                            _("Failed to stage submodule pointer: {error}").format(
-                                error=result.stderr,
-                            ),
-                            file=sys.stderr,
-                        )
-                        break
-                    record_hunk_included(compute_gitlink_change_hash(patch))
-                    hunks_staged += 1
-                    submodule_pointers_staged += 1
-                continue
-
-            if isinstance(patch, BinaryFileChange):
-                file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
-                if file_path != target_file:
+        ) as patches:
+            for patch in patches:
+                if isinstance(patch, GitlinkChange):
+                    if patch.path() == target_file:
+                        result = _update_index_for_gitlink_change(patch)
+                        if result.returncode != 0:
+                            print(
+                                _("Failed to stage submodule pointer: {error}").format(
+                                    error=result.stderr,
+                                ),
+                                file=sys.stderr,
+                            )
+                            break
+                        record_hunk_included(compute_gitlink_change_hash(patch))
+                        hunks_staged += 1
+                        submodule_pointers_staged += 1
                     continue
 
-                result = run_git_command(["add", "--", file_path], check=False)
-                if result.returncode != 0:
-                    print(_("Failed to stage binary file: {error}").format(error=result.stderr), file=sys.stderr)
+                if isinstance(patch, BinaryFileChange):
+                    file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+                    if file_path != target_file:
+                        continue
+
+                    result = run_git_command(["add", "--", file_path], check=False)
+                    if result.returncode != 0:
+                        print(_("Failed to stage binary file: {error}").format(error=result.stderr), file=sys.stderr)
+                        break
+
+                    record_hunk_included(compute_binary_file_hash(patch))
+                    hunks_staged += 1
+                    continue
+
+                patch_paths = {
+                    path for path in (patch.old_path, patch.new_path)
+                    if path != "/dev/null"
+                }
+                if target_file not in patch_paths:
+                    continue
+
+                patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
+
+                if patch.old_path != patch.new_path:
+                    result = run_git_command(["add", "--", *sorted(patch_paths)], check=False)
+                    if result.returncode != 0:
+                        print(_("Failed to stage file: {error}").format(error=result.stderr), file=sys.stderr)
+                        break
+
+                    record_hunk_included(patch_hash)
+                    hunks_staged += 1
+                    continue
+
+                # Apply the hunk to the index using streaming
+                stderr_chunks = []
+                exit_code = 0
+
+                for event in stream_command(["git", "apply", "--cached"], patch.lines):
+                    if isinstance(event, ExitEvent):
+                        exit_code = event.exit_code
+                    elif isinstance(event, OutputEvent):
+                        if event.fd == 2:  # stderr
+                            stderr_chunks.append(event.data)
+
+                if exit_code == 0:
+                    # Record for progress tracking
+                    record_hunk_included(patch_hash)
+
+                    hunks_staged += 1
+                else:
+                    stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
+                    print(_("Failed to apply hunk: {error}").format(error=stderr_text), file=sys.stderr)
                     break
-
-                record_hunk_included(compute_binary_file_hash(patch))
-                hunks_staged += 1
-                continue
-
-            patch_paths = {
-                path for path in (patch.old_path, patch.new_path)
-                if path != "/dev/null"
-            }
-            if target_file not in patch_paths:
-                continue
-
-            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-
-            if patch.old_path != patch.new_path:
-                result = run_git_command(["add", "--", *sorted(patch_paths)], check=False)
-                if result.returncode != 0:
-                    print(_("Failed to stage file: {error}").format(error=result.stderr), file=sys.stderr)
-                    break
-
-                record_hunk_included(patch_hash)
-                hunks_staged += 1
-                continue
-
-            # Apply the hunk to the index using streaming
-            stderr_chunks = []
-            exit_code = 0
-
-            for event in stream_command(["git", "apply", "--cached"], patch.lines):
-                if isinstance(event, ExitEvent):
-                    exit_code = event.exit_code
-                elif isinstance(event, OutputEvent):
-                    if event.fd == 2:  # stderr
-                        stderr_chunks.append(event.data)
-
-            if exit_code == 0:
-                # Record for progress tracking
-                record_hunk_included(patch_hash)
-
-                hunks_staged += 1
-            else:
-                stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
-                print(_("Failed to apply hunk: {error}").format(error=stderr_text), file=sys.stderr)
-                break
 
     if hunks_staged == 0:
         if not quiet:
@@ -1525,18 +1526,19 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     # Collect ALL hunks from this file (live working tree state)
     all_lines_to_batch = []
 
-    for patch in parse_unified_diff_streaming(
+    with acquire_unified_diff(
         stream_git_diff(
             base="HEAD",
             context_lines=get_context_lines(),
             paths=[file_path],
         )
-    ):
-        hunk_lines = build_line_changes_from_patch_lines(
-            patch.lines,
-            annotator=annotate_with_batch_source,
-        )
-        all_lines_to_batch.extend(hunk_lines.lines)
+    ) as patches:
+        for patch in patches:
+            hunk_lines = build_line_changes_from_patch_lines(
+                patch.lines,
+                annotator=annotate_with_batch_source,
+            )
+            all_lines_to_batch.extend(hunk_lines.lines)
 
     if not all_lines_to_batch:
         if _save_empty_text_lifecycle_to_batch(batch_name, file_path, file_mode) is not None:
@@ -1772,42 +1774,48 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     blocked_hashes = read_text_file_line_set(blocklist_path)
 
     # Stream diff to find first non-blocked hunk
-    selected_patch = None
+    selected_file_path = None
+    selected_line_changes = None
     selected_hash = None
-    for patch in parse_unified_diff_streaming(
+    with acquire_unified_diff(
         stream_git_diff(
             context_lines=get_context_lines(),
             full_index=True,
             ignore_submodules="none",
             submodule_format="short",
         )
-    ):
-        if isinstance(patch, GitlinkChange):
-            patch_hash = compute_gitlink_change_hash(patch)
+    ) as patches:
+        for patch in patches:
+            if isinstance(patch, GitlinkChange):
+                patch_hash = compute_gitlink_change_hash(patch)
+                if patch_hash not in blocked_hashes:
+                    _command_include_gitlink_to_batch(batch_name, patch, quiet=quiet)
+                    return
+                continue
+
+            if isinstance(patch, BinaryFileChange):
+                patch_hash = compute_binary_file_hash(patch)
+                if patch_hash not in blocked_hashes:
+                    _command_include_binary_to_batch(batch_name, patch, quiet=quiet)
+                    return
+                continue
+
+            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
             if patch_hash not in blocked_hashes:
-                _command_include_gitlink_to_batch(batch_name, patch, quiet=quiet)
-                return
-            continue
+                selected_file_path = patch.new_path
+                selected_line_changes = build_line_changes_from_patch_lines(
+                    patch.lines,
+                    annotator=annotate_with_batch_source,
+                )
+                selected_hash = patch_hash
+                break
 
-        if isinstance(patch, BinaryFileChange):
-            patch_hash = compute_binary_file_hash(patch)
-            if patch_hash not in blocked_hashes:
-                _command_include_binary_to_batch(batch_name, patch, quiet=quiet)
-                return
-            continue
-
-        patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-        if patch_hash not in blocked_hashes:
-            selected_patch = patch
-            selected_hash = patch_hash
-            break
-
-    if selected_patch is None:
+    if selected_file_path is None or selected_line_changes is None or selected_hash is None:
         print(_("No changes to process."), file=sys.stderr)
         return
 
     # Get the file path
-    file_path = selected_patch.new_path
+    file_path = selected_file_path
 
     # Detect file mode
     file_mode = _detect_file_mode(file_path)
@@ -1815,43 +1823,41 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     # Collect all lines to batch (either selected hunk or all hunks from file)
     all_lines_to_batch = []
     all_display_ids_to_batch = set()
-    patches_to_process = []
+    processed_hunks = []
 
     if file_only:
         # Collect ALL hunks from this file
-        for patch in parse_unified_diff_streaming(
+        with acquire_unified_diff(
             stream_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
             )
-        ):
-            if patch.new_path != file_path:
-                continue
+        ) as patches:
+            for patch in patches:
+                if patch.new_path != file_path:
+                    continue
 
-            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
+                patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
-            if patch_hash in blocked_hashes:
-                continue
+                if patch_hash in blocked_hashes:
+                    continue
 
-            # Parse hunk to get lines
-            line_changes = build_line_changes_from_patch_lines(
-                patch.lines,
-                annotator=annotate_with_batch_source,
-            )
-            all_lines_to_batch.extend(line_changes.lines)
-            all_display_ids_to_batch.update(line.id for line in line_changes.lines if line.id is not None)
-            patches_to_process.append((patch.lines, patch_hash))
+                # Parse hunk to get lines
+                line_changes = build_line_changes_from_patch_lines(
+                    patch.lines,
+                    annotator=annotate_with_batch_source,
+                )
+                all_lines_to_batch.extend(line_changes.lines)
+                all_display_ids_to_batch.update(line.id for line in line_changes.lines if line.id is not None)
+                processed_hunks.append((line_changes, patch_hash))
     else:
         # Just selected hunk
-        line_changes = build_line_changes_from_patch_lines(
-            selected_patch.lines,
-            annotator=annotate_with_batch_source,
-        )
+        line_changes = selected_line_changes
         all_lines_to_batch = line_changes.lines
         all_display_ids_to_batch = {line.id for line in line_changes.lines if line.id is not None}
-        patches_to_process = [(selected_patch.lines, selected_hash)]
+        processed_hunks = [(line_changes, selected_hash)]
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
@@ -1879,12 +1885,11 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
         add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
 
     # Mark hunks as processed
-    for patch_lines, patch_hash in patches_to_process:
+    for hunk_lines, patch_hash in processed_hunks:
         # Mark this hunk as processed
         append_lines_to_file(blocklist_path, [patch_hash])
 
         # Record hunk as skipped for progress tracking
-        hunk_lines = build_line_changes_from_patch_lines(patch_lines)
         record_hunk_skipped(hunk_lines, patch_hash)
 
     # Print success message
@@ -1893,8 +1898,8 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
             msg = ngettext(
                 "✓ {count} hunk from {file} saved to batch '{name}'",
                 "✓ {count} hunks from {file} saved to batch '{name}'",
-                len(patches_to_process)
-            ).format(count=len(patches_to_process), file=file_path, name=batch_name)
+                len(processed_hunks)
+            ).format(count=len(processed_hunks), file=file_path, name=batch_name)
             print(msg, file=sys.stderr)
         else:
             print(_("✓ Hunk saved to batch '{name}'").format(name=batch_name), file=sys.stderr)

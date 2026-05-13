@@ -1,7 +1,7 @@
 """Tests for show command."""
 
 from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
-from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+from tests.diff_parser_helpers import collect_unified_diff
 from git_stage_batch.utils.git import stream_git_command
 from git_stage_batch.utils.paths import get_block_list_file_path, get_context_lines
 from git_stage_batch.data.session import initialize_abort_state
@@ -145,7 +145,7 @@ class TestCommandShow:
         capsys.readouterr()
 
         # Get the hash of the first hunk and block it
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
         first_patch_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         blocklist_path = get_block_list_file_path()
@@ -172,7 +172,7 @@ class TestCommandShow:
         command_start()
 
         # Get the hash and block it
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
         patch_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         blocklist_path = get_block_list_file_path()
@@ -195,7 +195,7 @@ class TestCommandShow:
         initialize_abort_state()
 
         # Get expected patch and hash
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
         expected_patch = b"".join(patches[0].lines)
         expected_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
@@ -256,7 +256,7 @@ class TestCommandShow:
         initialize_abort_state()
 
         # Block the hunk
-        patches = list(parse_unified_diff_streaming(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
+        patches = list(collect_unified_diff(stream_git_command(["diff", f"-U{get_context_lines()}", "--no-color"])))
         patch_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         blocklist_path = get_block_list_file_path()

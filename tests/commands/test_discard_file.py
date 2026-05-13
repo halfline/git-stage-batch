@@ -8,7 +8,7 @@ from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.discard import command_discard_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
-from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+from tests.diff_parser_helpers import collect_unified_diff
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -199,7 +199,7 @@ class TestCommandDiscardFile:
             cwd=temp_git_repo,
             capture_output=True,)
         stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
-        patches = list(parse_unified_diff_streaming(stdout_bytes.splitlines(keepends=True)))
+        patches = list(collect_unified_diff(stdout_bytes.splitlines(keepends=True)))
         expected_hashes = {
             compute_stable_hunk_hash_from_lines(patch.lines)
             for patch in patches

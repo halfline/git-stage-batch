@@ -7,44 +7,19 @@ import subprocess
 import pytest
 
 from git_stage_batch.core.diff_parser import (
+    acquire_unified_diff,
     build_line_changes_from_patch_lines,
-    parse_unified_diff_streaming,
     write_snapshots_for_selected_file_path,
 )
+from git_stage_batch.core.models import SingleHunkPatch
+from git_stage_batch.editor import EditorBuffer
+from tests.diff_parser_helpers import collect_unified_diff
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
 
 
-class TestParseUnifiedDiff:
-    """Tests for parse_unified_diff_streaming."""
-
-    def test_single_file_single_hunk(self):
-        """Test parsing a simple diff with one file and one hunk."""
-        diff = """\
-diff --git a/file.txt b/file.txt
-index abc123..def456 100644
---- a/file.txt
-+++ b/file.txt
-@@ -1,3 +1,3 @@
- context line
--old line
-+new line
- another context
-"""
-        patches = list(parse_unified_diff_streaming(diff.encode('utf-8').splitlines(keepends=True)))
-
-        assert len(patches) == 1
-        patch = patches[0]
-        assert patch.old_path == "file.txt"
-        assert patch.new_path == "file.txt"
-        assert len(patch.lines) == 7
-        assert patch.lines[0] == b"--- a/file.txt\n"
-        assert patch.lines[1] == b"+++ b/file.txt\n"
-        assert patch.lines[2] == b"@@ -1,3 +1,3 @@\n"
-
-    def test_single_file_multiple_hunks(self):
-        """Test parsing a diff with one file and multiple hunks."""
-        diff = """\
+def _two_hunk_diff_lines() -> list[bytes]:
+    diff = """\
 diff --git a/file.txt b/file.txt
 --- a/file.txt
 +++ b/file.txt
@@ -59,13 +34,94 @@ diff --git a/file.txt b/file.txt
 +new 2
  context
 """
-        patches = list(parse_unified_diff_streaming(diff.encode('utf-8').splitlines(keepends=True)))
+    return diff.encode("utf-8").splitlines(keepends=True)
+
+
+class TestParseUnifiedDiff:
+    """Tests for collect_unified_diff."""
+
+    def test_single_file_single_hunk(self):
+        """Test parsing a simple diff with one file and one hunk."""
+        diff = """\
+diff --git a/file.txt b/file.txt
+index abc123..def456 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,3 +1,3 @@
+ context line
+-old line
++new line
+ another context
+"""
+        patches = list(collect_unified_diff(diff.encode('utf-8').splitlines(keepends=True)))
+
+        assert len(patches) == 1
+        patch = patches[0]
+        assert patch.old_path == "file.txt"
+        assert patch.new_path == "file.txt"
+        assert len(patch.lines) == 7
+        assert patch.lines[0] == b"--- a/file.txt\n"
+        assert patch.lines[1] == b"+++ b/file.txt\n"
+        assert patch.lines[2] == b"@@ -1,3 +1,3 @@\n"
+
+    def test_single_file_multiple_hunks(self):
+        """Test parsing a diff with one file and multiple hunks."""
+        patches = list(collect_unified_diff(_two_hunk_diff_lines()))
 
         assert len(patches) == 2
         assert patches[0].old_path == "file.txt"
         assert patches[1].old_path == "file.txt"
         assert b"@@ -1,3 +1,3 @@" in patches[0].lines[2]
         assert b"@@ -10,3 +10,3 @@" in patches[1].lines[2]
+
+    def test_scoped_parser_uses_editor_buffers(self):
+        """Test scoped parsing returns buffer-backed hunk payloads."""
+        with acquire_unified_diff(_two_hunk_diff_lines()) as patches:
+            patch = next(patches)
+
+            assert isinstance(patch, SingleHunkPatch)
+            assert isinstance(patch.lines, EditorBuffer)
+            assert b"".join(patch.lines).startswith(b"--- a/file.txt\n")
+
+        with pytest.raises(ValueError, match="buffer is closed"):
+            list(patch.lines)
+
+    def test_scoped_parser_releases_previous_hunk_on_advance(self):
+        """Test advancing a scoped parser closes the prior hunk payload."""
+        with acquire_unified_diff(_two_hunk_diff_lines()) as patches:
+            first = next(patches)
+            assert isinstance(first, SingleHunkPatch)
+            assert b"old 1" in b"".join(first.lines)
+
+            second = next(patches)
+            assert isinstance(second, SingleHunkPatch)
+            assert b"old 2" in b"".join(second.lines)
+
+            with pytest.raises(ValueError, match="buffer is closed"):
+                list(first.lines)
+
+        with pytest.raises(ValueError, match="buffer is closed"):
+            list(second.lines)
+
+    def test_scoped_parser_closes_source_on_early_exit(self):
+        """Test closing a scoped parser closes an unfinished source iterator."""
+        source_closed = False
+
+        def source():
+            nonlocal source_closed
+            try:
+                yield from _two_hunk_diff_lines()
+            finally:
+                source_closed = True
+
+        with acquire_unified_diff(source()) as patches:
+            patch = next(patches)
+            assert isinstance(patch, SingleHunkPatch)
+            assert b"old 1" in b"".join(patch.lines)
+
+        assert source_closed
+        with pytest.raises(ValueError, match="buffer is closed"):
+            list(patch.lines)
 
     def test_multiple_files(self):
         """Test parsing a diff with multiple files."""
@@ -83,7 +139,7 @@ diff --git a/file2.txt b/file2.txt
 -old 2
 +new 2
 """
-        patches = list(parse_unified_diff_streaming(diff.encode('utf-8').splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.encode('utf-8').splitlines(keepends=True)))
 
         assert len(patches) == 2
         assert patches[0].old_path == "file1.txt"
@@ -101,7 +157,7 @@ index 0000000..abc123
 +first line
 +second line
 """
-        patches = list(parse_unified_diff_streaming(diff.encode('utf-8').splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.encode('utf-8').splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert patches[0].old_path == "new.txt"
@@ -120,7 +176,7 @@ index abc123..0000000
 -first line
 -second line
 """
-        patches = list(parse_unified_diff_streaming(diff.encode('utf-8').splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.encode('utf-8').splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert patches[0].old_path == "deleted.txt"
@@ -129,7 +185,7 @@ index abc123..0000000
 
     def test_empty_diff(self):
         """Test parsing an empty diff."""
-        patches = list(parse_unified_diff_streaming([]))
+        patches = list(collect_unified_diff([]))
         assert patches == []
 
     def test_no_newline_marker(self):
@@ -143,7 +199,7 @@ diff --git a/file.txt b/file.txt
 \\ No newline at end of file
 +new line
 """
-        patches = list(parse_unified_diff_streaming(diff.encode('utf-8').splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.encode('utf-8').splitlines(keepends=True)))
 
         assert len(patches) == 1
         # Should include the backslash line
@@ -159,7 +215,7 @@ diff --git a/path with spaces/file.txt b/path with spaces/file.txt
 -old
 +new
 """
-        patches = list(parse_unified_diff_streaming(diff.encode('utf-8').splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.encode('utf-8').splitlines(keepends=True)))
 
         assert len(patches) == 1
         assert patches[0].old_path == "path with spaces/file.txt"
@@ -186,7 +242,7 @@ diff --git a/file2.py b/file2.py
  import sys
 +import os
 """
-        patches = list(parse_unified_diff_streaming(diff.encode('utf-8').splitlines(keepends=True)))
+        patches = list(collect_unified_diff(diff.encode('utf-8').splitlines(keepends=True)))
 
         assert len(patches) == 3
         assert patches[0].old_path == "file1.py"

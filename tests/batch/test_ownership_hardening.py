@@ -1,7 +1,7 @@
 """Tests for ownership attribution behavior."""
 
 import subprocess
-from git_stage_batch.core.diff_parser import parse_unified_diff_streaming
+from tests.diff_parser_helpers import collect_unified_diff
 
 import pytest
 
@@ -429,7 +429,7 @@ class TestReplacementProjection:
 
         # Parse diff
 
-        patches = list(parse_unified_diff_streaming(
+        patches = list(collect_unified_diff(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
         assert len(patches) >= 1
@@ -467,7 +467,7 @@ class TestAnchorConsistency:
 
         # Get diff with different context settings
         for context_lines in [0, 3, 10]:
-            patches = list(parse_unified_diff_streaming(
+            patches = list(collect_unified_diff(
                 stream_git_command(["diff", f"-U{context_lines}", "HEAD", "test.txt"])
             ))
             if not patches:
@@ -504,7 +504,7 @@ class TestAnchorConsistency:
         assert len(deletion_units) == 1
 
         # Get diff
-        patches = list(parse_unified_diff_streaming(
+        patches = list(collect_unified_diff(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
         line_changes = build_line_changes_from_patch_lines(patches[0].lines)
@@ -541,7 +541,7 @@ class TestAnchorConsistency:
         assert deletion_units[0].deletion_anchor_in_working_tree == 1
 
         # Get diff
-        patches = list(parse_unified_diff_streaming(
+        patches = list(collect_unified_diff(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
         line_changes = build_line_changes_from_patch_lines(patches[0].lines)
@@ -580,7 +580,7 @@ class TestSemanticConsistency:
         assert len(units_map) == len(attribution.units)
 
         # Get diff for projection layer
-        patches = list(parse_unified_diff_streaming(
+        patches = list(collect_unified_diff(
             stream_git_command(["diff", "HEAD", "test.txt"])
         ))
         line_changes = build_line_changes_from_patch_lines(patches[0].lines)

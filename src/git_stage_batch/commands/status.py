@@ -14,7 +14,7 @@ from ..core.hashing import (
     compute_gitlink_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
-from ..core.diff_parser import parse_unified_diff_streaming
+from ..core.diff_parser import acquire_unified_diff
 from ..core.models import BinaryFileChange, GitlinkChange
 from ..data.file_review_state import (
     FileReviewAction,
@@ -104,27 +104,28 @@ def estimate_remaining_hunks() -> int:
 
     remaining = 0
     try:
-        for patch in parse_unified_diff_streaming(
+        with acquire_unified_diff(
             stream_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
             )
-        ):
-            if isinstance(patch, GitlinkChange):
-                hunk_hash = compute_gitlink_change_hash(patch)
-                file_path = patch.path()
-            elif isinstance(patch, BinaryFileChange):
-                hunk_hash = compute_binary_file_hash(patch)
-                file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
-            else:
-                hunk_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-                file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
-            file_path = file_path.removeprefix("a/").removeprefix("b/")
+        ) as patches:
+            for patch in patches:
+                if isinstance(patch, GitlinkChange):
+                    hunk_hash = compute_gitlink_change_hash(patch)
+                    file_path = patch.path()
+                elif isinstance(patch, BinaryFileChange):
+                    hunk_hash = compute_binary_file_hash(patch)
+                    file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+                else:
+                    hunk_hash = compute_stable_hunk_hash_from_lines(patch.lines)
+                    file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
+                file_path = file_path.removeprefix("a/").removeprefix("b/")
 
-            if hunk_hash not in blocked_hashes and file_path not in blocked_files:
-                remaining += 1
+                if hunk_hash not in blocked_hashes and file_path not in blocked_files:
+                    remaining += 1
     except Exception:
         return 0
 

@@ -1108,7 +1108,6 @@ def _render_batch_file_display_from_ownership(
                         old_line_number=1 if change_type == "deleted" else None,
                         new_line_number=1 if change_type == "added" else None,
                         text_bytes=b"<empty file>",
-                        text="<empty file>",
                         source_line=None,
                     )
                 ],
@@ -1134,8 +1133,6 @@ def _render_batch_file_display_from_ownership(
         # Strip only the newline terminator, preserve \r
         text_bytes = content_bytes.rstrip(b'\n')
         has_trailing_newline = content_bytes.endswith(b'\n')
-        # Decode with replacement for display
-        text = text_bytes.decode('utf-8', errors='replace')
 
         if display_line["type"] == "claimed":
             # Claimed line from batch source
@@ -1146,7 +1143,6 @@ def _render_batch_file_display_from_ownership(
                 old_line_number=None,
                 new_line_number=new_line_num,
                 text_bytes=text_bytes,
-                text=text,
                 source_line=source_line,
                 has_trailing_newline=has_trailing_newline,
             ))
@@ -1159,7 +1155,6 @@ def _render_batch_file_display_from_ownership(
                 old_line_number=None,  # Not from old file (it's a constraint)
                 new_line_number=None,
                 text_bytes=text_bytes,
-                text=text,
                 source_line=None,
                 has_trailing_newline=has_trailing_newline,
             ))
@@ -1170,7 +1165,6 @@ def _render_batch_file_display_from_ownership(
                 old_line_number=None,
                 new_line_number=new_line_num,
                 text_bytes=text_bytes,
-                text=text,
                 source_line=display_line["source_line"],
                 has_trailing_newline=has_trailing_newline,
             ))
@@ -1182,7 +1176,6 @@ def _render_batch_file_display_from_ownership(
                 old_line_number=None,
                 new_line_number=None,
                 text_bytes=text_bytes,
-                text=text,
                 source_line=None,
                 has_trailing_newline=has_trailing_newline,
             ))

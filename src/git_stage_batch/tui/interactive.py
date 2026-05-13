@@ -631,10 +631,10 @@ def start_interactive_mode() -> None:
 
     # Record start HEAD and index tree for smart quit detection (if not degraded)
     if not degraded_mode:
-        head_result = run_git_command(["rev-parse", "HEAD"])
+        head_result = run_git_command(["rev-parse", "HEAD"], requires_index_lock=False)
         write_text_file_contents(get_start_head_file_path(), head_result.stdout.strip())
 
-        index_tree_result = run_git_command(["write-tree"])
+        index_tree_result = run_git_command(["write-tree"], requires_index_lock=False)
         write_text_file_contents(get_start_index_tree_file_path(), index_tree_result.stdout.strip())
 
     use_color = Colors.enabled()
@@ -1036,8 +1036,8 @@ def handle_quit() -> None:
     start_index_tree = read_text_file_contents(start_index_tree_file).strip()
 
     # Check selected state
-    selected_head = run_git_command(["rev-parse", "HEAD"]).stdout.strip()
-    selected_index_tree = run_git_command(["write-tree"]).stdout.strip()
+    selected_head = run_git_command(["rev-parse", "HEAD"], requires_index_lock=False).stdout.strip()
+    selected_index_tree = run_git_command(["write-tree"], requires_index_lock=False).stdout.strip()
 
     # Check if any discards happened
     stats = get_hunk_counts()

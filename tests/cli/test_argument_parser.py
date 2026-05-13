@@ -106,14 +106,14 @@ def test_show_git_stage_batch_help_uses_packaged_page_first(monkeypatch, tmp_pat
 
     calls = []
 
-    def fake_run(cmd, **kwargs):
+    def fake_git(cmd, **kwargs):
         calls.append((cmd, kwargs.get("env")))
         return Mock(returncode=0)
 
-    monkeypatch.setattr(argument_parser, "run_command", fake_run)
+    monkeypatch.setattr(argument_parser, "run_git_command", fake_git)
 
     assert argument_parser._show_git_stage_batch_help() is True
-    assert calls[0][0] == ["git", "help", "stage-batch"]
+    assert calls[0][0] == ["help", "stage-batch"]
     assert calls[0][1]["MANPATH"] == f"{manpage.parent.parent}{os.pathsep}/usr/share/man"
 
 
@@ -145,7 +145,7 @@ def test_show_git_stage_batch_help_materializes_editable_manpage(monkeypatch, tm
 
     calls = []
 
-    def fake_run(cmd, **kwargs):
+    def fake_git(cmd, **kwargs):
         calls.append((cmd, kwargs.get("env")))
         manpath_root = kwargs["env"]["MANPATH"].split(os.pathsep, 1)[0]
         staged_manpage = argument_parser.Path(manpath_root) / "man1" / "git-stage-batch.1"
@@ -153,7 +153,7 @@ def test_show_git_stage_batch_help_materializes_editable_manpage(monkeypatch, tm
         assert staged_manpage.read_text(encoding="utf-8") == "test"
         return Mock(returncode=0)
 
-    monkeypatch.setattr(argument_parser, "run_command", fake_run)
+    monkeypatch.setattr(argument_parser, "run_git_command", fake_git)
 
     assert argument_parser._show_git_stage_batch_help() is True
     assert calls[0][1]["MANPATH"].endswith(f"{os.pathsep}/usr/share/man")

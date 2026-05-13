@@ -94,7 +94,6 @@ from ..staging.operations import (
     build_target_working_tree_buffer_from_lines,
     build_target_working_tree_buffer_with_replaced_lines,
 )
-from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.file_io import (
     append_lines_to_file,
     read_text_file_line_set,
@@ -102,6 +101,9 @@ from ..utils.file_io import (
 )
 from ..utils.git import (
     get_git_repository_root_path,
+    git_apply_to_worktree,
+    git_checkout_paths,
+    git_remove_paths,
     git_update_gitlink,
     require_git_repository,
     run_git_command,
@@ -302,14 +304,14 @@ def command_discard(*, quiet: bool = False) -> None:
                     log_journal("command_discard_binary_deleted", file_path=file_path)
             elif item.is_deleted_file():
                 # Deleted file: restore from HEAD
-                result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+                result = git_checkout_paths("HEAD", [file_path], check=False)
                 if result.returncode != 0:
                     print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
                     return
                 log_journal("command_discard_binary_restored", file_path=file_path)
             else:
                 # Modified file: restore from HEAD
-                result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+                result = git_checkout_paths("HEAD", [file_path], check=False)
                 if result.returncode != 0:
                     print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
                     return
@@ -346,22 +348,15 @@ def command_discard(*, quiet: bool = False) -> None:
             if filename != "/dev/null":
                 snapshot_file_if_untracked(filename)
 
-            # Apply the hunk in reverse to discard from working tree using streaming
             log_journal("command_discard_before_git_apply", filename=filename, patch_hash=patch_hash)
-            stderr_chunks = []
-            exit_code = 0
-
-            for event in stream_command(
-                ["git", "apply", "--reverse"],
+            apply_result = git_apply_to_worktree(
                 patch_buffer.byte_chunks(),
-            ):
-                if isinstance(event, ExitEvent):
-                    exit_code = event.exit_code
-                elif isinstance(event, OutputEvent):
-                    if event.fd == 2:  # stderr
-                        stderr_chunks.append(event.data)
+                reverse=True,
+                check=False,
+            )
 
-        stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace') if stderr_chunks else ""
+        exit_code = apply_result.returncode
+        stderr_text = apply_result.stderr or ""
         log_journal("command_discard_after_git_apply", exit_code=exit_code, stderr_len=len(stderr_text), filename=filename)
 
         if exit_code != 0:
@@ -410,9 +405,10 @@ def _command_discard_selected_file(*, quiet: bool = False) -> None:
             ["show", f"HEAD:{target_file}"],
             check=False,
             text_output=False,
+            requires_index_lock=False,
         )
         if head_result.returncode == 0:
-            result = run_git_command(["checkout", "HEAD", "--", target_file], check=False)
+            result = git_checkout_paths("HEAD", [target_file], check=False)
             if result.returncode != 0:
                 if not quiet:
                     print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
@@ -462,6 +458,7 @@ def command_discard_file(file: str) -> None:
                     "--quiet",
                 ],
                 check=False,
+                requires_index_lock=False,
             )
             if diff_result.returncode == 0:
                 print(_("No more hunks to process."), file=sys.stderr)
@@ -520,7 +517,7 @@ def command_discard_file(file: str) -> None:
                     hashes_to_block.append(patch_hash)
 
         # Remove the file from working tree
-        result = run_git_command(["rm", "-f", target_file], check=False)
+        result = git_remove_paths([target_file], force=True, check=False)
         if result.returncode != 0:
             print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
             return
@@ -1055,7 +1052,7 @@ def _detect_file_mode_from_root(repo_root: Path, file_path: str) -> str:
             return "120000"
         return "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
 
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False)
+    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False, requires_index_lock=False)
     if ls_result.returncode == 0 and ls_result.stdout.strip():
         parts = ls_result.stdout.strip().split()
         if parts:
@@ -1071,10 +1068,10 @@ def _discard_binary_change_from_working_tree(binary_change: BinaryFileChange) ->
     if binary_change.is_new_file():
         if absolute_path.exists():
             absolute_path.unlink()
-        run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
+        git_remove_paths([file_path], cached=True, quiet=True, check=False)
         return
 
-    result = run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+    result = git_checkout_paths("HEAD", [file_path], check=False)
     if result.returncode != 0:
         exit_with_error(_("Failed to restore binary file: {error}").format(error=result.stderr))
 
@@ -1227,26 +1224,21 @@ def _run_reverse_apply_for_prepared_discards(
     *,
     check_only: bool = False,
 ) -> None:
-    arguments = ["git", "apply", "--reverse", "--unidiff-zero"]
-    if check_only:
-        arguments.append("--check")
-
-    exit_code = 0
-    stderr_chunks = []
     def patch_chunks():
         for prepared in prepared_discards:
             for patch in prepared.patches_to_discard:
                 yield from patch.patch_lines
 
-    for event in stream_command(arguments, stdin_chunks=patch_chunks()):
-        if isinstance(event, ExitEvent):
-            exit_code = event.exit_code
-        elif isinstance(event, OutputEvent) and event.fd == 2:
-            stderr_chunks.append(event.data)
+    apply_result = git_apply_to_worktree(
+        patch_chunks(),
+        reverse=True,
+        unidiff_zero=True,
+        check_only=check_only,
+        check=False,
+    )
 
-    if exit_code != 0:
-        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
-        exit_with_error(_("Failed to discard changes from file: {err}").format(err=stderr_text))
+    if apply_result.returncode != 0:
+        exit_with_error(_("Failed to discard changes from file: {err}").format(err=apply_result.stderr))
 
 
 def _discard_prepared_text_files_to_batch(
@@ -1278,7 +1270,7 @@ def _discard_prepared_text_files_to_batch(
     for prepared in prepared_discards:
         full_path = repo_root / prepared.file_path
         if not full_path.exists():
-            run_git_command(["rm", "--cached", "--quiet", "--", prepared.file_path], check=False)
+            git_remove_paths([prepared.file_path], cached=True, quiet=True, check=False)
 
     hunk_hashes = [
         patch.patch_hash
@@ -1469,9 +1461,9 @@ def _command_discard_file_to_batch(
                     full_path.unlink()
 
                     # Remove from index if present (from intent-to-add)
-                    run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
+                    git_remove_paths([file_path], cached=True, quiet=True, check=False)
                 else:
-                    run_git_command(["checkout", "HEAD", "--", file_path], check=False)
+                    git_checkout_paths("HEAD", [file_path], check=False)
 
                 if not quiet:
                     print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
@@ -1531,30 +1523,24 @@ def _command_discard_file_to_batch(
                 patch_line_count=len(patch_lines_item),
             )
 
-            exit_code = 0
-            stderr_chunks = []
+            apply_result = git_apply_to_worktree(
+                patch_lines_item,
+                reverse=True,
+                unidiff_zero=True,
+                check=False,
+            )
 
-            for event in stream_command(
-                ["git", "apply", "--reverse", "--unidiff-zero"],
-                stdin_chunks=patch_lines_item,
-            ):
-                if isinstance(event, ExitEvent):
-                    exit_code = event.exit_code
-                elif isinstance(event, OutputEvent) and event.fd == 2:  # stderr
-                    stderr_chunks.append(event.data)
+            if apply_result.returncode != 0:
+                exit_with_error(_("Failed to discard changes from file: {err}").format(err=apply_result.stderr))
 
-            if exit_code != 0:
-                stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace')
-                exit_with_error(_("Failed to discard changes from file: {err}").format(err=stderr_text))
-
-            log_journal("discard_file_to_batch_after_git_apply", batch_name=batch_name, patch_hash=patch_hash, exit_code=exit_code)
+            log_journal("discard_file_to_batch_after_git_apply", batch_name=batch_name, patch_hash=patch_hash, exit_code=apply_result.returncode)
 
         # If file was deleted from working tree, remove from index too
         repo_root = get_git_repository_root_path()
         full_path = repo_root / file_path
         if not full_path.exists():
             # File was deleted by git apply --reverse, remove from index
-            run_git_command(["rm", "--cached", "--quiet", "--", file_path], check=False)
+            git_remove_paths([file_path], cached=True, quiet=True, check=False)
 
         if not quiet:
             print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
@@ -1904,21 +1890,16 @@ def _command_discard_text_hunk_to_batch(
                     patch_line_count=len(patch_lines_item),
                 )
 
-                # Use stream_command to apply reverse patch
-                stderr_chunks = []
-                exit_code = 0
-
-                for event in stream_command(
-                    ["git", "apply", "--reverse", "--unidiff-zero"],
+                # Apply the reverse patch to the working tree.
+                apply_result = git_apply_to_worktree(
                     patch_lines_item,
-                ):
-                    if isinstance(event, ExitEvent):
-                        exit_code = event.exit_code
-                    elif isinstance(event, OutputEvent):
-                        if event.fd == 2:  # stderr
-                            stderr_chunks.append(event.data)
+                    reverse=True,
+                    unidiff_zero=True,
+                    check=False,
+                )
 
-                stderr_text = b"".join(stderr_chunks).decode('utf-8', errors='replace') if stderr_chunks else ""
+                exit_code = apply_result.returncode
+                stderr_text = apply_result.stderr or ""
                 log_journal("discard_hunk_to_batch_after_git_apply", batch_name=batch_name, patch_hash=patch_hash, exit_code=exit_code, stderr_len=len(stderr_text))
 
                 if exit_code != 0:
@@ -1945,12 +1926,12 @@ def _command_discard_text_hunk_to_batch(
             if not absolute_path.exists():
                 # File was deleted by reverse patches (was a file deletion diff)
                 # Remove from index to complete the deletion
-                run_git_command(["rm", "--cached", "--quiet", file_path], check=False)
+                git_remove_paths([file_path], cached=True, quiet=True, check=False)
             elif is_new_file:
                 # New file: only remove if it's empty after reverse patches
                 if _path_contains_only_whitespace(absolute_path):
                     absolute_path.unlink()
-                    run_git_command(["rm", "--cached", "--quiet", file_path], check=False)
+                    git_remove_paths([file_path], cached=True, quiet=True, check=False)
             # else: file still exists with content (reverted to HEAD state), leave it alone
 
         log_journal("discard_hunk_to_batch_success", batch_name=batch_name, file_path=file_path, num_patches=len(patches_to_discard))

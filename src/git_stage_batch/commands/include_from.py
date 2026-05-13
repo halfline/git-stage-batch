@@ -57,8 +57,9 @@ from ..staging.operations import update_index_with_blob_buffer
 from ..utils.git import (
     create_git_blob,
     get_git_repository_root_path,
+    git_refresh_index,
+    git_update_index,
     require_git_repository,
-    run_git_command,
 )
 
 
@@ -91,7 +92,7 @@ def _stage_binary_file_from_batch(
     """Stage one binary batch target into the index."""
     change_type = file_meta.get("change_type", "modified")
     if change_type == "deleted":
-        result = run_git_command(["update-index", "--force-remove", "--", file_path], check=False)
+        result = git_update_index(file_path=file_path, force_remove=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to stage binary deletion for {file_path}: {result.stderr}")
         return
@@ -101,7 +102,7 @@ def _stage_binary_file_from_batch(
 
     blob_hash = create_git_blob(buffer.byte_chunks())
     file_mode = file_meta.get("mode", "100644")
-    run_git_command(["update-index", "--add", "--cacheinfo", str(file_mode), blob_hash, file_path])
+    git_update_index(file_path=file_path, mode=str(file_mode), blob_sha=blob_hash)
 
 
 def _stage_text_file_from_batch(
@@ -112,7 +113,7 @@ def _stage_text_file_from_batch(
 ) -> None:
     """Stage a text buffer, optionally forcing the batch target mode."""
     if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        result = run_git_command(["update-index", "--force-remove", "--", file_path], check=False)
+        result = git_update_index(file_path=file_path, force_remove=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to stage text deletion for {file_path}: {result.stderr}")
         return
@@ -125,7 +126,7 @@ def _stage_text_file_from_batch(
         return
 
     blob_hash = create_git_blob(buffer.byte_chunks())
-    run_git_command(["update-index", "--add", "--cacheinfo", file_mode, blob_hash, file_path])
+    git_update_index(file_path=file_path, mode=file_mode, blob_sha=blob_hash)
 
 
 def _write_text_file_from_batch(
@@ -213,7 +214,7 @@ def command_include_from_batch(
     file = scope_resolution.file
 
     # Refresh index to ensure git's cached stat info is up-to-date
-    run_git_command(["update-index", "--refresh"], check=False)
+    git_refresh_index(check=False)
 
     # Check batch exists
     if not batch_exists(batch_name):

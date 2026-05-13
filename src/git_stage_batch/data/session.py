@@ -14,7 +14,12 @@ from ..utils.file_io import (
     write_file_paths_file,
     write_text_file_contents,
 )
-from ..utils.git import get_git_repository_root_path, run_git_command
+from ..utils.git import (
+    get_git_repository_root_path,
+    git_add_paths,
+    git_remove_paths,
+    run_git_command,
+)
 from ..utils.journal import log_journal
 from ..utils.paths import (
     get_abort_head_file_path,
@@ -57,7 +62,7 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
     """
     # Find all intent-to-add files (files in index with empty blob)
     EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
-    ls_result = run_git_command(["ls-files", "--stage"], check=True)
+    ls_result = run_git_command(["ls-files", "--stage"], check=True, requires_index_lock=False)
 
     all_intent_to_add_files = []
     new_intent_to_add_files = []
@@ -77,7 +82,11 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
 
                 # Check if file exists in HEAD
                 # Only new files absent from HEAD are safe to git rm --cached.
-                head_check = run_git_command(["cat-file", "-e", f"HEAD:{file_path}"], check=False)
+                head_check = run_git_command(
+                    ["cat-file", "-e", f"HEAD:{file_path}"],
+                    check=False,
+                    requires_index_lock=False,
+                )
                 if head_check.returncode != 0:
                     # File is absent from HEAD, so it is safe to remove from the index.
                     new_intent_to_add_files.append(file_path)
@@ -93,7 +102,7 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
 def initialize_abort_state() -> None:
     """Save selected HEAD and stash for abort functionality."""
     # Save selected HEAD
-    head_result = run_git_command(["rev-parse", "HEAD"])
+    head_result = run_git_command(["rev-parse", "HEAD"], requires_index_lock=False)
     write_text_file_contents(get_abort_head_file_path(), head_result.stdout.strip())
 
     # Snapshot all intent-to-add files upfront
@@ -106,13 +115,13 @@ def initialize_abort_state() -> None:
     # Only remove files absent from HEAD. Removing tracked files stages deletions.
     if new_intent_to_add_files:
         log_journal("session_removing_intent_to_add_files_for_stash", files=new_intent_to_add_files)
-        run_git_command(["rm", "--cached", "--quiet", "--"] + new_intent_to_add_files, check=False)
+        git_remove_paths(new_intent_to_add_files, cached=True, quiet=True, check=False)
 
     # Create stash of tracked file changes
     # git stash create (without -u) only captures changes to tracked files
     # Untracked files that we modify will be handled by lazy snapshots
     log_journal("session_creating_stash")
-    stash_result = run_git_command(["stash", "create"], check=False)
+    stash_result = run_git_command(["stash", "create"], check=False, requires_index_lock=False)
     if stash_result.returncode == 0 and stash_result.stdout.strip():
         write_text_file_contents(get_abort_stash_file_path(), stash_result.stdout.strip())
         log_journal("session_stash_created", stash_hash=stash_result.stdout.strip())
@@ -123,9 +132,17 @@ def initialize_abort_state() -> None:
     if new_intent_to_add_files:
         log_journal("session_re_adding_intent_to_add_files", files=new_intent_to_add_files)
         for file_path in new_intent_to_add_files:
-            ls_before = run_git_command(["ls-files", "--stage", "--", file_path], check=False).stdout.strip()
-            run_git_command(["add", "-N", "--", file_path], check=False)
-            ls_after = run_git_command(["ls-files", "--stage", "--", file_path], check=False).stdout.strip()
+            ls_before = run_git_command(
+                ["ls-files", "--stage", "--", file_path],
+                check=False,
+                requires_index_lock=False,
+            ).stdout.strip()
+            git_add_paths([file_path], intent_to_add=True, check=False)
+            ls_after = run_git_command(
+                ["ls-files", "--stage", "--", file_path],
+                check=False,
+                requires_index_lock=False,
+            ).stdout.strip()
             log_journal("session_re_add_intent_to_add", file_path=file_path, index_before=ls_before, index_after=ls_after)
 
     snapshot_batch_refs()
@@ -153,7 +170,11 @@ def snapshot_file_if_untracked(file_path: str) -> None:
     # - Real blob hash: tracked with content (don't snapshot)
     EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
 
-    stage_result = run_git_command(["ls-files", "--stage", "--", file_path], check=False)
+    stage_result = run_git_command(
+        ["ls-files", "--stage", "--", file_path],
+        check=False,
+        requires_index_lock=False,
+    )
     if not stage_result.stdout.strip():
         # File not in index at all - it's untracked
         pass  # Continue to snapshot
@@ -201,6 +222,7 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
         ["ls-files", "--stage", "-z", "--", *unique_file_paths],
         check=False,
         text_output=False,
+        requires_index_lock=False,
     )
 
     tracked_real_content: set[str] = set()

@@ -7,11 +7,11 @@ import subprocess
 from collections.abc import Iterator
 
 from .buffer import EditorBuffer
-from ..utils.command import ExitEvent, OutputEvent, stream_command
 from ..utils.git import (
     get_git_repository_root_path,
     list_git_tree_blobs,
     read_git_blob,
+    stream_git_command,
 )
 
 
@@ -66,22 +66,14 @@ def load_working_tree_file_as_buffer(file_path: str) -> EditorBuffer:
 
 
 def _stream_git_object(revision_path: str) -> Iterator[bytes]:
-    stderr_chunks: list[bytes] = []
-    exit_code = 0
-
-    for event in stream_command(["git", "show", revision_path]):
-        if isinstance(event, ExitEvent):
-            exit_code = event.exit_code
-        elif isinstance(event, OutputEvent):
-            if event.fd == 1:
-                yield event.data
-            elif event.fd == 2:
-                stderr_chunks.append(event.data)
-
-    if exit_code != 0:
-        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
-        raise subprocess.CalledProcessError(
-            exit_code,
-            ["git", "show", revision_path],
-            stderr=stderr_text,
+    try:
+        yield from stream_git_command(
+            ["show", revision_path],
+            requires_index_lock=False,
         )
+    except subprocess.CalledProcessError as error:
+        raise subprocess.CalledProcessError(
+            error.returncode,
+            ["git", "show", revision_path],
+            stderr=error.stderr,
+        ) from error

@@ -1024,14 +1024,14 @@ def test_binary_include_from_batch_reports_failed_binary_deletion_staging(
     command_include_to_batch("bin-batch", file="image.png", quiet=True)
     subprocess.run(["git", "checkout", "HEAD", "--", "image.png"], check=True, capture_output=True)
 
-    original_run_git_command = include_from_module.run_git_command
+    original_git_update_index = include_from_module.git_update_index
 
-    def fail_force_remove(args, *positional_args, **keyword_args):
-        if args[:3] == ["update-index", "--force-remove", "--"]:
-            return subprocess.CompletedProcess(args, 1, stdout="", stderr="boom")
-        return original_run_git_command(args, *positional_args, **keyword_args)
+    def fail_force_remove(*args, **kwargs):
+        if kwargs.get("force_remove"):
+            return subprocess.CompletedProcess(["git", "update-index"], 1, stdout="", stderr="boom")
+        return original_git_update_index(*args, **kwargs)
 
-    monkeypatch.setattr(include_from_module, "run_git_command", fail_force_remove)
+    monkeypatch.setattr(include_from_module, "git_update_index", fail_force_remove)
 
     with pytest.raises(CommandError, match="incompatible"):
         command_include_from_batch("bin-batch", file="image.png")

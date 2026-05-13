@@ -79,7 +79,8 @@ def get_batch_commit_sha(name: str) -> Optional[str]:
 
     result = run_git_command(
         ["rev-parse", "--verify", get_legacy_batch_ref_name(name)],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return None
@@ -91,7 +92,7 @@ def list_batch_names() -> list[str]:
     """List all batch names by querying authoritative refs and legacy imports."""
     batch_names: set[str] = set()
     for prefix in (BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX):
-        result = run_git_command(["for-each-ref", "--format=%(refname)", prefix], check=False)
+        result = run_git_command(["for-each-ref", "--format=%(refname)", prefix], check=False, requires_index_lock=False)
         if result.returncode != 0:
             continue
         for line in result.stdout.strip().splitlines():
@@ -112,7 +113,8 @@ def get_batch_tree_sha(name: str) -> Optional[str]:
     # Get tree SHA from commit
     result = run_git_command(
         ["rev-parse", f"{commit_sha}^{{tree}}"],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return None
@@ -131,7 +133,8 @@ def list_batch_files(name: str) -> list[str]:
     # Use git ls-tree to list files recursively
     result = run_git_command(
         ["ls-tree", "-r", "--name-only", tree_sha],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return []

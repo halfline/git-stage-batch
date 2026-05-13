@@ -25,6 +25,8 @@ from ..utils.git import (
     create_git_blob,
     GitIndexEntryUpdate,
     get_git_repository_root_path,
+    git_add_paths,
+    git_checkout_detached,
     git_commit_tree,
     git_read_tree,
     git_update_index_entries,
@@ -55,7 +57,11 @@ def _list_refs() -> dict[str, str]:
     """List refs whose values are restored by undo."""
     refs: dict[str, str] = {}
     for prefix in REF_PREFIXES:
-        result = run_git_command(["for-each-ref", "--format=%(objectname) %(refname)", prefix], check=False)
+        result = run_git_command(
+            ["for-each-ref", "--format=%(objectname) %(refname)", prefix],
+            check=False,
+            requires_index_lock=False,
+        )
         if result.returncode != 0:
             continue
         for line in result.stdout.splitlines():
@@ -89,14 +95,14 @@ def _changed_worktree_paths() -> list[str]:
         ["ls-files", "--others", "--exclude-standard"],
     ]
     for args in commands:
-        result = run_git_command(args, check=False)
+        result = run_git_command(args, check=False, requires_index_lock=False)
         if result.returncode == 0:
             paths.update(line for line in result.stdout.splitlines() if line)
     return sorted(paths)
 
 
 def _gitlink_oid_from_index(path: str) -> str | None:
-    result = run_git_command(["ls-files", "--stage", "--", path], check=False)
+    result = run_git_command(["ls-files", "--stage", "--", path], check=False, requires_index_lock=False)
     if result.returncode != 0:
         return None
     for line in result.stdout.splitlines():
@@ -107,7 +113,7 @@ def _gitlink_oid_from_index(path: str) -> str | None:
 
 
 def _gitlink_oid_from_head(path: str) -> str | None:
-    result = run_git_command(["ls-tree", "HEAD", "--", path], check=False)
+    result = run_git_command(["ls-tree", "HEAD", "--", path], check=False, requires_index_lock=False)
     if result.returncode != 0:
         return None
     for line in result.stdout.splitlines():
@@ -120,8 +126,10 @@ def _gitlink_oid_from_head(path: str) -> str | None:
 
 def _worktree_commit_oid(path: str) -> str | None:
     result = run_git_command(
-        ["-C", path, "rev-parse", "--verify", "HEAD^{commit}"],
+        ["rev-parse", "--verify", "HEAD^{commit}"],
+        cwd=path,
         check=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return None
@@ -129,7 +137,7 @@ def _worktree_commit_oid(path: str) -> str | None:
 
 
 def _worktree_is_dirty(path: str) -> bool:
-    result = run_git_command(["-C", path, "status", "--porcelain"], check=False)
+    result = run_git_command(["status", "--porcelain"], cwd=path, check=False, requires_index_lock=False)
     return result.returncode != 0 or bool(result.stdout.strip())
 
 
@@ -227,7 +235,7 @@ def _index_update_from_path(
 
 
 def _snapshot_current_state(paths: list[str]) -> dict[str, Any]:
-    index_result = run_git_command(["write-tree"], check=False)
+    index_result = run_git_command(["write-tree"], check=False, requires_index_lock=False)
     return {
         "index_tree": index_result.stdout.strip() if index_result.returncode == 0 else None,
         "refs": _list_refs(),
@@ -286,7 +294,7 @@ def _add_directory_to_index(env: dict[str, str], *, source_dir: Path, tree_prefi
 
 
 def _current_stack_commit(ref_name: str) -> str | None:
-    result = run_git_command(["rev-parse", "--verify", ref_name], check=False)
+    result = run_git_command(["rev-parse", "--verify", ref_name], check=False, requires_index_lock=False)
     if result.returncode != 0:
         return None
     return result.stdout.strip()
@@ -315,7 +323,7 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
 
     manifest = {
         "operation": operation,
-        "head": run_git_command(["rev-parse", "HEAD"], check=False).stdout.strip(),
+        "head": run_git_command(["rev-parse", "HEAD"], check=False, requires_index_lock=False).stdout.strip(),
         "index_tree": before["index_tree"],
         "refs": before["refs"],
         "worktree_paths": [
@@ -351,7 +359,7 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
         parents=[parent] if parent else [],
         message=f"Undo checkpoint: {operation}",
     )
-    run_git_command(["update-ref", SESSION_UNDO_STACK_REF, checkpoint_commit])
+    update_git_refs(updates=[(SESSION_UNDO_STACK_REF, checkpoint_commit)])
     _PENDING_CHECKPOINT = checkpoint_commit
     return checkpoint_commit
 
@@ -403,7 +411,7 @@ def finalize_pending_checkpoint() -> None:
         parents=[parent] if parent else [],
         message=f"Undo checkpoint: {manifest.get('operation', 'operation')}",
     )
-    run_git_command(["update-ref", SESSION_UNDO_STACK_REF, checkpoint_commit])
+    update_git_refs(updates=[(SESSION_UNDO_STACK_REF, checkpoint_commit)])
 
 
 def _read_json_blob(blob_sha: str) -> dict[str, Any]:
@@ -427,7 +435,12 @@ def _write_blob_to_worktree_path(
 
 
 def _tree_entries(commit: str, prefix: str) -> list[tuple[str, str, str]]:
-    result = run_git_command(["ls-tree", "-r", "-z", commit, prefix], check=False, text_output=False)
+    result = run_git_command(
+        ["ls-tree", "-r", "-z", commit, prefix],
+        check=False,
+        text_output=False,
+        requires_index_lock=False,
+    )
     if result.returncode != 0 or not result.stdout:
         return []
 
@@ -487,10 +500,7 @@ def _restore_worktree(commit: str, manifest: dict[str, Any]) -> None:
         if entry.get("kind") == "gitlink":
             worktree_oid = entry.get("worktree_oid")
             if entry.get("exists", False) and worktree_oid:
-                result = run_git_command(
-                    ["-C", file_path, "checkout", "--detach", worktree_oid],
-                    check=False,
-                )
+                result = git_checkout_detached(worktree_oid, cwd=file_path, check=False)
                 if result.returncode != 0:
                     raise CommandError(
                         _("Failed to restore submodule pointer for {file}: {error}").format(
@@ -518,7 +528,7 @@ def _restore_intent_to_add_entries() -> None:
     for file_path in read_file_paths_file(get_auto_added_files_file_path()):
         full_path = repo_root / file_path
         if os.path.lexists(full_path):
-            run_git_command(["add", "-N", "--", file_path], check=False)
+            git_add_paths([file_path], intent_to_add=True, check=False)
 
 
 def _worktree_state_by_path(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -560,7 +570,7 @@ def _detect_redo_conflicts(manifest: dict[str, Any]) -> list[str]:
 
 
 def _checkpoint_parent(commit: str) -> str | None:
-    result = run_git_command(["rev-parse", "--verify", f"{commit}^"], check=False)
+    result = run_git_command(["rev-parse", "--verify", f"{commit}^"], check=False, requires_index_lock=False)
     if result.returncode != 0:
         return None
     return result.stdout.strip()
@@ -633,7 +643,7 @@ def _write_snapshot_commit(
         parents=[parent] if parent else [],
         message=message,
     )
-    run_git_command(["update-ref", ref_name, commit_sha])
+    update_git_refs(updates=[(ref_name, commit_sha)])
     return commit_sha
 
 
@@ -650,7 +660,10 @@ def _push_redo_node(
     manifest = {
         "operation": operation,
         "undo_checkpoint": undo_checkpoint,
-        "head": target.get("head", run_git_command(["rev-parse", "HEAD"], check=False).stdout.strip()),
+        "head": target.get(
+            "head",
+            run_git_command(["rev-parse", "HEAD"], check=False, requires_index_lock=False).stdout.strip(),
+        ),
         "index_tree": target.get("index_tree"),
         "refs": target.get("refs", {}),
         "worktree_paths": [
@@ -733,9 +746,9 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
 
     parent = _checkpoint_parent(checkpoint)
     if parent:
-        run_git_command(["update-ref", SESSION_UNDO_STACK_REF, parent])
+        update_git_refs(updates=[(SESSION_UNDO_STACK_REF, parent)])
     else:
-        run_git_command(["update-ref", "-d", SESSION_UNDO_STACK_REF], check=False)
+        update_git_refs(deletes=[SESSION_UNDO_STACK_REF])
 
     return operation
 
@@ -771,22 +784,22 @@ def redo_last_checkpoint(*, force: bool = False) -> str:
 
     undo_checkpoint = manifest.get("undo_checkpoint")
     if undo_checkpoint:
-        run_git_command(["update-ref", SESSION_UNDO_STACK_REF, undo_checkpoint])
+        update_git_refs(updates=[(SESSION_UNDO_STACK_REF, undo_checkpoint)])
 
     parent = _checkpoint_parent(redo_node)
     if parent:
-        run_git_command(["update-ref", SESSION_REDO_STACK_REF, parent])
+        update_git_refs(updates=[(SESSION_REDO_STACK_REF, parent)])
     else:
-        run_git_command(["update-ref", "-d", SESSION_REDO_STACK_REF], check=False)
+        update_git_refs(deletes=[SESSION_REDO_STACK_REF])
 
     return str(manifest.get("operation", "operation"))
 
 
 def _clear_redo_history() -> None:
-    run_git_command(["update-ref", "-d", SESSION_REDO_STACK_REF], check=False)
+    update_git_refs(deletes=[SESSION_REDO_STACK_REF])
 
 
 def clear_undo_history() -> None:
     """Clear all undo and redo checkpoints for the current session."""
-    run_git_command(["update-ref", "-d", SESSION_UNDO_STACK_REF], check=False)
+    update_git_refs(deletes=[SESSION_UNDO_STACK_REF])
     _clear_redo_history()

@@ -28,13 +28,15 @@ def batch_exists(batch_name: str) -> bool:
     """Check if a batch exists by checking its authoritative git ref."""
     result = run_git_command(
         ["show-ref", "--verify", "--quiet", f"{BATCH_CONTENT_REF_PREFIX}{batch_name}"],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     if result.returncode == 0:
         return True
 
     result = run_git_command(
         ["show-ref", "--verify", "--quiet", f"{LEGACY_BATCH_REF_PREFIX}{batch_name}"],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     return result.returncode == 0

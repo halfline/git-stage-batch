@@ -54,14 +54,16 @@ def validate_batch_metadata_file_exists(batch_name: str) -> None:
     """
     state_result = run_git_command(
         ["show-ref", "--verify", "--quiet", get_batch_state_ref_name(batch_name)],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     if state_result.returncode == 0:
         return
 
     result = run_git_command(
         ["show-ref", "--verify", "--quiet", get_legacy_batch_ref_name(batch_name)],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     batch_ref_exists = result.returncode == 0
 
@@ -119,7 +121,8 @@ def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str)
     if baseline:
         result = run_git_command(
             ["cat-file", "-e", baseline],
-            check=False
+            check=False,
+            requires_index_lock=False,
         )
         if result.returncode != 0:
             raise BatchMetadataError(
@@ -169,7 +172,8 @@ def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str)
             if batch_source_commit:
                 result = run_git_command(
                     ["cat-file", "-e", batch_source_commit],
-                    check=False
+                    check=False,
+                    requires_index_lock=False,
                 )
                 if result.returncode != 0:
                     raise BatchMetadataError(
@@ -200,13 +204,15 @@ def load_and_validate_batch_metadata(batch_name: str) -> dict[str, Any]:
     """
     state_result = run_git_command(
         ["show-ref", "--verify", "--quiet", get_batch_state_ref_name(batch_name)],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     state_ref_exists = state_result.returncode == 0
 
     legacy_result = run_git_command(
         ["show-ref", "--verify", "--quiet", get_legacy_batch_ref_name(batch_name)],
-        check=False
+        check=False,
+        requires_index_lock=False,
     )
     batch_ref_exists = state_ref_exists or legacy_result.returncode == 0
 

@@ -6,7 +6,14 @@ import shutil
 
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.git import get_git_repository_root_path, git_update_gitlink, run_git_command
+from ..utils.git import (
+    get_git_repository_root_path,
+    git_add_paths,
+    git_checkout_detached,
+    git_submodule_update_checkout,
+    git_update_gitlink,
+    run_git_command,
+)
 
 
 def is_batch_submodule_pointer(file_meta: dict) -> bool:
@@ -60,8 +67,10 @@ def _submodule_worktree_path(file_path: str):
 def _checkout_submodule_pointer(file_path: str, oid: str, action: str) -> None:
     """Move a clean submodule worktree to one commit."""
     status_result = run_git_command(
-        ["-C", file_path, "status", "--porcelain"],
+        ["status", "--porcelain"],
+        cwd=file_path,
         check=False,
+        requires_index_lock=False,
     )
     if status_result.returncode != 0:
         exit_with_error(
@@ -76,10 +85,7 @@ def _checkout_submodule_pointer(file_path: str, oid: str, action: str) -> None:
             ).format(action=action, file=file_path)
         )
 
-    checkout_result = run_git_command(
-        ["-C", file_path, "checkout", "--detach", oid],
-        check=False,
-    )
+    checkout_result = git_checkout_detached(oid, cwd=file_path, check=False)
     if checkout_result.returncode != 0:
         exit_with_error(
             _(
@@ -92,10 +98,7 @@ def _ensure_submodule_worktree(file_path: str, oid: str, action: str) -> None:
     """Ensure a submodule worktree exists, then check out one commit."""
     full_path = _submodule_worktree_path(file_path)
     if not full_path.exists():
-        update_result = run_git_command(
-            ["submodule", "update", "--init", "--checkout", "--", file_path],
-            check=False,
-        )
+        update_result = git_submodule_update_checkout([file_path], check=False)
         if update_result.returncode != 0:
             exit_with_error(
                 _(
@@ -112,8 +115,10 @@ def _remove_submodule_worktree(file_path: str, action: str) -> None:
         return
 
     status_result = run_git_command(
-        ["-C", file_path, "status", "--porcelain"],
+        ["status", "--porcelain"],
+        cwd=file_path,
         check=False,
+        requires_index_lock=False,
     )
     if status_result.returncode != 0:
         exit_with_error(
@@ -136,7 +141,7 @@ def _remove_submodule_worktree(file_path: str, action: str) -> None:
 
 def _mark_submodule_pointer_intent_to_add(file_path: str, action: str) -> None:
     """Add an intent-to-add gitlink so an added pointer appears as a live diff."""
-    result = run_git_command(["add", "-N", "--", file_path], check=False)
+    result = git_add_paths([file_path], intent_to_add=True, check=False)
     if result.returncode != 0:
         exit_with_error(
             _(

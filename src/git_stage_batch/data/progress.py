@@ -79,6 +79,7 @@ def get_file_progress() -> tuple[int, int]:
                 "HEAD",
             ],
             check=False,
+            requires_index_lock=False,
         )
         if result.returncode != 0:
             return (0, 0)

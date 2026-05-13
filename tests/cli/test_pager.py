@@ -64,7 +64,7 @@ def test_resolve_git_pager_treats_cat_as_disabled(monkeypatch):
     monkeypatch.setattr(
         pager_module,
         "run_git_command",
-        lambda _args, check=False: argparse.Namespace(returncode=0, stdout="cat\n"),
+        lambda _args, check=False, **_kwargs: argparse.Namespace(returncode=0, stdout="cat\n"),
     )
 
     assert pager_module._resolve_git_pager() is None

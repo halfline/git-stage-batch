@@ -327,7 +327,7 @@ def _session_marker_path(git_dir: Path | None = None) -> Path:
 def _git_directory_for_prompt() -> Path | None:
     """Return the git directory for prompt rendering, or None outside a repo."""
     try:
-        result = run_git_command(["rev-parse", "--absolute-git-dir"], check=False)
+        result = run_git_command(["rev-parse", "--absolute-git-dir"], check=False, requires_index_lock=False)
     except (FileNotFoundError, OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:

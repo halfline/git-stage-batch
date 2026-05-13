@@ -6,7 +6,8 @@ import os
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterable, Iterator
+import time
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,8 @@ from .text import bytes_to_lines
 
 _GIT_REPOSITORY_ROOT_CACHE: dict[Path, Path] = {}
 _GIT_DIRECTORY_CACHE: dict[Path, Path] = {}
+_INDEX_LOCK_WAIT_SECONDS = 2.0
+_INDEX_LOCK_POLL_SECONDS = 0.05
 
 
 @dataclass(frozen=True)
@@ -41,12 +44,84 @@ class GitIndexEntryUpdate:
     force_remove: bool = False
 
 
+def _git_environment_with_optional_locks_disabled(
+    env: dict[str, str] | None,
+) -> dict[str, str]:
+    git_env = os.environ.copy() if env is None else dict(env)
+    git_env["GIT_OPTIONAL_LOCKS"] = "0"
+    return git_env
+
+
+def _custom_index_lock_path(
+    *,
+    env: dict[str, str] | None,
+    cwd: str | None,
+) -> Path | None:
+    git_env = os.environ.copy() if env is None else dict(env)
+    index_file = git_env.get("GIT_INDEX_FILE")
+    if not index_file:
+        return None
+
+    index_path = Path(index_file)
+    if not index_path.is_absolute():
+        index_path = (Path.cwd() if cwd is None else Path(cwd)) / index_path
+    return Path(f"{index_path}.lock")
+
+
+def _git_index_lock_path(*, cwd: str | None, env: dict[str, str] | None) -> Path:
+    custom_index_lock_path = _custom_index_lock_path(env=env, cwd=cwd)
+    if custom_index_lock_path is not None:
+        return custom_index_lock_path
+
+    result = run_command(
+        ["git", "rev-parse", "--absolute-git-dir"],
+        check=True,
+        cwd=cwd,
+        env=_git_environment_with_optional_locks_disabled(env),
+    )
+    return Path(result.stdout.strip()) / "index.lock"
+
+
+def wait_for_git_index_lock(
+    *,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    timeout_seconds: float = _INDEX_LOCK_WAIT_SECONDS,
+    poll_seconds: float = _INDEX_LOCK_POLL_SECONDS,
+) -> None:
+    """Wait briefly for a pre-existing Git index lock to disappear."""
+    try:
+        index_lock_path = _git_index_lock_path(cwd=cwd, env=env)
+    except subprocess.CalledProcessError:
+        return
+
+    deadline = time.monotonic() + timeout_seconds
+    while index_lock_path.exists():
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            return
+        time.sleep(min(poll_seconds, remaining_seconds))
+
+
+def _prepare_git_command_environment(
+    *,
+    requires_index_lock: bool,
+    cwd: str | None,
+    env: dict[str, str] | None,
+) -> dict[str, str] | None:
+    if requires_index_lock:
+        wait_for_git_index_lock(cwd=cwd, env=env)
+        return env
+    return _git_environment_with_optional_locks_disabled(env)
+
+
 def stream_git_command(
     arguments: list[str],
     stdin_chunks: Iterable[bytes] | None = None,
     *,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
+    requires_index_lock: bool = True,
 ) -> Iterator[bytes]:
     """Stream git command output as bytes lines.
 
@@ -61,6 +136,7 @@ def stream_git_command(
         stdin_chunks: Iterable yielding bytes chunks to write to stdin (None for no input)
         cwd: Working directory for the command
         env: Environment variables
+        requires_index_lock: Whether to wait for Git's index lock before running
 
     Yields:
         Bytes lines from stdout
@@ -71,7 +147,16 @@ def stream_git_command(
     def stdout_chunks():
         """Generator that yields only stdout chunks from command events."""
         nonlocal exit_code, stderr_chunks
-        for event in stream_command(["git", *arguments], stdin_chunks, cwd=cwd, env=env):
+        for event in stream_command(
+            ["git", *arguments],
+            stdin_chunks,
+            cwd=cwd,
+            env=_prepare_git_command_environment(
+                requires_index_lock=requires_index_lock,
+                cwd=cwd,
+                env=env,
+            ),
+        ):
             if isinstance(event, ExitEvent):
                 exit_code = event.exit_code
             elif isinstance(event, OutputEvent):
@@ -146,11 +231,16 @@ def stream_git_diff(
         stdin_chunks,
         cwd=cwd,
         env=env,
+        requires_index_lock=False,
     )
 
 
 def _git_ref_exists(ref_name: str) -> bool:
-    result = run_git_command(["rev-parse", "--verify", ref_name], check=False)
+    result = run_git_command(
+        ["rev-parse", "--verify", ref_name],
+        check=False,
+        requires_index_lock=False,
+    )
     return result.returncode == 0
 
 
@@ -173,7 +263,11 @@ def update_git_refs(
     commands.extend(f"delete {ref_name}" for ref_name in delete_commands)
     commands.extend(["prepare", "commit"])
     payload = ("\n".join(commands) + "\n").encode("utf-8")
-    for _chunk in stream_git_command(["update-ref", "--stdin"], [payload]):
+    for _chunk in stream_git_command(
+        ["update-ref", "--stdin"],
+        [payload],
+        requires_index_lock=False,
+    ):
         pass
 
 
@@ -182,8 +276,12 @@ def run_git_command(
     check: bool = True,
     text_output: bool = True,
     *,
+    stdin_chunks: Iterable[bytes] | None = None,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
+    requires_index_lock: bool = True,
 ) -> subprocess.CompletedProcess:
     """Execute a git command with error handling.
 
@@ -191,8 +289,12 @@ def run_git_command(
         arguments: Git command arguments (e.g., ["status", "--short"])
         check: Whether to raise CalledProcessError on non-zero exit
         text_output: Whether to decode stdout/stderr as text
+        stdin_chunks: Iterable yielding bytes chunks to write to stdin
         cwd: Working directory for the command
         env: Environment variables
+        capture_stdout: Whether to capture stdout
+        capture_stderr: Whether to capture stderr
+        requires_index_lock: Whether to wait for Git's index lock before running
 
     Returns:
         CompletedProcess with returncode, stdout, stderr
@@ -202,10 +304,17 @@ def run_git_command(
     """
     return run_command(
         ["git", *arguments],
+        stdin_chunks,
         check=check,
         text_output=text_output,
         cwd=cwd,
-        env=env,
+        env=_prepare_git_command_environment(
+            requires_index_lock=requires_index_lock,
+            cwd=cwd,
+            env=env,
+        ),
+        capture_stdout=capture_stdout,
+        capture_stderr=capture_stderr,
     )
 
 
@@ -228,7 +337,7 @@ def temp_git_index() -> Iterator[dict[str, str]]:
 
 def git_read_tree(treeish: str, *, env: dict[str, str] | None = None) -> None:
     """Read a Git tree into the current or provided index."""
-    run_git_command(["read-tree", treeish], env=env)
+    run_git_command(["read-tree", treeish], env=env, requires_index_lock=True)
 
 
 def git_update_index(
@@ -254,6 +363,16 @@ def git_update_index(
         arguments,
         check=check,
         env=env,
+        requires_index_lock=True,
+    )
+
+
+def git_refresh_index(*, check: bool = True) -> subprocess.CompletedProcess:
+    """Refresh cached index stat information from the working tree."""
+    return run_git_command(
+        ["update-index", "--refresh"],
+        check=check,
+        requires_index_lock=True,
     )
 
 
@@ -324,13 +443,18 @@ def git_update_index_entries(
         ["update-index", "-z", "--index-info"],
         payload_chunks,
         env=env,
+        requires_index_lock=True,
     ):
         pass
 
 
 def git_write_tree(*, env: dict[str, str] | None = None) -> str:
     """Write the current or provided index as a Git tree."""
-    return run_git_command(["write-tree"], env=env).stdout.strip()
+    return run_git_command(
+        ["write-tree"],
+        env=env,
+        requires_index_lock=False,
+    ).stdout.strip()
 
 
 def git_commit_tree(
@@ -345,7 +469,172 @@ def git_commit_tree(
     for parent in parents:
         arguments.extend(["-p", parent])
     arguments.extend(["-m", message])
-    return run_git_command(arguments, env=env).stdout.strip()
+    return run_git_command(arguments, env=env, requires_index_lock=False).stdout.strip()
+
+
+def git_apply_to_index(
+    patch_chunks: Iterable[bytes],
+    *,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Apply patch chunks to the index."""
+    return run_git_command(
+        ["apply", "--cached"],
+        stdin_chunks=patch_chunks,
+        check=check,
+        requires_index_lock=True,
+    )
+
+
+def git_apply_to_worktree(
+    patch_chunks: Iterable[bytes],
+    *,
+    reverse: bool = False,
+    unidiff_zero: bool = False,
+    check_only: bool = False,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Apply patch chunks to the working tree without writing the index."""
+    arguments = ["apply"]
+    if reverse:
+        arguments.append("--reverse")
+    if unidiff_zero:
+        arguments.append("--unidiff-zero")
+    if check_only:
+        arguments.append("--check")
+    return run_git_command(
+        arguments,
+        stdin_chunks=patch_chunks,
+        check=check,
+        requires_index_lock=False,
+    )
+
+
+def git_add_paths(
+    paths: Sequence[str],
+    *,
+    intent_to_add: bool = False,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Stage paths, optionally as intent-to-add entries."""
+    arguments = ["add"]
+    if intent_to_add:
+        arguments.append("-N")
+    arguments.extend(["--", *paths])
+    return run_git_command(arguments, check=check, requires_index_lock=True)
+
+
+def git_checkout_paths(
+    treeish: str,
+    paths: Sequence[str],
+    *,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Check out paths from a treeish into the index and working tree."""
+    return run_git_command(
+        ["checkout", treeish, "--", *paths],
+        check=check,
+        requires_index_lock=True,
+    )
+
+
+def git_checkout_detached(
+    oid: str,
+    *,
+    cwd: str,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Check out one commit in detached mode inside another Git worktree."""
+    return run_git_command(
+        ["checkout", "--detach", oid],
+        cwd=cwd,
+        check=check,
+        requires_index_lock=True,
+    )
+
+
+def git_remove_paths(
+    paths: Sequence[str],
+    *,
+    cached: bool = False,
+    force: bool = False,
+    quiet: bool = False,
+    ignore_unmatch: bool = False,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Remove paths from the index, and from the worktree unless cached."""
+    arguments = ["rm"]
+    if cached:
+        arguments.append("--cached")
+    if force:
+        arguments.append("-f")
+    if quiet:
+        arguments.append("--quiet")
+    if ignore_unmatch:
+        arguments.append("--ignore-unmatch")
+    arguments.extend(["--", *paths])
+    return run_git_command(arguments, check=check, requires_index_lock=True)
+
+
+def git_reset_paths(
+    paths: Sequence[str],
+    *,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Reset paths in the index from HEAD."""
+    return run_git_command(
+        ["reset", "--", *paths],
+        check=check,
+        requires_index_lock=True,
+    )
+
+
+def git_reset_hard(
+    revision: str,
+    *,
+    env: dict[str, str] | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Reset HEAD, index, and worktree to a revision."""
+    return run_git_command(
+        ["reset", "--hard", revision],
+        env=env,
+        check=check,
+        requires_index_lock=True,
+    )
+
+
+def git_apply_stash(
+    stash_ref: str,
+    *,
+    restore_index: bool = False,
+    env: dict[str, str] | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Apply a stash to the worktree, optionally restoring index state."""
+    arguments = ["stash", "apply"]
+    if restore_index:
+        arguments.append("--index")
+    arguments.append(stash_ref)
+    return run_git_command(
+        arguments,
+        env=env,
+        check=check,
+        requires_index_lock=True,
+    )
+
+
+def git_submodule_update_checkout(
+    paths: Sequence[str],
+    *,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Ensure submodule worktrees exist using checkout update mode."""
+    return run_git_command(
+        ["submodule", "update", "--init", "--checkout", "--", *paths],
+        check=check,
+        requires_index_lock=True,
+    )
 
 
 def create_git_blob(content_chunks: Iterable[bytes]) -> str:
@@ -361,21 +650,18 @@ def create_git_blob(content_chunks: Iterable[bytes]) -> str:
         RuntimeError: If git hash-object fails or produces no output
     """
     stdout_chunks = []
-    stderr_chunks = []
-    exit_code = 0
-
-    for event in stream_command(["git", "hash-object", "-w", "--stdin"], content_chunks):
-        if isinstance(event, ExitEvent):
-            exit_code = event.exit_code
-        elif isinstance(event, OutputEvent):
-            if event.fd == 1:  # stdout
-                stdout_chunks.append(event.data)
-            elif event.fd == 2:  # stderr
-                stderr_chunks.append(event.data)
-
-    if exit_code != 0:
-        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
-        raise RuntimeError(f"git hash-object failed with exit code {exit_code}: {stderr_text}")
+    try:
+        for line in stream_git_command(
+            ["hash-object", "-w", "--stdin"],
+            content_chunks,
+            requires_index_lock=False,
+        ):
+            stdout_chunks.append(line)
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            f"git hash-object failed with exit code {error.returncode}: "
+            f"{error.stderr}"
+        ) from error
 
     if not stdout_chunks:
         raise RuntimeError("git hash-object produced no output")
@@ -398,21 +684,15 @@ def read_git_blob(blob_sha: str) -> Iterator[bytes]:
     Raises:
         RuntimeError: If git cat-file fails or blob doesn't exist
     """
-    stderr_chunks = []
-    exit_code = 0
-
-    for event in stream_command(["git", "cat-file", "blob", blob_sha], None):
-        if isinstance(event, ExitEvent):
-            exit_code = event.exit_code
-        elif isinstance(event, OutputEvent):
-            if event.fd == 1:  # stdout
-                yield event.data
-            elif event.fd == 2:  # stderr
-                stderr_chunks.append(event.data)
-
-    if exit_code != 0:
-        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
-        raise RuntimeError(f"git cat-file failed with exit code {exit_code}: {stderr_text}")
+    try:
+        yield from stream_git_command(
+            ["cat-file", "blob", blob_sha],
+            requires_index_lock=False,
+        )
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            f"git cat-file failed with exit code {error.returncode}: {error.stderr}"
+        ) from error
 
 
 def read_git_blobs_as_bytes(blob_hashes: Iterable[str]) -> dict[str, bytes]:
@@ -422,10 +702,11 @@ def read_git_blobs_as_bytes(blob_hashes: Iterable[str]) -> dict[str, bytes]:
         return {}
 
     payload = "".join(f"{blob_hash}\n" for blob_hash in unique_blob_hashes).encode("ascii")
-    result = run_command(
-        ["git", "cat-file", "--batch"],
-        [payload],
+    result = run_git_command(
+        ["cat-file", "--batch"],
+        stdin_chunks=[payload],
         text_output=False,
+        requires_index_lock=False,
     )
 
     data = result.stdout
@@ -463,6 +744,7 @@ def list_git_tree_blobs(treeish: str, file_paths: Iterable[str]) -> dict[str, Gi
         ["ls-tree", "-rz", treeish, "--", *unique_file_paths],
         check=False,
         text_output=False,
+        requires_index_lock=False,
     )
     if result.returncode != 0:
         return {}
@@ -497,7 +779,7 @@ def require_git_repository() -> None:
         SystemExit: Via exit_with_error if not in a git repository
     """
     try:
-        run_git_command(["rev-parse", "--git-dir"])
+        run_git_command(["rev-parse", "--git-dir"], requires_index_lock=False)
     except subprocess.CalledProcessError as error:
         # Print git's actual error message which contains helpful context
         if error.stderr:
@@ -519,7 +801,10 @@ def get_git_repository_root_path() -> Path:
     if cached is not None:
         return cached
 
-    output = run_git_command(["rev-parse", "--show-toplevel"]).stdout.strip()
+    output = run_git_command(
+        ["rev-parse", "--show-toplevel"],
+        requires_index_lock=False,
+    ).stdout.strip()
     path = Path(output)
     _GIT_REPOSITORY_ROOT_CACHE[cwd] = path
     return path
@@ -532,7 +817,10 @@ def get_git_directory_path() -> Path:
     if cached is not None:
         return cached
 
-    output = run_git_command(["rev-parse", "--absolute-git-dir"]).stdout.strip()
+    output = run_git_command(
+        ["rev-parse", "--absolute-git-dir"],
+        requires_index_lock=False,
+    ).stdout.strip()
     path = Path(output)
     _GIT_DIRECTORY_CACHE[cwd] = path
     return path

@@ -1544,24 +1544,31 @@ def _missing_claimed_lines(
     presence_line_set: set[int]
 ) -> set[int]:
     """Return claimed source lines that are not present as claimed entries."""
-    present_claimed = set()
+    missing_claimed = set(presence_line_set)
+    if not missing_claimed:
+        return missing_claimed
+
     if isinstance(entries, _RealizedEntries):
         for run in entries.provenance_runs():
             if not run.is_claimed or run.source_start == 0:
                 continue
-            present_claimed.update(
+            missing_claimed.difference_update(
                 range(
                     run.source_start,
                     run.source_start + (run.dest_end - run.dest_start),
                 )
             )
-        return presence_line_set - present_claimed
+            if not missing_claimed:
+                break
+        return missing_claimed
 
     for index in range(len(entries)):
         source_line = _entry_source_line_at(entries, index)
         if source_line is not None and _entry_is_claimed_at(entries, index):
-            present_claimed.add(source_line)
-    return presence_line_set - present_claimed
+            missing_claimed.discard(source_line)
+            if not missing_claimed:
+                break
+    return missing_claimed
 
 
 def _satisfy_constraints(

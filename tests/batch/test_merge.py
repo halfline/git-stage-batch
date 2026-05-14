@@ -13,6 +13,7 @@ from git_stage_batch.batch.merge import (
     _discard_batch_line_chunks,
     _merge_batch_line_chunks,
     _realized_entry_content_chunks,
+    _reverse_presence_constraints,
     _try_apply_baseline_replacement_units,
     can_merge_batch_from_line_sequences,
     discard_batch_from_line_sequences_as_buffer,
@@ -42,6 +43,13 @@ class _IndexGuardedRealizedEntries(_RealizedEntries):
 
     def __getitem__(self, index):
         raise AssertionError("entry indexing should not be used")
+
+
+class _SourceLookupGuardedRealizedEntries(_RealizedEntries):
+    """Realized entries variant that rejects per-line source lookups in tests."""
+
+    def source_line_at(self, index):
+        raise AssertionError("source lookup should not be used")
 
 
 class _GuardedLine:
@@ -666,6 +674,30 @@ class TestMergeLineSequences:
         assert entries.provenance_run_count == 1
         assert entries.target_line_at(999) == 1000
         entries.close()
+
+    def test_reverse_presence_constraints_scans_realized_runs(self):
+        """Discard restore scans realized runs instead of per-line lookups."""
+        baseline = [b"one\n", b"old\n", b"three\n"]
+        source = [b"one\n", b"new\n", b"three\n"]
+        correspondence = _build_baseline_correspondence(baseline, source)
+        entries = _SourceLookupGuardedRealizedEntries()
+        entries.append_line_range_from(
+            source,
+            0,
+            3,
+            source_line_start=1,
+            target_line_start=1,
+        )
+
+        try:
+            result = _reverse_presence_constraints(entries, {2}, correspondence)
+        finally:
+            entries.close()
+
+        try:
+            assert list(result.content_chunks()) == baseline
+        finally:
+            result.close()
 
     def test_baseline_correspondence_accepts_non_list_sequences(self, line_sequence):
         """Baseline correspondence accepts sized sliceable line sequences."""

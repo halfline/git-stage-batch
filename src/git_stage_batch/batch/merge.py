@@ -10,7 +10,7 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Any
 
 from .match import LineMapping, match_lines
-from ..core.line_selection import parse_line_selection
+from ..core.line_selection import LineRanges, LineSelection
 from ..editor import (
     Editor,
     EditorBuffer,
@@ -857,7 +857,7 @@ class ClaimedRunIntervalFacts:
 
 def _check_structural_validity(
     line_mapping: LineMapping,
-    claimed_lines: set[int],
+    claimed_lines: LineSelection,
     deletions: list,  # list[DeletionClaim]
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes]
@@ -877,7 +877,7 @@ def _check_structural_validity(
 
     Args:
         line_mapping: Alignment between batch source and working tree
-        claimed_lines: Set of claimed batch source line numbers
+        claimed_lines: Claimed batch source line numbers
         deletions: List of DeletionClaim objects
         source_lines: Batch source file lines (bytes)
         target_lines: Working tree file lines (bytes)
@@ -893,7 +893,7 @@ def _check_structural_validity(
 
     if present_count == 0 and len(target_lines) > 0:
         if claimed_lines:
-            first_claimed = min(claimed_lines)
+            first_claimed = _first_selected_line(claimed_lines)
             raise MergeError(
                 _("Cannot reliably place claimed line {line}: file completely rewritten").format(
                     line=first_claimed
@@ -964,7 +964,7 @@ def _check_structural_validity(
 
 def _check_claimed_region_compatibility(
     line_mapping: LineMapping,
-    claimed_lines: set[int],
+    claimed_lines: LineSelection,
     deletions: list,  # list[DeletionClaim]
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes]
@@ -989,23 +989,23 @@ def _check_claimed_region_compatibility(
 
     Args:
         line_mapping: Alignment between source and working tree
-        claimed_lines: Set of claimed source line numbers
+        claimed_lines: Claimed source line numbers
         source_lines: Batch source lines
         target_lines: Working tree lines
 
     Raises:
         MergeError: If claimed lines come from incompatible source region
     """
-    sorted_missing = _get_missing_claimed_lines(
+    missing_claimed = _get_missing_claimed_lines(
         line_mapping,
         claimed_lines,
         source_lines
     )
 
-    if not sorted_missing or len(target_lines) == 0:
+    if not missing_claimed or len(target_lines) == 0:
         return
 
-    for run_start, run_end in _build_contiguous_runs(sorted_missing):
+    for run_start, run_end in missing_claimed.ranges():
         facts = _collect_claimed_run_interval_facts(
             run_start,
             run_end,
@@ -1023,39 +1023,38 @@ def _check_claimed_region_compatibility(
 
 def _get_missing_claimed_lines(
     line_mapping: LineMapping,
-    claimed_lines: set[int],
+    claimed_lines: LineSelection,
     source_lines: Sequence[bytes]
-) -> list[int]:
+) -> LineRanges:
     """Return claimed source lines that are not present in the working tree."""
-    missing_claimed = []
-
-    for line_num in sorted(claimed_lines):
-        if 1 <= line_num <= len(source_lines):
-            if line_mapping.get_target_line_from_source_line(line_num) is None:
-                missing_claimed.append(line_num)
-
-    return missing_claimed
+    return _mapped_missing_source_lines(
+        claimed_lines,
+        len(source_lines),
+        line_mapping,
+    )
 
 
-def _build_contiguous_runs(sorted_line_numbers: list[int]) -> list[tuple[int, int]]:
-    """Build contiguous inclusive runs from sorted line numbers."""
-    if not sorted_line_numbers:
-        return []
+def _first_selected_line(lines: LineSelection) -> int | None:
+    first = getattr(lines, "first", None)
+    if first is not None:
+        return first()
+    return min(lines) if lines else None
 
-    runs = []
-    run_start = sorted_line_numbers[0]
-    run_end = sorted_line_numbers[0]
 
-    for line_num in sorted_line_numbers[1:]:
-        if line_num == run_end + 1:
-            run_end = line_num
-        else:
-            runs.append((run_start, run_end))
-            run_start = line_num
-            run_end = line_num
+def _as_line_ranges(lines: LineSelection | Iterable[int]) -> LineRanges:
+    if isinstance(lines, LineRanges):
+        return lines
+    ranges = getattr(lines, "ranges", None)
+    if ranges is not None:
+        return LineRanges.from_ranges(ranges())
+    return LineRanges.from_lines(lines)
 
-    runs.append((run_start, run_end))
-    return runs
+
+def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
+    for start, end in _as_line_ranges(lines).ranges():
+        if start < 1 or end > max_line:
+            return True
+    return False
 
 
 def _find_nearest_mapped_source_line_before(
@@ -1260,7 +1259,7 @@ def _is_claimed_run_structurally_coherent(
 def _apply_presence_constraints(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
-    presence_line_set: set[int],
+    presence_line_set: LineSelection,
     *,
     source_to_working_mapping: LineMapping | None = None,
 ) -> _RealizedEntries:
@@ -1273,7 +1272,7 @@ def _apply_presence_constraints(
     Args:
         source_lines: Batch source file lines (bytes with newlines)
         working_lines: Working tree file lines (bytes with newlines)
-        presence_line_set: Set of source line numbers that must be present
+        presence_line_set: Source line numbers that must be present
 
     Returns:
         Realized entries with all claimed lines present and provenance preserved
@@ -1305,13 +1304,47 @@ def _source_lines_are_contiguous(
     return source_line == previous_source_line + 1
 
 
+def _mapped_missing_source_lines(
+    source_lines: LineSelection,
+    source_line_count: int,
+    mapping: LineMapping,
+) -> LineRanges:
+    missing_ranges: list[tuple[int, int]] = []
+    current_start: int | None = None
+    current_end: int | None = None
+    source_selection = _as_line_ranges(source_lines)
+
+    for start, end in source_selection.ranges():
+        for source_line in range(max(1, start), min(end, source_line_count) + 1):
+            if mapping.get_target_line_from_source_line(source_line) is not None:
+                if current_start is not None and current_end is not None:
+                    missing_ranges.append((current_start, current_end))
+                    current_start = None
+                    current_end = None
+                continue
+
+            if current_start is None:
+                current_start = source_line
+            current_end = source_line
+
+        if current_start is not None and current_end is not None:
+            missing_ranges.append((current_start, current_end))
+            current_start = None
+            current_end = None
+
+    if current_start is not None and current_end is not None:
+        missing_ranges.append((current_start, current_end))
+
+    return LineRanges.from_ranges(missing_ranges)
+
+
 def _append_working_range_with_mapping(
     result: _RealizedEntries,
     working_lines: Sequence[bytes],
     mapping: LineMapping,
     start: int,
     end: int,
-    presence_line_set: set[int],
+    presence_line_set: LineSelection,
 ) -> None:
     """Append a target range split only where provenance stops being contiguous."""
     if start == end:
@@ -1370,7 +1403,7 @@ def _append_working_range_with_mapping(
 def _apply_presence_constraints_with_mapping(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
-    presence_line_set: set[int],
+    presence_line_set: LineSelection,
     mapping: LineMapping,
 ) -> _RealizedEntries:
     """Apply presence constraints using an existing source-to-working mapping."""
@@ -1387,13 +1420,11 @@ def _apply_presence_constraints_with_mapping(
         )
         return result
 
-    missing_claimed: set[int] = set()
-
-    for source_line in presence_line_set:
-        if 1 <= source_line <= len(source_lines):
-            working_line = mapping.get_target_line_from_source_line(source_line)
-            if working_line is None:
-                missing_claimed.add(source_line)
+    missing_claimed = _mapped_missing_source_lines(
+        presence_line_set,
+        len(source_lines),
+        mapping,
+    )
 
     if not missing_claimed:
         result = _RealizedEntries()
@@ -1541,40 +1572,37 @@ def _apply_absence_constraints(
 
 def _missing_claimed_lines(
     entries: Sequence[RealizedEntry],
-    presence_line_set: set[int]
-) -> set[int]:
+    presence_line_set: LineSelection
+) -> LineRanges:
     """Return claimed source lines that are not present as claimed entries."""
-    missing_claimed = set(presence_line_set)
-    if not missing_claimed:
-        return missing_claimed
+    claimed_ranges: list[tuple[int, int]] = []
+    presence_lines = _as_line_ranges(presence_line_set)
 
     if isinstance(entries, _RealizedEntries):
         for run in entries.provenance_runs():
             if not run.is_claimed or run.source_start == 0:
                 continue
-            missing_claimed.difference_update(
-                range(
-                    run.source_start,
-                    run.source_start + (run.dest_end - run.dest_start),
-                )
-            )
-            if not missing_claimed:
-                break
-        return missing_claimed
+            claimed_ranges.append((
+                run.source_start,
+                run.source_start + (run.dest_end - run.dest_start) - 1,
+            ))
+        return presence_lines.difference(
+            LineRanges.from_ranges(claimed_ranges)
+        )
 
     for index in range(len(entries)):
         source_line = _entry_source_line_at(entries, index)
         if source_line is not None and _entry_is_claimed_at(entries, index):
-            missing_claimed.discard(source_line)
-            if not missing_claimed:
-                break
-    return missing_claimed
+            claimed_ranges.append((source_line, source_line))
+    return presence_lines.difference(
+        LineRanges.from_ranges(claimed_ranges)
+    )
 
 
 def _satisfy_constraints(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
-    presence_line_set: set[int],
+    presence_line_set: LineSelection,
     deletion_claims: list['DeletionClaim'],
     *,
     strict: bool = True,
@@ -1626,7 +1654,7 @@ def _satisfy_constraints(
         if missing_claimed:
             if not strict:
                 return realized_entries
-            first_missing = min(missing_claimed)
+            first_missing = missing_claimed.first()
             raise MergeError(
                 _("Cannot satisfy claimed line {line}: removed by absence constraints").format(
                     line=first_missing
@@ -2177,7 +2205,7 @@ def _iter_lines_with_baseline_edits(
 
 def _has_complete_baseline_references(
     ownership: 'BatchOwnership',
-    presence_line_set: set[int],
+    presence_line_set: LineSelection,
     deletion_claims: list['DeletionClaim'],
 ) -> bool:
     claimed_line_references = ownership.presence_baseline_references()
@@ -2196,7 +2224,7 @@ def _try_apply_baseline_replacement_units(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
-    presence_line_set: set[int],
+    presence_line_set: LineSelection,
     deletion_claims: list['DeletionClaim'],
 ) -> Iterator[bytes] | None:
     """Apply baseline-coordinate edits when structural source anchors fail.
@@ -2207,7 +2235,7 @@ def _try_apply_baseline_replacement_units(
     even though the old baseline bytes still exist at an exact recorded
     coordinate.
     """
-    if any(claimed_line < 1 or claimed_line > len(source_lines) for claimed_line in presence_line_set):
+    if _selection_outside_bounds(presence_line_set, len(source_lines)):
         return None
 
     if (
@@ -2222,11 +2250,12 @@ def _try_apply_baseline_replacement_units(
 
     replacement_units = getattr(ownership, "replacement_units", [])
     edits: list[_BaselineLineEdit] = []
-    unit_claimed_lines: set[int] = set()
+    unit_claimed_lines = LineRanges.empty()
     unit_deletion_indices: set[int] = set()
 
     for unit in replacement_units:
-        claimed_lines = sorted(parse_line_selection(",".join(unit.presence_lines))) if unit.presence_lines else []
+        claimed_selection = LineRanges.from_specs(unit.presence_lines)
+        claimed_lines = list(claimed_selection)
         if not claimed_lines or len(unit.deletion_indices) != 1:
             return None
 
@@ -2247,7 +2276,7 @@ def _try_apply_baseline_replacement_units(
             return None
         start, end, _removed_lines = removal_edit
         edits.append((start, end, replacement_lines))
-        unit_claimed_lines.update(claimed_lines)
+        unit_claimed_lines = unit_claimed_lines.union(claimed_selection)
         unit_deletion_indices.add(deletion_index)
 
     for deletion_index, claim in enumerate(deletion_claims):
@@ -2258,7 +2287,8 @@ def _try_apply_baseline_replacement_units(
             return None
         edits.append(removal_edit)
 
-    remaining_claimed_lines = presence_line_set - unit_claimed_lines
+    presence_lines = _as_line_ranges(presence_line_set)
+    remaining_claimed_lines = presence_lines.difference(unit_claimed_lines)
     claimed_line_references = ownership.presence_baseline_references()
     if remaining_claimed_lines:
         grouped_insertions: dict[int, list[int]] = {}
@@ -2287,7 +2317,7 @@ def _try_apply_baseline_replacement_units(
                 insertion_lines,
             ))
 
-    if unit_claimed_lines | remaining_claimed_lines != presence_line_set:
+    if unit_claimed_lines.union(remaining_claimed_lines) != presence_lines:
         return None
 
     return _apply_non_overlapping_baseline_edits(working_lines, edits)
@@ -2829,25 +2859,17 @@ def _build_realized_entries_for_discard(
     return result
 
 
-def _count_lines_in_range(line_set: set[int], start_line: int, end_line: int) -> int:
-    line_count = end_line - start_line + 1
-    if line_count <= len(line_set):
-        return sum(
-            1
-            for line_number in range(start_line, end_line + 1)
-            if line_number in line_set
-        )
-
-    return sum(
-        1
-        for line_number in line_set
-        if start_line <= line_number <= end_line
-    )
+def _count_lines_in_range(
+    line_selection: LineSelection,
+    start_line: int,
+    end_line: int,
+) -> int:
+    return _as_line_ranges(line_selection).count(start_line, end_line)
 
 
 def _reverse_presence_constraints(
     entries: Sequence[RealizedEntry],
-    presence_line_set: set[int],
+    presence_line_set: LineSelection,
     correspondence: BaselineCorrespondence
 ) -> _RealizedEntries:
     """Reverse presence constraints: replace/remove batch-owned claimed lines.
@@ -2868,7 +2890,7 @@ def _reverse_presence_constraints(
 
     Args:
         entries: Realized entries from working tree with source provenance
-        presence_line_set: Set of source line numbers that are batch-owned
+        presence_line_set: Source line numbers that are batch-owned
         correspondence: Baseline restoration correspondence
 
     Returns:
@@ -2880,82 +2902,112 @@ def _reverse_presence_constraints(
     """
     result = _RealizedEntries()
     processed_replace_regions: set[int] = set()
-    copy_start: int | None = 0
 
     def flush_copy(start: int | None, stop: int) -> None:
         if start is not None and start < stop:
             result.copy_slice_from(entries, start, stop)
+
+    def restore_source_line(source_line: int) -> None:
+        region = correspondence.get_region_for_source_line(source_line)
+
+        if region is None:
+            raise MergeError(
+                _("Cannot discard source line {line}: no baseline restoration region found").format(
+                    line=source_line
+                )
+            )
+
+        if region.kind in (RegionKind.EQUAL, RegionKind.REPLACE_LINE_BY_LINE):
+            offset = source_line - region.source_start_line
+            if 0 <= offset < len(region.baseline_lines):
+                result.append_line_range_from(
+                    region.baseline_lines,
+                    offset,
+                    offset + 1,
+                    source_line_start=None,
+                    is_claimed=False,
+                )
+            else:
+                raise MergeError(
+                    _("Source line {line} offset {offset} outside region bounds").format(
+                        line=source_line, offset=offset
+                    )
+                )
+
+        elif region.kind == RegionKind.INSERT:
+            pass
+
+        elif region.kind == RegionKind.REPLACE_BY_HUNK:
+            if region.region_id not in processed_replace_regions:
+                total_lines_in_region = (
+                    region.source_end_line - region.source_start_line + 1
+                )
+                claimed_line_count = _count_lines_in_range(
+                    presence_line_set,
+                    region.source_start_line,
+                    region.source_end_line
+                )
+
+                if claimed_line_count != total_lines_in_region:
+                    raise MergeError(
+                        _("Cannot discard partial ownership of by-hunk replace region "
+                          "(source lines {start}-{end}): batch owns {owned} of {total} lines").format(
+                            start=region.source_start_line,
+                            end=region.source_end_line,
+                            owned=claimed_line_count,
+                            total=total_lines_in_region
+                        )
+                    )
+
+                result.append_line_range_from(
+                    region.baseline_lines,
+                    0,
+                    len(region.baseline_lines),
+                    source_line_start=None,
+                    is_claimed=False,
+                )
+                processed_replace_regions.add(region.region_id)
+
+        else:
+            raise MergeError(
+                _("Unknown region kind: {kind}").format(kind=region.kind)
+            )
+
+    copy_start: int | None = 0
+
+    if isinstance(entries, _RealizedEntries):
+        presence_lines = _as_line_ranges(presence_line_set)
+        for run in entries.provenance_runs():
+            if run.source_start == 0:
+                continue
+
+            run_length = run.dest_end - run.dest_start
+            run_source_end = run.source_start + run_length - 1
+            selected_lines = presence_lines.intersection(
+                LineRanges.from_ranges([(run.source_start, run_source_end)])
+            )
+            if not selected_lines:
+                continue
+
+            for selected_start, selected_end in selected_lines.ranges():
+                for source_line in range(selected_start, selected_end + 1):
+                    index = run.dest_start + (source_line - run.source_start)
+                    flush_copy(copy_start, index)
+                    copy_start = None
+                    restore_source_line(source_line)
+                    copy_start = index + 1
+
+        if copy_start is not None:
+            flush_copy(copy_start, len(entries))
+
+        return result
 
     for index in range(len(entries)):
         source_line = _entry_source_line_at(entries, index)
         if source_line is not None and source_line in presence_line_set:
             flush_copy(copy_start, index)
             copy_start = None
-            region = correspondence.get_region_for_source_line(source_line)
-
-            if region is None:
-                raise MergeError(
-                    _("Cannot discard source line {line}: no baseline restoration region found").format(
-                        line=source_line
-                    )
-                )
-
-            if region.kind in (RegionKind.EQUAL, RegionKind.REPLACE_LINE_BY_LINE):
-                offset = source_line - region.source_start_line
-                if 0 <= offset < len(region.baseline_lines):
-                    result.append_line_range_from(
-                        region.baseline_lines,
-                        offset,
-                        offset + 1,
-                        source_line_start=None,
-                        is_claimed=False,
-                    )
-                else:
-                    raise MergeError(
-                        _("Source line {line} offset {offset} outside region bounds").format(
-                            line=source_line, offset=offset
-                        )
-                    )
-
-            elif region.kind == RegionKind.INSERT:
-                pass
-
-            elif region.kind == RegionKind.REPLACE_BY_HUNK:
-                if region.region_id not in processed_replace_regions:
-                    total_lines_in_region = (
-                        region.source_end_line - region.source_start_line + 1
-                    )
-                    claimed_line_count = _count_lines_in_range(
-                        presence_line_set,
-                        region.source_start_line,
-                        region.source_end_line
-                    )
-
-                    if claimed_line_count != total_lines_in_region:
-                        raise MergeError(
-                            _("Cannot discard partial ownership of by-hunk replace region "
-                              "(source lines {start}-{end}): batch owns {owned} of {total} lines").format(
-                                start=region.source_start_line,
-                                end=region.source_end_line,
-                                owned=claimed_line_count,
-                                total=total_lines_in_region
-                            )
-                        )
-
-                    result.append_line_range_from(
-                        region.baseline_lines,
-                        0,
-                        len(region.baseline_lines),
-                        source_line_start=None,
-                        is_claimed=False,
-                    )
-                    processed_replace_regions.add(region.region_id)
-
-            else:
-                raise MergeError(
-                    _("Unknown region kind: {kind}").format(kind=region.kind)
-                )
-
+            restore_source_line(source_line)
             copy_start = index + 1
         else:
             if copy_start is None:

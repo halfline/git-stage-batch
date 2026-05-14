@@ -2,7 +2,12 @@
 
 import pytest
 
-from git_stage_batch.core.line_selection import format_line_ids, parse_line_selection
+from git_stage_batch.core.line_selection import (
+    LineRanges,
+    format_line_ids,
+    parse_line_selection,
+    parse_line_selection_ranges,
+)
 
 
 class TestParseLineSelection:
@@ -157,3 +162,37 @@ class TestFormatLineIds:
     def test_complex_mixed(self):
         """Test complex mixed ranges and singles."""
         assert format_line_ids([1, 2, 5, 6, 7, 10, 15, 16]) == "1-2,5-7,10,15-16"
+
+
+class TestLineRanges:
+    """Tests for range-backed line selections."""
+
+    def test_parse_selection_ranges_does_not_expand_ranges(self):
+        selection = parse_line_selection_ranges("1-1000000,1000002")
+
+        assert selection.ranges() == ((1, 1000000), (1000002, 1000002))
+        assert len(selection) == 1000001
+        assert 999999 in selection
+        assert 1000001 not in selection
+
+    def test_count_intersection_and_difference_use_ranges(self):
+        selection = parse_line_selection_ranges("1-10,20-30")
+
+        assert selection.count() == 21
+        assert selection.count(5, 22) == 9
+        assert selection.intersection(LineRanges.from_ranges([(8, 25)])).ranges() == (
+            (8, 10),
+            (20, 25),
+        )
+        assert selection.difference(LineRanges.from_ranges([(3, 8), (25, 40)])).ranges() == (
+            (1, 2),
+            (9, 10),
+            (20, 24),
+        )
+
+    def test_formats_ranges_without_line_expansion(self):
+        selection = LineRanges.from_ranges([(10, 12), (1, 3), (4, 5)])
+
+        assert selection.ranges() == ((1, 5), (10, 12))
+        assert selection.to_line_spec() == "1-5,10-12"
+        assert selection.to_range_strings() == ["1-5,10-12"]

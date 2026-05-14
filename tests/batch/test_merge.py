@@ -5,6 +5,7 @@ import pytest
 from git_stage_batch.batch.match import (
     UniqueLinePosition,
     _build_unique_position_map,
+    _longest_increasing_subsequence,
     match_lines,
 )
 from git_stage_batch.batch.merge import (
@@ -102,6 +103,22 @@ class TestMatchLines:
             b"unique\n": UniqueLinePosition(index=1),
             b"other\n": UniqueLinePosition(index=3),
         }
+
+    def test_lis_keeps_source_stable_ties(self):
+        """Equal-length LIS choices keep the earliest source-ordered anchor."""
+        pairs = [(0, 2), (1, 1), (2, 3)]
+
+        assert _longest_increasing_subsequence(pairs) == [(0, 2), (2, 3)]
+
+    def test_lis_uses_later_smaller_tail_for_longer_match(self):
+        """A later smaller target can produce a longer subsequence."""
+        pairs = [(0, 3), (1, 1), (2, 2), (3, 4)]
+
+        assert _longest_increasing_subsequence(pairs) == [
+            (1, 1),
+            (2, 2),
+            (3, 4),
+        ]
 
     def test_line_mapping_uses_zero_filled_arrays(self):
         """Line mappings store one integer slot per line."""

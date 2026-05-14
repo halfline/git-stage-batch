@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from array import array
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import SupportsBytes, overload
@@ -21,35 +22,251 @@ class Cursor:
         self._id = cursor_id
 
 
-@dataclass(slots=True)
-class _SourceLineSegment:
-    start: int
-    end: int | None
-
-
 _BytesLike = bytes | bytearray | memoryview
 _LineLike = _BytesLike | SupportsBytes
 
 
 @dataclass(slots=True)
-class _IndexedLineSegment:
+class _LineSource:
     lines: Sequence[_LineLike]
-    start: int
-    end: int
     owner: Editor | None = None
 
 
 @dataclass(slots=True)
-class _LineSourceRange:
+class _LineRange:
     lines: Sequence[_LineLike]
     start: int
     end: int
     owner: Editor | None
 
 
-_LineSegment = _SourceLineSegment | _IndexedLineSegment
+_SOURCE_RUN = 0
+_INDEXED_RUN = 1
+_UNKNOWN_END = (1 << 64) - 1
+
 _TransformResult = _BytesLike | Iterable[_LineLike]
 _Selection = tuple[int, int | None]
+
+
+class _LinePieceTable:
+    """Compact run table for editor line content."""
+
+    def __init__(self, source: Sequence[_LineLike], owner: Editor) -> None:
+        self._sources: list[_LineSource] = []
+        self._source_lookup: dict[tuple[int, int], int] = {}
+        self._run_kinds = bytearray()
+        self._run_source_ids = array("Q")
+        self._run_starts = array("Q")
+        self._run_ends = array("Q")
+
+        source_id = self._source_id(source, owner)
+        self._append_run(_SOURCE_RUN, source_id, 0, _UNKNOWN_END)
+
+    def __len__(self) -> int:
+        return len(self._run_kinds)
+
+    def run(
+        self,
+        index: int,
+    ) -> tuple[int, Sequence[_LineLike], int, int | None, Editor | None]:
+        source = self._sources[self._run_source_ids[index]]
+        end = self._run_ends[index]
+        return (
+            self._run_kinds[index],
+            source.lines,
+            self._run_starts[index],
+            None if end == _UNKNOWN_END else end,
+            source.owner,
+        )
+
+    def set_run_end(self, index: int, end: int) -> None:
+        self._run_ends[index] = end
+
+    def append_line_range(
+        self,
+        lines: Sequence[_LineLike],
+        start: int,
+        end: int,
+        owner: Editor | None,
+    ) -> None:
+        source_id = self._source_id(lines, owner)
+        self._append_run(_INDEXED_RUN, source_id, start, end)
+
+    def append_line_ranges(self, ranges: Sequence[_LineRange]) -> None:
+        for line_range in ranges:
+            self.append_line_range(
+                line_range.lines,
+                line_range.start,
+                line_range.end,
+                line_range.owner,
+            )
+
+    def replace_range(
+        self,
+        selection_start: int,
+        selection_end: int | None,
+        inserted_ranges: Sequence[_LineRange],
+    ) -> None:
+        replacement_kinds = bytearray()
+        replacement_source_ids = array("Q")
+        replacement_starts = array("Q")
+        replacement_ends = array("Q")
+        inserted = False
+        destination_position = 0
+
+        def append_run(
+            kind: int,
+            source_id: int,
+            start: int,
+            end: int,
+        ) -> None:
+            if end != _UNKNOWN_END and end == start:
+                return
+
+            if (
+                replacement_kinds
+                and replacement_kinds[-1] == kind
+                and replacement_source_ids[-1] == source_id
+                and replacement_ends[-1] == start
+            ):
+                replacement_ends[-1] = end
+                return
+
+            replacement_kinds.append(kind)
+            replacement_source_ids.append(source_id)
+            replacement_starts.append(start)
+            replacement_ends.append(end)
+
+        def append_inserted_ranges() -> None:
+            for line_range in inserted_ranges:
+                source_id = self._source_id(line_range.lines, line_range.owner)
+                append_run(
+                    _INDEXED_RUN,
+                    source_id,
+                    line_range.start,
+                    line_range.end,
+                )
+
+        for run_index in range(len(self)):
+            kind = self._run_kinds[run_index]
+            source_id = self._run_source_ids[run_index]
+            run_start = self._run_starts[run_index]
+            run_end = self._run_ends[run_index]
+            segment_start = destination_position
+
+            if run_end == _UNKNOWN_END:
+                if selection_end is not None and selection_end <= segment_start:
+                    if not inserted:
+                        append_inserted_ranges()
+                        inserted = True
+                    append_run(kind, source_id, run_start, run_end)
+                    continue
+
+                prefix_end = max(selection_start - segment_start, 0)
+                if prefix_end > 0:
+                    append_run(kind, source_id, run_start, run_start + prefix_end)
+
+                if not inserted:
+                    append_inserted_ranges()
+                    inserted = True
+
+                if selection_end is not None:
+                    suffix_start = max(selection_end - segment_start, 0)
+                    append_run(
+                        kind,
+                        source_id,
+                        run_start + suffix_start,
+                        _UNKNOWN_END,
+                    )
+                continue
+
+            segment_line_count = run_end - run_start
+            segment_end = segment_start + segment_line_count
+            destination_position = segment_end
+
+            if selection_end is not None and segment_end <= selection_start:
+                append_run(kind, source_id, run_start, run_end)
+                continue
+
+            if selection_end is not None and segment_start >= selection_end:
+                if not inserted:
+                    append_inserted_ranges()
+                    inserted = True
+                append_run(kind, source_id, run_start, run_end)
+                continue
+
+            prefix_end = max(selection_start - segment_start, 0)
+            if prefix_end > 0:
+                append_run(kind, source_id, run_start, run_start + prefix_end)
+
+            if not inserted:
+                append_inserted_ranges()
+                inserted = True
+
+            if selection_end is not None:
+                suffix_start = min(selection_end - segment_start, segment_line_count)
+                if suffix_start < segment_line_count:
+                    append_run(
+                        kind,
+                        source_id,
+                        run_start + suffix_start,
+                        run_end,
+                    )
+
+        if not inserted:
+            append_inserted_ranges()
+
+        self._run_kinds = replacement_kinds
+        self._run_source_ids = replacement_source_ids
+        self._run_starts = replacement_starts
+        self._run_ends = replacement_ends
+
+    def active_owners(self) -> Iterator[Editor]:
+        for source_id in self._run_source_ids:
+            owner = self._sources[source_id].owner
+            if owner is not None:
+                yield owner
+
+    def _source_id(
+        self,
+        lines: Sequence[_LineLike],
+        owner: Editor | None,
+    ) -> int:
+        key = (id(lines), id(owner))
+        source_id = self._source_lookup.get(key)
+        if source_id is not None:
+            source = self._sources[source_id]
+            if source.lines is lines and source.owner is owner:
+                return source_id
+
+        source_id = len(self._sources)
+        self._sources.append(_LineSource(lines, owner))
+        self._source_lookup[key] = source_id
+        return source_id
+
+    def _append_run(
+        self,
+        kind: int,
+        source_id: int,
+        start: int,
+        end: int,
+    ) -> None:
+        if end != _UNKNOWN_END and end == start:
+            return
+
+        if (
+            self._run_kinds
+            and self._run_kinds[-1] == kind
+            and self._run_source_ids[-1] == source_id
+            and self._run_ends[-1] == start
+        ):
+            self._run_ends[-1] = end
+            return
+
+        self._run_kinds.append(kind)
+        self._run_source_ids.append(source_id)
+        self._run_starts.append(start)
+        self._run_ends.append(end)
 
 
 class Editor(Sequence[_LineLike]):
@@ -57,9 +274,7 @@ class Editor(Sequence[_LineLike]):
 
     def __init__(self, source: Sequence[_LineLike]) -> None:
         self._source = source
-        self._segments: list[_LineSegment] = [
-            _SourceLineSegment(0, None),
-        ]
+        self._pieces = _LinePieceTable(source, self)
         self._line_count: int | None = None
         self._position = 0
         self._selection: _Selection | None = None
@@ -239,10 +454,18 @@ class Editor(Sequence[_LineLike]):
 
         self._commit_edit(
             _InsertedLines(
-                segment=_IndexedLineSegment(lines, start, end, owner or self),
+                ranges=(
+                    _LineRange(lines, start, end, owner or self),
+                ),
                 line_count=end - start,
             )
         )
+
+    def _require_range_owners_open(self, ranges: Sequence[_LineRange]) -> None:
+        for line_range in ranges:
+            owner = line_range.owner
+            if owner is not None and owner is not self:
+                owner._require_open()
 
     def add_bytes(self, data: bytes) -> None:
         """Insert raw bytes split on line endings."""
@@ -255,11 +478,13 @@ class Editor(Sequence[_LineLike]):
         self._owned_buffers.append(buffer)
         self._commit_edit(
             _InsertedLines(
-                segment=_IndexedLineSegment(
-                    buffer,
-                    0,
-                    line_count,
-                    self,
+                ranges=(
+                    _LineRange(
+                        buffer,
+                        0,
+                        line_count,
+                        self,
+                    ),
                 ),
                 line_count=line_count,
             )
@@ -340,16 +565,17 @@ class Editor(Sequence[_LineLike]):
             if inserted_lines is not None
             else 0
         )
-        inserted_segment = (
-            inserted_lines.segment
+        inserted_ranges = (
+            inserted_lines.ranges
             if inserted_lines is not None and inserted_lines.line_count > 0
-            else None
+            else ()
         )
+        self._require_range_owners_open(inserted_ranges)
 
         self._replace_selected_range(
             selection_start,
             selection_end,
-            inserted_segment,
+            inserted_ranges,
         )
         self._shift_cursors(
             selection_start,
@@ -380,76 +606,9 @@ class Editor(Sequence[_LineLike]):
         self,
         selection_start: int,
         selection_end: int | None,
-        inserted_segment: _LineSegment | None,
+        inserted_ranges: Sequence[_LineRange],
     ) -> None:
-        replacement_segments: list[_LineSegment] = []
-        inserted = False
-        destination_position = 0
-
-        for segment in self._segments:
-            segment_start = destination_position
-
-            if isinstance(segment, _SourceLineSegment) and segment.end is None:
-                if selection_end is not None and selection_end <= segment_start:
-                    if not inserted:
-                        _append_segment(replacement_segments, inserted_segment)
-                        inserted = True
-                    replacement_segments.append(segment)
-                    continue
-
-                prefix_end = max(selection_start - segment_start, 0)
-                if prefix_end > 0:
-                    replacement_segments.append(
-                        _slice_segment(segment, 0, prefix_end)
-                    )
-
-                if not inserted:
-                    _append_segment(replacement_segments, inserted_segment)
-                    inserted = True
-
-                if selection_end is not None:
-                    suffix_start = max(selection_end - segment_start, 0)
-                    replacement_segments.append(
-                        _slice_segment(segment, suffix_start, None)
-                    )
-                continue
-
-            segment_line_count = _known_segment_line_count(segment)
-            segment_end = segment_start + segment_line_count
-            destination_position = segment_end
-
-            if selection_end is not None and segment_end <= selection_start:
-                replacement_segments.append(segment)
-                continue
-
-            if selection_end is not None and segment_start >= selection_end:
-                if not inserted:
-                    _append_segment(replacement_segments, inserted_segment)
-                    inserted = True
-                replacement_segments.append(segment)
-                continue
-
-            prefix_end = max(selection_start - segment_start, 0)
-            if prefix_end > 0:
-                replacement_segments.append(
-                    _slice_segment(segment, 0, prefix_end)
-                )
-
-            if not inserted:
-                _append_segment(replacement_segments, inserted_segment)
-                inserted = True
-
-            if selection_end is not None:
-                suffix_start = min(selection_end - segment_start, segment_line_count)
-                if suffix_start < segment_line_count:
-                    replacement_segments.append(
-                        _slice_segment(segment, suffix_start, segment_line_count)
-                    )
-
-        if not inserted:
-            _append_segment(replacement_segments, inserted_segment)
-
-        self._segments = replacement_segments
+        self._pieces.replace_range(selection_start, selection_end, inserted_ranges)
 
     def _shift_cursors(
         self,
@@ -482,41 +641,37 @@ class Editor(Sequence[_LineLike]):
             yield _line_body(line)
 
     def _lines(self) -> Iterator[_LineLike]:
-        for segment in self._segments:
-            if isinstance(segment, _SourceLineSegment):
-                if segment.end is None:
-                    index = segment.start
-                    while True:
-                        try:
-                            line = self._source[index]
-                        except IndexError:
-                            break
-                        yield line
-                        index += 1
-                else:
-                    for index in range(segment.start, segment.end):
-                        yield self._source[index]
+        for run_index in range(len(self._pieces)):
+            _kind, lines, start, end, _owner = self._pieces.run(run_index)
+            if end is None:
+                index = start
+                while True:
+                    try:
+                        line = lines[index]
+                    except IndexError:
+                        break
+                    yield line
+                    index += 1
             else:
-                for index in range(segment.start, segment.end):
-                    yield segment.lines[index]
+                for index in range(start, end):
+                    yield lines[index]
 
     def _line_at_position(self, position: int) -> _LineLike:
         destination_position = 0
 
-        for segment in self._segments:
+        for run_index in range(len(self._pieces)):
+            _kind, lines, start, end, _owner = self._pieces.run(run_index)
             segment_start = destination_position
-            if isinstance(segment, _SourceLineSegment) and segment.end is None:
+            if end is None:
                 if position >= segment_start:
-                    return self._source[segment.start + (position - segment_start)]
+                    return lines[start + (position - segment_start)]
                 raise IndexError(position)
 
-            segment_line_count = _known_segment_line_count(segment)
+            segment_line_count = end - start
             segment_end = segment_start + segment_line_count
             if segment_start <= position < segment_end:
-                segment_index = segment.start + (position - segment_start)
-                if isinstance(segment, _SourceLineSegment):
-                    return self._source[segment_index]
-                return segment.lines[segment_index]
+                segment_index = start + (position - segment_start)
+                return lines[segment_index]
             destination_position = segment_end
 
         raise IndexError(position)
@@ -525,12 +680,18 @@ class Editor(Sequence[_LineLike]):
         self,
         start: int,
         end: int,
-    ) -> Iterator[_LineSourceRange]:
+    ) -> Iterator[_LineRange]:
         self._current_line_count()
 
         destination_position = 0
-        for segment in self._segments:
-            segment_line_count = _known_segment_line_count(segment)
+        for run_index in range(len(self._pieces)):
+            _kind, lines, segment_start, segment_end, owner = self._pieces.run(
+                run_index
+            )
+            if segment_end is None:
+                raise ValueError("source run has unknown line count")
+
+            segment_line_count = segment_end - segment_start
             segment_end = destination_position + segment_line_count
 
             if segment_end <= start:
@@ -541,39 +702,33 @@ class Editor(Sequence[_LineLike]):
 
             range_start = max(start, destination_position)
             range_end = min(end, segment_end)
-            segment_start = segment.start + (range_start - destination_position)
-            segment_stop = segment.start + (range_end - destination_position)
-            if isinstance(segment, _SourceLineSegment):
-                yield _LineSourceRange(
-                    self._source,
-                    segment_start,
-                    segment_stop,
-                    self,
-                )
-            else:
-                yield _LineSourceRange(
-                    segment.lines,
-                    segment_start,
-                    segment_stop,
-                    segment.owner,
-                )
+            source_start = segment_start + (range_start - destination_position)
+            source_stop = segment_start + (range_end - destination_position)
+            yield _LineRange(
+                lines,
+                source_start,
+                source_stop,
+                owner,
+            )
             destination_position = segment_end
 
     def _destination_position_for_source_line(self, line: int) -> int | None:
         destination_position = 0
 
-        for segment in self._segments:
-            if isinstance(segment, _SourceLineSegment) and segment.end is None:
-                if line >= segment.start and self._source_boundary_exists(line):
-                    return destination_position + (line - segment.start)
+        for run_index in range(len(self._pieces)):
+            kind, _lines, start, end, _owner = self._pieces.run(run_index)
+            if end is None:
+                if (
+                    kind == _SOURCE_RUN
+                    and line >= start
+                    and self._source_boundary_exists(line)
+                ):
+                    return destination_position + (line - start)
                 return None
 
-            segment_line_count = _known_segment_line_count(segment)
-            if (
-                isinstance(segment, _SourceLineSegment)
-                and segment.start <= line <= segment.end
-            ):
-                return destination_position + (line - segment.start)
+            segment_line_count = end - start
+            if kind == _SOURCE_RUN and start <= line <= end:
+                return destination_position + (line - start)
             destination_position += segment_line_count
 
         return None
@@ -598,16 +753,17 @@ class Editor(Sequence[_LineLike]):
             return line
 
         destination_position = 0
-        for segment in self._segments:
-            if isinstance(segment, _SourceLineSegment) and segment.end is None:
-                source_line = segment.start + (line - destination_position)
+        for run_index in range(len(self._pieces)):
+            _kind, _lines, start, end, _owner = self._pieces.run(run_index)
+            if end is None:
+                source_line = start + (line - destination_position)
                 if line >= destination_position and self._source_boundary_exists(
                     source_line
                 ):
                     return line
                 raise ValueError("destination line is out of range")
 
-            segment_line_count = _known_segment_line_count(segment)
+            segment_line_count = end - start
             if line <= destination_position + segment_line_count:
                 return line
             destination_position += segment_line_count
@@ -636,13 +792,14 @@ class Editor(Sequence[_LineLike]):
             return self._line_count
 
         line_count = 0
-        for segment in self._segments:
-            if isinstance(segment, _SourceLineSegment) and segment.end is None:
-                source_line_count = len(self._source)
-                segment.end = source_line_count
-                line_count += source_line_count - segment.start
+        for run_index in range(len(self._pieces)):
+            _kind, lines, start, end, _owner = self._pieces.run(run_index)
+            if end is None:
+                source_line_count = len(lines)
+                self._pieces.set_run_end(run_index, source_line_count)
+                line_count += source_line_count - start
             else:
-                line_count += _known_segment_line_count(segment)
+                line_count += end - start
 
         self._line_count = line_count
         return line_count
@@ -657,11 +814,7 @@ class Editor(Sequence[_LineLike]):
 
     def _sync_editor_leases(self) -> None:
         active_sources: set[Editor] = set()
-        for segment in self._segments:
-            if not isinstance(segment, _IndexedLineSegment):
-                continue
-
-            owner = segment.owner
+        for owner in self._pieces.active_owners():
             if owner is not None and owner is not self:
                 active_sources.add(owner)
 
@@ -690,7 +843,7 @@ class Editor(Sequence[_LineLike]):
 
 @dataclass(slots=True)
 class _InsertedLines:
-    segment: _LineSegment
+    ranges: Sequence[_LineRange]
     line_count: int
     owned_buffer: EditorBuffer | None = None
 
@@ -911,7 +1064,9 @@ def _spool_inserted_lines(
 
     buffer = EditorBuffer.from_chunks(chunks())
     return _InsertedLines(
-        segment=_IndexedLineSegment(buffer, 0, line_count, owner),
+        ranges=(
+            _LineRange(buffer, 0, line_count, owner),
+        ),
         line_count=line_count,
         owned_buffer=buffer,
     )
@@ -938,63 +1093,6 @@ def _slice_uses_negative_bounds(line_slice: slice) -> bool:
     return (
         (line_slice.start is not None and line_slice.start < 0)
         or (line_slice.stop is not None and line_slice.stop < 0)
-    )
-
-
-def _known_segment_line_count(segment: _LineSegment) -> int:
-    if isinstance(segment, _SourceLineSegment) and segment.end is None:
-        raise ValueError("source segment has unknown line count")
-    return segment.end - segment.start
-
-
-def _append_segment(
-    segments: list[_LineSegment],
-    segment: _LineSegment | None,
-) -> None:
-    if segment is None or _known_segment_line_count(segment) == 0:
-        return
-
-    if segments and _segments_are_adjacent(segments[-1], segment):
-        segments[-1].end = segment.end
-        return
-
-    segments.append(segment)
-
-
-def _slice_segment(
-    segment: _LineSegment,
-    start_offset: int,
-    end_offset: int | None,
-) -> _LineSegment:
-    if isinstance(segment, _SourceLineSegment):
-        return _SourceLineSegment(
-            segment.start + start_offset,
-            None if end_offset is None else segment.start + end_offset,
-        )
-
-    if end_offset is None:
-        raise ValueError("buffer segment slice end is required")
-
-    return _IndexedLineSegment(
-        segment.lines,
-        segment.start + start_offset,
-        segment.start + end_offset,
-        segment.owner,
-    )
-
-
-def _segments_are_adjacent(left: _LineSegment, right: _LineSegment) -> bool:
-    if isinstance(left, _SourceLineSegment):
-        return (
-            isinstance(right, _SourceLineSegment)
-            and left.end == right.start
-        )
-
-    return (
-        isinstance(right, _IndexedLineSegment)
-        and left.lines is right.lines
-        and left.owner is right.owner
-        and left.end == right.start
     )
 
 

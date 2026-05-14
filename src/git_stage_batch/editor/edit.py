@@ -418,13 +418,37 @@ class Editor(Sequence[_LineLike]):
             self._owned_buffers.append(inserted_lines.owned_buffer)
         self._commit_edit(inserted_lines)
 
-    def add_lines_from_editor(
+    def append_line_range(
+        self,
+        lines: Sequence[_LineLike],
+        start: int,
+        end: int,
+        *,
+        owner: Editor | None = None,
+    ) -> None:
+        """Append an indexed line range without walking existing content."""
+        self._require_open()
+        line_range = _validated_line_range(
+            lines,
+            start,
+            end,
+            owner=owner or self,
+        )
+        self._append_line_ranges((line_range,))
+
+    def append_line_ranges(self, ranges: Iterable[object]) -> None:
+        """Append indexed line ranges without selection replacement."""
+        self._require_open()
+        line_ranges = _coerce_line_ranges(ranges, default_owner=self)
+        self._append_line_ranges(line_ranges)
+
+    def append_line_ranges_from_editor(
         self,
         editor: Editor,
         start: int,
         end: int,
     ) -> None:
-        """Insert or replace with a range from another editor."""
+        """Append a range from another editor without selection replacement."""
         self._require_open()
         editor._require_open()
         if start < 0 or end < start:
@@ -432,14 +456,43 @@ class Editor(Sequence[_LineLike]):
         if end > len(editor):
             raise ValueError("invalid line range")
 
-        for line_range in editor._line_sources(start, end):
-            self._add_line_range(
-                line_range.lines,
-                line_range.start,
-                line_range.end,
-                owner=line_range.owner,
-                validate_end=False,
+        self._append_line_ranges(tuple(editor._line_sources(start, end)))
+
+    def add_lines_from_editor(
+        self,
+        editor: Editor,
+        start: int,
+        end: int,
+    ) -> None:
+        """Insert or replace with a range from another editor."""
+        self.add_line_ranges_from_editor(editor, start, end)
+
+    def add_line_ranges_from_editor(
+        self,
+        editor: Editor,
+        start: int,
+        end: int,
+    ) -> None:
+        """Insert or replace with ranges from another editor in one edit."""
+        self._require_open()
+        editor._require_open()
+        if start < 0 or end < start:
+            raise ValueError("invalid line range")
+        if end > len(editor):
+            raise ValueError("invalid line range")
+
+        self.replace_selection_with_ranges(editor._line_sources(start, end))
+
+    def replace_selection_with_ranges(self, ranges: Iterable[object]) -> None:
+        """Replace the current selection with indexed line ranges."""
+        self._require_open()
+        line_ranges = _coerce_line_ranges(ranges, default_owner=self)
+        self._commit_edit(
+            _InsertedLines(
+                ranges=line_ranges,
+                line_count=_line_ranges_line_count(line_ranges),
             )
+        )
 
     def _add_line_range(
         self,
@@ -460,6 +513,22 @@ class Editor(Sequence[_LineLike]):
                 line_count=end - start,
             )
         )
+
+    def _append_line_ranges(self, ranges: Sequence[_LineRange]) -> None:
+        self._require_range_owners_open(ranges)
+        line_count = _line_ranges_line_count(ranges)
+        if line_count == 0:
+            self._position = self._current_line_count()
+            self._selection = None
+            return
+
+        append_position = self._current_line_count()
+        self._pieces.append_line_ranges(ranges)
+        self._shift_cursors(append_position, append_position, line_count)
+        self._line_count = append_position + line_count
+        self._position = self._line_count
+        self._selection = None
+        self._sync_editor_leases()
 
     def _require_range_owners_open(self, ranges: Sequence[_LineRange]) -> None:
         for line_range in ranges:
@@ -1038,6 +1107,68 @@ def _validate_line_range(
         lines[end - 1]
     except IndexError as exc:
         raise ValueError("invalid line range") from exc
+
+
+def _validated_line_range(
+    lines: Sequence[_LineLike],
+    start: int,
+    end: int,
+    *,
+    owner: Editor | None,
+    validate_end: bool = True,
+) -> _LineRange:
+    _validate_line_range(lines, start, end, validate_end=validate_end)
+    return _LineRange(lines, start, end, owner)
+
+
+def _coerce_line_ranges(
+    ranges: Iterable[object],
+    *,
+    default_owner: Editor,
+) -> tuple[_LineRange, ...]:
+    return tuple(_coerce_line_range(item, default_owner) for item in ranges)
+
+
+def _coerce_line_range(
+    line_range: object,
+    default_owner: Editor,
+) -> _LineRange:
+    if isinstance(line_range, _LineRange):
+        owner = line_range.owner or default_owner
+        return _validated_line_range(
+            line_range.lines,
+            line_range.start,
+            line_range.end,
+            owner=owner,
+            validate_end=False,
+        )
+
+    try:
+        values = tuple(line_range)  # type: ignore[arg-type]
+    except TypeError as exc:
+        raise TypeError("expected line range tuple") from exc
+
+    if len(values) == 3:
+        lines, start, end = values
+        owner = default_owner
+    elif len(values) == 4:
+        lines, start, end, owner = values
+        owner = owner or default_owner
+    else:
+        raise TypeError("expected line range tuple")
+
+    if not isinstance(lines, Sequence):
+        raise TypeError("expected line sequence in range")
+    if not isinstance(start, int) or not isinstance(end, int):
+        raise TypeError("expected integer line range bounds")
+    if owner is not None and not isinstance(owner, Editor):
+        raise TypeError("expected editor owner")
+
+    return _validated_line_range(lines, start, end, owner=owner)
+
+
+def _line_ranges_line_count(ranges: Sequence[_LineRange]) -> int:
+    return sum(line_range.end - line_range.start for line_range in ranges)
 
 
 def _spool_inserted_lines(

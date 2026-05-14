@@ -25,7 +25,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Optional
 
-from ..batch.comparison import SemanticChangeKind, derive_semantic_change_runs
+from ..batch.comparison import (
+    SemanticChangeKind,
+    derive_semantic_change_runs,
+)
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
@@ -44,7 +47,7 @@ from ..batch.storage import (
     _update_batch_commit,
 )
 from ..batch.validation import batch_exists, validate_batch_name
-from ..core.line_selection import format_line_ids
+from ..core.line_selection import LineRanges
 from ..core.models import BinaryFileChange
 from ..core.text_lifecycle import (
     TextFileChangeType,
@@ -598,12 +601,13 @@ def build_ownership_from_working_and_target_lines(
         target_lines=target_lines,
     )
 
-    claimed_line_numbers = []
+    claimed_ranges: list[tuple[int, int]] = []
     deletion_claims = []
 
     for run in semantic_runs:
         if run.kind == SemanticChangeKind.PRESENCE:
-            claimed_line_numbers.extend(run.target_line_numbers())
+            if run.target_start is not None and run.target_end is not None:
+                claimed_ranges.append((run.target_start, run.target_end))
         elif run.kind == SemanticChangeKind.DELETION:
             if run.source_start is not None and run.source_end is not None:
                 deletion_content = [
@@ -628,19 +632,15 @@ def build_ownership_from_working_and_target_lines(
                         content_lines=deletion_content,
                     )
                 )
-            claimed_line_numbers.extend(run.target_line_numbers())
+            if run.target_start is not None and run.target_end is not None:
+                claimed_ranges.append((run.target_start, run.target_end))
 
-    if not claimed_line_numbers and not deletion_claims:
+    claimed_line_ranges = LineRanges.from_ranges(claimed_ranges)
+    if not claimed_line_ranges and not deletion_claims:
         return None
 
-    presence_lines = (
-        [format_line_ids(sorted(claimed_line_numbers))]
-        if claimed_line_numbers else
-        []
-    )
-
     return BatchOwnership.from_presence_lines(
-        presence_lines,
+        claimed_line_ranges.to_range_strings(),
         deletion_claims,
     )
 

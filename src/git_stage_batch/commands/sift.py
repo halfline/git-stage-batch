@@ -603,11 +603,13 @@ def build_ownership_from_working_and_target_lines(
 
     for run in semantic_runs:
         if run.kind == SemanticChangeKind.PRESENCE:
-            if run.target_run:
-                claimed_line_numbers.extend(run.target_run)
+            claimed_line_numbers.extend(run.target_line_numbers())
         elif run.kind == SemanticChangeKind.DELETION:
-            if run.source_run:
-                deletion_content = [working_lines[i - 1] for i in run.source_run]
+            if run.source_start is not None and run.source_end is not None:
+                deletion_content = [
+                    working_lines[index - 1]
+                    for index in run.source_line_numbers()
+                ]
                 deletion_claims.append(
                     DeletionClaim(
                         anchor_line=run.target_anchor,
@@ -615,16 +617,18 @@ def build_ownership_from_working_and_target_lines(
                     )
                 )
         elif run.kind == SemanticChangeKind.REPLACEMENT:
-            if run.source_run:
-                deletion_content = [working_lines[i - 1] for i in run.source_run]
+            if run.source_start is not None and run.source_end is not None:
+                deletion_content = [
+                    working_lines[index - 1]
+                    for index in run.source_line_numbers()
+                ]
                 deletion_claims.append(
                     DeletionClaim(
                         anchor_line=run.target_anchor,
                         content_lines=deletion_content,
                     )
                 )
-            if run.target_run:
-                claimed_line_numbers.extend(run.target_run)
+            claimed_line_numbers.extend(run.target_line_numbers())
 
     if not claimed_line_numbers and not deletion_claims:
         return None

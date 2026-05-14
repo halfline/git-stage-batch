@@ -294,3 +294,36 @@ def test_translate_hunk_selection_keeps_one_to_many_replacement_atomic():
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
     ]
+
+
+def test_translate_hunk_selection_builds_selected_ranges_without_line_sets(monkeypatch):
+    """Current-hunk selections should translate through range builders."""
+    def fail_from_lines(cls, lines):
+        raise AssertionError("hunk translator should pass range selections forward")
+
+    monkeypatch.setattr(LineRanges, "from_lines", classmethod(fail_from_lines))
+
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'old', text='old', source_line=None),
+        *[
+            LineEntry(
+                id=index + 2,
+                kind='+',
+                old_line_number=None,
+                new_line_number=index + 1,
+                text_bytes=f'new {index}\n'.encode(),
+                text=f'new {index}',
+                source_line=index + 1,
+            )
+            for index in range(1000)
+        ],
+    ]
+    selected_ids = {line.id for line in lines if line.id is not None}
+
+    ownership = translate_hunk_selection_to_batch_ownership(lines, selected_ids)
+
+    assert ownership.presence_claims[0].source_lines == ["1-1000"]
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
+    ]

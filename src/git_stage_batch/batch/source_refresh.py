@@ -231,45 +231,49 @@ def _refresh_selected_lines_against_source_lines(
     if working_line_map is None:
         mapping = match_lines(source_lines, working_lines)
 
-    def map_working_line(line_number: int | None) -> int | None:
-        if line_number is None:
-            return None
-        if working_line_map is not None:
-            return working_line_map.get(line_number)
-        assert mapping is not None
-        return mapping.get_source_line_from_target_line(line_number)
+    try:
+        def map_working_line(line_number: int | None) -> int | None:
+            if line_number is None:
+                return None
+            if working_line_map is not None:
+                return working_line_map.get(line_number)
+            assert mapping is not None
+            return mapping.get_source_line_from_target_line(line_number)
 
-    last_source_line = None
-    reannotated_lines = []
+        last_source_line = None
+        reannotated_lines = []
 
-    for line in selected_lines:
-        if line.kind in (' ', '+'):
-            source_line = map_working_line(line.new_line_number)
-            if source_line is not None:
-                last_source_line = source_line
-        elif line.kind == '-':
-            source_line = last_source_line
-            if source_line is None and line.old_line_number is not None and line.old_line_number > 1:
-                source_line = map_working_line(line.old_line_number - 1)
-        else:
-            source_line = None
+        for line in selected_lines:
+            if line.kind in (' ', '+'):
+                source_line = map_working_line(line.new_line_number)
+                if source_line is not None:
+                    last_source_line = source_line
+            elif line.kind == '-':
+                source_line = last_source_line
+                if source_line is None and line.old_line_number is not None and line.old_line_number > 1:
+                    source_line = map_working_line(line.old_line_number - 1)
+            else:
+                source_line = None
 
-        reannotated_lines.append(LineEntry(
-            id=line.id,
-            kind=line.kind,
-            old_line_number=line.old_line_number,
-            new_line_number=line.new_line_number,
-            text_bytes=line.text_bytes,
-            source_line=source_line,
-            baseline_reference_after_line=line.baseline_reference_after_line,
-            baseline_reference_after_text_bytes=line.baseline_reference_after_text_bytes,
-            has_baseline_reference_after=line.has_baseline_reference_after,
-            baseline_reference_before_line=line.baseline_reference_before_line,
-            baseline_reference_before_text_bytes=line.baseline_reference_before_text_bytes,
-            has_baseline_reference_before=line.has_baseline_reference_before,
-        ))
+            reannotated_lines.append(LineEntry(
+                id=line.id,
+                kind=line.kind,
+                old_line_number=line.old_line_number,
+                new_line_number=line.new_line_number,
+                text_bytes=line.text_bytes,
+                source_line=source_line,
+                baseline_reference_after_line=line.baseline_reference_after_line,
+                baseline_reference_after_text_bytes=line.baseline_reference_after_text_bytes,
+                has_baseline_reference_after=line.has_baseline_reference_after,
+                baseline_reference_before_line=line.baseline_reference_before_line,
+                baseline_reference_before_text_bytes=line.baseline_reference_before_text_bytes,
+                has_baseline_reference_before=line.has_baseline_reference_before,
+            ))
 
-    return reannotated_lines
+        return reannotated_lines
+    finally:
+        if mapping is not None:
+            mapping.close()
 
 def prepare_batch_ownership_update_for_selection(
     batch_name: str,

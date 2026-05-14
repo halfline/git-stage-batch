@@ -893,7 +893,31 @@ def _apply_presence_constraints(
     Returns:
         Realized entries with all claimed lines present and provenance preserved
     """
-    mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
+    owned_mapping: LineMapping | None = None
+    mapping = source_to_working_mapping
+    if mapping is None:
+        owned_mapping = match_lines(source_lines, working_lines)
+        mapping = owned_mapping
+
+    try:
+        return _apply_presence_constraints_with_mapping(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            mapping,
+        )
+    finally:
+        if owned_mapping is not None:
+            owned_mapping.close()
+
+
+def _apply_presence_constraints_with_mapping(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    presence_line_set: set[int],
+    mapping: LineMapping,
+) -> _RealizedEntries:
+    """Apply presence constraints using an existing source-to-working mapping."""
 
     if not presence_line_set:
         result = _RealizedEntries()
@@ -1838,7 +1862,11 @@ def _merge_batch_acquired_line_chunks(
         yield from _byte_chunks(fallback_chunks)
         return
 
-    mapping = source_to_working_mapping or match_lines(source_lines, working_lines)
+    owned_mapping: LineMapping | None = None
+    mapping = source_to_working_mapping
+    if mapping is None:
+        owned_mapping = match_lines(source_lines, working_lines)
+        mapping = owned_mapping
     try:
         _check_structural_validity(
             mapping,
@@ -1867,6 +1895,9 @@ def _merge_batch_acquired_line_chunks(
             yield from _byte_chunks(fallback_chunks)
             return
         raise
+    finally:
+        if owned_mapping is not None:
+            owned_mapping.close()
 
     yield from _realized_entry_content_chunks(realized_entries)
 
@@ -1930,18 +1961,17 @@ def _discard_batch_acquired_line_chunks(
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
-    working_to_source = match_lines(source_lines, working_lines)
+    with match_lines(source_lines, working_lines) as working_to_source:
+        correspondence = _build_baseline_correspondence(
+            baseline_lines,
+            source_lines
+        )
 
-    correspondence = _build_baseline_correspondence(
-        baseline_lines,
-        source_lines
-    )
-
-    realized_entries = _build_realized_entries_for_discard(
-        source_lines,
-        working_lines,
-        working_to_source
-    )
+        realized_entries = _build_realized_entries_for_discard(
+            source_lines,
+            working_lines,
+            working_to_source
+        )
 
     realized_entries = _reverse_presence_constraints(
         realized_entries,
@@ -1996,40 +2026,40 @@ def _build_baseline_correspondence(
     regions: list[BaselineRegion] = []
     state = _BaselineCorrespondenceScanState()
 
-    mapping = match_lines(baseline_lines, source_lines)
-    for baseline_index in range(len(baseline_lines)):
-        source_line = mapping.get_target_line_from_source_line(baseline_index + 1)
-        if source_line is None:
-            continue
+    with match_lines(baseline_lines, source_lines) as mapping:
+        for baseline_index in range(len(baseline_lines)):
+            source_line = mapping.get_target_line_from_source_line(baseline_index + 1)
+            if source_line is None:
+                continue
 
-        source_index = source_line - 1
+            source_index = source_line - 1
 
-        if not state.has_run:
+            if not state.has_run:
+                state = _start_baseline_anchor_run(
+                    state,
+                    baseline_index,
+                    source_index,
+                )
+                continue
+
+            if (
+                baseline_index == state.run_base_end
+                and source_index == state.run_source_end
+            ):
+                state = _extend_baseline_anchor_run(state)
+                continue
+
+            state = _flush_baseline_anchor_run(
+                regions,
+                state,
+                baseline_lines,
+                source_lines,
+            )
             state = _start_baseline_anchor_run(
                 state,
                 baseline_index,
                 source_index,
             )
-            continue
-
-        if (
-            baseline_index == state.run_base_end
-            and source_index == state.run_source_end
-        ):
-            state = _extend_baseline_anchor_run(state)
-            continue
-
-        state = _flush_baseline_anchor_run(
-            regions,
-            state,
-            baseline_lines,
-            source_lines,
-        )
-        state = _start_baseline_anchor_run(
-            state,
-            baseline_index,
-            source_index,
-        )
 
     state = _flush_baseline_anchor_run(
         regions,
@@ -2160,15 +2190,15 @@ def _append_baseline_gap_region(
         baseline_segment = _LineRange(baseline_lines, base_start, base_end)
         source_segment = _LineRange(source_lines, src_start, src_end)
 
-        sub_mapping = match_lines(baseline_segment, source_segment)
-        all_baseline_mapped = all(
-            sub_mapping.get_target_line_from_source_line(index + 1) is not None
-            for index in range(len(baseline_segment))
-        )
-        all_source_mapped = all(
-            sub_mapping.get_source_line_from_target_line(index + 1) is not None
-            for index in range(len(source_segment))
-        )
+        with match_lines(baseline_segment, source_segment) as sub_mapping:
+            all_baseline_mapped = all(
+                sub_mapping.get_target_line_from_source_line(index + 1) is not None
+                for index in range(len(baseline_segment))
+            )
+            all_source_mapped = all(
+                sub_mapping.get_source_line_from_target_line(index + 1) is not None
+                for index in range(len(source_segment))
+            )
 
         kind = (
             RegionKind.REPLACE_LINE_BY_LINE

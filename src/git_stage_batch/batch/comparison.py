@@ -135,25 +135,25 @@ def derive_semantic_change_runs(
     Returns:
         List of semantic change runs describing the delta
     """
-    # Align source and target
-    alignment = match_lines(source_lines=source_lines, target_lines=target_lines)
-    reverse_alignment = match_lines(source_lines=target_lines, target_lines=source_lines)
-
     # Build bidirectional mappings
     source_to_target: dict[int, int] = {}
     target_to_source: dict[int, int] = {}
 
-    for source_idx in range(len(source_lines)):
-        source_line_num = source_idx + 1
-        target_line_num = alignment.get_target_line_from_source_line(source_line_num)
-        if target_line_num is not None:
-            reverse_source_line = reverse_alignment.get_target_line_from_source_line(
-                target_line_num
-            )
-            if reverse_source_line != source_line_num:
-                continue
-            source_to_target[source_line_num] = target_line_num
-            target_to_source[target_line_num] = source_line_num
+    with (
+        match_lines(source_lines=source_lines, target_lines=target_lines) as alignment,
+        match_lines(source_lines=target_lines, target_lines=source_lines) as reverse_alignment,
+    ):
+        for source_idx in range(len(source_lines)):
+            source_line_num = source_idx + 1
+            target_line_num = alignment.get_target_line_from_source_line(source_line_num)
+            if target_line_num is not None:
+                reverse_source_line = reverse_alignment.get_target_line_from_source_line(
+                    target_line_num
+                )
+                if reverse_source_line != source_line_num:
+                    continue
+                source_to_target[source_line_num] = target_line_num
+                target_to_source[target_line_num] = source_line_num
 
     # Find unmatched lines
     source_unmatched = [

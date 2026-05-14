@@ -2,12 +2,7 @@
 
 import pytest
 
-from git_stage_batch.batch.match import (
-    UniqueLinePosition,
-    _build_unique_position_map,
-    _longest_increasing_subsequence,
-    match_lines,
-)
+from git_stage_batch.batch.match import match_lines
 from git_stage_batch.batch.merge import (
     RegionKind,
     _RealizedEntries,
@@ -46,6 +41,31 @@ class _IndexGuardedRealizedEntries(_RealizedEntries):
 
     def __getitem__(self, index):
         raise AssertionError("entry indexing should not be used")
+
+
+class _GuardedLine:
+    """Hashable line object that rejects materialization."""
+
+    def __init__(self, content: str, hash_value: int | None = None) -> None:
+        self.content = content
+        self.hash_value = hash(content) if hash_value is None else hash_value
+
+    def __hash__(self) -> int:
+        return self.hash_value
+
+    def __eq__(self, other):
+        if not isinstance(other, _GuardedLine):
+            return NotImplemented
+        return self.content == other.content
+
+    def __bytes__(self):
+        raise AssertionError("line content should not be materialized")
+
+    def __getitem__(self, index):
+        raise AssertionError("line content should not be sliced")
+
+    def endswith(self, suffix):
+        raise AssertionError("line endings should not be materialized")
 
 
 def merge_batch(
@@ -93,33 +113,6 @@ def discard_batch(
 class TestMatchLines:
     """Tests for structural line alignment."""
 
-    def test_unique_position_map_returns_structured_positions(self):
-        """Unique line scanning returns positions without duplicate entries."""
-        lines = [b"same\n", b"unique\n", b"same\n", b"other\n"]
-
-        positions = _build_unique_position_map(lines, 0, len(lines))
-
-        assert positions == {
-            b"unique\n": UniqueLinePosition(index=1),
-            b"other\n": UniqueLinePosition(index=3),
-        }
-
-    def test_lis_keeps_source_stable_ties(self):
-        """Equal-length LIS choices keep the earliest source-ordered anchor."""
-        pairs = [(0, 2), (1, 1), (2, 3)]
-
-        assert _longest_increasing_subsequence(pairs) == [(0, 2), (2, 3)]
-
-    def test_lis_uses_later_smaller_tail_for_longer_match(self):
-        """A later smaller target can produce a longer subsequence."""
-        pairs = [(0, 3), (1, 1), (2, 2), (3, 4)]
-
-        assert _longest_increasing_subsequence(pairs) == [
-            (1, 1),
-            (2, 2),
-            (3, 4),
-        ]
-
     def test_line_mapping_uses_zero_filled_arrays(self):
         """Line mappings store one integer slot per line."""
         source = [b"line1\n", b"line2\n", b"line3\n"]
@@ -129,9 +122,37 @@ class TestMatchLines:
 
         assert mapping.source_to_target.typecode in {"I", "Q"}
         assert mapping.target_to_source.typecode in {"I", "Q"}
-        assert mapping.source_to_target.tolist() == [1, 0, 2]
-        assert mapping.target_to_source.tolist() == [1, 3]
+        assert list(mapping.source_to_target) == [1, 0, 2]
+        assert list(mapping.target_to_source) == [1, 3]
         assert mapping.get_target_line_from_source_line(2) is None
+
+    def test_line_mapping_context_manager_closes_mapping(self):
+        """Line mappings close their owned vector storage on context exit."""
+        with match_lines([b"a\n"], [b"a\n"]) as mapping:
+            assert mapping.get_target_line_from_source_line(1) == 1
+
+        with pytest.raises(ValueError, match="line mapping is closed"):
+            mapping.get_target_line_from_source_line(1)
+
+    def test_line_mapping_detach_transfers_context_ownership(self):
+        """Detached mappings remain usable until their new owner closes them."""
+        with match_lines([b"a\n"], [b"a\n"]) as mapping:
+            detached = mapping.detach()
+
+        assert detached.get_target_line_from_source_line(1) == 1
+        detached.close()
+        detached.close()
+
+        with pytest.raises(ValueError, match="line mapping is closed"):
+            detached.detach()
+
+    def test_line_mapping_exposes_mapped_line_pairs(self):
+        """Mapped pair iteration exposes source-order correspondence."""
+        with match_lines(
+            [b"line1\n", b"line2\n", b"line3\n"],
+            [b"line1\n", b"line3\n"],
+        ) as mapping:
+            assert list(mapping.mapped_line_pairs()) == [(1, 1), (3, 2)]
 
     def test_identical_files(self):
         """Test alignment of identical files."""
@@ -196,6 +217,65 @@ class TestMatchLines:
         assert mapping.get_target_line_from_source_line(2) == 3
         assert mapping.get_target_line_from_source_line(3) == 4
         assert mapping.get_source_line_from_target_line(2) is None
+
+    def test_match_lines_does_not_materialize_guarded_lines(self):
+        """Matching uses hashing and equality without bytes or slicing."""
+        source = [
+            _GuardedLine("start\n"),
+            _GuardedLine("unique\n"),
+            _GuardedLine("tail\n"),
+        ]
+        target = [
+            _GuardedLine("start\n"),
+            _GuardedLine("other\n"),
+            _GuardedLine("unique\n"),
+            _GuardedLine("tail\n"),
+        ]
+
+        with match_lines(source, target) as mapping:
+            assert mapping.get_target_line_from_source_line(2) == 3
+
+    def test_hash_collisions_do_not_conflate_unequal_lines(self):
+        """Equal hashes route lookup but do not define line identity."""
+        source = [
+            _GuardedLine("start\n", 2),
+            _GuardedLine("left\n", 1),
+            _GuardedLine("right\n", 1),
+            _GuardedLine("end\n", 3),
+        ]
+        target = [
+            _GuardedLine("start\n", 2),
+            _GuardedLine("right\n", 1),
+            _GuardedLine("end\n", 3),
+        ]
+
+        with match_lines(source, target) as mapping:
+            assert mapping.get_target_line_from_source_line(2) is None
+            assert mapping.get_target_line_from_source_line(3) == 2
+
+    def test_hash_collisions_coalesce_equal_repeated_lines(self):
+        """Equal collided content is counted as repeated, not unique."""
+        source = [
+            _GuardedLine("start\n", 1),
+            _GuardedLine("repeat\n", 1),
+            _GuardedLine("repeat\n", 1),
+            _GuardedLine("middle\n", 1),
+            _GuardedLine("end\n", 1),
+        ]
+        target = [
+            _GuardedLine("start\n", 1),
+            _GuardedLine("other\n", 1),
+            _GuardedLine("repeat\n", 1),
+            _GuardedLine("changed\n", 1),
+            _GuardedLine("end\n", 1),
+        ]
+
+        with match_lines(source, target) as mapping:
+            assert mapping.get_target_line_from_source_line(1) == 1
+            assert mapping.get_target_line_from_source_line(2) is None
+            assert mapping.get_target_line_from_source_line(3) is None
+            assert mapping.get_target_line_from_source_line(4) is None
+            assert mapping.get_target_line_from_source_line(5) == 5
 
     def test_working_tree_additions(self):
         """Test alignment when working tree has extra lines."""

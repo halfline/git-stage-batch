@@ -10,10 +10,36 @@ from pathlib import Path
 import tempfile
 from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
 
+from ..utils.mapped_storage import ChunkedMappedRecordVector
+
 
 _DEFAULT_CHUNK_SIZE = 1024 * 1024
+_LINE_SPAN_CHUNK_CAPACITY = 65536
 _BytesLike = bytes | bytearray | memoryview
 _LineT = TypeVar("_LineT")
+
+
+class _LineSpanVector:
+    """Compact append-only storage for byte line spans."""
+
+    def __init__(self) -> None:
+        self._records = ChunkedMappedRecordVector(
+            record_format="QQ",
+            chunk_capacity=_LINE_SPAN_CHUNK_CAPACITY,
+        )
+
+    def __len__(self) -> int:
+        return len(self._records)
+
+    def append(self, start: int, end: int) -> None:
+        self._records.append((start, end))
+
+    def get(self, index: int) -> tuple[int, int]:
+        start, end = self._records[index]
+        return start, end
+
+    def close(self) -> None:
+        self._records.close()
 
 
 class EditorBuffer(Sequence[bytes]):
@@ -27,7 +53,7 @@ class EditorBuffer(Sequence[bytes]):
     ) -> None:
         self._data = data
         self._file_handle = file_handle
-        self._line_spans: list[tuple[int, int]] = []
+        self._line_spans = _LineSpanVector()
         self._scan_position = 0
         self._scan_complete = len(data) == 0
         self._closed = False
@@ -110,6 +136,7 @@ class EditorBuffer(Sequence[bytes]):
             data.close()
         if self._file_handle is not None:
             self._file_handle.close()
+        self._line_spans.close()
         self._closed = True
 
     def __del__(self) -> None:
@@ -151,7 +178,7 @@ class EditorBuffer(Sequence[bytes]):
 
     def __len__(self) -> int:
         self._scan_all_lines()
-        return len(self._line_spans)
+        return self._line_span_count()
 
     @overload
     def __getitem__(self, index: int) -> bytes: ...
@@ -170,10 +197,10 @@ class EditorBuffer(Sequence[bytes]):
             raise IndexError(index)
 
         self._scan_through_line(index)
-        if index >= len(self._line_spans):
+        if index >= self._line_span_count():
             raise IndexError(index)
 
-        start, end = self._line_spans[index]
+        start, end = self._get_line_span(index)
         return self._data[start:end]
 
     def _require_open(self) -> None:
@@ -187,8 +214,17 @@ class EditorBuffer(Sequence[bytes]):
 
     def _scan_through_line(self, index: int) -> None:
         self._require_open()
-        while len(self._line_spans) <= index and not self._scan_complete:
+        while self._line_span_count() <= index and not self._scan_complete:
             self._scan_next_line()
+
+    def _line_span_count(self) -> int:
+        return len(self._line_spans)
+
+    def _append_line_span(self, start: int, end: int) -> None:
+        self._line_spans.append(start, end)
+
+    def _get_line_span(self, index: int) -> tuple[int, int]:
+        return self._line_spans.get(index)
 
     def _scan_next_line(self) -> None:
         data = self._data
@@ -202,13 +238,13 @@ class EditorBuffer(Sequence[bytes]):
         next_lf = data.find(b"\n", start)
 
         if next_lf == -1:
-            self._line_spans.append((start, content_length))
+            self._append_line_span(start, content_length)
             self._scan_position = content_length
             self._scan_complete = True
             return
 
         end = next_lf + 1
-        self._line_spans.append((start, end))
+        self._append_line_span(start, end)
         self._scan_position = end
         if self._scan_position >= content_length:
             self._scan_complete = True
@@ -383,10 +419,10 @@ class _AcquiredBufferLineSequence(Sequence[_BufferLineView]):
             raise IndexError(index)
 
         self._buffer._scan_through_line(index)
-        if index >= len(self._buffer._line_spans):
+        if index >= self._buffer._line_span_count():
             raise IndexError(index)
 
-        start, end = self._buffer._line_spans[index]
+        start, end = self._buffer._get_line_span(index)
         return _BufferLineView(self, start, end)
 
     def _require_active(self) -> None:

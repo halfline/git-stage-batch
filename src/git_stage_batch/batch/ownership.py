@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from hashlib import sha256
 
-from ..core.line_selection import format_line_ids, parse_line_selection
+from ..core.line_selection import (
+    LineRanges,
+    LineSelection,
+    format_line_ids,
+)
 from ..core.models import LineEntry
 from ..data.batch_sources import create_batch_source_commit
 from ..editor import (
@@ -187,7 +191,7 @@ class PresenceClaim:
     source_lines: list[str]
     baseline_references: dict[int, BaselineReference] = field(default_factory=dict)
 
-    def source_line_set(self) -> set[int]:
+    def source_line_set(self) -> LineRanges:
         """Return batch-source line numbers covered by this presence claim."""
         return _parse_line_ranges(self.source_lines)
 
@@ -349,11 +353,11 @@ class BatchOwnership:
         """Check if this ownership is empty (no presence claims or deletions)."""
         return not self.presence_claims and not self.deletions
 
-    def presence_line_set(self) -> set[int]:
+    def presence_line_set(self) -> LineRanges:
         """Return all batch-source lines claimed present by this ownership."""
-        presence_lines: set[int] = set()
+        presence_lines = LineRanges.empty()
         for claim in self.presence_claims:
-            presence_lines.update(claim.source_line_set())
+            presence_lines = presence_lines.union(claim.source_line_set())
         return presence_lines
 
     def presence_baseline_references(self) -> dict[int, BaselineReference]:
@@ -455,7 +459,8 @@ class BatchOwnership:
     def resolve(self) -> ResolvedBatchOwnership:
         """Resolve into representation for materialization and merge.
 
-        Returns presence lines as a set and deletion claims as a list (preserving structure).
+        Returns presence lines as a selection and deletion claims as a list
+        (preserving structure).
         """
         return ResolvedBatchOwnership(self.presence_line_set(), self.deletions)
 
@@ -488,7 +493,7 @@ class ResolvedBatchOwnership:
         presence_line_set: Batch source line numbers (1-indexed, identity-based)
         deletion_claims: List of suppression constraints (order and structure preserved)
     """
-    presence_line_set: set[int]  # Batch source line numbers (1-indexed)
+    presence_line_set: LineRanges  # Batch source line numbers (1-indexed)
     deletion_claims: list[DeletionClaim]  # Separate constraints, not collapsed
 
 
@@ -649,36 +654,41 @@ def _merge_deletion_claim_metadata(
     )
 
 
-def _parse_line_ranges(line_ranges: list[str] | list[int]) -> set[int]:
-    """Parse source line range strings into a set."""
-    return (
-        set(parse_line_selection(",".join(str(line) for line in line_ranges)))
-        if line_ranges else set()
-    )
+def _parse_line_ranges(line_ranges: list[str] | list[int]) -> LineRanges:
+    """Parse source line range strings into a selection."""
+    return LineRanges.from_specs(line_ranges)
 
 
-def _format_line_set(source_lines: set[int]) -> list[str]:
-    """Format a source line set as normalized range strings."""
-    if not source_lines:
+def _format_line_set(source_lines: LineSelection | Iterable[int]) -> list[str]:
+    """Format a source line selection as normalized range strings."""
+    if isinstance(source_lines, LineRanges):
+        return source_lines.to_range_strings()
+    source_selection = LineRanges.from_lines(source_lines)
+    if not source_selection:
         return []
-    return [format_line_ids(sorted(source_lines))]
+    return source_selection.to_range_strings()
 
 
 def _presence_claims_from_source_lines(
-    source_lines: set[int],
+    source_lines: LineSelection | Iterable[int],
     baseline_references: dict[int, BaselineReference] | None = None,
 ) -> list[PresenceClaim]:
-    """Build normalized presence claims from a source-line set."""
-    if not source_lines:
+    """Build normalized presence claims from a source-line selection."""
+    source_selection = (
+        source_lines
+        if isinstance(source_lines, LineRanges)
+        else LineRanges.from_lines(source_lines)
+    )
+    if not source_selection:
         return []
     references = baseline_references or {}
     return [
         PresenceClaim(
-            source_lines=_format_line_set(source_lines),
+            source_lines=_format_line_set(source_selection),
             baseline_references={
                 line: reference
                 for line, reference in references.items()
-                if line in source_lines
+                if line in source_selection
             },
         )
     ]
@@ -690,7 +700,7 @@ def _normalize_replacement_units(
     deletion_count: int,
 ) -> list[ReplacementUnit]:
     """Drop invalid references and coalesce overlapping replacement units."""
-    components: list[tuple[set[int], set[int]]] = []
+    components: list[tuple[LineRanges, set[int]]] = []
 
     for unit in replacement_units:
         claimed = _parse_line_ranges(unit.presence_lines)
@@ -706,22 +716,23 @@ def _normalize_replacement_units(
             index
             for index, (component_claimed, component_deletions)
             in enumerate(components)
-            if component_claimed & claimed or component_deletions & deletion_indices
+            if component_claimed.intersection(claimed) or component_deletions & deletion_indices
         ]
         if not overlapping_component_indices:
-            components.append((set(claimed), set(deletion_indices)))
+            components.append((claimed, set(deletion_indices)))
             continue
 
         target_index = overlapping_component_indices[0]
         target_claimed, target_deletions = components[target_index]
-        target_claimed.update(claimed)
+        target_claimed = target_claimed.union(claimed)
         target_deletions.update(deletion_indices)
 
         for source_index in reversed(overlapping_component_indices[1:]):
             source_claimed, source_deletions = components[source_index]
-            target_claimed.update(source_claimed)
+            target_claimed = target_claimed.union(source_claimed)
             target_deletions.update(source_deletions)
             del components[source_index]
+        components[target_index] = (target_claimed, target_deletions)
 
     return [
         ReplacementUnit(
@@ -751,7 +762,7 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
     # Merge presence claims (combine and normalize ranges)
     existing_claimed = existing.presence_line_set()
     new_claimed = new.presence_line_set()
-    combined_claimed = existing_claimed | new_claimed
+    combined_claimed = existing_claimed.union(new_claimed)
     combined_presence_references = {
         **existing.presence_baseline_references(),
         **new.presence_baseline_references(),
@@ -932,7 +943,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
 
                 if active_replacement_unit is not None:
                     claimed = _parse_line_ranges(active_replacement_unit.presence_lines)
-                    claimed.add(line.source_line)
+                    claimed = claimed.union([line.source_line])
                     active_replacement_unit.presence_lines = _format_line_set(claimed)
             else:
                 active_replacement_unit = None
@@ -1219,7 +1230,7 @@ def translate_hunk_selection_to_batch_ownership(
 
                     if active_replacement_unit is not None:
                         claimed = _parse_line_ranges(active_replacement_unit.presence_lines)
-                        claimed.add(line.source_line)
+                        claimed = claimed.union([line.source_line])
                         active_replacement_unit.presence_lines = _format_line_set(claimed)
                 else:
                     active_replacement_unit = None
@@ -1481,7 +1492,7 @@ def _build_explicit_replacement_units_from_display_lines(
         return units, consumed_claimed_lines, consumed_deletion_indices
 
     for replacement_unit in replacement_units:
-        claimed_source_lines = _parse_line_ranges(replacement_unit.presence_lines)
+        claimed_source_lines = _parse_line_ranges(replacement_unit.presence_lines).to_set()
         deletion_indices = set(replacement_unit.deletion_indices)
         claimed_display_ids: set[int] = set()
         deletion_display_ids: set[int] = set()

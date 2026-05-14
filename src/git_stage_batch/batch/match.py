@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from array import array
+from bisect import bisect_left
 from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 from typing import TypeVar
@@ -120,10 +121,66 @@ def _build_unique_position_map(
     return unique_positions
 
 
+def _is_better_lis_entry(
+    candidate: tuple[int, int],
+    current: tuple[int, int]
+) -> bool:
+    """Prefer longer subsequences, then earlier source-ordered endings."""
+    candidate_length: int
+    candidate_index: int
+    current_length: int
+    current_index: int
+
+    candidate_length, candidate_index = candidate
+    current_length, current_index = current
+
+    if candidate_length != current_length:
+        return candidate_length > current_length
+
+    if candidate_length == 0:
+        return False
+
+    return candidate_index < current_index
+
+
+def _query_best_by_target_rank(
+    best_by_target_rank: list[tuple[int, int]],
+    target_rank: int
+) -> tuple[int, int]:
+    """Return the best LIS ending before a target rank."""
+    best: tuple[int, int]
+    candidate: tuple[int, int]
+
+    best = (0, -1)
+
+    while target_rank > 0:
+        candidate = best_by_target_rank[target_rank]
+        if _is_better_lis_entry(candidate, best):
+            best = candidate
+        target_rank -= target_rank & -target_rank
+
+    return best
+
+
+def _update_best_by_target_rank(
+    best_by_target_rank: list[tuple[int, int]],
+    target_rank: int,
+    candidate: tuple[int, int]
+) -> None:
+    """Record a candidate LIS ending at a target rank."""
+    while target_rank < len(best_by_target_rank):
+        if _is_better_lis_entry(candidate, best_by_target_rank[target_rank]):
+            best_by_target_rank[target_rank] = candidate
+        target_rank += target_rank & -target_rank
+
+
 def _longest_increasing_subsequence(
     pairs: list[tuple[int, int]]
 ) -> list[tuple[int, int]]:
     """Return a longest increasing subsequence by target index.
+
+    Uses an O(n log n) best_by_target_rank table.
+    Equal-length ties keep the earliest source-ordered pair.
 
     Args:
         pairs: Candidate (source_index, target_index) pairs sorted by source index.
@@ -131,44 +188,56 @@ def _longest_increasing_subsequence(
     Returns:
         Monotonic anchor pairs preserving both source and target order.
     """
-    lengths: list[int]
-    previous: list[int | None]
+    target_indices: list[int]
+    best_by_target_rank: list[tuple[int, int]]
+    predecessors: list[int | None]
     best_length: int
     best_index: int
-    current: int
-    candidate: int
-    current_target: int
-    candidate_target: int
+    pair_index: int
+    target_index: int
+    target_rank: int
+    predecessor_length: int
+    predecessor_index: int
+    current_length: int
     result: list[tuple[int, int]]
     index: int | None
 
     if not pairs:
         return []
 
-    lengths = [1] * len(pairs)
-    previous = [None] * len(pairs)
-    best_length = 1
+    target_indices = sorted({target_index for _, target_index in pairs})
+    best_by_target_rank = [(0, -1)] * (len(target_indices) + 1)
+    predecessors = [None] * len(pairs)
+    best_length = 0
     best_index = 0
 
-    for current in range(len(pairs)):
-        current_target = pairs[current][1]
+    for pair_index, (_, target_index) in enumerate(pairs):
+        target_rank = bisect_left(target_indices, target_index) + 1
+        predecessor_length, predecessor_index = _query_best_by_target_rank(
+            best_by_target_rank,
+            target_rank - 1
+        )
+        current_length = predecessor_length + 1
 
-        for candidate in range(current):
-            candidate_target = pairs[candidate][1]
-            if candidate_target < current_target and lengths[candidate] + 1 > lengths[current]:
-                lengths[current] = lengths[candidate] + 1
-                previous[current] = candidate
+        if predecessor_index >= 0:
+            predecessors[pair_index] = predecessor_index
 
-        if lengths[current] > best_length:
-            best_length = lengths[current]
-            best_index = current
+        if current_length > best_length:
+            best_length = current_length
+            best_index = pair_index
+
+        _update_best_by_target_rank(
+            best_by_target_rank,
+            target_rank,
+            (current_length, pair_index)
+        )
 
     result = []
     index = best_index
 
     while index is not None:
         result.append(pairs[index])
-        index = previous[index]
+        index = predecessors[index]
 
     result.reverse()
     return result

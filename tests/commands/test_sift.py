@@ -74,6 +74,33 @@ def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
     assert resolved.deletion_claims[0].content_lines == [b"old\n"]
 
 
+def test_build_sift_ownership_consumes_target_ranges(monkeypatch):
+    """Sift ownership derivation should not expand claimed target ranges."""
+
+    class TargetRangeOnlyRun:
+        kind = sift_module.SemanticChangeKind.PRESENCE
+        source_start = None
+        source_end = None
+        target_start = 2
+        target_end = 1001
+        target_anchor = None
+
+        def target_line_numbers(self):
+            raise AssertionError("sift should consume target range endpoints")
+
+    monkeypatch.setattr(
+        sift_module,
+        "derive_semantic_change_runs",
+        lambda source_lines, target_lines: [TargetRangeOnlyRun()],
+    )
+
+    ownership = build_ownership_from_working_and_target_lines([], [])
+
+    assert ownership is not None
+    assert ownership.presence_claims[0].source_lines == ["2-1001"]
+    assert ownership.presence_line_set().ranges() == ((2, 1001),)
+
+
 def test_validate_sifted_result_accepts_non_list_line_sequences(line_sequence):
     """Sift validation accepts indexed byte-line sequences."""
     target_lines = line_sequence([b"line1\n", b"new\n", b"line3\n"])

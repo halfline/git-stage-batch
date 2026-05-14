@@ -260,7 +260,7 @@ not count as coupling.
    2. Does this commit fix more than one stale-state path, error path, or
       incorrect-selection path?
    3. Does this commit resolve more than one independently describable user
-      complaint or maintainer complaint?
+      complaint or complaint you have as the maintainer?
    If any answer is yes, split by default even when the lines share one
    helper, one state file, one data structure, or one command name. Only keep
    the work combined if you can name the exact invariant that is common to all
@@ -907,8 +907,9 @@ currently has or provides. Do not mention the patch or what is
 missing yet.]
 
 [Description of what is missing, broken, or insufficient, and why
-that matters. Use maintainer or commit-author perspective for
-internal concerns, user perspective for external ones.]
+that matters. Use first-person maintainer perspective for internal
+concerns, user perspective for external ones. Never refer to
+maintainers in the third person.]
 
 This commit [addresses|mitigates|resolves] that [problem] by [precise
 description of what this commit changes and how it solves the problem
@@ -957,11 +958,12 @@ Do not describe the diff, the change itself, or future goals.
 Explain the underlying problem from the appropriate perspective.
 
 Choose the perspective based on who experiences the problem:
-- Use **maintainer perspective** for internal concerns (missing
-  infrastructure, lack of test coverage, missing translations,
-  build system gaps). This is also the commit author's perspective:
-  the reason the change belongs in history. Frame as "The program
-  lacks X" or "The project does not provide Y."
+- Use **first-person maintainer perspective** for internal concerns
+  (missing infrastructure, lack of test coverage, missing
+  translations, build system gaps). You are the maintainer — this
+  is your own perspective on the project. Frame as "The program
+  lacks X" or "The project does not provide Y", never as
+  "Maintainers cannot X."
 - Use **user perspective** for external concerns (confusing
   interfaces, missing documentation, poor workflows). Frame as
   "Users cannot X" or "Users must Y."
@@ -975,7 +977,8 @@ Prefer the broadest accurate framing of the problem.
 Useful tests:
 - Would this problem still exist even if the specific file being
   edited were perfect?
-- Is this something users would notice, or only maintainers?
+- Is this something users would notice, or only you as the
+  maintainer?
 
 For opening commits in a feature series, prefer framing
 the problem around the missing user-facing capability instead of
@@ -1054,9 +1057,9 @@ Fourth paragraph for follow-up or final series conclusion when useful.
 
 - Write for drive-by reviewers with limited context. Assume the
   reader does not know the project well.
-- Write from the maintainer's voice to a casual reader. The commit
-  message is a maintainer explaining the change to someone
-  unfamiliar with the codebase.
+- You are the maintainer; write to a casual reader. The commit
+  message is you explaining the change to someone unfamiliar with
+  the codebase. Never refer to maintainers in the third person.
 - Tell a story. The events in history are connected, and that
   connection should be considered when crafting messages. Do not
   treat each commit as an isolated writing exercise. If a series
@@ -1079,7 +1082,8 @@ Fourth paragraph for follow-up or final series conclusion when useful.
   it as the current behavior. When discussing the changes, treat
   them as new behavior.
 - Describe problems at the product level, not just the file level.
-  Focus on what users or maintainers experience, not only what is
+  Focus on what users experience or what you find problematic as the
+  maintainer, not only what is
   missing in a specific file or function.
 - Focus on missing capabilities, not symptoms. Documentation gaps,
   code organization, and naming issues are often symptoms. Identify
@@ -1134,10 +1138,10 @@ Before finalizing a commit message, check:
   conclude the series goal rather than read like another
   incremental step?
 - Does the second paragraph use the appropriate perspective
-  (maintainer or commit author for internal concerns, user for
+  (first-person maintainer for internal concerns, user for
   external concerns)?
-- Does the second paragraph describe the real user-visible or
-  maintainer-visible problem?
+- Does the second paragraph describe the real problem from either
+  the user's or your own maintainer perspective?
 - Is the problem broader than just the file being edited?
 - Does the message focus on a missing capability rather than a
   symptom?
@@ -1542,7 +1546,8 @@ Before committing, verify:
 - If this is part of a series, the first paragraph reflects the cumulative
   state after all previous commits.
 - The second paragraph explains the broader problem from the right
-  perspective (maintainer for internal concerns, user for external ones).
+  perspective (first-person maintainer for internal concerns, user for
+  external ones).
 - The third paragraph opens with `This commit` and describes how it addresses
   the problem.
 - The message reflects a larger series narrative when the work is split across

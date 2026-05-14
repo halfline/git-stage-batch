@@ -308,7 +308,7 @@ def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
             selected_lines,
             source_lines=source_with_provenance.source_buffer,
             working_lines=(),
-            working_line_map=source_with_provenance.working_line_map,
+            lineage=source_with_provenance.lineage,
         )
 
     assert [line.source_line for line in refreshed] == [3, 4]

@@ -10,7 +10,7 @@ from git_stage_batch.batch.ownership import (
     DeletionClaim,
     ReplacementUnit,
     _advance_source_lines_preserving_existing_presence,
-    _remap_batch_ownership_with_source_line_map,
+    _remap_batch_ownership_with_lineage,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
     remap_batch_ownership_to_new_source_lines,
@@ -41,6 +41,17 @@ class _IterationGuardedLineSelection:
 
     def ranges(self) -> tuple[tuple[int, int], ...]:
         return self._ranges
+
+
+class _PresenceLineGuardedOwnership(BatchOwnership):
+    """Ownership that returns a guarded presence selection."""
+
+    def __init__(self, selection: _IterationGuardedLineSelection) -> None:
+        super().__init__(presence_claims=[], deletions=[])
+        self._selection = selection
+
+    def presence_line_set(self) -> _IterationGuardedLineSelection:
+        return self._selection
 
 
 def _remap_ownership_from_content(
@@ -415,6 +426,25 @@ def test_batch_source_lineage_closes_mapped_storage():
         lineage.translate_source_line(1)
 
 
+def test_source_lineage_remaps_guarded_presence_ranges():
+    """Source-line remapping should consume presence ranges directly."""
+    ownership = _PresenceLineGuardedOwnership(
+        _IterationGuardedLineSelection(((1, 1000), (2000, 2001)))
+    )
+    with _BatchSourceLineage.from_runs(
+        source_runs=[
+            _LineageRun(old_start=1, old_end=1000, new_start=10),
+            _LineageRun(old_start=2000, old_end=2001, new_start=5000),
+        ],
+    ) as lineage:
+        remapped = _remap_batch_ownership_with_lineage(
+            ownership,
+            lineage,
+        )
+
+    assert remapped.presence_claims[0].source_lines == ["10-1009,5000-5001"]
+
+
 def test_merge_coalesces_overlapping_replacement_units_after_deduplication():
     """Deduplicated deletion claims should keep replacement metadata disjoint."""
     deletion = DeletionClaim(anchor_line=None, content_lines=[b"old value\n"])
@@ -511,9 +541,9 @@ def test_advance_source_preserves_claimed_lines_missing_from_working_tree():
         working_buffer=working_tree,
         ownership=ownership,
     ) as source_with_provenance:
-        remapped = _remap_batch_ownership_with_source_line_map(
+        remapped = _remap_batch_ownership_with_lineage(
             ownership,
-            source_with_provenance.source_line_map,
+            source_with_provenance.lineage,
         )
 
         assert source_with_provenance.source_buffer.to_bytes() == (
@@ -536,14 +566,52 @@ def test_advance_source_tracks_working_line_provenance_for_ambiguous_duplicates(
         assert source_with_provenance.source_buffer.to_bytes() == (
             b"owned before\nowned after\nsame\nsame\n"
         )
-        assert source_with_provenance.source_line_map == {
-            1: 1,
-            4: 2,
-        }
-        assert source_with_provenance.working_line_map == {
-            1: 3,
-            2: 4,
-        }
+        assert tuple(source_with_provenance.lineage.source_runs()) == (
+            _LineageRun(old_start=1, old_end=1, new_start=1),
+            _LineageRun(old_start=4, old_end=4, new_start=2),
+        )
+        assert tuple(source_with_provenance.lineage.working_runs()) == (
+            _LineageRun(old_start=1, old_end=2, new_start=3),
+        )
+
+
+def test_advance_source_tracks_contiguous_lineage_as_runs():
+    """Large contiguous source refreshes should keep one source-line run."""
+    source_lines = b"".join(
+        f"line {index}\n".encode("utf-8")
+        for index in range(1, 1001)
+    )
+    ownership = BatchOwnership.from_presence_lines(["1-1000"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=source_lines,
+        working_buffer=source_lines,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert tuple(source_with_provenance.lineage.source_runs()) == (
+            _LineageRun(old_start=1, old_end=1000, new_start=1),
+        )
+        assert tuple(source_with_provenance.lineage.working_runs()) == (
+            _LineageRun(old_start=1, old_end=1000, new_start=1),
+        )
+
+
+def test_advance_source_context_closes_lineage():
+    """Source advancement context should release lineage resources."""
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=b"owned\n",
+        working_buffer=b"owned\n",
+        ownership=ownership,
+    ) as source_with_provenance:
+        lineage = source_with_provenance.lineage
+        assert lineage.closed is False
+
+    assert lineage.closed is True
+    with pytest.raises(ValueError, match="batch source lineage is closed"):
+        lineage.translate_source_line(1)
+
 
 def test_advance_source_lines_accepts_non_list_line_sequences(line_sequence):
     """Source construction accepts indexed line sequences."""
@@ -564,11 +632,10 @@ def test_advance_source_lines_accepts_non_list_line_sequences(line_sequence):
         assert source_with_provenance.source_buffer.to_bytes() == (
             b"owned before\nowned after\nsame\nsame\n"
         )
-        assert source_with_provenance.source_line_map == {
-            1: 1,
-            4: 2,
-        }
-        assert source_with_provenance.working_line_map == {
-            1: 3,
-            2: 4,
-        }
+        assert tuple(source_with_provenance.lineage.source_runs()) == (
+            _LineageRun(old_start=1, old_end=1, new_start=1),
+            _LineageRun(old_start=4, old_end=4, new_start=2),
+        )
+        assert tuple(source_with_provenance.lineage.working_runs()) == (
+            _LineageRun(old_start=1, old_end=2, new_start=3),
+        )

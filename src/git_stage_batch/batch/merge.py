@@ -2975,6 +2975,33 @@ def _reverse_presence_constraints(
 
     copy_start: int | None = 0
 
+    if isinstance(entries, _RealizedEntries):
+        presence_lines = _as_line_ranges(presence_line_set)
+        for run in entries.provenance_runs():
+            if run.source_start == 0:
+                continue
+
+            run_length = run.dest_end - run.dest_start
+            run_source_end = run.source_start + run_length - 1
+            selected_lines = presence_lines.intersection(
+                LineRanges.from_ranges([(run.source_start, run_source_end)])
+            )
+            if not selected_lines:
+                continue
+
+            for selected_start, selected_end in selected_lines.ranges():
+                for source_line in range(selected_start, selected_end + 1):
+                    index = run.dest_start + (source_line - run.source_start)
+                    flush_copy(copy_start, index)
+                    copy_start = None
+                    restore_source_line(source_line)
+                    copy_start = index + 1
+
+        if copy_start is not None:
+            flush_copy(copy_start, len(entries))
+
+        return result
+
     for index in range(len(entries)):
         source_line = _entry_source_line_at(entries, index)
         if source_line is not None and source_line in presence_line_set:

@@ -465,7 +465,10 @@ def _stream_realized_content_chunks_from_lines(
         strict=False
     )
 
-    yield from _realized_entry_content_chunks(realized_entries)
+    try:
+        yield from _realized_entry_content_chunks(realized_entries)
+    finally:
+        realized_entries.close()
 
 
 def _suppress_sequence_at_position_bytes(

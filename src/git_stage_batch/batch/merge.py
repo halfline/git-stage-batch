@@ -1296,6 +1296,77 @@ def _apply_presence_constraints(
             owned_mapping.close()
 
 
+def _source_lines_are_contiguous(
+    previous_source_line: int | None,
+    source_line: int | None,
+) -> bool:
+    if previous_source_line is None or source_line is None:
+        return previous_source_line is None and source_line is None
+    return source_line == previous_source_line + 1
+
+
+def _append_working_range_with_mapping(
+    result: _RealizedEntries,
+    working_lines: Sequence[bytes],
+    mapping: LineMapping,
+    start: int,
+    end: int,
+    presence_line_set: set[int],
+) -> None:
+    """Append a target range split only where provenance stops being contiguous."""
+    if start == end:
+        return
+
+    content_lines = _backing_content_sequence(working_lines)
+    run_start = start
+    run_source_start = mapping.get_source_line_from_target_line(start + 1)
+    previous_source_line = run_source_start
+    run_is_claimed = (
+        run_source_start in presence_line_set
+        if run_source_start is not None
+        else False
+    )
+
+    for working_idx in range(start + 1, end):
+        source_line = mapping.get_source_line_from_target_line(working_idx + 1)
+        is_claimed = (
+            source_line in presence_line_set
+            if source_line is not None
+            else False
+        )
+        if (
+            is_claimed == run_is_claimed
+            and _source_lines_are_contiguous(
+                previous_source_line,
+                source_line,
+            )
+        ):
+            previous_source_line = source_line
+            continue
+
+        result.append_line_range_from(
+            content_lines,
+            run_start,
+            working_idx,
+            source_line_start=run_source_start,
+            target_line_start=run_start + 1,
+            is_claimed=run_is_claimed,
+        )
+        run_start = working_idx
+        run_source_start = source_line
+        previous_source_line = source_line
+        run_is_claimed = is_claimed
+
+    result.append_line_range_from(
+        content_lines,
+        run_start,
+        end,
+        source_line_start=run_source_start,
+        target_line_start=run_start + 1,
+        is_claimed=run_is_claimed,
+    )
+
+
 def _apply_presence_constraints_with_mapping(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -1306,15 +1377,14 @@ def _apply_presence_constraints_with_mapping(
 
     if not presence_line_set:
         result = _RealizedEntries()
-        for working_idx in range(len(working_lines)):
-            source_line = mapping.get_source_line_from_target_line(working_idx + 1)
-            result.append_line_from(
-                working_lines,
-                working_idx,
-                source_line=source_line,
-                target_line=working_idx + 1,
-                is_claimed=False,
-            )
+        _append_working_range_with_mapping(
+            result,
+            working_lines,
+            mapping,
+            0,
+            len(working_lines),
+            presence_line_set,
+        )
         return result
 
     present_claimed: dict[int, int] = {}
@@ -1330,16 +1400,14 @@ def _apply_presence_constraints_with_mapping(
 
     if not missing_claimed:
         result = _RealizedEntries()
-        for working_idx in range(len(working_lines)):
-            source_line = mapping.get_source_line_from_target_line(working_idx + 1)
-            is_claimed = source_line in presence_line_set if source_line else False
-            result.append_line_from(
-                working_lines,
-                working_idx,
-                source_line=source_line,
-                target_line=working_idx + 1,
-                is_claimed=is_claimed,
-            )
+        _append_working_range_with_mapping(
+            result,
+            working_lines,
+            mapping,
+            0,
+            len(working_lines),
+            presence_line_set,
+        )
         return result
 
     result = _RealizedEntries()
@@ -1349,15 +1417,16 @@ def _apply_presence_constraints_with_mapping(
         working_line = mapping.get_target_line_from_source_line(source_line)
 
         if working_line is not None:
-            while working_idx < working_line - 1:
-                result.append_line_from(
+            if working_idx < working_line - 1:
+                _append_working_range_with_mapping(
+                    result,
                     working_lines,
+                    mapping,
                     working_idx,
-                    source_line=None,
-                    target_line=working_idx + 1,
-                    is_claimed=False
+                    working_line - 1,
+                    presence_line_set,
                 )
-                working_idx += 1
+                working_idx = working_line - 1
 
             is_claimed = source_line in presence_line_set
             if is_claimed:
@@ -1387,14 +1456,15 @@ def _apply_presence_constraints_with_mapping(
                 )
 
     while working_idx < len(working_lines):
-        result.append_line_from(
+        _append_working_range_with_mapping(
+            result,
             working_lines,
+            mapping,
             working_idx,
-            source_line=None,
-            target_line=working_idx + 1,
-            is_claimed=False
+            len(working_lines),
+            presence_line_set,
         )
-        working_idx += 1
+        working_idx = len(working_lines)
 
     return result
 
@@ -1464,7 +1534,10 @@ def _apply_absence_constraints(
             for line in claim.content_lines
         ]
 
+        old_result = result
         result = suppress_fn(result, boundary, forbidden_sequence)
+        if result is not old_result and old_result is not entries:
+            old_result.close()
 
     return result
 
@@ -1475,6 +1548,18 @@ def _missing_claimed_lines(
 ) -> set[int]:
     """Return claimed source lines that are not present as claimed entries."""
     present_claimed = set()
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs():
+            if not run.is_claimed or run.source_start == 0:
+                continue
+            present_claimed.update(
+                range(
+                    run.source_start,
+                    run.source_start + (run.dest_end - run.dest_start),
+                )
+            )
+        return presence_line_set - present_claimed
+
     for index in range(len(entries)):
         source_line = _entry_source_line_at(entries, index)
         if source_line is not None and _entry_is_claimed_at(entries, index):
@@ -1499,40 +1584,55 @@ def _satisfy_constraints(
         source_to_working_mapping=source_to_working_mapping,
     )
 
-    realized_entries = _apply_absence_constraints(
-        realized_entries,
-        deletion_claims,
-        strict=strict
-    )
-
-    if not _missing_claimed_lines(realized_entries, presence_line_set):
-        return realized_entries
-
-    current_lines = _RealizedEntryContentSequence(realized_entries)
-    realized_entries = _apply_presence_constraints(
-        source_lines,
-        current_lines,
-        presence_line_set
-    )
-
-    realized_entries = _apply_absence_constraints(
-        realized_entries,
-        deletion_claims,
-        strict=strict
-    )
-
-    missing_claimed = _missing_claimed_lines(realized_entries, presence_line_set)
-    if missing_claimed:
-        if not strict:
-            return realized_entries
-        first_missing = min(missing_claimed)
-        raise MergeError(
-            _("Cannot satisfy claimed line {line}: removed by absence constraints").format(
-                line=first_missing
-            )
+    try:
+        updated_entries = _apply_absence_constraints(
+            realized_entries,
+            deletion_claims,
+            strict=strict
         )
+        if updated_entries is not realized_entries:
+            realized_entries.close()
+        realized_entries = updated_entries
 
-    return realized_entries
+        if not _missing_claimed_lines(realized_entries, presence_line_set):
+            return realized_entries
+
+        previous_entries = realized_entries
+        current_lines = _RealizedEntryContentSequence(previous_entries)
+        try:
+            updated_entries = _apply_presence_constraints(
+                source_lines,
+                current_lines,
+                presence_line_set
+            )
+        finally:
+            previous_entries.close()
+        realized_entries = updated_entries
+
+        updated_entries = _apply_absence_constraints(
+            realized_entries,
+            deletion_claims,
+            strict=strict
+        )
+        if updated_entries is not realized_entries:
+            realized_entries.close()
+        realized_entries = updated_entries
+
+        missing_claimed = _missing_claimed_lines(realized_entries, presence_line_set)
+        if missing_claimed:
+            if not strict:
+                return realized_entries
+            first_missing = min(missing_claimed)
+            raise MergeError(
+                _("Cannot satisfy claimed line {line}: removed by absence constraints").format(
+                    line=first_missing
+                )
+            )
+
+        return realized_entries
+    except Exception:
+        realized_entries.close()
+        raise
 
 
 def _find_realization_fallback_boundary(
@@ -1550,15 +1650,31 @@ def _find_realization_fallback_boundary(
     if source_line is None:
         return 0
 
-    prior_source_lines = []
-    for index in range(len(entries)):
-        entry_source_line = _entry_source_line_at(entries, index)
-        if entry_source_line is not None and entry_source_line < source_line:
-            prior_source_lines.append(entry_source_line)
-    if not prior_source_lines:
+    prior_source_line: int | None = None
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs():
+            if run.source_start == 0:
+                continue
+            run_length = run.dest_end - run.dest_start
+            run_source_end = run.source_start + run_length
+            if run.source_start >= source_line:
+                continue
+            candidate = min(source_line - 1, run_source_end - 1)
+            if candidate >= run.source_start:
+                prior_source_line = max(prior_source_line or candidate, candidate)
+    else:
+        for index in range(len(entries)):
+            entry_source_line = _entry_source_line_at(entries, index)
+            if entry_source_line is not None and entry_source_line < source_line:
+                prior_source_line = max(
+                    prior_source_line or entry_source_line,
+                    entry_source_line,
+                )
+
+    if prior_source_line is None:
         return 0
 
-    return _find_boundary_after_source_line(entries, max(prior_source_lines))
+    return _find_boundary_after_source_line(entries, prior_source_line)
 
 
 def _find_boundary_after_source_line(
@@ -1591,11 +1707,23 @@ def _find_boundary_after_source_line(
     matching_indices = []
     claimed_indices = []
 
-    for i in range(len(entries)):
-        if _entry_source_line_at(entries, i) == source_line:
-            matching_indices.append(i)
-            if _entry_is_claimed_at(entries, i):
-                claimed_indices.append(i)
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs():
+            if run.source_start == 0:
+                continue
+            run_length = run.dest_end - run.dest_start
+            if not run.source_start <= source_line < run.source_start + run_length:
+                continue
+            index = run.dest_start + (source_line - run.source_start)
+            matching_indices.append(index)
+            if run.is_claimed:
+                claimed_indices.append(index)
+    else:
+        for i in range(len(entries)):
+            if _entry_source_line_at(entries, i) == source_line:
+                matching_indices.append(i)
+                if _entry_is_claimed_at(entries, i):
+                    claimed_indices.append(i)
 
     if not matching_indices:
         raise MissingAnchorError(
@@ -1698,6 +1826,13 @@ def _position_after_claimed_insertions_at_boundary(
 ) -> int:
     """Return the first position after contiguous claimed entries at boundary."""
     check_pos = position
+
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs(position, len(entries)):
+            if not run.is_claimed:
+                break
+            check_pos = run.dest_end
+        return check_pos
 
     while check_pos < len(entries) and _entry_is_claimed_at(entries, check_pos):
         check_pos += 1
@@ -2284,7 +2419,10 @@ def _merge_batch_acquired_line_chunks(
         if owned_mapping is not None:
             owned_mapping.close()
 
-    yield from _realized_entry_content_chunks(realized_entries)
+    try:
+        yield from _realized_entry_content_chunks(realized_entries)
+    finally:
+        realized_entries.close()
 
 
 def discard_batch_from_line_sequences_as_buffer(
@@ -2358,18 +2496,27 @@ def _discard_batch_acquired_line_chunks(
             working_to_source
         )
 
-    realized_entries = _reverse_presence_constraints(
-        realized_entries,
-        presence_line_set,
-        correspondence
-    )
+    try:
+        updated_entries = _reverse_presence_constraints(
+            realized_entries,
+            presence_line_set,
+            correspondence
+        )
+        if updated_entries is not realized_entries:
+            realized_entries.close()
+        realized_entries = updated_entries
 
-    realized_entries = _restore_absence_constraints(
-        realized_entries,
-        deletion_claims
-    )
+        updated_entries = _restore_absence_constraints(
+            realized_entries,
+            deletion_claims
+        )
+        if updated_entries is not realized_entries:
+            realized_entries.close()
+        realized_entries = updated_entries
 
-    yield from _realized_entry_content_chunks(realized_entries)
+        yield from _realized_entry_content_chunks(realized_entries)
+    finally:
+        realized_entries.close()
 
 
 def _build_baseline_correspondence(
@@ -2666,16 +2813,14 @@ def _build_realized_entries_for_discard(
         Realized entries representing working tree with source provenance
     """
     result = _RealizedEntries()
-
-    for working_idx in range(len(working_lines)):
-        source_line = working_to_source.get_source_line_from_target_line(working_idx + 1)
-        result.append_line_from(
-            working_lines,
-            working_idx,
-            source_line=source_line,
-            target_line=working_idx + 1,
-            is_claimed=False
-        )
+    _append_working_range_with_mapping(
+        result,
+        working_lines,
+        working_to_source,
+        0,
+        len(working_lines),
+        set(),
+    )
 
     return result
 
@@ -2731,10 +2876,17 @@ def _reverse_presence_constraints(
     """
     result = _RealizedEntries()
     processed_replace_regions: set[int] = set()
+    copy_start: int | None = 0
+
+    def flush_copy(start: int | None, stop: int) -> None:
+        if start is not None and start < stop:
+            result.copy_slice_from(entries, start, stop)
 
     for index in range(len(entries)):
         source_line = _entry_source_line_at(entries, index)
         if source_line is not None and source_line in presence_line_set:
+            flush_copy(copy_start, index)
+            copy_start = None
             region = correspondence.get_region_for_source_line(source_line)
 
             if region is None:
@@ -2747,11 +2899,12 @@ def _reverse_presence_constraints(
             if region.kind in (RegionKind.EQUAL, RegionKind.REPLACE_LINE_BY_LINE):
                 offset = source_line - region.source_start_line
                 if 0 <= offset < len(region.baseline_lines):
-                    result.append_line_from(
+                    result.append_line_range_from(
                         region.baseline_lines,
                         offset,
-                        source_line=None,
-                        is_claimed=False
+                        offset + 1,
+                        source_line_start=None,
+                        is_claimed=False,
                     )
                 else:
                     raise MergeError(
@@ -2785,13 +2938,13 @@ def _reverse_presence_constraints(
                             )
                         )
 
-                    for baseline_idx in range(len(region.baseline_lines)):
-                        result.append_line_from(
-                            region.baseline_lines,
-                            baseline_idx,
-                            source_line=None,
-                            is_claimed=False
-                        )
+                    result.append_line_range_from(
+                        region.baseline_lines,
+                        0,
+                        len(region.baseline_lines),
+                        source_line_start=None,
+                        is_claimed=False,
+                    )
                     processed_replace_regions.add(region.region_id)
 
             else:
@@ -2799,8 +2952,13 @@ def _reverse_presence_constraints(
                     _("Unknown region kind: {kind}").format(kind=region.kind)
                 )
 
+            copy_start = index + 1
         else:
-            result.append_from(entries, index)
+            if copy_start is None:
+                copy_start = index
+
+    if copy_start is not None:
+        flush_copy(copy_start, len(entries))
 
     return result
 
@@ -2852,16 +3010,19 @@ def _restore_absence_constraints(
         if _sequence_present_at_boundary(result, boundary, claim.content_lines):
             continue
 
-        restored_entries = _RealizedEntries()
-        for line_index in range(len(claim.content_lines)):
-            restored_entries.append_line_from(
+        with _RealizedEntries() as restored_entries:
+            restored_entries.append_line_range_from(
                 claim.content_lines,
-                line_index,
-                source_line=None,
+                0,
+                len(claim.content_lines),
+                source_line_start=None,
                 is_claimed=False,
             )
 
-        result = result.insert_entries(boundary, restored_entries)
+            old_result = result
+            result = result.insert_entries(boundary, restored_entries)
+        if old_result is not entries:
+            old_result.close()
 
     return result
 

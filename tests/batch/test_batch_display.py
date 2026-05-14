@@ -39,6 +39,42 @@ class _NoLenByteLines(Sequence[bytes]):
         return self._lines[index]
 
 
+class _IterationGuardedLineSelection:
+    """Line selection that rejects full expansion in display tests."""
+
+    def __init__(self, ranges: tuple[tuple[int, int], ...]) -> None:
+        self._ranges = ranges
+
+    def __contains__(self, line_number: object) -> bool:
+        if type(line_number) is not int:
+            return False
+        return any(start <= line_number <= end for start, end in self._ranges)
+
+    def __bool__(self) -> bool:
+        return bool(self._ranges)
+
+    def __iter__(self):
+        raise AssertionError("claimed selection should not be expanded")
+
+    def ranges(self) -> tuple[tuple[int, int], ...]:
+        return self._ranges
+
+
+class _RangeBackedDisplayOwnership:
+    """Ownership stub that returns a guarded range-backed selection."""
+
+    def __init__(
+        self,
+        selection: _IterationGuardedLineSelection,
+        deletions: Iterable[DeletionClaim] = (),
+    ) -> None:
+        self._selection = selection
+        self.deletions = list(deletions)
+
+    def presence_line_set(self) -> _IterationGuardedLineSelection:
+        return self._selection
+
+
 def test_display_builder_accepts_non_list_byte_line_sequences(line_sequence):
     """Batch display construction accepts indexed byte-line sequences."""
     source_lines = line_sequence([
@@ -98,6 +134,55 @@ def test_display_builder_does_not_require_source_line_count():
     ]
     assert [line["id"] for line in display_lines] == [None, 1, None]
     assert source_lines.accessed_indexes == [498, 499, 500]
+
+
+def test_display_builder_uses_ranges_without_expanding_claims():
+    """Display construction keeps claimed ranges compact."""
+    source_lines = _NoLenByteLines(
+        f"line {line_number}\n".encode("utf-8")
+        for line_number in range(1, 101)
+    )
+    ownership = _RangeBackedDisplayOwnership(
+        _IterationGuardedLineSelection(((50, 52),)),
+        [
+            DeletionClaim(
+                anchor_line=60,
+                content_lines=[b"deleted\n"],
+            ),
+        ],
+    )
+
+    display_lines = build_display_lines_from_batch_source_lines(
+        source_lines,
+        ownership,
+        context_lines=1,
+    )
+
+    assert [line["content"] for line in display_lines] == [
+        "line 49\n",
+        "line 50\n",
+        "line 51\n",
+        "line 52\n",
+        "line 53\n",
+        "... 5 more lines ...\n",
+        "line 59\n",
+        "line 60\n",
+        "deleted\n",
+        "line 61\n",
+    ]
+    assert [line["type"] for line in display_lines] == [
+        "context",
+        "claimed",
+        "claimed",
+        "claimed",
+        "context",
+        "gap",
+        "context",
+        "context",
+        "deletion",
+        "context",
+    ]
+    assert source_lines.accessed_indexes == [48, 49, 50, 51, 52, 58, 59, 60]
 
 
 def test_annotate_with_batch_source_lines_accepts_non_list_byte_sequences(line_sequence):

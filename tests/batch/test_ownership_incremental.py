@@ -56,6 +56,38 @@ def test_presence_line_set_returns_line_ranges():
     assert ownership.resolve().presence_line_set == selection
 
 
+def test_translate_lines_builds_selected_ranges_without_line_sets(monkeypatch):
+    """Selected display lines should translate through range builders."""
+    def fail_from_lines(cls, lines):
+        raise AssertionError("translator should pass range selections forward")
+
+    monkeypatch.setattr(LineRanges, "from_lines", classmethod(fail_from_lines))
+
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'old', text='old', source_line=None),
+        *[
+            LineEntry(
+                id=index + 2,
+                kind='+',
+                old_line_number=None,
+                new_line_number=index + 1,
+                text_bytes=f'new {index}\n'.encode(),
+                text=f'new {index}',
+                source_line=index + 1,
+            )
+            for index in range(1000)
+        ],
+    ]
+
+    ownership = translate_lines_to_batch_ownership(lines)
+
+    assert ownership.presence_claims[0].source_lines == ["1-1000"]
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
+    ]
+
+
 def test_derive_replacement_line_runs_accepts_non_list_sequences(line_sequence):
     """Replacement run derivation accepts indexed byte-line sequences."""
     runs = derive_replacement_line_runs_from_lines(

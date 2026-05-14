@@ -40,13 +40,13 @@ We follow strict commit message conventions to maintain a clear and understandab
 ### Key Principles
 
 - **Write for drive-by reviewers with limited context.** Assume the reader does not know the project well.
-- **Write from the maintainer's voice to a casual reader.** The commit message is a maintainer explaining the change to someone unfamiliar with the codebase.
+- **You are the maintainer; write to a casual reader.** The commit message is you explaining the change to someone unfamiliar with the codebase. Never refer to maintainers in the third person.
 - **Tell a story.** The events in history are connected, and that connection should be considered when crafting messages. Do not treat each commit as an isolated writing exercise. If a series of commits contribute collectively to a goal, each commit message should describe how it helps achieve that goal. Early commits can foreshadow later commits if it helps tell the story.
 - **Separate independent series.** A dirty worktree can contain multiple unrelated commit series. Split them into separate series with separate opening and concluding commits instead of forcing one message thread across all unstaged changes.
 - **Introduce the series in its first commit.** When a commit opens a multi-commit series, its message should name the larger goal and explain why the series exists, even if the first change is narrow groundwork. Do not limit the opening message to mechanics that only matter to that first change.
 - **Conclude the series in its final commit.** The final commit should make clear that the series has reached its intended goal. Its message should close the thread opened by the first commit instead of only describing the last small change.
 - **Use the tense that reflects the state of the project just before the commit is applied.** When discussing the old behavior, treat it as the selected behavior. When discussing the changes, treat them as new behavior.
-- **Describe problems at the product level, not just the file level.** Focus on what users or maintainers experience, not only what is missing in a specific file or function.
+- **Describe problems at the product level, not just the file level.** Focus on what users experience or what you find problematic as the maintainer, not only what is missing in a specific file or function.
 - **Focus on missing capabilities, not symptoms.** Documentation gaps, code organization, and naming issues are often symptoms. Identify the underlying limitation or missing behavior that motivates the change.
 - **Do not describe secondary effects as the primary problem.** Code organization, maintainability, or cleanliness are rarely the main reason for a change.
 - **Be precise about scope.** If a change only improves one aspect of a problem, do not imply it fully solves it.
@@ -101,7 +101,7 @@ Do not describe the diff, the change itself, or future goals.
 Explain the underlying problem from the appropriate perspective.
 
 **Choose the perspective based on who experiences the problem:**
-- Use **maintainer perspective** for internal concerns (missing infrastructure, lack of test coverage, missing translations, build system gaps). Frame as "The program lacks X" or "The project does not provide Y."
+- Use **first-person maintainer perspective** for internal concerns (missing infrastructure, lack of test coverage, missing translations, build system gaps). You are the maintainer — frame as "The program lacks X" or "The project does not provide Y", never as "Maintainers cannot X."
 - Use **user perspective** for external concerns (confusing interfaces, missing documentation, poor workflows). Frame as "Users cannot X" or "Users must Y."
 
 Describe what is non-obvious, hard to discover, confusing, missing, or limited
@@ -112,7 +112,7 @@ Prefer the broadest accurate framing of the problem.
 
 Useful tests:
 - Would this problem still exist even if the specific file being edited were perfect?
-- Is this something users would notice, or only maintainers?
+- Is this something users would notice, or only you as the maintainer?
 
 For opening commits in a feature series, prefer framing the problem
 around the missing user-facing capability instead of the missing internal
@@ -169,8 +169,8 @@ Before finalizing a commit message, check:
 - If the worktree contains multiple independent series, are they split into separate series?
 - If this is the first commit in a series, does the message introduce the whole series goal rather than only the first change?
 - If this is the final commit in a series, does the message conclude the series goal rather than read like another incremental step?
-- Does the second paragraph use the appropriate perspective (maintainer for internal concerns, user for external concerns)?
-- Does the second paragraph describe the real user-visible or maintainer-visible problem?
+- Does the second paragraph use the appropriate perspective (first-person maintainer for internal concerns, user for external concerns)?
+- Does the second paragraph describe the real problem from either the user's or your own maintainer perspective?
 - Is the problem broader than just the file being edited?
 - Does the message focus on a missing capability rather than a symptom?
 - If this is the first commit in a feature series, does the message name the eventual user-facing feature rather than only the internal machinery?

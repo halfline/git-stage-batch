@@ -42,6 +42,8 @@ def test_derive_semantic_change_runs_uses_range_records():
             target_anchor=1,
         )
     ]
+    assert not hasattr(runs[0], "source_run")
+    assert not hasattr(runs[0], "target_run")
     assert runs[0].source_line_numbers() == range(2, 4)
     assert runs[0].target_line_numbers() == range(2, 4)
 

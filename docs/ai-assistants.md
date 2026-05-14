@@ -79,7 +79,7 @@ the reader does not know the project well.
   - If part of a series, reflect the cumulative state after previous commits
   - Don't describe the diff, the change, or future goals
 - **Second paragraph**: explain the underlying problem
-  - Choose perspective: maintainer (internal concerns) or user (external concerns)
+  - Choose perspective: first-person maintainer (internal concerns) or user (external concerns)
   - Focus on **missing capabilities**, not symptoms
   - Prefer concrete limitations over vague words like "cumbersome" or "better"
 - **Third paragraph**: describe how this commit addresses the problem

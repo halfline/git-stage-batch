@@ -1387,15 +1387,12 @@ def _apply_presence_constraints_with_mapping(
         )
         return result
 
-    present_claimed: dict[int, int] = {}
     missing_claimed: set[int] = set()
 
     for source_line in presence_line_set:
         if 1 <= source_line <= len(source_lines):
             working_line = mapping.get_target_line_from_source_line(source_line)
-            if working_line is not None:
-                present_claimed[source_line] = working_line
-            else:
+            if working_line is None:
                 missing_claimed.add(source_line)
 
     if not missing_claimed:

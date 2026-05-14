@@ -1455,6 +1455,25 @@ class TestDiscardBatch:
         with pytest.raises(MergeError, match="batch owns 1 of 3 lines"):
             discard_batch(batch_source, ownership, working, baseline)
 
+    def test_discard_rejects_partial_ambiguous_repeated_replacement(self):
+        """Repeated baseline/source content must not be guessed partially."""
+        baseline = b"A\nA\nA\n"
+        batch_source = b"B\nA\nB\n"
+        working = b"B\nA\nB\n"
+        ownership = BatchOwnership.from_presence_lines(["1"], [])
+
+        with pytest.raises(MergeError, match="batch owns 1 of 3 lines"):
+            discard_batch(batch_source, ownership, working, baseline)
+
+    def test_discard_restores_full_ambiguous_repeated_replacement(self):
+        """Full ownership can restore an ambiguous repeated replacement."""
+        baseline = b"A\nA\nA\n"
+        batch_source = b"B\nA\nB\n"
+        working = b"B\nA\nB\n"
+        ownership = BatchOwnership.from_presence_lines(["1-3"], [])
+
+        assert discard_batch(batch_source, ownership, working, baseline) == baseline
+
     def test_discard_insertion_not_present_does_nothing(self):
         """Test that discarding insertion when not in working tree does nothing."""
         baseline = b"line1\nline2\n"

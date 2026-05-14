@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from dataclasses import replace
 from enum import Enum
 
-from ..batch.match import match_lines
+from ..batch.match import LineMapping, match_lines
 from ..batch.query import list_batch_names, read_batch_metadata
 from ..core.line_selection import parse_line_selection
 from ..core.models import LineLevelChange
@@ -110,7 +110,17 @@ class FileComparison:
     file_path: str
     baseline_lines: Sequence[bytes]
     working_tree_lines: Sequence[bytes]
-    alignment: object
+    alignment: LineMapping
+
+    def close(self) -> None:
+        """Close the owned alignment mapping."""
+        self.alignment.close()
+
+    def __enter__(self) -> FileComparison:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
 
 
 def _make_unit_id(
@@ -434,13 +444,13 @@ def build_file_attribution(file_path: str) -> FileAttribution:
     baseline_buffer = load_git_object_as_buffer_or_empty(f"HEAD:{file_path}")
     working_tree_buffer = load_working_tree_file_as_buffer(file_path)
     with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
-        comparison = _build_file_comparison_from_lines(
+        all_units_map: dict[str, AttributionUnit] = {}
+        with _build_file_comparison_from_lines(
             file_path,
             baseline_lines=baseline_lines,
             working_tree_lines=working_tree_lines,
-        )
-        all_units_map: dict[str, AttributionUnit] = {}
-        enumerate_units_from_file_comparison(comparison, all_units_map)
+        ) as comparison:
+            enumerate_units_from_file_comparison(comparison, all_units_map)
 
         if all_batch_metadata:
             _enumerate_units_from_batches(
@@ -484,65 +494,65 @@ def _enumerate_units_from_batches(
             if len(batch_source_lines) == 0 and _has_presence_source_lines(file_metadata):
                 continue
 
-            alignment = match_lines(
+            with match_lines(
                 source_lines=batch_source_lines,
                 target_lines=working_tree_lines,
-            )
+            ) as alignment:
 
-            for source_line in _parse_presence_source_lines(file_metadata):
-                if source_line < 1 or source_line > len(batch_source_lines):
-                    continue
+                for source_line in _parse_presence_source_lines(file_metadata):
+                    if source_line < 1 or source_line > len(batch_source_lines):
+                        continue
 
-                claimed_content = batch_source_lines[source_line - 1]
-                working_tree_line = alignment.get_target_line_from_source_line(source_line)
-                unit = AttributionUnit(
-                    unit_id=_make_unit_id(
-                        AttributionUnitKind.PRESENCE_ONLY,
-                        file_path,
-                        claimed_line=working_tree_line,
+                    claimed_content = batch_source_lines[source_line - 1]
+                    working_tree_line = alignment.get_target_line_from_source_line(source_line)
+                    unit = AttributionUnit(
+                        unit_id=_make_unit_id(
+                            AttributionUnitKind.PRESENCE_ONLY,
+                            file_path,
+                            claimed_line=working_tree_line,
+                            claimed_content=claimed_content,
+                        ),
+                        kind=AttributionUnitKind.PRESENCE_ONLY,
+                        file_path=file_path,
+                        claimed_line_in_working_tree=working_tree_line,
                         claimed_content=claimed_content,
-                    ),
-                    kind=AttributionUnitKind.PRESENCE_ONLY,
-                    file_path=file_path,
-                    claimed_line_in_working_tree=working_tree_line,
-                    claimed_content=claimed_content,
-                    deletion_anchor_in_working_tree=None,
-                    deletion_content=None,
-                )
-                units_map.setdefault(unit.unit_id, unit)
+                        deletion_anchor_in_working_tree=None,
+                        deletion_content=None,
+                    )
+                    units_map.setdefault(unit.unit_id, unit)
 
-            for deletion_entry in file_metadata.get("deletions", []):
-                blob_hash = deletion_entry.get("blob")
-                if not blob_hash:
-                    continue
+                for deletion_entry in file_metadata.get("deletions", []):
+                    blob_hash = deletion_entry.get("blob")
+                    if not blob_hash:
+                        continue
 
-                deletion_fingerprint = _fingerprint_git_blob(blob_hash)
-                if deletion_fingerprint is None:
-                    continue
+                    deletion_fingerprint = _fingerprint_git_blob(blob_hash)
+                    if deletion_fingerprint is None:
+                        continue
 
-                after_source_line = deletion_entry.get("after_source_line")
-                deletion_anchor = (
-                    None
-                    if after_source_line is None
-                    else alignment.get_target_line_from_source_line(after_source_line)
-                )
+                    after_source_line = deletion_entry.get("after_source_line")
+                    deletion_anchor = (
+                        None
+                        if after_source_line is None
+                        else alignment.get_target_line_from_source_line(after_source_line)
+                    )
 
-                unit = AttributionUnit(
-                    unit_id=_make_unit_id(
-                        AttributionUnitKind.DELETION_ONLY,
-                        file_path,
-                        deletion_anchor=deletion_anchor,
+                    unit = AttributionUnit(
+                        unit_id=_make_unit_id(
+                            AttributionUnitKind.DELETION_ONLY,
+                            file_path,
+                            deletion_anchor=deletion_anchor,
+                            deletion_fingerprint=deletion_fingerprint,
+                        ),
+                        kind=AttributionUnitKind.DELETION_ONLY,
+                        file_path=file_path,
+                        claimed_line_in_working_tree=None,
+                        claimed_content=None,
+                        deletion_anchor_in_working_tree=deletion_anchor,
+                        deletion_content=None,
                         deletion_fingerprint=deletion_fingerprint,
-                    ),
-                    kind=AttributionUnitKind.DELETION_ONLY,
-                    file_path=file_path,
-                    claimed_line_in_working_tree=None,
-                    claimed_content=None,
-                    deletion_anchor_in_working_tree=deletion_anchor,
-                    deletion_content=None,
-                    deletion_fingerprint=deletion_fingerprint,
-                )
-                units_map.setdefault(unit.unit_id, unit)
+                    )
+                    units_map.setdefault(unit.unit_id, unit)
 
 
 def _find_owning_batches(
@@ -562,33 +572,33 @@ def _find_owning_batches(
             f"{batch_source_commit}:{file_path}"
         )
         with batch_source_buffer as batch_source_lines:
-            alignment = match_lines(
+            with match_lines(
                 source_lines=batch_source_lines,
                 target_lines=working_tree_lines,
-            )
+            ) as alignment:
 
-            if unit.kind == AttributionUnitKind.PRESENCE_ONLY:
-                if _batch_owns_presence_unit(
-                    unit,
-                    file_metadata,
-                    alignment,
-                    batch_source_lines,
-                ):
-                    owning_batches.add(batch_name)
-            elif unit.kind == AttributionUnitKind.DELETION_ONLY:
-                if _batch_owns_deletion_unit(unit, file_metadata, alignment):
-                    owning_batches.add(batch_name)
-            elif unit.kind == AttributionUnitKind.REPLACEMENT:
-                if (
-                    _batch_owns_presence_unit(
+                if unit.kind == AttributionUnitKind.PRESENCE_ONLY:
+                    if _batch_owns_presence_unit(
                         unit,
                         file_metadata,
                         alignment,
                         batch_source_lines,
-                    )
-                    and _batch_owns_deletion_unit(unit, file_metadata, alignment)
-                ):
-                    owning_batches.add(batch_name)
+                    ):
+                        owning_batches.add(batch_name)
+                elif unit.kind == AttributionUnitKind.DELETION_ONLY:
+                    if _batch_owns_deletion_unit(unit, file_metadata, alignment):
+                        owning_batches.add(batch_name)
+                elif unit.kind == AttributionUnitKind.REPLACEMENT:
+                    if (
+                        _batch_owns_presence_unit(
+                            unit,
+                            file_metadata,
+                            alignment,
+                            batch_source_lines,
+                        )
+                        and _batch_owns_deletion_unit(unit, file_metadata, alignment)
+                    ):
+                        owning_batches.add(batch_name)
 
     return owning_batches
 

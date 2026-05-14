@@ -334,5 +334,5 @@ def annotate_with_batch_source_lines(
     working_lines: Sequence[bytes],
 ) -> LineLevelChange:
     """Annotate LineLevelChange from indexed batch-source and working lines."""
-    mapping = match_lines(batch_source_lines, working_lines)
-    return _apply_batch_source_mapping(line_changes, mapping)
+    with match_lines(batch_source_lines, working_lines) as mapping:
+        return _apply_batch_source_mapping(line_changes, mapping)

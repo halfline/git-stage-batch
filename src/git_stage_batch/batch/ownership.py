@@ -25,7 +25,7 @@ from ..utils.git import (
     read_git_blobs_as_bytes,
 )
 from .comparison import SemanticChangeKind, derive_semantic_change_runs
-from .match import match_lines
+from .match import LineMapping, match_lines
 from .merge import (
     _apply_presence_constraints,
     _entry_source_line_at,
@@ -1830,8 +1830,15 @@ def remap_batch_ownership_to_new_source_lines(
     new_source_lines: Sequence[bytes],
 ) -> BatchOwnership:
     """Remap batch ownership between old and new source line sequences."""
-    mapping = match_lines(old_source_lines, new_source_lines)
+    with match_lines(old_source_lines, new_source_lines) as mapping:
+        return _remap_batch_ownership_with_mapping(ownership, mapping)
 
+
+def _remap_batch_ownership_with_mapping(
+    ownership: BatchOwnership,
+    mapping: LineMapping,
+) -> BatchOwnership:
+    """Remap batch ownership using an existing old-to-new source mapping."""
     # Remap presence lines
     old_presence = ownership.presence_line_set()
     new_presence = set()

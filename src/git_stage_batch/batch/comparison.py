@@ -1,15 +1,16 @@
-"""Shared comparison logic for deriving semantic change runs from line alignment.
+"""Shared comparison logic for deriving semantic change ranges from alignment.
 
-This module provides the common comparison pattern used by both attribution
-and sift: compare two line spaces using match_lines, derive matched/unmatched
-runs, pair them structurally, and emit semantic change units.
+This module provides the common comparison pattern used by include and sift:
+compare two line spaces using match_lines, walk gaps between trusted matched
+pairs, and emit semantic change units as inclusive ranges.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
+from itertools import chain
 
 from ..batch.match import match_lines
 from ..core.models import LineLevelChange
@@ -28,7 +29,7 @@ class SemanticChangeKind(Enum):
     """Deletion from source coupled with addition in target."""
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class SemanticChangeRun:
     """A semantic change unit derived from source ↔ target comparison.
 
@@ -41,72 +42,92 @@ class SemanticChangeRun:
     """
 
     kind: SemanticChangeKind
-
-    # For PRESENCE and REPLACEMENT: target line numbers
-    target_run: list[int] | None = None
-
-    # For DELETION and REPLACEMENT: source line numbers
-    source_run: list[int] | None = None
-
-    # Structural anchor in target space (None = start of file)
-    # For DELETION: where the deletion conceptually happens in target space
-    # For REPLACEMENT: shared anchor for both sides
+    source_start: int | None = None
+    source_end: int | None = None
+    target_start: int | None = None
+    target_end: int | None = None
     target_anchor: int | None = None
 
+    def __post_init__(self) -> None:
+        _validate_range_pair(self.source_start, self.source_end, "source")
+        _validate_range_pair(self.target_start, self.target_end, "target")
 
-def group_consecutive(line_numbers: list[int]) -> list[list[int]]:
-    """Group line numbers into consecutive runs.
+    def source_line_numbers(self) -> range:
+        """Return source line numbers in this run without materializing them."""
+        return _line_range(self.source_start, self.source_end)
 
-    Args:
-        line_numbers: List of line numbers (may be unsorted)
+    def target_line_numbers(self) -> range:
+        """Return target line numbers in this run without materializing them."""
+        return _line_range(self.target_start, self.target_end)
 
-    Returns:
-        List of runs, where each run is a list of consecutive line numbers
+    @property
+    def source_run(self) -> list[int] | None:
+        """Return source line numbers for compatibility with list callers."""
+        if self.source_start is None or self.source_end is None:
+            return None
+        return list(self.source_line_numbers())
 
-    Example:
-        [1, 2, 3, 5, 7, 8] → [[1, 2, 3], [5], [7, 8]]
-    """
-    if not line_numbers:
-        return []
+    @property
+    def target_run(self) -> list[int] | None:
+        """Return target line numbers for compatibility with list callers."""
+        if self.target_start is None or self.target_end is None:
+            return None
+        return list(self.target_line_numbers())
 
-    sorted_lines = sorted(line_numbers)
-    runs = [[sorted_lines[0]]]
-    for line in sorted_lines[1:]:
-        if line == runs[-1][-1] + 1:
-            runs[-1].append(line)
-        else:
-            runs.append([line])
-    return runs
+    def has_source_line(self, line_number: int | None) -> bool:
+        if (
+            line_number is None
+            or self.source_start is None
+            or self.source_end is None
+        ):
+            return False
+        return self.source_start <= line_number <= self.source_end
+
+    def has_target_line(self, line_number: int | None) -> bool:
+        if (
+            line_number is None
+            or self.target_start is None
+            or self.target_end is None
+        ):
+            return False
+        return self.target_start <= line_number <= self.target_end
 
 
-def find_structural_predecessor(
-    run: list[int],
-    line_mapping: dict[int, int]
-) -> int | None:
-    """Find the last matched line before a run in the same coordinate space.
+def _line_range(start: int | None, end: int | None) -> range:
+    if start is None or end is None:
+        return range(0)
+    return range(start, end + 1)
 
-    Scans backwards from the start of the run to find the nearest line
-    that has a mapping. This defines the structural anchor for the run.
 
-    Args:
-        run: List of consecutive line numbers
-        line_mapping: Map from line numbers to their matches
+def _validate_range_pair(
+    start: int | None,
+    end: int | None,
+    name: str,
+) -> None:
+    if (start is None) != (end is None):
+        raise ValueError(f"{name} range requires both start and end")
+    if start is not None and end is not None and start > end:
+        raise ValueError(f"{name} range start must be <= end")
 
-    Returns:
-        The last mapped line before the run, or None if at start-of-file
 
-    Example:
-        run = [5, 6, 7]
-        mapping = {1: 1, 2: 2, 4: 4, 10: 10}
-        → returns 4 (last mapped line before 5)
-    """
-    if not run:
-        return None
-
-    for candidate in range(run[0] - 1, 0, -1):
-        if candidate in line_mapping:
-            return candidate
-    return None
+def _trusted_matched_pairs(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+) -> Iterator[tuple[int, int]]:
+    """Yield bidirectionally trusted source/target line pairs."""
+    with (
+        match_lines(source_lines=source_lines, target_lines=target_lines) as alignment,
+        match_lines(
+            source_lines=target_lines,
+            target_lines=source_lines,
+        ) as reverse_alignment,
+    ):
+        for source_line, target_line in alignment.mapped_line_pairs():
+            reverse_source_line = reverse_alignment.get_target_line_from_source_line(
+                target_line
+            )
+            if reverse_source_line == source_line:
+                yield source_line, target_line
 
 
 def derive_semantic_change_runs(
@@ -115,18 +136,18 @@ def derive_semantic_change_runs(
 ) -> list[SemanticChangeRun]:
     """Derive semantic change runs from source ↔ target comparison.
 
-    Uses match_lines for structural alignment, then groups unmatched lines
-    into runs and pairs them using structural predecessors.
+    Uses match_lines for structural alignment, then walks the gaps between
+    trusted matched pairs. Unmatched source and target intervals sharing the
+    same predecessor become replacements; one-sided intervals become deletions
+    or presences.
 
     Algorithm:
     1. Align source and target using match_lines
-    2. Build bidirectional mappings
-    3. Find unmatched lines in both spaces
-    4. Group unmatched lines into consecutive runs
-    5. Find structural predecessor for each run
-    6. Pair source and target runs with matching anchors → REPLACEMENT
-    7. Emit unpaired source runs → DELETION
-    8. Emit unpaired target runs → PRESENCE
+    2. Keep only pairs that match in both directions
+    3. Walk unmatched gaps between those pairs
+    4. Emit source+target gaps as REPLACEMENT
+    5. Emit source-only gaps as DELETION
+    6. Emit target-only gaps as PRESENCE
 
     Args:
         source_lines: Source file lines (bytes with newlines)
@@ -135,116 +156,49 @@ def derive_semantic_change_runs(
     Returns:
         List of semantic change runs describing the delta
     """
-    # Build bidirectional mappings
-    source_to_target: dict[int, int] = {}
-    target_to_source: dict[int, int] = {}
+    runs: list[SemanticChangeRun] = []
+    previous_source = 0
+    previous_target = 0
 
-    with (
-        match_lines(source_lines=source_lines, target_lines=target_lines) as alignment,
-        match_lines(source_lines=target_lines, target_lines=source_lines) as reverse_alignment,
-    ):
-        for source_idx in range(len(source_lines)):
-            source_line_num = source_idx + 1
-            target_line_num = alignment.get_target_line_from_source_line(source_line_num)
-            if target_line_num is not None:
-                reverse_source_line = reverse_alignment.get_target_line_from_source_line(
-                    target_line_num
-                )
-                if reverse_source_line != source_line_num:
-                    continue
-                source_to_target[source_line_num] = target_line_num
-                target_to_source[target_line_num] = source_line_num
+    matched_pairs = _trusted_matched_pairs(source_lines, target_lines)
+    sentinel_pair = ((len(source_lines) + 1, len(target_lines) + 1),)
 
-    # Find unmatched lines
-    source_unmatched = [
-        line_num
-        for line_num in range(1, len(source_lines) + 1)
-        if line_num not in source_to_target
-    ]
-    target_unmatched = [
-        line_num
-        for line_num in range(1, len(target_lines) + 1)
-        if line_num not in target_to_source
-    ]
+    for source_line, target_line in chain(matched_pairs, sentinel_pair):
+        source_gap_start = previous_source + 1
+        source_gap_end = source_line - 1
+        target_gap_start = previous_target + 1
+        target_gap_end = target_line - 1
+        has_source_gap = source_gap_start <= source_gap_end
+        has_target_gap = target_gap_start <= target_gap_end
+        target_anchor = previous_target if previous_target != 0 else None
 
-    # Group into consecutive runs
-    source_runs = group_consecutive(source_unmatched)
-    target_runs = group_consecutive(target_unmatched)
-
-    # Group runs by their structural anchors for unambiguous pairing
-    # This implements conservative replacement detection: only pair when
-    # there's exactly one source run and one target run with the same anchor
-    source_runs_by_anchor: dict[int | None, list[tuple[int, list[int]]]] = {}
-    target_runs_by_anchor: dict[int | None, list[tuple[int, list[int]]]] = {}
-
-    for source_run_idx, source_run in enumerate(source_runs):
-        source_anchor_in_source = find_structural_predecessor(source_run, source_to_target)
-        source_anchor_in_target = (
-            None if source_anchor_in_source is None
-            else source_to_target.get(source_anchor_in_source)
-        )
-        source_runs_by_anchor.setdefault(source_anchor_in_target, []).append(
-            (source_run_idx, source_run)
-        )
-
-    for target_run_idx, target_run in enumerate(target_runs):
-        target_anchor = find_structural_predecessor(target_run, target_to_source)
-        target_runs_by_anchor.setdefault(target_anchor, []).append(
-            (target_run_idx, target_run)
-        )
-
-    # Pair runs only when anchor group is unambiguous (1-to-1)
-    paired_source_runs: set[int] = set()
-    paired_target_runs: set[int] = set()
-    replacements: list[SemanticChangeRun] = []
-
-    for anchor in set(source_runs_by_anchor.keys()) & set(target_runs_by_anchor.keys()):
-        source_candidates = source_runs_by_anchor[anchor]
-        target_candidates = target_runs_by_anchor[anchor]
-
-        # Only pair if there's exactly one source run and one target run with this anchor
-        # This is conservative: ambiguous cases become separate deletion + presence
-        if len(source_candidates) == 1 and len(target_candidates) == 1:
-            source_run_idx, source_run = source_candidates[0]
-            target_run_idx, target_run = target_candidates[0]
-
-            paired_source_runs.add(source_run_idx)
-            paired_target_runs.add(target_run_idx)
-
-            replacements.append(SemanticChangeRun(
+        if has_source_gap and has_target_gap:
+            runs.append(SemanticChangeRun(
                 kind=SemanticChangeKind.REPLACEMENT,
-                source_run=source_run,
-                target_run=target_run,
-                target_anchor=anchor
+                source_start=source_gap_start,
+                source_end=source_gap_end,
+                target_start=target_gap_start,
+                target_end=target_gap_end,
+                target_anchor=target_anchor,
             ))
-
-    # Emit remaining source runs as pure deletions
-    deletions: list[SemanticChangeRun] = []
-    for source_run_idx, source_run in enumerate(source_runs):
-        if source_run_idx not in paired_source_runs:
-            source_anchor_in_source = find_structural_predecessor(source_run, source_to_target)
-            source_anchor_in_target = (
-                None if source_anchor_in_source is None
-                else source_to_target.get(source_anchor_in_source)
-            )
-
-            deletions.append(SemanticChangeRun(
+        elif has_source_gap:
+            runs.append(SemanticChangeRun(
                 kind=SemanticChangeKind.DELETION,
-                source_run=source_run,
-                target_anchor=source_anchor_in_target
+                source_start=source_gap_start,
+                source_end=source_gap_end,
+                target_anchor=target_anchor,
             ))
-
-    # Emit remaining target runs as pure additions (presence)
-    presences: list[SemanticChangeRun] = []
-    for target_run_idx, target_run in enumerate(target_runs):
-        if target_run_idx not in paired_target_runs:
-            presences.append(SemanticChangeRun(
+        elif has_target_gap:
+            runs.append(SemanticChangeRun(
                 kind=SemanticChangeKind.PRESENCE,
-                target_run=target_run
+                target_start=target_gap_start,
+                target_end=target_gap_end,
             ))
 
-    # Return in logical order: replacements, then deletions, then presences
-    return replacements + deletions + presences
+        previous_source = source_line
+        previous_target = target_line
+
+    return runs
 
 
 def derive_display_id_run_sets_from_lines(
@@ -268,17 +222,17 @@ def derive_replacement_display_id_run_sets_from_lines(
     target_lines: Sequence[bytes],
 ) -> list[set[int]]:
     """Map replacement runs from byte-line sequences onto display IDs."""
-    semantic_runs = [
+    semantic_runs = (
         run
         for run in derive_semantic_change_runs(source_lines, target_lines)
         if run.kind == SemanticChangeKind.REPLACEMENT
-    ]
+    )
     return _display_id_run_sets_from_semantic_runs(line_changes, semantic_runs)
 
 
 def _display_id_run_sets_from_semantic_runs(
     line_changes: LineLevelChange,
-    semantic_runs: Sequence[SemanticChangeRun],
+    semantic_runs: Iterable[SemanticChangeRun],
 ) -> list[set[int]]:
     run_sets: list[set[int]] = []
     for run in semantic_runs:
@@ -289,19 +243,25 @@ def _display_id_run_sets_from_semantic_runs(
                 (
                     run.kind == SemanticChangeKind.REPLACEMENT
                     and (
-                        (line.kind == "-" and line.old_line_number in (run.source_run or []))
-                        or (line.kind == "+" and line.new_line_number in (run.target_run or []))
+                        (
+                            line.kind == "-"
+                            and run.has_source_line(line.old_line_number)
+                        )
+                        or (
+                            line.kind == "+"
+                            and run.has_target_line(line.new_line_number)
+                        )
                     )
                 )
                 or (
                     run.kind == SemanticChangeKind.DELETION
                     and line.kind == "-"
-                    and line.old_line_number in (run.source_run or [])
+                    and run.has_source_line(line.old_line_number)
                 )
                 or (
                     run.kind == SemanticChangeKind.PRESENCE
                     and line.kind == "+"
-                    and line.new_line_number in (run.target_run or [])
+                    and run.has_target_line(line.new_line_number)
                 )
             )
         }

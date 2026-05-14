@@ -641,8 +641,9 @@ currently has or provides. Do not mention the patch or what is
 missing yet.]
 
 [Description of what is missing, broken, or insufficient — and why
-that matters. Use maintainer perspective for internal concerns,
-user perspective for external ones.]
+that matters. Use first-person maintainer perspective for internal
+concerns, user perspective for external ones. Never refer to
+maintainers in the third person.]
 
 This commit [addresses|mitigates|resolves] that [problem] by [precise
 description of what this commit changes and how it solves the problem
@@ -665,8 +666,9 @@ Check for all three before committing.
 
 ## Commit Message Guidelines
 
-Write for drive-by reviewers with limited context. Write from the
-maintainer's voice to a casual reader who does not know the codebase well.
+Write for drive-by reviewers with limited context. You are the
+maintainer — write to a casual reader who does not know the codebase
+well. Never refer to maintainers in the third person.
 
 ### Required structure
 
@@ -709,8 +711,9 @@ Fourth paragraph for follow-up or final series conclusion when useful.
 ### Second paragraph
 
 - Describe the real underlying problem from the right perspective.
-- Use maintainer perspective for internal concerns such as missing
-  infrastructure, coverage, or build support.
+- Use first-person maintainer perspective for internal concerns such as
+  missing infrastructure, coverage, or build support. Frame as "The
+  program lacks X", never as "Maintainers cannot X."
 - Use user perspective for external concerns such as unclear workflows,
   missing discoverability, or absent functionality.
 - Focus on missing capabilities, not symptoms tied only to a file.

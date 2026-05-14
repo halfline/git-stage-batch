@@ -645,6 +645,28 @@ class TestMergeLineSequences:
             is_claimed=True,
         )
 
+    def test_large_contiguous_discard_builder_uses_small_run_count(self):
+        """Large contiguous source/target mappings collapse to one provenance run."""
+        lines = [f"line {index}\n".encode() for index in range(1000)]
+        with match_lines(lines, lines) as mapping:
+            entries = _build_realized_entries_for_discard(lines, lines, mapping)
+
+        assert len(entries) == 1000
+        assert entries.provenance_run_count == 1
+        assert entries.source_line_at(999) == 1000
+        entries.close()
+
+    def test_large_contiguous_merge_uses_small_run_count(self):
+        """Large contiguous merge realization collapses to one provenance run."""
+        lines = [f"line {index}\n".encode() for index in range(1000)]
+
+        entries = _satisfy_constraints(lines, lines, set(), [])
+
+        assert len(entries) == 1000
+        assert entries.provenance_run_count == 1
+        assert entries.target_line_at(999) == 1000
+        entries.close()
+
     def test_baseline_correspondence_accepts_non_list_sequences(self, line_sequence):
         """Baseline correspondence accepts sized sliceable line sequences."""
         baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])

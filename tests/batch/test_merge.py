@@ -91,7 +91,7 @@ def discard_batch(
 
 
 class TestMatchLines:
-    """Tests for line alignment using difflib.SequenceMatcher."""
+    """Tests for structural line alignment."""
 
     def test_unique_position_map_returns_structured_positions(self):
         """Unique line scanning returns positions without duplicate entries."""
@@ -274,9 +274,7 @@ class TestMatchLines:
         assert mapping.get_target_line_from_source_line(1) == 1
         assert mapping.get_target_line_from_source_line(5) == 5
 
-        # Sub-matcher behavior with reordering:
-        # SequenceMatcher may not perfectly handle all reorderings
-        # It finds longest common subsequences, which in this case:
+        # Structural anchors preserve source and target order:
         # - A (source line 2) maps to A (target line 3)
         # - B gets treated as delete + reinsert (maps to None)
         # - C (source line 4) maps to C (target line 4)
@@ -284,8 +282,7 @@ class TestMatchLines:
         assert mapping.get_target_line_from_source_line(3) is None  # B seen as moved
         assert mapping.get_target_line_from_source_line(4) == 4  # C matches
 
-        # This shows that sub-matching is better than pure positional,
-        # but not perfect for all reorderings (trade-off for performance)
+        # Moved lines stay unmapped unless they fit the ordered anchor sequence.
 
     def test_replace_block_strict(self):
         """Test alignment with replace block in strict mode."""
@@ -535,7 +532,7 @@ class TestMergeBatch:
         assert result == working
 
     def test_baseline_referenced_presence_inserts_when_missing(self):
-        """Baseline-coordinate insertion fallback still handles baseline targets."""
+        """Baseline-coordinate insertion fallback handles baseline targets."""
         source = b"base\nfoo\nbar\n"
         working = b"base\nbar\n"
         ownership = BatchOwnership.from_presence_lines(
@@ -1026,7 +1023,7 @@ class TestMergeBatch:
         # Claim every 100th line
         claimed = [str(i) for i in range(100, 10001, 100)]
 
-        # This should complete quickly (difflib.SequenceMatcher is fast in practice)
+        # Structural matching should complete quickly for shifted large files.
         result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         # Verify result has both extras and source

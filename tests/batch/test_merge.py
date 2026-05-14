@@ -5,6 +5,7 @@ import pytest
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.batch.merge import (
     RegionKind,
+    RealizedEntry,
     _RealizedEntries,
     _build_baseline_correspondence,
     _build_realized_entries_for_discard,
@@ -429,6 +430,242 @@ class TestMergeLineSequences:
             b"line1\n",
             b"line2\n",
         ]
+
+    def test_realized_entry_pending_read_does_not_flush_or_block_coalescing(self):
+        """Reading a pending provenance run keeps it available for coalescing."""
+        lines = [b"line1\n", b"line2\n"]
+        entries = _RealizedEntries()
+        entries.append_line_from(lines, 0, source_line=1, target_line=1)
+
+        assert entries.flushed_provenance_run_count == 0
+        assert entries.source_line_at(0) == 1
+
+        entries.append_line_from(lines, 1, source_line=2, target_line=2)
+
+        assert entries.flushed_provenance_run_count == 0
+        runs = list(entries.provenance_runs())
+        assert len(runs) == 1
+        assert (runs[0].dest_start, runs[0].dest_end) == (0, 2)
+
+    def test_realized_entry_copy_slice_clips_partial_runs(self):
+        """copy_slice_from adjusts first and last clipped run provenance."""
+        lines = [b"one\n", b"two\n", b"three\n", b"four\n", b"five\n"]
+        entries = _RealizedEntries()
+        entries.append_line_range_from(
+            lines,
+            0,
+            len(lines),
+            source_line_start=1,
+            target_line_start=10,
+        )
+
+        result = _RealizedEntries()
+        result.copy_slice_from(entries, 1, 4)
+
+        assert list(result.content_chunks()) == [b"two\n", b"three\n", b"four\n"]
+        assert [result.source_line_at(index) for index in range(len(result))] == [2, 3, 4]
+        assert [result.target_line_at(index) for index in range(len(result))] == [11, 12, 13]
+        runs = list(result.provenance_runs())
+        assert len(runs) == 1
+        assert (runs[0].dest_start, runs[0].dest_end) == (0, 3)
+        assert (runs[0].source_start, runs[0].target_start) == (2, 11)
+
+    def test_realized_entry_adjacent_contiguous_runs_coalesce(self):
+        """Adjacent compatible provenance ranges stay in one run."""
+        lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
+        entries = _RealizedEntries()
+
+        entries.append_line_range_from(
+            lines,
+            0,
+            2,
+            source_line_start=1,
+            target_line_start=20,
+        )
+        entries.append_line_range_from(
+            lines,
+            2,
+            4,
+            source_line_start=3,
+            target_line_start=22,
+        )
+
+        runs = list(entries.provenance_runs())
+        assert len(runs) == 1
+        assert (runs[0].dest_start, runs[0].dest_end) == (0, 4)
+        assert (runs[0].source_start, runs[0].target_start) == (1, 20)
+
+    def test_realized_entry_claimed_changes_split_runs(self):
+        """Claimed state changes are provenance run boundaries."""
+        lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
+        entries = _RealizedEntries()
+
+        entries.append_line_range_from(
+            lines,
+            0,
+            2,
+            source_line_start=1,
+            target_line_start=1,
+            is_claimed=False,
+        )
+        entries.append_line_range_from(
+            lines,
+            2,
+            4,
+            source_line_start=3,
+            target_line_start=3,
+            is_claimed=True,
+        )
+
+        runs = list(entries.provenance_runs())
+        assert len(runs) == 2
+        assert [run.is_claimed for run in runs] == [False, True]
+        assert [(run.dest_start, run.dest_end) for run in runs] == [(0, 2), (2, 4)]
+
+    def test_realized_entry_source_and_target_lookup_across_none_runs(self):
+        """Random lookup works across None and numbered provenance runs."""
+        lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
+        entries = _RealizedEntries()
+        entries.append_line_range_from(
+            lines,
+            0,
+            2,
+            source_line_start=None,
+            target_line_start=10,
+        )
+        entries.append_line_range_from(
+            lines,
+            2,
+            4,
+            source_line_start=30,
+            target_line_start=None,
+        )
+
+        assert [entries.source_line_at(index) for index in range(4)] == [None, None, 30, 31]
+        assert [entries.target_line_at(index) for index in range(4)] == [10, 11, None, None]
+
+    def test_closed_realized_entries_reject_access(self):
+        """Public realized-entry APIs reject use after close."""
+        donor = _RealizedEntries([RealizedEntry(b"donor\n", source_line=1)])
+        entries = _RealizedEntries([RealizedEntry(b"line\n", source_line=1)])
+        entries.close()
+
+        accessors = [
+            lambda: len(entries),
+            lambda: entries[0],
+            lambda: entries.source_line_at(0),
+            lambda: entries.target_line_at(0),
+            lambda: entries.is_claimed_at(0),
+            lambda: entries.content_at(0),
+            lambda: list(entries.content_chunks()),
+            lambda: entries.slice(0, 1),
+            lambda: entries.without_range(0, 1),
+            lambda: entries.insert_entries(0, donor),
+            lambda: entries.append(b"new\n"),
+            lambda: entries.append_line_from([b"new\n"], 0),
+            lambda: entries.append_line_range_from([b"new\n"], 0, 1),
+            lambda: entries.append_entry(RealizedEntry(b"new\n", source_line=None)),
+            lambda: entries.append_from(donor, 0),
+            lambda: entries.copy_slice_from(donor, 0, 1),
+        ]
+
+        for accessor in accessors:
+            with pytest.raises(ValueError, match="closed"):
+                accessor()
+
+    def test_realized_entries_context_manager_closes_provenance(self):
+        """Context manager cleanup closes mapped provenance resources."""
+        with _RealizedEntries() as entries:
+            entries.append(b"line\n", source_line=1)
+            provenance = entries._provenance
+
+        assert entries.closed
+        assert provenance.closed
+
+    def test_realized_entry_slice_without_range_and_insert_preserve_provenance(self):
+        """Structural copy operations preserve content and provenance."""
+        lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
+        entries = _RealizedEntries()
+        entries.append_line_range_from(
+            lines,
+            0,
+            4,
+            source_line_start=1,
+            target_line_start=11,
+        )
+        inserted = _RealizedEntries()
+        inserted.append_line_range_from(
+            [b"inserted\n"],
+            0,
+            1,
+            source_line_start=None,
+            target_line_start=None,
+            is_claimed=True,
+        )
+
+        sliced = entries.slice(1, 3)
+        without = entries.without_range(1, 3)
+        combined = entries.insert_entries(2, inserted)
+
+        assert list(sliced.content_chunks()) == [b"two\n", b"three\n"]
+        assert [sliced.source_line_at(index) for index in range(len(sliced))] == [2, 3]
+        assert [sliced.target_line_at(index) for index in range(len(sliced))] == [12, 13]
+        assert list(without.content_chunks()) == [b"one\n", b"four\n"]
+        assert [without.source_line_at(index) for index in range(len(without))] == [1, 4]
+        assert list(combined.content_chunks()) == [
+            b"one\n",
+            b"two\n",
+            b"inserted\n",
+            b"three\n",
+            b"four\n",
+        ]
+        assert [combined.source_line_at(index) for index in range(len(combined))] == [
+            1,
+            2,
+            None,
+            3,
+            4,
+        ]
+        assert combined.is_claimed_at(2) is True
+
+    def test_realized_entry_getitem_reconstructs_entry(self):
+        """__getitem__ returns the expected RealizedEntry view."""
+        entries = _RealizedEntries()
+        entries.append(
+            b"line\n",
+            source_line=7,
+            target_line=9,
+            is_claimed=True,
+        )
+
+        assert entries[0] == RealizedEntry(
+            content=b"line\n",
+            source_line=7,
+            target_line=9,
+            is_claimed=True,
+        )
+
+    def test_large_contiguous_discard_builder_uses_small_run_count(self):
+        """Large contiguous source/target mappings collapse to one provenance run."""
+        lines = [f"line {index}\n".encode() for index in range(1000)]
+        with match_lines(lines, lines) as mapping:
+            entries = _build_realized_entries_for_discard(lines, lines, mapping)
+
+        assert len(entries) == 1000
+        assert entries.provenance_run_count == 1
+        assert entries.source_line_at(999) == 1000
+        entries.close()
+
+    def test_large_contiguous_merge_uses_small_run_count(self):
+        """Large contiguous merge realization collapses to one provenance run."""
+        lines = [f"line {index}\n".encode() for index in range(1000)]
+
+        entries = _satisfy_constraints(lines, lines, set(), [])
+
+        assert len(entries) == 1000
+        assert entries.provenance_run_count == 1
+        assert entries.target_line_at(999) == 1000
+        entries.close()
 
     def test_baseline_correspondence_accepts_non_list_sequences(self, line_sequence):
         """Baseline correspondence accepts sized sliceable line sequences."""

@@ -19,6 +19,7 @@ from ..editor import (
     restore_line_endings_in_chunks,
 )
 from ..exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
+from ..utils.mapped_storage import ChunkedMappedRecordVector
 from ..i18n import _
 from ..utils.text import (
     AcquirableLineSequence,
@@ -58,8 +59,265 @@ class RealizedEntry:
     is_claimed: bool = False  # True if from a claimed source line (presence constraint)
 
 
+_RUN_DEST_START = 0
+_RUN_DEST_END = 1
+_RUN_SOURCE_START = 2
+_RUN_TARGET_START = 3
+_RUN_FLAGS = 4
+_RUN_CLAIMED = 1
+_PROVENANCE_CHUNK_CAPACITY = 8192
+
+
+@dataclass(slots=True)
+class _ProvenanceRun:
+    """Linear provenance over a half-open destination range."""
+
+    dest_start: int
+    dest_end: int
+    source_start: int
+    target_start: int
+    flags: int
+
+    @property
+    def is_claimed(self) -> bool:
+        return bool(self.flags & _RUN_CLAIMED)
+
+    def source_line_at(self, dest_index: int) -> int | None:
+        if self.source_start == 0:
+            return None
+        return self.source_start + (dest_index - self.dest_start)
+
+    def target_line_at(self, dest_index: int) -> int | None:
+        if self.target_start == 0:
+            return None
+        return self.target_start + (dest_index - self.dest_start)
+
+    def clipped(self, start: int, stop: int) -> _ProvenanceRun | None:
+        clipped_start = max(self.dest_start, start)
+        clipped_end = min(self.dest_end, stop)
+        if clipped_start >= clipped_end:
+            return None
+
+        offset = clipped_start - self.dest_start
+        return _ProvenanceRun(
+            clipped_start,
+            clipped_end,
+            0 if self.source_start == 0 else self.source_start + offset,
+            0 if self.target_start == 0 else self.target_start + offset,
+            self.flags,
+        )
+
+
+def _run_source_is_contiguous(
+    left: _ProvenanceRun,
+    right: _ProvenanceRun,
+) -> bool:
+    if left.source_start == 0 or right.source_start == 0:
+        return left.source_start == 0 and right.source_start == 0
+    return right.source_start == left.source_start + (
+        left.dest_end - left.dest_start
+    )
+
+
+def _run_target_is_contiguous(
+    left: _ProvenanceRun,
+    right: _ProvenanceRun,
+) -> bool:
+    if left.target_start == 0 or right.target_start == 0:
+        return left.target_start == 0 and right.target_start == 0
+    return right.target_start == left.target_start + (
+        left.dest_end - left.dest_start
+    )
+
+
+def _runs_can_merge(left: _ProvenanceRun, right: _ProvenanceRun) -> bool:
+    return (
+        left.dest_end == right.dest_start
+        and left.flags == right.flags
+        and _run_source_is_contiguous(left, right)
+        and _run_target_is_contiguous(left, right)
+    )
+
+
+def _run_from_record(record: tuple[int, ...]) -> _ProvenanceRun:
+    return _ProvenanceRun(
+        record[_RUN_DEST_START],
+        record[_RUN_DEST_END],
+        record[_RUN_SOURCE_START],
+        record[_RUN_TARGET_START],
+        record[_RUN_FLAGS],
+    )
+
+
+def _stored_line_number(line_number: int | None) -> int:
+    return 0 if line_number is None else line_number
+
+
+def _line_number_or_none(line_number: int) -> int | None:
+    return None if line_number == 0 else line_number
+
+
+class _ProvenanceRunTable:
+    """Append-only mapped provenance runs with one pending Python run."""
+
+    def __init__(self) -> None:
+        self._runs = ChunkedMappedRecordVector(
+            record_format="QQQQQ",
+            chunk_capacity=_PROVENANCE_CHUNK_CAPACITY,
+        )
+        self._pending_run: _ProvenanceRun | None = None
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    @property
+    def flushed_run_count(self) -> int:
+        self._require_open()
+        return len(self._runs)
+
+    @property
+    def pending_run_count(self) -> int:
+        self._require_open()
+        return 1 if self._pending_run is not None else 0
+
+    def __len__(self) -> int:
+        self._require_open()
+        return len(self._runs) + self.pending_run_count
+
+    def append(
+        self,
+        dest_start: int,
+        dest_end: int,
+        *,
+        source_start: int,
+        target_start: int,
+        flags: int,
+    ) -> None:
+        self._require_open()
+        if dest_end < dest_start:
+            raise ValueError("invalid provenance run")
+        if dest_start == dest_end:
+            return
+
+        run = _ProvenanceRun(
+            dest_start,
+            dest_end,
+            source_start,
+            target_start,
+            flags,
+        )
+        if self._pending_run is None:
+            self._pending_run = run
+            return
+
+        if _runs_can_merge(self._pending_run, run):
+            self._pending_run.dest_end = run.dest_end
+            return
+
+        self._flush_pending()
+        self._pending_run = run
+
+    def run_at(self, dest_index: int) -> _ProvenanceRun:
+        self._require_open()
+        pending = self._pending_run
+        if (
+            pending is not None
+            and pending.dest_start <= dest_index < pending.dest_end
+        ):
+            return pending
+
+        run = self._flushed_run_at(dest_index)
+        if run is None:
+            raise IndexError(dest_index)
+        return run
+
+    def runs(self, start: int, stop: int) -> Iterator[_ProvenanceRun]:
+        self._require_open()
+        if stop <= start:
+            return
+
+        first_record = self._first_flushed_run_index_at_or_after(start)
+        for record_index in range(first_record, len(self._runs)):
+            run = _run_from_record(self._runs[record_index])
+            if run.dest_start >= stop:
+                break
+            clipped = run.clipped(start, stop)
+            if clipped is not None:
+                yield clipped
+
+        pending = self._pending_run
+        if pending is not None:
+            clipped = pending.clipped(start, stop)
+            if clipped is not None:
+                yield clipped
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._pending_run = None
+        self._runs.close()
+        self._closed = True
+
+    def __enter__(self) -> _ProvenanceRunTable:
+        self._require_open()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def _flush_pending(self) -> None:
+        pending = self._pending_run
+        if pending is None:
+            return
+        self._runs.append((
+            pending.dest_start,
+            pending.dest_end,
+            pending.source_start,
+            pending.target_start,
+            pending.flags,
+        ))
+        self._pending_run = None
+
+    def _flushed_run_at(self, dest_index: int) -> _ProvenanceRun | None:
+        low = 0
+        high = len(self._runs)
+        while low < high:
+            mid = (low + high) // 2
+            record = self._runs[mid]
+            if dest_index < record[_RUN_DEST_START]:
+                high = mid
+            elif dest_index >= record[_RUN_DEST_END]:
+                low = mid + 1
+            else:
+                return _run_from_record(record)
+        return None
+
+    def _first_flushed_run_index_at_or_after(self, start: int) -> int:
+        low = 0
+        high = len(self._runs)
+        while low < high:
+            mid = (low + high) // 2
+            if self._runs[mid][_RUN_DEST_END] <= start:
+                low = mid + 1
+            else:
+                high = mid
+        return low
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise ValueError("provenance run table is closed")
+
+
 class _RealizedEntries(Sequence[RealizedEntry]):
-    """Compact realized content with parallel provenance storage.
+    """Compact realized content with run-length provenance storage.
 
     Indexing returns RealizedEntry views for existing helper contracts. Streaming
     and internal lookups use direct accessors so the result does not retain one
@@ -68,17 +326,23 @@ class _RealizedEntries(Sequence[RealizedEntry]):
 
     def __init__(self, entries: Iterable[RealizedEntry] = ()) -> None:
         self._editor = Editor(())
-        self._source_lines = array("Q")
-        self._target_lines = array("Q")
-        self._claimed = bytearray()
+        self._provenance = _ProvenanceRunTable()
+        self._line_count = 0
+        self._closed = False
 
         for entry in entries:
             self.append_entry(entry)
 
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
     def __len__(self) -> int:
-        return len(self._source_lines)
+        self._require_open()
+        return self._line_count
 
     def __getitem__(self, index: int | slice) -> RealizedEntry | _RealizedEntries:
+        self._require_open()
         if isinstance(index, slice):
             start, stop, step = index.indices(len(self))
             if step == 1:
@@ -105,12 +369,46 @@ class _RealizedEntries(Sequence[RealizedEntry]):
         target_line: int | None = None,
         is_claimed: bool = False,
     ) -> None:
-        self._editor.append_line_range((content,), 0, 1)
-        self._append_metadata(
-            source_line=source_line,
-            target_line=target_line,
+        self.append_line_range_from(
+            (content,),
+            0,
+            1,
+            source_line_start=source_line,
+            target_line_start=target_line,
             is_claimed=is_claimed,
         )
+
+    def append_line_range_from(
+        self,
+        lines: Sequence[Any],
+        start: int,
+        end: int,
+        *,
+        source_line_start: int | None = None,
+        target_line_start: int | None = None,
+        is_claimed: bool = False,
+    ) -> None:
+        self._require_open()
+        if start < 0 or end < start:
+            raise ValueError("invalid line range")
+        if start == end:
+            return
+
+        if isinstance(lines, Editor):
+            self._editor.append_line_ranges_from_editor(lines, start, end)
+        else:
+            self._editor.append_line_range(lines, start, end)
+
+        dest_start = self._line_count
+        dest_end = dest_start + (end - start)
+        self._provenance.append(
+            dest_start,
+            dest_end,
+            source_start=_stored_line_number(source_line_start),
+            target_start=_stored_line_number(target_line_start),
+            flags=_RUN_CLAIMED if is_claimed else 0,
+        )
+        self._line_count = dest_end
 
     def append_line_from(
         self,
@@ -121,23 +419,14 @@ class _RealizedEntries(Sequence[RealizedEntry]):
         target_line: int | None = None,
         is_claimed: bool = False,
     ) -> None:
-        self._editor.append_line_range(lines, index, index + 1)
-        self._append_metadata(
-            source_line=source_line,
-            target_line=target_line,
+        self.append_line_range_from(
+            lines,
+            index,
+            index + 1,
+            source_line_start=source_line,
+            target_line_start=target_line,
             is_claimed=is_claimed,
         )
-
-    def _append_metadata(
-        self,
-        *,
-        source_line: int | None,
-        target_line: int | None,
-        is_claimed: bool,
-    ) -> None:
-        self._source_lines.append(source_line or 0)
-        self._target_lines.append(target_line or 0)
-        self._claimed.append(1 if is_claimed else 0)
 
     def append_entry(self, entry: RealizedEntry) -> None:
         self.append(
@@ -154,48 +443,93 @@ class _RealizedEntries(Sequence[RealizedEntry]):
     ) -> None:
         if isinstance(entries, _RealizedEntries):
             index = entries._normalize_index(index)
-            self._editor.append_line_ranges_from_editor(
-                entries._editor,
-                index,
-                index + 1,
-            )
-            self._source_lines.append(entries._source_lines[index])
-            self._target_lines.append(entries._target_lines[index])
-            self._claimed.append(entries._claimed[index])
+            self.copy_slice_from(entries, index, index + 1)
             return
 
         self.append_entry(entries[index])
 
+    def copy_slice_from(
+        self,
+        entries: Sequence[RealizedEntry],
+        start: int,
+        stop: int,
+    ) -> None:
+        self._require_open()
+        if isinstance(entries, _RealizedEntries):
+            entries._require_open()
+            start, stop = entries._validated_range(start, stop)
+            for run in entries.provenance_runs(start, stop):
+                self.append_line_range_from(
+                    entries._editor,
+                    run.dest_start,
+                    run.dest_end,
+                    source_line_start=_line_number_or_none(run.source_start),
+                    target_line_start=_line_number_or_none(run.target_start),
+                    is_claimed=run.is_claimed,
+                )
+            return
+
+        if start < 0 or stop < start or stop > len(entries):
+            raise ValueError("invalid line range")
+        for index in range(start, stop):
+            self.append_entry(entries[index])
+
+    def provenance_runs(
+        self,
+        start: int = 0,
+        stop: int | None = None,
+    ) -> Iterator[_ProvenanceRun]:
+        self._require_open()
+        if stop is None:
+            stop = len(self)
+        start, stop = self._validated_range(start, stop)
+        yield from self._provenance.runs(start, stop)
+
+    @property
+    def provenance_run_count(self) -> int:
+        self._require_open()
+        return len(self._provenance)
+
+    @property
+    def flushed_provenance_run_count(self) -> int:
+        self._require_open()
+        return self._provenance.flushed_run_count
+
     def content_at(self, index: int) -> Any:
+        self._require_open()
         return self._editor[self._normalize_index(index)]
 
     def source_line_at(self, index: int) -> int | None:
-        source_line = self._source_lines[self._normalize_index(index)]
-        if source_line == 0:
-            return None
-        return source_line
+        self._require_open()
+        index = self._normalize_index(index)
+        return self._provenance.run_at(index).source_line_at(index)
 
     def target_line_at(self, index: int) -> int | None:
-        target_line = self._target_lines[self._normalize_index(index)]
-        if target_line == 0:
-            return None
-        return target_line
+        self._require_open()
+        index = self._normalize_index(index)
+        return self._provenance.run_at(index).target_line_at(index)
 
     def is_claimed_at(self, index: int) -> bool:
-        return bool(self._claimed[self._normalize_index(index)])
+        self._require_open()
+        index = self._normalize_index(index)
+        return self._provenance.run_at(index).is_claimed
 
     def content_chunks(self) -> Iterator[bytes]:
+        self._require_open()
         yield from self._editor.line_chunks()
 
     def slice(self, start: int, stop: int) -> _RealizedEntries:
+        self._require_open()
         result = _RealizedEntries()
-        result._append_range_from(self, start, stop)
+        result.copy_slice_from(self, *self._validated_range(start, stop))
         return result
 
     def without_range(self, start: int, stop: int) -> _RealizedEntries:
+        self._require_open()
+        start, stop = self._validated_range(start, stop)
         result = _RealizedEntries()
-        result._append_range_from(self, 0, start)
-        result._append_range_from(self, stop, len(self))
+        result.copy_slice_from(self, 0, start)
+        result.copy_slice_from(self, stop, len(self))
         return result
 
     def insert_entries(
@@ -203,11 +537,12 @@ class _RealizedEntries(Sequence[RealizedEntry]):
         position: int,
         entries: Sequence[RealizedEntry],
     ) -> _RealizedEntries:
-        inserted = _as_realized_entries(entries)
+        self._require_open()
+        position = self._validated_position(position)
         result = _RealizedEntries()
-        result._append_range_from(self, 0, position)
-        result._append_range_from(inserted, 0, len(inserted))
-        result._append_range_from(self, position, len(self))
+        result.copy_slice_from(self, 0, position)
+        result.copy_slice_from(entries, 0, len(entries))
+        result.copy_slice_from(self, position, len(self))
         return result
 
     def _append_range_from(
@@ -216,25 +551,62 @@ class _RealizedEntries(Sequence[RealizedEntry]):
         start: int,
         stop: int,
     ) -> None:
-        if start == stop:
+        self.copy_slice_from(entries, start, stop)
+
+    def close(self) -> None:
+        if self._closed:
             return
 
-        if isinstance(entries, _RealizedEntries):
-            self._editor.append_line_ranges_from_editor(entries._editor, start, stop)
-            self._source_lines.extend(entries._source_lines[start:stop])
-            self._target_lines.extend(entries._target_lines[start:stop])
-            self._claimed.extend(entries._claimed[start:stop])
-            return
+        self._provenance.close()
+        try:
+            self._editor.close()
+        except ValueError:
+            # A returned entries object may still borrow ranges from this
+            # editor. In that case closing is deferred to the borrower
+            # lifetime; public access to this wrapper is still rejected.
+            pass
+        self._closed = True
 
-        for index in range(start, stop):
-            self.append_entry(entries[index])
+    def __enter__(self) -> _RealizedEntries:
+        self._require_open()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def _normalize_index(self, index: int) -> int:
+        self._require_open()
         if index < 0:
             index += len(self)
         if index < 0 or index >= len(self):
             raise IndexError(index)
         return index
+
+    def _validated_range(self, start: int, stop: int) -> tuple[int, int]:
+        if start < 0:
+            start += len(self)
+        if stop < 0:
+            stop += len(self)
+        if start < 0 or stop < start or stop > len(self):
+            raise ValueError("invalid line range")
+        return start, stop
+
+    def _validated_position(self, position: int) -> int:
+        if position < 0:
+            position += len(self)
+        if position < 0 or position > len(self):
+            raise ValueError("invalid insert position")
+        return position
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise ValueError("realized entries are closed")
 
 
 def _as_realized_entries(entries: Sequence[RealizedEntry]) -> _RealizedEntries:
@@ -346,6 +718,15 @@ class _RealizedEntryContentSequence(Sequence[bytes]):
         if index < 0 or index >= len(self):
             raise IndexError(index)
         return _entry_content_at(self._entries, index)
+
+
+def _backing_content_sequence(lines: Sequence[bytes]) -> Sequence[Any]:
+    if (
+        isinstance(lines, _RealizedEntryContentSequence)
+        and isinstance(lines._entries, _RealizedEntries)
+    ):
+        return lines._entries._editor
+    return lines
 
 
 def _realized_entry_content_chunks(
@@ -915,6 +1296,77 @@ def _apply_presence_constraints(
             owned_mapping.close()
 
 
+def _source_lines_are_contiguous(
+    previous_source_line: int | None,
+    source_line: int | None,
+) -> bool:
+    if previous_source_line is None or source_line is None:
+        return previous_source_line is None and source_line is None
+    return source_line == previous_source_line + 1
+
+
+def _append_working_range_with_mapping(
+    result: _RealizedEntries,
+    working_lines: Sequence[bytes],
+    mapping: LineMapping,
+    start: int,
+    end: int,
+    presence_line_set: set[int],
+) -> None:
+    """Append a target range split only where provenance stops being contiguous."""
+    if start == end:
+        return
+
+    content_lines = _backing_content_sequence(working_lines)
+    run_start = start
+    run_source_start = mapping.get_source_line_from_target_line(start + 1)
+    previous_source_line = run_source_start
+    run_is_claimed = (
+        run_source_start in presence_line_set
+        if run_source_start is not None
+        else False
+    )
+
+    for working_idx in range(start + 1, end):
+        source_line = mapping.get_source_line_from_target_line(working_idx + 1)
+        is_claimed = (
+            source_line in presence_line_set
+            if source_line is not None
+            else False
+        )
+        if (
+            is_claimed == run_is_claimed
+            and _source_lines_are_contiguous(
+                previous_source_line,
+                source_line,
+            )
+        ):
+            previous_source_line = source_line
+            continue
+
+        result.append_line_range_from(
+            content_lines,
+            run_start,
+            working_idx,
+            source_line_start=run_source_start,
+            target_line_start=run_start + 1,
+            is_claimed=run_is_claimed,
+        )
+        run_start = working_idx
+        run_source_start = source_line
+        previous_source_line = source_line
+        run_is_claimed = is_claimed
+
+    result.append_line_range_from(
+        content_lines,
+        run_start,
+        end,
+        source_line_start=run_source_start,
+        target_line_start=run_start + 1,
+        is_claimed=run_is_claimed,
+    )
+
+
 def _apply_presence_constraints_with_mapping(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -925,15 +1377,14 @@ def _apply_presence_constraints_with_mapping(
 
     if not presence_line_set:
         result = _RealizedEntries()
-        for working_idx in range(len(working_lines)):
-            source_line = mapping.get_source_line_from_target_line(working_idx + 1)
-            result.append_line_from(
-                working_lines,
-                working_idx,
-                source_line=source_line,
-                target_line=working_idx + 1,
-                is_claimed=False,
-            )
+        _append_working_range_with_mapping(
+            result,
+            working_lines,
+            mapping,
+            0,
+            len(working_lines),
+            presence_line_set,
+        )
         return result
 
     present_claimed: dict[int, int] = {}
@@ -949,16 +1400,14 @@ def _apply_presence_constraints_with_mapping(
 
     if not missing_claimed:
         result = _RealizedEntries()
-        for working_idx in range(len(working_lines)):
-            source_line = mapping.get_source_line_from_target_line(working_idx + 1)
-            is_claimed = source_line in presence_line_set if source_line else False
-            result.append_line_from(
-                working_lines,
-                working_idx,
-                source_line=source_line,
-                target_line=working_idx + 1,
-                is_claimed=is_claimed,
-            )
+        _append_working_range_with_mapping(
+            result,
+            working_lines,
+            mapping,
+            0,
+            len(working_lines),
+            presence_line_set,
+        )
         return result
 
     result = _RealizedEntries()
@@ -968,15 +1417,16 @@ def _apply_presence_constraints_with_mapping(
         working_line = mapping.get_target_line_from_source_line(source_line)
 
         if working_line is not None:
-            while working_idx < working_line - 1:
-                result.append_line_from(
+            if working_idx < working_line - 1:
+                _append_working_range_with_mapping(
+                    result,
                     working_lines,
+                    mapping,
                     working_idx,
-                    source_line=None,
-                    target_line=working_idx + 1,
-                    is_claimed=False
+                    working_line - 1,
+                    presence_line_set,
                 )
-                working_idx += 1
+                working_idx = working_line - 1
 
             is_claimed = source_line in presence_line_set
             if is_claimed:
@@ -1006,14 +1456,15 @@ def _apply_presence_constraints_with_mapping(
                 )
 
     while working_idx < len(working_lines):
-        result.append_line_from(
+        _append_working_range_with_mapping(
+            result,
             working_lines,
+            mapping,
             working_idx,
-            source_line=None,
-            target_line=working_idx + 1,
-            is_claimed=False
+            len(working_lines),
+            presence_line_set,
         )
-        working_idx += 1
+        working_idx = len(working_lines)
 
     return result
 
@@ -1083,7 +1534,10 @@ def _apply_absence_constraints(
             for line in claim.content_lines
         ]
 
+        old_result = result
         result = suppress_fn(result, boundary, forbidden_sequence)
+        if result is not old_result and old_result is not entries:
+            old_result.close()
 
     return result
 
@@ -1094,6 +1548,18 @@ def _missing_claimed_lines(
 ) -> set[int]:
     """Return claimed source lines that are not present as claimed entries."""
     present_claimed = set()
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs():
+            if not run.is_claimed or run.source_start == 0:
+                continue
+            present_claimed.update(
+                range(
+                    run.source_start,
+                    run.source_start + (run.dest_end - run.dest_start),
+                )
+            )
+        return presence_line_set - present_claimed
+
     for index in range(len(entries)):
         source_line = _entry_source_line_at(entries, index)
         if source_line is not None and _entry_is_claimed_at(entries, index):
@@ -1118,40 +1584,55 @@ def _satisfy_constraints(
         source_to_working_mapping=source_to_working_mapping,
     )
 
-    realized_entries = _apply_absence_constraints(
-        realized_entries,
-        deletion_claims,
-        strict=strict
-    )
-
-    if not _missing_claimed_lines(realized_entries, presence_line_set):
-        return realized_entries
-
-    current_lines = _RealizedEntryContentSequence(realized_entries)
-    realized_entries = _apply_presence_constraints(
-        source_lines,
-        current_lines,
-        presence_line_set
-    )
-
-    realized_entries = _apply_absence_constraints(
-        realized_entries,
-        deletion_claims,
-        strict=strict
-    )
-
-    missing_claimed = _missing_claimed_lines(realized_entries, presence_line_set)
-    if missing_claimed:
-        if not strict:
-            return realized_entries
-        first_missing = min(missing_claimed)
-        raise MergeError(
-            _("Cannot satisfy claimed line {line}: removed by absence constraints").format(
-                line=first_missing
-            )
+    try:
+        updated_entries = _apply_absence_constraints(
+            realized_entries,
+            deletion_claims,
+            strict=strict
         )
+        if updated_entries is not realized_entries:
+            realized_entries.close()
+        realized_entries = updated_entries
 
-    return realized_entries
+        if not _missing_claimed_lines(realized_entries, presence_line_set):
+            return realized_entries
+
+        previous_entries = realized_entries
+        current_lines = _RealizedEntryContentSequence(previous_entries)
+        try:
+            updated_entries = _apply_presence_constraints(
+                source_lines,
+                current_lines,
+                presence_line_set
+            )
+        finally:
+            previous_entries.close()
+        realized_entries = updated_entries
+
+        updated_entries = _apply_absence_constraints(
+            realized_entries,
+            deletion_claims,
+            strict=strict
+        )
+        if updated_entries is not realized_entries:
+            realized_entries.close()
+        realized_entries = updated_entries
+
+        missing_claimed = _missing_claimed_lines(realized_entries, presence_line_set)
+        if missing_claimed:
+            if not strict:
+                return realized_entries
+            first_missing = min(missing_claimed)
+            raise MergeError(
+                _("Cannot satisfy claimed line {line}: removed by absence constraints").format(
+                    line=first_missing
+                )
+            )
+
+        return realized_entries
+    except Exception:
+        realized_entries.close()
+        raise
 
 
 def _find_realization_fallback_boundary(
@@ -1169,15 +1650,31 @@ def _find_realization_fallback_boundary(
     if source_line is None:
         return 0
 
-    prior_source_lines = []
-    for index in range(len(entries)):
-        entry_source_line = _entry_source_line_at(entries, index)
-        if entry_source_line is not None and entry_source_line < source_line:
-            prior_source_lines.append(entry_source_line)
-    if not prior_source_lines:
+    prior_source_line: int | None = None
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs():
+            if run.source_start == 0:
+                continue
+            run_length = run.dest_end - run.dest_start
+            run_source_end = run.source_start + run_length
+            if run.source_start >= source_line:
+                continue
+            candidate = min(source_line - 1, run_source_end - 1)
+            if candidate >= run.source_start:
+                prior_source_line = max(prior_source_line or candidate, candidate)
+    else:
+        for index in range(len(entries)):
+            entry_source_line = _entry_source_line_at(entries, index)
+            if entry_source_line is not None and entry_source_line < source_line:
+                prior_source_line = max(
+                    prior_source_line or entry_source_line,
+                    entry_source_line,
+                )
+
+    if prior_source_line is None:
         return 0
 
-    return _find_boundary_after_source_line(entries, max(prior_source_lines))
+    return _find_boundary_after_source_line(entries, prior_source_line)
 
 
 def _find_boundary_after_source_line(
@@ -1210,11 +1707,23 @@ def _find_boundary_after_source_line(
     matching_indices = []
     claimed_indices = []
 
-    for i in range(len(entries)):
-        if _entry_source_line_at(entries, i) == source_line:
-            matching_indices.append(i)
-            if _entry_is_claimed_at(entries, i):
-                claimed_indices.append(i)
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs():
+            if run.source_start == 0:
+                continue
+            run_length = run.dest_end - run.dest_start
+            if not run.source_start <= source_line < run.source_start + run_length:
+                continue
+            index = run.dest_start + (source_line - run.source_start)
+            matching_indices.append(index)
+            if run.is_claimed:
+                claimed_indices.append(index)
+    else:
+        for i in range(len(entries)):
+            if _entry_source_line_at(entries, i) == source_line:
+                matching_indices.append(i)
+                if _entry_is_claimed_at(entries, i):
+                    claimed_indices.append(i)
 
     if not matching_indices:
         raise MissingAnchorError(
@@ -1317,6 +1826,13 @@ def _position_after_claimed_insertions_at_boundary(
 ) -> int:
     """Return the first position after contiguous claimed entries at boundary."""
     check_pos = position
+
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs(position, len(entries)):
+            if not run.is_claimed:
+                break
+            check_pos = run.dest_end
+        return check_pos
 
     while check_pos < len(entries) and _entry_is_claimed_at(entries, check_pos):
         check_pos += 1
@@ -1903,7 +2419,10 @@ def _merge_batch_acquired_line_chunks(
         if owned_mapping is not None:
             owned_mapping.close()
 
-    yield from _realized_entry_content_chunks(realized_entries)
+    try:
+        yield from _realized_entry_content_chunks(realized_entries)
+    finally:
+        realized_entries.close()
 
 
 def discard_batch_from_line_sequences_as_buffer(
@@ -1977,18 +2496,27 @@ def _discard_batch_acquired_line_chunks(
             working_to_source
         )
 
-    realized_entries = _reverse_presence_constraints(
-        realized_entries,
-        presence_line_set,
-        correspondence
-    )
+    try:
+        updated_entries = _reverse_presence_constraints(
+            realized_entries,
+            presence_line_set,
+            correspondence
+        )
+        if updated_entries is not realized_entries:
+            realized_entries.close()
+        realized_entries = updated_entries
 
-    realized_entries = _restore_absence_constraints(
-        realized_entries,
-        deletion_claims
-    )
+        updated_entries = _restore_absence_constraints(
+            realized_entries,
+            deletion_claims
+        )
+        if updated_entries is not realized_entries:
+            realized_entries.close()
+        realized_entries = updated_entries
 
-    yield from _realized_entry_content_chunks(realized_entries)
+        yield from _realized_entry_content_chunks(realized_entries)
+    finally:
+        realized_entries.close()
 
 
 def _build_baseline_correspondence(
@@ -2285,16 +2813,14 @@ def _build_realized_entries_for_discard(
         Realized entries representing working tree with source provenance
     """
     result = _RealizedEntries()
-
-    for working_idx in range(len(working_lines)):
-        source_line = working_to_source.get_source_line_from_target_line(working_idx + 1)
-        result.append_line_from(
-            working_lines,
-            working_idx,
-            source_line=source_line,
-            target_line=working_idx + 1,
-            is_claimed=False
-        )
+    _append_working_range_with_mapping(
+        result,
+        working_lines,
+        working_to_source,
+        0,
+        len(working_lines),
+        set(),
+    )
 
     return result
 
@@ -2350,10 +2876,17 @@ def _reverse_presence_constraints(
     """
     result = _RealizedEntries()
     processed_replace_regions: set[int] = set()
+    copy_start: int | None = 0
+
+    def flush_copy(start: int | None, stop: int) -> None:
+        if start is not None and start < stop:
+            result.copy_slice_from(entries, start, stop)
 
     for index in range(len(entries)):
         source_line = _entry_source_line_at(entries, index)
         if source_line is not None and source_line in presence_line_set:
+            flush_copy(copy_start, index)
+            copy_start = None
             region = correspondence.get_region_for_source_line(source_line)
 
             if region is None:
@@ -2366,11 +2899,12 @@ def _reverse_presence_constraints(
             if region.kind in (RegionKind.EQUAL, RegionKind.REPLACE_LINE_BY_LINE):
                 offset = source_line - region.source_start_line
                 if 0 <= offset < len(region.baseline_lines):
-                    result.append_line_from(
+                    result.append_line_range_from(
                         region.baseline_lines,
                         offset,
-                        source_line=None,
-                        is_claimed=False
+                        offset + 1,
+                        source_line_start=None,
+                        is_claimed=False,
                     )
                 else:
                     raise MergeError(
@@ -2404,13 +2938,13 @@ def _reverse_presence_constraints(
                             )
                         )
 
-                    for baseline_idx in range(len(region.baseline_lines)):
-                        result.append_line_from(
-                            region.baseline_lines,
-                            baseline_idx,
-                            source_line=None,
-                            is_claimed=False
-                        )
+                    result.append_line_range_from(
+                        region.baseline_lines,
+                        0,
+                        len(region.baseline_lines),
+                        source_line_start=None,
+                        is_claimed=False,
+                    )
                     processed_replace_regions.add(region.region_id)
 
             else:
@@ -2418,8 +2952,13 @@ def _reverse_presence_constraints(
                     _("Unknown region kind: {kind}").format(kind=region.kind)
                 )
 
+            copy_start = index + 1
         else:
-            result.append_from(entries, index)
+            if copy_start is None:
+                copy_start = index
+
+    if copy_start is not None:
+        flush_copy(copy_start, len(entries))
 
     return result
 
@@ -2471,16 +3010,19 @@ def _restore_absence_constraints(
         if _sequence_present_at_boundary(result, boundary, claim.content_lines):
             continue
 
-        restored_entries = _RealizedEntries()
-        for line_index in range(len(claim.content_lines)):
-            restored_entries.append_line_from(
+        with _RealizedEntries() as restored_entries:
+            restored_entries.append_line_range_from(
                 claim.content_lines,
-                line_index,
-                source_line=None,
+                0,
+                len(claim.content_lines),
+                source_line_start=None,
                 is_claimed=False,
             )
 
-        result = result.insert_entries(boundary, restored_entries)
+            old_result = result
+            result = result.insert_entries(boundary, restored_entries)
+        if old_result is not entries:
+            old_result.close()
 
     return result
 

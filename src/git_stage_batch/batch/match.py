@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from array import array
 from bisect import bisect_left
-from collections.abc import Hashable, Sequence
-from dataclasses import dataclass
+from collections.abc import Hashable, Iterator, Sequence
+from dataclasses import dataclass, field
 from typing import TypeVar
 
 from ..utils.text import AcquirableLineSequence, as_acquirable_line_sequence
@@ -36,12 +36,45 @@ class LineMapping:
 
     source_to_target: array
     target_to_source: array
+    _closed: bool = field(default=False, init=False, repr=False)
+    _close_on_exit: bool = field(default=True, init=False, repr=False)
+
+    def __enter__(self) -> "LineMapping":
+        self._require_open()
+        self._close_on_exit = True
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        if self._close_on_exit:
+            self.close()
+
+    def detach(self) -> "LineMapping":
+        """Transfer ownership out of the current context manager."""
+        self._require_open()
+        self._close_on_exit = False
+        return self
+
+    def close(self) -> None:
+        """Close owned vector storage."""
+        if self._closed:
+            return
+
+        _close_vector(self.source_to_target)
+        _close_vector(self.target_to_source)
+        self._closed = True
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def is_source_line_present(
         self,
         source_line: int
     ) -> bool:
         """Check if a batch source line is present in working tree."""
+        self._require_open()
         return _lookup_line_mapping(self.source_to_target, source_line) is not None
 
     def get_target_line_from_source_line(
@@ -49,6 +82,7 @@ class LineMapping:
         source_line: int
     ) -> int | None:
         """Map batch source line to working tree line."""
+        self._require_open()
         return _lookup_line_mapping(self.source_to_target, source_line)
 
     def get_source_line_from_target_line(
@@ -56,7 +90,26 @@ class LineMapping:
         target_line: int
     ) -> int | None:
         """Map working tree line to batch source line."""
+        self._require_open()
         return _lookup_line_mapping(self.target_to_source, target_line)
+
+    def mapped_line_pairs(self) -> Iterator[tuple[int, int]]:
+        """Yield mapped source/target line pairs in source-line order."""
+        self._require_open()
+        for source_index in range(len(self.source_to_target)):
+            target_line = self.source_to_target[source_index]
+            if target_line != 0:
+                yield source_index + 1, target_line
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise ValueError("line mapping is closed")
+
+
+def _close_vector(vector: array) -> None:
+    close = getattr(vector, "close", None)
+    if close is not None:
+        close()
 
 
 def _line_mapping_typecode(max_line_number: int) -> str:

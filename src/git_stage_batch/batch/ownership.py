@@ -299,13 +299,15 @@ def derive_replacement_line_runs_from_lines(
     for run in semantic_runs:
         if (
             run.kind == SemanticChangeKind.REPLACEMENT
-            and run.source_run is not None
-            and run.target_run is not None
+            and run.source_start is not None
+            and run.source_end is not None
+            and run.target_start is not None
+            and run.target_end is not None
         ):
             replacement_runs.append(
                 ReplacementLineRun(
-                    old_line_numbers=tuple(run.source_run),
-                    new_line_numbers=tuple(run.target_run),
+                    old_line_numbers=tuple(run.source_line_numbers()),
+                    new_line_numbers=tuple(run.target_line_numbers()),
                 )
             )
     return replacement_runs

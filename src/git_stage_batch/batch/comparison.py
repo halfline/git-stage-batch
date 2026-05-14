@@ -60,20 +60,6 @@ class SemanticChangeRun:
         """Return target line numbers in this run without materializing them."""
         return _line_range(self.target_start, self.target_end)
 
-    @property
-    def source_run(self) -> list[int] | None:
-        """Return source line numbers for compatibility with list callers."""
-        if self.source_start is None or self.source_end is None:
-            return None
-        return list(self.source_line_numbers())
-
-    @property
-    def target_run(self) -> list[int] | None:
-        """Return target line numbers for compatibility with list callers."""
-        if self.target_start is None or self.target_end is None:
-            return None
-        return list(self.target_line_numbers())
-
     def has_source_line(self, line_number: int | None) -> bool:
         if (
             line_number is None

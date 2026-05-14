@@ -74,29 +74,35 @@ def _build_display_lines_from_batch_source_lines(
                 })
                 display_id += 1
 
-    # Collect all positions (claimed lines + deletion positions)
-    all_positions = set(claimed_set)
-    for pos in deletions_by_position.keys():
-        if pos is not None:
-            all_positions.add(pos)
+    # Collect displayed source ranges without expanding claimed ranges to lines.
+    display_ranges: list[tuple[int, int]] = []
 
-    ranges: list[tuple[int, int]] = []
-    for position in sorted(all_positions):
-        start = max(1, position - context_lines)
-        end = position + context_lines
+    def add_display_range(start: int, end: int) -> None:
         if start <= end:
-            if ranges and start <= ranges[-1][1] + 1:
-                ranges[-1] = (ranges[-1][0], max(ranges[-1][1], end))
-            else:
-                ranges.append((start, end))
+            display_ranges.append((start, end))
+
+    for claimed_start, claimed_end in claimed_set.ranges():
+        add_display_range(
+            max(1, claimed_start - context_lines),
+            claimed_end + context_lines,
+        )
+
+    for position in deletions_by_position:
+        if position is not None:
+            add_display_range(
+                max(1, position - context_lines),
+                position + context_lines,
+            )
 
     if None in deletions_by_position and context_lines > 0:
-        start = 1
-        end = context_lines
-        if ranges and end >= ranges[0][0] - 1:
-            ranges[0] = (start, max(ranges[0][1], end))
+        add_display_range(1, context_lines)
+
+    ranges: list[tuple[int, int]] = []
+    for start, end in sorted(display_ranges):
+        if ranges and start <= ranges[-1][1] + 1:
+            ranges[-1] = (ranges[-1][0], max(ranges[-1][1], end))
         else:
-            ranges.insert(0, (start, end))
+            ranges.append((start, end))
 
     # Add claimed lines, source context, and deletions in batch source order.
     # Context prevents unrelated owned lines from being visually glued together

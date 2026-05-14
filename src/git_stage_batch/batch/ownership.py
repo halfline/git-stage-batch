@@ -689,6 +689,53 @@ def _format_line_set(source_lines: LineSelection | Iterable[int]) -> list[str]:
     return source_selection.to_range_strings()
 
 
+@dataclass
+class _LineRangeBuilder:
+    """Build a normalized line selection from mostly ordered additions."""
+
+    ranges: list[tuple[int, int]] = field(default_factory=list)
+    pending_start: int | None = None
+    pending_end: int | None = None
+
+    def add_line(self, line_number: int) -> None:
+        if self.pending_start is None or self.pending_end is None:
+            self.pending_start = line_number
+            self.pending_end = line_number
+            return
+
+        if self.pending_start <= line_number <= self.pending_end:
+            return
+
+        if line_number == self.pending_end + 1:
+            self.pending_end = line_number
+            return
+
+        self.ranges.append((self.pending_start, self.pending_end))
+        self.pending_start = line_number
+        self.pending_end = line_number
+
+    def finish(self) -> LineRanges:
+        ranges = list(self.ranges)
+        if self.pending_start is not None and self.pending_end is not None:
+            ranges.append((self.pending_start, self.pending_end))
+        return LineRanges.from_ranges(ranges)
+
+
+@dataclass
+class _ReplacementUnitBuilder:
+    deletion_indices: list[int]
+    claimed_lines: _LineRangeBuilder = field(default_factory=_LineRangeBuilder)
+
+    def add_presence_line(self, source_line: int) -> None:
+        self.claimed_lines.add_line(source_line)
+
+    def finish(self) -> ReplacementUnit:
+        return ReplacementUnit(
+            presence_lines=self.claimed_lines.finish().to_range_strings(),
+            deletion_indices=self.deletion_indices,
+        )
+
+
 def _presence_claims_from_source_lines(
     source_lines: LineSelection | Iterable[int],
     baseline_references: dict[int, BaselineReference] | None = None,
@@ -900,7 +947,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     # Context/addition lines exist in batch source → presence claims
     # Deletion lines don't exist in batch source → deletion claims (suppression)
 
-    claimed_source_lines: list[int] = []
+    claimed_source_lines = _LineRangeBuilder()
     presence_baseline_references: dict[int, BaselineReference] = {}
     deletion_claims: list[DeletionClaim] = []
     replacement_units: list[ReplacementUnit] = []
@@ -909,7 +956,13 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     current_deletion_anchor: int | None = None
     current_deletion_baseline_reference: BaselineReference | None = None
     current_deletion_lines: list[bytes] = []
-    active_replacement_unit: ReplacementUnit | None = None
+    active_replacement_unit: _ReplacementUnitBuilder | None = None
+
+    def finish_replacement_unit(
+        builder: _ReplacementUnitBuilder | None,
+    ) -> None:
+        if builder is not None:
+            replacement_units.append(builder.finish())
 
     def flush_deletion_run() -> list[int]:
         """Finalize current deletion run as a DeletionClaim."""
@@ -943,7 +996,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
                     f"Batch source is stale and must be advanced before translation."
                 )
 
-            claimed_source_lines.append(line.source_line)
+            claimed_source_lines.add_line(line.source_line)
             if line.has_baseline_reference_after:
                 presence_baseline_references[line.source_line] = BaselineReference(
                     after_line=line.baseline_reference_after_line,
@@ -955,23 +1008,22 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
                 )
             if line.kind == '+':
                 if flushed_deletion_indices:
-                    active_replacement_unit = ReplacementUnit(
-                        presence_lines=[],
+                    finish_replacement_unit(active_replacement_unit)
+                    active_replacement_unit = _ReplacementUnitBuilder(
                         deletion_indices=flushed_deletion_indices,
                     )
-                    replacement_units.append(active_replacement_unit)
 
                 if active_replacement_unit is not None:
-                    claimed = _parse_line_ranges(active_replacement_unit.presence_lines)
-                    claimed = claimed.union([line.source_line])
-                    active_replacement_unit.presence_lines = _format_line_set(claimed)
+                    active_replacement_unit.add_presence_line(line.source_line)
             else:
+                finish_replacement_unit(active_replacement_unit)
                 active_replacement_unit = None
 
             # Update anchor for next deletion run
             current_deletion_anchor = line.source_line
 
         elif line.kind == '-':
+            finish_replacement_unit(active_replacement_unit)
             active_replacement_unit = None
             # Deletion: suppression constraint
             # Anchor each deletion run at its first deleted line. A None anchor
@@ -991,10 +1043,11 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
 
     # Flush any final deletion run
     flush_deletion_run()
+    finish_replacement_unit(active_replacement_unit)
 
     return BatchOwnership(
         presence_claims=_presence_claims_from_source_lines(
-            set(claimed_source_lines),
+            claimed_source_lines.finish(),
             presence_baseline_references,
         ),
         deletions=deletion_claims,

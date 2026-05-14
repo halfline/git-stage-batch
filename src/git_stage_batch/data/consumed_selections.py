@@ -101,7 +101,7 @@ def record_consumed_selection(
                         selected_lines,
                         source_lines=advance_result.source_buffer,
                         working_lines=(),
-                        working_line_map=advance_result.working_line_map,
+                        lineage=advance_result.lineage,
                     )
             new_ownership = translate_lines_to_batch_ownership(selected_lines)
             persist_selection(

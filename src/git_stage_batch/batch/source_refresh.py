@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from ..core.models import LineEntry
 from ..data.batch_sources import load_session_batch_sources, save_session_batch_sources
+from .lineage import _BatchSourceLineage
 from .match import match_lines
 from .ownership import (
     BatchOwnership,
@@ -121,7 +122,7 @@ def ensure_batch_source_current_for_selection(
                 selected_lines,
                 source_lines=advance_result.source_buffer,
                 working_lines=(),
-                working_line_map=advance_result.working_line_map,
+                lineage=advance_result.lineage,
             )
 
             return RefreshedBatchSelection(
@@ -224,19 +225,19 @@ def _refresh_selected_lines_against_source_lines(
     *,
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
-    working_line_map: dict[int, int] | None = None,
+    lineage: _BatchSourceLineage | None = None,
 ) -> list:
     """Re-annotate selected lines against source and working-tree line sequences."""
     mapping = None
-    if working_line_map is None:
+    if lineage is None:
         mapping = match_lines(source_lines, working_lines)
 
     try:
         def map_working_line(line_number: int | None) -> int | None:
             if line_number is None:
                 return None
-            if working_line_map is not None:
-                return working_line_map.get(line_number)
+            if lineage is not None:
+                return lineage.translate_working_line(line_number)
             assert mapping is not None
             return mapping.get_source_line_from_target_line(line_number)
 

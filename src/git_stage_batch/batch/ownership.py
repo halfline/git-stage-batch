@@ -29,11 +29,10 @@ from ..utils.git import (
     read_git_blobs_as_bytes,
 )
 from .comparison import SemanticChangeKind, derive_semantic_change_runs
+from .lineage import _BatchSourceLineage, _LineageRun
 from .match import LineMapping, match_lines
 from .merge import (
     _apply_presence_constraints,
-    _entry_source_line_at,
-    _entry_target_line_at,
     _realized_entry_content_chunks,
 )
 
@@ -530,12 +529,12 @@ class SourceContentWithLineProvenance:
     """Synthesized source buffer with line provenance from its inputs."""
 
     source_buffer: EditorBuffer
-    source_line_map: dict[int, int]
-    working_line_map: dict[int, int]
+    lineage: _BatchSourceLineage
 
     def close(self) -> None:
-        """Release the synthesized buffer."""
+        """Release the synthesized buffer and line lineage."""
         self.source_buffer.close()
+        self.lineage.close()
 
     def __enter__(self) -> SourceContentWithLineProvenance:
         return self
@@ -551,11 +550,12 @@ class BatchSourceAdvanceResult:
     batch_source_commit: str
     ownership: BatchOwnership
     source_buffer: EditorBuffer
-    working_line_map: dict[int, int]
+    lineage: _BatchSourceLineage
 
     def close(self) -> None:
-        """Release the refreshed source buffer."""
+        """Release the refreshed source buffer and line lineage."""
         self.source_buffer.close()
+        self.lineage.close()
 
     def __enter__(self) -> BatchSourceAdvanceResult:
         return self
@@ -1835,6 +1835,44 @@ def _remap_replacement_units(
     )
 
 
+def _first_unmapped_line(
+    line_selection: LineSelection,
+    lineage: _BatchSourceLineage,
+) -> int | None:
+    return lineage.first_unmapped_source_line(line_selection)
+
+
+def _remap_replacement_units_with_lineage(
+    replacement_units: list[ReplacementUnit],
+    *,
+    lineage: _BatchSourceLineage,
+    deletion_count: int,
+) -> list[ReplacementUnit]:
+    """Remap replacement-unit presence lines with refreshed source lineage."""
+    remapped_units: list[ReplacementUnit] = []
+
+    for unit in replacement_units:
+        old_presence_lines = _parse_line_ranges(unit.presence_lines)
+        first_unmapped = _first_unmapped_line(old_presence_lines, lineage)
+        if first_unmapped is not None:
+            raise ValueError(
+                f"Cannot remap replacement unit presence line {first_unmapped} "
+                f"from old source to new source: no unique mapping found."
+            )
+
+        remapped_units.append(ReplacementUnit(
+            presence_lines=_format_line_set(
+                lineage.translate_source_selection(old_presence_lines)
+            ),
+            deletion_indices=unit.deletion_indices,
+        ))
+
+    return _normalize_replacement_units(
+        remapped_units,
+        deletion_count=deletion_count,
+    )
+
+
 def remap_batch_ownership_to_new_source_lines(
     ownership: BatchOwnership,
     old_source_lines: Sequence[bytes],
@@ -1927,40 +1965,54 @@ def _advance_source_lines_preserving_existing_presence(
         presence_lines,
     )
 
-    source_line_map = {}
-    working_line_map = {}
-    for offset in range(len(entries)):
-        index = offset + 1
-        source_line = _entry_source_line_at(entries, offset)
-        target_line = _entry_target_line_at(entries, offset)
-        if source_line is not None:
-            source_line_map[source_line] = index
-        if target_line is not None:
-            working_line_map[target_line] = index
+    lineage = _BatchSourceLineage()
+    try:
+        for run in entries.provenance_runs():
+            line_count = run.dest_end - run.dest_start
+            new_start = run.dest_start + 1
+            if run.source_start != 0:
+                lineage.append_source_run(
+                    _LineageRun(
+                        old_start=run.source_start,
+                        old_end=run.source_start + line_count - 1,
+                        new_start=new_start,
+                    )
+                )
+            if run.target_start != 0:
+                lineage.append_working_run(
+                    _LineageRun(
+                        old_start=run.target_start,
+                        old_end=run.target_start + line_count - 1,
+                        new_start=new_start,
+                    )
+                )
 
-    return SourceContentWithLineProvenance(
-        source_buffer=EditorBuffer.from_chunks(_realized_entry_content_chunks(entries)),
-        source_line_map=source_line_map,
-        working_line_map=working_line_map,
-    )
+        return SourceContentWithLineProvenance(
+            source_buffer=EditorBuffer.from_chunks(
+                _realized_entry_content_chunks(entries)
+            ),
+            lineage=lineage,
+        )
+    except Exception:
+        lineage.close()
+        raise
+    finally:
+        entries.close()
 
 
-def _remap_batch_ownership_with_source_line_map(
+def _remap_batch_ownership_with_lineage(
     ownership: BatchOwnership,
-    source_line_map: dict[int, int],
+    lineage: _BatchSourceLineage,
 ) -> BatchOwnership:
     """Remap ownership using provenance from source refresh construction."""
     old_presence = ownership.presence_line_set()
-    new_presence = set()
-
-    for old_line_num in old_presence:
-        new_line_num = source_line_map.get(old_line_num)
-        if new_line_num is None:
-            raise ValueError(
-                f"Cannot remap presence line {old_line_num} from old source to new source: "
-                f"no preserved source-line mapping found."
-            )
-        new_presence.add(new_line_num)
+    first_unmapped = _first_unmapped_line(old_presence, lineage)
+    if first_unmapped is not None:
+        raise ValueError(
+            f"Cannot remap presence line {first_unmapped} from old source to new source: "
+            f"no preserved source lineage found."
+        )
+    new_presence = lineage.translate_source_selection(old_presence)
 
     new_deletions = []
     for deletion in ownership.deletions:
@@ -1972,11 +2024,11 @@ def _remap_batch_ownership_with_source_line_map(
             ))
             continue
 
-        new_anchor = source_line_map.get(deletion.anchor_line)
+        new_anchor = lineage.translate_source_line(deletion.anchor_line)
         if new_anchor is None:
             raise ValueError(
                 f"Cannot remap deletion anchor line {deletion.anchor_line} from old source "
-                f"to new source: no preserved source-line mapping found."
+                f"to new source: no preserved source lineage found."
             )
         new_deletions.append(DeletionClaim(
             anchor_line=new_anchor,
@@ -1984,15 +2036,15 @@ def _remap_batch_ownership_with_source_line_map(
             baseline_reference=deletion.baseline_reference,
         ))
 
-    new_replacement_units = _remap_replacement_units(
+    new_replacement_units = _remap_replacement_units_with_lineage(
         ownership.replacement_units,
-        map_claimed_line=source_line_map.get,
+        lineage=lineage,
         deletion_count=len(new_deletions),
     )
 
     new_presence_baseline_references = {}
     for old_line_num, reference in ownership.presence_baseline_references().items():
-        new_line_num = source_line_map.get(old_line_num)
+        new_line_num = lineage.translate_source_line(old_line_num)
         if new_line_num is not None:
             new_presence_baseline_references[new_line_num] = reference
 
@@ -2049,19 +2101,19 @@ def advance_batch_source_for_file_with_provenance(
             file_buffer_override=source_with_provenance.source_buffer
         )
 
-        # Remap ownership using provenance produced while constructing the refreshed
+        # Remap ownership using lineage produced while constructing the refreshed
         # source. This preserves already-owned lines that no longer exist in the
         # working tree after earlier discard operations.
-        remapped_ownership = _remap_batch_ownership_with_source_line_map(
+        remapped_ownership = _remap_batch_ownership_with_lineage(
             ownership=existing_ownership,
-            source_line_map=source_with_provenance.source_line_map,
+            lineage=source_with_provenance.lineage,
         )
 
         return BatchSourceAdvanceResult(
             batch_source_commit=new_batch_source_commit,
             ownership=remapped_ownership,
             source_buffer=source_with_provenance.source_buffer,
-            working_line_map=source_with_provenance.working_line_map,
+            lineage=source_with_provenance.lineage,
         )
     except Exception:
         if source_with_provenance is not None:

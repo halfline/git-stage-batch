@@ -10,6 +10,7 @@ from git_stage_batch.batch.ownership import (
     translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
 )
+from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.models import LineEntry
 
 
@@ -34,6 +35,25 @@ def test_translate_lines_creates_deletion_constraints():
     assert len(ownership.replacement_units) == 1
     assert ownership.replacement_units[0].presence_lines == ["1"]
     assert ownership.replacement_units[0].deletion_indices == [0]
+
+
+def test_presence_line_set_returns_line_ranges():
+    """Ownership presence lines stay range-backed after translation."""
+    lines = [
+        LineEntry(id=1, kind='+', old_line_number=None, new_line_number=1,
+                  text_bytes=b'one', text='one', source_line=1),
+        LineEntry(id=2, kind='+', old_line_number=None, new_line_number=2,
+                  text_bytes=b'two', text='two', source_line=2),
+        LineEntry(id=3, kind='+', old_line_number=None, new_line_number=4,
+                  text_bytes=b'four', text='four', source_line=4),
+    ]
+
+    ownership = translate_lines_to_batch_ownership(lines)
+    selection = ownership.presence_line_set()
+
+    assert isinstance(selection, LineRanges)
+    assert selection.ranges() == ((1, 2), (4, 4))
+    assert ownership.resolve().presence_line_set == selection
 
 
 def test_derive_replacement_line_runs_accepts_non_list_sequences(line_sequence):

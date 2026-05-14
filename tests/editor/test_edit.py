@@ -335,6 +335,45 @@ def test_editor_add_lines_accepts_bytes_only_lines(line_sequence):
             assert buffer.to_bytes() == b"one\ntwo\n"
 
 
+def test_editor_append_line_ranges_appends_indexed_runs(line_sequence):
+    """Range-oriented appends can add multiple indexed ranges directly."""
+    lines = line_sequence([
+        b"skip\n",
+        b"one\n",
+        b"two\n",
+        b"three\n",
+        b"drop\n",
+    ])
+
+    with Editor([]) as editor:
+        cursor = editor.cursor_at(0)
+
+        editor.append_line_ranges([
+            (lines, 1, 3),
+            (lines, 3, 4),
+        ])
+        editor.move_to(cursor)
+
+        assert editor.position == 3
+        assert b"".join(editor.line_chunks()) == b"one\ntwo\nthree\n"
+
+
+def test_editor_replace_selection_with_ranges_replaces_once(line_sequence):
+    """Selections can be replaced by multiple indexed ranges in one edit."""
+    source_lines = line_sequence([b"one\n", b"old\n", b"three\n"])
+    replacement_lines = line_sequence([b"skip\n", b"new\n", b"again\n"])
+
+    with Editor(source_lines) as editor:
+        editor.move_to(1)
+        editor.select_lines(1)
+        editor.replace_selection_with_ranges([
+            (replacement_lines, 1, 2),
+            (replacement_lines, 2, 3),
+        ])
+
+        assert b"".join(editor.line_chunks()) == b"one\nnew\nagain\nthree\n"
+
+
 def test_editor_add_lines_from_editor_copies_current_segments(line_sequence):
     """One editor can insert a range from another editor without exporting."""
     source_lines = line_sequence([b"one\n", b"two\n", b"three\n"])

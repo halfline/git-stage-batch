@@ -105,7 +105,7 @@ class _RealizedEntries(Sequence[RealizedEntry]):
         target_line: int | None = None,
         is_claimed: bool = False,
     ) -> None:
-        self._editor.add_lines((content,), start=0, end=1)
+        self._editor.append_line_range((content,), 0, 1)
         self._append_metadata(
             source_line=source_line,
             target_line=target_line,
@@ -121,7 +121,7 @@ class _RealizedEntries(Sequence[RealizedEntry]):
         target_line: int | None = None,
         is_claimed: bool = False,
     ) -> None:
-        self._editor.add_lines(lines, start=index, end=index + 1)
+        self._editor.append_line_range(lines, index, index + 1)
         self._append_metadata(
             source_line=source_line,
             target_line=target_line,
@@ -154,7 +154,11 @@ class _RealizedEntries(Sequence[RealizedEntry]):
     ) -> None:
         if isinstance(entries, _RealizedEntries):
             index = entries._normalize_index(index)
-            self._editor.add_lines_from_editor(entries._editor, index, index + 1)
+            self._editor.append_line_ranges_from_editor(
+                entries._editor,
+                index,
+                index + 1,
+            )
             self._source_lines.append(entries._source_lines[index])
             self._target_lines.append(entries._target_lines[index])
             self._claimed.append(entries._claimed[index])
@@ -216,7 +220,7 @@ class _RealizedEntries(Sequence[RealizedEntry]):
             return
 
         if isinstance(entries, _RealizedEntries):
-            self._editor.add_lines_from_editor(entries._editor, start, stop)
+            self._editor.append_line_ranges_from_editor(entries._editor, start, stop)
             self._source_lines.extend(entries._source_lines[start:stop])
             self._target_lines.extend(entries._target_lines[start:stop])
             self._claimed.extend(entries._claimed[start:stop])

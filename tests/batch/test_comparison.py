@@ -1,7 +1,10 @@
 """Tests for batch comparison helpers."""
 
+import pytest
+
 from git_stage_batch.batch.comparison import (
     SemanticChangeKind,
+    SemanticChangeRun,
     derive_replacement_display_id_run_sets_from_lines,
     derive_semantic_change_runs,
 )
@@ -17,9 +20,96 @@ def test_derive_semantic_change_runs_accepts_non_list_sequences(line_sequence):
 
     assert len(runs) == 1
     assert runs[0].kind == SemanticChangeKind.REPLACEMENT
-    assert runs[0].source_run == [2]
-    assert runs[0].target_run == [2]
+    assert (runs[0].source_start, runs[0].source_end) == (2, 2)
+    assert (runs[0].target_start, runs[0].target_end) == (2, 2)
     assert runs[0].target_anchor == 1
+
+
+def test_derive_semantic_change_runs_uses_range_records():
+    """Semantic comparison should store line runs as endpoints."""
+    source = [b"keep\n", b"old one\n", b"old two\n", b"tail\n"]
+    target = [b"keep\n", b"new one\n", b"new two\n", b"tail\n"]
+
+    runs = derive_semantic_change_runs(source, target)
+
+    assert runs == [
+        SemanticChangeRun(
+            kind=SemanticChangeKind.REPLACEMENT,
+            source_start=2,
+            source_end=3,
+            target_start=2,
+            target_end=3,
+            target_anchor=1,
+        )
+    ]
+    assert runs[0].source_line_numbers() == range(2, 4)
+    assert runs[0].target_line_numbers() == range(2, 4)
+
+
+def test_semantic_change_run_rejects_invalid_ranges():
+    """Range records should not accept partial or inverted endpoints."""
+    with pytest.raises(ValueError, match="source range requires both"):
+        SemanticChangeRun(
+            kind=SemanticChangeKind.DELETION,
+            source_start=2,
+        )
+
+    with pytest.raises(ValueError, match="target range start must be <= end"):
+        SemanticChangeRun(
+            kind=SemanticChangeKind.PRESENCE,
+            target_start=4,
+            target_end=3,
+        )
+
+
+def test_derive_semantic_change_runs_keeps_large_replacements_compact():
+    """Large contiguous replacements should remain one range record."""
+    source = [
+        b"head\n",
+        *[f"old {index}\n".encode() for index in range(1000)],
+        b"tail\n",
+    ]
+    target = [
+        b"head\n",
+        *[f"new {index}\n".encode() for index in range(1000)],
+        b"tail\n",
+    ]
+
+    runs = derive_semantic_change_runs(source, target)
+
+    assert len(runs) == 1
+    assert runs[0].kind == SemanticChangeKind.REPLACEMENT
+    assert (runs[0].source_start, runs[0].source_end) == (2, 1001)
+    assert (runs[0].target_start, runs[0].target_end) == (2, 1001)
+    assert runs[0].target_anchor == 1
+
+
+def test_derive_semantic_change_runs_uses_ranges_for_one_sided_changes():
+    """Pure additions and deletions should also use endpoints."""
+    deletion_runs = derive_semantic_change_runs(
+        [b"keep\n", b"old one\n", b"old two\n", b"tail\n"],
+        [b"keep\n", b"tail\n"],
+    )
+    presence_runs = derive_semantic_change_runs(
+        [b"keep\n", b"tail\n"],
+        [b"keep\n", b"new one\n", b"new two\n", b"tail\n"],
+    )
+
+    assert deletion_runs == [
+        SemanticChangeRun(
+            kind=SemanticChangeKind.DELETION,
+            source_start=2,
+            source_end=3,
+            target_anchor=1,
+        )
+    ]
+    assert presence_runs == [
+        SemanticChangeRun(
+            kind=SemanticChangeKind.PRESENCE,
+            target_start=2,
+            target_end=3,
+        )
+    ]
 
 
 def test_replacement_display_id_run_sets_accepts_non_list_sequences(line_sequence):

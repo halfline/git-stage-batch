@@ -5,7 +5,6 @@ from __future__ import annotations
 from array import array
 from bisect import bisect_right
 from collections.abc import Iterable, Iterator, Sequence
-import difflib
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any
@@ -396,7 +395,6 @@ class BaselineRegion:
     source_end_line: int            # 1-based inclusive
     baseline_lines: Sequence[bytes]  # baseline content for restoration
     kind: RegionKind                # Region restoration kind
-    is_ambiguous: bool = False
     region_id: int = 0              # Unique region identifier (assigned during construction)
 
 
@@ -427,6 +425,23 @@ class BaselineCorrespondence:
         if source_line > region.source_end_line:
             return None
         return region
+
+
+@dataclass(slots=True)
+class _BaselineCorrespondenceScanState:
+    """Cursors and pending anchor-run bounds while building correspondence."""
+
+    next_region_id: int = 1
+    baseline_cursor: int = 0
+    source_cursor: int = 0
+    run_base_start: int | None = None
+    run_source_start: int | None = None
+    run_base_end: int = 0
+    run_source_end: int = 0
+
+    @property
+    def has_run(self) -> bool:
+        return self.run_base_start is not None and self.run_source_start is not None
 
 
 @dataclass
@@ -1949,16 +1964,13 @@ def _build_baseline_correspondence(
     """Build restoration correspondence from source lines to baseline regions.
 
     This is a discard-specific helper that maps source lines to baseline restoration
-    regions. Unlike match_lines() which performs conservative identity matching,
-    this understands diff structure to determine what baseline content should be
-    restored when batch-owned source content is discarded.
+    regions. It uses the same conservative structural matching policy as
+    source-to-working provenance, then classifies the gaps between mapped anchor
+    runs.
 
     Key distinction from match_lines:
     - match_lines: "which source lines are definitely present in working?"
     - This helper: "what baseline content restores each source position?"
-
-    Uses difflib.SequenceMatcher for diff decomposition (acceptable here because
-    we're building restoration regions, not performing identity matching).
 
     Region kinds:
     - EQUAL: unchanged lines → restored line-by-line
@@ -1981,86 +1993,242 @@ def _build_baseline_correspondence(
     Returns:
         BaselineCorrespondence mapping source lines to restoration regions
     """
-    matcher = difflib.SequenceMatcher(None, baseline_lines, source_lines)
-
     regions: list[BaselineRegion] = []
-    next_region_id = 1
+    state = _BaselineCorrespondenceScanState()
 
-    for tag, base_start, base_end, src_start, src_end in matcher.get_opcodes():
-        if tag == 'equal':
-            region = BaselineRegion(
-                source_start_line=src_start + 1,
-                source_end_line=src_end,
-                baseline_lines=_LineRange(baseline_lines, base_start, base_end),
-                kind=RegionKind.EQUAL,
-                region_id=next_region_id
+    mapping = match_lines(baseline_lines, source_lines)
+    for baseline_index in range(len(baseline_lines)):
+        source_line = mapping.get_target_line_from_source_line(baseline_index + 1)
+        if source_line is None:
+            continue
+
+        source_index = source_line - 1
+
+        if not state.has_run:
+            state = _start_baseline_anchor_run(
+                state,
+                baseline_index,
+                source_index,
             )
-            next_region_id += 1
-            regions.append(region)
+            continue
 
-        elif tag == 'insert':
-            region = BaselineRegion(
-                source_start_line=src_start + 1,
-                source_end_line=src_end,
-                baseline_lines=(),
-                kind=RegionKind.INSERT,
-                region_id=next_region_id
-            )
-            next_region_id += 1
-            regions.append(region)
+        if (
+            baseline_index == state.run_base_end
+            and source_index == state.run_source_end
+        ):
+            state = _extend_baseline_anchor_run(state)
+            continue
 
-        elif tag == 'replace':
-            base_len = base_end - base_start
-            src_len = src_end - src_start
+        state = _flush_baseline_anchor_run(
+            regions,
+            state,
+            baseline_lines,
+            source_lines,
+        )
+        state = _start_baseline_anchor_run(
+            state,
+            baseline_index,
+            source_index,
+        )
 
-            if base_len == src_len and base_len > 0:
-                baseline_segment = _LineRange(baseline_lines, base_start, base_end)
-                source_segment = _LineRange(source_lines, src_start, src_end)
-
-                sub_mapping = match_lines(baseline_segment, source_segment)
-
-                all_source_mapped = all(
-                    sub_mapping.get_target_line_from_source_line(i + 1) is not None
-                    for i in range(len(source_segment))
-                )
-
-                all_baseline_mapped = all(
-                    sub_mapping.get_source_line_from_target_line(i + 1) is not None
-                    for i in range(len(baseline_segment))
-                )
-
-                if all_source_mapped and all_baseline_mapped:
-                    region = BaselineRegion(
-                        source_start_line=src_start + 1,
-                        source_end_line=src_end,
-                        baseline_lines=baseline_segment,
-                        kind=RegionKind.REPLACE_LINE_BY_LINE,
-                        region_id=next_region_id
-                    )
-                else:
-                    region = BaselineRegion(
-                        source_start_line=src_start + 1,
-                        source_end_line=src_end,
-                        baseline_lines=baseline_segment,
-                        kind=RegionKind.REPLACE_BY_HUNK,
-                        region_id=next_region_id
-                    )
-
-                next_region_id += 1
-                regions.append(region)
-
-            else:
-                region = BaselineRegion(
-                    source_start_line=src_start + 1,
-                    source_end_line=src_end,
-                    baseline_lines=_LineRange(baseline_lines, base_start, base_end),
-                    kind=RegionKind.REPLACE_BY_HUNK,
-                    region_id=next_region_id
-                )
-                next_region_id += 1
-                regions.append(region)
+    state = _flush_baseline_anchor_run(
+        regions,
+        state,
+        baseline_lines,
+        source_lines,
+    )
+    _append_baseline_gap_region(
+        regions,
+        state.next_region_id,
+        baseline_lines,
+        source_lines,
+        state.baseline_cursor,
+        len(baseline_lines),
+        state.source_cursor,
+        len(source_lines),
+    )
 
     return BaselineCorrespondence(regions=regions)
+
+
+def _start_baseline_anchor_run(
+    state: _BaselineCorrespondenceScanState,
+    baseline_index: int,
+    source_index: int,
+) -> _BaselineCorrespondenceScanState:
+    """Return state with a new pending anchor run."""
+    return _BaselineCorrespondenceScanState(
+        next_region_id=state.next_region_id,
+        baseline_cursor=state.baseline_cursor,
+        source_cursor=state.source_cursor,
+        run_base_start=baseline_index,
+        run_source_start=source_index,
+        run_base_end=baseline_index + 1,
+        run_source_end=source_index + 1,
+    )
+
+
+def _extend_baseline_anchor_run(
+    state: _BaselineCorrespondenceScanState,
+) -> _BaselineCorrespondenceScanState:
+    """Return state with the pending anchor run extended by one pair."""
+    return _BaselineCorrespondenceScanState(
+        next_region_id=state.next_region_id,
+        baseline_cursor=state.baseline_cursor,
+        source_cursor=state.source_cursor,
+        run_base_start=state.run_base_start,
+        run_source_start=state.run_source_start,
+        run_base_end=state.run_base_end + 1,
+        run_source_end=state.run_source_end + 1,
+    )
+
+
+def _flush_baseline_anchor_run(
+    regions: list[BaselineRegion],
+    state: _BaselineCorrespondenceScanState,
+    baseline_lines: Sequence[bytes],
+    source_lines: Sequence[bytes],
+) -> _BaselineCorrespondenceScanState:
+    """Append gap/equal regions for a pending anchor run and advance cursors."""
+    if not state.has_run:
+        return state
+
+    assert state.run_base_start is not None
+    assert state.run_source_start is not None
+
+    next_region_id = _append_baseline_gap_region(
+        regions,
+        state.next_region_id,
+        baseline_lines,
+        source_lines,
+        state.baseline_cursor,
+        state.run_base_start,
+        state.source_cursor,
+        state.run_source_start,
+    )
+    next_region_id = _append_baseline_region(
+        regions,
+        next_region_id,
+        baseline_lines,
+        state.run_base_start,
+        state.run_base_end,
+        state.run_source_start,
+        state.run_source_end,
+        RegionKind.EQUAL,
+    )
+
+    return _BaselineCorrespondenceScanState(
+        next_region_id=next_region_id,
+        baseline_cursor=state.run_base_end,
+        source_cursor=state.run_source_end,
+    )
+
+
+def _append_baseline_gap_region(
+    regions: list[BaselineRegion],
+    next_region_id: int,
+    baseline_lines: Sequence[bytes],
+    source_lines: Sequence[bytes],
+    base_start: int,
+    base_end: int,
+    src_start: int,
+    src_end: int,
+) -> int:
+    """Append a source-space region for an unmatched baseline/source gap."""
+    base_len = base_end - base_start
+    src_len = src_end - src_start
+
+    if base_len == 0 and src_len == 0:
+        return next_region_id
+
+    if src_len == 0:
+        return next_region_id
+
+    if base_len == 0:
+        return _append_baseline_region(
+            regions,
+            next_region_id,
+            baseline_lines,
+            base_start,
+            base_end,
+            src_start,
+            src_end,
+            RegionKind.INSERT,
+        )
+
+    if base_len == src_len:
+        baseline_segment = _LineRange(baseline_lines, base_start, base_end)
+        source_segment = _LineRange(source_lines, src_start, src_end)
+
+        sub_mapping = match_lines(baseline_segment, source_segment)
+        all_baseline_mapped = all(
+            sub_mapping.get_target_line_from_source_line(index + 1) is not None
+            for index in range(len(baseline_segment))
+        )
+        all_source_mapped = all(
+            sub_mapping.get_source_line_from_target_line(index + 1) is not None
+            for index in range(len(source_segment))
+        )
+
+        kind = (
+            RegionKind.REPLACE_LINE_BY_LINE
+            if all_baseline_mapped and all_source_mapped
+            else RegionKind.REPLACE_BY_HUNK
+        )
+        return _append_baseline_region(
+            regions,
+            next_region_id,
+            baseline_lines,
+            base_start,
+            base_end,
+            src_start,
+            src_end,
+            kind,
+        )
+
+    return _append_baseline_region(
+        regions,
+        next_region_id,
+        baseline_lines,
+        base_start,
+        base_end,
+        src_start,
+        src_end,
+        RegionKind.REPLACE_BY_HUNK,
+    )
+
+
+def _append_baseline_region(
+    regions: list[BaselineRegion],
+    next_region_id: int,
+    baseline_lines: Sequence[bytes],
+    base_start: int,
+    base_end: int,
+    src_start: int,
+    src_end: int,
+    kind: RegionKind,
+) -> int:
+    """Append one baseline correspondence region."""
+    baseline_region_lines: Sequence[bytes]
+
+    if src_start == src_end:
+        return next_region_id
+
+    if kind == RegionKind.INSERT:
+        baseline_region_lines = ()
+    else:
+        baseline_region_lines = _LineRange(baseline_lines, base_start, base_end)
+
+    regions.append(
+        BaselineRegion(
+            source_start_line=src_start + 1,
+            source_end_line=src_end,
+            baseline_lines=baseline_region_lines,
+            kind=kind,
+            region_id=next_region_id,
+        )
+    )
+    return next_region_id + 1
 
 
 def _build_realized_entries_for_discard(
@@ -2124,7 +2292,6 @@ def _reverse_presence_constraints(
     - If from EQUAL or REPLACE_LINE_BY_LINE region: replace with baseline line-by-line
     - If from INSERT region: remove (batch-added content)
     - If from REPLACE_BY_HUNK region: verify full ownership, then restore as unit
-    - If region is ambiguous: raise MergeError
 
     This is the inverse of presence constraint application: where merge ensures
     claimed lines are present, discard ensures they are removed or restored to baseline.
@@ -2144,7 +2311,8 @@ def _reverse_presence_constraints(
         Entries with batch-owned claimed lines replaced or removed
 
     Raises:
-        MergeError: If restoration is ambiguous or region not found
+        MergeError: If the restoration region is missing or cannot be
+            partially discarded
     """
     result = _RealizedEntries()
     processed_replace_regions: set[int] = set()
@@ -2157,13 +2325,6 @@ def _reverse_presence_constraints(
             if region is None:
                 raise MergeError(
                     _("Cannot discard source line {line}: no baseline restoration region found").format(
-                        line=source_line
-                    )
-                )
-
-            if region.is_ambiguous:
-                raise MergeError(
-                    _("Cannot discard source line {line}: baseline restoration is ambiguous").format(
                         line=source_line
                     )
                 )

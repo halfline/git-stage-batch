@@ -129,9 +129,37 @@ class TestMatchLines:
 
         assert mapping.source_to_target.typecode in {"I", "Q"}
         assert mapping.target_to_source.typecode in {"I", "Q"}
-        assert mapping.source_to_target.tolist() == [1, 0, 2]
-        assert mapping.target_to_source.tolist() == [1, 3]
+        assert list(mapping.source_to_target) == [1, 0, 2]
+        assert list(mapping.target_to_source) == [1, 3]
         assert mapping.get_target_line_from_source_line(2) is None
+
+    def test_line_mapping_context_manager_closes_mapping(self):
+        """Line mappings close their owned vector storage on context exit."""
+        with match_lines([b"a\n"], [b"a\n"]) as mapping:
+            assert mapping.get_target_line_from_source_line(1) == 1
+
+        with pytest.raises(ValueError, match="line mapping is closed"):
+            mapping.get_target_line_from_source_line(1)
+
+    def test_line_mapping_detach_transfers_context_ownership(self):
+        """Detached mappings remain usable until their new owner closes them."""
+        with match_lines([b"a\n"], [b"a\n"]) as mapping:
+            detached = mapping.detach()
+
+        assert detached.get_target_line_from_source_line(1) == 1
+        detached.close()
+        detached.close()
+
+        with pytest.raises(ValueError, match="line mapping is closed"):
+            detached.detach()
+
+    def test_line_mapping_exposes_mapped_line_pairs(self):
+        """Mapped pair iteration exposes source-order correspondence."""
+        with match_lines(
+            [b"line1\n", b"line2\n", b"line3\n"],
+            [b"line1\n", b"line3\n"],
+        ) as mapping:
+            assert list(mapping.mapped_line_pairs()) == [(1, 1), (3, 2)]
 
     def test_identical_files(self):
         """Test alignment of identical files."""

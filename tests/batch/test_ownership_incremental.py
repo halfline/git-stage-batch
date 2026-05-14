@@ -69,8 +69,35 @@ def test_derive_replacement_line_runs_accepts_non_list_sequences(line_sequence):
     )
 
     assert len(runs) == 1
-    assert runs[0].old_line_numbers == (2,)
-    assert runs[0].new_line_numbers == (2, 3, 4)
+    assert (runs[0].old_start, runs[0].old_end) == (2, 2)
+    assert (runs[0].new_start, runs[0].new_end) == (2, 4)
+    assert runs[0].old_line_numbers() == range(2, 3)
+    assert runs[0].new_line_numbers() == range(2, 5)
+
+
+def test_derive_replacement_line_runs_keeps_large_replacements_compact():
+    """Large replacement runs should stay as endpoints."""
+    runs = derive_replacement_line_runs_from_lines(
+        old_file_lines=[
+            b"head\n",
+            *[f"old {index}\n".encode() for index in range(1000)],
+            b"tail\n",
+        ],
+        new_file_lines=[
+            b"head\n",
+            *[f"new {index}\n".encode() for index in range(1000)],
+            b"tail\n",
+        ],
+    )
+
+    assert runs == [
+        ReplacementLineRun(
+            old_start=2,
+            old_end=1001,
+            new_start=2,
+            new_end=1001,
+        )
+    ]
 
 
 def test_translate_lines_records_multi_line_replacement_unit():
@@ -189,8 +216,10 @@ def test_translate_hunk_selection_uses_file_derived_replacement_runs():
         {1, 3},
         replacement_line_runs=[
             ReplacementLineRun(
-                old_line_numbers=(1, 2),
-                new_line_numbers=(1, 2),
+                old_start=1,
+                old_end=2,
+                new_start=1,
+                new_end=2,
             ),
         ],
     )
@@ -219,8 +248,10 @@ def test_translate_hunk_selection_keeps_one_to_many_replacement_atomic():
         {1, 2, 3},
         replacement_line_runs=[
             ReplacementLineRun(
-                old_line_numbers=(1,),
-                new_line_numbers=(1, 2),
+                old_start=1,
+                old_end=1,
+                new_start=1,
+                new_end=2,
             ),
         ],
     )

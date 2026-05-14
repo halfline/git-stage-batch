@@ -280,8 +280,8 @@ class TestCommandIncludeLine:
 
         assert display_runs == [{1, 2}]
         assert len(line_runs) == 1
-        assert line_runs[0].old_line_numbers == (2,)
-        assert line_runs[0].new_line_numbers == (2,)
+        assert (line_runs[0].old_start, line_runs[0].old_end) == (2, 2)
+        assert (line_runs[0].new_start, line_runs[0].new_end) == (2, 2)
 
     def test_include_line_requires_selected_hunk(self, temp_git_repo):
         """Test that include --line requires an active hunk."""

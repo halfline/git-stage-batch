@@ -54,7 +54,7 @@ from ..editor import (
     load_working_tree_file_as_buffer,
     write_buffer_to_path,
 )
-from ..core.line_selection import write_line_ids_file
+from ..core.line_selection import LineRanges, write_line_ids_file
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_binary_file_change, print_gitlink_change
@@ -1044,7 +1044,8 @@ def _render_batch_file_display_from_ownership(
     if batch_source_buffer is None:
         return None
 
-    mergeable_ids = set()
+    mergeable_id_range_parts: list[tuple[int, int]] = []
+    mergeable_id_ranges = LineRanges.empty()
     units = []
 
     with batch_source_buffer as batch_source_lines:
@@ -1085,10 +1086,12 @@ def _render_batch_file_display_from_ownership(
                                 source_to_working_mapping=source_to_working_mapping,
                             ):
                                 continue
-                            mergeable_ids.update(unit.display_line_ids)
+                            mergeable_id_range_parts.extend(unit.display_line_ids.ranges())
                         except (MergeError, ValueError, KeyError, Exception):
                             # Unit not mergeable - exclude all its lines
                             pass
+
+                    mergeable_id_ranges = LineRanges.from_ranges(mergeable_id_range_parts)
 
     if not display_lines:
         change_type = file_meta.get("change_type", "modified")
@@ -1205,7 +1208,7 @@ def _render_batch_file_display_from_ownership(
     selection_id_to_gutter = {}
     gutter_num = 1
     for entry in line_entries:
-        if entry.id is not None and entry.id in mergeable_ids:
+        if entry.id is not None and entry.id in mergeable_id_ranges:
             gutter_to_selection_id[gutter_num] = entry.id
             selection_id_to_gutter[entry.id] = gutter_num
             gutter_num += 1
@@ -1215,11 +1218,11 @@ def _render_batch_file_display_from_ownership(
         for entry in line_entries
         if entry.id is not None
     ]
-    resettable_ids = {
-        line_id
+    resettable_ids = LineRanges.from_ranges(
+        display_id_range
         for unit in units
-        for line_id in unit.display_line_ids
-    }
+        for display_id_range in unit.display_line_ids.ranges()
+    )
     review_gutter_to_selection_id = {}
     review_selection_id_to_gutter = {}
     review_gutter_num = 1
@@ -1243,7 +1246,7 @@ def _render_batch_file_display_from_ownership(
             continue
 
         actions = [_BATCH_RESET_REVIEW_ACTION]
-        if unit.display_line_ids.issubset(mergeable_ids):
+        if unit.display_line_ids.intersection(mergeable_id_ranges) == unit.display_line_ids:
             actionable_selection_groups.append(ordered_group)
             actions = [
                 *_BATCH_MERGE_REVIEW_ACTIONS,

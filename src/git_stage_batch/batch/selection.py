@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING, Optional
@@ -14,7 +14,7 @@ from .ownership import (
     validate_ownership_units,
     rebuild_ownership_from_units,
 )
-from ..core.line_selection import parse_line_selection
+from ..core.line_selection import LineRanges, LineSelection, parse_line_selection
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns
@@ -62,15 +62,25 @@ def missing_requested_display_ids(
 
 
 def require_display_ids_available(
-    requested_ids: set[int],
-    available_ids: set[int],
+    requested_ids: LineSelection | Iterable[int],
+    available_ids: LineSelection | Iterable[int],
     *,
     line_id_specification: str,
     file_path: str,
     review_command: str | None = None,
 ) -> None:
     """Reject a line selection if any requested display ID is unavailable."""
-    if requested_ids - available_ids:
+    requested_ranges = (
+        requested_ids
+        if isinstance(requested_ids, LineRanges)
+        else LineRanges.from_lines(requested_ids)
+    )
+    available_ranges = (
+        available_ids
+        if isinstance(available_ids, LineRanges)
+        else LineRanges.from_lines(available_ids)
+    )
+    if requested_ranges.difference(available_ranges):
         exit_with_error(
             line_selection_not_valid_message(
                 line_id_specification=line_id_specification,

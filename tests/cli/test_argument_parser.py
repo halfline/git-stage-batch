@@ -847,12 +847,16 @@ def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_discard_file", mock_command)
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py", "notes.txt"])
+    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: [])
 
     args = parse_command_line(["discard", "--files", "*.py"], quiet=True)
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [call("foo.py"), call("bar.py")]
+    assert mock_command.call_args_list == [
+        call("foo.py", auto_advance=None),
+        call("bar.py", auto_advance=None),
+    ]
 
 
 def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(monkeypatch):
@@ -889,21 +893,22 @@ def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkey
             discarded_files=["foo.py", "bar.py"],
         )
     )
-    mock_advance = Mock()
+    mock_select_next = Mock(return_value=True)
     mock_show = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_discard_files_to_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "advance_to_next_change", mock_advance)
+    monkeypatch.setattr(argument_parser, "select_next_change_after_action", mock_select_next)
     monkeypatch.setattr(argument_parser, "show_selected_change", mock_show)
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py", "notes.txt"])
+    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: [])
 
     args = parse_command_line(["discard", "--to", "batch", "--files", "*.py"], quiet=True)
 
     assert args is not None
     args.func(args)
     assert mock_command.call_args_list == [
-        call("batch", ["foo.py", "bar.py"], quiet=True, advance=False),
+        call("batch", ["foo.py", "bar.py"], quiet=True, advance=False, auto_advance=None),
     ]
-    mock_advance.assert_called_once_with()
+    mock_select_next.assert_called_once_with(auto_advance=None)
     mock_show.assert_called_once_with()
 
 
@@ -1078,7 +1083,11 @@ def test_parse_command_line_discard_with_file_and_as_dispatches_file_replacement
 
     assert args is not None
     args.func(args)
-    mock_command.assert_called_once_with("replacement", file="path.txt")
+    mock_command.assert_called_once_with(
+        "replacement",
+        file="path.txt",
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_replacement(monkeypatch):
@@ -1094,7 +1103,11 @@ def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_repla
 
     assert args is not None
     args.func(args)
-    mock_command.assert_called_once_with("replacement\n", file="path.txt")
+    mock_command.assert_called_once_with(
+        "replacement\n",
+        file="path.txt",
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_discard_to_line_range_and_as_stdin_dispatches_replacement(monkeypatch):
@@ -1116,6 +1129,7 @@ def test_parse_command_line_discard_to_line_range_and_as_stdin_dispatches_replac
         "replacement one\nreplacement two\n",
         file="path.txt",
         no_edge_overlap=False,
+        auto_advance=None,
     )
 
 
@@ -1150,6 +1164,7 @@ def test_parse_command_line_discard_with_no_edge_overlap_dispatches_line_replace
         "replacement",
         file="path.txt",
         no_edge_overlap=True,
+        auto_advance=None,
     )
 
 
@@ -1187,7 +1202,13 @@ def test_parse_command_line_discard_with_file_and_line_dispatches_file_scope(mon
 
     assert args is not None
     args.func(args)
-    mock_command.assert_called_once_with("2-3", file="path.txt")
+    mock_command.assert_called_once_with(
+        "2-3",
+        file="path.txt",
+        auto_advance=None,
+    )
+
+
 def test_parse_command_line_discard_alias():
     """Test parsing discard command alias 'd'."""
     args = parse_command_line(["d"], quiet=True)
@@ -1195,6 +1216,17 @@ def test_parse_command_line_discard_alias():
     assert args.command == "d"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_discard_passes_auto_advance(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_discard", mock_command)
+
+    args = parse_command_line(["discard", "--no-auto-advance"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(auto_advance=False)
 
 
 def test_parse_command_line_discard_with_file():

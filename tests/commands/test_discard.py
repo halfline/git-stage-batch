@@ -9,7 +9,12 @@ from git_stage_batch.batch import list_batch_files, read_batch_metadata, read_fi
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.commands.apply_from import command_apply_from_batch
-from git_stage_batch.data.hunk_tracking import fetch_next_change, recalculate_selected_hunk_for_file
+from git_stage_batch.data.hunk_tracking import (
+    fetch_next_change,
+    load_selected_change,
+    recalculate_selected_hunk_for_file,
+    selected_change_was_cleared_by_auto_advance_disabled,
+)
 
 import subprocess
 
@@ -176,6 +181,26 @@ class TestCommandDiscard:
         )
         assert "file2.txt" in result.stdout
         assert "file1.txt" not in result.stdout
+
+    def test_discard_no_auto_advance_leaves_no_selected_hunk(self, temp_git_repo):
+        """discard --no-auto-advance should leave the next hunk unselected."""
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("original 1\n")
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+        command_start(quiet=True)
+
+        command_discard(quiet=True, auto_advance=False)
+
+        assert load_selected_change() is None
+        assert selected_change_was_cleared_by_auto_advance_disabled() is True
+        with pytest.raises(CommandError, match="automatic advancement is disabled"):
+            command_discard(quiet=True)
 
     def test_discard_all_hunks_processed(self, temp_git_repo, capsys):
         """Test discard when all hunks have been processed."""

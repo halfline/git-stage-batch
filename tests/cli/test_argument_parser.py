@@ -266,6 +266,17 @@ def test_parse_command_line_start():
     assert callable(args.func)
 
 
+def test_parse_command_line_start_passes_auto_advance(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_start", mock_command)
+
+    args = parse_command_line(["start", "--no-auto-advance"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(context_lines=None, auto_advance=False)
+
+
 def test_parse_command_line_stop():
     """Test parsing stop command."""
     args = parse_command_line(["stop"], quiet=True)
@@ -291,6 +302,17 @@ def test_parse_command_line_again_alias():
     assert args.command == "a"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_again_passes_auto_advance(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_again", mock_command)
+
+    args = parse_command_line(["again", "--auto-advance"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(auto_advance=True)
 
 
 def test_parse_command_line_show():

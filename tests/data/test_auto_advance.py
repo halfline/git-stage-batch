@@ -4,6 +4,8 @@ import subprocess
 
 import pytest
 
+from git_stage_batch.commands.again import command_again
+from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.auto_advance import (
     read_auto_advance_default,
     write_auto_advance_default,
@@ -52,3 +54,32 @@ def test_auto_advance_default_ignores_unknown_config(temp_git_repo):
     write_text_file_contents(get_auto_advance_config_file_path(), "maybe\n")
 
     assert read_auto_advance_default() is True
+
+
+def test_start_initializes_auto_advance_default(temp_git_repo):
+    readme = temp_git_repo / "README.md"
+    readme.write_text("# Test\nChanged\n")
+
+    command_start(quiet=True, auto_advance=False)
+
+    assert read_auto_advance_default() is False
+
+
+def test_again_updates_auto_advance_default(temp_git_repo):
+    readme = temp_git_repo / "README.md"
+    readme.write_text("# Test\nChanged\n")
+    command_start(quiet=True, auto_advance=False)
+
+    command_again(quiet=True, auto_advance=True)
+
+    assert read_auto_advance_default() is True
+
+
+def test_again_preserves_auto_advance_default_without_override(temp_git_repo):
+    readme = temp_git_repo / "README.md"
+    readme.write_text("# Test\nChanged\n")
+    command_start(quiet=True, auto_advance=False)
+
+    command_again(quiet=True)
+
+    assert read_auto_advance_default() is False

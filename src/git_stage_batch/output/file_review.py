@@ -854,7 +854,7 @@ def make_file_review_state(
     """Create persisted review state from a rendered page selection."""
     page_count = len(model.pages)
     shown_page_set = set(shown_pages)
-    selection_actions = (
+    default_actions = (
         (
             FileReviewAction.INCLUDE_FROM_BATCH,
             FileReviewAction.DISCARD_FROM_BATCH,
@@ -874,22 +874,47 @@ def make_file_review_state(
     for change in model.changes:
         if not change.display_ids:
             continue
-        if visible_display_ids is not None and not set(change.display_ids).issubset(visible_display_ids):
+        is_splittable = (
+            source != ReviewSource.BATCH
+            and _change_is_presence_only(change)
+        )
+        display_ids = (
+            _display_ids_for_change_pages(model, change, shown_pages)
+            if is_splittable else
+            change.display_ids
+        )
+        if not display_ids:
             continue
-        change_actions = (
+        if visible_display_ids is not None and not set(display_ids).issubset(visible_display_ids):
+            continue
+        pages = _pages_containing_review_display_ids(
+            model,
+            display_ids,
+        )
+        if not pages:
+            continue
+        selection_actions = (
             tuple(FileReviewAction(action) for action in change.actions)
             if change.actions else
-            selection_actions
+            default_actions
         )
         selections.append(
             FileReviewSelectionState(
-                display_ids=change.display_ids,
-                selection_ids=change.selection_ids,
-                change_index=change.index,
-                first_page=change.first_page,
-                last_page=change.last_page,
+                display_ids=display_ids,
+                selection_ids=(
+                    _selection_ids_for_display_ids(model, display_ids)
+                    if is_splittable else
+                    change.selection_ids
+                ),
+                change_index=_change_index_containing_review_display_ids(
+                    model,
+                    display_ids,
+                ),
+                first_page=pages[0],
+                last_page=pages[-1],
                 reason=change.reason,
-                actions=change_actions,
+                actions=selection_actions,
+                is_splittable=is_splittable,
             )
         )
     if source == ReviewSource.BATCH and review_action_groups is not None:

@@ -1101,6 +1101,109 @@ def _baseline_reference_for_deletion_run(
     )
 
 
+def _baseline_reference_for_old_line_range(
+    old_start: int,
+    old_end: int,
+    old_line_content: dict[int, bytes],
+) -> BaselineReference:
+    after_line = old_start - 1 if old_start > 1 else None
+    before_line = old_end + 1
+    before_content = old_line_content.get(before_line)
+    return BaselineReference(
+        after_line=after_line,
+        after_content=(
+            old_line_content.get(after_line)
+            if after_line is not None else
+            None
+        ),
+        has_after_line=True,
+        before_line=before_line if before_content is not None else None,
+        before_content=before_content,
+        has_before_line=before_content is not None,
+    )
+
+
+@dataclass(frozen=True)
+class _HunkLineRangeScan:
+    start: int
+    end: int
+    start_index: int
+    stop_index: int
+    count: int
+    selected_count: int
+
+    @property
+    def complete(self) -> bool:
+        return self.count == self.end - self.start + 1
+
+    @property
+    def fully_selected(self) -> bool:
+        return self.complete and self.selected_count == self.count
+
+
+def _scan_hunk_line_range(
+    hunk_lines: list[LineEntry],
+    cursor: int,
+    *,
+    kind: str,
+    line_number_attr: str,
+    start: int,
+    end: int,
+    selected_display_ids: set[int],
+) -> _HunkLineRangeScan:
+    index = cursor
+    start_index = cursor
+    count = 0
+    selected_count = 0
+    found_first = False
+
+    while index < len(hunk_lines):
+        line = hunk_lines[index]
+        line_number = getattr(line, line_number_attr)
+        if line_number is not None and line_number > end:
+            break
+        if line.kind == kind and line_number is not None:
+            if line_number < start:
+                index += 1
+                continue
+            if line_number > end:
+                break
+            if not found_first:
+                start_index = index
+                found_first = True
+            count += 1
+            if line.id is not None and line.id in selected_display_ids:
+                selected_count += 1
+        index += 1
+
+    return _HunkLineRangeScan(
+        start=start,
+        end=end,
+        start_index=start_index,
+        stop_index=index,
+        count=count,
+        selected_count=selected_count,
+    )
+
+
+def _hunk_lines_in_range(
+    hunk_lines: list[LineEntry],
+    scan: _HunkLineRangeScan,
+    *,
+    kind: str,
+    line_number_attr: str,
+) -> Iterable[LineEntry]:
+    for index in range(scan.start_index, scan.stop_index):
+        line = hunk_lines[index]
+        line_number = getattr(line, line_number_attr)
+        if (
+            line.kind == kind
+            and line_number is not None
+            and scan.start <= line_number <= scan.end
+        ):
+            yield line
+
+
 def translate_hunk_selection_to_batch_ownership(
     hunk_lines: list[LineEntry],
     selected_display_ids: set[int],
@@ -1125,22 +1228,28 @@ def translate_hunk_selection_to_batch_ownership(
     replacement_units: list[ReplacementUnit] = []
     old_line_content = _old_line_content_by_number(hunk_lines)
     consumed_replacement_ids: set[int] = set()
-    deletion_lines_by_old_line = {
-        line.old_line_number: line
-        for line in hunk_lines
-        if line.kind == "-" and line.old_line_number is not None
-    }
-    addition_lines_by_new_line = {
-        line.new_line_number: line
-        for line in hunk_lines
-        if line.kind == "+" and line.new_line_number is not None
-    }
 
     def add_replacement_unit(
-        selected_old_lines: list[LineEntry],
-        selected_new_lines: list[LineEntry],
+        selected_old_lines: Iterable[LineEntry],
+        selected_new_lines: Iterable[LineEntry],
+        *,
+        old_start: int,
+        old_end: int,
     ) -> None:
+        deletion_content: list[bytes] = []
+        deletion_anchor: int | None = None
+        old_line_seen = False
         selected_source_lines = _LineRangeBuilder()
+        consumed_ids: list[int] = []
+
+        for old_line in selected_old_lines:
+            if not old_line_seen:
+                deletion_anchor = old_line.source_line
+                old_line_seen = True
+            deletion_content.append(_line_entry_content(old_line))
+            if old_line.id is not None:
+                consumed_ids.append(old_line.id)
+
         for new_line in selected_new_lines:
             if new_line.source_line is None:
                 raise ValueError(
@@ -1151,6 +1260,8 @@ def translate_hunk_selection_to_batch_ownership(
 
             claimed_source_lines.add_line(new_line.source_line)
             selected_source_lines.add_line(new_line.source_line)
+            if new_line.id is not None:
+                consumed_ids.append(new_line.id)
             if new_line.has_baseline_reference_after:
                 presence_baseline_references[new_line.source_line] = BaselineReference(
                     after_line=new_line.baseline_reference_after_line,
@@ -1163,13 +1274,11 @@ def translate_hunk_selection_to_batch_ownership(
 
         deletion_claims.append(
             DeletionClaim(
-                anchor_line=selected_old_lines[0].source_line,
-                content_lines=[
-                    _line_entry_content(old_line)
-                    for old_line in selected_old_lines
-                ],
-                baseline_reference=_baseline_reference_for_deletion_run(
-                    selected_old_lines,
+                anchor_line=deletion_anchor,
+                content_lines=deletion_content,
+                baseline_reference=_baseline_reference_for_old_line_range(
+                    old_start,
+                    old_end,
                     old_line_content,
                 ),
             )
@@ -1180,35 +1289,50 @@ def translate_hunk_selection_to_batch_ownership(
                 deletion_indices=[len(deletion_claims) - 1],
             )
         )
-        consumed_replacement_ids.update(
-            line_id
-            for line_id in [
-                *(line.id for line in selected_old_lines),
-                *(line.id for line in selected_new_lines),
-            ]
-            if line_id is not None
-        )
+        consumed_replacement_ids.update(consumed_ids)
+
+    old_cursor = 0
+    new_cursor = 0
 
     for replacement_run in replacement_line_runs or []:
-        old_lines = [
-            deletion_lines_by_old_line.get(old_line_number)
-            for old_line_number in replacement_run.old_line_numbers()
-        ]
-        new_lines = [
-            addition_lines_by_new_line.get(new_line_number)
-            for new_line_number in replacement_run.new_line_numbers()
-        ]
-        if (
-            any(line is None for line in old_lines)
-            or any(line is None for line in new_lines)
-        ):
+        old_scan = _scan_hunk_line_range(
+            hunk_lines,
+            old_cursor,
+            kind="-",
+            line_number_attr="old_line_number",
+            start=replacement_run.old_start,
+            end=replacement_run.old_end,
+            selected_display_ids=selected_display_ids,
+        )
+        new_scan = _scan_hunk_line_range(
+            hunk_lines,
+            new_cursor,
+            kind="+",
+            line_number_attr="new_line_number",
+            start=replacement_run.new_start,
+            end=replacement_run.new_end,
+            selected_display_ids=selected_display_ids,
+        )
+        old_cursor = old_scan.stop_index
+        new_cursor = new_scan.stop_index
+
+        if not old_scan.complete or not new_scan.complete:
             continue
 
-        old_hunk_lines = [line for line in old_lines if line is not None]
-        new_hunk_lines = [line for line in new_lines if line is not None]
-
-        if len(old_hunk_lines) == len(new_hunk_lines):
-            for old_line, new_line in zip(old_hunk_lines, new_hunk_lines):
+        if old_scan.count == new_scan.count:
+            old_lines = _hunk_lines_in_range(
+                hunk_lines,
+                old_scan,
+                kind="-",
+                line_number_attr="old_line_number",
+            )
+            new_lines = _hunk_lines_in_range(
+                hunk_lines,
+                new_scan,
+                kind="+",
+                line_number_attr="new_line_number",
+            )
+            for old_line, new_line in zip(old_lines, new_lines):
                 old_selected = (
                     old_line.id is not None
                     and old_line.id in selected_display_ids
@@ -1218,24 +1342,33 @@ def translate_hunk_selection_to_batch_ownership(
                     and new_line.id in selected_display_ids
                 )
                 if old_selected and new_selected:
-                    add_replacement_unit([old_line], [new_line])
+                    if old_line.old_line_number is None:
+                        continue
+                    add_replacement_unit(
+                        (old_line,),
+                        (new_line,),
+                        old_start=old_line.old_line_number,
+                        old_end=old_line.old_line_number,
+                    )
             continue
 
-        selected_old_lines = [
-            line for line in old_hunk_lines
-            if line.id is not None and line.id in selected_display_ids
-        ]
-        selected_new_lines = [
-            line for line in new_hunk_lines
-            if line.id is not None and line.id in selected_display_ids
-        ]
-        if (
-            len(selected_old_lines) == len(old_hunk_lines)
-            and len(selected_new_lines) == len(new_hunk_lines)
-            and selected_old_lines
-            and selected_new_lines
-        ):
-            add_replacement_unit(selected_old_lines, selected_new_lines)
+        if old_scan.fully_selected and new_scan.fully_selected:
+            add_replacement_unit(
+                _hunk_lines_in_range(
+                    hunk_lines,
+                    old_scan,
+                    kind="-",
+                    line_number_attr="old_line_number",
+                ),
+                _hunk_lines_in_range(
+                    hunk_lines,
+                    new_scan,
+                    kind="+",
+                    line_number_attr="new_line_number",
+                ),
+                old_start=replacement_run.old_start,
+                old_end=replacement_run.old_end,
+            )
 
     current_deletion_anchor: int | None = None
     current_deletion_lines: list[bytes] = []

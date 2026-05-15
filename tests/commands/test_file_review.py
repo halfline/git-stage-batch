@@ -951,6 +951,46 @@ def test_pathless_include_line_rejects_partial_replacement_selection(paged_file_
         command_include_line(partial_id)
 
 
+def test_pathless_include_line_accepts_visible_presence_subset_from_review(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    from git_stage_batch.output import file_review
+
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+    (tmp_path / "README.md").write_text("base\n")
+    subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+    added_lines = [f"line {index}\n" for index in range(1, 13)]
+    (tmp_path / "new.txt").write_text("".join(added_lines))
+    command_start(quiet=True)
+    monkeypatch.setattr(file_review, "_body_budget", lambda: 6)
+
+    command_show(file="new.txt", page="1")
+    captured = capsys.readouterr()
+    assert "change 1/1" in captured.out
+    state = read_last_file_review_state()
+    assert state is not None
+    assert len(state.selections) == 1
+    assert state.selections[0].display_ids == (1, 2, 3, 4)
+    assert state.selections[0].is_splittable is True
+
+    command_include_line("1-3")
+
+    result = subprocess.run(
+        ["git", "show", ":new.txt"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout == "".join(added_lines[:3])
+
+
 def test_pathless_include_line_rejects_unshown_change(paged_file_repo, monkeypatch, capsys):
     _force_one_change_per_page(monkeypatch)
     command_show(file="file.txt", page="1")

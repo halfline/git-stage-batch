@@ -7,7 +7,7 @@ import pytest
 from git_stage_batch.batch.ownership import (
     BaselineReference,
     BatchOwnership,
-    DeletionClaim,
+    AbsenceClaim,
     ReplacementUnit,
     _advance_source_lines_preserving_existing_presence,
     _remap_batch_ownership_with_lineage,
@@ -187,7 +187,7 @@ def test_remap_claimed_lines_accepts_non_list_line_sequences(line_sequence):
 
 
 def test_remap_deletion_anchors_to_new_source():
-    """Test remapping of deletion claim anchors from old source to new source."""
+    """Test remapping of absence claim anchors from old source to new source."""
     old_source = b"line one\nline two\nline three\n"
     new_source = b"new first line\nline one\nline two\nline three\n"
 
@@ -195,7 +195,7 @@ def test_remap_deletion_anchors_to_new_source():
     old_ownership = BatchOwnership.from_presence_lines(
         [],
         [
-            DeletionClaim(anchor_line=2, content_lines=[b"deleted line\n"])
+            AbsenceClaim(anchor_line=2, content_lines=[b"deleted line\n"])
         ]
     )
 
@@ -220,7 +220,7 @@ def test_remap_start_of_file_deletion_anchor():
     old_ownership = BatchOwnership.from_presence_lines(
         [],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"deleted at start\n"])
+            AbsenceClaim(anchor_line=None, content_lines=[b"deleted at start\n"])
         ]
     )
 
@@ -262,7 +262,7 @@ def test_remap_fails_when_anchor_removed_in_new_source():
     old_ownership = BatchOwnership.from_presence_lines(
         [],
         [
-            DeletionClaim(anchor_line=2, content_lines=[b"deleted\n"])
+            AbsenceClaim(anchor_line=2, content_lines=[b"deleted\n"])
         ]
     )
 
@@ -304,7 +304,7 @@ def test_remap_preserves_deletion_content():
     old_ownership = BatchOwnership.from_presence_lines(
         [],
         [
-            DeletionClaim(anchor_line=1, content_lines=deletion_content)
+            AbsenceClaim(anchor_line=1, content_lines=deletion_content)
         ]
     )
 
@@ -326,7 +326,7 @@ def test_remap_preserves_explicit_replacement_units():
     old_ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(anchor_line=2, content_lines=[b"old value\n"]),
+            AbsenceClaim(anchor_line=2, content_lines=[b"old value\n"]),
         ],
         replacement_units=[
             ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
@@ -446,8 +446,8 @@ def test_source_lineage_remaps_guarded_presence_ranges():
 
 
 def test_merge_coalesces_overlapping_replacement_units_after_deduplication():
-    """Deduplicated deletion claims should keep replacement metadata disjoint."""
-    deletion = DeletionClaim(anchor_line=None, content_lines=[b"old value\n"])
+    """Deduplicated absence claims should keep replacement metadata disjoint."""
+    deletion = AbsenceClaim(anchor_line=None, content_lines=[b"old value\n"])
     existing = BatchOwnership.from_presence_lines(
         ["1"],
         [deletion],
@@ -458,7 +458,7 @@ def test_merge_coalesces_overlapping_replacement_units_after_deduplication():
     new = BatchOwnership.from_presence_lines(
         ["2"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old value\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old value\n"]),
         ],
         replacement_units=[
             ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
@@ -478,7 +478,7 @@ def test_merge_deduplicated_deletions_keeps_stronger_baseline_reference():
     """Deduplicated deletions should keep baseline metadata from new claims."""
     existing = BatchOwnership.from_presence_lines(
         [],
-        [DeletionClaim(anchor_line=1, content_lines=[b"old value\n"])],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old value\n"])],
     )
     reference = BaselineReference(
         after_line=1,
@@ -490,7 +490,7 @@ def test_merge_deduplicated_deletions_keeps_stronger_baseline_reference():
     new = BatchOwnership.from_presence_lines(
         [],
         [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=1,
                 content_lines=[b"old value\n"],
                 baseline_reference=reference,
@@ -501,7 +501,7 @@ def test_merge_deduplicated_deletions_keeps_stronger_baseline_reference():
     merged = merge_batch_ownership(existing, new)
 
     assert merged.deletions == [
-        DeletionClaim(
+        AbsenceClaim(
             anchor_line=1,
             content_lines=[b"old value\n"],
             baseline_reference=reference,
@@ -514,8 +514,8 @@ def test_merge_ignores_boolean_replacement_unit_deletion_indices():
     new = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old one\n"]),
-            DeletionClaim(anchor_line=None, content_lines=[b"old two\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old one\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old two\n"]),
         ],
         replacement_units=[
             ReplacementUnit(presence_lines=["1"], deletion_indices=[True]),

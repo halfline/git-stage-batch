@@ -1,6 +1,6 @@
 """Tests for replacement batch-source helpers."""
 
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.replacement import (
     ReplacementBatchView,
     build_replacement_batch_view_from_lines,
@@ -30,7 +30,7 @@ def test_build_replacement_batch_view_returns_named_result(line_sequence):
     ownership = BatchOwnership(
         [],
         [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=1,
                 content_lines=[b"old\n"],
             )

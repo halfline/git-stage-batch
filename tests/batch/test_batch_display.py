@@ -11,7 +11,7 @@ from git_stage_batch.batch.display import (
     annotate_with_batch_source_working_lines,
     build_display_lines_from_batch_source_lines,
 )
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.editor import EditorBuffer
 
@@ -66,7 +66,7 @@ class _RangeBackedDisplayOwnership:
     def __init__(
         self,
         selection: _IterationGuardedLineSelection,
-        deletions: Iterable[DeletionClaim] = (),
+        deletions: Iterable[AbsenceClaim] = (),
     ) -> None:
         self._selection = selection
         self.deletions = list(deletions)
@@ -85,7 +85,7 @@ def test_display_builder_accepts_non_list_byte_line_sequences(line_sequence):
     ownership = BatchOwnership.from_presence_lines(
         ["1,3"],
         [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=1,
                 content_lines=[b"deleted\n"],
             ),
@@ -145,7 +145,7 @@ def test_display_builder_uses_ranges_without_expanding_claims():
     ownership = _RangeBackedDisplayOwnership(
         _IterationGuardedLineSelection(((50, 52),)),
         [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=60,
                 content_lines=[b"deleted\n"],
             ),

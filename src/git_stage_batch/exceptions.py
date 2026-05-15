@@ -35,7 +35,7 @@ class MergeError(Exception):
 class MissingAnchorError(MergeError):
     """Raised when an anchor line is not present in realized content.
 
-    This is a recoverable condition during discard: the deletion claim
+    This is a recoverable condition during discard: the absence claim
     is simply not applicable to the current state.
     """
     pass

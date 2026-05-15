@@ -7,7 +7,7 @@ import pytest
 import git_stage_batch.commands.reset as reset_module
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.data.hunk_tracking as hunk_tracking_module
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
 from git_stage_batch.commands.again import command_again
@@ -369,7 +369,7 @@ class TestResetFromBatch:
             BatchOwnership.from_presence_lines(
                 ["1", "2"],
                 [
-                    DeletionClaim(
+                    AbsenceClaim(
                         anchor_line=5,
                         content_lines=[b"removed\n"],
                     ),
@@ -681,7 +681,7 @@ class TestResetFromBatch:
             BatchOwnership.from_presence_lines(
                 ["1", "2"],
                 [
-                    DeletionClaim(
+                    AbsenceClaim(
                         anchor_line=None,
                         content_lines=[b"line 1\n"],
                     ),
@@ -765,7 +765,7 @@ class TestResetFromBatch:
             BatchOwnership.from_presence_lines(
                 ["1"],
                 [
-                    DeletionClaim(
+                    AbsenceClaim(
                         anchor_line=None,
                         content_lines=[b"line 1\n"],
                     ),
@@ -850,7 +850,7 @@ class TestResetFromBatch:
 
         # Manually create ownership with replacement: claim line 1, delete original line 1
         # The deletion is anchored at line 0 (start of file) to be spatially close to line 1
-        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])])
+        ownership = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=None, content_lines=[b"line 1\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Verify initial ownership has both claimed line and deletion
@@ -889,7 +889,7 @@ class TestResetFromBatch:
         fetch_next_change()
 
         # Create replacement: deletion + claimed line
-        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])])
+        ownership = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=None, content_lines=[b"line 1\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Attempting to select only display ID 1 (deletion) should error
@@ -913,7 +913,7 @@ class TestResetFromBatch:
         command_new_batch("mybatch", "test batch")
         command_start()
         fetch_next_change()
-        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])])
+        ownership = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=None, content_lines=[b"line 1\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         command_show_from_batch("mybatch", file="test.py", page="all")
@@ -925,7 +925,7 @@ class TestResetFromBatch:
         assert "Use: --line 1-2" in exc_info.value.message
 
     def test_reset_presence_only_keeps_unrelated_deletions(self, temp_git_repo):
-        """Test that resetting presence-only lines preserves unrelated deletion claims."""
+        """Test that resetting presence-only lines preserves unrelated absence claims."""
 
         # Create a file with enough lines to test distant anchoring
         test_file = temp_git_repo / "test.py"
@@ -946,7 +946,7 @@ class TestResetFromBatch:
         # - deletion anchored after line 6
         # Display order: claimed1, claimed3, claimed5, deletion-at-6
         # This keeps claimed3 separate from the deletion.
-        ownership = BatchOwnership.from_presence_lines(["1", "3", "5"], [DeletionClaim(anchor_line=6, content_lines=[b"debug_log()\n"])])
+        ownership = BatchOwnership.from_presence_lines(["1", "3", "5"], [AbsenceClaim(anchor_line=6, content_lines=[b"debug_log()\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Display structure (display adjacency grouping):
@@ -989,7 +989,7 @@ class TestResetFromBatch:
         # Create ownership with:
         # - Replacement unit: deletion + claimed line 1
         # - Presence-only: claimed line 2
-        ownership = BatchOwnership.from_presence_lines(["1", "2"], [DeletionClaim(anchor_line=None, content_lines=[b"line 1\n"])])
+        ownership = BatchOwnership.from_presence_lines(["1", "2"], [AbsenceClaim(anchor_line=None, content_lines=[b"line 1\n"])])
         add_file_to_batch("mybatch", "test.py", ownership, "100644")
 
         # Display structure:

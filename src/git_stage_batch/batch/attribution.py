@@ -691,7 +691,7 @@ def _batch_owns_deletion_unit(
     file_metadata: dict,
     alignment,
 ) -> bool:
-    """Check whether a batch owns a deletion unit via explicit deletion claims."""
+    """Check whether a batch owns a deletion unit via explicit absence claims."""
     if unit.deletion_content is None and unit.deletion_fingerprint is None:
         return False
 

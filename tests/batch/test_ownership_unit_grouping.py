@@ -12,7 +12,7 @@ from git_stage_batch.batch.display import (
 )
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
-    DeletionClaim,
+    AbsenceClaim,
     OwnershipUnit,
     OwnershipUnitKind,
     ReplacementUnit,
@@ -141,7 +141,7 @@ def test_deletion_followed_by_claimed_becomes_replacement():
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old line 1\n", b"old line 2\n"])
+            AbsenceClaim(anchor_line=None, content_lines=[b"old line 1\n", b"old line 2\n"])
         ]
     )
 
@@ -166,7 +166,7 @@ def test_build_ownership_units_accepts_batch_source_line_sequence(line_sequence)
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old line 1\n"])
+            AbsenceClaim(anchor_line=None, content_lines=[b"old line 1\n"])
         ],
     )
 
@@ -219,7 +219,7 @@ def test_claimed_followed_by_deletion_becomes_replacement():
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(anchor_line=1, content_lines=[b"old line 2\n"])
+            AbsenceClaim(anchor_line=1, content_lines=[b"old line 2\n"])
         ]
     )
 
@@ -252,7 +252,7 @@ def test_deletion_without_adjacent_claimed_is_deletion_only():
     ownership = BatchOwnership.from_presence_lines(
         [],
         [
-            DeletionClaim(anchor_line=1, content_lines=[b"old line 2\n"])
+            AbsenceClaim(anchor_line=1, content_lines=[b"old line 2\n"])
         ]
     )
 
@@ -355,8 +355,8 @@ def test_nearby_in_source_separated_in_display_not_coupled():
     ownership = BatchOwnership.from_presence_lines(
         ["2"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old line 1\n"]),
-            DeletionClaim(anchor_line=3, content_lines=[b"old line 4\n"])
+            AbsenceClaim(anchor_line=None, content_lines=[b"old line 1\n"]),
+            AbsenceClaim(anchor_line=3, content_lines=[b"old line 4\n"])
         ]
     )
 
@@ -459,7 +459,7 @@ def test_multiple_consecutive_deletions_and_claims_form_single_replacement():
     ownership = BatchOwnership.from_presence_lines(
         ["1-2"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old line 1\n", b"old line 2\n"])
+            AbsenceClaim(anchor_line=None, content_lines=[b"old line 1\n", b"old line 2\n"])
         ]
     )
 
@@ -492,7 +492,7 @@ def test_rebuild_does_not_promote_display_adjacency_to_explicit_metadata():
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old line\n"])
+            AbsenceClaim(anchor_line=None, content_lines=[b"old line\n"])
         ],
     )
 
@@ -511,7 +511,7 @@ def test_explicit_replacement_unit_overrides_display_adjacency():
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(anchor_line=3, content_lines=[b"old later\n"]),
+            AbsenceClaim(anchor_line=3, content_lines=[b"old later\n"]),
         ],
         replacement_units=[
             ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
@@ -534,7 +534,7 @@ def test_explicit_replacement_unit_can_group_multiple_claimed_lines():
     ownership = BatchOwnership.from_presence_lines(
         ["1-2"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
         ],
         replacement_units=[
             ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
@@ -555,7 +555,7 @@ def test_rebuild_preserves_explicit_replacement_units():
     ownership = BatchOwnership.from_presence_lines(
         ["1-2"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
         ],
         replacement_units=[
             ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
@@ -576,11 +576,11 @@ def test_rebuild_preserves_explicit_replacement_units():
 def test_rebuild_preserves_mixed_same_anchor_deletion_order():
     """Same-anchor explicit and inferred deletions should keep stable indexes."""
     batch_source = b"new explicit\nnew inferred\nkeep\n"
-    explicit_deletion = DeletionClaim(
+    explicit_deletion = AbsenceClaim(
         anchor_line=None,
         content_lines=[b"old explicit\n"],
     )
-    inferred_deletion = DeletionClaim(
+    inferred_deletion = AbsenceClaim(
         anchor_line=None,
         content_lines=[b"old inferred\n"],
     )
@@ -608,11 +608,11 @@ def test_rebuild_preserves_mixed_same_anchor_deletion_order():
 def test_rebuild_preserves_mixed_same_anchor_order_when_explicit_is_later():
     """Later explicit replacements should not reorder earlier inferred deletions."""
     batch_source = b"new explicit\nkeep\n"
-    inferred_deletion = DeletionClaim(
+    inferred_deletion = AbsenceClaim(
         anchor_line=None,
         content_lines=[b"old inferred\n"],
     )
-    explicit_deletion = DeletionClaim(
+    explicit_deletion = AbsenceClaim(
         anchor_line=None,
         content_lines=[b"old explicit\n"],
     )

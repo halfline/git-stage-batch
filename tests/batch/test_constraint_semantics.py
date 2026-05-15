@@ -5,7 +5,7 @@ described in BATCHES.md.
 """
 
 
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
 from git_stage_batch.batch.storage import _build_realized_buffer_from_lines
 from git_stage_batch.editor import EditorBuffer
@@ -46,11 +46,11 @@ def _build_realized_content_from_bytes(
         return realized.to_bytes()
 
 
-class TestDeletionClaimIdentity:
-    """Test that deletion claims are structurally anchored and independent."""
+class TestAbsenceClaimIdentity:
+    """Test that absence claims are structurally anchored and independent."""
 
     def test_two_deletion_claims_same_anchor_different_content(self):
-        """Two deletion claims at same anchor but different content are distinct.
+        """Two absence claims at same anchor but different content are distinct.
 
         This tests that anchors are part of identity, not just hints.
         Different content at the same anchor represents different constraints.
@@ -63,9 +63,9 @@ class TestDeletionClaimIdentity:
         # Batch B: removes "old_impl()"
         # These are DIFFERENT constraints even though anchor is the same
 
-        ownership_a = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=1, content_lines=[b"debug_log()\n"])])
+        ownership_a = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=1, content_lines=[b"debug_log()\n"])])
 
-        ownership_b = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=1, content_lines=[b"old_impl()\n"])])
+        ownership_b = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=1, content_lines=[b"old_impl()\n"])])
 
         # Applying batch A should preserve "old_impl()" even though anchor matches.
         result_a = merge_batch(batch_source, ownership_a, working)
@@ -78,14 +78,14 @@ class TestDeletionClaimIdentity:
     def test_same_deletion_content_different_anchors(self):
         """Same deletion content at different anchors are distinct constraints.
 
-        This tests that deletion claims are position-aware, not global.
+        This tests that absence claims are position-aware, not global.
         The same bytes at different structural positions are different claims.
         """
         batch_source = b"line1\nmarker\nline3\nmarker\nline5\n"
         working = b"line1\nmarker\nline3\nmarker\nline5\n"
 
         # Claim that suppresses only the first marker after line 1.
-        ownership = BatchOwnership.from_presence_lines(["1", "3", "5"], [DeletionClaim(anchor_line=1, content_lines=[b"marker\n"])])
+        ownership = BatchOwnership.from_presence_lines(["1", "3", "5"], [AbsenceClaim(anchor_line=1, content_lines=[b"marker\n"])])
 
         result = merge_batch(batch_source, ownership, working)
         lines = result.splitlines(keepends=True)
@@ -100,7 +100,7 @@ class TestDeletionClaimIdentity:
         assert marker_count == 1, "expected exactly one marker remaining"
 
     def test_deletion_claims_not_collapsed(self):
-        """Multiple deletion claims must remain structurally distinct.
+        """Multiple absence claims must remain structurally distinct.
 
         Tests that contiguous deletion runs are kept distinct rather than collapsed into
         a single claim, even if they could share an anchor.
@@ -109,7 +109,7 @@ class TestDeletionClaimIdentity:
         ownership = BatchOwnership.from_presence_lines(
             ["1", "2", "3"],
             [
-                DeletionClaim(anchor_line=1, content_lines=[b"old1\n", b"old2\n"]),
+                AbsenceClaim(anchor_line=1, content_lines=[b"old1\n", b"old2\n"]),
                 # Kept separate from the first claim even though it shares an anchor.
             ]
         )
@@ -125,7 +125,7 @@ class TestRepeatedLinesNotGloballyRemoved:
     def test_repeated_identical_lines_only_anchored_removed(self):
         """Repeated lines: only suppress at anchored position, not globally.
 
-        Deletion claims must not act as global content filters.
+        Absence claims must not act as global content filters.
         """
         batch_source = b"header\ncommon\nfooter\n"
         working = b"header\ncommon\nsection1\ncommon\nsection2\ncommon\nfooter\n"
@@ -133,7 +133,7 @@ class TestRepeatedLinesNotGloballyRemoved:
         # Suppress "common" after "header" (first occurrence only)
         ownership = BatchOwnership.from_presence_lines(
             ["1", "3"],
-            [DeletionClaim(anchor_line=1, content_lines=[b"common\n"])]
+            [AbsenceClaim(anchor_line=1, content_lines=[b"common\n"])]
         )
 
         result = merge_batch(batch_source, ownership, working)
@@ -156,7 +156,7 @@ class TestIdempotence:
         batch_source = b"line1\nline2-modified\nline3\n"
         working = b"line1\nline2\nline3\n"
 
-        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])])
+        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"])])
 
         # First application
         result1 = merge_batch(batch_source, ownership, working)
@@ -171,7 +171,7 @@ class TestIdempotence:
         batch_source = b"line1\nline2-modified\nline3\n"
         working = b"line1\nline2\nextra\nline3\n"
 
-        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])])
+        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"])])
 
         result1 = merge_batch(batch_source, ownership, working)
         result2 = merge_batch(batch_source, ownership, result1)
@@ -186,7 +186,7 @@ class TestPureRemovalBatches:
     """Test deletion-only ownership (no claimed presence lines)."""
 
     def test_deletion_only_ownership(self):
-        """Batch with only deletion claims, no presence claims.
+        """Batch with only absence claims, no presence claims.
 
         This tests that pure removals are representable.
         """
@@ -194,7 +194,7 @@ class TestPureRemovalBatches:
         working = b"line1\nline2\ndebug_log()\nline3\n"
 
         # Pure removal: just suppress debug_log, don't claim anything else
-        ownership = BatchOwnership.from_presence_lines([], [DeletionClaim(anchor_line=2, content_lines=[b"debug_log()\n"])])
+        ownership = BatchOwnership.from_presence_lines([], [AbsenceClaim(anchor_line=2, content_lines=[b"debug_log()\n"])])
 
         result = merge_batch(batch_source, ownership, working)
 
@@ -214,7 +214,7 @@ class TestBytesBasedSemantics:
         working = b"line1\n\xe9cole\nextra\nline3\n"
 
         # Claim école (line 2) and suppress "extra" (working tree insertion after école)
-        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=2, content_lines=[b"extra\n"])])
+        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=2, content_lines=[b"extra\n"])])
 
         result = merge_batch(
             batch_source,
@@ -232,7 +232,7 @@ class TestBytesBasedSemantics:
         batch_source = b"line1\r\nline2-modified\r\nline3\r\n"
         working = b"line1\r\nline2\r\nline3\r\n"
 
-        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=1, content_lines=[b"line2\r\n"])])
+        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\r\n"])])
 
         result = merge_batch(batch_source, ownership, working)
 
@@ -248,7 +248,7 @@ class TestRealizedContentConstruction:
         baseline_content = b"line1\nline2\nline3\n"
         batch_source_content = b"line1\nline2-modified\nline3\n"
 
-        ownership = BatchOwnership.from_presence_lines(["2"], [DeletionClaim(anchor_line=1, content_lines=[b"line2\n"])])
+        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"])])
 
         realized = _build_realized_content_from_bytes(
             baseline_content,
@@ -271,7 +271,7 @@ class TestRealizedContentConstruction:
         baseline_content = b"header\nold value\nfooter\n"
         batch_source_content = b"header\nnew value\nfooter\n"
 
-        ownership = BatchOwnership.from_presence_lines([], [DeletionClaim(anchor_line=2, content_lines=[b"old value\n"])],
+        ownership = BatchOwnership.from_presence_lines([], [AbsenceClaim(anchor_line=2, content_lines=[b"old value\n"])],
         )
 
         realized = _build_realized_content_from_bytes(
@@ -290,8 +290,8 @@ class TestRealizedContentConstruction:
         ownership = BatchOwnership.from_presence_lines(
             [],
             [
-                DeletionClaim(anchor_line=1, content_lines=[b"line2\n"]),
-                DeletionClaim(anchor_line=2, content_lines=[b"line3\n"]),
+                AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"]),
+                AbsenceClaim(anchor_line=2, content_lines=[b"line3\n"]),
             ],
         )
 

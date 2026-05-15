@@ -25,7 +25,7 @@ from git_stage_batch.exceptions import MergeError
 from git_stage_batch.batch.ownership import (
     BaselineReference,
     BatchOwnership,
-    DeletionClaim,
+    AbsenceClaim,
     ReplacementUnit,
 )
 from git_stage_batch.utils.text import normalize_line_sequence_endings
@@ -978,8 +978,8 @@ class TestMergeBatch:
         source = b"line1\nline2\nline3\n"
         working = b"unwanted\nline1\nline2\nline3\n"
 
-        # Create deletion claim to suppress "unwanted"
-        deletions = [DeletionClaim(anchor_line=None, content_lines=[b"unwanted\n"])]
+        # Create absence claim to suppress "unwanted"
+        deletions = [AbsenceClaim(anchor_line=None, content_lines=[b"unwanted\n"])]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
 
@@ -991,7 +991,7 @@ class TestMergeBatch:
         source = b"line1\nline2\nline3\n"
         working = b"unwanted\nline1\nline2\nline3\n"
         deletions = [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=None,
                 content_lines=line_sequence([b"unwanted\n"]),
             ),
@@ -1008,7 +1008,7 @@ class TestMergeBatch:
         ownership = BatchOwnership.from_presence_lines(
             [],
             [
-                DeletionClaim(
+                AbsenceClaim(
                     anchor_line=2,
                     content_lines=[b"old value\n"],
                     baseline_reference=BaselineReference(after_line=1),
@@ -1025,7 +1025,7 @@ class TestMergeBatch:
         ownership = BatchOwnership.from_presence_lines(
             [],
             [
-                DeletionClaim(
+                AbsenceClaim(
                     anchor_line=1,
                     content_lines=[b"old value\n"],
                     baseline_reference=BaselineReference(after_line=1),
@@ -1043,7 +1043,7 @@ class TestMergeBatch:
         ownership = BatchOwnership.from_presence_lines(
             ["1"],
             [
-                DeletionClaim(
+                AbsenceClaim(
                     anchor_line=None,
                     content_lines=[b"same\n"],
                     baseline_reference=BaselineReference(
@@ -1081,7 +1081,7 @@ class TestMergeBatch:
         ownership = BatchOwnership.from_presence_lines(
             ["1"],
             [
-                DeletionClaim(
+                AbsenceClaim(
                     anchor_line=5,
                     content_lines=[b"a\n"],
                     baseline_reference=BaselineReference(
@@ -1114,7 +1114,7 @@ class TestMergeBatch:
         ownership = BatchOwnership.from_presence_lines(
             [],
             [
-                DeletionClaim(
+                AbsenceClaim(
                     anchor_line=2,
                     content_lines=[b"old value\n"],
                     baseline_reference=BaselineReference(after_line=1),
@@ -1130,8 +1130,8 @@ class TestMergeBatch:
         source = b"line1\nline2\nline3\n"
         working = b"line1\nline2\nunwanted\nline3\n"
 
-        # Create deletion claim to suppress "unwanted" after line 2
-        deletions = [DeletionClaim(anchor_line=2, content_lines=[b"unwanted\n"])]
+        # Create absence claim to suppress "unwanted" after line 2
+        deletions = [AbsenceClaim(anchor_line=2, content_lines=[b"unwanted\n"])]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
 
@@ -1143,8 +1143,8 @@ class TestMergeBatch:
         source = b"line1\nline2\nline3\n"
         working = b"line1\nline2\ndifferent\nline3\n"
 
-        # Create deletion claim for content that doesn't exist
-        deletions = [DeletionClaim(anchor_line=2, content_lines=[b"nonexistent\n"])]
+        # Create absence claim for content that doesn't exist
+        deletions = [AbsenceClaim(anchor_line=2, content_lines=[b"nonexistent\n"])]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
 
@@ -1160,8 +1160,8 @@ class TestMergeBatch:
         source = b"line1\nline2\nline3\n"
         working = b"duplicate\nline1\nduplicate\nline2\nline3\n"
 
-        # Create deletion claim anchored at start-of-file
-        deletions = [DeletionClaim(anchor_line=None, content_lines=[b"duplicate\n"])]
+        # Create absence claim anchored at start-of-file
+        deletions = [AbsenceClaim(anchor_line=None, content_lines=[b"duplicate\n"])]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
 
@@ -1178,8 +1178,8 @@ class TestMergeBatch:
         source = b"line1\nline2\nline3\n"
         working = b"line1\nblock_start\nblock_end\nline2\nline3\n"
 
-        # Create deletion claim for multi-line sequence
-        deletions = [DeletionClaim(anchor_line=1, content_lines=[b"block_start\n", b"block_end\n"])]
+        # Create absence claim for multi-line sequence
+        deletions = [AbsenceClaim(anchor_line=1, content_lines=[b"block_start\n", b"block_end\n"])]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
 
@@ -1325,8 +1325,8 @@ class TestMergeBatch:
         working = b"unwanted1\nline1\nline2\nunwanted2\nline3\n"
 
         deletions = [
-            DeletionClaim(anchor_line=None, content_lines=[b"unwanted1\n"]),
-            DeletionClaim(anchor_line=2, content_lines=[b"unwanted2\n"])
+            AbsenceClaim(anchor_line=None, content_lines=[b"unwanted1\n"]),
+            AbsenceClaim(anchor_line=2, content_lines=[b"unwanted2\n"])
         ]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
@@ -1341,8 +1341,8 @@ class TestMergeBatch:
 
         # Two deletion constraints for same content (e.g., from incremental batching)
         deletions = [
-            DeletionClaim(anchor_line=None, content_lines=[b"unwanted\n"]),
-            DeletionClaim(anchor_line=2, content_lines=[b"unwanted\n"])
+            AbsenceClaim(anchor_line=None, content_lines=[b"unwanted\n"]),
+            AbsenceClaim(anchor_line=2, content_lines=[b"unwanted\n"])
         ]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
@@ -1399,7 +1399,7 @@ class TestMergeErrors:
         source = b"line1\nline2\nline3\n"
         working = b"line1\nline2\nline3\n"
 
-        deletions = [DeletionClaim(anchor_line=100, content_lines=[b"unwanted\n"])]
+        deletions = [AbsenceClaim(anchor_line=100, content_lines=[b"unwanted\n"])]
 
         with pytest.raises(MergeError, match="out of range"):
             merge_batch(source, BatchOwnership([], deletions), working)
@@ -1520,7 +1520,7 @@ class TestMergeErrors:
 
         # But the batch also includes a DELETION that depends on context from lines 7-12
         # Specifically, it wants to delete line 6 with anchor near line 7
-        deletions = [DeletionClaim(anchor_line=7, content_lines=[b"line6\n"])]
+        deletions = [AbsenceClaim(anchor_line=7, content_lines=[b"line6\n"])]
 
         # Trying to merge should detect that:
         # 1. The deletion anchor (line 7 in source_later) doesn't exist in working_early
@@ -1587,7 +1587,7 @@ parser_include = subparsers.add_parser(
         # Batch wants to:
         # 1. Delete line 4 (old set_defaults) with anchor after line 3
         # 2. Add lines 5-6 (--porcelain arg + new set_defaults)
-        deletions = [DeletionClaim(
+        deletions = [AbsenceClaim(
             anchor_line=3,
             content_lines=[b"parser_status.set_defaults(func=lambda _: commands.command_status())\n"]
         )]
@@ -1669,7 +1669,7 @@ line3_c
         claimed = ["7"]  # line2_b_MODIFIED in source
         deletions = [
             # Try to delete from Section A (anchor at line 2)
-            DeletionClaim(anchor_line=2, content_lines=[b"line1_a\n"])
+            AbsenceClaim(anchor_line=2, content_lines=[b"line1_a\n"])
         ]
 
         # This should fail because Section A doesn't exist in working tree

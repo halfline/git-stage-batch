@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch import create_batch
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim, ReplacementUnit
+from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim, ReplacementUnit
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
@@ -2240,7 +2240,7 @@ def test_batch_review_does_not_suggest_partial_non_adjacent_atomic_replacement(
         BatchOwnership.from_presence_lines(
             ["1"],
             [
-                DeletionClaim(anchor_line=3, content_lines=[b"old later\n"]),
+                AbsenceClaim(anchor_line=3, content_lines=[b"old later\n"]),
             ],
             replacement_units=[
                 ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),

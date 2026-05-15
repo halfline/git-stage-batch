@@ -14,7 +14,7 @@ from .match import match_lines
 
 if TYPE_CHECKING:
     from .match import LineMapping
-    from .ownership import BatchOwnership, DeletionClaim
+    from .ownership import BatchOwnership, AbsenceClaim
 
 
 LineForDisplay = TypeVar("LineForDisplay", bytes, str)
@@ -53,8 +53,8 @@ def _build_display_lines_from_batch_source_lines(
     display_lines = []
     display_id = 1
 
-    # Build map of deletion claim positions
-    deletions_by_position: dict[int | None, list[tuple[int, 'DeletionClaim']]] = {}
+    # Build map of absence claim positions
+    deletions_by_position: dict[int | None, list[tuple[int, 'AbsenceClaim']]] = {}
     for idx, claim in enumerate(ownership.deletions):
         anchor = claim.anchor_line
         if anchor not in deletions_by_position:

@@ -13,7 +13,7 @@ from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batc
 from git_stage_batch.batch.ownership import (
     BaselineReference,
     BatchOwnership,
-    DeletionClaim,
+    AbsenceClaim,
     ReplacementUnit,
     detach_batch_ownership,
 )
@@ -95,7 +95,7 @@ def test_add_file_to_batch_persists_replacement_units(temp_git_repo):
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old\n"]),
         ],
         replacement_units=[
             ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
@@ -119,11 +119,11 @@ def test_deletion_claim_metadata_accepts_non_list_content_lines(
     temp_git_repo,
     line_sequence,
 ):
-    """Deletion claim metadata only requires indexed content lines."""
+    """Absence claim metadata only requires indexed content lines."""
     ownership = BatchOwnership.from_presence_lines(
         [],
         [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=None,
                 content_lines=line_sequence([b"old one\n", b"old two\n"]),
             ),
@@ -142,7 +142,7 @@ def test_batch_ownership_metadata_acquisition_scopes_deletion_buffers(temp_git_r
     ownership = BatchOwnership.from_presence_lines(
         [],
         [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=None,
                 content_lines=[b"old one\n", b"old two\n"],
             ),
@@ -165,7 +165,7 @@ def test_detach_batch_ownership_keeps_acquired_deletion_content(temp_git_repo):
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=None,
                 content_lines=[b"old one\n", b"old two\n"],
             ),
@@ -253,7 +253,7 @@ def test_add_file_to_batch_persists_baseline_references(temp_git_repo):
     ownership = BatchOwnership.from_presence_lines(
         ["2"],
         [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=1,
                 content_lines=[b"old line\n"],
                 baseline_reference=deletion_reference,
@@ -295,8 +295,8 @@ def test_boolean_replacement_unit_indices_are_omitted_from_metadata(temp_git_rep
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
-            DeletionClaim(anchor_line=None, content_lines=[b"old one\n"]),
-            DeletionClaim(anchor_line=None, content_lines=[b"old two\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old one\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old two\n"]),
         ],
         replacement_units=[
             ReplacementUnit(presence_lines=["1"], deletion_indices=[True]),
@@ -343,7 +343,7 @@ def test_add_file_to_batch_marks_whole_deleted_text_file(temp_git_repo):
     gone_file.unlink()
     ownership = BatchOwnership.from_presence_lines(
         [],
-        [DeletionClaim(anchor_line=None, content_lines=[b"gone\n"])],
+        [AbsenceClaim(anchor_line=None, content_lines=[b"gone\n"])],
     )
     add_file_to_batch("test-batch", "gone.txt", ownership)
 

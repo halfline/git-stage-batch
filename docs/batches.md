@@ -27,7 +27,7 @@ When you save content to a batch (via `include --to` or `discard --to`), the too
 
 1. **Batch source commit**: A snapshot of the working tree state at save time
 2. **Ownership claims**: Which specific lines or line ranges are batch-owned
-3. **Deletion claims**: Which sequences were deleted by the batch (if any)
+3. **Absence claims**: Which sequences were deleted by the batch (if any)
 
 This information is stored in:
 - A Git commit under `refs/git-stage-batch/batches/<name>` containing the realized batch content

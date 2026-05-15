@@ -5,7 +5,7 @@ from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.storage import add_file_to_batch
-from git_stage_batch.batch.ownership import DeletionClaim
+from git_stage_batch.batch.ownership import AbsenceClaim
 from git_stage_batch.data.hunk_tracking import render_batch_file_display
 import git_stage_batch.batch.merge as merge_module
 import git_stage_batch.batch.display as display_module
@@ -223,7 +223,7 @@ class TestCommandShowFromBatch:
         ownership = BatchOwnership.from_presence_lines(
             ["1"],
             [
-                DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"])
+                AbsenceClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"])
             ],
         )
         add_file_to_batch("replacement-batch", "file.txt", ownership, "100644")
@@ -262,7 +262,7 @@ class TestCommandShowFromBatch:
         ownership = BatchOwnership.from_presence_lines(
             ["1"],
             [
-                DeletionClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"])
+                AbsenceClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"])
             ],
         )
         add_file_to_batch("display-lines-batch", "file.txt", ownership, "100644")
@@ -295,7 +295,7 @@ class TestCommandShowFromBatch:
             BatchOwnership.from_presence_lines(
                 ["1"],
                 [
-                    DeletionClaim(
+                    AbsenceClaim(
                         anchor_line=None,
                         content_lines=[b"old one\n", b"old two\n"],
                     )

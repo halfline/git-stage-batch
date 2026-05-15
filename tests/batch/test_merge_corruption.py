@@ -5,7 +5,7 @@ from git_stage_batch.exceptions import MergeError
 import pytest
 
 from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.editor import EditorBuffer
 
 
@@ -87,7 +87,7 @@ def test_merge_corruption_simplified():
 
     # Deletion: after line 6 (closing paren), delete old set_defaults
     # The old set_defaults is at line 7 in working tree
-    deletions = [DeletionClaim(
+    deletions = [AbsenceClaim(
         anchor_line=6,
         content_lines=[b"    parser_status.set_defaults(func=lambda _: status())\n"]
     )]

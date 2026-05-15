@@ -68,15 +68,24 @@ class TestWheelContents:
         for expected in expected_files:
             assert any(expected in f for f in files), f"Missing {expected}"
 
-    def test_wheel_contains_packaged_man_page(self, build_wheel):
-        """Test that wheel contains the packaged man page fallback."""
+    def test_wheel_contains_packaged_man_pages(self, build_wheel):
+        """Test that wheel contains the packaged man page fallbacks."""
         with zipfile.ZipFile(build_wheel, 'r') as whl:
             files = whl.namelist()
 
-        assert any(
-            'git_stage_batch/assets/man/man1/git-stage-batch.1' in f
-            for f in files
-        ), "Missing packaged man page asset"
+        packaged_pages = {
+            Path(file).name
+            for file in files
+            if file.startswith('git_stage_batch/assets/man/man1/')
+        }
+        expected_pages = {
+            'git-stage-batch.1',
+            'git-stage-batch-include.1',
+            'git-stage-batch-discard.1',
+            'git-stage-batch-install-assets.1',
+        }
+
+        assert expected_pages <= packaged_pages
 
     def test_wheel_contains_claude_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled Claude skill asset."""

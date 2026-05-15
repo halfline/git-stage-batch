@@ -7,6 +7,8 @@ display order, not source-line proximity.
 
 from __future__ import annotations
 
+import pytest
+
 from git_stage_batch.batch.display import (
     build_display_lines_from_batch_source_lines,
 )
@@ -18,8 +20,11 @@ from git_stage_batch.batch.ownership import (
     ReplacementUnit,
     build_ownership_units_from_batch_source_lines,
     rebuild_ownership_from_units,
+    select_ownership_units_by_display_ids,
 )
 from git_stage_batch.batch.selection import acquire_batch_ownership_for_display_ids_from_lines
+from git_stage_batch.core.line_selection import LineRanges
+from git_stage_batch.exceptions import AtomicUnitError
 
 
 def _source_lines(content: bytes) -> list[bytes]:
@@ -290,6 +295,8 @@ def test_claimed_without_adjacent_deletion_is_presence_only():
     assert units[0].kind == OwnershipUnitKind.PRESENCE_ONLY
     assert units[0].is_atomic is False
     assert units[0].atomic_reason is None
+    assert type(units[0].claimed_source_lines) is LineRanges
+    assert type(units[0].display_line_ids) is LineRanges
     assert units[0].claimed_source_lines == {2}
     assert units[0].deletion_claims == []
 
@@ -545,8 +552,36 @@ def test_explicit_replacement_unit_can_group_multiple_claimed_lines():
 
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.REPLACEMENT
+    assert type(units[0].claimed_source_lines) is LineRanges
+    assert type(units[0].display_line_ids) is LineRanges
     assert units[0].claimed_source_lines == {1, 2}
     assert units[0].display_line_ids == {1, 2, 3, 4}
+
+
+def test_partial_atomic_selection_reports_range_backed_display_ids():
+    """Atomic selection errors should format IDs without a set-only contract."""
+    batch_source = b"new one\nnew two\nkeep\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [
+            AbsenceClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+        ],
+    )
+
+    units = _ownership_units_for_source(ownership, batch_source)
+
+    with pytest.raises(AtomicUnitError) as error:
+        select_ownership_units_by_display_ids(
+            units,
+            LineRanges.from_ranges([(1, 1)]),
+        )
+
+    assert "Select all related lines together: 1-4" in str(error.value)
+    assert "You selected: 1" in str(error.value)
+    assert type(error.value.required_selection_ids) is LineRanges
 
 
 def test_rebuild_preserves_explicit_replacement_units():

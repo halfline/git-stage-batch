@@ -6,7 +6,11 @@ import pytest
 
 from git_stage_batch.commands.skip import command_skip, command_skip_line
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.hunk_tracking import (
+    fetch_next_change,
+    load_selected_change,
+    selected_change_was_cleared_by_auto_advance_disabled,
+)
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
@@ -119,6 +123,26 @@ class TestCommandSkip:
 
         # Second hunk should now be available
         # (Would normally use command_include here but we're just testing skip)
+
+    def test_skip_no_auto_advance_leaves_no_selected_hunk(self, temp_git_repo):
+        """skip --no-auto-advance should leave the next hunk unselected."""
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("original 1\n")
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+        command_start(quiet=True)
+
+        command_skip(quiet=True, auto_advance=False)
+
+        assert load_selected_change() is None
+        assert selected_change_was_cleared_by_auto_advance_disabled() is True
+        with pytest.raises(CommandError, match="automatic advancement is disabled"):
+            command_skip(quiet=True)
 
 
 class TestCommandSkipLine:

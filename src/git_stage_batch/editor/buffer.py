@@ -10,13 +10,24 @@ from pathlib import Path
 import tempfile
 from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
 
-from ..utils.mapped_storage import ChunkedMappedRecordVector
+from ..utils.mapped_storage import (
+    ChunkedMappedRecordVector,
+    _MMAP_MIN_BYTE_COUNT,
+)
 
 
 _DEFAULT_CHUNK_SIZE = 1024 * 1024
 _LINE_SPAN_CHUNK_CAPACITY = 65536
 _BytesLike = bytes | bytearray | memoryview
 _LineT = TypeVar("_LineT")
+
+
+def _validated_chunk_bytes(chunk: _BytesLike) -> bytes:
+    if isinstance(chunk, bytes):
+        return chunk
+    if isinstance(chunk, (bytearray, memoryview)):
+        return bytes(chunk)
+    raise TypeError(f"expected bytes-like object, got {type(chunk).__name__}")
 
 
 class _LineSpanVector:
@@ -69,9 +80,14 @@ class EditorBuffer(Sequence[bytes]):
         file_path = Path(path)
         file_handle = file_path.open("rb")
         try:
-            if file_path.stat().st_size == 0:
+            byte_count = file_path.stat().st_size
+            if byte_count == 0:
                 file_handle.close()
                 return cls(b"")
+            if byte_count < _MMAP_MIN_BYTE_COUNT:
+                data = file_handle.read()
+                file_handle.close()
+                return cls(data)
 
             return cls(
                 mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
@@ -88,24 +104,50 @@ class EditorBuffer(Sequence[bytes]):
         *,
         spool_dir: str | Path | None = None,
     ) -> EditorBuffer:
-        """Create a buffer from generated chunks via a temporary file."""
+        """Create a buffer from generated chunks."""
+        pending_chunks: list[bytes] = []
+        byte_count = 0
+        chunk_iter = iter(chunks)
+        for chunk in chunk_iter:
+            chunk_bytes = _validated_chunk_bytes(chunk)
+            if len(chunk_bytes) == 0:
+                continue
+            byte_count += len(chunk_bytes)
+            pending_chunks.append(chunk_bytes)
+            if byte_count >= _MMAP_MIN_BYTE_COUNT:
+                return cls._from_chunk_prefix_and_remainder(
+                    pending_chunks,
+                    chunk_iter,
+                    byte_count,
+                    spool_dir=spool_dir,
+                )
+
+        if byte_count == 0:
+            return cls(b"")
+        return cls(b"".join(pending_chunks))
+
+    @classmethod
+    def _from_chunk_prefix_and_remainder(
+        cls,
+        pending_chunks: Sequence[bytes],
+        remaining_chunks: Iterator[_BytesLike],
+        byte_count: int,
+        *,
+        spool_dir: str | Path | None = None,
+    ) -> EditorBuffer:
         file_handle = tempfile.TemporaryFile(
             dir=None if spool_dir is None else Path(spool_dir)
         )
-        byte_count = 0
         try:
-            for chunk in chunks:
-                if not isinstance(chunk, (bytes, bytearray, memoryview)):
-                    raise TypeError(
-                        f"expected bytes-like object, got {type(chunk).__name__}"
-                    )
-                byte_count += len(chunk)
+            for chunk in pending_chunks:
                 file_handle.write(chunk)
-
+            for chunk in remaining_chunks:
+                chunk_bytes = _validated_chunk_bytes(chunk)
+                byte_count += len(chunk_bytes)
+                file_handle.write(chunk_bytes)
             if byte_count == 0:
                 file_handle.close()
                 return cls(b"")
-
             file_handle.flush()
             return cls(
                 mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),

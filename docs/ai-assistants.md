@@ -49,7 +49,9 @@ automation.
    - `git-stage-batch include` (stage this hunk)
    - `git-stage-batch skip` (skip this hunk for now)
 
-   These commands automatically display the next hunk to evaluate.
+   These commands automatically display the next hunk to evaluate. Use
+   `--no-auto-advance` when the automation should stop after one action and
+   run `git-stage-batch show` explicitly before the next bare action.
 
 3. Repeatedly run these commands until all hunks relevant to the selected commit
    are processed, then commit the results.

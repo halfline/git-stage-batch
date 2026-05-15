@@ -14,9 +14,12 @@ Find and display the first unprocessed hunk; cache as "selected".
 
 **Options:**
 - `-U N` or `--unified N`: Number of context lines in diff output (default: 3)
+- `--auto-advance`: Select the next hunk after later actions (default)
+- `--no-auto-advance`: Leave no hunk selected after later actions
 
 ```
 ❯ git-stage-batch start -U5  # Show 5 lines of context
+❯ git-stage-batch start --no-auto-advance
 ```
 
 Resets state if a session is already in progress.
@@ -111,7 +114,8 @@ fi
 
 ### `include`
 
-Stage the cached hunk (entire hunk) to the index; advance to next.
+Stage the cached hunk (entire hunk) to the index; advance to next unless
+automatic selection is disabled.
 
 ```
 ❯ git-stage-batch include
@@ -126,7 +130,8 @@ When a session is active, the bare command shows the selected hunk:
 
 ### `skip`
 
-Mark the cached hunk as skipped; advance to next.
+Mark the cached hunk as skipped; advance to next unless automatic selection is
+disabled.
 
 ```
 ❯ git-stage-batch skip
@@ -138,7 +143,8 @@ Skipped hunks can be revisited with `again`.
 
 ### `discard`
 
-Reverse-apply the cached hunk to the working tree; advance to next.
+Reverse-apply the cached hunk to the working tree; advance to next unless
+automatic selection is disabled.
 
 ```
 ❯ git-stage-batch discard
@@ -146,6 +152,26 @@ Reverse-apply the cached hunk to the working tree; advance to next.
 
 !!! warning "Destructive Operation"
     This permanently removes changes from your working tree. Use with caution.
+
+---
+
+### Automatic Hunk Selection
+
+By default, `include`, `skip`, `discard`, `include --to`, and `discard --to`
+select and display the next hunk after they finish. Add
+`--no-auto-advance` to one action when you want the command to stop with no
+hunk selected:
+
+```bash
+❯ git-stage-batch include --no-auto-advance
+❯ git-stage-batch show
+```
+
+After `--no-auto-advance`, another bare action refuses until `show` selects
+the next hunk. Use `--auto-advance` to opt back in for one command.
+
+`start` and `again` accept the same flags to set the session default for
+later actions that do not specify either flag.
 
 ---
 
@@ -244,6 +270,10 @@ Clear the blocklist and restart iteration through all hunks.
 ```
 
 Useful for making another pass after committing some changes.
+
+**Options:**
+- `--auto-advance`: Select the next hunk after later actions
+- `--no-auto-advance`: Leave no hunk selected after later actions
 
 ---
 

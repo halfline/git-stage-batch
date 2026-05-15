@@ -204,6 +204,10 @@ Similar to `git add -p` but **more granular and flexible**:
 # Start fresh after committing
 ❯ git-stage-batch again   # or: a
 
+# Stop after one action instead of selecting the next hunk
+❯ git-stage-batch include --no-auto-advance
+❯ git-stage-batch show
+
 # For advanced workflows, defer changes to named batches
 ❯ git-stage-batch include --to feature-work  # Save to batch for later
 ```

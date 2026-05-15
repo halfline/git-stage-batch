@@ -67,7 +67,10 @@ _git_stage_batch()
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "-U --unified" -- "$cur"))
+            COMPREPLY=($(compgen -W "-U --unified --auto-advance --no-auto-advance" -- "$cur"))
+            ;;
+        again)
+            COMPREPLY=($(compgen -W "--auto-advance --no-auto-advance" -- "$cur"))
             ;;
         show)
             case "$prev" in
@@ -107,7 +110,7 @@ _git_stage_batch()
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --files --from --to --line --lines --as --as-stdin --no-edge-overlap" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --files --from --to --line --lines --as --as-stdin --no-edge-overlap --auto-advance --no-auto-advance" -- "$cur"))
             ;;
         skip)
             case "$prev" in
@@ -121,7 +124,7 @@ _git_stage_batch()
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --files --line" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --files --line --auto-advance --no-auto-advance" -- "$cur"))
             ;;
         discard)
             case "$prev" in
@@ -143,7 +146,7 @@ _git_stage_batch()
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--file --files --from --to --line --lines --as --as-stdin --no-edge-overlap" -- "$cur"))
+            COMPREPLY=($(compgen -W "--file --files --from --to --line --lines --as --as-stdin --no-edge-overlap --auto-advance --no-auto-advance" -- "$cur"))
             ;;
         apply)
             case "$prev" in

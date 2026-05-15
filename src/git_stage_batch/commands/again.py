@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..data.auto_advance import write_auto_advance_default
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.hunk_tracking import fetch_next_change, show_selected_change
 from ..data.session import clear_iteration_state, require_session_started
@@ -11,7 +12,7 @@ from ..utils.git import require_git_repository
 from ..utils.paths import ensure_state_directory_exists
 
 
-def command_again(*, quiet: bool = False) -> None:
+def command_again(*, quiet: bool = False, auto_advance: bool | None = None) -> None:
     """Clear state and start a fresh pass through all hunks.
 
     This command resets the iteration-specific state (selected hunk, blocklist,
@@ -22,6 +23,9 @@ def command_again(*, quiet: bool = False) -> None:
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+
+    if auto_advance is not None:
+        write_auto_advance_default(auto_advance)
 
     # Clear iteration-specific state (shared logic with stop/abort)
     clear_iteration_state()

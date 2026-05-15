@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .again import command_again
+from ..data.auto_advance import DEFAULT_AUTO_ADVANCE, write_auto_advance_default
 from ..data.hunk_tracking import clear_selected_change_state_files, fetch_next_change, show_selected_change
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.session import initialize_abort_state
@@ -15,19 +16,25 @@ from ..utils.git import require_git_repository
 from ..utils.paths import ensure_state_directory_exists, get_context_lines_file_path, get_abort_head_file_path
 
 
-def command_start(*, context_lines: Optional[int] = None, quiet: bool = False) -> None:
+def command_start(
+    *,
+    context_lines: Optional[int] = None,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Start a new batch staging session.
 
     Args:
         context_lines: Number of context lines to use in diffs (default: 3)
         quiet: If True, suppress "No more hunks" message when no changes exist
+        auto_advance: Whether later actions should select the next hunk
     """
     require_git_repository()
     ensure_state_directory_exists()
 
     # If session already exists, run again logic instead
     if get_abort_head_file_path().exists():
-        command_again(quiet=quiet)
+        command_again(quiet=quiet, auto_advance=auto_advance)
         return
 
     # Batch reviews may be shown outside an active session. A new session must
@@ -36,6 +43,12 @@ def command_start(*, context_lines: Optional[int] = None, quiet: bool = False) -
 
     # Initialize abort state for new session
     initialize_abort_state()
+
+    write_auto_advance_default(
+        DEFAULT_AUTO_ADVANCE
+        if auto_advance is None else
+        auto_advance
+    )
 
     # Save context lines setting if provided
     if context_lines is not None:

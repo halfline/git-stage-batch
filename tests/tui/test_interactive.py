@@ -254,7 +254,12 @@ class TestHandleFileSelection:
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.for_batch("mybatch")
                         ))
-                        mock_discard.assert_called_once_with("mybatch", file="", quiet=True)
+                        mock_discard.assert_called_once_with(
+                            "mybatch",
+                            file="",
+                            quiet=True,
+                            auto_advance=True,
+                        )
 
     def test_handle_file_selection_cancel(self):
         """Test file selection with Ctrl-C."""
@@ -299,7 +304,7 @@ class TestHandleLineSelection:
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
-                        mock_include.assert_called_once_with("1")
+                        mock_include.assert_called_once_with("1", auto_advance=True)
 
     def test_handle_line_selection_no_changed_lines(self):
         """Test line selection when no changed lines exist."""

@@ -66,6 +66,11 @@ def get_config_state_directory_path() -> Path:
     return path
 
 
+def get_auto_advance_config_file_path() -> Path:
+    """Get the path to the automatic hunk selection preference."""
+    return get_config_state_directory_path() / "auto-advance.txt"
+
+
 def get_abort_state_directory_path() -> Path:
     """Get the directory containing abort/recovery state."""
     path = get_session_directory_path() / "abort"

@@ -59,6 +59,7 @@ from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_binary_file_change, print_gitlink_change
 from .consumed_selections import read_consumed_file_metadata
+from .auto_advance import resolve_auto_advance
 from .file_tracking import auto_add_untracked_files
 from ..utils.file_io import (
     read_file_paths_file,
@@ -145,6 +146,7 @@ def _load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
 class SelectedChangeClearReason(str, Enum):
     """Reasons selected change state was intentionally cleared."""
 
+    AUTO_ADVANCE_DISABLED = "auto-advance-disabled"
     FILE_LIST = "file-list"
     STALE_BATCH_SELECTION = "stale-batch-selection"
 
@@ -232,6 +234,14 @@ def mark_selected_change_cleared_by_stale_batch_selection(
         source="batch",
         batch_name=batch_name,
         file_path=file_path,
+    )
+
+
+def mark_selected_change_cleared_by_auto_advance_disabled() -> None:
+    """Record that an action left the next change unselected."""
+    _write_selected_change_clear_reason(
+        reason=SelectedChangeClearReason.AUTO_ADVANCE_DISABLED,
+        source="auto-advance",
     )
 
 
@@ -325,6 +335,16 @@ def selected_change_was_cleared_by_stale_batch_selection(
     return True
 
 
+def selected_change_was_cleared_by_auto_advance_disabled() -> bool:
+    """Return whether the current empty selection needs an explicit show."""
+    if read_selected_change_kind() is not None:
+        return False
+    marker = _read_selected_change_clear_reason()
+    if marker is None:
+        return False
+    return marker["reason"] == SelectedChangeClearReason.AUTO_ADVANCE_DISABLED.value
+
+
 def refuse_bare_action_after_file_list(
     action_command: str,
     *,
@@ -346,6 +366,23 @@ def refuse_bare_action_after_file_list(
             "before running:\n"
             "  git-stage-batch {action}"
         ).format(open_command=open_command, action=action_command)
+    )
+
+
+def refuse_bare_action_after_auto_advance_disabled(action_command: str) -> None:
+    """Refuse a bare action after a command declined to select the next hunk."""
+    if not selected_change_was_cleared_by_auto_advance_disabled():
+        return
+    raise CommandError(
+        _(
+            "No selected change.\n"
+            "The previous command did not choose the next hunk because automatic "
+            "advancement is disabled.\n\n"
+            "Run:\n"
+            "  git-stage-batch show\n"
+            "before running:\n"
+            "  git-stage-batch {action}"
+        ).format(action=action_command)
     )
 
 
@@ -1914,6 +1951,39 @@ def advance_to_and_show_next_change() -> None:
         print(_("No more hunks to process."), file=sys.stderr)
 
 
+def finish_selected_change_action(
+    *,
+    quiet: bool,
+    auto_advance: bool | None = None,
+) -> None:
+    """Apply the configured selection step after a hunk action completes."""
+    if not select_next_change_after_action(auto_advance=auto_advance):
+        return
+
+    if quiet:
+        return
+
+    if read_selected_change_kind() is None:
+        print(_("No more hunks to process."), file=sys.stderr)
+        return
+
+    show_selected_change()
+
+
+def select_next_change_after_action(
+    *,
+    auto_advance: bool | None = None,
+) -> bool:
+    """Select the next hunk after an action, or leave selection empty."""
+    if resolve_auto_advance(auto_advance):
+        advance_to_next_change()
+        return True
+
+    clear_selected_change_state_files()
+    mark_selected_change_cleared_by_auto_advance_disabled()
+    return False
+
+
 def snapshots_are_stale(file_path: str) -> bool:
     """Check if cached snapshots are stale (file changed since snapshots taken).
 
@@ -1982,7 +2052,11 @@ def require_selected_hunk() -> None:
             exit_with_error(_("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."))
 
 
-def recalculate_selected_hunk_for_file(file_path: str) -> None:
+def recalculate_selected_hunk_for_file(
+    file_path: str,
+    *,
+    auto_advance: bool | None = None,
+) -> None:
     """Recalculate the selected hunk for a specific file after modifications.
 
     After discard --line or include --line changes the working tree or index,
@@ -2001,14 +2075,20 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
         line_changes = cache_unstaged_file_as_single_hunk(file_path)
         if line_changes is None:
             clear_selected_change_state_files()
-            from ..commands.show import command_show
-            command_show()
+            if resolve_auto_advance(auto_advance):
+                from ..commands.show import command_show
+                command_show()
+            else:
+                mark_selected_change_cleared_by_auto_advance_disabled()
             return
 
         if apply_line_level_batch_filter_to_cached_hunk():
             clear_selected_change_state_files()
-            from ..commands.show import command_show
-            command_show()
+            if resolve_auto_advance(auto_advance):
+                from ..commands.show import command_show
+                command_show()
+            else:
+                mark_selected_change_cleared_by_auto_advance_disabled()
             return
 
         line_changes = load_line_changes_from_state()
@@ -2083,8 +2163,11 @@ def recalculate_selected_hunk_for_file(file_path: str) -> None:
     # No more hunks for this file, advance to next file
     clear_selected_change_state_files()
     # Import here to avoid circular dependency
-    from ..commands.show import command_show
-    command_show()
+    if resolve_auto_advance(auto_advance):
+        from ..commands.show import command_show
+        command_show()
+    else:
+        mark_selected_change_cleared_by_auto_advance_disabled()
 
 
 def record_hunk_included(hunk_hash: str) -> None:

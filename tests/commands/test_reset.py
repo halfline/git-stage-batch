@@ -79,7 +79,7 @@ def test_reset_partition_accepts_non_list_line_sequences(line_sequence):
     remaining_units, removed_units = reset_module._partition_line_ownership_units(
         ownership,
         source_lines,
-        {1},
+        LineRanges.from_ranges([(1, 1)]),
         batch_name="mybatch",
         file_path="test.py",
     )
@@ -109,12 +109,61 @@ def test_reset_partition_validates_available_ids_as_ranges(line_sequence, monkey
     reset_module._partition_line_ownership_units(
         ownership,
         source_lines,
-        {2},
+        LineRanges.from_ranges([(2, 2)]),
         batch_name="mybatch",
         file_path="test.py",
     )
 
     assert seen_available_ids == [LineRanges.from_ranges([(1, 2)])]
+
+
+def test_reset_file_line_selection_passes_requested_ids_as_ranges(
+    temp_git_repo,
+    monkeypatch,
+):
+    """Reset should keep raw requested display IDs range-backed."""
+    (temp_git_repo / "test.py").write_text("line 1\nline 2\nline 3\n")
+    subprocess.run(
+        ["git", "add", "test.py"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add test.py"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    batch_source_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    command_new_batch("mybatch", "test batch")
+    add_file_to_batch(
+        "mybatch",
+        "test.py",
+        BatchOwnership.from_presence_lines(["1-3"], []),
+        "100644",
+        batch_source_commit=batch_source_commit,
+    )
+    seen_line_ids = []
+
+    def capture_reset_line_claims_for_file(batch_name, file_path, lines_to_remove):
+        seen_line_ids.append(lines_to_remove)
+
+    monkeypatch.setattr(
+        reset_module,
+        "_reset_line_claims_for_file",
+        capture_reset_line_claims_for_file,
+    )
+
+    command_reset_from_batch("mybatch", line_ids="1-3", file="test.py")
+
+    assert seen_line_ids == [LineRanges.from_ranges([(1, 3)])]
 
 
 @pytest.fixture

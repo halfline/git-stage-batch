@@ -139,7 +139,7 @@ def _try_git_help_with_environment(
     """Run git help for a git-stage-batch topic."""
     try:
         result = run_git_command(
-            ["help", help_topic],
+            ["help", _git_help_name_for_help_topic(help_topic)],
             check=False,
             capture_stdout=False,
             env=env,
@@ -174,6 +174,11 @@ def _with_real_manpath_root(manpage_path: Path):
 def _manpage_name_for_help_topic(help_topic: str) -> str:
     """Return the man page filename for a git help topic."""
     return f"git-{help_topic}.1"
+
+
+def _git_help_name_for_help_topic(help_topic: str) -> str:
+    """Return the git help argument for a git-stage-batch topic."""
+    return _manpage_name_for_help_topic(help_topic).removesuffix(".1")
 
 
 def _show_git_stage_batch_help(help_topic: str = "stage-batch") -> bool:

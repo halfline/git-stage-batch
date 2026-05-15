@@ -21,7 +21,7 @@ from ..data.file_review_state import (
     ReviewSource,
     read_last_file_review_state,
     selected_change_matches_review_state,
-    shown_complete_review_selection_groups,
+    shown_review_selections_for_action,
 )
 from ..data.hunk_tracking import (
     SelectedChangeKind,
@@ -167,11 +167,11 @@ def _read_batch_review_display_ids(file_path: str) -> list[int]:
 
     return sorted({
         display_id
-        for group in shown_complete_review_selection_groups(
+        for selection in shown_review_selections_for_action(
             review_state,
             FileReviewAction.INCLUDE_FROM_BATCH,
         )
-        for display_id in group
+        for display_id in selection.display_ids
     })
 
 
@@ -194,11 +194,11 @@ def _read_live_review_display_ids(file_path: str) -> list[int] | None:
 
     return sorted({
         display_id
-        for group in shown_complete_review_selection_groups(
+        for selection in shown_review_selections_for_action(
             review_state,
             FileReviewAction.INCLUDE,
         )
-        for display_id in group
+        for display_id in selection.display_ids
     })
 
 

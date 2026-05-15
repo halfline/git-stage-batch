@@ -359,14 +359,14 @@ def translate_batch_file_gutter_ids_to_selection_ids(
         return None, None
 
     from ..data.file_review_state import (
-        fresh_batch_review_selection_groups_for_action,
+        fresh_batch_review_selections_for_action,
         validate_review_scoped_line_selection,
     )
     from ..data.hunk_tracking import render_batch_file_display
 
-    review_groups = fresh_batch_review_selection_groups_for_action(batch_name, file_path, action)
-    if review_groups is not None:
-        validate_review_scoped_line_selection(selected_ids, review_groups)
+    review_selections = fresh_batch_review_selections_for_action(batch_name, file_path, action)
+    if review_selections is not None:
+        validate_review_scoped_line_selection(selected_ids, review_selections)
 
     rendered = render_batch_file_display(batch_name, file_path)
     if rendered is None:
@@ -374,7 +374,7 @@ def translate_batch_file_gutter_ids_to_selection_ids(
 
     display_id_map = (
         rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
-        if review_groups is not None else
+        if review_selections is not None else
         rendered.gutter_to_selection_id
     )
     rendered_for_messages = (
@@ -386,7 +386,7 @@ def translate_batch_file_gutter_ids_to_selection_ids(
                 for gutter_id, selection_id in display_id_map.items()
             },
         )
-        if review_groups is not None else
+        if review_selections is not None else
         rendered
     )
     selection_ids: set[int] = set()

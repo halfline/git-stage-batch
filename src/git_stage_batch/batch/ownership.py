@@ -689,6 +689,53 @@ def _format_line_set(source_lines: LineSelection | Iterable[int]) -> list[str]:
     return source_selection.to_range_strings()
 
 
+@dataclass
+class _LineRangeBuilder:
+    """Build a normalized line selection from mostly ordered additions."""
+
+    ranges: list[tuple[int, int]] = field(default_factory=list)
+    pending_start: int | None = None
+    pending_end: int | None = None
+
+    def add_line(self, line_number: int) -> None:
+        if self.pending_start is None or self.pending_end is None:
+            self.pending_start = line_number
+            self.pending_end = line_number
+            return
+
+        if self.pending_start <= line_number <= self.pending_end:
+            return
+
+        if line_number == self.pending_end + 1:
+            self.pending_end = line_number
+            return
+
+        self.ranges.append((self.pending_start, self.pending_end))
+        self.pending_start = line_number
+        self.pending_end = line_number
+
+    def finish(self) -> LineRanges:
+        ranges = list(self.ranges)
+        if self.pending_start is not None and self.pending_end is not None:
+            ranges.append((self.pending_start, self.pending_end))
+        return LineRanges.from_ranges(ranges)
+
+
+@dataclass
+class _ReplacementUnitBuilder:
+    deletion_indices: list[int]
+    claimed_lines: _LineRangeBuilder = field(default_factory=_LineRangeBuilder)
+
+    def add_presence_line(self, source_line: int) -> None:
+        self.claimed_lines.add_line(source_line)
+
+    def finish(self) -> ReplacementUnit:
+        return ReplacementUnit(
+            presence_lines=self.claimed_lines.finish().to_range_strings(),
+            deletion_indices=self.deletion_indices,
+        )
+
+
 def _presence_claims_from_source_lines(
     source_lines: LineSelection | Iterable[int],
     baseline_references: dict[int, BaselineReference] | None = None,
@@ -900,7 +947,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     # Context/addition lines exist in batch source → presence claims
     # Deletion lines don't exist in batch source → deletion claims (suppression)
 
-    claimed_source_lines: list[int] = []
+    claimed_source_lines = _LineRangeBuilder()
     presence_baseline_references: dict[int, BaselineReference] = {}
     deletion_claims: list[DeletionClaim] = []
     replacement_units: list[ReplacementUnit] = []
@@ -909,7 +956,13 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     current_deletion_anchor: int | None = None
     current_deletion_baseline_reference: BaselineReference | None = None
     current_deletion_lines: list[bytes] = []
-    active_replacement_unit: ReplacementUnit | None = None
+    active_replacement_unit: _ReplacementUnitBuilder | None = None
+
+    def finish_replacement_unit(
+        builder: _ReplacementUnitBuilder | None,
+    ) -> None:
+        if builder is not None:
+            replacement_units.append(builder.finish())
 
     def flush_deletion_run() -> list[int]:
         """Finalize current deletion run as a DeletionClaim."""
@@ -943,7 +996,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
                     f"Batch source is stale and must be advanced before translation."
                 )
 
-            claimed_source_lines.append(line.source_line)
+            claimed_source_lines.add_line(line.source_line)
             if line.has_baseline_reference_after:
                 presence_baseline_references[line.source_line] = BaselineReference(
                     after_line=line.baseline_reference_after_line,
@@ -955,23 +1008,22 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
                 )
             if line.kind == '+':
                 if flushed_deletion_indices:
-                    active_replacement_unit = ReplacementUnit(
-                        presence_lines=[],
+                    finish_replacement_unit(active_replacement_unit)
+                    active_replacement_unit = _ReplacementUnitBuilder(
                         deletion_indices=flushed_deletion_indices,
                     )
-                    replacement_units.append(active_replacement_unit)
 
                 if active_replacement_unit is not None:
-                    claimed = _parse_line_ranges(active_replacement_unit.presence_lines)
-                    claimed = claimed.union([line.source_line])
-                    active_replacement_unit.presence_lines = _format_line_set(claimed)
+                    active_replacement_unit.add_presence_line(line.source_line)
             else:
+                finish_replacement_unit(active_replacement_unit)
                 active_replacement_unit = None
 
             # Update anchor for next deletion run
             current_deletion_anchor = line.source_line
 
         elif line.kind == '-':
+            finish_replacement_unit(active_replacement_unit)
             active_replacement_unit = None
             # Deletion: suppression constraint
             # Anchor each deletion run at its first deleted line. A None anchor
@@ -991,10 +1043,11 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
 
     # Flush any final deletion run
     flush_deletion_run()
+    finish_replacement_unit(active_replacement_unit)
 
     return BatchOwnership(
         presence_claims=_presence_claims_from_source_lines(
-            set(claimed_source_lines),
+            claimed_source_lines.finish(),
             presence_baseline_references,
         ),
         deletions=deletion_claims,
@@ -1048,6 +1101,109 @@ def _baseline_reference_for_deletion_run(
     )
 
 
+def _baseline_reference_for_old_line_range(
+    old_start: int,
+    old_end: int,
+    old_line_content: dict[int, bytes],
+) -> BaselineReference:
+    after_line = old_start - 1 if old_start > 1 else None
+    before_line = old_end + 1
+    before_content = old_line_content.get(before_line)
+    return BaselineReference(
+        after_line=after_line,
+        after_content=(
+            old_line_content.get(after_line)
+            if after_line is not None else
+            None
+        ),
+        has_after_line=True,
+        before_line=before_line if before_content is not None else None,
+        before_content=before_content,
+        has_before_line=before_content is not None,
+    )
+
+
+@dataclass(frozen=True)
+class _HunkLineRangeScan:
+    start: int
+    end: int
+    start_index: int
+    stop_index: int
+    count: int
+    selected_count: int
+
+    @property
+    def complete(self) -> bool:
+        return self.count == self.end - self.start + 1
+
+    @property
+    def fully_selected(self) -> bool:
+        return self.complete and self.selected_count == self.count
+
+
+def _scan_hunk_line_range(
+    hunk_lines: list[LineEntry],
+    cursor: int,
+    *,
+    kind: str,
+    line_number_attr: str,
+    start: int,
+    end: int,
+    selected_display_ids: set[int],
+) -> _HunkLineRangeScan:
+    index = cursor
+    start_index = cursor
+    count = 0
+    selected_count = 0
+    found_first = False
+
+    while index < len(hunk_lines):
+        line = hunk_lines[index]
+        line_number = getattr(line, line_number_attr)
+        if line_number is not None and line_number > end:
+            break
+        if line.kind == kind and line_number is not None:
+            if line_number < start:
+                index += 1
+                continue
+            if line_number > end:
+                break
+            if not found_first:
+                start_index = index
+                found_first = True
+            count += 1
+            if line.id is not None and line.id in selected_display_ids:
+                selected_count += 1
+        index += 1
+
+    return _HunkLineRangeScan(
+        start=start,
+        end=end,
+        start_index=start_index,
+        stop_index=index,
+        count=count,
+        selected_count=selected_count,
+    )
+
+
+def _hunk_lines_in_range(
+    hunk_lines: list[LineEntry],
+    scan: _HunkLineRangeScan,
+    *,
+    kind: str,
+    line_number_attr: str,
+) -> Iterable[LineEntry]:
+    for index in range(scan.start_index, scan.stop_index):
+        line = hunk_lines[index]
+        line_number = getattr(line, line_number_attr)
+        if (
+            line.kind == kind
+            and line_number is not None
+            and scan.start <= line_number <= scan.end
+        ):
+            yield line
+
+
 def translate_hunk_selection_to_batch_ownership(
     hunk_lines: list[LineEntry],
     selected_display_ids: set[int],
@@ -1066,28 +1222,34 @@ def translate_hunk_selection_to_batch_ownership(
     runs derived from the full files represented by the hunk. This function does
     not infer semantic replacement units from the pregenerated diff layout.
     """
-    claimed_source_lines: list[int] = []
+    claimed_source_lines = _LineRangeBuilder()
     presence_baseline_references: dict[int, BaselineReference] = {}
     deletion_claims: list[DeletionClaim] = []
     replacement_units: list[ReplacementUnit] = []
     old_line_content = _old_line_content_by_number(hunk_lines)
     consumed_replacement_ids: set[int] = set()
-    deletion_lines_by_old_line = {
-        line.old_line_number: line
-        for line in hunk_lines
-        if line.kind == "-" and line.old_line_number is not None
-    }
-    addition_lines_by_new_line = {
-        line.new_line_number: line
-        for line in hunk_lines
-        if line.kind == "+" and line.new_line_number is not None
-    }
 
     def add_replacement_unit(
-        selected_old_lines: list[LineEntry],
-        selected_new_lines: list[LineEntry],
+        selected_old_lines: Iterable[LineEntry],
+        selected_new_lines: Iterable[LineEntry],
+        *,
+        old_start: int,
+        old_end: int,
     ) -> None:
-        selected_source_lines: set[int] = set()
+        deletion_content: list[bytes] = []
+        deletion_anchor: int | None = None
+        old_line_seen = False
+        selected_source_lines = _LineRangeBuilder()
+        consumed_ids: list[int] = []
+
+        for old_line in selected_old_lines:
+            if not old_line_seen:
+                deletion_anchor = old_line.source_line
+                old_line_seen = True
+            deletion_content.append(_line_entry_content(old_line))
+            if old_line.id is not None:
+                consumed_ids.append(old_line.id)
+
         for new_line in selected_new_lines:
             if new_line.source_line is None:
                 raise ValueError(
@@ -1096,8 +1258,10 @@ def translate_hunk_selection_to_batch_ownership(
                     f"Batch source is stale and must be advanced before translation."
                 )
 
-            claimed_source_lines.append(new_line.source_line)
-            selected_source_lines.add(new_line.source_line)
+            claimed_source_lines.add_line(new_line.source_line)
+            selected_source_lines.add_line(new_line.source_line)
+            if new_line.id is not None:
+                consumed_ids.append(new_line.id)
             if new_line.has_baseline_reference_after:
                 presence_baseline_references[new_line.source_line] = BaselineReference(
                     after_line=new_line.baseline_reference_after_line,
@@ -1110,52 +1274,65 @@ def translate_hunk_selection_to_batch_ownership(
 
         deletion_claims.append(
             DeletionClaim(
-                anchor_line=selected_old_lines[0].source_line,
-                content_lines=[
-                    _line_entry_content(old_line)
-                    for old_line in selected_old_lines
-                ],
-                baseline_reference=_baseline_reference_for_deletion_run(
-                    selected_old_lines,
+                anchor_line=deletion_anchor,
+                content_lines=deletion_content,
+                baseline_reference=_baseline_reference_for_old_line_range(
+                    old_start,
+                    old_end,
                     old_line_content,
                 ),
             )
         )
         replacement_units.append(
             ReplacementUnit(
-                presence_lines=_format_line_set(selected_source_lines),
+                presence_lines=selected_source_lines.finish().to_range_strings(),
                 deletion_indices=[len(deletion_claims) - 1],
             )
         )
-        consumed_replacement_ids.update(
-            line_id
-            for line_id in [
-                *(line.id for line in selected_old_lines),
-                *(line.id for line in selected_new_lines),
-            ]
-            if line_id is not None
-        )
+        consumed_replacement_ids.update(consumed_ids)
+
+    old_cursor = 0
+    new_cursor = 0
 
     for replacement_run in replacement_line_runs or []:
-        old_lines = [
-            deletion_lines_by_old_line.get(old_line_number)
-            for old_line_number in replacement_run.old_line_numbers()
-        ]
-        new_lines = [
-            addition_lines_by_new_line.get(new_line_number)
-            for new_line_number in replacement_run.new_line_numbers()
-        ]
-        if (
-            any(line is None for line in old_lines)
-            or any(line is None for line in new_lines)
-        ):
+        old_scan = _scan_hunk_line_range(
+            hunk_lines,
+            old_cursor,
+            kind="-",
+            line_number_attr="old_line_number",
+            start=replacement_run.old_start,
+            end=replacement_run.old_end,
+            selected_display_ids=selected_display_ids,
+        )
+        new_scan = _scan_hunk_line_range(
+            hunk_lines,
+            new_cursor,
+            kind="+",
+            line_number_attr="new_line_number",
+            start=replacement_run.new_start,
+            end=replacement_run.new_end,
+            selected_display_ids=selected_display_ids,
+        )
+        old_cursor = old_scan.stop_index
+        new_cursor = new_scan.stop_index
+
+        if not old_scan.complete or not new_scan.complete:
             continue
 
-        old_hunk_lines = [line for line in old_lines if line is not None]
-        new_hunk_lines = [line for line in new_lines if line is not None]
-
-        if len(old_hunk_lines) == len(new_hunk_lines):
-            for old_line, new_line in zip(old_hunk_lines, new_hunk_lines):
+        if old_scan.count == new_scan.count:
+            old_lines = _hunk_lines_in_range(
+                hunk_lines,
+                old_scan,
+                kind="-",
+                line_number_attr="old_line_number",
+            )
+            new_lines = _hunk_lines_in_range(
+                hunk_lines,
+                new_scan,
+                kind="+",
+                line_number_attr="new_line_number",
+            )
+            for old_line, new_line in zip(old_lines, new_lines):
                 old_selected = (
                     old_line.id is not None
                     and old_line.id in selected_display_ids
@@ -1165,29 +1342,44 @@ def translate_hunk_selection_to_batch_ownership(
                     and new_line.id in selected_display_ids
                 )
                 if old_selected and new_selected:
-                    add_replacement_unit([old_line], [new_line])
+                    if old_line.old_line_number is None:
+                        continue
+                    add_replacement_unit(
+                        (old_line,),
+                        (new_line,),
+                        old_start=old_line.old_line_number,
+                        old_end=old_line.old_line_number,
+                    )
             continue
 
-        selected_old_lines = [
-            line for line in old_hunk_lines
-            if line.id is not None and line.id in selected_display_ids
-        ]
-        selected_new_lines = [
-            line for line in new_hunk_lines
-            if line.id is not None and line.id in selected_display_ids
-        ]
-        if (
-            len(selected_old_lines) == len(old_hunk_lines)
-            and len(selected_new_lines) == len(new_hunk_lines)
-            and selected_old_lines
-            and selected_new_lines
-        ):
-            add_replacement_unit(selected_old_lines, selected_new_lines)
+        if old_scan.fully_selected and new_scan.fully_selected:
+            add_replacement_unit(
+                _hunk_lines_in_range(
+                    hunk_lines,
+                    old_scan,
+                    kind="-",
+                    line_number_attr="old_line_number",
+                ),
+                _hunk_lines_in_range(
+                    hunk_lines,
+                    new_scan,
+                    kind="+",
+                    line_number_attr="new_line_number",
+                ),
+                old_start=replacement_run.old_start,
+                old_end=replacement_run.old_end,
+            )
 
     current_deletion_anchor: int | None = None
     current_deletion_lines: list[bytes] = []
     current_deletion_hunk_lines: list[LineEntry] = []
-    active_replacement_unit: ReplacementUnit | None = None
+    active_replacement_unit: _ReplacementUnitBuilder | None = None
+
+    def finish_replacement_unit(
+        builder: _ReplacementUnitBuilder | None,
+    ) -> None:
+        if builder is not None:
+            replacement_units.append(builder.finish())
 
     def flush_deletion_run() -> list[int]:
         nonlocal current_deletion_anchor
@@ -1229,7 +1421,7 @@ def translate_hunk_selection_to_batch_ownership(
                         f"Batch source is stale and must be advanced before translation."
                     )
 
-                claimed_source_lines.append(line.source_line)
+                claimed_source_lines.add_line(line.source_line)
                 if line.has_baseline_reference_after:
                     presence_baseline_references[line.source_line] = BaselineReference(
                         after_line=line.baseline_reference_after_line,
@@ -1242,19 +1434,18 @@ def translate_hunk_selection_to_batch_ownership(
 
                 if line.kind == "+":
                     if flushed_deletion_indices:
-                        active_replacement_unit = ReplacementUnit(
-                            presence_lines=[],
+                        finish_replacement_unit(active_replacement_unit)
+                        active_replacement_unit = _ReplacementUnitBuilder(
                             deletion_indices=flushed_deletion_indices,
                         )
-                        replacement_units.append(active_replacement_unit)
 
                     if active_replacement_unit is not None:
-                        claimed = _parse_line_ranges(active_replacement_unit.presence_lines)
-                        claimed = claimed.union([line.source_line])
-                        active_replacement_unit.presence_lines = _format_line_set(claimed)
+                        active_replacement_unit.add_presence_line(line.source_line)
                 else:
+                    finish_replacement_unit(active_replacement_unit)
                     active_replacement_unit = None
             else:
+                finish_replacement_unit(active_replacement_unit)
                 active_replacement_unit = None
 
             if line.source_line is not None:
@@ -1264,9 +1455,11 @@ def translate_hunk_selection_to_batch_ownership(
         if line.kind == "-":
             if not is_selected:
                 flush_deletion_run()
+                finish_replacement_unit(active_replacement_unit)
                 active_replacement_unit = None
                 continue
 
+            finish_replacement_unit(active_replacement_unit)
             active_replacement_unit = None
             if not current_deletion_lines:
                 current_deletion_anchor = line.source_line
@@ -1274,10 +1467,11 @@ def translate_hunk_selection_to_batch_ownership(
             current_deletion_hunk_lines.append(line)
 
     flush_deletion_run()
+    finish_replacement_unit(active_replacement_unit)
 
     return BatchOwnership(
         presence_claims=_presence_claims_from_source_lines(
-            set(claimed_source_lines),
+            claimed_source_lines.finish(),
             presence_baseline_references,
         ),
         deletions=deletion_claims,

@@ -56,6 +56,38 @@ def test_presence_line_set_returns_line_ranges():
     assert ownership.resolve().presence_line_set == selection
 
 
+def test_translate_lines_builds_selected_ranges_without_line_sets(monkeypatch):
+    """Selected display lines should translate through range builders."""
+    def fail_from_lines(cls, lines):
+        raise AssertionError("translator should pass range selections forward")
+
+    monkeypatch.setattr(LineRanges, "from_lines", classmethod(fail_from_lines))
+
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'old', text='old', source_line=None),
+        *[
+            LineEntry(
+                id=index + 2,
+                kind='+',
+                old_line_number=None,
+                new_line_number=index + 1,
+                text_bytes=f'new {index}\n'.encode(),
+                text=f'new {index}',
+                source_line=index + 1,
+            )
+            for index in range(1000)
+        ],
+    ]
+
+    ownership = translate_lines_to_batch_ownership(lines)
+
+    assert ownership.presence_claims[0].source_lines == ["1-1000"]
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
+    ]
+
+
 def test_derive_replacement_line_runs_accepts_non_list_sequences(line_sequence):
     """Replacement run derivation accepts indexed byte-line sequences."""
     runs = derive_replacement_line_runs_from_lines(
@@ -261,4 +293,86 @@ def test_translate_hunk_selection_keeps_one_to_many_replacement_atomic():
     assert ownership.deletions[0].content_lines == [b'old\n']
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+    ]
+
+
+def test_translate_hunk_selection_scans_replacement_ranges(monkeypatch):
+    """File-derived replacement runs should be consumed through endpoints."""
+    def fail_from_lines(cls, lines):
+        raise AssertionError("hunk translator should pass range selections forward")
+
+    class RangeOnlyReplacementRun:
+        old_start = 1
+        old_end = 1
+        new_start = 1
+        new_end = 1000
+
+        def old_line_numbers(self):
+            raise AssertionError("old replacement range should not expand")
+
+        def new_line_numbers(self):
+            raise AssertionError("new replacement range should not expand")
+
+    monkeypatch.setattr(LineRanges, "from_lines", classmethod(fail_from_lines))
+
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'old', text='old', source_line=None),
+        *[
+            LineEntry(
+                id=index + 2,
+                kind='+',
+                old_line_number=None,
+                new_line_number=index + 1,
+                text_bytes=f'new {index}\n'.encode(),
+                text=f'new {index}',
+                source_line=index + 1,
+            )
+            for index in range(1000)
+        ],
+    ]
+    selected_ids = {line.id for line in lines if line.id is not None}
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        selected_ids,
+        replacement_line_runs=[RangeOnlyReplacementRun()],
+    )
+
+    assert ownership.presence_claims[0].source_lines == ["1-1000"]
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
+    ]
+
+
+def test_translate_hunk_selection_builds_selected_ranges_without_line_sets(monkeypatch):
+    """Current-hunk selections should translate through range builders."""
+    def fail_from_lines(cls, lines):
+        raise AssertionError("hunk translator should pass range selections forward")
+
+    monkeypatch.setattr(LineRanges, "from_lines", classmethod(fail_from_lines))
+
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'old', text='old', source_line=None),
+        *[
+            LineEntry(
+                id=index + 2,
+                kind='+',
+                old_line_number=None,
+                new_line_number=index + 1,
+                text_bytes=f'new {index}\n'.encode(),
+                text=f'new {index}',
+                source_line=index + 1,
+            )
+            for index in range(1000)
+        ],
+    ]
+    selected_ids = {line.id for line in lines if line.id is not None}
+
+    ownership = translate_hunk_selection_to_batch_ownership(lines, selected_ids)
+
+    assert ownership.presence_claims[0].source_lines == ["1-1000"]
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
     ]

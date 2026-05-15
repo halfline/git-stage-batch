@@ -13,7 +13,16 @@ from git_stage_batch.utils.mapped_storage import (
     ChunkedMappedRecordVector,
     MappedIntVector,
     MappedRecordVector,
+    byte_storage_from_chunks,
+    byte_storage_from_path,
 )
+
+
+class _CopyFailingBytearray(bytearray):
+    """Bytearray test double that fails if converted through bytes()."""
+
+    def __bytes__(self):
+        raise AssertionError("chunk should stream without being copied")
 
 
 def _open_fd_count() -> int | None:
@@ -21,6 +30,78 @@ def _open_fd_count() -> int | None:
     if not os.path.isdir(fd_path):
         return None
     return len(os.listdir(fd_path))
+
+
+def test_byte_storage_from_path_uses_heap_below_threshold(tmp_path, monkeypatch):
+    """Small path byte storage should stay heap-backed."""
+    def fail_temporary_file(*args, **kwargs):
+        raise AssertionError("small path storage should use heap storage")
+
+    monkeypatch.setattr(
+        mapped_storage_module.tempfile,
+        "TemporaryFile",
+        fail_temporary_file,
+    )
+
+    file_path = tmp_path / "small.txt"
+    file_path.write_bytes(b"alpha\n")
+
+    data, file_handle = byte_storage_from_path(file_path)
+
+    assert file_handle is None
+    assert data == b"alpha\n"
+    assert not isinstance(data, mmap.mmap)
+
+
+def test_byte_storage_from_path_uses_mapped_storage_at_threshold(tmp_path):
+    """Page-sized path byte storage should use mapped storage."""
+    file_path = tmp_path / "page.txt"
+    file_path.write_bytes(b"x" * mmap.PAGESIZE)
+
+    data, file_handle = byte_storage_from_path(file_path)
+    try:
+        assert isinstance(data, mmap.mmap)
+        assert file_handle is not None
+        assert data[:4] == b"xxxx"
+    finally:
+        data.close()
+        assert file_handle is not None
+        file_handle.close()
+
+
+def test_byte_storage_from_chunks_copies_small_mutable_chunks():
+    """Small chunk byte storage should copy mutable chunks."""
+    chunk = bytearray(b"alpha\n")
+
+    data, file_handle = byte_storage_from_chunks([chunk])
+    chunk[:] = b"omega\n"
+
+    assert file_handle is None
+    assert data == b"alpha\n"
+
+
+def test_byte_storage_from_chunks_streams_large_chunks_without_copying():
+    """Large chunk byte storage should stream chunks directly."""
+    prefix = b"alpha\n"
+    threshold_chunk = _CopyFailingBytearray(
+        b"x" * (mmap.PAGESIZE - len(prefix))
+    )
+    remaining_chunk = _CopyFailingBytearray(b"omega\n")
+
+    data, file_handle = byte_storage_from_chunks([
+        prefix,
+        threshold_chunk,
+        remaining_chunk,
+    ])
+    try:
+        assert isinstance(data, mmap.mmap)
+        assert file_handle is not None
+        assert data[:len(prefix)] == prefix
+        assert data[-len(remaining_chunk):] == bytes(bytearray(remaining_chunk))
+    finally:
+        data.close()
+        assert file_handle is not None
+        file_handle.close()
 
 
 def test_mapped_int_vector_get_set_fill_and_close():

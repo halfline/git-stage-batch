@@ -14,7 +14,12 @@ from .ownership import (
     validate_ownership_units,
     rebuild_ownership_from_units,
 )
-from ..core.line_selection import LineRanges, LineSelection, parse_line_selection
+from ..core.line_selection import (
+    LineRanges,
+    LineSelection,
+    parse_line_selection,
+    parse_line_selection_ranges,
+)
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns
@@ -217,7 +222,7 @@ def require_single_file_context_for_line_selection(
     line_ids: Optional[str],
     operation_verb: str,
 ) -> Optional[set[int]]:
-    """Parse line IDs and enforce single-file context requirement.
+    """Parse line IDs as a set and enforce single-file context requirement.
 
     Line-level operations require single-file context to avoid ambiguous
     line ID interpretation across multiple files.
@@ -234,10 +239,45 @@ def require_single_file_context_for_line_selection(
     Raises:
         SystemExit: If line_ids provided but multiple files in scope
     """
-    if line_ids is None:
+    if not _line_selection_has_single_file_context(
+        batch_name,
+        files,
+        line_ids,
+        operation_verb,
+    ):
         return None
 
-    # Line-level operation requires single-file context
+    return set(parse_line_selection(line_ids))
+
+
+def require_single_file_context_for_line_selection_ranges(
+    batch_name: str,
+    files: dict[str, dict],
+    line_ids: Optional[str],
+    operation_verb: str,
+) -> Optional[LineRanges]:
+    """Parse line IDs as ranges and enforce single-file context requirement."""
+    if not _line_selection_has_single_file_context(
+        batch_name,
+        files,
+        line_ids,
+        operation_verb,
+    ):
+        return None
+
+    return parse_line_selection_ranges(line_ids)
+
+
+def _line_selection_has_single_file_context(
+    batch_name: str,
+    files: dict[str, dict],
+    line_ids: Optional[str],
+    operation_verb: str,
+) -> bool:
+    """Return True when a line selection can be interpreted for one file."""
+    if line_ids is None:
+        return False
+
     if len(files) != 1:
         exit_with_error(
             _("Line-level {operation} (--line) requires single-file context.\n"
@@ -248,7 +288,7 @@ def require_single_file_context_for_line_selection(
             )
         )
 
-    return set(parse_line_selection(line_ids))
+    return True
 
 
 def translate_atomic_unit_error_to_gutter_ids(

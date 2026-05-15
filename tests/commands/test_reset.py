@@ -16,7 +16,7 @@ from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.reset import command_reset_from_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.core.line_selection import parse_line_selection
+from git_stage_batch.core.line_selection import LineRanges, parse_line_selection
 from git_stage_batch.core.models import RenderedBatchDisplay, ReviewActionGroup
 from git_stage_batch.data.batch_sources import create_batch_source_commit, save_session_batch_sources
 from git_stage_batch.data.hunk_tracking import fetch_next_change, render_batch_file_display
@@ -87,6 +87,34 @@ def test_reset_partition_accepts_non_list_line_sequences(line_sequence):
     assert remaining_units == []
     assert len(removed_units) == 1
     assert removed_units[0].claimed_source_lines == {2}
+
+
+def test_reset_partition_validates_available_ids_as_ranges(line_sequence, monkeypatch):
+    """Reset availability checks should consume range-backed display IDs."""
+    ownership = BatchOwnership.from_presence_lines(["1,3"], [])
+    source_lines = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
+    seen_available_ids = []
+    original_require_available = reset_module.require_display_ids_available
+
+    def capture_require_available(requested_ids, available_ids, **kwargs):
+        seen_available_ids.append(available_ids)
+        return original_require_available(requested_ids, available_ids, **kwargs)
+
+    monkeypatch.setattr(
+        reset_module,
+        "require_display_ids_available",
+        capture_require_available,
+    )
+
+    reset_module._partition_line_ownership_units(
+        ownership,
+        source_lines,
+        {2},
+        batch_name="mybatch",
+        file_path="test.py",
+    )
+
+    assert seen_available_ids == [LineRanges.from_ranges([(1, 2)])]
 
 
 @pytest.fixture

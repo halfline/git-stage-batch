@@ -54,7 +54,7 @@ from ..editor import (
     load_working_tree_file_as_buffer,
     write_buffer_to_path,
 )
-from ..core.line_selection import write_line_ids_file
+from ..core.line_selection import LineRanges, write_line_ids_file
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_binary_file_change, print_gitlink_change
@@ -1215,11 +1215,11 @@ def _render_batch_file_display_from_ownership(
         for entry in line_entries
         if entry.id is not None
     ]
-    resettable_ids = {
-        line_id
+    resettable_ids = LineRanges.from_ranges(
+        display_id_range
         for unit in units
-        for line_id in unit.display_line_ids
-    }
+        for display_id_range in unit.display_line_ids.ranges()
+    )
     review_gutter_to_selection_id = {}
     review_selection_id_to_gutter = {}
     review_gutter_num = 1
@@ -1243,7 +1243,7 @@ def _render_batch_file_display_from_ownership(
             continue
 
         actions = [_BATCH_RESET_REVIEW_ACTION]
-        if unit.display_line_ids.issubset(mergeable_ids):
+        if unit.display_line_ids.intersection(mergeable_ids) == unit.display_line_ids:
             actionable_selection_groups.append(ordered_group)
             actions = [
                 *_BATCH_MERGE_REVIEW_ACTIONS,

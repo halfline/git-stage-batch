@@ -10,7 +10,6 @@ from hashlib import sha256
 from ..core.line_selection import (
     LineRanges,
     LineSelection,
-    format_line_ids,
 )
 from ..core.models import LineEntry
 from ..data.batch_sources import create_batch_source_commit
@@ -1643,7 +1642,7 @@ class OwnershipUnit:
 
     Attributes:
         kind: Type of ownership unit
-        claimed_source_lines: Set of batch source line numbers owned by this unit
+        claimed_source_lines: Batch source line numbers owned by this unit
         deletion_claims: Absence claims that are part of this unit
         display_line_ids: Display line IDs that map to this unit (from reconstructed display)
         is_atomic: If True, partial removal is not allowed
@@ -1651,9 +1650,9 @@ class OwnershipUnit:
         preserves_replacement_unit: True when this unit came from persisted replacement metadata
     """
     kind: OwnershipUnitKind
-    claimed_source_lines: set[int]
+    claimed_source_lines: LineRanges
     deletion_claims: list[AbsenceClaim]
-    display_line_ids: set[int]
+    display_line_ids: LineRanges
     is_atomic: bool = False
     atomic_reason: str | None = None
     preserves_replacement_unit: bool = False
@@ -1808,9 +1807,9 @@ def build_ownership_units_from_display_lines(
                 # One unit per line allows independent reset
                 units.append(OwnershipUnit(
                     kind=OwnershipUnitKind.PRESENCE_ONLY,
-                    claimed_source_lines={claimed_source_line},
+                    claimed_source_lines=LineRanges.from_lines([claimed_source_line]),
                     deletion_claims=[],
-                    display_line_ids={claimed_display_id},
+                    display_line_ids=LineRanges.from_lines([claimed_display_id]),
                     is_atomic=False,
                     atomic_reason=None
                 ))
@@ -1823,18 +1822,16 @@ def build_ownership_units_from_display_lines(
 
 def _ownership_unit_display_order_key(unit: OwnershipUnit) -> int:
     """Return the first visible display line covered by a semantic unit."""
-    if not unit.display_line_ids:
-        return 10**12
-    return min(unit.display_line_ids)
+    return unit.display_line_ids.first() or 10**12
 
 
 def _build_explicit_replacement_units_from_display_lines(
     ownership: BatchOwnership,
     display_lines: list[dict],
-) -> tuple[list[OwnershipUnit], set[int], set[int]]:
+) -> tuple[list[OwnershipUnit], LineRanges, set[int]]:
     """Build units from persisted replacement metadata."""
     units: list[OwnershipUnit] = []
-    consumed_claimed_lines: set[int] = set()
+    consumed_claimed_lines = LineRanges.empty()
     consumed_deletion_indices: set[int] = set()
 
     replacement_units = _normalize_replacement_units(
@@ -1845,10 +1842,10 @@ def _build_explicit_replacement_units_from_display_lines(
         return units, consumed_claimed_lines, consumed_deletion_indices
 
     for replacement_unit in replacement_units:
-        claimed_source_lines = _parse_line_ranges(replacement_unit.presence_lines).to_set()
+        claimed_source_lines = _parse_line_ranges(replacement_unit.presence_lines)
         deletion_indices = set(replacement_unit.deletion_indices)
-        claimed_display_ids: set[int] = set()
-        deletion_display_ids: set[int] = set()
+        claimed_display_id_builder = _LineRangeBuilder()
+        deletion_display_id_builder = _LineRangeBuilder()
 
         for display_line in display_lines:
             display_id = display_line.get("id")
@@ -1859,13 +1856,15 @@ def _build_explicit_replacement_units_from_display_lines(
                 display_line["type"] == "claimed"
                 and display_line["source_line"] in claimed_source_lines
             ):
-                claimed_display_ids.add(display_id)
+                claimed_display_id_builder.add_line(display_id)
             elif (
                 display_line["type"] == "deletion"
                 and display_line["deletion_index"] in deletion_indices
             ):
-                deletion_display_ids.add(display_id)
+                deletion_display_id_builder.add_line(display_id)
 
+        claimed_display_ids = claimed_display_id_builder.finish()
+        deletion_display_ids = deletion_display_id_builder.finish()
         if not claimed_display_ids or not deletion_display_ids:
             continue
 
@@ -1877,12 +1876,12 @@ def _build_explicit_replacement_units_from_display_lines(
             kind=OwnershipUnitKind.REPLACEMENT,
             claimed_source_lines=claimed_source_lines,
             deletion_claims=deletion_claims,
-            display_line_ids=claimed_display_ids | deletion_display_ids,
+            display_line_ids=claimed_display_ids.union(deletion_display_ids),
             is_atomic=True,
             atomic_reason="explicit_replacement",
             preserves_replacement_unit=True,
         ))
-        consumed_claimed_lines.update(claimed_source_lines)
+        consumed_claimed_lines = consumed_claimed_lines.union(claimed_source_lines)
         consumed_deletion_indices.update(deletion_indices)
 
     return units, consumed_claimed_lines, consumed_deletion_indices
@@ -1890,7 +1889,7 @@ def _build_explicit_replacement_units_from_display_lines(
 
 def _display_line_is_consumed(
     display_line: dict,
-    consumed_claimed_lines: set[int],
+    consumed_claimed_lines: LineSelection,
     consumed_deletion_indices: set[int],
 ) -> bool:
     """Return True when a display line is already covered by an explicit unit."""
@@ -1905,7 +1904,7 @@ def _collect_display_run(
     display_lines: list,
     start_index: int,
     expected_type: str,
-    consumed_claimed_lines: set[int],
+    consumed_claimed_lines: LineSelection,
     consumed_deletion_indices: set[int],
 ) -> dict:
     """Collect a consecutive run of display lines of the same type.
@@ -1975,9 +1974,11 @@ def _build_replacement_unit(
 
     return OwnershipUnit(
         kind=OwnershipUnitKind.REPLACEMENT,
-        claimed_source_lines=set(claimed_run["source_lines"]),
+        claimed_source_lines=LineRanges.from_lines(claimed_run["source_lines"]),
         deletion_claims=deletion_claims,
-        display_line_ids=set(deletion_run["display_ids"] + claimed_run["display_ids"]),
+        display_line_ids=LineRanges.from_lines(
+            [*deletion_run["display_ids"], *claimed_run["display_ids"]]
+        ),
         is_atomic=True,
         atomic_reason="display_adjacency"
     )
@@ -2003,9 +2004,9 @@ def _build_deletion_only_unit(
 
     return OwnershipUnit(
         kind=OwnershipUnitKind.DELETION_ONLY,
-        claimed_source_lines=set(),
+        claimed_source_lines=LineRanges.empty(),
         deletion_claims=deletion_claims,
-        display_line_ids=set(deletion_run["display_ids"]),
+        display_line_ids=LineRanges.from_lines(deletion_run["display_ids"]),
         is_atomic=True,
         atomic_reason="deletion_only"
     )
@@ -2053,7 +2054,7 @@ def validate_ownership_units(units: list[OwnershipUnit]) -> None:
 
 def select_ownership_units_by_display_ids(
     units: list[OwnershipUnit],
-    selected_display_ids: set[int]
+    selected_display_ids: LineSelection | Iterable[int],
 ) -> list[OwnershipUnit]:
     """Select ownership units that match the given display line IDs.
 
@@ -2070,10 +2071,15 @@ def select_ownership_units_by_display_ids(
         MergeError: If atomic unit is partially selected
     """
     selected = []
+    selected_display_ranges = (
+        selected_display_ids
+        if isinstance(selected_display_ids, LineRanges)
+        else LineRanges.from_lines(selected_display_ids)
+    )
 
     for unit in units:
         # Check if any display IDs from this unit are selected
-        intersection = unit.display_line_ids & selected_display_ids
+        intersection = unit.display_line_ids.intersection(selected_display_ranges)
 
         if not intersection:
             # Not selected - skip it
@@ -2084,8 +2090,8 @@ def select_ownership_units_by_display_ids(
                 _("Cannot select only part of this change.\n"
                   "Select all related lines together: {required_ids}\n"
                   "You selected: {selected_ids}").format(
-                    required_ids=format_line_ids(sorted(unit.display_line_ids)),
-                    selected_ids=format_line_ids(sorted(intersection))
+                    required_ids=unit.display_line_ids.to_line_spec(),
+                    selected_ids=intersection.to_line_spec()
                 ),
                 required_selection_ids=unit.display_line_ids,
                 unit_kind=unit.kind.value
@@ -2099,7 +2105,7 @@ def select_ownership_units_by_display_ids(
 
 def filter_ownership_units_by_display_ids(
     units: list[OwnershipUnit],
-    selected_display_ids: set[int]
+    selected_display_ids: LineSelection | Iterable[int],
 ) -> tuple[list[OwnershipUnit], list[OwnershipUnit]]:
     """Filter ownership units, removing those that match display line IDs.
 
@@ -2131,12 +2137,12 @@ def rebuild_ownership_from_units(units: list[OwnershipUnit]) -> BatchOwnership:
     Returns:
         New BatchOwnership with combined ownership from all units
     """
-    all_presence_lines = set()
+    all_presence_lines = LineRanges.empty()
     all_deletions = []
     replacement_units: list[ReplacementUnit] = []
 
     for unit in units:
-        all_presence_lines.update(unit.claimed_source_lines)
+        all_presence_lines = all_presence_lines.union(unit.claimed_source_lines)
         deletion_indices = []
         for deletion in unit.deletion_claims:
             all_deletions.append(deletion)

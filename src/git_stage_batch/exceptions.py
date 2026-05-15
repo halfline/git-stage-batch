@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 
 class CommandError(Exception):
     """Raised when a command fails and needs to exit with an error code."""
@@ -57,10 +59,15 @@ class AtomicUnitError(MergeError):
     or not at all. Partial selection would produce inconsistent ownership.
 
     Attributes:
-        required_selection_ids: Set of selection IDs that must be selected together
+        required_selection_ids: Selection IDs that must be selected together
         unit_kind: Kind of unit (for error messages)
     """
-    def __init__(self, message: str, required_selection_ids: set[int] | None = None, unit_kind: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        required_selection_ids: Iterable[int] | None = None,
+        unit_kind: str | None = None,
+    ):
         super().__init__(message)
         self.required_selection_ids = required_selection_ids
         self.unit_kind = unit_kind

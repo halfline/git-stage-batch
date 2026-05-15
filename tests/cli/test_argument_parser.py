@@ -286,6 +286,40 @@ def test_parse_command_line_quick_action_help():
     assert exc_info.value.code == 0
 
 
+def test_parse_command_line_subcommand_help_uses_command_manpage(monkeypatch):
+    """Subcommand help should open that command's man page."""
+    calls = []
+
+    def fake_help(help_topic):
+        calls.append(help_topic)
+        return True
+
+    monkeypatch.setattr(argument_parser, "_show_git_stage_batch_help", fake_help)
+
+    with pytest.raises(SystemExit) as exc_info:
+        parse_command_line(["include", "--help"], quiet=True)
+
+    assert exc_info.value.code == 0
+    assert calls == ["stage-batch-include"]
+
+
+def test_parse_command_line_alias_help_uses_canonical_command_manpage(monkeypatch):
+    """Alias help should open the canonical command's man page."""
+    calls = []
+
+    def fake_help(help_topic):
+        calls.append(help_topic)
+        return True
+
+    monkeypatch.setattr(argument_parser, "_show_git_stage_batch_help", fake_help)
+
+    with pytest.raises(SystemExit) as exc_info:
+        parse_command_line(["i", "--help"], quiet=True)
+
+    assert exc_info.value.code == 0
+    assert calls == ["stage-batch-include"]
+
+
 def test_parse_command_line_invalid_arg():
     """Test parsing invalid argument returns None."""
     parse_command_line(["--invalid-arg"], quiet=True)

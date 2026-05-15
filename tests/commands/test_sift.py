@@ -6,7 +6,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch.validation import batch_exists
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.start import command_start
@@ -108,7 +108,7 @@ def test_validate_sifted_result_accepts_non_list_line_sequences(line_sequence):
     ownership = BatchOwnership.from_presence_lines(
         ["2"],
         [
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=1,
                 content_lines=[b"old\n"],
             ),
@@ -489,12 +489,12 @@ class TestSiftValidationStrength:
     """
 
     def test_claimed_lines_in_bounds_but_deletions_wrong(self, temp_git_repo):
-        """Test that validation catches wrong deletion claims.
+        """Test that validation catches wrong absence claims.
 
         This test verifies that the semantic validation (level C) catches cases
-        where deletion claims are structurally valid but semantically incorrect.
+        where absence claims are structurally valid but semantically incorrect.
 
-        We create a scenario where sift would derive ownership with deletion claims,
+        We create a scenario where sift would derive ownership with absence claims,
         then verify the validation works by checking a normal sift operation succeeds.
         (A more sophisticated test would inject corrupted ownership, but that requires
         mocking or bypassing the derivation logic.)

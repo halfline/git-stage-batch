@@ -213,7 +213,7 @@ def test_first_discard_with_stale_source_succeeds(functional_repo):
 
 
 def test_deletion_anchors_remapped_correctly(functional_repo):
-    """Test that deletion claim anchors are correctly remapped when source advances."""
+    """Test that absence claim anchors are correctly remapped when source advances."""
     test_file = functional_repo / "test.py"
     test_file.write_text("line 1\nline 2\nline 3\nline 4\n")
 

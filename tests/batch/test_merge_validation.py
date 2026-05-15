@@ -15,7 +15,7 @@ from git_stage_batch.batch.merge import (
     _find_boundary_after_source_line,
     RealizedEntry,
 )
-from git_stage_batch.batch.ownership import BatchOwnership, DeletionClaim
+from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
 
@@ -82,7 +82,7 @@ def test_sequence_present_normalizes_both_sides():
 
 
 def test_discard_missing_anchor_skipped_gracefully():
-    """Discard should skip deletion claims when anchor is missing (not raise)."""
+    """Discard should skip absence claims when anchor is missing (not raise)."""
     batch_source = b"""line 1
 line 2
 line 3
@@ -100,13 +100,13 @@ different line 3
     # But line 2 doesn't exist in working tree (all lines different)
     ownership = BatchOwnership.from_presence_lines(
         ["2"],
-        [DeletionClaim(
+        [AbsenceClaim(
             anchor_line=2,
             content_lines=[b"old content\n"]
         )]
     )
 
-    # Should complete without error (skips deletion claim gracefully)
+    # Should complete without error (skips absence claim gracefully)
     # because anchor line 2 is not present in working tree
     result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -331,7 +331,7 @@ A test project.
 
     ownership = BatchOwnership.from_presence_lines(
         ["3-4"],
-        [DeletionClaim(
+        [AbsenceClaim(
             anchor_line=2,
             content_lines=[b"A test project.\n"]
         )],
@@ -349,7 +349,7 @@ A test project for git-stage-batch.
 def test_crlf_normalization_in_discard_restoration():
     """Discard should handle CRLF in deletion content correctly.
 
-    When deletion claim content uses CRLF but the sequence check uses LF,
+    When absence claim content uses CRLF but the sequence check uses LF,
     the normalization should allow correct matching without duplication.
     """
     # Batch source with LF
@@ -364,7 +364,7 @@ def test_crlf_normalization_in_discard_restoration():
     # Claim line 2 (batch added it), deletion after line 1 with CRLF
     ownership = BatchOwnership.from_presence_lines(
         ["2"],
-        [DeletionClaim(
+        [AbsenceClaim(
             anchor_line=1,
             content_lines=[b"old content\r\n"]  # CRLF in deletion content
         )]

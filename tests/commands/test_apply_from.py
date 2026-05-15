@@ -6,7 +6,7 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.storage import add_file_to_batch
-from git_stage_batch.batch.ownership import DeletionClaim
+from git_stage_batch.batch.ownership import AbsenceClaim
 
 import subprocess
 
@@ -272,7 +272,7 @@ class TestCommandApplyFromBatch:
         subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
         subprocess.run(["git", "commit", "-m", "New state for batch"], check=True, cwd=temp_git_repo, capture_output=True)
 
-        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"old line\n"])])
+        ownership = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=None, content_lines=[b"old line\n"])])
         add_file_to_batch("replacement-batch", "file.txt", ownership, "100644")
 
         # Reset working tree to old state
@@ -307,7 +307,7 @@ class TestCommandApplyFromBatch:
         subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
         subprocess.run(["git", "commit", "-m", "New state"], check=True, cwd=temp_git_repo, capture_output=True)
 
-        ownership = BatchOwnership.from_presence_lines(["1"], [DeletionClaim(anchor_line=None, content_lines=[b"old line\n"])])
+        ownership = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=None, content_lines=[b"old line\n"])])
         add_file_to_batch("atomic-batch", "file.txt", ownership, "100644")
 
         # Reset to old state

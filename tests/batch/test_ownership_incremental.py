@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from git_stage_batch.batch.ownership import (
-    DeletionClaim,
+    AbsenceClaim,
     ReplacementLineRun,
     ReplacementUnit,
     derive_replacement_line_runs_from_lines,
@@ -30,7 +30,7 @@ def test_translate_lines_creates_deletion_constraints():
 
     # Should create deletion constraint for - line (suppression constraint)
     assert len(ownership.deletions) == 1
-    assert isinstance(ownership.deletions[0], DeletionClaim)
+    assert isinstance(ownership.deletions[0], AbsenceClaim)
     assert ownership.deletions[0].content_lines == [b'old_version\n']
     assert len(ownership.replacement_units) == 1
     assert ownership.replacement_units[0].presence_lines == ["1"]
@@ -170,7 +170,7 @@ def test_translate_lines_preserves_deletion_structure():
 
     ownership = translate_lines_to_batch_ownership(lines)
 
-    # Should have two separate deletion claims (not collapsed)
+    # Should have two separate absence claims (not collapsed)
     assert len(ownership.deletions) == 2
     assert ownership.deletions[0].content_lines == [b'del1\n', b'del2\n']
     assert ownership.deletions[0].anchor_line is None  # before any source line

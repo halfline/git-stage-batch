@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-from git_stage_batch.batch.ownership import DeletionClaim
+from git_stage_batch.batch.ownership import AbsenceClaim
 
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
@@ -103,7 +103,7 @@ def test_merge_batch_with_deletion_suppresses_content():
 
     Scenario:
     - Batch source: A\nB\n
-    - Deletions: [DeletionClaim(anchor_line=1, content="UNWANTED")]
+    - Deletions: [AbsenceClaim(anchor_line=1, content="UNWANTED")]
       (meaning: suppress "UNWANTED" content - it's a constraint, not insertion)
     - Working tree: A\nUNWANTED\nB\n (has unwanted content)
     - Result should have the unwanted content removed
@@ -112,7 +112,7 @@ def test_merge_batch_with_deletion_suppresses_content():
     batch_source_content = b"A\nB\n"
 
     # Create a deletion constraint (suppression)
-    ownership = BatchOwnership.from_presence_lines([], [DeletionClaim(anchor_line=1, content_lines=[b"UNWANTED\n"])])
+    ownership = BatchOwnership.from_presence_lines([], [AbsenceClaim(anchor_line=1, content_lines=[b"UNWANTED\n"])])
 
     working_content = b"A\nUNWANTED\nB\n"
 

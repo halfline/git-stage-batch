@@ -7,10 +7,13 @@ from contextlib import nullcontext
 import mmap
 import os
 from pathlib import Path
-import tempfile
 from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
 
-from ..utils.mapped_storage import ChunkedMappedRecordVector
+from ..utils.mapped_storage import (
+    ChunkedMappedRecordVector,
+    byte_storage_from_chunks,
+    byte_storage_from_path,
+)
 
 
 _DEFAULT_CHUNK_SIZE = 1024 * 1024
@@ -66,20 +69,8 @@ class EditorBuffer(Sequence[bytes]):
     @classmethod
     def from_path(cls, path: str | Path) -> EditorBuffer:
         """Create a buffer from a file using mmap when possible."""
-        file_path = Path(path)
-        file_handle = file_path.open("rb")
-        try:
-            if file_path.stat().st_size == 0:
-                file_handle.close()
-                return cls(b"")
-
-            return cls(
-                mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
-                file_handle=file_handle,
-            )
-        except Exception:
-            file_handle.close()
-            raise
+        data, file_handle = byte_storage_from_path(path)
+        return cls(data, file_handle=file_handle)
 
     @classmethod
     def from_chunks(
@@ -88,32 +79,12 @@ class EditorBuffer(Sequence[bytes]):
         *,
         spool_dir: str | Path | None = None,
     ) -> EditorBuffer:
-        """Create a buffer from generated chunks via a temporary file."""
-        file_handle = tempfile.TemporaryFile(
-            dir=None if spool_dir is None else Path(spool_dir)
+        """Create a buffer from generated chunks."""
+        data, file_handle = byte_storage_from_chunks(
+            chunks,
+            spool_dir=spool_dir,
         )
-        byte_count = 0
-        try:
-            for chunk in chunks:
-                if not isinstance(chunk, (bytes, bytearray, memoryview)):
-                    raise TypeError(
-                        f"expected bytes-like object, got {type(chunk).__name__}"
-                    )
-                byte_count += len(chunk)
-                file_handle.write(chunk)
-
-            if byte_count == 0:
-                file_handle.close()
-                return cls(b"")
-
-            file_handle.flush()
-            return cls(
-                mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
-                file_handle=file_handle,
-            )
-        except Exception:
-            file_handle.close()
-            raise
+        return cls(data, file_handle=file_handle)
 
     @property
     def is_mmap_backed(self) -> bool:

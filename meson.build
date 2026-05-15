@@ -34,7 +34,7 @@ configure_file(
   install_tag: 'runtime',
 )
 
-# Generate man pages for wheel fallback assets or system installation.
+# Generate man pages for runtime help assets and system installation.
 manpage_specs = [
   ['git-stage-batch.1.in', 'git-stage-batch.1'],
   ['git-stage-batch-abort.1.in', 'git-stage-batch-abort.1'],
@@ -69,13 +69,11 @@ foreach manpage_spec : manpage_specs
     configuration: {'VERSION': meson.project_version()},
   )
 endforeach
-if get_option('python_wheel')
-  install_data(
-    manpages,
-    install_dir: package_dir / 'assets' / 'man' / 'man1',
-    install_tag: 'python-runtime',
-  )
-endif
+install_data(
+  manpages,
+  install_dir: package_dir / 'assets' / 'man' / 'man1',
+  install_tag: 'python-runtime',
+)
 if not get_option('python_wheel')
   install_man(manpages)
 endif

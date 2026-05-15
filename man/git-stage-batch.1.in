@@ -21,7 +21,7 @@ page. For example:
 .RS
 .nf
 git-stage-batch include --help
-git help stage-batch-include
+git help git-stage-batch-include
 .fi
 .RE
 .SH COMMON WORKFLOW

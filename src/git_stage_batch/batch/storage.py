@@ -52,7 +52,7 @@ from ..utils.text import normalize_line_sequence_endings
 from .merge import _realized_entry_content_chunks, _satisfy_constraints
 
 if TYPE_CHECKING:
-    from .ownership import BatchOwnership, DeletionClaim
+    from .ownership import BatchOwnership, AbsenceClaim
 
 
 @dataclass(frozen=True)
@@ -518,12 +518,12 @@ def _suppress_sequence_at_position_bytes(
 
 def _enforce_deletion_constraint(
     lines: list[bytes],
-    claim: 'DeletionClaim'
+    claim: 'AbsenceClaim'
 ) -> list[bytes]:
     """Remove sequences matching a deletion constraint.
 
     Scans the line list and removes any occurrence of the exact sequence
-    specified by the deletion claim.
+    specified by the absence claim.
 
     Args:
         lines: Current content as list of lines (bytes with newlines)

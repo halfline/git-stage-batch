@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from ..core.line_selection import format_line_ids
 from ..editor import EditorBuffer
-from .ownership import BatchOwnership, DeletionClaim, ReplacementUnit
+from .ownership import BatchOwnership, AbsenceClaim, ReplacementUnit
 
 
 @dataclass(slots=True)
@@ -72,7 +72,7 @@ def build_replacement_batch_view_from_lines(
             else:
                 new_anchor = None
 
-            new_deletions.append(DeletionClaim(
+            new_deletions.append(AbsenceClaim(
                 anchor_line=new_anchor,
                 content_lines=deletion.content_lines,
             ))
@@ -124,7 +124,7 @@ def build_replacement_batch_view_from_lines(
         else:
             new_anchor = deletion.anchor_line + added_count
 
-        new_deletions.append(DeletionClaim(
+        new_deletions.append(AbsenceClaim(
             anchor_line=new_anchor,
             content_lines=deletion.content_lines,
         ))

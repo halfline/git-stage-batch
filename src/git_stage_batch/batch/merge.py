@@ -28,7 +28,7 @@ from ..utils.text import (
 )
 
 if TYPE_CHECKING:
-    from .ownership import BatchOwnership, DeletionClaim
+    from .ownership import BatchOwnership, AbsenceClaim
 
 
 class RegionKind(Enum):
@@ -858,7 +858,7 @@ class ClaimedRunIntervalFacts:
 def _check_structural_validity(
     line_mapping: LineMapping,
     claimed_lines: LineSelection,
-    deletions: list,  # list[DeletionClaim]
+    deletions: list,  # list[AbsenceClaim]
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes]
 ) -> None:
@@ -878,7 +878,7 @@ def _check_structural_validity(
     Args:
         line_mapping: Alignment between batch source and working tree
         claimed_lines: Claimed batch source line numbers
-        deletions: List of DeletionClaim objects
+        deletions: List of AbsenceClaim objects
         source_lines: Batch source file lines (bytes)
         target_lines: Working tree file lines (bytes)
 
@@ -965,7 +965,7 @@ def _check_structural_validity(
 def _check_claimed_region_compatibility(
     line_mapping: LineMapping,
     claimed_lines: LineSelection,
-    deletions: list,  # list[DeletionClaim]
+    deletions: list,  # list[AbsenceClaim]
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes]
 ) -> None:
@@ -1499,13 +1499,13 @@ def _apply_presence_constraints_with_mapping(
 
 def _apply_absence_constraints(
     entries: Sequence[RealizedEntry],
-    deletion_claims: list['DeletionClaim'],
+    deletion_claims: list['AbsenceClaim'],
     *,
     strict: bool = True
 ) -> _RealizedEntries:
     """Apply absence constraints with boundary enforcement.
 
-    For each deletion claim:
+    For each absence claim:
     1. Find the structural boundary after the anchor line
     2. Suppress forbidden sequence at that boundary using appropriate mode
 
@@ -1603,7 +1603,7 @@ def _satisfy_constraints(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
-    deletion_claims: list['DeletionClaim'],
+    deletion_claims: list['AbsenceClaim'],
     *,
     strict: bool = True,
     source_to_working_mapping: LineMapping | None = None,
@@ -2123,7 +2123,7 @@ def _line_slice_equals(
 
 def _try_apply_baseline_absence_constraints(
     working_lines: Sequence[bytes],
-    deletion_claims: list['DeletionClaim'],
+    deletion_claims: list['AbsenceClaim'],
 ) -> Iterator[bytes] | None:
     """Apply absence-only constraints by exact baseline coordinates."""
     if not deletion_claims:
@@ -2152,7 +2152,7 @@ def _try_apply_baseline_absence_constraints(
 
 
 def _baseline_removal_edit(
-    claim: 'DeletionClaim',
+    claim: 'AbsenceClaim',
     working_lines: Sequence[bytes],
 ) -> _BaselineLineEdit | None:
     if not claim.content_lines:
@@ -2206,7 +2206,7 @@ def _iter_lines_with_baseline_edits(
 def _has_complete_baseline_references(
     ownership: 'BatchOwnership',
     presence_line_set: LineSelection,
-    deletion_claims: list['DeletionClaim'],
+    deletion_claims: list['AbsenceClaim'],
 ) -> bool:
     claimed_line_references = ownership.presence_baseline_references()
     for claimed_line in presence_line_set:
@@ -2225,7 +2225,7 @@ def _try_apply_baseline_replacement_units(
     working_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
     presence_line_set: LineSelection,
-    deletion_claims: list['DeletionClaim'],
+    deletion_claims: list['AbsenceClaim'],
 ) -> Iterator[bytes] | None:
     """Apply baseline-coordinate edits when structural source anchors fail.
 
@@ -3021,11 +3021,11 @@ def _reverse_presence_constraints(
 
 def _restore_absence_constraints(
     entries: Sequence[RealizedEntry],
-    deletion_claims: list['DeletionClaim']
+    deletion_claims: list['AbsenceClaim']
 ) -> _RealizedEntries:
     """Restore absence constraints: insert deleted sequences at anchored boundaries.
 
-    For each deletion claim, this function:
+    For each absence claim, this function:
     1. Finds the exact boundary "after source line N" (or start-of-file)
     2. Checks if the deleted sequence is already present at that boundary
     3. If absent: inserts it at the exact boundary

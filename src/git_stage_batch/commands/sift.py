@@ -33,7 +33,7 @@ from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
-from ..batch.ownership import BatchOwnership, DeletionClaim
+from ..batch.ownership import BatchOwnership, AbsenceClaim
 from ..batch.query import get_batch_baseline_commit, read_batch_metadata
 from ..batch.state_refs import (
     delete_batch_state_refs,
@@ -615,7 +615,7 @@ def build_ownership_from_working_and_target_lines(
                     for index in run.source_line_numbers()
                 ]
                 deletion_claims.append(
-                    DeletionClaim(
+                    AbsenceClaim(
                         anchor_line=run.target_anchor,
                         content_lines=deletion_content,
                     )
@@ -627,7 +627,7 @@ def build_ownership_from_working_and_target_lines(
                     for index in run.source_line_numbers()
                 ]
                 deletion_claims.append(
-                    DeletionClaim(
+                    AbsenceClaim(
                         anchor_line=run.target_anchor,
                         content_lines=deletion_content,
                     )
@@ -668,7 +668,7 @@ def validate_sifted_text_file_result_from_lines(
                     f"is out of bounds (target content has {len(target_lines)} lines)"
                 )
         if not deletion_claim.content_lines:
-            raise MergeError("Sift validation failed: deletion claim has empty content")
+            raise MergeError("Sift validation failed: absence claim has empty content")
 
     try:
         reconstructed_buffer = merge_batch_from_line_sequences_as_buffer(

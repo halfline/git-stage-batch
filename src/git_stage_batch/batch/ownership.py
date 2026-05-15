@@ -91,14 +91,14 @@ class BaselineReference:
 
 
 @dataclass
-class DeletionClaim:
+class AbsenceClaim:
     """A suppression constraint: specific baseline content that must not appear.
 
-    Deletions are constraints, not content to replay. Each deletion claim represents
+    Deletions are constraints, not content to replay. Each absence claim represents
     a contiguous run of lines that must be absent from the materialized result.
 
     Attributes:
-        anchor_line: Batch source line after which this deletion claim is anchored
+        anchor_line: Batch source line after which this absence claim is anchored
                      (None for start-of-file)
         content_lines: Exact baseline line content that must be suppressed,
                        with line endings preserved
@@ -129,7 +129,7 @@ class DeletionClaim:
         data: dict,
         blob_contents: dict[str, bytes] | None = None,
         blob_buffers: dict[str, EditorBuffer] | None = None,
-    ) -> DeletionClaim:
+    ) -> AbsenceClaim:
         """Deserialize from metadata dictionary."""
         anchor_line = data.get("after_source_line")
         blob_sha = data["blob"]
@@ -255,7 +255,7 @@ def _deletion_reference_blob_ids(deletion_metadata: list[dict]) -> list[str]:
 
 @dataclass
 class ReplacementUnit:
-    """Explicit coupling between presence claims and deletion claims.
+    """Explicit coupling between presence claims and absence claims.
 
     The deletion side references indexes in BatchOwnership.deletions so the
     canonical deletion constraint is stored only once in metadata.
@@ -341,14 +341,14 @@ class BatchOwnership:
     - replacement_units: Optional explicit coupling between claims and deletions
     """
     presence_claims: list[PresenceClaim]
-    deletions: list[DeletionClaim]  # Separate deletion constraints
+    deletions: list[AbsenceClaim]  # Separate deletion constraints
     replacement_units: list[ReplacementUnit] = field(default_factory=list)
 
     @classmethod
     def from_presence_lines(
         cls,
         source_lines: list[str],
-        deletions: list[DeletionClaim] | None = None,
+        deletions: list[AbsenceClaim] | None = None,
         *,
         replacement_units: list[ReplacementUnit] | None = None,
         baseline_references: dict[int, BaselineReference] | None = None,
@@ -462,7 +462,7 @@ class BatchOwnership:
                 _parse_line_ranges(legacy_claimed_lines)
             )
         deletions = [
-            DeletionClaim.from_dict(d, blob_contents, deletion_blob_buffers)
+            AbsenceClaim.from_dict(d, blob_contents, deletion_blob_buffers)
             for d in deletion_metadata
         ]
         replacement_units = [
@@ -478,7 +478,7 @@ class BatchOwnership:
     def resolve(self) -> ResolvedBatchOwnership:
         """Resolve into representation for materialization and merge.
 
-        Returns presence lines as a selection and deletion claims as a list
+        Returns presence lines as a selection and absence claims as a list
         (preserving structure).
         """
         return ResolvedBatchOwnership(self.presence_line_set(), self.deletions)
@@ -506,14 +506,14 @@ class _BatchOwnershipBuildContext:
 class ResolvedBatchOwnership:
     """Resolved ownership representation for materialization and merge.
 
-    Preserves the structure of deletion claims as separate constraints.
+    Preserves the structure of absence claims as separate constraints.
 
     Attributes:
         presence_line_set: Batch source line numbers (1-indexed, identity-based)
         deletion_claims: List of suppression constraints (order and structure preserved)
     """
     presence_line_set: LineRanges  # Batch source line numbers (1-indexed)
-    deletion_claims: list[DeletionClaim]  # Separate constraints, not collapsed
+    deletion_claims: list[AbsenceClaim]  # Separate constraints, not collapsed
 
 
 def detach_batch_ownership(ownership: BatchOwnership) -> BatchOwnership:
@@ -527,7 +527,7 @@ def detach_batch_ownership(ownership: BatchOwnership) -> BatchOwnership:
             for claim in ownership.presence_claims
         ],
         deletions=[
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=deletion.anchor_line,
                 content_lines=list(deletion.content_lines),
                 baseline_reference=deletion.baseline_reference,
@@ -592,8 +592,8 @@ class _DeletionSignature:
     line_count: int
 
 
-def _deletion_signature(deletion: DeletionClaim) -> _DeletionSignature:
-    """Return a stable signature for a deletion claim."""
+def _deletion_signature(deletion: AbsenceClaim) -> _DeletionSignature:
+    """Return a stable signature for an absence claim."""
     digest = sha256()
     byte_count = 0
     line_count = 0
@@ -660,11 +660,11 @@ def _merge_baseline_references(
 
 
 def _merge_deletion_claim_metadata(
-    existing: DeletionClaim,
-    new: DeletionClaim,
-) -> DeletionClaim:
-    """Merge metadata for deletion claims with the same anchor and content."""
-    return DeletionClaim(
+    existing: AbsenceClaim,
+    new: AbsenceClaim,
+) -> AbsenceClaim:
+    """Merge metadata for absence claims with the same anchor and content."""
+    return AbsenceClaim(
         anchor_line=existing.anchor_line,
         content_lines=existing.content_lines,
         baseline_reference=_merge_baseline_references(
@@ -815,7 +815,7 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
 
     Combines presence claims (union) and merges deletion constraints with deduplication.
 
-    Deletion claims are deduplicated by (anchor_line, content) signature to prevent
+    Absence claims are deduplicated by (anchor_line, content) signature to prevent
     duplicate deletions when batch source advances and ownership is remapped. The same
     deletion can appear in both existing (remapped) and new (from current diff).
 
@@ -835,7 +835,7 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
         **new.presence_baseline_references(),
     }
 
-    # Merge deletion claims: deduplicate by anchor and content
+    # Merge absence claims: deduplicate by anchor and content
     # When batch source advances and ownership is remapped, the same deletion can appear
     # in both existing (remapped) and new (from current diff). We need to deduplicate.
     combined_deletions = []
@@ -926,7 +926,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     """Translate display lines to batch source ownership.
 
     Creates presence claims and suppression constraints (deletion_claims).
-    Each contiguous run of deletions becomes a separate DeletionClaim.
+    Each contiguous run of deletions becomes a separate AbsenceClaim.
 
     This function assumes all selected lines can be expressed in batch source
     space. Call detect_stale_batch_source_for_selection() first and handle stale
@@ -937,7 +937,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
         selected_lines: List of LineEntry objects to translate
 
     Returns:
-        BatchOwnership with presence claims and deletion claims
+        BatchOwnership with presence claims and absence claims
 
     Raises:
         ValueError: If any claimed line has source_line=None (stale batch source)
@@ -945,11 +945,11 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     # Translate to batch source-space ownership
     # Diff shows index→working tree, batch source = working tree
     # Context/addition lines exist in batch source → presence claims
-    # Deletion lines don't exist in batch source → deletion claims (suppression)
+    # Deletion lines don't exist in batch source → absence claims (suppression)
 
     claimed_source_lines = _LineRangeBuilder()
     presence_baseline_references: dict[int, BaselineReference] = {}
-    deletion_claims: list[DeletionClaim] = []
+    deletion_claims: list[AbsenceClaim] = []
     replacement_units: list[ReplacementUnit] = []
 
     # Track current deletion run
@@ -965,13 +965,13 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
             replacement_units.append(builder.finish())
 
     def flush_deletion_run() -> list[int]:
-        """Finalize current deletion run as a DeletionClaim."""
+        """Finalize current deletion run as an AbsenceClaim."""
         nonlocal current_deletion_anchor
         nonlocal current_deletion_baseline_reference
         nonlocal current_deletion_lines
         if current_deletion_lines:
             deletion_claims.append(
-                DeletionClaim(
+                AbsenceClaim(
                     anchor_line=current_deletion_anchor,
                     content_lines=current_deletion_lines[:],
                     baseline_reference=current_deletion_baseline_reference,
@@ -1224,7 +1224,7 @@ def translate_hunk_selection_to_batch_ownership(
     """
     claimed_source_lines = _LineRangeBuilder()
     presence_baseline_references: dict[int, BaselineReference] = {}
-    deletion_claims: list[DeletionClaim] = []
+    deletion_claims: list[AbsenceClaim] = []
     replacement_units: list[ReplacementUnit] = []
     old_line_content = _old_line_content_by_number(hunk_lines)
     consumed_replacement_ids: set[int] = set()
@@ -1273,7 +1273,7 @@ def translate_hunk_selection_to_batch_ownership(
                 )
 
         deletion_claims.append(
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=deletion_anchor,
                 content_lines=deletion_content,
                 baseline_reference=_baseline_reference_for_old_line_range(
@@ -1389,7 +1389,7 @@ def translate_hunk_selection_to_batch_ownership(
             return []
 
         deletion_claims.append(
-            DeletionClaim(
+            AbsenceClaim(
                 anchor_line=current_deletion_anchor,
                 content_lines=current_deletion_lines[:],
                 baseline_reference=_baseline_reference_for_deletion_run(
@@ -1489,23 +1489,23 @@ class OwnershipUnitKind(Enum):
     """Pure claimed lines with no coupled deletions (non-atomic)."""
 
     REPLACEMENT = "replacement"
-    """Claimed lines coupled with deletion claims (atomic)."""
+    """Claimed lines coupled with absence claims (atomic)."""
 
     DELETION_ONLY = "deletion_only"
-    """Pure deletion claims with no claimed lines (atomic)."""
+    """Pure absence claims with no claimed lines (atomic)."""
 
 
 @dataclass
 class OwnershipUnit:
     """Semantic unit of ownership that should be manipulated atomically.
 
-    Represents the coupling between claimed lines and deletion claims.
+    Represents the coupling between claimed lines and absence claims.
     Used for semantic filtering operations like line-level reset.
 
     Attributes:
         kind: Type of ownership unit
         claimed_source_lines: Set of batch source line numbers owned by this unit
-        deletion_claims: Deletion claims that are part of this unit
+        deletion_claims: Absence claims that are part of this unit
         display_line_ids: Display line IDs that map to this unit (from reconstructed display)
         is_atomic: If True, partial removal is not allowed
         atomic_reason: Explanation for why unit is atomic (for debugging/errors)
@@ -1513,7 +1513,7 @@ class OwnershipUnit:
     """
     kind: OwnershipUnitKind
     claimed_source_lines: set[int]
-    deletion_claims: list[DeletionClaim]
+    deletion_claims: list[AbsenceClaim]
     display_line_ids: set[int]
     is_atomic: bool = False
     atomic_reason: str | None = None
@@ -1822,7 +1822,7 @@ def _build_replacement_unit(
     """Build a REPLACEMENT unit from adjacent deletion and claimed runs.
 
     Args:
-        ownership: BatchOwnership containing deletion claims
+        ownership: BatchOwnership containing absence claims
         deletion_run: Dict from _collect_display_run for deletions
         claimed_run: Dict from _collect_display_run for claimed lines
 
@@ -1851,7 +1851,7 @@ def _build_deletion_only_unit(
     """Build a DELETION_ONLY unit from a deletion run with no adjacent claimed lines.
 
     Args:
-        ownership: BatchOwnership containing deletion claims
+        ownership: BatchOwnership containing absence claims
         deletion_run: Dict from _collect_display_run for deletions
 
     Returns:
@@ -1876,8 +1876,8 @@ def validate_ownership_units(units: list[OwnershipUnit]) -> None:
     """Validate structural invariants of ownership units.
 
     Ensures:
-    - No orphaned deletion claims
-    - No duplicate ownership of deletion claims
+    - No orphaned absence claims
+    - No duplicate ownership of absence claims
     - Atomic units have valid structure
 
     Args:
@@ -1886,7 +1886,7 @@ def validate_ownership_units(units: list[OwnershipUnit]) -> None:
     Raises:
         MergeError: If units have invalid structure
     """
-    # Track deletion claim usage to ensure no orphans or duplicates
+    # Track absence claim usage to ensure no orphans or duplicates
     deletion_claim_usage = {}
 
     for unit in units:
@@ -2122,7 +2122,7 @@ def _remap_batch_ownership_with_mapping(
     for deletion in ownership.deletions:
         if deletion.anchor_line is None:
             # Start-of-file anchor remains None
-            new_deletions.append(DeletionClaim(
+            new_deletions.append(AbsenceClaim(
                 anchor_line=None,
                 content_lines=deletion.content_lines,
                 baseline_reference=deletion.baseline_reference,
@@ -2137,7 +2137,7 @@ def _remap_batch_ownership_with_mapping(
                     f"to new source: no unique mapping found. This indicates the anchor line "
                     f"was removed or significantly changed in the new source."
                 )
-            new_deletions.append(DeletionClaim(
+            new_deletions.append(AbsenceClaim(
                 anchor_line=new_anchor,
                 content_lines=deletion.content_lines,
                 baseline_reference=deletion.baseline_reference,
@@ -2231,7 +2231,7 @@ def _remap_batch_ownership_with_lineage(
     new_deletions = []
     for deletion in ownership.deletions:
         if deletion.anchor_line is None:
-            new_deletions.append(DeletionClaim(
+            new_deletions.append(AbsenceClaim(
                 anchor_line=None,
                 content_lines=deletion.content_lines,
                 baseline_reference=deletion.baseline_reference,
@@ -2244,7 +2244,7 @@ def _remap_batch_ownership_with_lineage(
                 f"Cannot remap deletion anchor line {deletion.anchor_line} from old source "
                 f"to new source: no preserved source lineage found."
             )
-        new_deletions.append(DeletionClaim(
+        new_deletions.append(AbsenceClaim(
             anchor_line=new_anchor,
             content_lines=deletion.content_lines,
             baseline_reference=deletion.baseline_reference,

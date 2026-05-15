@@ -433,7 +433,7 @@ def _reset_line_claims_from_batch(batch_name: str, line_id_specification: str) -
     """Remove specific line claims from a batch using semantic ownership filtering.
 
     This implementation uses semantic ownership units to ensure that coupled
-    claimed lines and deletion claims are removed together, preventing orphaned
+    claimed lines and absence claims are removed together, preventing orphaned
     absence constraints.
 
     Args:

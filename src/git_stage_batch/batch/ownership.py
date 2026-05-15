@@ -407,7 +407,7 @@ class BatchOwnership:
     def acquire_for_metadata_dict(
         cls,
         data: dict,
-    ) -> _BatchOwnershipBuildContext:
+    ) -> _AcquiredBatchOwnership:
         """Acquire ownership for metadata with buffered deletion blobs."""
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
@@ -437,7 +437,7 @@ class BatchOwnership:
                 buffer.close()
             raise
 
-        return _BatchOwnershipBuildContext(
+        return _AcquiredBatchOwnership(
             ownership=ownership,
             buffers=buffers,
         )
@@ -485,7 +485,7 @@ class BatchOwnership:
 
 
 @dataclass
-class _BatchOwnershipBuildContext:
+class _AcquiredBatchOwnership:
     """Own buffers borrowed by a scoped BatchOwnership value."""
 
     ownership: BatchOwnership

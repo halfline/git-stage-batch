@@ -106,10 +106,12 @@ Useful for scripts checking hunk availability without output.
 .RE
 .TP
 .B include
-Stage the cached hunk (entire hunk) to the index; advance to next.
+Stage the cached hunk (entire hunk) to the index; advance to next unless
+automatic selection is disabled.
 .TP
 .B skip
-Mark the cached hunk as skipped; advance to next.
+Mark the cached hunk as skipped; advance to next unless automatic selection
+is disabled.
 Skipped hunks can be revisited with
 .BR again .
 .TP
@@ -119,7 +121,8 @@ When a session is active, running
 with no command shows the selected hunk.
 .TP
 .B discard
-Reverse-apply the cached hunk to the working tree; advance to next.
+Reverse-apply the cached hunk to the working tree; advance to next unless
+automatic selection is disabled.
 .B WARNING:
 This permanently removes changes from your working tree.
 .TP
@@ -175,6 +178,27 @@ is included + skipped + discarded;
 .BR {total}
 is processed + remaining.
 .RE
+.SS Automatic Hunk Selection
+.PP
+By default, hunk actions select and display the next hunk after they finish.
+Use
+.B \-\-no\-auto\-advance
+on an action command to leave no hunk selected after the action completes.
+Run
+.B git-stage-batch show
+to choose and display the next hunk before running another bare action.
+.PP
+Use
+.B \-\-auto\-advance
+to opt back in for one command. The
+.B start
+and
+.B again
+commands also accept
+.B \-\-auto\-advance
+and
+.B \-\-no\-auto\-advance
+to set the session default for later actions that do not specify either flag.
 .SS Session Management
 .TP
 .B again

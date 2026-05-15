@@ -234,7 +234,7 @@ def test_editor_buffer_uses_heap_for_files_smaller_than_memory_page(tmp_path):
     file_path.write_bytes(b"alpha\nbeta\n")
 
     with EditorBuffer.from_path(file_path) as buffer:
-        assert buffer.is_mmap_backed is False
+        assert buffer.uses_mapped_storage is False
         assert buffer.byte_count == len(b"alpha\nbeta\n")
         assert list(buffer.byte_chunks(5)) == [b"alpha", b"\nbeta", b"\n"]
         assert buffer.to_bytes() == b"alpha\nbeta\n"
@@ -242,14 +242,14 @@ def test_editor_buffer_uses_heap_for_files_smaller_than_memory_page(tmp_path):
         assert buffer[1] == b"beta\n"
 
 
-def test_editor_buffer_is_mmap_backed_for_page_sized_files(tmp_path):
+def test_editor_buffer_uses_mapped_storage_for_page_sized_files(tmp_path):
     """Page-sized file buffers use mapped storage."""
     data = b"alpha\n" + b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
     file_path = tmp_path / "buffer.txt"
     file_path.write_bytes(data)
 
     with EditorBuffer.from_path(file_path) as buffer:
-        assert buffer.is_mmap_backed is True
+        assert buffer.uses_mapped_storage is True
         assert buffer.byte_count == mmap.PAGESIZE
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
@@ -261,7 +261,7 @@ def test_editor_buffer_skips_mapped_storage_for_empty_files(tmp_path):
     file_path.write_bytes(b"")
 
     with EditorBuffer.from_path(file_path) as buffer:
-        assert buffer.is_mmap_backed is False
+        assert buffer.uses_mapped_storage is False
         assert len(buffer) == 0
 
 
@@ -270,7 +270,7 @@ def test_editor_buffer_uses_heap_for_generated_chunks_smaller_than_page():
     chunks = iter([b"alpha\nbe", b"ta\n", memoryview(b"gamma")])
 
     with EditorBuffer.from_chunks(chunks) as buffer:
-        assert buffer.is_mmap_backed is False
+        assert buffer.uses_mapped_storage is False
         assert len(buffer) == 3
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"beta\n"
@@ -296,7 +296,7 @@ def test_editor_buffer_spools_page_sized_generated_chunks_to_mapped_storage():
     ])
 
     with EditorBuffer.from_chunks(chunks) as buffer:
-        assert buffer.is_mmap_backed is True
+        assert buffer.uses_mapped_storage is True
         assert buffer.byte_count == mmap.PAGESIZE
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"beta\n"
@@ -304,26 +304,26 @@ def test_editor_buffer_spools_page_sized_generated_chunks_to_mapped_storage():
 
 
 def test_editor_buffer_streams_threshold_chunk_without_copying():
-    """The chunk that reaches the mmap threshold is streamed directly."""
+    """The chunk that reaches the mapped-storage threshold streams directly."""
     prefix = b"alpha\n"
     threshold_chunk = _CopyFailingBytearray(
         b"x" * (mmap.PAGESIZE - len(prefix))
     )
 
     with EditorBuffer.from_chunks([prefix, threshold_chunk]) as buffer:
-        assert buffer.is_mmap_backed is True
+        assert buffer.uses_mapped_storage is True
         assert buffer.byte_count == mmap.PAGESIZE
         assert buffer[0] == prefix
         assert buffer[1] == bytes(bytearray(threshold_chunk))
 
 
 def test_editor_buffer_streams_remaining_large_chunks_without_copying():
-    """Chunks after the mmap threshold are streamed directly."""
+    """Chunks after the mapped-storage threshold stream directly."""
     threshold_chunk = b"x" * mmap.PAGESIZE
     remaining_chunk = _CopyFailingBytearray(b"omega\n")
 
     with EditorBuffer.from_chunks([threshold_chunk, remaining_chunk]) as buffer:
-        assert buffer.is_mmap_backed is True
+        assert buffer.uses_mapped_storage is True
         assert buffer.byte_count == mmap.PAGESIZE + len(remaining_chunk)
         assert buffer[0] == threshold_chunk + b"omega\n"
 
@@ -331,7 +331,7 @@ def test_editor_buffer_streams_remaining_large_chunks_without_copying():
 def test_editor_buffer_handles_empty_generated_chunks():
     """Empty generated buffers have no byte lines."""
     with EditorBuffer.from_chunks([]) as buffer:
-        assert buffer.is_mmap_backed is False
+        assert buffer.uses_mapped_storage is False
         assert len(buffer) == 0
 
 

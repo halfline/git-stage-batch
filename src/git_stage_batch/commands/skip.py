@@ -21,15 +21,15 @@ from ..batch.selection import require_line_selection_in_view
 from ..core.models import BinaryFileChange, GitlinkChange
 from ..data.hunk_tracking import (
     SelectedChangeKind,
-    advance_to_and_show_next_change,
-    advance_to_next_change,
     fetch_next_change,
+    finish_selected_change_action,
     get_selected_change_file_path,
     load_selected_change,
     read_selected_change_kind,
     record_binary_hunk_skipped,
     record_gitlink_hunk_skipped,
     record_hunk_skipped,
+    refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     require_selected_hunk,
 )
@@ -65,7 +65,11 @@ from ..utils.paths import (
 )
 
 
-def command_skip(*, quiet: bool = False) -> None:
+def command_skip(
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Skip the selected hunk or binary file without staging it."""
     log_journal("command_skip_start", quiet=quiet)
 
@@ -78,9 +82,10 @@ def command_skip(*, quiet: bool = False) -> None:
     if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.SKIP):
         return
     refuse_bare_action_after_file_list("skip")
+    refuse_bare_action_after_auto_advance_disabled("skip")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
-        command_skip_file("")
+        command_skip_file("", auto_advance=auto_advance)
         return
 
     item = load_selected_change()
@@ -110,10 +115,10 @@ def command_skip(*, quiet: bool = False) -> None:
                     file=sys.stderr,
                 )
 
-            if quiet:
-                advance_to_next_change()
-            else:
-                advance_to_and_show_next_change()
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
             return
 
         if isinstance(item, BinaryFileChange):
@@ -130,10 +135,10 @@ def command_skip(*, quiet: bool = False) -> None:
                 change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
                 print(_("✓ Binary file {desc} skipped: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
 
-            if quiet:
-                advance_to_next_change()
-            else:
-                advance_to_and_show_next_change()
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
             return
 
         # Text hunk - item is LineLevelChange here
@@ -149,10 +154,10 @@ def command_skip(*, quiet: bool = False) -> None:
         if not quiet:
             print(_("✓ Hunk skipped from {file}").format(file=filename), file=sys.stderr)
 
-        if quiet:
-            advance_to_next_change()
-        else:
-            advance_to_and_show_next_change()
+        finish_selected_change_action(
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
 
 
 def command_skip_file(
@@ -160,6 +165,7 @@ def command_skip_file(
     *,
     quiet: bool = False,
     advance: bool = True,
+    auto_advance: bool | None = None,
 ) -> int:
     """Skip all remaining hunks from the specified file.
 
@@ -184,6 +190,7 @@ def command_skip_file(
         if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.SKIP):
             return 0
         refuse_bare_action_after_file_list("skip --file")
+        refuse_bare_action_after_auto_advance_disabled("skip --file")
 
     # Determine target file
     if file == "":
@@ -259,7 +266,7 @@ def command_skip_file(
                 hunks_skipped += 1
 
         if quiet and advance:
-            advance_to_next_change()
+            finish_selected_change_action(quiet=True, auto_advance=auto_advance)
         if quiet:
             return hunks_skipped
 
@@ -270,11 +277,17 @@ def command_skip_file(
         ).format(count=hunks_skipped, file=target_file)
         print(msg, file=sys.stderr)
 
-        advance_to_and_show_next_change()
+        if advance:
+            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
         return hunks_skipped
 
 
-def command_skip_line(line_id_specification: str, file: str | None = None) -> None:
+def command_skip_line(
+    line_id_specification: str,
+    file: str | None = None,
+    *,
+    auto_advance: bool | None = None,
+) -> None:
     """Mark only the specified lines as skipped.
 
     Args:
@@ -354,7 +367,7 @@ def command_skip_line(line_id_specification: str, file: str | None = None) -> No
             if read_selected_change_kind() == SelectedChangeKind.FILE:
                 print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
                 finish_review_scoped_line_action(review_state)
-                command_skip_file("")
+                command_skip_file("", auto_advance=auto_advance)
                 return
 
             patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
@@ -363,7 +376,10 @@ def command_skip_line(line_id_specification: str, file: str | None = None) -> No
             record_hunk_skipped(line_changes, patch_hash)
             print(_("✓ Skipped line(s): {lines}").format(lines=line_id_specification), file=sys.stderr)
             finish_review_scoped_line_action(review_state)
-            advance_to_and_show_next_change()
+            finish_selected_change_action(
+                quiet=False,
+                auto_advance=auto_advance,
+            )
             return
 
         filtered_lines = [

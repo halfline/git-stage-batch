@@ -328,7 +328,11 @@ def _include_each_resolved_file(
         show_selected_change()
 
 
-def _skip_each_resolved_file(files: list[str]) -> None:
+def _skip_each_resolved_file(
+    files: list[str],
+    *,
+    auto_advance: bool | None = None,
+) -> None:
     """Skip a multi-file live scope and report one aggregate summary."""
     total_hunks = 0
     skipped_files: list[str] = []
@@ -348,7 +352,7 @@ def _skip_each_resolved_file(files: list[str]) -> None:
         print(_("No hunks skipped from matched files."), file=sys.stderr)
         return
 
-    advance_to_next_change()
+    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
 
     if len(skipped_files) == 1:
         file_summary = skipped_files[0]
@@ -367,7 +371,8 @@ def _skip_each_resolved_file(files: list[str]) -> None:
         ).format(count=total_hunks, files=file_summary),
         file=sys.stderr,
     )
-    show_selected_change()
+    if should_show_next:
+        show_selected_change()
 
 
 def _discard_to_batch_each_resolved_file(batch_name: str, files: list[str]) -> None:
@@ -902,19 +907,30 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
           "If PATH omitted, uses selected hunk's file. "
           "Without --line, skips all hunks from the file."),
     )
+    _add_auto_advance_arguments(parser_skip)
 
     def dispatch_skip(args: argparse.Namespace) -> None:
         resolved_file_scope = _resolve_live_file_scope(args.file, args.file_patterns)
         if args.line_ids:
             resolved_file = resolved_file_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            commands.command_skip_line(args.line_ids, file=resolved_file)
+            commands.command_skip_line(
+                args.line_ids,
+                file=resolved_file,
+                auto_advance=args.auto_advance,
+            )
         elif not resolved_file_scope.is_implicit:
             if resolved_file_scope.is_multiple:
-                _skip_each_resolved_file(list(resolved_file_scope.files))
+                _skip_each_resolved_file(
+                    list(resolved_file_scope.files),
+                    auto_advance=args.auto_advance,
+                )
             else:
-                commands.command_skip_file(resolved_file_scope.optional_file())
+                commands.command_skip_file(
+                    resolved_file_scope.optional_file(),
+                    auto_advance=args.auto_advance,
+                )
         else:
-            commands.command_skip()
+            commands.command_skip(auto_advance=args.auto_advance)
 
     parser_skip.set_defaults(func=dispatch_skip)
 

@@ -7,6 +7,7 @@ import pytest
 
 from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
+from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.start import command_start
@@ -71,7 +72,8 @@ def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
     resolved = ownership.resolve()
     assert resolved.presence_line_set == {2}
     assert len(resolved.deletion_claims) == 1
-    assert resolved.deletion_claims[0].content_lines == [b"old\n"]
+    assert isinstance(resolved.deletion_claims[0].content_lines, EditorBuffer)
+    assert list(resolved.deletion_claims[0].content_lines) == [b"old\n"]
 
 
 def test_build_sift_ownership_consumes_target_ranges(monkeypatch):

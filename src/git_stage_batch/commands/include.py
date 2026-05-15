@@ -50,12 +50,11 @@ from ..core.models import BinaryFileChange, GitlinkChange
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
-    advance_to_and_show_next_change,
-    advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
     cache_unstaged_file_as_single_hunk,
     clear_selected_change_state_files,
     fetch_next_change,
+    finish_selected_change_action,
     get_selected_change_file_path,
     load_selected_change,
     read_selected_change_kind,
@@ -64,6 +63,7 @@ from ..data.hunk_tracking import (
     record_gitlink_hunk_skipped,
     record_hunk_included,
     record_hunk_skipped,
+    refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     render_binary_file_change,
     render_gitlink_change,
@@ -478,7 +478,11 @@ def _transient_include_failure_message(
     ).format(lines=line_id_specification, file=file_path)
 
 
-def command_include(*, quiet: bool = False) -> None:
+def command_include(
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Include (stage) the selected hunk or binary file."""
 
     log_journal("command_include_start", quiet=quiet)
@@ -492,9 +496,10 @@ def command_include(*, quiet: bool = False) -> None:
     if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.INCLUDE):
         return 0
     refuse_bare_action_after_file_list("include")
+    refuse_bare_action_after_auto_advance_disabled("include")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
-        command_include_file("")
+        command_include_file("", auto_advance=auto_advance)
         return 0
 
     item = load_selected_change()
@@ -530,10 +535,10 @@ def command_include(*, quiet: bool = False) -> None:
                     file=sys.stderr,
                 )
 
-            if quiet:
-                advance_to_next_change()
-            else:
-                advance_to_and_show_next_change()
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
             return
 
         if isinstance(item, BinaryFileChange):
@@ -553,10 +558,10 @@ def command_include(*, quiet: bool = False) -> None:
                 change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
                 print(_("✓ Binary file {desc}: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
 
-            if quiet:
-                advance_to_next_change()
-            else:
-                advance_to_and_show_next_change()
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
             return
 
         # Extract filename for user feedback (we already have LineLevelChange in item)
@@ -578,10 +583,10 @@ def command_include(*, quiet: bool = False) -> None:
         if not quiet:
             print(_("✓ Hunk staged from {file}").format(file=filename), file=sys.stderr)
 
-        if quiet:
-            advance_to_next_change()
-        else:
-            advance_to_and_show_next_change()
+        finish_selected_change_action(
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
 
 
 def command_include_file(
@@ -589,6 +594,7 @@ def command_include_file(
     *,
     quiet: bool = False,
     advance: bool = True,
+    auto_advance: bool | None = None,
 ) -> int:
     """Include (stage) all hunks from the specified file.
 
@@ -598,6 +604,7 @@ def command_include_file(
               If explicit path, uses that file.
         quiet: Suppress per-file status output while preserving selection state.
         advance: When quiet, advance the selection after staging this file.
+        auto_advance: Whether to select the next hunk after this action.
 
     Returns:
         Number of hunks staged from the requested file.
@@ -612,6 +619,7 @@ def command_include_file(
         if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.INCLUDE):
             return 0
         refuse_bare_action_after_file_list("include --file")
+        refuse_bare_action_after_auto_advance_disabled("include --file")
 
     # Determine target file
     if file == "":
@@ -719,7 +727,7 @@ def command_include_file(
         return 0
 
     if quiet and advance:
-        advance_to_next_change()
+        finish_selected_change_action(quiet=True, auto_advance=auto_advance)
     if quiet:
         return hunks_staged
 
@@ -738,12 +746,17 @@ def command_include_file(
         ).format(count=hunks_staged, file=target_file)
     print(msg, file=sys.stderr)
 
-    # Advance to next file's hunk
-    advance_to_and_show_next_change()
+    if advance:
+        finish_selected_change_action(quiet=False, auto_advance=auto_advance)
     return hunks_staged
 
 
-def command_include_file_as(replacement_text: str, file: str | None = None) -> None:
+def command_include_file_as(
+    replacement_text: str,
+    file: str | None = None,
+    *,
+    auto_advance: bool | None = None,
+) -> None:
     """Stage full-file replacement text for a live file-scoped selection."""
     require_git_repository()
     require_session_started()
@@ -754,6 +767,7 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
         if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.INCLUDE):
             return
         refuse_bare_action_after_file_list("include --file --as")
+        refuse_bare_action_after_auto_advance_disabled("include --file --as")
 
     operation_parts = ["include", "--as", replacement_text]
     if file is not None:
@@ -796,13 +810,21 @@ def command_include_file_as(replacement_text: str, file: str | None = None) -> N
             restore_selected_change_state(saved_selected_state)
         else:
             write_line_ids_file(get_processed_include_ids_file_path(), set())
-            recalculate_selected_hunk_for_file(target_file)
+            recalculate_selected_hunk_for_file(
+                target_file,
+                auto_advance=auto_advance,
+            )
         clear_last_file_review_state_if_file_matches(target_file)
 
     print(_("✓ Included file as replacement: {file}").format(file=target_file), file=sys.stderr)
 
 
-def command_include_line(line_id_specification: str, file: str | None = None) -> None:
+def command_include_line(
+    line_id_specification: str,
+    file: str | None = None,
+    *,
+    auto_advance: bool | None = None,
+) -> None:
     """Stage only the specified lines to the index.
 
     Args:
@@ -969,7 +991,10 @@ def command_include_line(line_id_specification: str, file: str | None = None) ->
                 file=sys.stderr,
             )
             print_remaining_line_changes_header(line_changes.path)
-            recalculate_selected_hunk_for_file(line_changes.path)
+            recalculate_selected_hunk_for_file(
+                line_changes.path,
+                auto_advance=auto_advance,
+            )
         finish_review_scoped_line_action(review_state, file_path=line_changes.path)
     if preserve_selected_state:
         print(
@@ -1175,6 +1200,7 @@ def command_include_line_as(
     file: str | None = None,
     *,
     no_edge_overlap: bool = False,
+    auto_advance: bool | None = None,
 ) -> None:
     """Stage a replacement for one contiguous selected line span and mask it."""
     require_git_repository()
@@ -1227,7 +1253,10 @@ def command_include_line_as(
                 file=sys.stderr,
             )
             print_remaining_line_changes_header(line_changes.path)
-            recalculate_selected_hunk_for_file(line_changes.path)
+            recalculate_selected_hunk_for_file(
+                line_changes.path,
+                auto_advance=auto_advance,
+            )
             finish_review_scoped_line_action(review_state, file_path=line_changes.path)
         else:
             if file == "":
@@ -1287,7 +1316,10 @@ def command_include_line_as(
                     file=sys.stderr,
                 )
                 print_remaining_line_changes_header(target_file)
-                recalculate_selected_hunk_for_file(target_file)
+                recalculate_selected_hunk_for_file(
+                    target_file,
+                    auto_advance=auto_advance,
+                )
             finish_review_scoped_line_action(review_state, file_path=target_file)
 
     if preserve_selected_state:
@@ -1300,7 +1332,14 @@ def command_include_line_as(
         )
 
 
-def command_include_to_batch(batch_name: str, line_ids: str | None = None, file: str | None = None, *, quiet: bool = False) -> None:
+def command_include_to_batch(
+    batch_name: str,
+    line_ids: str | None = None,
+    file: str | None = None,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Save selected changes to batch instead of staging.
 
     Args:
@@ -1310,6 +1349,7 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
               If empty string, uses selected hunk's file.
               If None, uses selected hunk (cached state).
         quiet: Suppress output
+        auto_advance: Whether to select the next hunk after this action.
     """
     require_git_repository()
     ensure_state_directory_exists()
@@ -1338,10 +1378,20 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
         ):
             selected_change = load_selected_change()
             if isinstance(selected_change, GitlinkChange):
-                _command_include_gitlink_to_batch(batch_name, selected_change, quiet=quiet)
+                _command_include_gitlink_to_batch(
+                    batch_name,
+                    selected_change,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
                 return
             else:
-                _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+                _command_include_hunk_to_batch(
+                    batch_name,
+                    file_only=False,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
                 return
         elif (
             file is None
@@ -1350,10 +1400,20 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
         ):
             selected_change = load_selected_change()
             if isinstance(selected_change, BinaryFileChange):
-                _command_include_binary_to_batch(batch_name, selected_change, quiet=quiet)
+                _command_include_binary_to_batch(
+                    batch_name,
+                    selected_change,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
                 return
             else:
-                _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+                _command_include_hunk_to_batch(
+                    batch_name,
+                    file_only=False,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
                 return
         elif file is not None:
             # File-scoped operation
@@ -1369,17 +1429,38 @@ def command_include_to_batch(batch_name: str, line_ids: str | None = None, file:
 
             if line_ids is None:
                 # --file without --line: include entire file
-                _command_include_file_to_batch(batch_name, target_file, quiet=quiet)
+                _command_include_file_to_batch(
+                    batch_name,
+                    target_file,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
             else:
                 # --file with --line: include specific lines from file
-                _command_include_file_lines_to_batch(batch_name, target_file, line_ids, quiet=quiet)
+                _command_include_file_lines_to_batch(
+                    batch_name,
+                    target_file,
+                    line_ids,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
         else:
             # Hunk-scoped operation (selected behavior)
             if line_ids is not None:
-                _command_include_lines_to_batch(batch_name, line_ids, quiet=quiet)
+                _command_include_lines_to_batch(
+                    batch_name,
+                    line_ids,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
             else:
                 # Include entire selected hunk
-                _command_include_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+                _command_include_hunk_to_batch(
+                    batch_name,
+                    file_only=False,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
     if original_file_scope in (None, "") and line_ids is not None:
         finish_review_scoped_line_action(review_state)
 
@@ -1427,6 +1508,7 @@ def _command_include_binary_to_batch(
     binary_change: BinaryFileChange,
     *,
     quiet: bool = False,
+    auto_advance: bool | None = None,
 ) -> None:
     """Save one binary change to a batch and mark it processed."""
     file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
@@ -1449,10 +1531,7 @@ def _command_include_binary_to_batch(
             file=sys.stderr,
         )
 
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
+    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
 
 
 def _command_include_gitlink_to_batch(
@@ -1460,6 +1539,7 @@ def _command_include_gitlink_to_batch(
     gitlink_change: GitlinkChange,
     *,
     quiet: bool = False,
+    auto_advance: bool | None = None,
 ) -> None:
     """Save one submodule pointer change to a batch and mark it processed."""
     file_path = gitlink_change.path()
@@ -1478,13 +1558,16 @@ def _command_include_gitlink_to_batch(
             file=sys.stderr,
         )
 
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
+    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
 
 
-def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bool = False) -> None:
+def _command_include_file_to_batch(
+    batch_name: str,
+    file_path: str,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Include entire file to batch (internal helper for file-scoped operations)."""
     auto_add_untracked_files([file_path])
 
@@ -1494,11 +1577,21 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
 
     binary_change = render_binary_file_change(file_path)
     if binary_change is not None:
-        _command_include_binary_to_batch(batch_name, binary_change, quiet=quiet)
+        _command_include_binary_to_batch(
+            batch_name,
+            binary_change,
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
         return
     gitlink_change = render_gitlink_change(file_path)
     if gitlink_change is not None:
-        _command_include_gitlink_to_batch(batch_name, gitlink_change, quiet=quiet)
+        _command_include_gitlink_to_batch(
+            batch_name,
+            gitlink_change,
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
         return
 
     # Detect file mode
@@ -1525,10 +1618,7 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
         if _save_empty_text_lifecycle_to_batch(batch_name, file_path, file_mode) is not None:
             if not quiet:
                 print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
-            if quiet:
-                advance_to_next_change()
-            else:
-                advance_to_and_show_next_change()
+            finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
             return
 
         if not quiet:
@@ -1566,14 +1656,17 @@ def _command_include_file_to_batch(batch_name: str, file_path: str, *, quiet: bo
     if not quiet:
         print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
 
-    # Show next hunk
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
+    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
 
 
-def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_id_specification: str, *, quiet: bool = False) -> None:
+def _command_include_file_lines_to_batch(
+    batch_name: str,
+    file_path: str,
+    line_id_specification: str,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Include specific lines from a file to batch (file-scoped with line IDs)."""
     if render_gitlink_change(file_path) is not None:
         exit_with_error(
@@ -1651,14 +1744,16 @@ def _command_include_file_lines_to_batch(batch_name: str, file_path: str, line_i
             lines=line_id_specification
         ), file=sys.stderr)
 
-    # Show next hunk
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
+    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
 
 
-def _command_include_lines_to_batch(batch_name: str, line_id_specification: str, *, quiet: bool = False) -> None:
+def _command_include_lines_to_batch(
+    batch_name: str,
+    line_id_specification: str,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Save specific lines to batch (internal helper)."""
 
     require_selected_hunk()
@@ -1717,10 +1812,14 @@ def _command_include_lines_to_batch(batch_name: str, line_id_specification: str,
         print(_("✓ Included line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)
 
     # Recalculate and show the updated hunk for this file with batched lines filtered out
-    recalculate_selected_hunk_for_file(line_changes.path)
+    recalculate_selected_hunk_for_file(line_changes.path, auto_advance=auto_advance)
 
 
-def _filter_selected_hunk_excluding_batched_lines(*, quiet: bool = False) -> None:
+def _filter_selected_hunk_excluding_batched_lines(
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Filter the selected hunk to exclude lines that have been batched and display it."""
 
     # Apply filtering
@@ -1730,10 +1829,7 @@ def _filter_selected_hunk_excluding_batched_lines(*, quiet: bool = False) -> Non
         if not quiet:
             print(_("No more lines in this hunk."), file=sys.stderr)
 
-        if quiet:
-            advance_to_next_change()
-        else:
-            advance_to_and_show_next_change()
+        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
         return
 
     # Display filtered hunk
@@ -1743,7 +1839,13 @@ def _filter_selected_hunk_excluding_batched_lines(*, quiet: bool = False) -> Non
             print_line_level_changes(line_changes)
 
 
-def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, quiet: bool = False) -> None:
+def _command_include_hunk_to_batch(
+    batch_name: str,
+    file_only: bool = False,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Save whole hunk or file to batch (internal helper)."""
 
     # Auto-create batch if it doesn't exist
@@ -1770,14 +1872,24 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
             if isinstance(patch, GitlinkChange):
                 patch_hash = compute_gitlink_change_hash(patch)
                 if patch_hash not in blocked_hashes:
-                    _command_include_gitlink_to_batch(batch_name, patch, quiet=quiet)
+                    _command_include_gitlink_to_batch(
+                        batch_name,
+                        patch,
+                        quiet=quiet,
+                        auto_advance=auto_advance,
+                    )
                     return
                 continue
 
             if isinstance(patch, BinaryFileChange):
                 patch_hash = compute_binary_file_hash(patch)
                 if patch_hash not in blocked_hashes:
-                    _command_include_binary_to_batch(batch_name, patch, quiet=quiet)
+                    _command_include_binary_to_batch(
+                        batch_name,
+                        patch,
+                        quiet=quiet,
+                        auto_advance=auto_advance,
+                    )
                     return
                 continue
 
@@ -1885,7 +1997,4 @@ def _command_include_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
         else:
             print(_("✓ Hunk saved to batch '{name}'").format(name=batch_name), file=sys.stderr)
 
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
+    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)

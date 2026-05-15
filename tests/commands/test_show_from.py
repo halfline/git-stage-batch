@@ -18,6 +18,7 @@ import pytest
 
 from git_stage_batch.batch import create_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
+from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import ensure_state_directory_exists
@@ -401,6 +402,37 @@ class TestCommandShowFromBatch:
         assert rendered is not None
         assert len(rendered.review_action_groups) == 2
         assert calls == ["hunk"]
+
+    def test_show_from_keeps_mergeable_display_ids_range_backed(self, temp_git_repo, monkeypatch):
+        """Rendering should not compare each unit with a set of mergeable IDs."""
+
+        (temp_git_repo / "file.txt").write_text("one\nkeep\ntwo\nend\n")
+        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        create_batch("multi-unit-batch")
+        add_file_to_batch(
+            "multi-unit-batch",
+            "file.txt",
+            BatchOwnership.from_presence_lines(["1,3"], []),
+            "100644",
+        )
+
+        original_intersection = LineRanges.intersection
+        set_backed_intersections = []
+
+        def track_intersection(self, other):
+            if isinstance(other, set):
+                set_backed_intersections.append(other)
+            return original_intersection(self, other)
+
+        monkeypatch.setattr(LineRanges, "intersection", track_intersection)
+
+        rendered = render_batch_file_display("multi-unit-batch", "file.txt")
+
+        assert rendered is not None
+        assert len(rendered.review_action_groups) == 2
+        assert set_backed_intersections == []
 
     def test_show_from_multi_file_list_renders_each_file_once(self, temp_git_repo, monkeypatch, capsys):
         """Showing a multi-file batch file list should render each file once."""

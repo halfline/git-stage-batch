@@ -10,6 +10,7 @@ import pytest
 import git_stage_batch.utils.mapped_storage as mapped_storage_module
 from git_stage_batch.batch.match_storage import MatcherWorkspace
 from git_stage_batch.utils.mapped_storage import (
+    ChunkedMappedRecordVector,
     MappedIntVector,
     MappedRecordVector,
 )
@@ -138,6 +139,30 @@ def test_mapped_record_vector_can_start_presized():
         records[0] = (10, 20)
         records[1] = (30, 40)
         assert list(records) == [(10, 20), (30, 40)]
+
+
+def test_chunked_mapped_record_vector_grows_from_small_chunks():
+    """Chunked vectors should avoid allocating the full chunk up front."""
+    records = ChunkedMappedRecordVector(
+        record_format="QQ",
+        chunk_capacity=4,
+    )
+
+    for value in range(8):
+        records.append((value, value + 10))
+
+    byte_count = records.byte_count
+
+    assert byte_count < mmap.PAGESIZE
+    assert records._chunk_starts == [0, 1, 3, 7]
+    assert records[0] == (0, 10)
+    assert records[1] == (1, 11)
+    assert records[2] == (2, 12)
+    assert records[3] == (3, 13)
+    assert records[6] == (6, 16)
+    assert records[7] == (7, 17)
+
+    records.close()
 
 
 def test_matcher_workspace_tracks_and_closes_resources():

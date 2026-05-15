@@ -15,8 +15,12 @@ from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
-    detach_batch_ownership,
+    _AbsenceContentBuilder,
+    _absence_signature,
+    acquire_detached_batch_ownership,
+    merge_batch_ownership,
 )
+import git_stage_batch.batch.ownership as ownership_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.utils.git import create_git_blob
@@ -137,6 +141,26 @@ def test_deletion_claim_metadata_accepts_non_list_content_lines(
             b"old two\n",
         ]
 
+
+def test_absence_claim_metadata_keeps_deletions_key(temp_git_repo):
+    """Serialized metadata should keep the compatible deletions key."""
+    with EditorBuffer.from_chunks([b"old\n"]) as content:
+        ownership = BatchOwnership.from_presence_lines(
+            [],
+            [
+                AbsenceClaim(
+                    anchor_line=None,
+                    content_lines=content,
+                ),
+            ],
+        )
+        metadata = ownership.to_metadata_dict()
+
+    assert "deletions" in metadata
+    assert "absence_claims" not in metadata
+    assert metadata["deletions"][0]["after_source_line"] is None
+
+
 def test_batch_ownership_metadata_acquisition_scopes_deletion_buffers(temp_git_repo):
     """Acquired ownership should keep deletion content usable only inside."""
     ownership = BatchOwnership.from_presence_lines(
@@ -160,8 +184,8 @@ def test_batch_ownership_metadata_acquisition_scopes_deletion_buffers(temp_git_r
         content_lines[0]
 
 
-def test_detach_batch_ownership_keeps_acquired_deletion_content(temp_git_repo):
-    """Detached ownership should keep acquired deletion content after scope."""
+def test_acquire_detached_batch_ownership_keeps_copied_content(temp_git_repo):
+    """Detached ownership should keep copied absence content after scope."""
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
         [
@@ -177,21 +201,117 @@ def test_detach_batch_ownership_keeps_acquired_deletion_content(temp_git_repo):
     metadata = ownership.to_metadata_dict()
 
     with BatchOwnership.acquire_for_metadata_dict(metadata) as scoped_ownership:
-        detached = detach_batch_ownership(scoped_ownership)
+        detached_context = acquire_detached_batch_ownership(scoped_ownership)
         content_lines = scoped_ownership.deletions[0].content_lines
         assert isinstance(content_lines, EditorBuffer)
 
     with pytest.raises(ValueError, match="buffer is closed"):
         content_lines[0]
 
-    assert detached.deletions[0].content_lines == [
-        b"old one\n",
-        b"old two\n",
-    ]
-    assert detached.presence_line_set() == {1}
-    assert detached.replacement_units == [
-        ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
-    ]
+    with detached_context as detached:
+        detached_content = detached.deletions[0].content_lines
+        assert isinstance(detached_content, EditorBuffer)
+        assert list(detached_content) == [
+            b"old one\n",
+            b"old two\n",
+        ]
+        assert detached.presence_line_set() == {1}
+        assert detached.replacement_units == [
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
+        ]
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        detached_content.to_bytes()
+
+
+def test_acquire_detached_batch_ownership_streams_buffer_content(monkeypatch):
+    """Detached absence content should copy buffer bytes without line indexing."""
+    def fail_getitem(self, index):
+        raise AssertionError("detach should stream byte chunks")
+
+    with EditorBuffer.from_chunks([b"old one\n", b"old two\n"]) as content:
+        monkeypatch.setattr(EditorBuffer, "__getitem__", fail_getitem)
+        detached_context = acquire_detached_batch_ownership(
+            BatchOwnership.from_presence_lines(
+                [],
+                [AbsenceClaim(anchor_line=None, content_lines=content)],
+            )
+        )
+
+    with detached_context as detached:
+        detached_content = detached.deletions[0].content_lines
+        assert isinstance(detached_content, EditorBuffer)
+        assert detached_content.to_bytes() == b"old one\nold two\n"
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        detached_content.to_bytes()
+
+
+def test_absence_signature_streams_editor_buffer_chunks(monkeypatch):
+    """Absence signatures should hash buffer chunks without line indexing."""
+    def fail_getitem(self, index):
+        raise AssertionError("absence signature should stream byte chunks")
+
+    with (
+        EditorBuffer.from_chunks([b"old one\n", b"old two\n"]) as left_content,
+        EditorBuffer.from_chunks([b"old one\n", b"old two\n"]) as right_content,
+    ):
+        monkeypatch.setattr(EditorBuffer, "__getitem__", fail_getitem)
+        left_claim = AbsenceClaim(anchor_line=None, content_lines=left_content)
+        right_claim = AbsenceClaim(anchor_line=None, content_lines=right_content)
+
+        signature = _absence_signature(left_claim)
+        merged = merge_batch_ownership(
+            BatchOwnership.from_presence_lines([], [left_claim]),
+            BatchOwnership.from_presence_lines([], [right_claim]),
+        )
+
+        assert signature.byte_count == len(b"old one\nold two\n")
+        assert signature.line_count == 2
+        assert len(merged.deletions) == 1
+
+
+def test_absence_content_builder_closes_editor_on_finish(monkeypatch):
+    """Finishing absence content should close the temporary editor."""
+    close_count = 0
+    original_close = ownership_module.Editor.close
+
+    def count_close(self):
+        nonlocal close_count
+        close_count += 1
+        original_close(self)
+
+    monkeypatch.setattr(ownership_module.Editor, "close", count_close)
+
+    with _AbsenceContentBuilder() as builder:
+        builder.append_line_range([b"old\n"], 0, 1)
+        content = builder.finish()
+
+    try:
+        assert content.to_bytes() == b"old\n"
+    finally:
+        content.close()
+    assert close_count == 1
+
+
+def test_absence_content_builder_closes_editor_on_exception(monkeypatch):
+    """Failing absence construction should close the temporary editor."""
+    close_count = 0
+    original_close = ownership_module.Editor.close
+
+    def count_close(self):
+        nonlocal close_count
+        close_count += 1
+        original_close(self)
+
+    monkeypatch.setattr(ownership_module.Editor, "close", count_close)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with _AbsenceContentBuilder() as builder:
+            builder.append_line_range([b"old\n"], 0, 1)
+            raise RuntimeError("boom")
+
+    assert close_count == 1
 
 
 def test_legacy_claimed_lines_metadata_loads_as_presence_claims(temp_git_repo):

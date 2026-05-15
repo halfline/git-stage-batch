@@ -33,7 +33,7 @@ from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
-from ..batch.ownership import BatchOwnership, AbsenceClaim
+from ..batch.ownership import BatchOwnership, AbsenceClaim, _AbsenceContentBuilder
 from ..batch.query import get_batch_baseline_commit, read_batch_metadata
 from ..batch.state_refs import (
     delete_batch_state_refs,
@@ -604,32 +604,44 @@ def build_ownership_from_working_and_target_lines(
     claimed_ranges: list[tuple[int, int]] = []
     deletion_claims = []
 
+    def build_absence_claim(
+        *,
+        anchor_line: int | None,
+        source_start: int,
+        source_end: int,
+    ) -> AbsenceClaim:
+        with _AbsenceContentBuilder() as builder:
+            builder.append_line_range(
+                working_lines,
+                source_start - 1,
+                source_end,
+            )
+            content_lines = builder.finish()
+        return AbsenceClaim(
+            anchor_line=anchor_line,
+            content_lines=content_lines,
+        )
+
     for run in semantic_runs:
         if run.kind == SemanticChangeKind.PRESENCE:
             if run.target_start is not None and run.target_end is not None:
                 claimed_ranges.append((run.target_start, run.target_end))
         elif run.kind == SemanticChangeKind.DELETION:
             if run.source_start is not None and run.source_end is not None:
-                deletion_content = [
-                    working_lines[index - 1]
-                    for index in run.source_line_numbers()
-                ]
                 deletion_claims.append(
-                    AbsenceClaim(
+                    build_absence_claim(
                         anchor_line=run.target_anchor,
-                        content_lines=deletion_content,
+                        source_start=run.source_start,
+                        source_end=run.source_end,
                     )
                 )
         elif run.kind == SemanticChangeKind.REPLACEMENT:
             if run.source_start is not None and run.source_end is not None:
-                deletion_content = [
-                    working_lines[index - 1]
-                    for index in run.source_line_numbers()
-                ]
                 deletion_claims.append(
-                    AbsenceClaim(
+                    build_absence_claim(
                         anchor_line=run.target_anchor,
-                        content_lines=deletion_content,
+                        source_start=run.source_start,
+                        source_end=run.source_end,
                     )
                 )
             if run.target_start is not None and run.target_end is not None:

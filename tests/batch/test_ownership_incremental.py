@@ -12,6 +12,7 @@ from git_stage_batch.batch.ownership import (
 )
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.models import LineEntry
+from git_stage_batch.editor import EditorBuffer
 
 
 def test_translate_lines_creates_deletion_constraints():
@@ -31,7 +32,8 @@ def test_translate_lines_creates_deletion_constraints():
     # Should create deletion constraint for - line (suppression constraint)
     assert len(ownership.deletions) == 1
     assert isinstance(ownership.deletions[0], AbsenceClaim)
-    assert ownership.deletions[0].content_lines == [b'old_version\n']
+    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert list(ownership.deletions[0].content_lines) == [b'old_version\n']
     assert len(ownership.replacement_units) == 1
     assert ownership.replacement_units[0].presence_lines == ["1"]
     assert ownership.replacement_units[0].deletion_indices == [0]
@@ -86,6 +88,31 @@ def test_translate_lines_builds_selected_ranges_without_line_sets(monkeypatch):
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
     ]
+
+
+def test_translate_lines_stores_large_deletion_as_editor_buffer():
+    """Large selected deletions should keep absence content buffer-backed."""
+    lines = [
+        LineEntry(
+            id=index + 1,
+            kind='-',
+            old_line_number=index + 1,
+            new_line_number=None,
+            text_bytes=f'old {index}'.encode(),
+            text=f'old {index}',
+            source_line=None if index == 0 else index,
+        )
+        for index in range(1000)
+    ]
+
+    ownership = translate_lines_to_batch_ownership(lines)
+
+    assert len(ownership.deletions) == 1
+    content_lines = ownership.deletions[0].content_lines
+    assert isinstance(content_lines, EditorBuffer)
+    assert len(content_lines) == 1000
+    assert content_lines[0] == b'old 0\n'
+    assert content_lines[999] == b'old 999\n'
 
 
 def test_derive_replacement_line_runs_accepts_non_list_sequences(line_sequence):
@@ -172,9 +199,11 @@ def test_translate_lines_preserves_deletion_structure():
 
     # Should have two separate absence claims (not collapsed)
     assert len(ownership.deletions) == 2
-    assert ownership.deletions[0].content_lines == [b'del1\n', b'del2\n']
+    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert list(ownership.deletions[0].content_lines) == [b'del1\n', b'del2\n']
     assert ownership.deletions[0].anchor_line is None  # before any source line
-    assert ownership.deletions[1].content_lines == [b'del3\n']
+    assert isinstance(ownership.deletions[1].content_lines, EditorBuffer)
+    assert list(ownership.deletions[1].content_lines) == [b'del3\n']
     assert ownership.deletions[1].anchor_line == 1  # after source line 1
     assert ownership.replacement_units == []
 
@@ -192,7 +221,11 @@ def test_translate_lines_keeps_file_start_anchor_for_deletion_run():
 
     assert len(ownership.deletions) == 1
     assert ownership.deletions[0].anchor_line is None
-    assert ownership.deletions[0].content_lines == [b'first\n', b'second\n']
+    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert list(ownership.deletions[0].content_lines) == [
+        b'first\n',
+        b'second\n',
+    ]
 
 
 def test_translate_hunk_selection_uses_full_hunk_boundaries():
@@ -219,7 +252,8 @@ def test_translate_hunk_selection_uses_full_hunk_boundaries():
 
     assert ownership.presence_line_set() == {1}
     assert len(ownership.deletions) == 1
-    assert ownership.deletions[0].content_lines == [b'a\n']
+    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert list(ownership.deletions[0].content_lines) == [b'a\n']
     assert ownership.deletions[0].baseline_reference.after_line == 1
     assert ownership.deletions[0].baseline_reference.after_content == b'same'
     assert ownership.deletions[0].baseline_reference.before_line == 3
@@ -258,7 +292,8 @@ def test_translate_hunk_selection_uses_file_derived_replacement_runs():
 
     assert ownership.presence_line_set() == {1}
     assert len(ownership.deletions) == 1
-    assert ownership.deletions[0].content_lines == [b'a\n']
+    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert list(ownership.deletions[0].content_lines) == [b'a\n']
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
     ]
@@ -290,7 +325,8 @@ def test_translate_hunk_selection_keeps_one_to_many_replacement_atomic():
 
     assert ownership.presence_line_set() == {1, 2}
     assert len(ownership.deletions) == 1
-    assert ownership.deletions[0].content_lines == [b'old\n']
+    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert list(ownership.deletions[0].content_lines) == [b'old\n']
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
     ]
@@ -340,8 +376,59 @@ def test_translate_hunk_selection_scans_replacement_ranges(monkeypatch):
     )
 
     assert ownership.presence_claims[0].source_lines == ["1-1000"]
+    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
+    ]
+
+
+def test_translate_hunk_selection_stores_large_replacement_absence_buffer():
+    """Large replacement deletions should keep absence content buffer-backed."""
+    lines = [
+        *[
+            LineEntry(
+                id=index + 1,
+                kind='-',
+                old_line_number=index + 1,
+                new_line_number=None,
+                text_bytes=f'old {index}'.encode(),
+                text=f'old {index}',
+                source_line=None if index == 0 else index,
+            )
+            for index in range(1000)
+        ],
+        LineEntry(
+            id=1001,
+            kind='+',
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b'new\n',
+            text='new',
+            source_line=1,
+        ),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {line.id for line in lines if line.id is not None},
+        replacement_line_runs=[
+            ReplacementLineRun(
+                old_start=1,
+                old_end=1000,
+                new_start=1,
+                new_end=1,
+            ),
+        ],
+    )
+
+    assert len(ownership.deletions) == 1
+    content_lines = ownership.deletions[0].content_lines
+    assert isinstance(content_lines, EditorBuffer)
+    assert len(content_lines) == 1000
+    assert content_lines[0] == b'old 0\n'
+    assert content_lines[999] == b'old 999\n'
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
     ]
 
 

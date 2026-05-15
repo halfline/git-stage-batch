@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mmap
 from collections.abc import Sequence
 
 import pytest
@@ -220,18 +221,31 @@ def test_buffer_matches_buffers():
         assert buffer_matches(left, right) is True
 
 
-def test_editor_buffer_uses_mmap_for_non_empty_files(tmp_path):
-    """Non-empty file buffers are backed by mmap."""
+def test_editor_buffer_uses_heap_for_files_smaller_than_memory_page(tmp_path):
+    """Small file buffers stay on the Python heap."""
     file_path = tmp_path / "buffer.txt"
     file_path.write_bytes(b"alpha\nbeta\n")
 
     with EditorBuffer.from_path(file_path) as buffer:
-        assert buffer.is_mmap_backed is True
+        assert buffer.is_mmap_backed is False
         assert buffer.byte_count == len(b"alpha\nbeta\n")
         assert list(buffer.byte_chunks(5)) == [b"alpha", b"\nbeta", b"\n"]
         assert buffer.to_bytes() == b"alpha\nbeta\n"
         assert len(buffer) == 2
         assert buffer[1] == b"beta\n"
+
+
+def test_editor_buffer_uses_mmap_for_page_sized_files(tmp_path):
+    """Page-sized file buffers are backed by mmap."""
+    data = b"alpha\n" + b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
+    file_path = tmp_path / "buffer.txt"
+    file_path.write_bytes(data)
+
+    with EditorBuffer.from_path(file_path) as buffer:
+        assert buffer.is_mmap_backed is True
+        assert buffer.byte_count == mmap.PAGESIZE
+        assert buffer[0] == b"alpha\n"
+        assert buffer[1] == b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
 
 
 def test_editor_buffer_skips_mmap_for_empty_files(tmp_path):
@@ -244,16 +258,33 @@ def test_editor_buffer_skips_mmap_for_empty_files(tmp_path):
         assert len(buffer) == 0
 
 
-def test_editor_buffer_spools_generated_chunks_to_mmap():
-    """Generated chunks are spooled to an mmap-backed buffer."""
+def test_editor_buffer_uses_heap_for_generated_chunks_smaller_than_page():
+    """Small generated buffers stay on the Python heap."""
     chunks = iter([b"alpha\nbe", b"ta\n", memoryview(b"gamma")])
 
     with EditorBuffer.from_chunks(chunks) as buffer:
-        assert buffer.is_mmap_backed is True
+        assert buffer.is_mmap_backed is False
         assert len(buffer) == 3
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"beta\n"
         assert buffer[2] == b"gamma"
+
+
+def test_editor_buffer_spools_page_sized_generated_chunks_to_mmap():
+    """Page-sized generated buffers are spooled to an mmap-backed buffer."""
+    prefix = b"alpha\nbeta\n"
+    chunks = iter([
+        prefix[:7],
+        prefix[7:],
+        memoryview(b"x" * (mmap.PAGESIZE - len(prefix))),
+    ])
+
+    with EditorBuffer.from_chunks(chunks) as buffer:
+        assert buffer.is_mmap_backed is True
+        assert buffer.byte_count == mmap.PAGESIZE
+        assert buffer[0] == b"alpha\n"
+        assert buffer[1] == b"beta\n"
+        assert buffer[2] == b"x" * (mmap.PAGESIZE - len(prefix))
 
 
 def test_editor_buffer_handles_empty_generated_chunks():

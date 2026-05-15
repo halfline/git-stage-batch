@@ -31,7 +31,7 @@ from git_stage_batch.data.file_review_state import (
     FileReviewAction,
     ReviewSource,
     read_last_file_review_state,
-    shown_complete_review_selection_groups,
+    shown_review_selections_for_action,
 )
 from git_stage_batch.data.hunk_tracking import (
     SelectedChangeKind,
@@ -2323,14 +2323,20 @@ def test_batch_review_preserves_mergeable_change_next_to_reset_only_change():
         review_action_groups=review_action_groups,
     )
 
-    assert shown_complete_review_selection_groups(
-        review_state,
-        FileReviewAction.INCLUDE_FROM_BATCH,
-    ) == [{1}]
-    assert shown_complete_review_selection_groups(
-        review_state,
-        FileReviewAction.RESET_FROM_BATCH,
-    ) == [{1}, {2}]
+    assert [
+        selection.display_ids
+        for selection in shown_review_selections_for_action(
+            review_state,
+            FileReviewAction.INCLUDE_FROM_BATCH,
+        )
+    ] == [(1,)]
+    assert [
+        selection.display_ids
+        for selection in shown_review_selections_for_action(
+            review_state,
+            FileReviewAction.RESET_FROM_BATCH,
+        )
+    ] == [(1,), (2,)]
 
 
 def test_show_from_batch_line_after_review_uses_review_id_space(

@@ -1049,7 +1049,6 @@ def print_file_review(
 ) -> None:
     """Print a page-aware file review."""
     page_count = len(model.pages)
-    shown_page_set = set(shown_pages)
     shown_fragments = [
         fragment
         for page in shown_pages
@@ -1072,12 +1071,11 @@ def print_file_review(
             seen_display_ids.add(display_id)
     shown_line_spec = _line_spec_for_display_ids(tuple(shown_display_ids))
     shown_change_spec = _change_spec_for_fragments(shown_fragments)
-    complete_changes = [
-        change
-        for change in shown_changes
-        if change.display_ids
-        if set(range(change.first_page, change.last_page + 1)).issubset(shown_page_set)
-    ]
+    complete_line_action_selections = _shown_line_action_selections(
+        model,
+        shown_pages,
+        source=source,
+    )
 
     _print_header(
         model.line_changes.path,
@@ -1148,7 +1146,7 @@ def print_file_review(
         page_count=page_count,
         shown_change_spec=shown_change_spec,
         shown_line_spec=shown_line_spec,
-        complete_changes=complete_changes,
+        complete_line_action_selections=complete_line_action_selections,
         total_changes=len(model.changes),
         page_spec=page_spec,
         command_source_args=command_source_args,
@@ -1157,9 +1155,16 @@ def print_file_review(
     )
 
 
-def _change_supports_action(change: ReviewChange, action: FileReviewAction) -> bool:
-    """Return whether a rendered review change supports an action."""
-    return not change.actions or action.value in change.actions
+def _selection_supports_action(selection: ActionableSelection, action: FileReviewAction) -> bool:
+    """Return whether a line-action selection supports an action."""
+    return not selection.actions or action.value in selection.actions
+
+
+def _line_spec_for_selections(selections: list[ActionableSelection]) -> str:
+    display_ids: list[int] = []
+    for selection in selections:
+        display_ids.extend(selection.display_ids)
+    return format_line_ids(display_ids)
 
 
 def _review_change_heading_action(change: ReviewChange) -> str:
@@ -1355,7 +1360,7 @@ def _print_footer(
     page_count: int,
     shown_change_spec: str,
     shown_line_spec: str,
-    complete_changes: list[ReviewChange],
+    complete_line_action_selections: list[ActionableSelection],
     total_changes: int,
     page_spec: str,
     command_source_args: str,
@@ -1379,19 +1384,19 @@ def _print_footer(
         if source == ReviewSource.BATCH else
         FileReviewAction.INCLUDE
     )
-    primary_changes = [
-        change
-        for change in complete_changes
-        if _change_supports_action(change, primary_action)
+    primary_selections = [
+        selection
+        for selection in complete_line_action_selections
+        if _selection_supports_action(selection, primary_action)
     ]
-    reset_changes = [
-        change
-        for change in complete_changes
-        if _change_supports_action(change, FileReviewAction.RESET_FROM_BATCH)
+    reset_selections = [
+        selection
+        for selection in complete_line_action_selections
+        if _selection_supports_action(selection, FileReviewAction.RESET_FROM_BATCH)
     ]
 
-    if primary_changes:
-        combined_selection = ",".join(format_line_ids(list(change.display_ids)) for change in primary_changes)
+    if primary_selections:
+        combined_selection = _line_spec_for_selections(primary_selections)
         include_line_command = (
             _line_action_command("include", review_state, line_spec=combined_selection, pathless_line=True)
             if review_state is not None else
@@ -1426,8 +1431,8 @@ def _print_footer(
                 discard_line_command or f"git-stage-batch discard{command_source_args} --line {combined_selection}",
             )
         )
-        if source == ReviewSource.BATCH and reset_changes:
-            reset_selection = ",".join(format_line_ids(list(change.display_ids)) for change in reset_changes)
+        if source == ReviewSource.BATCH and reset_selections:
+            reset_selection = _line_spec_for_selections(reset_selections)
             reset_line_command = _line_action_command(
                 FileReviewAction.RESET_FROM_BATCH,
                 review_state,
@@ -1440,8 +1445,8 @@ def _print_footer(
                     reset_line_command or f"git-stage-batch reset{command_source_args} --line {reset_selection}",
                 )
             )
-    elif reset_changes:
-        reset_selection = ",".join(format_line_ids(list(change.display_ids)) for change in reset_changes)
+    elif reset_selections:
+        reset_selection = _line_spec_for_selections(reset_selections)
         reset_line_command = _line_action_command(
             FileReviewAction.RESET_FROM_BATCH,
             review_state,

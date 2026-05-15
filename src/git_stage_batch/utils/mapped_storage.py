@@ -1,9 +1,9 @@
-"""Fixed-width storage helpers that use mmap for larger allocations."""
+"""Storage helpers that use mmap for larger allocations."""
 
 from __future__ import annotations
 
 from bisect import bisect_right
-from collections.abc import Sequence
+from collections.abc import Iterable, Iterator, Sequence
 import mmap
 import struct
 import tempfile
@@ -15,7 +15,114 @@ _UINT32_MAX = (1 << 32) - 1
 _UINT64_MAX = (1 << 64) - 1
 _FILL_CHUNK_BYTES = 1024 * 1024
 MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD = mmap.PAGESIZE
+_BytesLike = bytes | bytearray | memoryview
+_ByteStorage = bytes | mmap.mmap
 _StorageBuffer = bytearray | mmap.mmap
+
+
+def should_use_mapped_storage(byte_count: int) -> bool:
+    """Return whether a byte count should use mapped storage."""
+    return byte_count >= MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD
+
+
+def byte_storage_from_path(path: str | Path) -> tuple[_ByteStorage, BinaryIO | None]:
+    """Load path bytes using heap memory below the mapped-storage threshold."""
+    file_path = Path(path)
+    file_handle = file_path.open("rb")
+    try:
+        byte_count = file_path.stat().st_size
+        if byte_count == 0:
+            file_handle.close()
+            return b"", None
+        if not should_use_mapped_storage(byte_count):
+            data = file_handle.read()
+            file_handle.close()
+            return data, None
+
+        return (
+            mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
+            file_handle,
+        )
+    except Exception:
+        file_handle.close()
+        raise
+
+
+def byte_storage_from_chunks(
+    chunks: Iterable[_BytesLike],
+    *,
+    spool_dir: str | Path | None = None,
+) -> tuple[_ByteStorage, BinaryIO | None]:
+    """Build byte storage from chunks using mapped storage above the threshold."""
+    pending_chunks: list[bytes] = []
+    byte_count = 0
+    chunk_iter = iter(chunks)
+
+    for chunk in chunk_iter:
+        chunk = _validate_byte_chunk(chunk)
+        chunk_size = _chunk_byte_count(chunk)
+        if chunk_size == 0:
+            continue
+        next_byte_count = byte_count + chunk_size
+        if should_use_mapped_storage(next_byte_count):
+            return _byte_storage_from_chunk_prefix_and_remainder(
+                pending_chunks,
+                chunk,
+                chunk_iter,
+                spool_dir=spool_dir,
+            )
+
+        byte_count = next_byte_count
+        pending_chunks.append(bytes(chunk))
+
+    if byte_count == 0:
+        return b"", None
+    return b"".join(pending_chunks), None
+
+
+def _validate_byte_chunk(chunk: _BytesLike) -> _BytesLike:
+    if isinstance(chunk, bytes):
+        return chunk
+    if isinstance(chunk, (bytearray, memoryview)):
+        return chunk
+    raise TypeError(f"expected bytes-like object, got {type(chunk).__name__}")
+
+
+def _chunk_byte_count(chunk: _BytesLike) -> int:
+    if isinstance(chunk, memoryview):
+        return chunk.nbytes
+    return len(chunk)
+
+
+def _byte_storage_from_chunk_prefix_and_remainder(
+    pending_chunks: Sequence[bytes],
+    threshold_chunk: _BytesLike,
+    remaining_chunks: Iterator[_BytesLike],
+    *,
+    spool_dir: str | Path | None = None,
+) -> tuple[_ByteStorage, BinaryIO | None]:
+    file_handle = _temporary_file(spool_dir)
+    try:
+        for chunk in pending_chunks:
+            file_handle.write(chunk)
+        file_handle.write(threshold_chunk)
+        for chunk in remaining_chunks:
+            chunk = _validate_byte_chunk(chunk)
+            file_handle.write(chunk)
+        file_handle.flush()
+        return (
+            mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
+            file_handle,
+        )
+    except Exception:
+        file_handle.close()
+        raise
+
+
+def _temporary_file(spool_dir: str | Path | None = None) -> BinaryIO:
+    return tempfile.TemporaryFile(
+        dir=None if spool_dir is None else Path(spool_dir)
+    )
 
 
 def _normalize_width(width: int) -> int:
@@ -56,12 +163,10 @@ def _allocate_storage(
 ) -> tuple[_StorageBuffer | None, BinaryIO | None]:
     if byte_count <= 0:
         return None, None
-    if byte_count < MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD:
+    if not should_use_mapped_storage(byte_count):
         return bytearray(byte_count), None
 
-    file_handle = tempfile.TemporaryFile(
-        dir=None if spool_dir is None else Path(spool_dir)
-    )
+    file_handle = _temporary_file(spool_dir)
     try:
         file_handle.truncate(byte_count)
         return mmap.mmap(file_handle.fileno(), byte_count), file_handle

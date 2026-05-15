@@ -6,13 +6,14 @@ import json
 import shlex
 import sys
 from collections.abc import Sequence
+from contextlib import AbstractContextManager
 
 from ..core.line_selection import format_line_ids
 from ..batch.operations import create_batch
 from ..batch.ownership import (
     BatchOwnership,
+    acquire_detached_batch_ownership,
     build_ownership_units_from_batch_source_lines,
-    detach_batch_ownership,
     filter_ownership_units_by_display_ids,
     merge_batch_ownership,
     rebuild_ownership_from_units,
@@ -320,9 +321,18 @@ def _move_claims_between_batches(
             return
 
         file_path = list(files.keys())[0]
-        selected_ownership = _select_line_ownership_for_file(source_batch, file_path, selected_ids)
-        _add_ownership_to_destination(dest_batch, file_path, source_metadata["files"][file_path], selected_ownership)
-        _reset_line_claims_for_file(source_batch, file_path, selected_ids)
+        with _acquire_line_ownership_for_file(
+            source_batch,
+            file_path,
+            selected_ids,
+        ) as selected_ownership:
+            _add_ownership_to_destination(
+                dest_batch,
+                file_path,
+                source_metadata["files"][file_path],
+                selected_ownership,
+            )
+            _reset_line_claims_for_file(source_batch, file_path, selected_ids)
         return
 
     for file_path, file_meta in files.items():
@@ -509,12 +519,12 @@ def _reset_line_claims_for_file(
             )
 
 
-def _select_line_ownership_for_file(
+def _acquire_line_ownership_for_file(
     batch_name: str,
     file_path: str,
     lines_to_select: set[int],
-) -> BatchOwnership:
-    """Build ownership for selected display line IDs from one batch file."""
+) -> AbstractContextManager[BatchOwnership]:
+    """Acquire ownership for selected display line IDs from one batch file."""
     metadata = read_batch_metadata(batch_name)
 
     if metadata["files"][file_path].get("file_type") == "binary":
@@ -540,7 +550,9 @@ def _select_line_ownership_for_file(
             file_path=file_path,
         )
         validate_ownership_units(selected_units)
-        return detach_batch_ownership(rebuild_ownership_from_units(selected_units))
+        return acquire_detached_batch_ownership(
+            rebuild_ownership_from_units(selected_units)
+        )
 
 
 def _partition_line_ownership_units(

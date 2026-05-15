@@ -1044,7 +1044,8 @@ def _render_batch_file_display_from_ownership(
     if batch_source_buffer is None:
         return None
 
-    mergeable_ids = set()
+    mergeable_id_range_parts: list[tuple[int, int]] = []
+    mergeable_id_ranges = LineRanges.empty()
     units = []
 
     with batch_source_buffer as batch_source_lines:
@@ -1085,10 +1086,12 @@ def _render_batch_file_display_from_ownership(
                                 source_to_working_mapping=source_to_working_mapping,
                             ):
                                 continue
-                            mergeable_ids.update(unit.display_line_ids)
+                            mergeable_id_range_parts.extend(unit.display_line_ids.ranges())
                         except (MergeError, ValueError, KeyError, Exception):
                             # Unit not mergeable - exclude all its lines
                             pass
+
+                    mergeable_id_ranges = LineRanges.from_ranges(mergeable_id_range_parts)
 
     if not display_lines:
         change_type = file_meta.get("change_type", "modified")
@@ -1205,7 +1208,7 @@ def _render_batch_file_display_from_ownership(
     selection_id_to_gutter = {}
     gutter_num = 1
     for entry in line_entries:
-        if entry.id is not None and entry.id in mergeable_ids:
+        if entry.id is not None and entry.id in mergeable_id_ranges:
             gutter_to_selection_id[gutter_num] = entry.id
             selection_id_to_gutter[entry.id] = gutter_num
             gutter_num += 1
@@ -1243,7 +1246,7 @@ def _render_batch_file_display_from_ownership(
             continue
 
         actions = [_BATCH_RESET_REVIEW_ACTION]
-        if unit.display_line_ids.intersection(mergeable_ids) == unit.display_line_ids:
+        if unit.display_line_ids.intersection(mergeable_id_ranges) == unit.display_line_ids:
             actionable_selection_groups.append(ordered_group)
             actions = [
                 *_BATCH_MERGE_REVIEW_ACTIONS,

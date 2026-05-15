@@ -170,6 +170,17 @@ def _partly_selects_ownership_group(
     )
 
 
+def _change_is_presence_only(change: ReviewChange) -> bool:
+    saw_changed_row = False
+    for row in change.rows:
+        if row.kind not in ("+", "-") or row.id is None:
+            continue
+        saw_changed_row = True
+        if row.kind != "+":
+            return False
+    return saw_changed_row
+
+
 def _coerce_actionable_reason(reason: str) -> ActionableSelectionReason:
     try:
         return ActionableSelectionReason(reason)
@@ -182,17 +193,18 @@ def _reason_for_selection_ids(
     selection_ids: tuple[int, ...],
 ) -> ActionableSelectionReason:
     selected_id_set = set(selection_ids)
-    changed_kinds = {
-        line.kind
-        for line in line_changes.lines
-        if line.id in selected_id_set
-        and line.kind in ("+", "-")
-    }
-    return (
-        ActionableSelectionReason.REPLACEMENT
-        if {"-", "+"}.issubset(changed_kinds)
-        else ActionableSelectionReason.SIMPLE
-    )
+    saw_addition = False
+    saw_deletion = False
+    for line in line_changes.lines:
+        if line.id not in selected_id_set or line.kind not in ("+", "-"):
+            continue
+        if line.kind == "+":
+            saw_addition = True
+        else:
+            saw_deletion = True
+        if saw_addition and saw_deletion:
+            return ActionableSelectionReason.REPLACEMENT
+    return ActionableSelectionReason.SIMPLE
 
 
 def _actionable_selections_from_selection_groups(
@@ -742,6 +754,90 @@ def _change_index_containing_review_display_ids(
     return 0
 
 
+def _selection_ids_for_display_ids(
+    model: FileReviewModel,
+    display_ids: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Translate review display IDs back to line-selection IDs."""
+    if model.display_id_by_selection_id is None:
+        return display_ids
+    selection_id_by_display_id = {
+        display_id: selection_id
+        for selection_id, display_id in model.display_id_by_selection_id.items()
+    }
+    return tuple(
+        selection_id_by_display_id[display_id]
+        for display_id in display_ids
+        if display_id in selection_id_by_display_id
+    )
+
+
+def _display_ids_for_change_pages(
+    model: FileReviewModel,
+    change: ReviewChange,
+    shown_pages: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Return the display IDs from one visual change on the shown pages."""
+    display_ids: list[int] = []
+    seen_display_ids: set[int] = set()
+    for page_number in shown_pages:
+        page = model.pages[page_number - 1]
+        for fragment in page.changes:
+            if fragment.change.index != change.index:
+                continue
+            for display_id in _display_ids_for_rows(
+                fragment.rows,
+                model.display_id_by_selection_id,
+            ):
+                if display_id in seen_display_ids:
+                    continue
+                display_ids.append(display_id)
+                seen_display_ids.add(display_id)
+    return tuple(display_ids)
+
+
+def _shown_line_action_selections(
+    model: FileReviewModel,
+    shown_pages: tuple[int, ...],
+    *,
+    source: ReviewSource,
+) -> list[ActionableSelection]:
+    """Return line-action selections fully contained by the shown pages."""
+    shown_page_set = set(shown_pages)
+    selections: list[ActionableSelection] = []
+    for change in model.changes:
+        if not change.display_ids:
+            continue
+        can_split_presence = (
+            source != ReviewSource.BATCH
+            and _change_is_presence_only(change)
+        )
+        display_ids = (
+            _display_ids_for_change_pages(model, change, shown_pages)
+            if can_split_presence else
+            change.display_ids
+        )
+        if not display_ids:
+            continue
+        pages = _pages_containing_review_display_ids(model, display_ids)
+        if not pages or not set(pages).issubset(shown_page_set):
+            continue
+        selections.append(
+            ActionableSelection(
+                display_ids=display_ids,
+                selection_ids=(
+                    _selection_ids_for_display_ids(model, display_ids)
+                    if can_split_presence else
+                    change.selection_ids
+                ),
+                reason=change.reason,
+                note=change.note,
+                actions=change.actions,
+            )
+        )
+    return selections
+
+
 def _supplemental_batch_review_selections(
     model: FileReviewModel,
     *,
@@ -800,7 +896,7 @@ def make_file_review_state(
     """Create persisted review state from a rendered page selection."""
     page_count = len(model.pages)
     shown_page_set = set(shown_pages)
-    selection_actions = (
+    default_actions = (
         (
             FileReviewAction.INCLUDE_FROM_BATCH,
             FileReviewAction.DISCARD_FROM_BATCH,
@@ -820,22 +916,47 @@ def make_file_review_state(
     for change in model.changes:
         if not change.display_ids:
             continue
-        if visible_display_ids is not None and not set(change.display_ids).issubset(visible_display_ids):
+        is_splittable = (
+            source != ReviewSource.BATCH
+            and _change_is_presence_only(change)
+        )
+        display_ids = (
+            _display_ids_for_change_pages(model, change, shown_pages)
+            if is_splittable else
+            change.display_ids
+        )
+        if not display_ids:
             continue
-        change_actions = (
+        if visible_display_ids is not None and not set(display_ids).issubset(visible_display_ids):
+            continue
+        pages = _pages_containing_review_display_ids(
+            model,
+            display_ids,
+        )
+        if not pages:
+            continue
+        selection_actions = (
             tuple(FileReviewAction(action) for action in change.actions)
             if change.actions else
-            selection_actions
+            default_actions
         )
         selections.append(
             FileReviewSelectionState(
-                display_ids=change.display_ids,
-                selection_ids=change.selection_ids,
-                change_index=change.index,
-                first_page=change.first_page,
-                last_page=change.last_page,
+                display_ids=display_ids,
+                selection_ids=(
+                    _selection_ids_for_display_ids(model, display_ids)
+                    if is_splittable else
+                    change.selection_ids
+                ),
+                change_index=_change_index_containing_review_display_ids(
+                    model,
+                    display_ids,
+                ),
+                first_page=pages[0],
+                last_page=pages[-1],
                 reason=change.reason,
-                actions=change_actions,
+                actions=selection_actions,
+                is_splittable=is_splittable,
             )
         )
     if source == ReviewSource.BATCH and review_action_groups is not None:
@@ -928,7 +1049,6 @@ def print_file_review(
 ) -> None:
     """Print a page-aware file review."""
     page_count = len(model.pages)
-    shown_page_set = set(shown_pages)
     shown_fragments = [
         fragment
         for page in shown_pages
@@ -951,12 +1071,11 @@ def print_file_review(
             seen_display_ids.add(display_id)
     shown_line_spec = _line_spec_for_display_ids(tuple(shown_display_ids))
     shown_change_spec = _change_spec_for_fragments(shown_fragments)
-    complete_changes = [
-        change
-        for change in shown_changes
-        if change.display_ids
-        if set(range(change.first_page, change.last_page + 1)).issubset(shown_page_set)
-    ]
+    complete_line_action_selections = _shown_line_action_selections(
+        model,
+        shown_pages,
+        source=source,
+    )
 
     _print_header(
         model.line_changes.path,
@@ -1027,7 +1146,7 @@ def print_file_review(
         page_count=page_count,
         shown_change_spec=shown_change_spec,
         shown_line_spec=shown_line_spec,
-        complete_changes=complete_changes,
+        complete_line_action_selections=complete_line_action_selections,
         total_changes=len(model.changes),
         page_spec=page_spec,
         command_source_args=command_source_args,
@@ -1036,9 +1155,16 @@ def print_file_review(
     )
 
 
-def _change_supports_action(change: ReviewChange, action: FileReviewAction) -> bool:
-    """Return whether a rendered review change supports an action."""
-    return not change.actions or action.value in change.actions
+def _selection_supports_action(selection: ActionableSelection, action: FileReviewAction) -> bool:
+    """Return whether a line-action selection supports an action."""
+    return not selection.actions or action.value in selection.actions
+
+
+def _line_spec_for_selections(selections: list[ActionableSelection]) -> str:
+    display_ids: list[int] = []
+    for selection in selections:
+        display_ids.extend(selection.display_ids)
+    return format_line_ids(display_ids)
 
 
 def _review_change_heading_action(change: ReviewChange) -> str:
@@ -1234,7 +1360,7 @@ def _print_footer(
     page_count: int,
     shown_change_spec: str,
     shown_line_spec: str,
-    complete_changes: list[ReviewChange],
+    complete_line_action_selections: list[ActionableSelection],
     total_changes: int,
     page_spec: str,
     command_source_args: str,
@@ -1258,19 +1384,19 @@ def _print_footer(
         if source == ReviewSource.BATCH else
         FileReviewAction.INCLUDE
     )
-    primary_changes = [
-        change
-        for change in complete_changes
-        if _change_supports_action(change, primary_action)
+    primary_selections = [
+        selection
+        for selection in complete_line_action_selections
+        if _selection_supports_action(selection, primary_action)
     ]
-    reset_changes = [
-        change
-        for change in complete_changes
-        if _change_supports_action(change, FileReviewAction.RESET_FROM_BATCH)
+    reset_selections = [
+        selection
+        for selection in complete_line_action_selections
+        if _selection_supports_action(selection, FileReviewAction.RESET_FROM_BATCH)
     ]
 
-    if primary_changes:
-        combined_selection = ",".join(format_line_ids(list(change.display_ids)) for change in primary_changes)
+    if primary_selections:
+        combined_selection = _line_spec_for_selections(primary_selections)
         include_line_command = (
             _line_action_command("include", review_state, line_spec=combined_selection, pathless_line=True)
             if review_state is not None else
@@ -1305,8 +1431,8 @@ def _print_footer(
                 discard_line_command or f"git-stage-batch discard{command_source_args} --line {combined_selection}",
             )
         )
-        if source == ReviewSource.BATCH and reset_changes:
-            reset_selection = ",".join(format_line_ids(list(change.display_ids)) for change in reset_changes)
+        if source == ReviewSource.BATCH and reset_selections:
+            reset_selection = _line_spec_for_selections(reset_selections)
             reset_line_command = _line_action_command(
                 FileReviewAction.RESET_FROM_BATCH,
                 review_state,
@@ -1319,8 +1445,8 @@ def _print_footer(
                     reset_line_command or f"git-stage-batch reset{command_source_args} --line {reset_selection}",
                 )
             )
-    elif reset_changes:
-        reset_selection = ",".join(format_line_ids(list(change.display_ids)) for change in reset_changes)
+    elif reset_selections:
+        reset_selection = _line_spec_for_selections(reset_selections)
         reset_line_command = _line_action_command(
             FileReviewAction.RESET_FROM_BATCH,
             review_state,

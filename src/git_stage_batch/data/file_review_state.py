@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shlex
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from enum import Enum
 from hashlib import sha256
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.actionable_changes import ActionableSelectionReason
-from ..core.line_selection import parse_line_selection
+from ..core.line_selection import LineRanges, LineSelection, parse_line_selection_ranges
 from ..core.models import ReviewActionGroup
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..editor import EditorBuffer
@@ -50,7 +51,7 @@ class FileReviewAction(str, Enum):
 
 @dataclass(frozen=True)
 class FileReviewSelectionState:
-    """One complete actionable selection shown by a file review."""
+    """One actionable selection shown by a file review."""
 
     display_ids: tuple[int, ...]
     selection_ids: tuple[int, ...]
@@ -59,6 +60,7 @@ class FileReviewSelectionState:
     last_page: int
     reason: ActionableSelectionReason
     actions: tuple[FileReviewAction, ...]
+    is_splittable: bool = False
 
 
 @dataclass(frozen=True)
@@ -209,6 +211,7 @@ def read_last_file_review_state() -> FileReviewState | None:
                 last_page=selection["last_page"],
                 reason=ActionableSelectionReason(selection["reason"]),
                 actions=tuple(FileReviewAction(action) for action in selection["actions"]),
+                is_splittable=bool(selection["is_splittable"]),
             )
             for selection in data.get("selections", [])
         )
@@ -514,11 +517,27 @@ def _format_pages(pages: set[int]) -> str:
     return format_line_ids(sorted(pages))
 
 
-def shown_complete_review_selection_groups(
+def _format_line_ranges(selection: LineRanges) -> str:
+    return selection.to_line_spec()
+
+
+def _coerce_line_ranges(selection: LineSelection | Iterable[int]) -> LineRanges:
+    if isinstance(selection, LineRanges):
+        return selection
+    return LineRanges.from_lines(selection)
+
+
+@dataclass(frozen=True)
+class _ReviewValidationGroup:
+    display_ids: LineRanges
+    is_splittable: bool
+
+
+def shown_review_selections_for_action(
     review_state: FileReviewState,
     action: FileReviewAction | str,
-) -> list[set[int]]:
-    """Return complete actionable display-ID groups from shown review pages."""
+) -> list[FileReviewSelectionState]:
+    """Return actionable selections fully contained by the shown review pages."""
     review_action = _coerce_review_action(action)
     shown_pages = (
         set(range(1, review_state.page_count + 1))
@@ -526,19 +545,19 @@ def shown_complete_review_selection_groups(
         set(review_state.shown_pages)
     )
     return [
-        set(selection.display_ids)
+        selection
         for selection in review_state.selections
         if review_action in selection.actions
         and set(range(selection.first_page, selection.last_page + 1)).issubset(shown_pages)
     ]
 
 
-def fresh_batch_review_selection_groups_for_action(
+def fresh_batch_review_selections_for_action(
     batch_name: str,
     file_path: str,
     action: FileReviewAction | str,
-) -> list[set[int]] | None:
-    """Return shown review groups for a fresh matching batch review, if one is active."""
+) -> list[FileReviewSelectionState] | None:
+    """Return shown review selections for a fresh matching batch review, if one is active."""
     review_state = read_last_file_review_state()
     if review_state is None:
         return None
@@ -564,19 +583,7 @@ def fresh_batch_review_selection_groups_for_action(
             )
         )
 
-    return shown_complete_review_selection_groups(review_state, action)
-
-
-def fresh_batch_review_display_ids_for_action(
-    batch_name: str,
-    file_path: str,
-    action: FileReviewAction | str,
-) -> set[int] | None:
-    """Return shown display IDs for a fresh matching batch review, if one is active."""
-    groups = fresh_batch_review_selection_groups_for_action(batch_name, file_path, action)
-    if groups is None:
-        return None
-    return {display_id for group in groups for display_id in group}
+    return shown_review_selections_for_action(review_state, action)
 
 
 def _print_stale_or_mismatched_file_review_help(action: str, review_state: FileReviewState) -> None:
@@ -967,50 +974,69 @@ def resolve_live_line_action_scope(
 
 
 def validate_review_scoped_line_selection(
-    requested_ids: set[int],
-    valid_selection_groups: list[set[int]],
+    requested_ids: LineSelection | Iterable[int],
+    valid_selections: Iterable[FileReviewSelectionState],
 ) -> None:
     """Validate a union of complete actionable review selections."""
-    groups = [set(group) for group in valid_selection_groups if group]
+    requested_ranges = _coerce_line_ranges(requested_ids)
+    groups: list[_ReviewValidationGroup] = []
+    for selection in valid_selections:
+        display_ids = LineRanges.from_lines(selection.display_ids)
+        if display_ids:
+            groups.append(
+                _ReviewValidationGroup(
+                    display_ids=display_ids,
+                    is_splittable=selection.is_splittable,
+                )
+            )
 
-    def can_cover(remaining_ids: frozenset[int]) -> bool:
+    def can_cover(remaining_ids: LineRanges) -> bool:
         if not remaining_ids:
             return True
-        first_id = min(remaining_ids)
+        first_id = remaining_ids.first()
+        if first_id is None:
+            return True
         for group in groups:
-            if first_id not in group:
+            if first_id not in group.display_ids:
                 continue
-            if not group.issubset(remaining_ids):
+            if group.is_splittable:
+                selected_from_group = remaining_ids.intersection(group.display_ids)
+                if can_cover(remaining_ids.difference(selected_from_group)):
+                    return True
                 continue
-            if can_cover(frozenset(remaining_ids - group)):
+            if group.display_ids.difference(remaining_ids):
+                continue
+            if can_cover(remaining_ids.difference(group.display_ids)):
                 return True
         return False
 
-    if can_cover(frozenset(requested_ids)):
+    if can_cover(requested_ranges):
         return
 
-    matched_ids = {
-        display_id
-        for group in groups
-        if group.issubset(requested_ids)
-        for display_id in group
-    }
-
-    outside_ids = requested_ids - matched_ids
+    matched_ids = LineRanges.empty()
     for group in groups:
-        overlap = outside_ids & group
-        if overlap and overlap != group:
+        if group.is_splittable:
+            matched_ids = matched_ids.union(requested_ranges.intersection(group.display_ids))
+        elif not group.display_ids.difference(requested_ranges):
+            matched_ids = matched_ids.union(group.display_ids)
+
+    outside_ids = requested_ranges.difference(matched_ids)
+    for group in groups:
+        if group.is_splittable:
+            continue
+        overlap = outside_ids.intersection(group.display_ids)
+        if overlap and overlap != group.display_ids:
             raise CommandError(
                 _("Line selection #{requested} only partly selects a reviewed change.\nUse: --line {required}").format(
-                    requested=_format_pages(requested_ids),
-                    required=_format_pages(group),
+                    requested=_format_line_ranges(requested_ranges),
+                    required=_format_line_ranges(group.display_ids),
                 )
             )
 
     if outside_ids:
         raise CommandError(
             _("Line selection #{ids} is not valid from the current file review.").format(
-                ids=_format_pages(outside_ids),
+                ids=_format_line_ranges(outside_ids),
             )
         )
 
@@ -1065,10 +1091,10 @@ def validate_pathless_review_line_action(
         raise CommandError("\n".join(lines))
 
     try:
-        requested_ids = set(parse_line_selection(line_id_specification))
+        requested_ids = parse_line_selection_ranges(line_id_specification)
     except ValueError as error:
         raise CommandError(str(error)) from error
 
-    valid_groups = shown_complete_review_selection_groups(review_state, review_action)
-    validate_review_scoped_line_selection(requested_ids, valid_groups)
+    valid_selections = shown_review_selections_for_action(review_state, review_action)
+    validate_review_scoped_line_selection(requested_ids, valid_selections)
     return review_state

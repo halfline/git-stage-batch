@@ -31,7 +31,7 @@ from git_stage_batch.data.file_review_state import (
     FileReviewAction,
     ReviewSource,
     read_last_file_review_state,
-    shown_complete_review_selection_groups,
+    shown_review_selections_for_action,
 )
 from git_stage_batch.data.hunk_tracking import (
     SelectedChangeKind,
@@ -949,6 +949,46 @@ def test_pathless_include_line_rejects_partial_replacement_selection(paged_file_
 
     with pytest.raises(CommandError, match="only partly selects"):
         command_include_line(partial_id)
+
+
+def test_pathless_include_line_accepts_visible_presence_subset_from_review(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    from git_stage_batch.output import file_review
+
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+    (tmp_path / "README.md").write_text("base\n")
+    subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+    added_lines = [f"line {index}\n" for index in range(1, 13)]
+    (tmp_path / "new.txt").write_text("".join(added_lines))
+    command_start(quiet=True)
+    monkeypatch.setattr(file_review, "_body_budget", lambda: 6)
+
+    command_show(file="new.txt", page="1")
+    captured = capsys.readouterr()
+    assert "change 1/1" in captured.out
+    state = read_last_file_review_state()
+    assert state is not None
+    assert len(state.selections) == 1
+    assert state.selections[0].display_ids == (1, 2, 3, 4)
+    assert state.selections[0].is_splittable is True
+
+    command_include_line("1-3")
+
+    result = subprocess.run(
+        ["git", "show", ":new.txt"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout == "".join(added_lines[:3])
 
 
 def test_pathless_include_line_rejects_unshown_change(paged_file_repo, monkeypatch, capsys):
@@ -2081,7 +2121,7 @@ def test_file_review_multiline_note_is_part_of_header(capsys):
     assert "Note:\n    first line\n    second line\n" in captured.out
 
 
-def test_oversized_review_change_splits_without_partial_actions(capsys, monkeypatch):
+def test_presence_only_review_keeps_visual_group_with_page_local_actions(capsys, monkeypatch):
     from git_stage_batch.output import file_review
 
     lines = [
@@ -2104,6 +2144,7 @@ def test_oversized_review_change_splits_without_partial_actions(capsys, monkeypa
 
     model = build_file_review_model(line_changes)
 
+    assert len(model.changes) == 1
     assert len(model.pages) == 2
     assert model.changes[0].first_page == 1
     assert model.changes[0].last_page == 2
@@ -2119,8 +2160,8 @@ def test_oversized_review_change_splits_without_partial_actions(capsys, monkeypa
     captured = capsys.readouterr()
     assert "file.txt  ·  working tree  ·  page 1/2  ·  change 1/1  ·  lines 1–4" in captured.out
     assert "Change 1/1   lines 1–4   4-line partial group" in captured.out
-    assert "No complete change is actionable from this page." in captured.out
-    assert "git-stage-batch include --line" not in captured.out
+    assert "No complete change is actionable from this page." not in captured.out
+    assert "git-stage-batch include --line 1-4" in captured.out
 
 
 def test_batch_review_model_splits_visible_runs_around_hidden_rows(capsys):
@@ -2323,14 +2364,20 @@ def test_batch_review_preserves_mergeable_change_next_to_reset_only_change():
         review_action_groups=review_action_groups,
     )
 
-    assert shown_complete_review_selection_groups(
-        review_state,
-        FileReviewAction.INCLUDE_FROM_BATCH,
-    ) == [{1}]
-    assert shown_complete_review_selection_groups(
-        review_state,
-        FileReviewAction.RESET_FROM_BATCH,
-    ) == [{1}, {2}]
+    assert [
+        selection.display_ids
+        for selection in shown_review_selections_for_action(
+            review_state,
+            FileReviewAction.INCLUDE_FROM_BATCH,
+        )
+    ] == [(1,)]
+    assert [
+        selection.display_ids
+        for selection in shown_review_selections_for_action(
+            review_state,
+            FileReviewAction.RESET_FROM_BATCH,
+        )
+    ] == [(1,), (2,)]
 
 
 def test_show_from_batch_line_after_review_uses_review_id_space(

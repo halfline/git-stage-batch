@@ -42,7 +42,7 @@ from ..i18n import _
 from ..data.file_review_state import (
     FileReviewAction,
     ReviewSource,
-    fresh_batch_review_selection_groups_for_action,
+    fresh_batch_review_selections_for_action,
     read_last_file_review_state,
     resolve_batch_source_action_scope,
     validate_review_scoped_line_selection,
@@ -251,14 +251,14 @@ def _translate_reset_line_ids_to_selection_ids(
     if is_batch_submodule_pointer(files[file_path]):
         refuse_batch_submodule_pointer_lines(_("Reset"))
 
-    review_groups = fresh_batch_review_selection_groups_for_action(
+    review_selections = fresh_batch_review_selections_for_action(
         batch_name,
         file_path,
         FileReviewAction.RESET_FROM_BATCH,
     )
-    if review_groups is None:
+    if review_selections is None:
         return selected_ids
-    validate_review_scoped_line_selection(selected_ids.to_set(), review_groups)
+    validate_review_scoped_line_selection(selected_ids, review_selections)
 
     rendered = render_batch_file_display(batch_name, file_path)
     if rendered is None:

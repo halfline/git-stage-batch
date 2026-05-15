@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import mmap
 import os
 
 import pytest
 
+import git_stage_batch.utils.mapped_storage as mapped_storage_module
 from git_stage_batch.batch.match_storage import MatcherWorkspace
-from git_stage_batch.utils.mapped_storage import MappedIntVector, MappedRecordVector
+from git_stage_batch.utils.mapped_storage import (
+    ChunkedMappedRecordVector,
+    MappedIntVector,
+    MappedRecordVector,
+)
 
 
 def _open_fd_count() -> int | None:
@@ -37,6 +43,46 @@ def test_mapped_int_vector_get_set_fill_and_close():
     vector.close()
     with pytest.raises(ValueError, match="closed"):
         vector[0]
+
+
+def test_less_than_page_mapped_int_vector_uses_heap(monkeypatch):
+    """Integer vectors smaller than one memory page should stay heap-backed."""
+    def fail_temporary_file(*args, **kwargs):
+        raise AssertionError("small vector should use heap storage")
+
+    monkeypatch.setattr(
+        mapped_storage_module.tempfile,
+        "TemporaryFile",
+        fail_temporary_file,
+    )
+
+    vector = MappedIntVector(4, width=4, fill=7)
+
+    assert vector.byte_count < mmap.PAGESIZE
+    assert list(vector) == [7, 7, 7, 7]
+
+
+def test_page_sized_mapped_int_vector_uses_mmap(monkeypatch):
+    """Page-sized integer vectors still use temporary mmap storage."""
+    calls = 0
+    original_temporary_file = mapped_storage_module.tempfile.TemporaryFile
+
+    def counting_temporary_file(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        mapped_storage_module.tempfile,
+        "TemporaryFile",
+        counting_temporary_file,
+    )
+
+    with MappedIntVector(mmap.PAGESIZE // 8, width=8, fill=3) as vector:
+        assert vector.byte_count == mmap.PAGESIZE
+        assert vector[0] == 3
+
+    assert calls == 1
 
 
 def test_mapped_int_vector_uses_64_bit_slots():
@@ -69,12 +115,51 @@ def test_mapped_record_vector_append_and_indexed_write():
         len(records)
 
 
+def test_less_than_page_mapped_record_vector_uses_heap(monkeypatch):
+    """Record vectors smaller than one memory page should stay heap-backed."""
+    def fail_temporary_file(*args, **kwargs):
+        raise AssertionError("small record vector should use heap storage")
+
+    monkeypatch.setattr(
+        mapped_storage_module.tempfile,
+        "TemporaryFile",
+        fail_temporary_file,
+    )
+
+    records = MappedRecordVector(3, "QQ")
+    records.append((1, 2))
+
+    assert records.byte_count < mmap.PAGESIZE
+    assert records[0] == (1, 2)
+
+
 def test_mapped_record_vector_can_start_presized():
     """Pre-sized record vectors allow indexed population."""
     with MappedRecordVector(2, "QQ", length=2) as records:
         records[0] = (10, 20)
         records[1] = (30, 40)
         assert list(records) == [(10, 20), (30, 40)]
+
+
+def test_chunked_mapped_record_vector_grows_from_small_chunks():
+    """Chunked vectors should avoid allocating the full chunk up front."""
+    records = ChunkedMappedRecordVector(
+        record_format="QQ",
+        chunk_capacity=65536,
+    )
+
+    records.append((1, 2))
+    first_byte_count = records.byte_count
+    records.append((3, 4))
+    second_byte_count = records.byte_count
+
+    assert first_byte_count < mmap.PAGESIZE
+    assert second_byte_count < mmap.PAGESIZE
+    assert second_byte_count > first_byte_count
+    assert records[0] == (1, 2)
+    assert records[1] == (3, 4)
+
+    records.close()
 
 
 def test_matcher_workspace_tracks_and_closes_resources():

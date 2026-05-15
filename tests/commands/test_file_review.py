@@ -2121,7 +2121,7 @@ def test_file_review_multiline_note_is_part_of_header(capsys):
     assert "Note:\n    first line\n    second line\n" in captured.out
 
 
-def test_oversized_review_change_splits_without_partial_actions(capsys, monkeypatch):
+def test_presence_only_review_keeps_visual_group_with_page_local_actions(capsys, monkeypatch):
     from git_stage_batch.output import file_review
 
     lines = [
@@ -2144,6 +2144,7 @@ def test_oversized_review_change_splits_without_partial_actions(capsys, monkeypa
 
     model = build_file_review_model(line_changes)
 
+    assert len(model.changes) == 1
     assert len(model.pages) == 2
     assert model.changes[0].first_page == 1
     assert model.changes[0].last_page == 2
@@ -2159,8 +2160,8 @@ def test_oversized_review_change_splits_without_partial_actions(capsys, monkeypa
     captured = capsys.readouterr()
     assert "file.txt  ·  working tree  ·  page 1/2  ·  change 1/1  ·  lines 1–4" in captured.out
     assert "Change 1/1   lines 1–4   4-line partial group" in captured.out
-    assert "No complete change is actionable from this page." in captured.out
-    assert "git-stage-batch include --line" not in captured.out
+    assert "No complete change is actionable from this page." not in captured.out
+    assert "git-stage-batch include --line 1-4" in captured.out
 
 
 def test_batch_review_model_splits_visible_runs_around_hidden_rows(capsys):

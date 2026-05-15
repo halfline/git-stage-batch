@@ -113,7 +113,7 @@ def test_show_git_stage_batch_help_uses_packaged_page_first(monkeypatch, tmp_pat
     monkeypatch.setattr(argument_parser, "run_git_command", fake_git)
 
     assert argument_parser._show_git_stage_batch_help() is True
-    assert calls[0][0] == ["help", "stage-batch"]
+    assert calls[0][0] == ["help", "git-stage-batch"]
     assert calls[0][1]["MANPATH"] == f"{manpage.parent.parent}{os.pathsep}/usr/share/man"
 
 
@@ -151,7 +151,7 @@ def test_show_git_stage_batch_help_uses_packaged_command_page(monkeypatch, tmp_p
     monkeypatch.setattr(argument_parser, "run_git_command", fake_git)
 
     assert argument_parser._show_git_stage_batch_help("stage-batch-include") is True
-    assert calls[0][0] == ["help", "stage-batch-include"]
+    assert calls[0][0] == ["help", "git-stage-batch-include"]
     assert calls[0][1]["MANPATH"] == f"{manpage.parent.parent}{os.pathsep}/usr/share/man"
 
 

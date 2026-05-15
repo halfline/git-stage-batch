@@ -1,0 +1,23 @@
+.TH GIT-STAGE-BATCH-AGAIN 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-again \- revisit skipped hunks
+.SH SYNOPSIS
+.B git-stage-batch again
+[\fB\-\-auto\-advance\fR|\fB\-\-no\-auto\-advance\fR]
+.SH DESCRIPTION
+.B again
+clears the skipped-hunk blocklist and starts another pass through all hunks
+that remain in the working tree.
+.SH OPTIONS
+.TP
+.B \-\-auto\-advance
+Set the session default so later action commands select the next hunk when
+they finish.
+.TP
+.B \-\-no\-auto\-advance
+Set the session default so later action commands leave no hunk selected when
+they finish unless they opt back in.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-skip (1),
+.BR git-stage-batch-start (1)

@@ -1,0 +1,12 @@
+.TH GIT-STAGE-BATCH-LIST 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-list \- list batches
+.SH SYNOPSIS
+.B git-stage-batch list
+.SH DESCRIPTION
+.B list
+prints existing batches and their descriptions.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-new (1),
+.BR git-stage-batch-drop (1)

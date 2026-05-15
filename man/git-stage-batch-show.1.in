@@ -1,0 +1,58 @@
+.TH GIT-STAGE-BATCH-SHOW 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-show \- show the selected hunk or a file review
+.SH SYNOPSIS
+.B git-stage-batch show
+[\fB\-\-from\fR \fIBATCH\fR]
+[\fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
+[\fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-page\fR \fIPAGES\fR]
+[\fB\-\-porcelain\fR]
+.SH DESCRIPTION
+.B show
+prints the currently selected hunk. It can also open a page-aware review for
+one file, list matching files, or show changes stored in a batch.
+.SH OPTIONS
+.TP
+.BI "\-\-from " BATCH
+Show changes from
+.IR BATCH .
+.TP
+.B \-\-file
+.RI [ PATH ]
+Show all changes from one file. If
+.I PATH
+is omitted, use the selected hunk's file.
+.TP
+.BI "\-\-files " PATTERN "..."
+Show files matched by gitignore-style patterns. Multi-file matches print a
+navigational file list and do not select a hidden file for later bare actions.
+.TP
+.BI "\-\-line, \-\-lines " IDS
+Show only the requested display line IDs.
+.TP
+.BI "\-\-page, \-\-pages " PAGES
+Show file-review pages such as
+.BR 2 ,
+.BR 3-4 ,
+or
+.BR all .
+Requires a single file. Cannot be combined with
+.B \-\-line
+or
+.BR \-\-porcelain .
+.TP
+.B \-\-porcelain
+Exit silently with status code 0 when a hunk exists and 1 when no hunk exists.
+.SH EXAMPLES
+.RS
+.nf
+git-stage-batch show
+git-stage-batch show --file src/app.py --page 2
+git-stage-batch show --from cleanup --files 'src/**' '!src/vendor/**'
+.fi
+.RE
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-include (1),
+.BR git-stage-batch-discard (1)

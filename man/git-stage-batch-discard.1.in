@@ -1,0 +1,83 @@
+.TH GIT-STAGE-BATCH-DISCARD 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-discard \- remove live changes or reverse batch changes
+.SH SYNOPSIS
+.B git-stage-batch discard
+[\fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
+[\fB\-\-from\fR \fIBATCH\fR | \fB\-\-to\fR \fIBATCH\fR]
+[\fB\-\-auto\-advance\fR|\fB\-\-no\-auto\-advance\fR]
+.PP
+.B git-stage-batch discard
+[\fB\-\-file\fR \fIPATH\fR | \fB\-\-to\fR \fIBATCH\fR \fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-as\fR \fITEXT\fR | \fB\-\-as\-stdin\fR]
+[\fB\-\-no\-edge\-overlap\fR]
+.SH DESCRIPTION
+.B discard
+removes selected live changes from the working tree. With
+.B \-\-to
+it first saves the selected live changes to a batch. With
+.B \-\-from
+it reverses changes from a batch without deleting that batch.
+.PP
+.B WARNING:
+discarding live changes permanently removes them from the working tree unless
+they are saved with
+.BR \-\-to .
+.SH OPTIONS
+.TP
+.BI "\-\-line, \-\-lines " IDS
+Discard or save only specific displayed line IDs.
+.TP
+.B \-\-file
+.RI [ PATH ]
+Operate on one complete file. If
+.I PATH
+is omitted, use the selected hunk's file.
+.TP
+.BI "\-\-files " PATTERN "..."
+Operate on all changed files matched by gitignore-style patterns.
+.TP
+.BI "\-\-from " BATCH
+Reverse changes from
+.IR BATCH .
+.TP
+.BI "\-\-to " BATCH
+Save selected live changes to
+.I BATCH
+before removing them from the working tree.
+.TP
+.BI "\-\-as " TEXT
+Replace selected live content with
+.IR TEXT .
+For
+.B \-\-file
+the text becomes the full working-tree file content. For
+.BR "\-\-to \-\-line" ,
+the replacement is saved in the batch before the selected original lines are
+removed.
+.TP
+.B \-\-as\-stdin
+Read replacement text from standard input exactly.
+.TP
+.B \-\-no\-edge\-overlap
+Do not strip unchanged edge-overlap lines from replacement text used with
+.BR "\-\-to \-\-line \-\-as" .
+.TP
+.B \-\-auto\-advance
+Select the next hunk after the command completes.
+.TP
+.B \-\-no\-auto\-advance
+Leave no hunk selected after the command completes.
+.SH EXAMPLES
+.RS
+.nf
+git-stage-batch discard --line 4-6
+git-stage-batch discard --to cleanup --file src/app.py
+git-stage-batch discard --from cleanup --files 'src/**'
+.fi
+.RE
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-include (1),
+.BR git-stage-batch-apply (1)

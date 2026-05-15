@@ -1,0 +1,11 @@
+.TH GIT-STAGE-BATCH-STOP 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-stop \- stop the current session
+.SH SYNOPSIS
+.B git-stage-batch stop
+.SH DESCRIPTION
+.B stop
+removes session state and leaves the index and working tree as they are.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-abort (1)

@@ -1,0 +1,176 @@
+.TH GIT-STAGE-BATCH 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch \- hunk-by-hunk and line-by-line staging for git
+.SH SYNOPSIS
+.B git-stage-batch
+[\fB\-C\fR \fIPATH\fR] [\fB\-i\fR] [\fB\-\-version\fR]
+[\fICOMMAND\fR [\fIARGS\fR...]]
+.SH DESCRIPTION
+.B git-stage-batch
+provides a command-oriented workflow for reviewing and staging git changes.
+It presents hunks, files, and batches as numbered review targets so changes
+can be included, skipped, discarded, saved for later, or moved between batches.
+.PP
+State is maintained under
+.BR .git/git-stage-batch/ .
+Sessions can be stopped, resumed, undone, or redone while preserving enough
+state to keep later commands tied to the selected review.
+.SH HELP
+The top-level help is an overview. Each public subcommand has its own manual
+page. For example:
+.RS
+.nf
+git-stage-batch include --help
+git help stage-batch-include
+.fi
+.RE
+.SH COMMON WORKFLOW
+.TP
+.B git-stage-batch start
+Start a review session and select the first hunk.
+.TP
+.B git-stage-batch show
+Show the selected hunk or open a file review.
+.TP
+.B git-stage-batch include
+Stage the selected hunk.
+.TP
+.B git-stage-batch skip
+Leave the selected hunk for a later pass.
+.TP
+.B git-stage-batch discard
+Remove the selected hunk from the working tree.
+.TP
+.B git-stage-batch again
+Start another pass over skipped hunks.
+.TP
+.B git-stage-batch stop
+Clear session state.
+.SH COMMANDS
+.SS Session Commands
+.TP
+.BR git-stage-batch-start (1)
+Start a new hunk review session.
+.TP
+.BR git-stage-batch-show (1)
+Show the selected hunk, a file review, or a batch review.
+.TP
+.BR git-stage-batch-status (1)
+Show current session progress.
+.TP
+.BR git-stage-batch-again (1)
+Start a new pass over skipped hunks.
+.TP
+.BR git-stage-batch-stop (1)
+Stop the current session.
+.TP
+.BR git-stage-batch-abort (1)
+Undo all changes made during the session.
+.TP
+.BR git-stage-batch-undo (1)
+Undo the most recent undoable session operation.
+.TP
+.BR git-stage-batch-redo (1)
+Redo the most recently undone session operation.
+.SS Change Commands
+.TP
+.BR git-stage-batch-include (1)
+Stage selected changes, save them to a batch, or apply batch changes to the
+index.
+.TP
+.BR git-stage-batch-skip (1)
+Mark selected live changes as skipped.
+.TP
+.BR git-stage-batch-discard (1)
+Remove live changes, save them to a batch, or reverse batch changes.
+.TP
+.BR git-stage-batch-apply (1)
+Apply batch changes to the working tree without staging them.
+.TP
+.BR git-stage-batch-reset (1)
+Remove selected lines from a batch's record without changing the working tree.
+.SS Batch Commands
+.TP
+.BR git-stage-batch-new (1)
+Create a named batch.
+.TP
+.BR git-stage-batch-list (1)
+List batches.
+.TP
+.BR git-stage-batch-drop (1)
+Delete a batch.
+.TP
+.BR git-stage-batch-annotate (1)
+Set a batch note.
+.TP
+.BR git-stage-batch-sift (1)
+Remove already-present changes from a batch.
+.SS Other Commands
+.TP
+.BR git-stage-batch-interactive (1)
+Run the continuous interactive interface.
+.TP
+.BR git-stage-batch-block-file (1)
+Permanently exclude a file from future sessions.
+.TP
+.BR git-stage-batch-unblock-file (1)
+Allow a blocked file to be reviewed again.
+.TP
+.BR git-stage-batch-suggest-fixup (1)
+Suggest a commit to fix up with the selected hunk.
+.TP
+.BR git-stage-batch-install-assets (1)
+Install bundled assistant assets into the repository.
+.SH LINE IDS
+Line-oriented commands accept comma-separated IDs and ranges such as
+.BR 1 ,
+.BR 1,3,5 ,
+or
+.BR 1,3,5-7 .
+Displayed IDs are review IDs, not necessarily source file line numbers.
+.SH FILE SCOPES
+Commands that accept
+.B \-\-file
+may take a path or may omit the path to use the selected file. Commands that
+accept
+.B \-\-files
+resolve gitignore-style patterns, including ordered
+.B !
+exclusions, to one or more changed files.
+.SH AUTOMATIC HUNK SELECTION
+Hunk actions normally select and display the next hunk after they complete.
+Use
+.B \-\-no\-auto\-advance
+on an action command to leave no hunk selected. Use
+.B \-\-auto\-advance
+to opt back in for one command. The
+.B start
+and
+.B again
+commands can set the session default.
+.SH BATCHES
+Batches are named collections of changes stored under git refs. They allow
+changes to be saved, reapplied, discarded, reset, or transformed later.
+Most users can use
+.BR include ,
+.BR skip ,
+and
+.BR discard
+without using batches.
+.SH AUTHOR
+Written by Ray Strode.
+.SH REPORTING BUGS
+Report bugs at: https://github.com/halfline/git-stage-batch/issues
+.SH COPYRIGHT
+Copyright \(co 2025-2026 Ray Strode.
+.br
+License: MIT
+.SH SEE ALSO
+.BR git (1),
+.BR git-add (1),
+.BR git-stage-batch-start (1),
+.BR git-stage-batch-show (1),
+.BR git-stage-batch-include (1),
+.BR git-stage-batch-skip (1),
+.BR git-stage-batch-discard (1),
+.BR git-stage-batch-status (1)

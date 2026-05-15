@@ -1,0 +1,29 @@
+.TH GIT-STAGE-BATCH-START 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-start \- start a hunk review session
+.SH SYNOPSIS
+.B git-stage-batch start
+[\fB\-U\fR \fIN\fR]
+[\fB\-\-auto\-advance\fR|\fB\-\-no\-auto\-advance\fR]
+.SH DESCRIPTION
+.B start
+finds the first unprocessed hunk, stores it as the selected change, and prints
+it for review. If a session is already active, the command starts a fresh pass.
+.SH OPTIONS
+.TP
+.BI "\-U, \-\-unified=" N
+Use
+.I N
+context lines in diff output. The default is 3.
+.TP
+.B \-\-auto\-advance
+Set the session default so later action commands select the next hunk when
+they finish.
+.TP
+.B \-\-no\-auto\-advance
+Set the session default so later action commands leave no hunk selected when
+they finish unless they opt back in.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-show (1),
+.BR git-stage-batch-again (1)

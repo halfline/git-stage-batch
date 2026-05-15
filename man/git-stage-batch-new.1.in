@@ -1,0 +1,20 @@
+.TH GIT-STAGE-BATCH-NEW 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-new \- create a batch
+.SH SYNOPSIS
+.B git-stage-batch new
+\fIBATCH\fR [\fB\-m\fR|\fB\-\-note\fR \fINOTE\fR]
+.SH DESCRIPTION
+.B new
+creates an empty named batch that can later receive changes from
+.BR include
+or
+.BR discard .
+.SH OPTIONS
+.TP
+.BI "\-m, \-\-note " NOTE
+Set a description for the batch.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-list (1),
+.BR git-stage-batch-include (1)

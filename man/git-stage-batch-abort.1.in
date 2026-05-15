@@ -1,0 +1,16 @@
+.TH GIT-STAGE-BATCH-ABORT 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-abort \- restore the repository to pre-session state
+.SH SYNOPSIS
+.B git-stage-batch abort
+.SH DESCRIPTION
+.B abort
+undoes all changes made during the current session, including staged changes,
+working-tree edits, commits, and batch mutations tracked by the session.
+.PP
+.B WARNING:
+this can reset commits made during the session.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-stop (1),
+.BR git-stage-batch-undo (1)

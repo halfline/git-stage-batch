@@ -1,0 +1,33 @@
+.TH GIT-STAGE-BATCH-APPLY 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-apply \- apply batch changes to the working tree
+.SH SYNOPSIS
+.B git-stage-batch apply
+\fB\-\-from\fR \fIBATCH\fR
+[\fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
+.SH DESCRIPTION
+.B apply
+applies changes from a batch to the working tree without staging them. The
+batch remains available after the command.
+.SH OPTIONS
+.TP
+.BI "\-\-from " BATCH
+Apply changes from
+.IR BATCH .
+.TP
+.BI "\-\-line, \-\-lines " IDS
+Apply only specific displayed line IDs.
+.TP
+.B \-\-file
+.RI [ PATH ]
+Apply one file from the batch. If
+.I PATH
+is omitted, use the selected batch file when available.
+.TP
+.BI "\-\-files " PATTERN "..."
+Apply batch files matched by gitignore-style patterns.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-include (1),
+.BR git-stage-batch-discard (1)

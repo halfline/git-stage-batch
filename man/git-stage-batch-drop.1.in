@@ -1,0 +1,14 @@
+.TH GIT-STAGE-BATCH-DROP 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-drop \- delete a batch
+.SH SYNOPSIS
+.B git-stage-batch drop
+\fIBATCH\fR
+.SH DESCRIPTION
+.B drop
+deletes
+.I BATCH
+and removes its git ref.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-list (1)

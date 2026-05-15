@@ -754,6 +754,48 @@ def _change_index_containing_review_display_ids(
     return 0
 
 
+def _selection_ids_for_display_ids(
+    model: FileReviewModel,
+    display_ids: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Translate review display IDs back to line-selection IDs."""
+    if model.display_id_by_selection_id is None:
+        return display_ids
+    selection_id_by_display_id = {
+        display_id: selection_id
+        for selection_id, display_id in model.display_id_by_selection_id.items()
+    }
+    return tuple(
+        selection_id_by_display_id[display_id]
+        for display_id in display_ids
+        if display_id in selection_id_by_display_id
+    )
+
+
+def _display_ids_for_change_pages(
+    model: FileReviewModel,
+    change: ReviewChange,
+    shown_pages: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Return the display IDs from one visual change on the shown pages."""
+    display_ids: list[int] = []
+    seen_display_ids: set[int] = set()
+    for page_number in shown_pages:
+        page = model.pages[page_number - 1]
+        for fragment in page.changes:
+            if fragment.change.index != change.index:
+                continue
+            for display_id in _display_ids_for_rows(
+                fragment.rows,
+                model.display_id_by_selection_id,
+            ):
+                if display_id in seen_display_ids:
+                    continue
+                display_ids.append(display_id)
+                seen_display_ids.add(display_id)
+    return tuple(display_ids)
+
+
 def _supplemental_batch_review_selections(
     model: FileReviewModel,
     *,

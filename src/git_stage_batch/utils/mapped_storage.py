@@ -1,8 +1,9 @@
-"""Tempfile-backed fixed-width storage helpers."""
+"""Storage helpers that use mmap for larger allocations."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from bisect import bisect_right
+from collections.abc import Iterable, Iterator, Sequence
 import mmap
 import struct
 import tempfile
@@ -13,6 +14,115 @@ from typing import BinaryIO
 _UINT32_MAX = (1 << 32) - 1
 _UINT64_MAX = (1 << 64) - 1
 _FILL_CHUNK_BYTES = 1024 * 1024
+MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD = mmap.PAGESIZE
+_BytesLike = bytes | bytearray | memoryview
+_ByteStorage = bytes | mmap.mmap
+_StorageBuffer = bytearray | mmap.mmap
+
+
+def should_use_mapped_storage(byte_count: int) -> bool:
+    """Return whether a byte count should use mapped storage."""
+    return byte_count >= MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD
+
+
+def byte_storage_from_path(path: str | Path) -> tuple[_ByteStorage, BinaryIO | None]:
+    """Load path bytes using heap memory below the mapped-storage threshold."""
+    file_path = Path(path)
+    file_handle = file_path.open("rb")
+    try:
+        byte_count = file_path.stat().st_size
+        if byte_count == 0:
+            file_handle.close()
+            return b"", None
+        if not should_use_mapped_storage(byte_count):
+            data = file_handle.read()
+            file_handle.close()
+            return data, None
+
+        return (
+            mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
+            file_handle,
+        )
+    except Exception:
+        file_handle.close()
+        raise
+
+
+def byte_storage_from_chunks(
+    chunks: Iterable[_BytesLike],
+    *,
+    spool_dir: str | Path | None = None,
+) -> tuple[_ByteStorage, BinaryIO | None]:
+    """Build byte storage from chunks using mapped storage above the threshold."""
+    pending_chunks: list[bytes] = []
+    byte_count = 0
+    chunk_iter = iter(chunks)
+
+    for chunk in chunk_iter:
+        chunk = _validate_byte_chunk(chunk)
+        chunk_size = _chunk_byte_count(chunk)
+        if chunk_size == 0:
+            continue
+        next_byte_count = byte_count + chunk_size
+        if should_use_mapped_storage(next_byte_count):
+            return _byte_storage_from_chunk_prefix_and_remainder(
+                pending_chunks,
+                chunk,
+                chunk_iter,
+                spool_dir=spool_dir,
+            )
+
+        byte_count = next_byte_count
+        pending_chunks.append(bytes(chunk))
+
+    if byte_count == 0:
+        return b"", None
+    return b"".join(pending_chunks), None
+
+
+def _validate_byte_chunk(chunk: _BytesLike) -> _BytesLike:
+    if isinstance(chunk, bytes):
+        return chunk
+    if isinstance(chunk, (bytearray, memoryview)):
+        return chunk
+    raise TypeError(f"expected bytes-like object, got {type(chunk).__name__}")
+
+
+def _chunk_byte_count(chunk: _BytesLike) -> int:
+    if isinstance(chunk, memoryview):
+        return chunk.nbytes
+    return len(chunk)
+
+
+def _byte_storage_from_chunk_prefix_and_remainder(
+    pending_chunks: Sequence[bytes],
+    threshold_chunk: _BytesLike,
+    remaining_chunks: Iterator[_BytesLike],
+    *,
+    spool_dir: str | Path | None = None,
+) -> tuple[_ByteStorage, BinaryIO | None]:
+    file_handle = _temporary_file(spool_dir)
+    try:
+        for chunk in pending_chunks:
+            file_handle.write(chunk)
+        file_handle.write(threshold_chunk)
+        for chunk in remaining_chunks:
+            chunk = _validate_byte_chunk(chunk)
+            file_handle.write(chunk)
+        file_handle.flush()
+        return (
+            mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
+            file_handle,
+        )
+    except Exception:
+        file_handle.close()
+        raise
+
+
+def _temporary_file(spool_dir: str | Path | None = None) -> BinaryIO:
+    return tempfile.TemporaryFile(
+        dir=None if spool_dir is None else Path(spool_dir)
+    )
 
 
 def _normalize_width(width: int) -> int:
@@ -29,6 +139,14 @@ def _format_for_width(width: int) -> str:
     return "<I" if width == 4 else "<Q"
 
 
+def _normalize_record_format(record_format: str) -> str:
+    if not record_format:
+        raise ValueError("record format must not be empty")
+    if record_format[0] not in "@=<>!":
+        return "<" + record_format
+    return record_format
+
+
 def _max_for_width(width: int) -> int:
     return _UINT32_MAX if width == 4 else _UINT64_MAX
 
@@ -38,8 +156,37 @@ def _check_unsigned(value: int, max_value: int) -> None:
         raise OverflowError("value does not fit in unsigned storage")
 
 
+def _allocate_storage(
+    byte_count: int,
+    *,
+    spool_dir: str | Path | None = None,
+) -> tuple[_StorageBuffer | None, BinaryIO | None]:
+    if byte_count <= 0:
+        return None, None
+    if not should_use_mapped_storage(byte_count):
+        return bytearray(byte_count), None
+
+    file_handle = _temporary_file(spool_dir)
+    try:
+        file_handle.truncate(byte_count)
+        return mmap.mmap(file_handle.fileno(), byte_count), file_handle
+    except Exception:
+        file_handle.close()
+        raise
+
+
+def _close_storage(
+    data: _StorageBuffer | None,
+    file_handle: BinaryIO | None,
+) -> None:
+    if isinstance(data, mmap.mmap):
+        data.close()
+    if file_handle is not None:
+        file_handle.close()
+
+
 class MappedIntVector(Sequence[int]):
-    """Fixed-width unsigned integer vector backed by a temporary mmap."""
+    """Fixed-width unsigned integer vector."""
 
     def __init__(
         self,
@@ -58,18 +205,16 @@ class MappedIntVector(Sequence[int]):
         self._max_value = _max_for_width(self._width)
         self._byte_count = length * self._width
         self._file_handle: BinaryIO | None = None
-        self._mmap: mmap.mmap | None = None
+        self._data: _StorageBuffer | None = None
         self._closed = False
 
         _check_unsigned(fill, self._max_value)
-        if self._byte_count > 0:
-            self._file_handle = tempfile.TemporaryFile(
-                dir=None if spool_dir is None else Path(spool_dir)
-            )
-            self._file_handle.truncate(self._byte_count)
-            self._mmap = mmap.mmap(self._file_handle.fileno(), self._byte_count)
-            if fill != 0:
-                self.fill(fill)
+        self._data, self._file_handle = _allocate_storage(
+            self._byte_count,
+            spool_dir=spool_dir,
+        )
+        if self._data is not None and fill != 0:
+            self.fill(fill)
 
     @property
     def typecode(self) -> str:
@@ -78,7 +223,7 @@ class MappedIntVector(Sequence[int]):
 
     @property
     def byte_count(self) -> int:
-        """Return allocated mmap bytes."""
+        """Return allocated storage bytes."""
         return 0 if self._closed else self._byte_count
 
     @property
@@ -96,15 +241,15 @@ class MappedIntVector(Sequence[int]):
             return [self[item] for item in range(*index.indices(self._length))]
 
         index = self._normalize_index(index)
-        mm = self._require_mmap()
-        return self._format.unpack_from(mm, index * self._width)[0]
+        data = self._require_storage()
+        return self._format.unpack_from(data, index * self._width)[0]
 
     def __setitem__(self, index: int, value: int) -> None:
         self._require_open()
         index = self._normalize_index(index)
         _check_unsigned(value, self._max_value)
-        mm = self._require_mmap()
-        self._format.pack_into(mm, index * self._width, value)
+        data = self._require_storage()
+        self._format.pack_into(data, index * self._width, value)
 
     def fill(self, value: int) -> None:
         """Set every slot to one unsigned value."""
@@ -113,7 +258,7 @@ class MappedIntVector(Sequence[int]):
         if self._length == 0:
             return
 
-        mm = self._require_mmap()
+        data = self._require_storage()
         packed = self._format.pack(value)
         repeat = max(1, _FILL_CHUNK_BYTES // self._width)
         chunk = packed * min(self._length, repeat)
@@ -123,21 +268,18 @@ class MappedIntVector(Sequence[int]):
         while remaining:
             count = min(remaining, len(chunk) // self._width)
             byte_count = count * self._width
-            mm[offset:offset + byte_count] = chunk[:byte_count]
+            data[offset:offset + byte_count] = chunk[:byte_count]
             offset += byte_count
             remaining -= count
 
     def close(self) -> None:
-        """Close mmap and temporary file resources."""
+        """Close storage resources."""
         if self._closed:
             return
 
-        if self._mmap is not None:
-            self._mmap.close()
-            self._mmap = None
-        if self._file_handle is not None:
-            self._file_handle.close()
-            self._file_handle = None
+        _close_storage(self._data, self._file_handle)
+        self._data = None
+        self._file_handle = None
         self._closed = True
 
     def __enter__(self) -> MappedIntVector:
@@ -160,10 +302,10 @@ class MappedIntVector(Sequence[int]):
             raise IndexError(index)
         return index
 
-    def _require_mmap(self) -> mmap.mmap:
-        if self._mmap is None:
+    def _require_storage(self) -> _StorageBuffer:
+        if self._data is None:
             raise IndexError("empty vector has no storage")
-        return self._mmap
+        return self._data
 
     def _require_open(self) -> None:
         if self._closed:
@@ -171,7 +313,7 @@ class MappedIntVector(Sequence[int]):
 
 
 class MappedRecordVector(Sequence[tuple[int, ...]]):
-    """Fixed-size record vector backed by a temporary mmap."""
+    """Fixed-size record vector."""
 
     def __init__(
         self,
@@ -188,25 +330,18 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
         if length < 0 or length > capacity:
             raise ValueError("length must fit within capacity")
 
-        if not record_format:
-            raise ValueError("record format must not be empty")
-        if record_format[0] not in "@=<>!":
-            record_format = "<" + record_format
-
-        self._struct = struct.Struct(record_format)
+        self._struct = struct.Struct(_normalize_record_format(record_format))
         self._capacity = capacity
         self._length = length
         self._byte_count = capacity * self._struct.size
         self._file_handle: BinaryIO | None = None
-        self._mmap: mmap.mmap | None = None
+        self._data: _StorageBuffer | None = None
         self._closed = False
 
-        if self._byte_count > 0:
-            self._file_handle = tempfile.TemporaryFile(
-                dir=None if spool_dir is None else Path(spool_dir)
-            )
-            self._file_handle.truncate(self._byte_count)
-            self._mmap = mmap.mmap(self._file_handle.fileno(), self._byte_count)
+        self._data, self._file_handle = _allocate_storage(
+            self._byte_count,
+            spool_dir=spool_dir,
+        )
 
     @property
     def capacity(self) -> int:
@@ -221,7 +356,7 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
 
     @property
     def byte_count(self) -> int:
-        """Return allocated mmap bytes."""
+        """Return allocated storage bytes."""
         return 0 if self._closed else self._byte_count
 
     @property
@@ -239,8 +374,8 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
             return [self[item] for item in range(*index.indices(self._length))]
 
         index = self._normalize_index(index)
-        mm = self._require_mmap()
-        return self._struct.unpack_from(mm, index * self._struct.size)
+        data = self._require_storage()
+        return self._struct.unpack_from(data, index * self._struct.size)
 
     def __setitem__(self, index: int, record: Sequence[int]) -> None:
         self._require_open()
@@ -265,16 +400,13 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
             self._write_record(index, record)
 
     def close(self) -> None:
-        """Close mmap and temporary file resources."""
+        """Close storage resources."""
         if self._closed:
             return
 
-        if self._mmap is not None:
-            self._mmap.close()
-            self._mmap = None
-        if self._file_handle is not None:
-            self._file_handle.close()
-            self._file_handle = None
+        _close_storage(self._data, self._file_handle)
+        self._data = None
+        self._file_handle = None
         self._closed = True
 
     def __enter__(self) -> MappedRecordVector:
@@ -291,8 +423,8 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
             pass
 
     def _write_record(self, index: int, record: Sequence[int]) -> None:
-        mm = self._require_mmap()
-        self._struct.pack_into(mm, index * self._struct.size, *record)
+        data = self._require_storage()
+        self._struct.pack_into(data, index * self._struct.size, *record)
 
     def _normalize_index(self, index: int) -> int:
         if index < 0:
@@ -301,10 +433,10 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
             raise IndexError(index)
         return index
 
-    def _require_mmap(self) -> mmap.mmap:
-        if self._mmap is None:
+    def _require_storage(self) -> _StorageBuffer:
+        if self._data is None:
             raise IndexError("empty record vector has no storage")
-        return self._mmap
+        return self._data
 
     def _require_open(self) -> None:
         if self._closed:
@@ -312,7 +444,7 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
 
 
 class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
-    """Append-only record vector that grows by mmap-backed chunks."""
+    """Append-only record vector that grows by fixed-width chunks."""
 
     def __init__(
         self,
@@ -328,12 +460,14 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
         self._chunk_capacity = chunk_capacity
         self._spool_dir = spool_dir
         self._chunks: list[MappedRecordVector] = []
+        self._chunk_starts: list[int] = []
+        self._next_chunk_capacity = 1
         self._length = 0
         self._closed = False
 
     @property
     def byte_count(self) -> int:
-        """Return allocated mmap bytes across chunks."""
+        """Return allocated storage bytes across chunks."""
         if self._closed:
             return 0
         return sum(chunk.byte_count for chunk in self._chunks)
@@ -353,25 +487,43 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
             return [self[item] for item in range(*index.indices(self._length))]
 
         index = self._normalize_index(index)
-        chunk_index, record_index = divmod(index, self._chunk_capacity)
-        return self._chunks[chunk_index][record_index]
+        chunk, record_index = self._chunk_for_index(index)
+        return chunk[record_index]
 
     def append(self, record: Sequence[int]) -> int:
         """Append a record and return its zero-based index."""
         self._require_open()
-        if self._length == len(self._chunks) * self._chunk_capacity:
-            self._chunks.append(
-                MappedRecordVector(
-                    self._chunk_capacity,
-                    self._record_format,
-                    spool_dir=self._spool_dir,
-                )
-            )
+        if not self._chunks or len(self._chunks[-1]) >= self._chunks[-1].capacity:
+            self._append_chunk()
 
         index = self._length
         self._chunks[-1].append(record)
         self._length += 1
         return index
+
+    def _append_chunk(self) -> None:
+        capacity = self._next_chunk_capacity
+        self._chunk_starts.append(self._length)
+        self._chunks.append(
+            MappedRecordVector(
+                capacity,
+                self._record_format,
+                spool_dir=self._spool_dir,
+            )
+        )
+        self._next_chunk_capacity = min(
+            self._chunk_capacity,
+            max(capacity + 1, capacity * 2),
+        )
+
+    def _chunk_for_index(self, index: int) -> tuple[MappedRecordVector, int]:
+        chunk_index = bisect_right(self._chunk_starts, index) - 1
+        if chunk_index < 0:
+            raise IndexError(index)
+        return (
+            self._chunks[chunk_index],
+            index - self._chunk_starts[chunk_index],
+        )
 
     def close(self) -> None:
         """Close every allocated chunk."""
@@ -381,6 +533,7 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
         for chunk in self._chunks:
             chunk.close()
         self._chunks.clear()
+        self._chunk_starts.clear()
         self._closed = True
 
     def __enter__(self) -> ChunkedMappedRecordVector:
@@ -409,7 +562,7 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
 
 
 class ManagedMappedResources:
-    """Track mapped resources and byte high-water use."""
+    """Track storage resources and byte high-water use."""
 
     def __init__(self) -> None:
         self._resources: list[object] = []
@@ -434,7 +587,7 @@ class ManagedMappedResources:
         return self._total_allocated_bytes
 
     def track(self, resource: object) -> object:
-        """Track a mapped resource for deterministic cleanup."""
+        """Track a storage resource for deterministic cleanup."""
         self._require_open()
         self._resources.append(resource)
         byte_count = _resource_byte_count(resource)

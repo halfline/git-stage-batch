@@ -16,7 +16,7 @@ from git_stage_batch.editor import (
 from git_stage_batch.utils.git import GitTreeBlob
 
 
-def test_load_git_blob_as_buffer_spools_streamed_blob(monkeypatch):
+def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):
     """Git blob buffers are loaded from streamed blob chunks."""
     calls = []
 
@@ -28,7 +28,7 @@ def test_load_git_blob_as_buffer_spools_streamed_blob(monkeypatch):
 
     with load_git_blob_as_buffer("abc123") as buffer:
         assert calls == ["abc123"]
-        assert buffer.is_mmap_backed is True
+        assert buffer.uses_mapped_storage is False
         assert buffer[1] == b"beta\n"
 
 
@@ -59,7 +59,7 @@ def test_load_git_tree_files_as_buffers_loads_tree_blobs(monkeypatch):
             buffer.close()
 
 
-def test_load_git_object_as_buffer_spools_streamed_output(monkeypatch):
+def test_load_git_object_as_buffer_loads_streamed_output(monkeypatch):
     """Git object buffers are loaded from streamed command output."""
     calls = []
 
@@ -71,7 +71,7 @@ def test_load_git_object_as_buffer_spools_streamed_output(monkeypatch):
 
     with load_git_object_as_buffer("HEAD:file.txt") as buffer:
         assert calls == ["HEAD:file.txt"]
-        assert buffer.is_mmap_backed is True
+        assert buffer.uses_mapped_storage is False
         assert buffer[1] == b"beta\n"
 
 
@@ -115,7 +115,7 @@ def test_load_working_tree_file_as_buffer_uses_repository_root(monkeypatch, tmp_
     monkeypatch.setattr(editor_git, "get_git_repository_root_path", lambda: tmp_path)
 
     with load_working_tree_file_as_buffer("dir/file.txt") as buffer:
-        assert buffer.is_mmap_backed is True
+        assert buffer.uses_mapped_storage is False
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"beta\n"
 

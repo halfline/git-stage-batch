@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mmap
 from collections.abc import Sequence
 
 import pytest
@@ -15,6 +16,13 @@ from git_stage_batch.editor import (
     buffer_preview,
     write_buffer_to_path,
 )
+
+
+class _CopyFailingBytearray(bytearray):
+    """Bytearray test double that fails if converted through bytes()."""
+
+    def __bytes__(self):
+        raise AssertionError("chunk should stream without being copied")
 
 
 def test_editor_buffer_indexes_in_memory_lines():
@@ -220,13 +228,13 @@ def test_buffer_matches_buffers():
         assert buffer_matches(left, right) is True
 
 
-def test_editor_buffer_uses_mmap_for_non_empty_files(tmp_path):
-    """Non-empty file buffers are backed by mmap."""
+def test_editor_buffer_uses_heap_for_files_smaller_than_memory_page(tmp_path):
+    """Small file buffers stay on the Python heap."""
     file_path = tmp_path / "buffer.txt"
     file_path.write_bytes(b"alpha\nbeta\n")
 
     with EditorBuffer.from_path(file_path) as buffer:
-        assert buffer.is_mmap_backed is True
+        assert buffer.uses_mapped_storage is False
         assert buffer.byte_count == len(b"alpha\nbeta\n")
         assert list(buffer.byte_chunks(5)) == [b"alpha", b"\nbeta", b"\n"]
         assert buffer.to_bytes() == b"alpha\nbeta\n"
@@ -234,32 +242,96 @@ def test_editor_buffer_uses_mmap_for_non_empty_files(tmp_path):
         assert buffer[1] == b"beta\n"
 
 
-def test_editor_buffer_skips_mmap_for_empty_files(tmp_path):
-    """Empty files cannot be mmap-backed but still expose an empty buffer."""
+def test_editor_buffer_uses_mapped_storage_for_page_sized_files(tmp_path):
+    """Page-sized file buffers use mapped storage."""
+    data = b"alpha\n" + b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
+    file_path = tmp_path / "buffer.txt"
+    file_path.write_bytes(data)
+
+    with EditorBuffer.from_path(file_path) as buffer:
+        assert buffer.uses_mapped_storage is True
+        assert buffer.byte_count == mmap.PAGESIZE
+        assert buffer[0] == b"alpha\n"
+        assert buffer[1] == b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
+
+
+def test_editor_buffer_skips_mapped_storage_for_empty_files(tmp_path):
+    """Empty files do not use mapped storage but still expose an empty buffer."""
     file_path = tmp_path / "empty.txt"
     file_path.write_bytes(b"")
 
     with EditorBuffer.from_path(file_path) as buffer:
-        assert buffer.is_mmap_backed is False
+        assert buffer.uses_mapped_storage is False
         assert len(buffer) == 0
 
 
-def test_editor_buffer_spools_generated_chunks_to_mmap():
-    """Generated chunks are spooled to an mmap-backed buffer."""
+def test_editor_buffer_uses_heap_for_generated_chunks_smaller_than_page():
+    """Small generated buffers stay on the Python heap."""
     chunks = iter([b"alpha\nbe", b"ta\n", memoryview(b"gamma")])
 
     with EditorBuffer.from_chunks(chunks) as buffer:
-        assert buffer.is_mmap_backed is True
+        assert buffer.uses_mapped_storage is False
         assert len(buffer) == 3
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"beta\n"
         assert buffer[2] == b"gamma"
 
 
+def test_editor_buffer_copies_small_generated_chunks_for_heap_storage():
+    """Small mutable generated chunks are copied before storage."""
+    chunk = bytearray(b"alpha\n")
+
+    with EditorBuffer.from_chunks([chunk]) as buffer:
+        chunk[:] = b"omega\n"
+        assert buffer.to_bytes() == b"alpha\n"
+
+
+def test_editor_buffer_spools_page_sized_generated_chunks_to_mapped_storage():
+    """Page-sized generated buffers are spooled to mapped storage."""
+    prefix = b"alpha\nbeta\n"
+    chunks = iter([
+        prefix[:7],
+        prefix[7:],
+        memoryview(b"x" * (mmap.PAGESIZE - len(prefix))),
+    ])
+
+    with EditorBuffer.from_chunks(chunks) as buffer:
+        assert buffer.uses_mapped_storage is True
+        assert buffer.byte_count == mmap.PAGESIZE
+        assert buffer[0] == b"alpha\n"
+        assert buffer[1] == b"beta\n"
+        assert buffer[2] == b"x" * (mmap.PAGESIZE - len(prefix))
+
+
+def test_editor_buffer_streams_threshold_chunk_without_copying():
+    """The chunk that reaches the mapped-storage threshold streams directly."""
+    prefix = b"alpha\n"
+    threshold_chunk = _CopyFailingBytearray(
+        b"x" * (mmap.PAGESIZE - len(prefix))
+    )
+
+    with EditorBuffer.from_chunks([prefix, threshold_chunk]) as buffer:
+        assert buffer.uses_mapped_storage is True
+        assert buffer.byte_count == mmap.PAGESIZE
+        assert buffer[0] == prefix
+        assert buffer[1] == bytes(bytearray(threshold_chunk))
+
+
+def test_editor_buffer_streams_remaining_large_chunks_without_copying():
+    """Chunks after the mapped-storage threshold stream directly."""
+    threshold_chunk = b"x" * mmap.PAGESIZE
+    remaining_chunk = _CopyFailingBytearray(b"omega\n")
+
+    with EditorBuffer.from_chunks([threshold_chunk, remaining_chunk]) as buffer:
+        assert buffer.uses_mapped_storage is True
+        assert buffer.byte_count == mmap.PAGESIZE + len(remaining_chunk)
+        assert buffer[0] == threshold_chunk + b"omega\n"
+
+
 def test_editor_buffer_handles_empty_generated_chunks():
     """Empty generated buffers have no byte lines."""
     with EditorBuffer.from_chunks([]) as buffer:
-        assert buffer.is_mmap_backed is False
+        assert buffer.uses_mapped_storage is False
         assert len(buffer) == 0
 
 

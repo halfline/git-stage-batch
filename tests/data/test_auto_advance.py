@@ -10,6 +10,12 @@ from git_stage_batch.data.auto_advance import (
     read_auto_advance_default,
     write_auto_advance_default,
 )
+from git_stage_batch.data.hunk_tracking import (
+    refuse_bare_action_after_auto_advance_disabled,
+    select_next_change_after_action,
+    selected_change_was_cleared_by_auto_advance_disabled,
+)
+from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -83,3 +89,11 @@ def test_again_preserves_auto_advance_default_without_override(temp_git_repo):
     command_again(quiet=True)
 
     assert read_auto_advance_default() is False
+
+
+def test_disabled_auto_advance_records_empty_selection(temp_git_repo):
+    assert select_next_change_after_action(auto_advance=False) is False
+    assert selected_change_was_cleared_by_auto_advance_disabled() is True
+
+    with pytest.raises(CommandError, match="automatic advancement is disabled"):
+        refuse_bare_action_after_auto_advance_disabled("include")

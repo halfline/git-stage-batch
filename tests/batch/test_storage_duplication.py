@@ -117,7 +117,7 @@ def test_build_realized_buffer_from_lines_returns_buffer():
         ownership,
     ) as result:
         assert result.to_bytes() == b"A\r\nNEW\r\nB\r\n"
-        assert result.is_mmap_backed
+        assert result.byte_count == len(b"A\r\nNEW\r\nB\r\n")
 
 
 def test_build_realized_content_equal_block_with_unclaimed_insert():

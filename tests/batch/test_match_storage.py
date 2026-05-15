@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import mmap
 import os
 
 import pytest
 
+import git_stage_batch.utils.mapped_storage as mapped_storage_module
 from git_stage_batch.batch.match_storage import MatcherWorkspace
-from git_stage_batch.utils.mapped_storage import MappedIntVector, MappedRecordVector
+from git_stage_batch.utils.mapped_storage import (
+    MappedIntVector,
+    MappedRecordVector,
+)
 
 
 def _open_fd_count() -> int | None:
@@ -39,6 +44,46 @@ def test_mapped_int_vector_get_set_fill_and_close():
         vector[0]
 
 
+def test_less_than_page_mapped_int_vector_uses_heap(monkeypatch):
+    """Integer vectors smaller than one memory page should stay heap-backed."""
+    def fail_temporary_file(*args, **kwargs):
+        raise AssertionError("small vector should use heap storage")
+
+    monkeypatch.setattr(
+        mapped_storage_module.tempfile,
+        "TemporaryFile",
+        fail_temporary_file,
+    )
+
+    vector = MappedIntVector(4, width=4, fill=7)
+
+    assert vector.byte_count < mmap.PAGESIZE
+    assert list(vector) == [7, 7, 7, 7]
+
+
+def test_page_sized_mapped_int_vector_uses_mmap(monkeypatch):
+    """Page-sized integer vectors still use temporary mmap storage."""
+    calls = 0
+    original_temporary_file = mapped_storage_module.tempfile.TemporaryFile
+
+    def counting_temporary_file(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        mapped_storage_module.tempfile,
+        "TemporaryFile",
+        counting_temporary_file,
+    )
+
+    with MappedIntVector(mmap.PAGESIZE // 8, width=8, fill=3) as vector:
+        assert vector.byte_count == mmap.PAGESIZE
+        assert vector[0] == 3
+
+    assert calls == 1
+
+
 def test_mapped_int_vector_uses_64_bit_slots():
     """Mapped integer vectors store values past the 32-bit range."""
     value = (1 << 40) + 3
@@ -67,6 +112,24 @@ def test_mapped_record_vector_append_and_indexed_write():
     records.close()
     with pytest.raises(ValueError, match="closed"):
         len(records)
+
+
+def test_less_than_page_mapped_record_vector_uses_heap(monkeypatch):
+    """Record vectors smaller than one memory page should stay heap-backed."""
+    def fail_temporary_file(*args, **kwargs):
+        raise AssertionError("small record vector should use heap storage")
+
+    monkeypatch.setattr(
+        mapped_storage_module.tempfile,
+        "TemporaryFile",
+        fail_temporary_file,
+    )
+
+    records = MappedRecordVector(3, "QQ")
+    records.append((1, 2))
+
+    assert records.byte_count < mmap.PAGESIZE
+    assert records[0] == (1, 2)
 
 
 def test_mapped_record_vector_can_start_presized():

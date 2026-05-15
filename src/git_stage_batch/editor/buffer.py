@@ -87,8 +87,8 @@ class EditorBuffer(Sequence[bytes]):
         return cls(data, file_handle=file_handle)
 
     @property
-    def is_mmap_backed(self) -> bool:
-        """Return whether this buffer is backed by an mmap object."""
+    def uses_mapped_storage(self) -> bool:
+        """Return whether this buffer uses mapped storage."""
         return isinstance(self._data, mmap.mmap) and not self._closed
 
     @property

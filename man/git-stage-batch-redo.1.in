@@ -1,0 +1,18 @@
+.TH GIT-STAGE-BATCH-REDO 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-redo \- redo the most recently undone operation
+.SH SYNOPSIS
+.B git-stage-batch redo
+[\fB\-\-force\fR]
+.SH DESCRIPTION
+.B redo
+restores the state that existed before the most recent undo. A new undoable
+operation after undo clears the redo stack. By default redo refuses if later
+changes make the checkpoint unsafe to apply.
+.SH OPTIONS
+.TP
+.B \-\-force
+Overwrite changes made after the undo.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-undo (1)

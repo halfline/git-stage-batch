@@ -1,0 +1,17 @@
+.TH GIT-STAGE-BATCH-BLOCK-FILE 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-block-file \- permanently exclude a file from reviews
+.SH SYNOPSIS
+.B git-stage-batch block-file
+[\fIPATH\fR]
+.SH DESCRIPTION
+.B block-file
+adds a file to
+.BR .gitignore ,
+records it in session state, and skips all of its hunks automatically in
+future sessions. If
+.I PATH
+is omitted, the selected hunk's file is used.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-unblock-file (1)

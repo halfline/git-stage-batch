@@ -1,0 +1,32 @@
+.TH GIT-STAGE-BATCH-SUGGEST-FIXUP 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-suggest-fixup \- suggest a commit for a fixup
+.SH SYNOPSIS
+.B git-stage-batch suggest-fixup
+[\fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-reset\fR|\fB\-\-abort\fR|\fB\-\-last\fR]
+[\fIBOUNDARY\fR]
+.SH DESCRIPTION
+.B suggest-fixup
+uses git history to find commits that previously touched the selected hunk's
+lines and suggests them as fixup targets. Repeated invocations walk backward
+through candidates.
+.SH OPTIONS
+.TP
+.BI "\-\-line, \-\-lines " IDS
+Analyze only specific displayed line IDs.
+.TP
+.B \-\-reset
+Start candidate search over from the most recent candidate.
+.TP
+.B \-\-abort
+Clear suggestion state and exit without showing a candidate.
+.TP
+.B \-\-last
+Re-show the last candidate without advancing.
+.I BOUNDARY
+Git ref to use as the lower bound for commit search. The default is
+.BR @{upstream} .
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-log (1)

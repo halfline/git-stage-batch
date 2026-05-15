@@ -1,0 +1,39 @@
+.TH GIT-STAGE-BATCH-STATUS 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-status \- show session progress
+.SH SYNOPSIS
+.B git-stage-batch status
+[\fB\-\-porcelain\fR|\fB\-\-for\-prompt\fR[\fB=\fIFORMAT\fR]]
+.SH DESCRIPTION
+.B status
+shows whether a session is active, which change is selected, and how many
+hunks have been included, skipped, discarded, or remain.
+.SH OPTIONS
+.TP
+.B \-\-porcelain
+Print machine-readable JSON. The JSON includes session state, selected change
+details, file review details, progress counts, and skipped hunks.
+.TP
+.BI "\-\-for\-prompt" "[=" FORMAT "]"
+Print a shell prompt segment only when a session is active. If
+.I FORMAT
+is omitted, print
+.BR STAGING .
+Format fields include
+.BR {status} ,
+.BR {progress_status} ,
+.BR {iteration} ,
+.BR {processed} ,
+.BR {total} ,
+.BR {included} ,
+.BR {skipped} ,
+.BR {discarded} ,
+.BR {remaining} ,
+.BR {selected_file} ,
+.BR {selected_line} ,
+.BR {selected_ids} ,
+and
+.BR {selected_kind} .
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-start (1)

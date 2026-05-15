@@ -82,9 +82,21 @@ class FileScope:
 class GitHelpArgumentParser(argparse.ArgumentParser):
     """Custom ArgumentParser that tries to use git help for --help."""
 
+    def __init__(
+        self,
+        *args,
+        help_topic: str | None = None,
+        **kwargs,
+    ):
+        self._git_help_topic = help_topic
+        super().__init__(*args, **kwargs)
+
     def print_help(self, file=None):
         """Try to use git help, fall back to argparse help."""
-        if _show_git_stage_batch_help():
+        if (
+            self._git_help_topic is not None
+            and _show_git_stage_batch_help(self._git_help_topic)
+        ):
             return
 
         # Fall back to standard argparse help
@@ -120,11 +132,14 @@ def _build_manpath_with_packaged_page(man_root: Path, env: dict[str, str]) -> st
     return f"{man_root}{os.pathsep}{os.pathsep}"
 
 
-def _try_git_help_with_environment(env: dict[str, str] | None = None) -> bool:
-    """Run git help for git-stage-batch."""
+def _try_git_help_with_environment(
+    help_topic: str,
+    env: dict[str, str] | None = None,
+) -> bool:
+    """Run git help for a git-stage-batch topic."""
     try:
         result = run_git_command(
-            ["help", "stage-batch"],
+            ["help", help_topic],
             check=False,
             capture_stdout=False,
             env=env,
@@ -136,7 +151,7 @@ def _try_git_help_with_environment(env: dict[str, str] | None = None) -> bool:
 
 
 def _with_real_manpath_root(manpage_path: Path):
-    """Yield a manpath root that contains man1/git-stage-batch.1."""
+    """Yield a manpath root that contains the requested man page."""
     if manpage_path.parent.name == "man1":
         return nullcontext(manpage_path.parent.parent)
 
@@ -144,7 +159,7 @@ def _with_real_manpath_root(manpage_path: Path):
         def __enter__(self):
             self._temp_dir = tempfile.TemporaryDirectory(prefix="git-stage-batch-help-")
             temp_root = Path(self._temp_dir.name)
-            temp_manpage = temp_root / "man1" / "git-stage-batch.1"
+            temp_manpage = temp_root / "man1" / manpage_path.name
             temp_manpage.parent.mkdir(parents=True, exist_ok=True)
             temp_manpage.write_bytes(manpage_path.read_bytes())
             return temp_root
@@ -156,11 +171,19 @@ def _with_real_manpath_root(manpage_path: Path):
     return _TemporaryManRoot()
 
 
-def _show_git_stage_batch_help() -> bool:
+def _manpage_name_for_help_topic(help_topic: str) -> str:
+    """Return the man page filename for a git help topic."""
+    return f"git-{help_topic}.1"
+
+
+def _show_git_stage_batch_help(help_topic: str = "stage-batch") -> bool:
     """Show git-stage-batch help from packaged or system man pages."""
     try:
         packaged_manpage = resources.files("git_stage_batch").joinpath(
-            "assets", "man", "man1", "git-stage-batch.1"
+            "assets",
+            "man",
+            "man1",
+            _manpage_name_for_help_topic(help_topic),
         )
     except (ModuleNotFoundError, FileNotFoundError):
         packaged_manpage = None
@@ -175,12 +198,26 @@ def _show_git_stage_batch_help() -> bool:
                             Path(man_root),
                             env,
                         )
-                        if _try_git_help_with_environment(env):
+                        if _try_git_help_with_environment(help_topic, env):
                             return True
         except FileNotFoundError:
             pass
 
-    return _try_git_help_with_environment()
+    return _try_git_help_with_environment(help_topic)
+
+
+def _add_subcommand_parser(
+    subparsers,
+    command_name: str,
+    **kwargs,
+) -> GitHelpArgumentParser:
+    """Add a subcommand parser wired to its git help topic."""
+    help_topic = kwargs.pop("help_topic", f"stage-batch-{command_name}")
+    return subparsers.add_parser(
+        command_name,
+        help_topic=help_topic,
+        **kwargs,
+    )
 
 
 def _add_file_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
@@ -506,6 +543,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser = GitHelpArgumentParser(
         prog="git-stage-batch",
         description=_("Hunk-by-hunk and line-by-line staging for git"),
+        help_topic="stage-batch",
         exit_on_error=False,
     )
     parser.add_argument(
@@ -533,7 +571,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     # start - Start a new batch staging session
-    parser_start = subparsers.add_parser(
+    parser_start = _add_subcommand_parser(
+        subparsers,
         "start",
         help=_("Start a new batch staging session"),
     )
@@ -554,21 +593,24 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     # interactive - Start interactive hunk-by-hunk mode
-    parser_interactive = subparsers.add_parser(
+    parser_interactive = _add_subcommand_parser(
+        subparsers,
         "interactive",
         help=_("Start interactive hunk-by-hunk mode"),
     )
     parser_interactive.set_defaults(func=lambda _: commands.command_interactive())
 
     # stop - Stop the selected session and clear state
-    parser_stop = subparsers.add_parser(
+    parser_stop = _add_subcommand_parser(
+        subparsers,
         "stop",
         help=_("Stop the selected session and clear state"),
     )
     parser_stop.set_defaults(func=lambda _: commands.command_stop())
 
     # again - Clear state and start a fresh pass
-    parser_again = subparsers.add_parser(
+    parser_again = _add_subcommand_parser(
+        subparsers,
         "again",
         aliases=["a"],
         help=_("Clear state and start a fresh pass"),
@@ -579,7 +621,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     # undo - Undo the most recent undoable session operation
-    parser_undo = subparsers.add_parser(
+    parser_undo = _add_subcommand_parser(
+        subparsers,
         "undo",
         aliases=["u", "back"],
         help=_("Undo the most recent undoable session operation"),
@@ -592,7 +635,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_undo.set_defaults(func=lambda args: commands.command_undo(force=args.force))
 
     # redo - Redo the most recently undone session operation
-    parser_redo = subparsers.add_parser(
+    parser_redo = _add_subcommand_parser(
+        subparsers,
         "redo",
         aliases=["forward"],
         help=_("Redo the most recently undone session operation"),
@@ -605,7 +649,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_redo.set_defaults(func=lambda args: commands.command_redo(force=args.force))
 
     # show - Show the selected hunk
-    parser_show = subparsers.add_parser(
+    parser_show = _add_subcommand_parser(
+        subparsers,
         "show",
         help=_("Show the selected hunk"),
     )
@@ -704,7 +749,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_show.set_defaults(func=dispatch_show)
 
     # status - Show selected session status
-    parser_status = subparsers.add_parser(
+    parser_status = _add_subcommand_parser(
+        subparsers,
         "status",
         aliases=["st"],
         help=_("Show selected session status"),
@@ -731,7 +777,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     # include - Stage the selected hunk
-    parser_include = subparsers.add_parser(
+    parser_include = _add_subcommand_parser(
+        subparsers,
         "include",
         aliases=["i"],
         help=_("Stage the selected hunk"),
@@ -892,7 +939,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_include.set_defaults(func=dispatch_include)
 
     # skip - Skip the selected hunk without staging
-    parser_skip = subparsers.add_parser(
+    parser_skip = _add_subcommand_parser(
+        subparsers,
         "skip",
         aliases=["s"],
         help=_("Skip the selected hunk without staging"),
@@ -938,7 +986,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_skip.set_defaults(func=dispatch_skip)
 
     # discard - Remove the selected hunk from working tree
-    parser_discard = subparsers.add_parser(
+    parser_discard = _add_subcommand_parser(
+        subparsers,
         "discard",
         aliases=["d"],
         help=_("Remove the selected hunk from working tree"),
@@ -1095,14 +1144,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_discard.set_defaults(func=dispatch_discard)
 
     # abort - Restore repository to pre-session state
-    parser_abort = subparsers.add_parser(
+    parser_abort = _add_subcommand_parser(
+        subparsers,
         "abort",
         help=_("Restore repository to pre-session state"),
     )
     parser_abort.set_defaults(func=lambda _: commands.command_abort())
 
     # block-file - Permanently exclude a file
-    parser_block_file = subparsers.add_parser(
+    parser_block_file = _add_subcommand_parser(
+        subparsers,
         "block-file",
         aliases=["bf"],
         help=_("Permanently exclude a file (adds to .gitignore)"),
@@ -1116,7 +1167,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_block_file.set_defaults(func=lambda args: commands.command_block_file(args.file_path))
 
     # unblock-file - Remove a file from blocked list
-    parser_unblock_file = subparsers.add_parser(
+    parser_unblock_file = _add_subcommand_parser(
+        subparsers,
         "unblock-file",
         aliases=["ubf"],
         help=_("Remove a file from the blocked list"),
@@ -1128,7 +1180,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_unblock_file.set_defaults(func=lambda args: commands.command_unblock_file(args.file_path))
 
     # suggest-fixup - Suggest which commit the selected hunk should be fixed up to
-    parser_suggest_fixup = subparsers.add_parser(
+    parser_suggest_fixup = _add_subcommand_parser(
+        subparsers,
         "suggest-fixup",
         aliases=["x"],
         help=_("Suggest which commit the selected hunk should be fixed up to"),
@@ -1178,7 +1231,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     ))
 
     # new - Create a new batch
-    parser_new = subparsers.add_parser(
+    parser_new = _add_subcommand_parser(
+        subparsers,
         "new",
         help=_("Create a new batch"),
     )
@@ -1194,14 +1248,16 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_new.set_defaults(func=lambda args: commands.command_new_batch(args.batch_name, args.note))
 
     # list - List all batches
-    parser_list = subparsers.add_parser(
+    parser_list = _add_subcommand_parser(
+        subparsers,
         "list",
         help=_("List all batches"),
     )
     parser_list.set_defaults(func=lambda _: commands.command_list_batches())
 
     # drop - Delete a batch
-    parser_drop = subparsers.add_parser(
+    parser_drop = _add_subcommand_parser(
+        subparsers,
         "drop",
         help=_("Delete a batch"),
     )
@@ -1212,7 +1268,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_drop.set_defaults(func=lambda args: commands.command_drop_batch(args.batch_name))
 
     # annotate - Add/update batch description
-    parser_annotate = subparsers.add_parser(
+    parser_annotate = _add_subcommand_parser(
+        subparsers,
         "annotate",
         help=_("Add or update batch description"),
     )
@@ -1227,7 +1284,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_annotate.set_defaults(func=lambda args: commands.command_annotate_batch(args.batch_name, args.note))
 
     # apply - Apply batch changes to working tree
-    parser_apply = subparsers.add_parser(
+    parser_apply = _add_subcommand_parser(
+        subparsers,
         "apply",
         help=_("Apply batch changes to working tree"),
     )
@@ -1269,7 +1327,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_apply.set_defaults(func=dispatch_apply)
 
     # reset - Remove claims from batch
-    parser_reset = subparsers.add_parser(
+    parser_reset = _add_subcommand_parser(
+        subparsers,
         "reset",
         help=_("Remove claims from batch"),
     )
@@ -1323,7 +1382,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_reset.set_defaults(func=dispatch_reset)
 
     # sift - Reconcile batch against current tip
-    parser_sift = subparsers.add_parser(
+    parser_sift = _add_subcommand_parser(
+        subparsers,
         "sift",
         help=_("Remove already-present portions from a batch"),
     )
@@ -1343,7 +1403,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_sift.set_defaults(func=lambda args: commands.command_sift_batch(args.from_batch, args.to_batch))
 
-    parser_install_assets = subparsers.add_parser(
+    parser_install_assets = _add_subcommand_parser(
+        subparsers,
         "install-assets",
         help=_("Install bundled assistant assets into the repository"),
     )

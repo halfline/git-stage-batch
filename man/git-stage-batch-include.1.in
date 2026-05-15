@@ -1,0 +1,79 @@
+.TH GIT-STAGE-BATCH-INCLUDE 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-include \- stage changes or save them to a batch
+.SH SYNOPSIS
+.B git-stage-batch include
+[\fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
+[\fB\-\-from\fR \fIBATCH\fR | \fB\-\-to\fR \fIBATCH\fR]
+[\fB\-\-auto\-advance\fR|\fB\-\-no\-auto\-advance\fR]
+.PP
+.B git-stage-batch include
+[\fB\-\-file\fR \fIPATH\fR | \fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-as\fR \fITEXT\fR | \fB\-\-as\-stdin\fR]
+[\fB\-\-no\-edge\-overlap\fR]
+.SH DESCRIPTION
+.B include
+stages selected live changes. With
+.B \-\-to
+it saves live changes to a batch instead of staging them. With
+.B \-\-from
+it applies batch changes to the index and working tree.
+.SH OPTIONS
+.TP
+.BI "\-\-line, \-\-lines " IDS
+Stage or save only specific displayed line IDs.
+.TP
+.B \-\-file
+.RI [ PATH ]
+Operate on one complete file. If
+.I PATH
+is omitted, use the selected hunk's file.
+.TP
+.BI "\-\-files " PATTERN "..."
+Operate on all changed files matched by gitignore-style patterns.
+.TP
+.BI "\-\-from " BATCH
+Stage changes from
+.IR BATCH .
+.TP
+.BI "\-\-to " BATCH
+Save selected live changes to
+.IR BATCH .
+The batch is created if needed.
+.TP
+.BI "\-\-as " TEXT
+Stage replacement text for selected lines, or stage
+.I TEXT
+as the full file content when used with
+.BR \-\-file .
+.TP
+.B \-\-as\-stdin
+Read replacement text from standard input exactly, preserving trailing
+newlines.
+.TP
+.B \-\-no\-edge\-overlap
+Do not strip unchanged edge-overlap lines from replacement text used with
+.BR "\-\-line \-\-as" .
+.TP
+.B \-\-auto\-advance
+Select the next hunk after the command completes.
+.TP
+.B \-\-no\-auto\-advance
+Leave no hunk selected after the command completes.
+.SH EXAMPLES
+.RS
+.nf
+git-stage-batch include
+git-stage-batch include --line 1,3,5-7
+git-stage-batch include --file src/app.py
+git-stage-batch include --to cleanup --files 'src/**'
+git-stage-batch include --from cleanup --file src/app.py
+some-command | git-stage-batch include --line 1-3 --as-stdin
+.fi
+.RE
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-show (1),
+.BR git-stage-batch-discard (1),
+.BR git-stage-batch-apply (1)

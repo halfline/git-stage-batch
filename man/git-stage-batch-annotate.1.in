@@ -1,0 +1,13 @@
+.TH GIT-STAGE-BATCH-ANNOTATE 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-annotate \- set a batch note
+.SH SYNOPSIS
+.B git-stage-batch annotate
+\fIBATCH\fR \fINOTE\fR
+.SH DESCRIPTION
+.B annotate
+adds or replaces the description for
+.IR BATCH .
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-list (1)

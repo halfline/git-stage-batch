@@ -1,0 +1,36 @@
+.TH GIT-STAGE-BATCH-SKIP 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-skip \- defer selected live changes
+.SH SYNOPSIS
+.B git-stage-batch skip
+[\fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-file\fR [\fIPATH\fR] | \fB\-\-files\fR \fIPATTERN\fR...]
+[\fB\-\-auto\-advance\fR|\fB\-\-no\-auto\-advance\fR]
+.SH DESCRIPTION
+.B skip
+marks live changes as skipped without staging or removing them. Skipped hunks
+can be revisited with
+.BR "git-stage-batch again" .
+.SH OPTIONS
+.TP
+.BI "\-\-line, \-\-lines " IDS
+Skip only specific displayed line IDs.
+.TP
+.B \-\-file
+.RI [ PATH ]
+Skip all hunks from one file. If
+.I PATH
+is omitted, use the selected hunk's file.
+.TP
+.BI "\-\-files " PATTERN "..."
+Skip all changed files matched by gitignore-style patterns.
+.TP
+.B \-\-auto\-advance
+Select the next hunk after the command completes.
+.TP
+.B \-\-no\-auto\-advance
+Leave no hunk selected after the command completes.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-again (1),
+.BR git-stage-batch-include (1)

@@ -1,0 +1,38 @@
+.TH GIT-STAGE-BATCH-INSTALL-ASSETS 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-install-assets \- install bundled assistant assets
+.SH SYNOPSIS
+.B git-stage-batch install-assets
+[\fBclaude-agents\fR|\fBclaude-skills\fR|\fBcodex-skills\fR]
+[\fB\-\-filter\fR \fIPATTERN\fR...]
+[\fB\-\-force\fR]
+.SH DESCRIPTION
+.B install-assets
+installs bundled assistant assets into the current repository.
+.TP
+.B claude-agents
+Install into
+.BR .claude/agents/ .
+.TP
+.B claude-skills
+Install into
+.BR .claude/skills/ .
+Required bundled Claude agents for those skills are installed too.
+.TP
+.B codex-skills
+Install into
+.BR .agents/skills/ .
+The shared internal drafter brief is written to
+.BR .agents/internal/commit-message-drafter.md .
+.SH OPTIONS
+.TP
+.I GROUP
+Install only one bundled asset group. If omitted, install every group.
+.TP
+.BI "\-\-filter " PATTERN "..."
+Install only bundled assets whose entry names match gitignore-style patterns.
+.TP
+.B \-\-force
+Overwrite an existing installed asset.
+.SH SEE ALSO
+.BR git-stage-batch (1)

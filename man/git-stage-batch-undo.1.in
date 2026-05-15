@@ -1,0 +1,20 @@
+.TH GIT-STAGE-BATCH-UNDO 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-undo \- undo the most recent undoable session operation
+.SH SYNOPSIS
+.B git-stage-batch undo
+[\fB\-\-force\fR]
+.SH DESCRIPTION
+.B undo
+restores the repository state to the point before the most recent undoable
+session operation. It restores the index, working tree, session files, and
+batch refs recorded in that checkpoint. By default it refuses if later changes
+make the checkpoint unsafe to apply.
+.SH OPTIONS
+.TP
+.B \-\-force
+Overwrite changes made after the undo checkpoint.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-redo (1),
+.BR git-stage-batch-abort (1)

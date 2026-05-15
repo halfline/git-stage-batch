@@ -1,0 +1,15 @@
+.TH GIT-STAGE-BATCH-UNBLOCK-FILE 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-unblock-file \- allow a blocked file to be reviewed again
+.SH SYNOPSIS
+.B git-stage-batch unblock-file
+\fIPATH\fR
+.SH DESCRIPTION
+.B unblock-file
+removes
+.I PATH
+from the block list and removes the matching ignore entry so its hunks can be
+processed again.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-block-file (1)

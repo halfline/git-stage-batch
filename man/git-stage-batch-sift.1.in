@@ -1,0 +1,38 @@
+.TH GIT-STAGE-BATCH-SIFT 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-sift \- remove already-present changes from a batch
+.SH SYNOPSIS
+.B git-stage-batch sift
+\fB\-\-from\fR \fISOURCE_BATCH\fR
+\fB\-\-to\fR \fIDEST_BATCH\fR
+.SH DESCRIPTION
+.B sift
+compares a batch with the current working tree state, removes portions whose
+effect is already present, and writes the remaining unapplied portion to the
+destination batch.
+.PP
+If
+.I DEST_BATCH
+equals
+.IR SOURCE_BATCH ,
+the batch is updated in place. Otherwise the destination batch must not already
+exist, and the source batch is preserved.
+.SH OPTIONS
+.TP
+.BI "\-\-from " SOURCE_BATCH
+Read changes from
+.IR SOURCE_BATCH .
+.TP
+.BI "\-\-to " DEST_BATCH
+Write remaining changes to
+.IR DEST_BATCH .
+.SH EXAMPLES
+.RS
+.nf
+git-stage-batch sift --from feature --to feature-pruned
+git-stage-batch sift --from feature --to feature
+.fi
+.RE
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-reset (1)

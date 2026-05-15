@@ -1,0 +1,46 @@
+.TH GIT-STAGE-BATCH-INTERACTIVE 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-interactive \- run the interactive hunk review interface
+.SH SYNOPSIS
+.B git-stage-batch interactive
+.br
+.B git-stage-batch -i
+.SH DESCRIPTION
+.B interactive
+starts a continuous hunk-by-hunk interface similar to
+.BR "git add -p" .
+It starts a session, displays the selected hunk with progress information, and
+shows a menu of actions.
+.SH ACTIONS
+.TP
+.B i, include
+Stage the selected hunk and advance.
+.TP
+.B s, skip
+Skip the selected hunk and advance.
+.TP
+.B d, discard
+Discard the selected hunk after confirmation.
+.TP
+.B a, again
+Start another pass over skipped hunks.
+.TP
+.B l, lines
+Open the line-selection submenu.
+.TP
+.B f, file
+Open file-level include and skip actions.
+.TP
+.B q, quit
+Exit interactive mode.
+.TP
+.B !, command
+Run a shell command in the repository root.
+.TP
+.B ?, help
+Display interactive help.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-include (1),
+.BR git-stage-batch-skip (1),
+.BR git-stage-batch-discard (1)

@@ -34,21 +34,50 @@ configure_file(
   install_tag: 'runtime',
 )
 
-# Generate and install man page (skip for wheels, include for system install)
-manpage = configure_file(
-  input: 'docs/git-stage-batch.1.in',
-  output: 'git-stage-batch.1',
-  configuration: {'VERSION': meson.project_version()},
-)
+# Generate man pages for wheel fallback assets or system installation.
+manpage_specs = [
+  ['git-stage-batch.1.in', 'git-stage-batch.1'],
+  ['git-stage-batch-abort.1.in', 'git-stage-batch-abort.1'],
+  ['git-stage-batch-again.1.in', 'git-stage-batch-again.1'],
+  ['git-stage-batch-annotate.1.in', 'git-stage-batch-annotate.1'],
+  ['git-stage-batch-apply.1.in', 'git-stage-batch-apply.1'],
+  ['git-stage-batch-block-file.1.in', 'git-stage-batch-block-file.1'],
+  ['git-stage-batch-discard.1.in', 'git-stage-batch-discard.1'],
+  ['git-stage-batch-drop.1.in', 'git-stage-batch-drop.1'],
+  ['git-stage-batch-include.1.in', 'git-stage-batch-include.1'],
+  ['git-stage-batch-install-assets.1.in', 'git-stage-batch-install-assets.1'],
+  ['git-stage-batch-interactive.1.in', 'git-stage-batch-interactive.1'],
+  ['git-stage-batch-list.1.in', 'git-stage-batch-list.1'],
+  ['git-stage-batch-new.1.in', 'git-stage-batch-new.1'],
+  ['git-stage-batch-redo.1.in', 'git-stage-batch-redo.1'],
+  ['git-stage-batch-reset.1.in', 'git-stage-batch-reset.1'],
+  ['git-stage-batch-show.1.in', 'git-stage-batch-show.1'],
+  ['git-stage-batch-sift.1.in', 'git-stage-batch-sift.1'],
+  ['git-stage-batch-skip.1.in', 'git-stage-batch-skip.1'],
+  ['git-stage-batch-start.1.in', 'git-stage-batch-start.1'],
+  ['git-stage-batch-status.1.in', 'git-stage-batch-status.1'],
+  ['git-stage-batch-stop.1.in', 'git-stage-batch-stop.1'],
+  ['git-stage-batch-suggest-fixup.1.in', 'git-stage-batch-suggest-fixup.1'],
+  ['git-stage-batch-unblock-file.1.in', 'git-stage-batch-unblock-file.1'],
+  ['git-stage-batch-undo.1.in', 'git-stage-batch-undo.1'],
+]
+manpages = []
+foreach manpage_spec : manpage_specs
+  manpages += configure_file(
+    input: 'man' / manpage_spec[0],
+    output: manpage_spec[1],
+    configuration: {'VERSION': meson.project_version()},
+  )
+endforeach
 if get_option('python_wheel')
   install_data(
-    manpage,
+    manpages,
     install_dir: package_dir / 'assets' / 'man' / 'man1',
     install_tag: 'python-runtime',
   )
 endif
 if not get_option('python_wheel')
-  install_man(manpage)
+  install_man(manpages)
 endif
 
 # Install bash completion (skip for wheels, include for system install)

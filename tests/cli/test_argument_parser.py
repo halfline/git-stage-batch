@@ -117,6 +117,44 @@ def test_show_git_stage_batch_help_uses_packaged_page_first(monkeypatch, tmp_pat
     assert calls[0][1]["MANPATH"] == f"{manpage.parent.parent}{os.pathsep}/usr/share/man"
 
 
+def test_show_git_stage_batch_help_uses_packaged_command_page(monkeypatch, tmp_path):
+    """Command help should prefer the matching packaged man page."""
+    manpage = tmp_path / "assets" / "man" / "man1" / "git-stage-batch-include.1"
+    manpage.parent.mkdir(parents=True)
+    manpage.write_text("test", encoding="utf-8")
+
+    monkeypatch.setattr(
+        argument_parser.resources,
+        "files",
+        lambda _package: tmp_path,
+    )
+
+    class _AsFile:
+        def __init__(self, path):
+            self.path = path
+
+        def __enter__(self):
+            return self.path
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(argument_parser.resources, "as_file", lambda path: _AsFile(path))
+    monkeypatch.setattr(argument_parser, "_resolve_default_manpath", lambda: "/usr/share/man")
+
+    calls = []
+
+    def fake_git(cmd, **kwargs):
+        calls.append((cmd, kwargs.get("env")))
+        return Mock(returncode=0)
+
+    monkeypatch.setattr(argument_parser, "run_git_command", fake_git)
+
+    assert argument_parser._show_git_stage_batch_help("stage-batch-include") is True
+    assert calls[0][0] == ["help", "stage-batch-include"]
+    assert calls[0][1]["MANPATH"] == f"{manpage.parent.parent}{os.pathsep}/usr/share/man"
+
+
 def test_show_git_stage_batch_help_materializes_editable_manpage(monkeypatch, tmp_path):
     """Editable installs should copy the man page into a real man1 tree."""
     editable_manpage = tmp_path / "build" / "cp313" / "git-stage-batch.1"

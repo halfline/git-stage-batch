@@ -209,7 +209,7 @@ def test_remap_deletion_anchors_to_new_source():
     # Anchor at line 2 in old source should map to line 3 in new source
     assert len(new_ownership.deletions) == 1
     assert new_ownership.deletions[0].anchor_line == 3
-    assert new_ownership.deletions[0].content_lines == [b"deleted line\n"]
+    assert list(new_ownership.deletions[0].content_lines) == [b"deleted line\n"]
 
 
 def test_remap_start_of_file_deletion_anchor():
@@ -299,12 +299,12 @@ def test_remap_preserves_deletion_content():
     old_source = b"line one\nline two\n"
     new_source = b"prefix\nline one\nline two\n"
 
-    deletion_content = [b"deleted line 1\n", b"deleted line 2\n"]
+    absence_content = [b"deleted line 1\n", b"deleted line 2\n"]
 
     old_ownership = BatchOwnership.from_presence_lines(
         [],
         [
-            AbsenceClaim(anchor_line=1, content_lines=deletion_content)
+            AbsenceClaim(anchor_line=1, content_lines=absence_content)
         ]
     )
 
@@ -315,7 +315,7 @@ def test_remap_preserves_deletion_content():
     )
 
     # Content should be preserved exactly
-    assert new_ownership.deletions[0].content_lines == deletion_content
+    assert list(new_ownership.deletions[0].content_lines) == absence_content
 
 
 def test_remap_preserves_explicit_replacement_units():

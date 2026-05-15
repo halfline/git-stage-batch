@@ -796,6 +796,48 @@ def _display_ids_for_change_pages(
     return tuple(display_ids)
 
 
+def _shown_line_action_selections(
+    model: FileReviewModel,
+    shown_pages: tuple[int, ...],
+    *,
+    source: ReviewSource,
+) -> list[ActionableSelection]:
+    """Return line-action selections fully contained by the shown pages."""
+    shown_page_set = set(shown_pages)
+    selections: list[ActionableSelection] = []
+    for change in model.changes:
+        if not change.display_ids:
+            continue
+        can_split_presence = (
+            source != ReviewSource.BATCH
+            and _change_is_presence_only(change)
+        )
+        display_ids = (
+            _display_ids_for_change_pages(model, change, shown_pages)
+            if can_split_presence else
+            change.display_ids
+        )
+        if not display_ids:
+            continue
+        pages = _pages_containing_review_display_ids(model, display_ids)
+        if not pages or not set(pages).issubset(shown_page_set):
+            continue
+        selections.append(
+            ActionableSelection(
+                display_ids=display_ids,
+                selection_ids=(
+                    _selection_ids_for_display_ids(model, display_ids)
+                    if can_split_presence else
+                    change.selection_ids
+                ),
+                reason=change.reason,
+                note=change.note,
+                actions=change.actions,
+            )
+        )
+    return selections
+
+
 def _supplemental_batch_review_selections(
     model: FileReviewModel,
     *,

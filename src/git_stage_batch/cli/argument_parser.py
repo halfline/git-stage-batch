@@ -203,6 +203,24 @@ def _add_file_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
     )
 
 
+def _add_auto_advance_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add controls for selecting the next hunk after an action."""
+    auto_advance = parser.add_mutually_exclusive_group()
+    auto_advance.add_argument(
+        "--auto-advance",
+        dest="auto_advance",
+        action="store_true",
+        default=None,
+        help=_("Select the next hunk after the command completes"),
+    )
+    auto_advance.add_argument(
+        "--no-auto-advance",
+        dest="auto_advance",
+        action="store_false",
+        help=_("Leave no hunk selected after the command completes"),
+    )
+
+
 def _validate_file_inputs(
     file_arg: str | None,
     file_patterns: list[str] | None,
@@ -510,7 +528,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="N",
         help=_("Number of context lines in diff output (default: 3)"),
     )
-    parser_start.set_defaults(func=lambda args: commands.command_start(context_lines=args.context_lines))
+    _add_auto_advance_arguments(parser_start)
+    parser_start.set_defaults(
+        func=lambda args: commands.command_start(
+            context_lines=args.context_lines,
+            auto_advance=args.auto_advance,
+        )
+    )
 
     # interactive - Start interactive hunk-by-hunk mode
     parser_interactive = subparsers.add_parser(
@@ -532,7 +556,10 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["a"],
         help=_("Clear state and start a fresh pass"),
     )
-    parser_again.set_defaults(func=lambda _: commands.command_again())
+    _add_auto_advance_arguments(parser_again)
+    parser_again.set_defaults(
+        func=lambda args: commands.command_again(auto_advance=args.auto_advance)
+    )
 
     # undo - Undo the most recent undoable session operation
     parser_undo = subparsers.add_parser(

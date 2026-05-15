@@ -819,10 +819,14 @@ def validate_implicit_live_to_batch_file_action(
     use that explicit file path. The boolean is true when the caller should stop
     after a live-action guard handled the request.
     """
-    from .hunk_tracking import refuse_bare_action_after_file_list
+    from .hunk_tracking import (
+        refuse_bare_action_after_auto_advance_disabled,
+        refuse_bare_action_after_file_list,
+    )
 
     review_action = _coerce_review_action(action)
     refuse_bare_action_after_file_list(action_command)
+    refuse_bare_action_after_auto_advance_disabled(action_command)
     if line_id_specification is None:
         return ImplicitLiveToBatchFileActionResult(
             reviewed_file=resolve_review_file_for_bare_whole_file_action(
@@ -864,7 +868,10 @@ def resolve_live_to_batch_action_scope(
     file: str | None,
 ) -> ActionScopeResolution:
     """Resolve pathless and implicit-file live-to-batch actions against live reviews."""
-    from .hunk_tracking import refuse_bare_action_after_file_list
+    from .hunk_tracking import (
+        refuse_bare_action_after_auto_advance_disabled,
+        refuse_bare_action_after_file_list,
+    )
 
     review_action = _coerce_review_action(action)
     if file is None:
@@ -875,6 +882,7 @@ def resolve_live_to_batch_action_scope(
             line_ids=line_ids,
         )
         refuse_bare_action_after_file_list(action_command)
+        refuse_bare_action_after_auto_advance_disabled(action_command)
         if refuse_live_action_for_batch_selection(review_action):
             return ActionScopeResolution(file=file, should_stop=True)
         if line_ids is None:
@@ -923,13 +931,17 @@ def resolve_live_line_action_scope(
     validate_pathless_before_live_guard: bool = False,
 ) -> ActionScopeResolution:
     """Validate a pathless or implicit-file live line action against review state."""
-    from .hunk_tracking import refuse_bare_action_after_file_list
+    from .hunk_tracking import (
+        refuse_bare_action_after_auto_advance_disabled,
+        refuse_bare_action_after_file_list,
+    )
 
     if file not in (None, ""):
         return ActionScopeResolution(file=file)
 
     review_action = _coerce_review_action(action)
     refuse_bare_action_after_file_list(action_command)
+    refuse_bare_action_after_auto_advance_disabled(action_command)
 
     if file is None and validate_pathless_before_live_guard:
         review_state = validate_pathless_review_line_action(

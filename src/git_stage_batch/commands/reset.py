@@ -8,7 +8,7 @@ import sys
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
 
-from ..core.line_selection import format_line_ids
+from ..core.line_selection import LineRanges, format_line_ids
 from ..batch.operations import create_batch
 from ..batch.ownership import (
     BatchOwnership,
@@ -569,11 +569,11 @@ def _partition_line_ownership_units(
         ownership,
         batch_source_lines,
     )
-    available_ids = {
-        display_id
+    available_ids = LineRanges.from_ranges(
+        display_id_range
         for unit in units
-        for display_id in unit.display_line_ids
-    }
+        for display_id_range in unit.display_line_ids.ranges()
+    )
     require_display_ids_available(
         selected_line_ids,
         available_ids,

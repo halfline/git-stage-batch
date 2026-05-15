@@ -193,17 +193,18 @@ def _reason_for_selection_ids(
     selection_ids: tuple[int, ...],
 ) -> ActionableSelectionReason:
     selected_id_set = set(selection_ids)
-    changed_kinds = {
-        line.kind
-        for line in line_changes.lines
-        if line.id in selected_id_set
-        and line.kind in ("+", "-")
-    }
-    return (
-        ActionableSelectionReason.REPLACEMENT
-        if {"-", "+"}.issubset(changed_kinds)
-        else ActionableSelectionReason.SIMPLE
-    )
+    saw_addition = False
+    saw_deletion = False
+    for line in line_changes.lines:
+        if line.id not in selected_id_set or line.kind not in ("+", "-"):
+            continue
+        if line.kind == "+":
+            saw_addition = True
+        else:
+            saw_deletion = True
+        if saw_addition and saw_deletion:
+            return ActionableSelectionReason.REPLACEMENT
+    return ActionableSelectionReason.SIMPLE
 
 
 def _actionable_selections_from_selection_groups(

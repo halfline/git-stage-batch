@@ -48,17 +48,17 @@ from ..core.models import BinaryFileChange, GitlinkChange
 from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
-    advance_to_and_show_next_change,
-    advance_to_next_change,
     build_file_hunk_from_buffer,
     cache_unstaged_file_as_single_hunk,
     fetch_next_change,
+    finish_selected_change_action,
     get_selected_change_file_path,
     load_selected_change,
     read_selected_change_kind,
     recalculate_selected_hunk_for_file,
     record_hunk_discarded,
     record_hunks_discarded,
+    refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     render_binary_file_change,
     render_gitlink_change,
@@ -230,7 +230,11 @@ def _load_explicit_file_selection(file_path: str):
     return line_changes
 
 
-def command_discard(*, quiet: bool = False) -> None:
+def command_discard(
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Discard the selected hunk or binary file from the working tree."""
 
     log_journal("command_discard_start", quiet=quiet)
@@ -244,9 +248,13 @@ def command_discard(*, quiet: bool = False) -> None:
     if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.DISCARD):
         return
     refuse_bare_action_after_file_list("discard")
+    refuse_bare_action_after_auto_advance_disabled("discard")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
-        _command_discard_selected_file(quiet=quiet)
+        _command_discard_selected_file(
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
         return
 
     try:
@@ -280,10 +288,10 @@ def command_discard(*, quiet: bool = False) -> None:
                     file=sys.stderr,
                 )
 
-            if quiet:
-                advance_to_next_change()
-            else:
-                advance_to_and_show_next_change()
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
             return
 
         if isinstance(item, BinaryFileChange):
@@ -328,10 +336,10 @@ def command_discard(*, quiet: bool = False) -> None:
                 change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
                 print(_("✓ Binary file {desc} discarded: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
 
-            if quiet:
-                advance_to_next_change()
-            else:
-                advance_to_and_show_next_change()
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
             return
 
         # Text hunk - use git apply -R
@@ -384,13 +392,17 @@ def command_discard(*, quiet: bool = False) -> None:
         if not quiet:
             print(_("✓ Hunk discarded from {file}").format(file=filename), file=sys.stderr)
 
-        if quiet:
-            advance_to_next_change()
-        else:
-            advance_to_and_show_next_change()
+        finish_selected_change_action(
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
 
 
-def _command_discard_selected_file(*, quiet: bool = False) -> None:
+def _command_discard_selected_file(
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
     """Discard all changes from the currently selected file-scoped view."""
     target_file = get_selected_change_file_path()
     if target_file is None:
@@ -419,13 +431,17 @@ def _command_discard_selected_file(*, quiet: bool = False) -> None:
                 absolute_path.unlink()
 
         if quiet:
-            advance_to_next_change()
+            finish_selected_change_action(quiet=True, auto_advance=auto_advance)
         else:
             print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
-            advance_to_and_show_next_change()
+            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
 
 
-def command_discard_file(file: str) -> None:
+def command_discard_file(
+    file: str,
+    *,
+    auto_advance: bool | None = None,
+) -> None:
     """Discard the entire specified file from the working tree.
 
     Args:
@@ -444,6 +460,7 @@ def command_discard_file(file: str) -> None:
         if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.DISCARD):
             return
         refuse_bare_action_after_file_list("discard --file")
+        refuse_bare_action_after_auto_advance_disabled("discard --file")
 
     # Determine target file
     if file == "":
@@ -485,7 +502,7 @@ def command_discard_file(file: str) -> None:
                 _("✓ Submodule pointer restored: {file}").format(file=target_file),
                 file=sys.stderr,
             )
-            advance_to_and_show_next_change()
+            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
             return
 
         # Snapshot the file if it's untracked (for abort functionality)
@@ -530,10 +547,15 @@ def command_discard_file(file: str) -> None:
 
         print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
 
-        advance_to_and_show_next_change()
+        finish_selected_change_action(quiet=False, auto_advance=auto_advance)
 
 
-def command_discard_file_as(replacement_text: str, file: str | None = None) -> None:
+def command_discard_file_as(
+    replacement_text: str,
+    file: str | None = None,
+    *,
+    auto_advance: bool | None = None,
+) -> None:
     """Replace one live file-scoped working-tree file with explicit text."""
     require_git_repository()
     require_session_started()
@@ -544,6 +566,7 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
         if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.DISCARD):
             return
         refuse_bare_action_after_file_list("discard --file --as")
+        refuse_bare_action_after_auto_advance_disabled("discard --file --as")
 
     operation_parts = ["discard", "--as", replacement_text]
     if file is not None:
@@ -575,13 +598,21 @@ def command_discard_file_as(replacement_text: str, file: str | None = None) -> N
             assert saved_selected_state is not None
             restore_selected_change_state(saved_selected_state)
         else:
-            recalculate_selected_hunk_for_file(line_changes.path)
+            recalculate_selected_hunk_for_file(
+                line_changes.path,
+                auto_advance=auto_advance,
+            )
         clear_last_file_review_state_if_file_matches(target_file)
 
     print(_("✓ Discarded file as replacement: {file}").format(file=target_file), file=sys.stderr)
 
 
-def command_discard_line(line_id_specification: str, file: str | None = None) -> None:
+def command_discard_line(
+    line_id_specification: str,
+    file: str | None = None,
+    *,
+    auto_advance: bool | None = None,
+) -> None:
     """Discard only the specified lines from the working tree.
 
     Args:
@@ -652,7 +683,10 @@ def command_discard_line(line_id_specification: str, file: str | None = None) ->
             file=sys.stderr,
         )
         print_remaining_line_changes_header(line_changes.path)
-        recalculate_selected_hunk_for_file(line_changes.path)
+        recalculate_selected_hunk_for_file(
+            line_changes.path,
+            auto_advance=auto_advance,
+        )
         finish_review_scoped_line_action(review_state)
 
 
@@ -663,6 +697,7 @@ def command_discard_to_batch(
     *,
     quiet: bool = False,
     advance: bool = True,
+    auto_advance: bool | None = None,
 ) -> int:
     """Save to batch then discard from working tree.
 
@@ -674,6 +709,7 @@ def command_discard_to_batch(
               If None, uses selected hunk (cached state).
         quiet: Suppress output
         advance: When quiet, advance the selection after discarding this file.
+        auto_advance: Whether to select the next hunk after this action.
 
     Returns:
         Number of hunks saved to the batch and discarded.
@@ -711,9 +747,19 @@ def command_discard_to_batch(
         ):
             selected_change = load_selected_change()
             if isinstance(selected_change, BinaryFileChange):
-                saved_hunks = _command_discard_binary_to_batch(batch_name, selected_change, quiet=quiet)
+                saved_hunks = _command_discard_binary_to_batch(
+                    batch_name,
+                    selected_change,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
             else:
-                saved_hunks = _command_discard_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+                saved_hunks = _command_discard_hunk_to_batch(
+                    batch_name,
+                    file_only=False,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
         elif file is not None:
             # File-scoped operation
 
@@ -728,17 +774,39 @@ def command_discard_to_batch(
 
             if line_ids is None:
                 # --file without --line: discard entire file
-                saved_hunks = _command_discard_file_to_batch(batch_name, target_file, quiet=quiet, advance=advance)
+                saved_hunks = _command_discard_file_to_batch(
+                    batch_name,
+                    target_file,
+                    quiet=quiet,
+                    advance=advance,
+                    auto_advance=auto_advance,
+                )
             else:
                 # --file with --line: discard specific lines from file
-                saved_hunks = _command_discard_file_lines_to_batch(batch_name, target_file, line_ids, quiet=quiet)
+                saved_hunks = _command_discard_file_lines_to_batch(
+                    batch_name,
+                    target_file,
+                    line_ids,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
         else:
             # Hunk-scoped operation (selected behavior)
             if line_ids is not None:
-                saved_hunks = _command_discard_lines_to_batch(batch_name, line_ids, quiet=quiet)
+                saved_hunks = _command_discard_lines_to_batch(
+                    batch_name,
+                    line_ids,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
             else:
                 # Discard entire selected hunk
-                saved_hunks = _command_discard_hunk_to_batch(batch_name, file_only=False, quiet=quiet)
+                saved_hunks = _command_discard_hunk_to_batch(
+                    batch_name,
+                    file_only=False,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
     if original_file_scope in (None, "") and line_ids is not None:
         finish_review_scoped_line_action(review_state)
     return saved_hunks
@@ -752,6 +820,7 @@ def command_discard_line_as_to_batch(
     *,
     no_edge_overlap: bool = False,
     quiet: bool = False,
+    auto_advance: bool | None = None,
 ) -> None:
     """Save replacement text to batch, then discard the original selection locally."""
     require_git_repository()
@@ -803,6 +872,7 @@ def command_discard_line_as_to_batch(
                 replacement_text,
                 no_edge_overlap=no_edge_overlap,
                 quiet=quiet,
+                auto_advance=auto_advance,
             )
 
             if preserve_selected_state:
@@ -823,6 +893,7 @@ def _command_discard_lines_to_batch_as(
     *,
     no_edge_overlap: bool = False,
     quiet: bool = False,
+    auto_advance: bool | None = None,
 ) -> None:
     """Persist replacement text to batch and discard original selected lines."""
     line_changes = load_line_changes_from_state()
@@ -999,7 +1070,7 @@ def _command_discard_lines_to_batch_as(
             file=sys.stderr,
         )
 
-    recalculate_selected_hunk_for_file(line_changes.path)
+    recalculate_selected_hunk_for_file(line_changes.path, auto_advance=auto_advance)
 
 
 def _select_rewritten_replacement_lines(
@@ -1082,6 +1153,7 @@ def _command_discard_binary_to_batch(
     *,
     quiet: bool = False,
     advance: bool = True,
+    auto_advance: bool | None = None,
 ) -> int:
     """Save one binary change to a batch, then discard it from the working tree."""
     file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
@@ -1107,10 +1179,8 @@ def _command_discard_binary_to_batch(
             file=sys.stderr,
         )
 
-    if quiet and advance:
-        advance_to_next_change()
-    elif not quiet:
-        advance_to_and_show_next_change()
+    if advance:
+        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
     return 1
 
 
@@ -1295,6 +1365,7 @@ def command_discard_files_to_batch(
     *,
     quiet: bool = False,
     advance: bool = True,
+    auto_advance: bool | None = None,
 ) -> DiscardFilesToBatchResult:
     """Save resolved text files to a batch with one batch publication."""
     require_git_repository()
@@ -1353,6 +1424,7 @@ def command_discard_files_to_batch(
                     file=file_path,
                     quiet=True,
                     advance=False,
+                    auto_advance=auto_advance,
                 )
                 if discarded_hunks > 0:
                     total_hunks += discarded_hunks
@@ -1369,10 +1441,8 @@ def command_discard_files_to_batch(
         ownership_stack.close()
         patch_stack.close()
 
-    if quiet and advance:
-        advance_to_next_change()
-    elif not quiet:
-        advance_to_and_show_next_change()
+    if advance:
+        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
 
     return DiscardFilesToBatchResult(
         discarded_hunks=total_hunks,
@@ -1386,6 +1456,7 @@ def _command_discard_file_to_batch(
     *,
     quiet: bool = False,
     advance: bool = True,
+    auto_advance: bool | None = None,
 ) -> int:
     """Discard entire file to batch (internal helper for file-scoped operations)."""
     auto_add_untracked_files([file_path])
@@ -1398,7 +1469,13 @@ def _command_discard_file_to_batch(
 
     binary_change = render_binary_file_change(file_path)
     if binary_change is not None:
-        return _command_discard_binary_to_batch(batch_name, binary_change, quiet=quiet, advance=advance)
+        return _command_discard_binary_to_batch(
+            batch_name,
+            binary_change,
+            quiet=quiet,
+            advance=advance,
+            auto_advance=auto_advance,
+        )
     if render_gitlink_change(file_path) is not None:
         exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
 
@@ -1548,14 +1625,19 @@ def _command_discard_file_to_batch(
         log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
 
         # Show next hunk
-        if quiet and advance:
-            advance_to_next_change()
-        elif not quiet:
-            advance_to_and_show_next_change()
+        if advance:
+            finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
         return len(patches_to_discard)
 
 
-def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_id_specification: str, *, quiet: bool = False) -> int:
+def _command_discard_file_lines_to_batch(
+    batch_name: str,
+    file_path: str,
+    line_id_specification: str,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> int:
     """Discard specific lines from a file to batch (file-scoped with line IDs)."""
 
     cached_lines = _load_explicit_file_selection(file_path)
@@ -1641,15 +1723,17 @@ def _command_discard_file_lines_to_batch(batch_name: str, file_path: str, line_i
             lines=line_id_specification
         ), file=sys.stderr)
 
-    # Show next hunk
-    if quiet:
-        advance_to_next_change()
-    else:
-        advance_to_and_show_next_change()
+    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
     return 1
 
 
-def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str, *, quiet: bool = False) -> int:
+def _command_discard_lines_to_batch(
+    batch_name: str,
+    line_id_specification: str,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> int:
     """Save specific lines to batch and discard them from working tree (internal helper)."""
 
     log_journal("discard_lines_to_batch_start", batch_name=batch_name, line_ids=line_id_specification, quiet=quiet)
@@ -1736,13 +1820,19 @@ def _command_discard_lines_to_batch(batch_name: str, line_id_specification: str,
         print(_("✓ Discarded line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)
 
     # After modifying working tree, recalculate and show the updated hunk for this file
-    recalculate_selected_hunk_for_file(line_changes.path)
+    recalculate_selected_hunk_for_file(line_changes.path, auto_advance=auto_advance)
 
     log_journal("discard_lines_to_batch_success", batch_name=batch_name, line_ids=line_id_specification, file_path=line_changes.path)
     return 1
 
 
-def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, quiet: bool = False) -> int:
+def _command_discard_hunk_to_batch(
+    batch_name: str,
+    file_only: bool = False,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> int:
     """Save whole hunk or file to batch and discard from working tree (internal helper)."""
     log_journal("discard_hunk_to_batch_start", batch_name=batch_name, file_only=file_only, quiet=quiet)
 
@@ -1760,7 +1850,12 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
     if isinstance(selected_item, GitlinkChange):
         exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
     if isinstance(selected_item, BinaryFileChange):
-        return _command_discard_binary_to_batch(batch_name, selected_item, quiet=quiet)
+        return _command_discard_binary_to_batch(
+            batch_name,
+            selected_item,
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
 
     # Get the file path and hash from currently cached hunk
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
@@ -1771,6 +1866,7 @@ def _command_discard_hunk_to_batch(batch_name: str, file_only: bool = False, *, 
             selected_patch_hash=patch_hash,
             file_only=file_only,
             quiet=quiet,
+            auto_advance=auto_advance,
         )
 
 
@@ -1781,6 +1877,7 @@ def _command_discard_text_hunk_to_batch(
     selected_patch_hash: str,
     file_only: bool,
     quiet: bool,
+    auto_advance: bool | None = None,
 ) -> int:
     """Save one cached text patch selection to a batch, then discard it."""
     line_changes = build_line_changes_from_patch_lines(
@@ -1948,8 +2045,5 @@ def _command_discard_text_hunk_to_batch(
             else:
                 print(_("✓ Hunk saved to batch '{name}' and discarded from working tree").format(name=batch_name), file=sys.stderr)
 
-        if quiet:
-            advance_to_next_change()
-        else:
-            advance_to_and_show_next_change()
+        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
         return len(patches_to_discard)

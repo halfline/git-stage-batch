@@ -19,11 +19,7 @@ from ..batch.validation import batch_exists
 from .. import commands
 from ..batch.query import read_batch_metadata
 from ..data.file_tracking import list_untracked_files
-from ..data.hunk_tracking import (
-    advance_to_next_change,
-    select_next_change_after_action,
-    show_selected_change,
-)
+from ..data.hunk_tracking import select_next_change_after_action, show_selected_change
 from ..data.undo import undo_checkpoint
 from ..exceptions import CommandError
 from ..i18n import _, ngettext
@@ -375,7 +371,12 @@ def _skip_each_resolved_file(
         show_selected_change()
 
 
-def _discard_to_batch_each_resolved_file(batch_name: str, files: list[str]) -> None:
+def _discard_to_batch_each_resolved_file(
+    batch_name: str,
+    files: list[str],
+    *,
+    auto_advance: bool | None = None,
+) -> None:
     """Save a multi-file live scope to a batch and report one aggregate summary."""
     total_hunks = 0
     discarded_files: list[str] = []
@@ -387,6 +388,7 @@ def _discard_to_batch_each_resolved_file(batch_name: str, files: list[str]) -> N
             files,
             quiet=True,
             advance=False,
+            auto_advance=auto_advance,
         )
         total_hunks = result.discarded_hunks
         discarded_files = result.discarded_files
@@ -395,7 +397,7 @@ def _discard_to_batch_each_resolved_file(batch_name: str, files: list[str]) -> N
         print(_("No hunks saved to batch from matched files."), file=sys.stderr)
         return
 
-    advance_to_next_change()
+    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
 
     if len(discarded_files) == 1:
         file_summary = discarded_files[0]
@@ -414,7 +416,8 @@ def _discard_to_batch_each_resolved_file(batch_name: str, files: list[str]) -> N
         ).format(count=total_hunks, files=file_summary, batch=batch_name),
         file=sys.stderr,
     )
-    show_selected_change()
+    if should_show_next:
+        show_selected_change()
 
 
 def _resolve_live_file_scope(
@@ -990,6 +993,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    _add_auto_advance_arguments(parser_discard)
 
     def dispatch_discard(args: argparse.Namespace) -> None:
         replacement_requested = args.as_text is not None or args.as_stdin
@@ -1006,6 +1010,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     replacement_text,
                     file=resolved_file,
                     no_edge_overlap=args.no_edge_overlap,
+                    auto_advance=args.auto_advance,
                 )
                 return
             if (
@@ -1023,7 +1028,11 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 if resolved_live_scope.is_multiple:
                     raise CommandError(_("Cannot use --as with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
-                commands.command_discard_file_as(replacement_text, file=resolved_live_scope.optional_file())
+                commands.command_discard_file_as(
+                    replacement_text,
+                    file=resolved_live_scope.optional_file(),
+                    auto_advance=args.auto_advance,
+                )
                 return
             raise CommandError(
                 _("`discard --as` requires `--file`, or `--to` with `--line`.")
@@ -1042,11 +1051,20 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         elif args.to_batch:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
             if resolved_live_scope.is_multiple and args.line_ids is None:
-                _discard_to_batch_each_resolved_file(args.to_batch, list(resolved_live_scope.files))
+                _discard_to_batch_each_resolved_file(
+                    args.to_batch,
+                    list(resolved_live_scope.files),
+                    auto_advance=args.auto_advance,
+                )
             else:
                 _run_for_each_file(
                     resolved_live_scope,
-                    lambda file: commands.command_discard_to_batch(args.to_batch, args.line_ids, file),
+                    lambda file: commands.command_discard_to_batch(
+                        args.to_batch,
+                        args.line_ids,
+                        file,
+                        auto_advance=args.auto_advance,
+                    ),
                     line_ids=args.line_ids,
                     undo_operation=f"discard --to {shlex.quote(args.to_batch)}",
                     worktree_paths=resolved_live_scope.files,
@@ -1054,18 +1072,25 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         elif args.line_ids:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
             resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            commands.command_discard_line(args.line_ids, file=resolved_file)
+            commands.command_discard_line(
+                args.line_ids,
+                file=resolved_file,
+                auto_advance=args.auto_advance,
+            )
         else:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
             if not resolved_live_scope.is_implicit:
                 _run_for_each_file(
                     resolved_live_scope,
-                    commands.command_discard_file,
+                    lambda file: commands.command_discard_file(
+                        file,
+                        auto_advance=args.auto_advance,
+                    ),
                     undo_operation="discard",
                     worktree_paths=resolved_live_scope.files,
                 )
             else:
-                commands.command_discard()
+                commands.command_discard(auto_advance=args.auto_advance)
 
     parser_discard.set_defaults(func=dispatch_discard)
 

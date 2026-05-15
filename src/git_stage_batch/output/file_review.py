@@ -170,6 +170,17 @@ def _partly_selects_ownership_group(
     )
 
 
+def _change_is_presence_only(change: ReviewChange) -> bool:
+    saw_changed_row = False
+    for row in change.rows:
+        if row.kind not in ("+", "-") or row.id is None:
+            continue
+        saw_changed_row = True
+        if row.kind != "+":
+            return False
+    return saw_changed_row
+
+
 def _coerce_actionable_reason(reason: str) -> ActionableSelectionReason:
     try:
         return ActionableSelectionReason(reason)

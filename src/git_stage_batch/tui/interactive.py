@@ -48,11 +48,15 @@ def _handle_include(flow_state: FlowState) -> None:
     if flow_state.source.role is LocationRole.WORKING_TREE:
         if flow_state.target.role is LocationRole.STAGING_AREA:
             from ..commands.include import command_include
-            command_include(quiet=True)
+            command_include(quiet=True, auto_advance=True)
         elif flow_state.target.role is LocationRole.BATCH:
             # Include to batch (via skip-to-batch)
             from ..commands.include import command_include_to_batch
-            command_include_to_batch(flow_state.target.batch_name, quiet=True)
+            command_include_to_batch(
+                flow_state.target.batch_name,
+                quiet=True,
+                auto_advance=True,
+            )
         else:
             raise ValueError(f"Unknown target role: {flow_state.target.role}")
     elif flow_state.source.role is LocationRole.BATCH:
@@ -71,11 +75,15 @@ def _handle_skip(flow_state: FlowState) -> None:
     if flow_state.source.role is LocationRole.WORKING_TREE:
         if flow_state.target.role is LocationRole.STAGING_AREA:
             from ..commands.skip import command_skip
-            command_skip(quiet=True)
+            command_skip(quiet=True, auto_advance=True)
         elif flow_state.target.role is LocationRole.BATCH:
             # Skip to batch
             from ..commands.include import command_include_to_batch
-            command_include_to_batch(flow_state.target.batch_name, quiet=True)
+            command_include_to_batch(
+                flow_state.target.batch_name,
+                quiet=True,
+                auto_advance=True,
+            )
         else:
             raise ValueError(f"Unknown target role: {flow_state.target.role}")
     elif flow_state.source.role is LocationRole.BATCH:
@@ -92,11 +100,15 @@ def _handle_discard(flow_state: FlowState) -> None:
         if flow_state.target.role is LocationRole.STAGING_AREA:
             from ..commands.discard import command_discard
             if confirm_destructive_operation("discard", _("This will remove the hunk from your working tree.")):
-                command_discard(quiet=True)
+                command_discard(quiet=True, auto_advance=True)
         elif flow_state.target.role is LocationRole.BATCH:
             # Discard to batch (save for later)
             from ..commands.discard import command_discard_to_batch
-            command_discard_to_batch(flow_state.target.batch_name, quiet=True)
+            command_discard_to_batch(
+                flow_state.target.batch_name,
+                quiet=True,
+                auto_advance=True,
+            )
         else:
             raise ValueError(f"Unknown target role: {flow_state.target.role}")
     elif flow_state.source.role is LocationRole.BATCH:
@@ -621,7 +633,7 @@ def start_interactive_mode() -> None:
     # Auto-initialize session (allow degraded mode if no changes)
     degraded_mode = False
     try:
-        command_start(quiet=True)
+        command_start(quiet=True, auto_advance=True)
     except CommandError as e:
         if e.exit_code == 2:
             degraded_mode = True
@@ -765,11 +777,16 @@ def handle_file_selection(flow_state: FlowState) -> None:
     if action_input in ("i", "include"):
         if flow_state.source.role is LocationRole.WORKING_TREE:
             if flow_state.target.role is LocationRole.STAGING_AREA:
-                command_include_file(file="")
+                command_include_file(file="", auto_advance=True)
             elif flow_state.target.role is LocationRole.BATCH:
                 # Include file to batch
                 from ..commands.include import command_include_to_batch
-                command_include_to_batch(flow_state.target.batch_name, file="", quiet=True)
+                command_include_to_batch(
+                    flow_state.target.batch_name,
+                    file="",
+                    quiet=True,
+                    auto_advance=True,
+                )
             else:
                 raise ValueError(f"Unknown target role: {flow_state.target.role}")
         elif flow_state.source.role is LocationRole.BATCH:
@@ -786,10 +803,14 @@ def handle_file_selection(flow_state: FlowState) -> None:
             print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
             return
         if flow_state.target.role is LocationRole.STAGING_AREA:
-            command_skip_file()
+            command_skip_file(auto_advance=True)
         elif flow_state.target.role is LocationRole.BATCH:
             from ..commands.include import command_include_to_batch
-            command_include_to_batch(flow_state.target.batch_name, file="")
+            command_include_to_batch(
+                flow_state.target.batch_name,
+                file="",
+                auto_advance=True,
+            )
         else:
             raise ValueError(f"Unknown target role: {flow_state.target.role}")
         fetch_next_change()
@@ -797,11 +818,16 @@ def handle_file_selection(flow_state: FlowState) -> None:
         if flow_state.source.role is LocationRole.WORKING_TREE:
             if flow_state.target.role is LocationRole.STAGING_AREA:
                 if confirm_destructive_operation("discard", _("This will remove all hunks from {filename} in your working tree.").format(filename=filename)):
-                    command_discard_file(file="")
+                    command_discard_file(file="", auto_advance=True)
             elif flow_state.target.role is LocationRole.BATCH:
                 # Discard file to batch
                 from ..commands.discard import command_discard_to_batch
-                command_discard_to_batch(flow_state.target.batch_name, file="", quiet=True)
+                command_discard_to_batch(
+                    flow_state.target.batch_name,
+                    file="",
+                    quiet=True,
+                    auto_advance=True,
+                )
             else:
                 raise ValueError(f"Unknown target role: {flow_state.target.role}")
         elif flow_state.source.role is LocationRole.BATCH:
@@ -898,11 +924,16 @@ def handle_line_selection(flow_state: FlowState) -> None:
         if action == "include":
             if flow_state.source.role is LocationRole.WORKING_TREE:
                 if flow_state.target.role is LocationRole.STAGING_AREA:
-                    command_include_line(line_ids)
+                    command_include_line(line_ids, auto_advance=True)
                 elif flow_state.target.role is LocationRole.BATCH:
                     # Include lines to batch (via skip-to-batch with line IDs)
                     from ..commands.include import command_include_to_batch
-                    command_include_to_batch(flow_state.target.batch_name, line_ids=line_ids, quiet=True)
+                    command_include_to_batch(
+                        flow_state.target.batch_name,
+                        line_ids=line_ids,
+                        quiet=True,
+                        auto_advance=True,
+                    )
                 else:
                     raise ValueError(f"Unknown target role: {flow_state.target.role}")
             elif flow_state.source.role is LocationRole.BATCH:
@@ -918,21 +949,30 @@ def handle_line_selection(flow_state: FlowState) -> None:
                 print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
                 return
             if flow_state.target.role is LocationRole.STAGING_AREA:
-                command_skip_line(line_ids)
+                command_skip_line(line_ids, auto_advance=True)
             elif flow_state.target.role is LocationRole.BATCH:
                 from ..commands.include import command_include_to_batch
-                command_include_to_batch(flow_state.target.batch_name, line_ids=line_ids)
+                command_include_to_batch(
+                    flow_state.target.batch_name,
+                    line_ids=line_ids,
+                    auto_advance=True,
+                )
             else:
                 raise ValueError(f"Unknown target role: {flow_state.target.role}")
         elif action == "discard":
             if flow_state.source.role is LocationRole.WORKING_TREE:
                 if flow_state.target.role is LocationRole.STAGING_AREA:
                     if confirm_destructive_operation("discard", _("This will remove lines {line_ids} from your working tree.").format(line_ids=line_ids)):
-                        command_discard_line(line_ids)
+                        command_discard_line(line_ids, auto_advance=True)
                 elif flow_state.target.role is LocationRole.BATCH:
                     # Discard lines to batch
                     from ..commands.discard import command_discard_to_batch
-                    command_discard_to_batch(flow_state.target.batch_name, line_ids=line_ids, quiet=True)
+                    command_discard_to_batch(
+                        flow_state.target.batch_name,
+                        line_ids=line_ids,
+                        quiet=True,
+                        auto_advance=True,
+                    )
                 else:
                     raise ValueError(f"Unknown target role: {flow_state.target.role}")
             elif flow_state.source.role is LocationRole.BATCH:

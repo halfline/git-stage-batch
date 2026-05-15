@@ -8,7 +8,7 @@ import sys
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
 
-from ..core.line_selection import LineRanges, format_line_ids
+from ..core.line_selection import LineRanges
 from ..batch.operations import create_batch
 from ..batch.ownership import (
     BatchOwnership,
@@ -22,7 +22,7 @@ from ..batch.ownership import (
 from ..batch.query import read_batch_metadata
 from ..batch.selection import (
     require_display_ids_available,
-    require_single_file_context_for_line_selection,
+    require_single_file_context_for_line_selection_ranges,
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
 )
@@ -230,7 +230,7 @@ def _translate_reset_line_ids_to_selection_ids(
     file: str | None,
     patterns: list[str] | None,
     line_id_specification: str,
-) -> str:
+) -> LineRanges:
     """Translate fresh file-review gutter IDs to batch selection IDs.
 
     Reset is a metadata operation, so explicit reset line IDs must keep working
@@ -239,11 +239,11 @@ def _translate_reset_line_ids_to_selection_ids(
     file review is in scope; otherwise leave the batch display IDs untouched.
     """
     files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
-    selected_ids = require_single_file_context_for_line_selection(
+    selected_ids = require_single_file_context_for_line_selection_ranges(
         batch_name, files, line_id_specification, "reset"
     )
     if selected_ids is None:
-        return line_id_specification
+        return LineRanges.empty()
 
     file_path = list(files.keys())[0]
     if files[file_path].get("file_type") == "binary":
@@ -257,8 +257,8 @@ def _translate_reset_line_ids_to_selection_ids(
         FileReviewAction.RESET_FROM_BATCH,
     )
     if review_groups is None:
-        return line_id_specification
-    validate_review_scoped_line_selection(selected_ids, review_groups)
+        return selected_ids
+    validate_review_scoped_line_selection(selected_ids.to_set(), review_groups)
 
     rendered = render_batch_file_display(batch_name, file_path)
     if rendered is None:
@@ -270,18 +270,18 @@ def _translate_reset_line_ids_to_selection_ids(
         )
 
     display_id_map = rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
-    selection_ids = set()
-    for gutter_id in selected_ids:
-        if gutter_id in display_id_map:
-            selection_ids.add(display_id_map[gutter_id])
-        else:
-            exit_with_error(
-                _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
-                    id=gutter_id
+    def mapped_selection_ids():
+        for gutter_id in selected_ids:
+            if gutter_id in display_id_map:
+                yield display_id_map[gutter_id]
+            else:
+                exit_with_error(
+                    _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
+                        id=gutter_id
+                    )
                 )
-            )
 
-    return format_line_ids(sorted(selection_ids))
+    return LineRanges.from_lines(mapped_selection_ids())
 
 def _ensure_destination_batch(source_batch: str, dest_batch: str, source_metadata: dict) -> None:
     """Create destination batch from source baseline, or verify compatibility."""
@@ -306,25 +306,19 @@ def _move_claims_between_batches(
     dest_batch: str,
     file: str | None,
     patterns: list[str] | None,
-    line_id_specification: str | None,
+    selected_line_ids: LineRanges | None,
 ) -> None:
     """Move selected claims from one batch to another."""
     source_metadata = read_batch_metadata(source_batch)
     files = resolve_batch_file_scope(source_batch, source_metadata.get("files", {}), file, patterns)
     _ensure_destination_batch(source_batch, dest_batch, source_metadata)
 
-    if line_id_specification is not None:
-        selected_ids = require_single_file_context_for_line_selection(
-            source_batch, files, line_id_specification, "reset"
-        )
-        if selected_ids is None:
-            return
-
+    if selected_line_ids is not None:
         file_path = list(files.keys())[0]
         with _acquire_line_ownership_for_file(
             source_batch,
             file_path,
-            selected_ids,
+            selected_line_ids,
         ) as selected_ownership:
             _add_ownership_to_destination(
                 dest_batch,
@@ -332,7 +326,7 @@ def _move_claims_between_batches(
                 source_metadata["files"][file_path],
                 selected_ownership,
             )
-            _reset_line_claims_for_file(source_batch, file_path, selected_ids)
+            _reset_line_claims_for_file(source_batch, file_path, selected_line_ids)
         return
 
     for file_path, file_meta in files.items():
@@ -394,52 +388,43 @@ def _add_ownership_to_destination(
 def _reset_file_claims_from_batch(
     batch_name: str,
     file: str,
-    line_id_specification: str | None = None,
+    selected_line_ids: LineRanges | None = None,
 ) -> None:
     """Remove claims for a file, or selected line claims within that file."""
     metadata = read_batch_metadata(batch_name)
     files = resolve_batch_file_scope(batch_name, metadata.get("files", {}), file)
 
-    if line_id_specification is None:
+    if selected_line_ids is None:
         file_path = list(files.keys())[0]
         remove_file_from_batch(batch_name, file_path)
         return
 
-    selected_ids = require_single_file_context_for_line_selection(
-        batch_name, files, line_id_specification, "reset"
-    )
-    if selected_ids is None:
-        return
-
     file_path = list(files.keys())[0]
-    _reset_line_claims_for_file(batch_name, file_path, selected_ids)
+    _reset_line_claims_for_file(batch_name, file_path, selected_line_ids)
 
 
 def _reset_pattern_claims_from_batch(
     batch_name: str,
     patterns: list[str],
-    line_id_specification: str | None = None,
+    selected_line_ids: LineRanges | None = None,
 ) -> None:
     """Remove claims for files selected by gitignore-style patterns."""
     metadata = read_batch_metadata(batch_name)
     files = resolve_batch_file_scope(batch_name, metadata.get("files", {}), None, patterns)
 
-    if line_id_specification is None:
+    if selected_line_ids is None:
         for file_path in files:
             remove_file_from_batch(batch_name, file_path)
         return
 
-    selected_ids = require_single_file_context_for_line_selection(
-        batch_name, files, line_id_specification, "reset"
-    )
-    if selected_ids is None:
-        return
-
     file_path = list(files.keys())[0]
-    _reset_line_claims_for_file(batch_name, file_path, selected_ids)
+    _reset_line_claims_for_file(batch_name, file_path, selected_line_ids)
 
 
-def _reset_line_claims_from_batch(batch_name: str, line_id_specification: str) -> None:
+def _reset_line_claims_from_batch(
+    batch_name: str,
+    selected_line_ids: LineRanges,
+) -> None:
     """Remove specific line claims from a batch using semantic ownership filtering.
 
     This implementation uses semantic ownership units to ensure that coupled
@@ -448,24 +433,18 @@ def _reset_line_claims_from_batch(batch_name: str, line_id_specification: str) -
 
     Args:
         batch_name: Name of the batch
-        line_id_specification: Line ID specification (e.g., "1,3,5-7")
+        selected_line_ids: Display line IDs to reset
     """
     metadata = read_batch_metadata(batch_name)
     files = resolve_batch_file_scope(batch_name, metadata.get("files", {}), None)
-    selected_ids = require_single_file_context_for_line_selection(
-        batch_name, files, line_id_specification, "reset"
-    )
-    if selected_ids is None:
-        return
-
     file_path = list(files.keys())[0]
-    _reset_line_claims_for_file(batch_name, file_path, selected_ids)
+    _reset_line_claims_for_file(batch_name, file_path, selected_line_ids)
 
 
 def _reset_line_claims_for_file(
     batch_name: str,
     file_path: str,
-    lines_to_remove: set[int],
+    lines_to_remove: LineRanges,
 ) -> None:
     """Remove specific display line IDs from one batch file."""
     metadata = read_batch_metadata(batch_name)
@@ -522,7 +501,7 @@ def _reset_line_claims_for_file(
 def _acquire_line_ownership_for_file(
     batch_name: str,
     file_path: str,
-    lines_to_select: set[int],
+    lines_to_select: LineRanges,
 ) -> AbstractContextManager[BatchOwnership]:
     """Acquire ownership for selected display line IDs from one batch file."""
     metadata = read_batch_metadata(batch_name)
@@ -558,7 +537,7 @@ def _acquire_line_ownership_for_file(
 def _partition_line_ownership_units(
     ownership: BatchOwnership,
     batch_source_lines: Sequence[bytes],
-    selected_line_ids: set[int],
+    selected_line_ids: LineRanges,
     *,
     batch_name: str,
     file_path: str,
@@ -577,7 +556,7 @@ def _partition_line_ownership_units(
     require_display_ids_available(
         selected_line_ids,
         available_ids,
-        line_id_specification=format_line_ids(sorted(selected_line_ids)),
+        line_id_specification=selected_line_ids.to_line_spec(),
         file_path=file_path,
         review_command=(
             "git-stage-batch show --from "

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections.abc import Sequence
 import mmap
 import struct
@@ -338,7 +339,7 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
 
 
 class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
-    """Append-only record vector that grows by mmap-backed chunks."""
+    """Append-only record vector that grows by fixed-width chunks."""
 
     def __init__(
         self,
@@ -354,12 +355,14 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
         self._chunk_capacity = chunk_capacity
         self._spool_dir = spool_dir
         self._chunks: list[MappedRecordVector] = []
+        self._chunk_starts: list[int] = []
+        self._next_chunk_capacity = 1
         self._length = 0
         self._closed = False
 
     @property
     def byte_count(self) -> int:
-        """Return allocated mmap bytes across chunks."""
+        """Return allocated storage bytes across chunks."""
         if self._closed:
             return 0
         return sum(chunk.byte_count for chunk in self._chunks)
@@ -379,25 +382,43 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
             return [self[item] for item in range(*index.indices(self._length))]
 
         index = self._normalize_index(index)
-        chunk_index, record_index = divmod(index, self._chunk_capacity)
-        return self._chunks[chunk_index][record_index]
+        chunk, record_index = self._chunk_for_index(index)
+        return chunk[record_index]
 
     def append(self, record: Sequence[int]) -> int:
         """Append a record and return its zero-based index."""
         self._require_open()
-        if self._length == len(self._chunks) * self._chunk_capacity:
-            self._chunks.append(
-                MappedRecordVector(
-                    self._chunk_capacity,
-                    self._record_format,
-                    spool_dir=self._spool_dir,
-                )
-            )
+        if not self._chunks or len(self._chunks[-1]) >= self._chunks[-1].capacity:
+            self._append_chunk()
 
         index = self._length
         self._chunks[-1].append(record)
         self._length += 1
         return index
+
+    def _append_chunk(self) -> None:
+        capacity = self._next_chunk_capacity
+        self._chunk_starts.append(self._length)
+        self._chunks.append(
+            MappedRecordVector(
+                capacity,
+                self._record_format,
+                spool_dir=self._spool_dir,
+            )
+        )
+        self._next_chunk_capacity = min(
+            self._chunk_capacity,
+            max(capacity + 1, capacity * 2),
+        )
+
+    def _chunk_for_index(self, index: int) -> tuple[MappedRecordVector, int]:
+        chunk_index = bisect_right(self._chunk_starts, index) - 1
+        if chunk_index < 0:
+            raise IndexError(index)
+        return (
+            self._chunks[chunk_index],
+            index - self._chunk_starts[chunk_index],
+        )
 
     def close(self) -> None:
         """Close every allocated chunk."""
@@ -407,6 +428,7 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
         for chunk in self._chunks:
             chunk.close()
         self._chunks.clear()
+        self._chunk_starts.clear()
         self._closed = True
 
     def __enter__(self) -> ChunkedMappedRecordVector:

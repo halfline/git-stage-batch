@@ -17,7 +17,12 @@ from git_stage_batch.commands.include import (
 )
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.commands.show import command_show
+from git_stage_batch.data.hunk_tracking import (
+    fetch_next_change,
+    load_selected_change,
+    selected_change_was_cleared_by_auto_advance_disabled,
+)
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
 from git_stage_batch.commands.again import command_again
@@ -144,6 +149,34 @@ class TestCommandInclude:
         )
         assert "file1.txt" in result.stdout
         assert "file2.txt" in result.stdout
+
+    def test_include_no_auto_advance_requires_show_before_next_action(
+        self,
+        temp_git_repo,
+    ):
+        """include --no-auto-advance should not hide-select the next hunk."""
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("original 1\n")
+        file2.write_text("original 2\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file1.write_text("modified 1\n")
+        file2.write_text("modified 2\n")
+        command_start(quiet=True)
+
+        command_include(quiet=True, auto_advance=False)
+
+        assert load_selected_change() is None
+        assert selected_change_was_cleared_by_auto_advance_disabled() is True
+        with pytest.raises(CommandError, match="automatic advancement is disabled"):
+            command_include(quiet=True)
+
+        command_show(porcelain=True)
+        next_change = load_line_changes_from_state()
+        assert next_change is not None
+        assert next_change.path == "file2.txt"
 
     def test_include_file_to_batch_uses_scoped_ownership_metadata(
         self,

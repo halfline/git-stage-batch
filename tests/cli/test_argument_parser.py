@@ -483,6 +483,17 @@ def test_parse_command_line_include_alias():
     assert callable(args.func)
 
 
+def test_parse_command_line_include_passes_auto_advance(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_include", mock_command)
+
+    args = parse_command_line(["include", "--no-auto-advance"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(auto_advance=False)
+
+
 def test_parse_command_line_include_with_file():
     """Test parsing include command with --file flag."""
     args = parse_command_line(["include", "--file"], quiet=True)
@@ -537,7 +548,11 @@ def test_parse_command_line_include_with_file_and_as_dispatches_file_replacement
 
     assert args is not None
     args.func(args)
-    mock_command.assert_called_once_with("replacement", file="path.txt")
+    mock_command.assert_called_once_with(
+        "replacement",
+        file="path.txt",
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_include_with_file_and_as_stdin_dispatches_file_replacement(monkeypatch):
@@ -553,7 +568,11 @@ def test_parse_command_line_include_with_file_and_as_stdin_dispatches_file_repla
 
     assert args is not None
     args.func(args)
-    mock_command.assert_called_once_with("replacement\n", file="path.txt")
+    mock_command.assert_called_once_with(
+        "replacement\n",
+        file="path.txt",
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_include_with_line_range_and_as_stdin_dispatches_line_replacement(monkeypatch):
@@ -574,6 +593,7 @@ def test_parse_command_line_include_with_line_range_and_as_stdin_dispatches_line
         "replacement one\nreplacement two\n",
         file="path.txt",
         no_edge_overlap=False,
+        auto_advance=None,
     )
 
 
@@ -589,18 +609,23 @@ def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(mon
 
     assert args is not None
     args.func(args)
-    mock_command.assert_called_once_with("2-3", file="path.txt")
+    mock_command.assert_called_once_with(
+        "2-3",
+        file="path.txt",
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     """Include should dispatch once per file resolved from --files."""
     mock_command = Mock(return_value=1)
     monkeypatch.setattr(argument_parser.commands, "command_include_file", mock_command)
-    mock_advance_to_next_change = Mock()
-    monkeypatch.setattr(argument_parser, "advance_to_next_change", mock_advance_to_next_change)
+    mock_select_next = Mock(return_value=True)
+    monkeypatch.setattr(argument_parser, "select_next_change_after_action", mock_select_next)
     mock_show_selected_change = Mock()
     monkeypatch.setattr(argument_parser, "show_selected_change", mock_show_selected_change)
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "dir/bar.py", "baz.txt"])
+    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: [])
 
     args = parse_command_line(["include", "--files", "*.py"], quiet=True)
 
@@ -611,7 +636,7 @@ def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
         call("foo.py", quiet=True, advance=False),
         call("dir/bar.py", quiet=True, advance=False),
     ]
-    mock_advance_to_next_change.assert_called_once_with()
+    mock_select_next.assert_called_once_with(auto_advance=None)
     mock_show_selected_change.assert_called_once_with()
 
 
@@ -680,7 +705,13 @@ def test_parse_command_line_include_with_no_edge_overlap_dispatches_line_replace
 
     assert args is not None
     args.func(args)
-    mock_command.assert_called_once_with("2-3", "replacement", file="path.txt", no_edge_overlap=True)
+    mock_command.assert_called_once_with(
+        "2-3",
+        "replacement",
+        file="path.txt",
+        no_edge_overlap=True,
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_include_rejects_no_edge_overlap_without_line_as():

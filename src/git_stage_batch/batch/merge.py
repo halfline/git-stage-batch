@@ -2679,6 +2679,7 @@ def merge_batch_from_line_sequences_as_buffer(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> EditorBuffer:
     """Merge line sequences and return a buffer with destination line endings."""
     result_line_ending = _merge_result_line_ending_from_lines(
@@ -2694,6 +2695,7 @@ def merge_batch_from_line_sequences_as_buffer(
                 ownership,
                 normalized_working_lines,
                 source_to_working_mapping=source_to_working_mapping,
+                resolution=resolution,
             ),
             result_line_ending,
         )
@@ -2706,6 +2708,7 @@ def can_merge_batch_from_line_sequences(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> bool:
     """Return whether a normalized line merge can be applied."""
     normalized_source_lines = normalize_line_sequence_endings(source_lines)
@@ -2716,6 +2719,7 @@ def can_merge_batch_from_line_sequences(
             ownership,
             normalized_working_lines,
             source_to_working_mapping=source_to_working_mapping,
+            resolution=resolution,
         ):
             pass
     except MergeError:
@@ -2729,6 +2733,7 @@ def _merge_batch_line_chunks(
     working_lines: AcquirableLineSequence[Any],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> Iterator[bytes]:
     """Merge normalized byte-line sequences and yield normalized chunks."""
     with (
@@ -2740,6 +2745,7 @@ def _merge_batch_line_chunks(
             ownership,
             acquired_working_lines,
             source_to_working_mapping=source_to_working_mapping,
+            resolution=resolution,
         )
 
 
@@ -2749,6 +2755,7 @@ def _merge_batch_acquired_line_chunks(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> Iterator[bytes]:
     """Merge acquired normalized line sequences and yield normalized chunks."""
     resolved = ownership.resolve()
@@ -2772,13 +2779,17 @@ def _merge_batch_acquired_line_chunks(
         owned_mapping = match_lines(source_lines, working_lines)
         mapping = owned_mapping
     try:
-        _check_structural_validity(
-            mapping,
-            presence_line_set,
-            deletion_claims,
-            source_lines,
-            working_lines
-        )
+        try:
+            _check_structural_validity(
+                mapping,
+                presence_line_set,
+                deletion_claims,
+                source_lines,
+                working_lines
+            )
+        except MergeError:
+            if resolution is None:
+                raise
 
         realized_entries = _satisfy_constraints(
             source_lines,
@@ -2786,6 +2797,7 @@ def _merge_batch_acquired_line_chunks(
             presence_line_set,
             deletion_claims,
             source_to_working_mapping=mapping,
+            resolution=resolution,
         )
     except MergeError:
         fallback_chunks = _try_apply_baseline_replacement_units(

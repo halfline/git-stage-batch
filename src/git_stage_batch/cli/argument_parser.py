@@ -701,7 +701,24 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Output JSON for scripting instead of human-readable text"),
     )
+    parser_show.add_argument(
+        "--as",
+        dest="as_text",
+        metavar="TEXT",
+        help=_("Preview selected batch lines as replacement text"),
+    )
+    parser_show.add_argument(
+        "--as-stdin",
+        dest="as_stdin",
+        action="store_true",
+        help=_("Read replacement preview text from standard input exactly"),
+    )
     def dispatch_show(args: argparse.Namespace) -> None:
+        replacement_requested = args.as_text is not None or args.as_stdin
+        if replacement_requested and not args.from_batch:
+            raise CommandError(_("`show --as` requires `--from`."))
+        if args.as_text is not None and args.as_stdin:
+            raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
         resolved_file_scope = (
             _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
             if args.from_batch
@@ -731,21 +748,29 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.porcelain:
                 raise CommandError(_("Cannot use `show --page` with `--porcelain`."))
         if args.from_batch:
+            replacement_text = _resolve_replacement_text(args) if replacement_requested else None
+            show_kwargs = {"page": args.page}
+            if args.porcelain:
+                show_kwargs["porcelain"] = args.porcelain
+            if replacement_text is not None:
+                show_kwargs["replacement_text"] = replacement_text
             if resolved_file_scope.is_multiple:
                 if args.line_ids:
                     raise CommandError(_("Cannot use --lines with multiple files."))
+                if replacement_requested:
+                    raise CommandError(_("`show --as` requires exactly one resolved file."))
                 commands.command_show_from_batch(
                     args.from_batch,
                     args.line_ids,
                     patterns=args.file_patterns,
-                    page=args.page,
+                    **show_kwargs,
                 )
             else:
                 commands.command_show_from_batch(
                     args.from_batch,
                     args.line_ids,
                     resolved_file_scope.optional_file(),
-                    page=args.page,
+                    **show_kwargs,
                 )
             return
         if args.line_ids or not resolved_file_scope.is_implicit:

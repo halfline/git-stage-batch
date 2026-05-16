@@ -1309,6 +1309,7 @@ def _apply_presence_constraints(
     presence_line_set: LineSelection,
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> _RealizedEntries:
     """Apply presence constraints: ensure all claimed lines exist in result.
 
@@ -1336,6 +1337,7 @@ def _apply_presence_constraints(
             working_lines,
             presence_line_set,
             mapping,
+            resolution=resolution,
         )
     finally:
         if owned_mapping is not None:
@@ -1452,6 +1454,8 @@ def _apply_presence_constraints_with_mapping(
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
     mapping: LineMapping,
+    *,
+    resolution: MergeResolution | None = None,
 ) -> _RealizedEntries:
     """Apply presence constraints using an existing source-to-working mapping."""
 
@@ -1484,6 +1488,45 @@ def _apply_presence_constraints_with_mapping(
             presence_line_set,
         )
         return result
+
+    if resolution is not None:
+        presence_key, presence_choices = _presence_choices_for_missing_claimed_run(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            mapping,
+            max_results=_MERGE_CANDIDATE_CAP + 1,
+        )
+        if presence_key is not None and presence_key in resolution.decisions:
+            selected_choice_index = resolution.decisions[presence_key]
+            for choice in presence_choices:
+                if choice.choice_index == selected_choice_index:
+                    result = _RealizedEntries()
+                    _append_working_range_with_mapping(
+                        result,
+                        working_lines,
+                        mapping,
+                        0,
+                        choice.gap_index,
+                        presence_line_set,
+                    )
+                    result.append_line_range_from(
+                        source_lines,
+                        choice.run_start - 1,
+                        choice.run_end,
+                        source_line_start=choice.run_start,
+                        is_claimed=True,
+                    )
+                    _append_working_range_with_mapping(
+                        result,
+                        working_lines,
+                        mapping,
+                        choice.gap_index,
+                        len(working_lines),
+                        presence_line_set,
+                    )
+                    return result
+            raise MergeError(_("Selected merge resolution is no longer valid"))
 
     result = _RealizedEntries()
     working_idx = 0

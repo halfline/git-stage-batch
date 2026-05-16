@@ -6,6 +6,7 @@ import difflib
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from itertools import product
 from typing import Literal
 
@@ -19,6 +20,7 @@ from .merge import (
 from .replacement import ReplacementPayload
 from ..editor import EditorBuffer
 from ..exceptions import AtomicUnitError
+from ..utils.paths import get_batch_candidate_state_file_path
 
 
 CandidateOperation = Literal["apply", "include"]
@@ -375,3 +377,84 @@ def render_candidate_buffer_diff(
             n=context_lines,
         )
     )
+
+
+def _load_state() -> dict:
+    path = get_batch_candidate_state_file_path()
+    if not path.exists():
+        return {"schema_version": 1, "algorithm_version": ALGORITHM_VERSION, "scopes": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"schema_version": 1, "algorithm_version": ALGORITHM_VERSION, "scopes": {}}
+    if data.get("schema_version") != 1:
+        return {"schema_version": 1, "algorithm_version": ALGORITHM_VERSION, "scopes": {}}
+    data.setdefault("scopes", {})
+    return data
+
+
+def _save_state(data: dict) -> None:
+    path = get_batch_candidate_state_file_path()
+    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def clear_candidate_preview_state_for_file(*, batch_name: str, file_path: str) -> None:
+    """Remove saved candidate previews for one batch file."""
+    data = _load_state()
+    scopes = data.get("scopes", {})
+    matching_keys = [
+        key
+        for key, scope in scopes.items()
+        if scope.get("batch_name") == batch_name and scope.get("file") == file_path
+    ]
+    if not matching_keys:
+        return
+
+    for key in matching_keys:
+        del scopes[key]
+
+    if scopes:
+        _save_state(data)
+        return
+
+    get_batch_candidate_state_file_path().unlink(missing_ok=True)
+
+
+def candidate_preview_scope_key(preview: OperationCandidatePreview) -> str:
+    payload = {
+        "algorithm_version": ALGORITHM_VERSION,
+        "operation": preview.operation,
+        "batch": preview.batch_name,
+        "file": preview.file_path,
+        "scope": preview.scope_fingerprint,
+    }
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    return f"{preview.operation}:{preview.batch_name}:{preview.file_path}:{digest}"
+
+
+def save_candidate_preview_state(preview: OperationCandidatePreview) -> None:
+    data = _load_state()
+    data["algorithm_version"] = ALGORITHM_VERSION
+    scope = data["scopes"].setdefault(candidate_preview_scope_key(preview), {})
+    scope.update({
+        "batch_name": preview.batch_name,
+        "operation": preview.operation,
+        "file": preview.file_path,
+        "batch_fingerprint": preview.batch_fingerprint,
+        "scope_fingerprint": preview.scope_fingerprint,
+        "candidate_count": preview.count,
+    })
+    scope.setdefault("previews", {})[str(preview.ordinal)] = {
+        "ordinal": preview.ordinal,
+        "candidate_id": preview.candidate_id,
+        "target_fingerprints": preview.target_fingerprints,
+        "shown_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_state(data)
+
+
+def load_candidate_preview_state(preview: OperationCandidatePreview) -> dict | None:
+    scope = _load_state().get("scopes", {}).get(candidate_preview_scope_key(preview))
+    if scope is None:
+        return None
+    return scope.get("previews", {}).get(str(preview.ordinal))

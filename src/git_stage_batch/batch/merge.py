@@ -2821,6 +2821,113 @@ def _merge_batch_acquired_line_chunks(
         realized_entries.close()
 
 
+def enumerate_merge_batch_candidates_from_line_sequences(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    max_candidates: int = _MERGE_CANDIDATE_CAP,
+) -> MergeCandidateSet:
+    """Enumerate safe merge candidates for an otherwise-refused merge."""
+    normalized_source_lines = normalize_line_sequence_endings(source_lines)
+    normalized_working_lines = normalize_line_sequence_endings(working_lines)
+    with (
+        normalized_source_lines.acquire_lines() as acquired_source_lines,
+        normalized_working_lines.acquire_lines() as acquired_working_lines,
+    ):
+        try:
+            for _chunk in _merge_batch_acquired_line_chunks(
+                acquired_source_lines,
+                ownership,
+                acquired_working_lines,
+            ):
+                pass
+            return MergeCandidateSet(())
+        except MergeError:
+            pass
+
+        return _enumerate_merge_batch_candidates_acquired(
+            acquired_source_lines,
+            ownership,
+            acquired_working_lines,
+            max_candidates=max_candidates,
+        )
+
+
+def _enumerate_merge_batch_candidates_acquired(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    max_candidates: int,
+) -> MergeCandidateSet:
+    resolved = ownership.resolve()
+    presence_line_set = resolved.presence_line_set
+
+    presence_mapping = match_lines(source_lines, working_lines)
+    try:
+        presence_key, presence_choices = _presence_choices_for_missing_claimed_run(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            presence_mapping,
+            max_results=max_candidates + 1,
+        )
+    finally:
+        presence_mapping.close()
+
+    if presence_key is not None and len(presence_choices) > max_candidates:
+        raise MergeError(_("Too many merge candidates to preview safely"))
+    if presence_key is not None and len(presence_choices) > 1:
+        valid_choices: list[_PresenceChoice] = []
+        for choice in presence_choices:
+            resolution = MergeResolution({presence_key: choice.choice_index})
+            try:
+                for _chunk in _merge_batch_acquired_line_chunks(
+                    source_lines,
+                    ownership,
+                    working_lines,
+                    resolution=resolution,
+                ):
+                    pass
+            except MergeError:
+                continue
+            valid_choices.append(choice)
+        if len(valid_choices) > 1:
+            count = len(valid_choices)
+            candidates = []
+            for ordinal, choice in enumerate(valid_choices, start=1):
+                summary = _(
+                    "insert source lines {start}-{end} after target line {after}, before target line {before}"
+                ).format(
+                    start=choice.run_start,
+                    end=choice.run_end,
+                    after=choice.target_after_line or "start",
+                    before=choice.target_before_line or "end",
+                )
+                candidates.append(
+                    MergeCandidate(
+                        ordinal=ordinal,
+                        count=count,
+                        decisions=(
+                            MergeResolutionDecision(
+                                ambiguity_key=presence_key,
+                                choice_index=choice.choice_index,
+                                choice_label=summary,
+                            ),
+                        ),
+                        summary=summary,
+                        source_line_range=(choice.run_start, choice.run_end),
+                        target_after_line=choice.target_after_line,
+                        target_before_line=choice.target_before_line,
+                        explanation=_("surrounding source context has multiple compatible placements"),
+                    )
+                )
+            return MergeCandidateSet(tuple(candidates))
+
+    return MergeCandidateSet(())
+
+
 def discard_batch_from_line_sequences_as_buffer(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',

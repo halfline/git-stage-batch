@@ -7,7 +7,48 @@ from dataclasses import dataclass
 
 from ..core.line_selection import format_line_ids
 from ..editor import EditorBuffer
+from ..utils.text import bytes_to_lines
 from .ownership import BatchOwnership, AbsenceClaim, ReplacementUnit
+
+
+@dataclass(frozen=True, slots=True)
+class ReplacementPayload:
+    """Exact replacement bytes plus optional argv display text."""
+
+    data: bytes
+    display_text: str | None = None
+    exact: bool = True
+
+    @classmethod
+    def from_text(cls, text: str, *, exact: bool = True) -> "ReplacementPayload":
+        return cls(
+            text.encode("utf-8", errors="surrogateescape"),
+            display_text=text,
+            exact=exact,
+        )
+
+    @property
+    def has_trailing_lf(self) -> bool:
+        return self.data.endswith(b"\n")
+
+    def as_text(self) -> str:
+        return self.data.decode("utf-8", errors="surrogateescape")
+
+
+class ReplacementText(str):
+    """String-compatible replacement value carrying exact source bytes."""
+
+    def __new__(
+        cls,
+        text: str,
+        *,
+        data: bytes | None = None,
+        exact: bool = True,
+    ) -> "ReplacementText":
+        obj = str.__new__(cls, text)
+        obj.data = text.encode("utf-8", errors="surrogateescape") if data is None else data
+        obj.exact = exact
+        return obj
 
 
 @dataclass(slots=True)
@@ -38,12 +79,12 @@ def _format_presence_lines(line_numbers: list[int]) -> list[str]:
 def build_replacement_batch_view_from_lines(
     source_lines: Sequence[bytes],
     ownership: BatchOwnership,
-    replacement_text: str,
+    replacement_text: str | ReplacementPayload,
 ) -> ReplacementBatchView:
     """Build replacement source content from an indexed byte-line sequence."""
     claimed_source_lines = sorted(ownership.presence_line_set())
-    replacement_bytes = replacement_text.encode("utf-8", errors="surrogateescape")
-    replacement_lines = [line + b"\n" for line in replacement_bytes.splitlines()]
+    payload = coerce_replacement_payload(replacement_text)
+    replacement_lines = replacement_line_chunks(payload)
 
     if claimed_source_lines:
         expected_claimed = list(range(claimed_source_lines[0], claimed_source_lines[-1] + 1))
@@ -166,3 +207,42 @@ def _replacement_source_chunks(
 
     for line_index in range(suffix_start, len(source_lines)):
         yield source_lines[line_index]
+
+
+def coerce_replacement_payload(
+    replacement: str | bytes | ReplacementPayload,
+) -> ReplacementPayload:
+    """Return exact replacement bytes for legacy str callers and new payloads."""
+    if isinstance(replacement, ReplacementPayload):
+        return replacement
+    if isinstance(replacement, ReplacementText):
+        return ReplacementPayload(
+            replacement.data,
+            display_text=str(replacement) if not replacement.exact else None,
+            exact=replacement.exact,
+        )
+    if isinstance(replacement, bytes):
+        return ReplacementPayload(replacement)
+    # Plain str is the legacy command-internal API. Preserve its historical
+    # line-oriented behavior; CLI --as-stdin uses ReplacementText for exact bytes.
+    return ReplacementPayload.from_text(replacement, exact=False)
+
+
+def replacement_line_chunks(payload: ReplacementPayload) -> list[bytes]:
+    """Split replacement bytes into exact line chunks."""
+    if not payload.exact:
+        return [line + b"\n" for line in payload.data.splitlines()]
+    return list(bytes_to_lines([payload.data]))
+
+
+def replacement_line_bodies(payload: ReplacementPayload) -> list[bytes]:
+    """Return editor line bodies while preserving CRLF as body CR bytes."""
+    if not payload.exact:
+        return payload.data.splitlines()
+    bodies: list[bytes] = []
+    for line in replacement_line_chunks(payload):
+        if line.endswith(b"\n"):
+            bodies.append(line[:-1])
+        else:
+            bodies.append(line)
+    return bodies

@@ -24,6 +24,10 @@ from ..batch.ownership import (
     derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
 )
+from ..batch.replacement import (
+    ReplacementPayload,
+    coerce_replacement_payload,
+)
 from ..batch.query import read_batch_metadata
 from ..batch.selection import (
     line_selection_not_valid_message,
@@ -752,7 +756,7 @@ def command_include_file(
 
 
 def command_include_file_as(
-    replacement_text: str,
+    replacement_text: str | ReplacementPayload,
     file: str | None = None,
     *,
     auto_advance: bool | None = None,
@@ -769,7 +773,9 @@ def command_include_file_as(
         refuse_bare_action_after_file_list("include --file --as")
         refuse_bare_action_after_auto_advance_disabled("include --file --as")
 
-    operation_parts = ["include", "--as", replacement_text]
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    operation_text = replacement_payload.display_text
+    operation_parts = ["include", "--as", operation_text or "<stdin>"]
     if file is not None:
         operation_parts.extend(["--file", file])
 
@@ -800,9 +806,7 @@ def command_include_file_as(
                 if line_changes is None:
                     exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
-        with EditorBuffer.from_bytes(
-            replacement_text.encode("utf-8", errors="surrogateescape")
-        ) as replacement_buffer:
+        with EditorBuffer.from_bytes(replacement_payload.data) as replacement_buffer:
             update_index_with_blob_buffer(target_file, replacement_buffer)
 
         if preserve_selected_state:
@@ -1151,7 +1155,7 @@ def _apply_include_line_replacement(
     line_changes,
     *,
     line_id_specification: str,
-    replacement_text: str,
+    replacement_text: str | ReplacementPayload,
     hunk_base_lines: Sequence[bytes],
     hunk_source_lines: EditorBuffer,
     trim_unchanged_edge_anchors: bool,
@@ -1169,11 +1173,12 @@ def _apply_include_line_replacement(
     if not selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
+    replacement_payload = coerce_replacement_payload(replacement_text)
     try:
         target_index_buffer = build_target_index_buffer_with_replaced_lines(
             line_changes,
             effective_ids,
-            replacement_text,
+            replacement_payload,
             hunk_base_lines,
             base_has_trailing_newline=_line_sequence_ends_with_lf(hunk_base_lines),
             trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
@@ -1188,7 +1193,7 @@ def _apply_include_line_replacement(
         source_buffer=hunk_source_lines,
         selected_lines=selected_lines,
         replacement_mask={
-            "deleted_lines": replacement_text.splitlines(),
+            "deleted_lines": replacement_payload.as_text().splitlines(),
             "added_lines": [line.display_text() for line in selected_lines if line.kind == "+"],
         },
     )
@@ -1196,7 +1201,7 @@ def _apply_include_line_replacement(
 
 def command_include_line_as(
     line_id_specification: str,
-    replacement_text: str,
+    replacement_text: str | ReplacementPayload,
     file: str | None = None,
     *,
     no_edge_overlap: bool = False,
@@ -1217,7 +1222,14 @@ def command_include_line_as(
         return
     review_state = scope_resolution.review_state
 
-    operation_parts = ["include", "--line", line_id_specification, "--as", replacement_text]
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    operation_parts = [
+        "include",
+        "--line",
+        line_id_specification,
+        "--as",
+        replacement_payload.display_text or "<stdin>",
+    ]
     if no_edge_overlap:
         operation_parts.append("--no-edge-overlap")
     if file is not None:

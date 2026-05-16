@@ -2828,7 +2828,12 @@ def enumerate_merge_batch_candidates_from_line_sequences(
     *,
     max_candidates: int = _MERGE_CANDIDATE_CAP,
 ) -> MergeCandidateSet:
-    """Enumerate safe merge candidates for an otherwise-refused merge."""
+    """Enumerate safe merge candidates for an otherwise-refused merge.
+
+    The normal merge path remains ambiguity-intolerant. This helper first
+    verifies that the ordinary merge refuses, then enumerates supported
+    ambiguity choices one at a time.
+    """
     normalized_source_lines = normalize_line_sequence_endings(source_lines)
     normalized_working_lines = normalize_line_sequence_endings(working_lines)
     with (
@@ -2863,6 +2868,7 @@ def _enumerate_merge_batch_candidates_acquired(
 ) -> MergeCandidateSet:
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
+    deletion_claims = resolved.deletion_claims
 
     presence_mapping = match_lines(source_lines, working_lines)
     try:
@@ -2925,7 +2931,113 @@ def _enumerate_merge_batch_candidates_acquired(
                 )
             return MergeCandidateSet(tuple(candidates))
 
-    return MergeCandidateSet(())
+    if not deletion_claims:
+        return MergeCandidateSet(())
+
+    if len([claim for claim in deletion_claims if claim.content_lines]) != 1:
+        raise MergeError(_("Batch was created from a different version of the file"))
+
+    owned_mapping = match_lines(source_lines, working_lines)
+    try:
+        _check_structural_validity(
+            owned_mapping,
+            presence_line_set,
+            deletion_claims,
+            source_lines,
+            working_lines,
+        )
+        realized_entries = _apply_presence_constraints(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            source_to_working_mapping=owned_mapping,
+        )
+    finally:
+        owned_mapping.close()
+
+    try:
+        enumerable_claims = [
+            (index, claim)
+            for index, claim in enumerate(deletion_claims)
+            if claim.content_lines
+        ]
+        claim_index, claim = enumerable_claims[0]
+        forbidden_sequence = [
+            normalize_line_endings(line)
+            for line in claim.content_lines
+        ]
+        ambiguity_key = _absence_ambiguity_key(
+            claim_index,
+            claim.anchor_line,
+            forbidden_sequence,
+        )
+        choices = _absence_choices_for_claim(
+            realized_entries,
+            claim.anchor_line,
+            forbidden_sequence,
+            max_results=max_candidates + 1,
+        )
+        if len(choices) > max_candidates:
+            raise MergeError(_("Too many merge candidates to preview safely"))
+        if len(choices) <= 1:
+            return MergeCandidateSet(())
+
+        valid_choices: list[_AbsenceChoice] = []
+        for choice in choices:
+            resolution = MergeResolution({ambiguity_key: choice.choice_index})
+            try:
+                for _chunk in _merge_batch_acquired_line_chunks(
+                    source_lines,
+                    ownership,
+                    working_lines,
+                    resolution=resolution,
+                ):
+                    pass
+            except MergeError:
+                continue
+            valid_choices.append(choice)
+
+        if len(valid_choices) <= 1:
+            return MergeCandidateSet(())
+
+        count = len(valid_choices)
+        candidates: list[MergeCandidate] = []
+        for ordinal, choice in enumerate(valid_choices, start=1):
+            target_start = choice.position + 1
+            target_end = choice.position + len(forbidden_sequence)
+            summary = (
+                _("delete target lines {start}-{end}").format(
+                    start=target_start,
+                    end=target_end,
+                )
+                if target_start != target_end
+                else _("delete target line {line}").format(line=target_start)
+            )
+            candidates.append(
+                MergeCandidate(
+                    ordinal=ordinal,
+                    count=count,
+                    decisions=(
+                        MergeResolutionDecision(
+                            ambiguity_key=ambiguity_key,
+                            choice_index=choice.choice_index,
+                            choice_label=summary,
+                        ),
+                    ),
+                    summary=summary,
+                    source_line_range=(
+                        (claim.anchor_line, claim.anchor_line)
+                        if claim.anchor_line is not None
+                        else None
+                    ),
+                    target_after_line=choice.target_after_line,
+                    target_before_line=choice.target_before_line,
+                    explanation=_("deletion anchor has multiple compatible target placements"),
+                )
+            )
+        return MergeCandidateSet(tuple(candidates))
+    finally:
+        realized_entries.close()
 
 
 def discard_batch_from_line_sequences_as_buffer(

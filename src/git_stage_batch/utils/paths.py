@@ -85,6 +85,18 @@ def get_fixup_state_directory_path() -> Path:
     return path
 
 
+def get_candidate_state_directory_path() -> Path:
+    """Get the directory containing batch candidate iteration state."""
+    path = get_session_directory_path() / "candidates"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_batch_candidate_state_file_path() -> Path:
+    """Get the path to the batch candidate state file."""
+    return get_candidate_state_directory_path() / "state.json"
+
+
 def get_processed_include_ids_file_path() -> Path:
     """Get the path to the processed include IDs file.
 

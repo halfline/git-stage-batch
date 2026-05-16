@@ -62,6 +62,7 @@ Display the cached "selected" hunk, one file review, or a matched-files list.
 ```bash
 ❯ git-stage-batch show --from cleanup-ui
 ❯ git-stage-batch show --from cleanup-ui --file src/config.py --page 2
+❯ git-stage-batch show --from cleanup-ui --file src/config.py --line 3-5 --as "replacement"
 ```
 
 When `--file` is used, `show` displays a structured file review with global line IDs, page orientation, and exact follow-up commands. By default, large file reviews are bounded to the first relevant page. Use `--page all` or `--pages all` to review the whole file.
@@ -71,6 +72,32 @@ When only part of a file review has been shown, unqualified actions such as `inc
 When `--files` resolves to multiple files, `show` prints a matched-files list with per-file change counts, changed-line counts, review page counts, and exact `show --file PATH` commands. This list is navigational: it does not select a hidden file for later bare actions.
 
 For multi-file batches, `show --from BATCH` uses the same matched-files list and repeats `--from BATCH` in the suggested open commands.
+
+When an `apply --from BATCH` or `include --from BATCH` operation cannot safely
+choose between multiple structural placements, the mutating command refuses
+without changing the working tree or index and points to operation-specific
+candidate previews. Candidate selectors use `BATCH:apply`, `BATCH:apply:N`,
+`BATCH:include`, or `BATCH:include:N`. `BATCH:apply` and `BATCH:include`
+show a compact candidate overview with local context and exact commands.
+Append `:N` to show the full diff for one numbered candidate. Bare numeric
+selectors such as
+`BATCH:2` are invalid because apply and include can have different candidate
+spaces.
+
+```bash
+❯ git-stage-batch show --from cleanup-ui:apply --file src/config.py
+❯ git-stage-batch show --from cleanup-ui:apply:2 --file src/config.py
+❯ git-stage-batch apply --from cleanup-ui:apply:2 --file src/config.py
+
+❯ git-stage-batch show --from cleanup-ui:include --file src/config.py
+❯ git-stage-batch show --from cleanup-ui:include:2 --file src/config.py
+❯ git-stage-batch include --from cleanup-ui:include:2 --file src/config.py
+```
+
+Candidate execution requires a matching prior preview for the same file and
+selector. A candidate overview counts as review for the candidates it shows,
+so users can run a listed apply or include command directly from that summary.
+Re-preview after editing the target file or changing the index.
 
 Submodule pointer changes are shown as atomic entries. They support whole-entry
 actions, but not `--line`.
@@ -88,6 +115,7 @@ actions, but not `--line`.
   - Cannot be combined with `--line`, multiple resolved `--files` matches, or `--porcelain`
 - `--porcelain`: Exit silently with status code only (no output)
 - `--from BATCH`: Show changes from a batch instead of live file-vs-HEAD changes
+- `--as TEXT`, `--as-stdin`: With `--from BATCH --line IDS`, preview the same replacement batch view used by `include --from BATCH --line IDS --as ...` without mutating anything
 
 When `--files` resolves to one file, `show` opens that single file review directly. When it resolves to multiple files, open one listed file with `show --file PATH` before using pathless `--line` actions.
 
@@ -588,6 +616,10 @@ use `--as-stdin` instead of shell command substitution. For example:
 
 Unlike `--as "$(cat replacement.txt)"`, `--as-stdin` preserves trailing
 newlines exactly.
+
+For saved batches, `show --from BATCH --file PATH --line IDS --as TEXT` previews
+the replacement batch view without staging or writing it. The corresponding
+mutating command is `include --from BATCH --file PATH --line IDS --as TEXT`.
 
 These replacement workflows require one contiguous selected line-ID span.
 Selections such as `1-4` or `2,3,4` are accepted because they resolve to one

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from array import array
 from bisect import bisect_right
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum, auto
+import hashlib
 from typing import TYPE_CHECKING, Any
 
-from .match import LineMapping, match_lines
+from .match import LineMapping, iter_exact_context_gaps, match_lines
 from ..core.line_selection import LineRanges, LineSelection
 from ..editor import (
     Editor,
@@ -29,6 +30,52 @@ from ..utils.text import (
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership, AbsenceClaim
+
+
+_MERGE_CANDIDATE_CAP = 50
+
+
+@dataclass(frozen=True)
+class MergeResolutionDecision:
+    """One selected merge ambiguity decision."""
+
+    ambiguity_key: str
+    choice_index: int
+    choice_label: str
+
+
+@dataclass(frozen=True)
+class MergeResolution:
+    """Concrete ambiguity decisions used to materialize a merge candidate."""
+
+    decisions: Mapping[str, int]
+
+
+@dataclass(frozen=True)
+class MergeCandidate:
+    """One complete target-level merge candidate."""
+
+    ordinal: int
+    count: int
+    decisions: tuple[MergeResolutionDecision, ...]
+    summary: str
+    source_line_range: tuple[int, int] | None
+    target_after_line: int | None
+    target_before_line: int | None
+    explanation: str
+
+    @property
+    def resolution(self) -> MergeResolution:
+        return MergeResolution(
+            {decision.ambiguity_key: decision.choice_index for decision in self.decisions}
+        )
+
+
+@dataclass(frozen=True)
+class MergeCandidateSet:
+    """Merge candidates for one target."""
+
+    candidates: tuple[MergeCandidate, ...]
 
 
 class RegionKind(Enum):
@@ -1262,6 +1309,7 @@ def _apply_presence_constraints(
     presence_line_set: LineSelection,
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> _RealizedEntries:
     """Apply presence constraints: ensure all claimed lines exist in result.
 
@@ -1289,6 +1337,7 @@ def _apply_presence_constraints(
             working_lines,
             presence_line_set,
             mapping,
+            resolution=resolution,
         )
     finally:
         if owned_mapping is not None:
@@ -1405,6 +1454,8 @@ def _apply_presence_constraints_with_mapping(
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
     mapping: LineMapping,
+    *,
+    resolution: MergeResolution | None = None,
 ) -> _RealizedEntries:
     """Apply presence constraints using an existing source-to-working mapping."""
 
@@ -1437,6 +1488,45 @@ def _apply_presence_constraints_with_mapping(
             presence_line_set,
         )
         return result
+
+    if resolution is not None:
+        presence_key, presence_choices = _presence_choices_for_missing_claimed_run(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            mapping,
+            max_results=_MERGE_CANDIDATE_CAP + 1,
+        )
+        if presence_key is not None and presence_key in resolution.decisions:
+            selected_choice_index = resolution.decisions[presence_key]
+            for choice in presence_choices:
+                if choice.choice_index == selected_choice_index:
+                    result = _RealizedEntries()
+                    _append_working_range_with_mapping(
+                        result,
+                        working_lines,
+                        mapping,
+                        0,
+                        choice.gap_index,
+                        presence_line_set,
+                    )
+                    result.append_line_range_from(
+                        source_lines,
+                        choice.run_start - 1,
+                        choice.run_end,
+                        source_line_start=choice.run_start,
+                        is_claimed=True,
+                    )
+                    _append_working_range_with_mapping(
+                        result,
+                        working_lines,
+                        mapping,
+                        choice.gap_index,
+                        len(working_lines),
+                        presence_line_set,
+                    )
+                    return result
+            raise MergeError(_("Selected merge resolution is no longer valid"))
 
     result = _RealizedEntries()
     working_idx = 0
@@ -1501,7 +1591,8 @@ def _apply_absence_constraints(
     entries: Sequence[RealizedEntry],
     deletion_claims: list['AbsenceClaim'],
     *,
-    strict: bool = True
+    strict: bool = True,
+    resolution: MergeResolution | None = None,
 ) -> _RealizedEntries:
     """Apply absence constraints with boundary enforcement.
 
@@ -1544,8 +1635,32 @@ def _apply_absence_constraints(
 
     suppress_fn = _suppress_at_boundary_strict if strict else _suppress_at_boundary_for_realization
 
-    for claim in deletion_claims:
+    for claim_index, claim in enumerate(deletion_claims):
         if not claim.content_lines:
+            continue
+
+        forbidden_sequence = [
+            normalize_line_endings(line)
+            for line in claim.content_lines
+        ]
+
+        ambiguity_key = _absence_ambiguity_key(
+            claim_index,
+            claim.anchor_line,
+            forbidden_sequence,
+        )
+
+        if resolution is not None and ambiguity_key in resolution.decisions:
+            old_result = result
+            result = _suppress_absence_with_resolution(
+                result,
+                claim.anchor_line,
+                forbidden_sequence,
+                ambiguity_key,
+                resolution,
+            )
+            if result is not old_result and old_result is not entries:
+                old_result.close()
             continue
 
         # Find boundary (fails if ambiguous or missing - appropriate for both modes)
@@ -1555,12 +1670,6 @@ def _apply_absence_constraints(
             if strict:
                 raise
             boundary = _find_realization_fallback_boundary(result, claim.anchor_line)
-
-        # Normalize deletion content for comparison
-        forbidden_sequence = [
-            normalize_line_endings(line)
-            for line in claim.content_lines
-        ]
 
         old_result = result
         result = suppress_fn(result, boundary, forbidden_sequence)
@@ -1607,6 +1716,7 @@ def _satisfy_constraints(
     *,
     strict: bool = True,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> _RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
     realized_entries = _apply_presence_constraints(
@@ -1614,13 +1724,15 @@ def _satisfy_constraints(
         working_lines,
         presence_line_set,
         source_to_working_mapping=source_to_working_mapping,
+        resolution=resolution,
     )
 
     try:
         updated_entries = _apply_absence_constraints(
             realized_entries,
             deletion_claims,
-            strict=strict
+            strict=strict,
+            resolution=resolution,
         )
         if updated_entries is not realized_entries:
             realized_entries.close()
@@ -1635,7 +1747,8 @@ def _satisfy_constraints(
             updated_entries = _apply_presence_constraints(
                 source_lines,
                 current_lines,
-                presence_line_set
+                presence_line_set,
+                resolution=resolution,
             )
         finally:
             previous_entries.close()
@@ -1644,7 +1757,8 @@ def _satisfy_constraints(
         updated_entries = _apply_absence_constraints(
             realized_entries,
             deletion_claims,
-            strict=strict
+            strict=strict,
+            resolution=resolution,
         )
         if updated_entries is not realized_entries:
             realized_entries.close()
@@ -1781,6 +1895,223 @@ def _find_boundary_after_source_line(
     return matching_indices[0] + 1
 
 
+def _boundary_choices_after_source_line(
+    entries: Sequence[RealizedEntry],
+    source_line: int | None,
+) -> tuple[int, ...]:
+    """Return all concrete boundary positions after a source line."""
+    if source_line is None:
+        return (0,)
+
+    matching_indices: list[int] = []
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs():
+            if run.source_start == 0:
+                continue
+            run_length = run.dest_end - run.dest_start
+            if not run.source_start <= source_line < run.source_start + run_length:
+                continue
+            matching_indices.append(run.dest_start + (source_line - run.source_start))
+    else:
+        for index in range(len(entries)):
+            if _entry_source_line_at(entries, index) == source_line:
+                matching_indices.append(index)
+
+    if not matching_indices:
+        raise MissingAnchorError(
+            _("Cannot locate anchor boundary after source line {line}: "
+              "anchor not present in realized content").format(line=source_line)
+        )
+
+    return tuple(index + 1 for index in matching_indices)
+
+
+def _absence_ambiguity_key(
+    claim_index: int,
+    anchor_line: int | None,
+    forbidden_sequence: Sequence[bytes],
+) -> str:
+    anchor = "start" if anchor_line is None else str(anchor_line)
+    digest = hashlib.sha256(b"".join(forbidden_sequence)).hexdigest()[:12]
+    return f"absence:{claim_index}:{anchor}:{digest}"
+
+
+def _presence_ambiguity_key(
+    run_start: int,
+    run_end: int,
+    claimed_run: Sequence[bytes],
+    before_source_line: int,
+    after_source_line: int,
+) -> str:
+    digest = hashlib.sha256(b"".join(claimed_run)).hexdigest()[:12]
+    return (
+        f"presence:{run_start}-{run_end}:claimed:{digest}:"
+        f"between:{before_source_line}-{after_source_line}"
+    )
+
+
+def _presence_choices_for_missing_claimed_run(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    presence_line_set: LineSelection,
+    mapping: LineMapping,
+    *,
+    max_results: int,
+) -> tuple[str | None, tuple[_PresenceChoice, ...]]:
+    missing_claimed = _mapped_missing_source_lines(
+        presence_line_set,
+        len(source_lines),
+        mapping,
+    )
+    ranges = list(missing_claimed.ranges())
+    if len(ranges) != 1:
+        return None, ()
+
+    run_start, run_end = ranges[0]
+    before_source_line = run_start - 1
+    after_source_line = run_end + 1
+    if before_source_line < 1 or after_source_line > len(source_lines):
+        return None, ()
+    before_target_line = mapping.get_target_line_from_source_line(before_source_line)
+    after_target_line = mapping.get_target_line_from_source_line(after_source_line)
+    if before_target_line is None or after_target_line is None:
+        return None, ()
+    if before_target_line >= after_target_line:
+        return None, ()
+
+    left_context = (bytes(source_lines[before_source_line - 1]),)
+    right_context = (bytes(source_lines[after_source_line - 1]),)
+    claimed_run = tuple(bytes(source_lines[index]) for index in range(run_start - 1, run_end))
+    key = _presence_ambiguity_key(
+        run_start,
+        run_end,
+        claimed_run,
+        before_source_line,
+        after_source_line,
+    )
+    choices: list[_PresenceChoice] = []
+    for gap in iter_exact_context_gaps(
+        working_lines,
+        left_context=left_context,
+        right_context=right_context,
+        start_gap=before_target_line,
+        end_gap=after_target_line - 1,
+        max_results=max_results,
+    ):
+        if _line_slice_equals(working_lines, gap.gap_index, claimed_run):
+            continue
+        choices.append(
+            _PresenceChoice(
+                choice_index=len(choices) + 1,
+                gap_index=gap.gap_index,
+                run_start=run_start,
+                run_end=run_end,
+                target_after_line=gap.target_after_line,
+                target_before_line=gap.target_before_line,
+            )
+        )
+    return key, tuple(choices)
+
+
+@dataclass(frozen=True)
+class _AbsenceChoice:
+    choice_index: int
+    position: int
+    target_after_line: int | None
+    target_before_line: int | None
+    explanation: str
+
+
+@dataclass(frozen=True)
+class _PresenceChoice:
+    choice_index: int
+    gap_index: int
+    run_start: int
+    run_end: int
+    target_after_line: int | None
+    target_before_line: int | None
+
+
+def _absence_choices_for_claim(
+    entries: Sequence[RealizedEntry],
+    anchor_line: int | None,
+    forbidden_sequence: Sequence[bytes],
+    *,
+    max_results: int | None = None,
+) -> tuple[_AbsenceChoice, ...]:
+    """Return concrete exact-removal choices for one absence claim."""
+    positions: list[tuple[int, str]] = []
+    seen: set[int] = set()
+
+    def add_position(position: int, explanation: str) -> None:
+        if position in seen:
+            return
+        if not _sequence_matches_at_position(entries, position, list(forbidden_sequence)):
+            return
+        seen.add(position)
+        positions.append((position, explanation))
+
+    for boundary in _boundary_choices_after_source_line(entries, anchor_line):
+        add_position(boundary, _("deletion content appears at the anchored boundary"))
+        after_claimed = _position_after_claimed_insertions_at_boundary(entries, boundary)
+        if after_claimed != boundary:
+            add_position(
+                after_claimed,
+                _("deletion content appears after claimed insertions at the anchored boundary"),
+            )
+
+    if len(positions) <= 1:
+        for position in iter_sequence_occurrences_nearby(
+            entries,
+            _boundary_choices_after_source_line(entries, anchor_line)[0],
+            forbidden_sequence,
+            window=20,
+            max_results=(max_results or _MERGE_CANDIDATE_CAP) + 1,
+        ):
+            add_position(position, _("deletion content appears nearby"))
+
+    positions.sort(key=lambda item: item[0])
+    if max_results is not None:
+        positions = positions[:max_results]
+
+    choices = []
+    for index, (position, explanation) in enumerate(positions, start=1):
+        after_line = None if position == 0 else position
+        before_line = None if position + len(forbidden_sequence) >= len(entries) else position + 1
+        choices.append(
+            _AbsenceChoice(
+                choice_index=index,
+                position=position,
+                target_after_line=after_line,
+                target_before_line=before_line,
+                explanation=explanation,
+            )
+        )
+    return tuple(choices)
+
+
+def _suppress_absence_with_resolution(
+    entries: Sequence[RealizedEntry],
+    anchor_line: int | None,
+    forbidden_sequence: list[bytes],
+    ambiguity_key: str,
+    resolution: MergeResolution,
+) -> _RealizedEntries:
+    choice_index = resolution.decisions.get(ambiguity_key)
+    if choice_index is None:
+        raise MergeError(_("Missing merge resolution for {key}").format(key=ambiguity_key))
+    choices = _absence_choices_for_claim(
+        entries,
+        anchor_line,
+        forbidden_sequence,
+        max_results=_MERGE_CANDIDATE_CAP + 1,
+    )
+    for choice in choices:
+        if choice.choice_index == choice_index:
+            return _remove_sequence_at_position(entries, choice.position, forbidden_sequence)
+    raise MergeError(_("Selected merge resolution is no longer valid"))
+
+
 def _sequence_matches_at_position(
     entries: Sequence[RealizedEntry],
     position: int,
@@ -1829,6 +2160,25 @@ def _find_sequence_nearby(
             return check_pos
 
     return None
+
+
+def iter_sequence_occurrences_nearby(
+    entries: Sequence[RealizedEntry],
+    position: int,
+    sequence: Sequence[bytes],
+    *,
+    window: int,
+    max_results: int,
+) -> Iterator[int]:
+    """Yield exact nearby sequence positions after a boundary."""
+    search_end = min(position + window, len(entries) - len(sequence) + 1)
+    result_count = 0
+    for check_pos in range(position + 1, search_end):
+        if _sequence_matches_at_position(entries, check_pos, list(sequence)):
+            yield check_pos
+            result_count += 1
+            if result_count >= max_results:
+                return
 
 
 def _remove_sequence_at_position(
@@ -2329,6 +2679,7 @@ def merge_batch_from_line_sequences_as_buffer(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> EditorBuffer:
     """Merge line sequences and return a buffer with destination line endings."""
     result_line_ending = _merge_result_line_ending_from_lines(
@@ -2344,6 +2695,7 @@ def merge_batch_from_line_sequences_as_buffer(
                 ownership,
                 normalized_working_lines,
                 source_to_working_mapping=source_to_working_mapping,
+                resolution=resolution,
             ),
             result_line_ending,
         )
@@ -2356,6 +2708,7 @@ def can_merge_batch_from_line_sequences(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> bool:
     """Return whether a normalized line merge can be applied."""
     normalized_source_lines = normalize_line_sequence_endings(source_lines)
@@ -2366,6 +2719,7 @@ def can_merge_batch_from_line_sequences(
             ownership,
             normalized_working_lines,
             source_to_working_mapping=source_to_working_mapping,
+            resolution=resolution,
         ):
             pass
     except MergeError:
@@ -2379,6 +2733,7 @@ def _merge_batch_line_chunks(
     working_lines: AcquirableLineSequence[Any],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> Iterator[bytes]:
     """Merge normalized byte-line sequences and yield normalized chunks."""
     with (
@@ -2390,6 +2745,7 @@ def _merge_batch_line_chunks(
             ownership,
             acquired_working_lines,
             source_to_working_mapping=source_to_working_mapping,
+            resolution=resolution,
         )
 
 
@@ -2399,6 +2755,7 @@ def _merge_batch_acquired_line_chunks(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> Iterator[bytes]:
     """Merge acquired normalized line sequences and yield normalized chunks."""
     resolved = ownership.resolve()
@@ -2422,13 +2779,17 @@ def _merge_batch_acquired_line_chunks(
         owned_mapping = match_lines(source_lines, working_lines)
         mapping = owned_mapping
     try:
-        _check_structural_validity(
-            mapping,
-            presence_line_set,
-            deletion_claims,
-            source_lines,
-            working_lines
-        )
+        try:
+            _check_structural_validity(
+                mapping,
+                presence_line_set,
+                deletion_claims,
+                source_lines,
+                working_lines
+            )
+        except MergeError:
+            if resolution is None:
+                raise
 
         realized_entries = _satisfy_constraints(
             source_lines,
@@ -2436,6 +2797,7 @@ def _merge_batch_acquired_line_chunks(
             presence_line_set,
             deletion_claims,
             source_to_working_mapping=mapping,
+            resolution=resolution,
         )
     except MergeError:
         fallback_chunks = _try_apply_baseline_replacement_units(
@@ -2455,6 +2817,225 @@ def _merge_batch_acquired_line_chunks(
 
     try:
         yield from _realized_entry_content_chunks(realized_entries)
+    finally:
+        realized_entries.close()
+
+
+def enumerate_merge_batch_candidates_from_line_sequences(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    max_candidates: int = _MERGE_CANDIDATE_CAP,
+) -> MergeCandidateSet:
+    """Enumerate safe merge candidates for an otherwise-refused merge.
+
+    The normal merge path remains ambiguity-intolerant. This helper first
+    verifies that the ordinary merge refuses, then enumerates supported
+    ambiguity choices one at a time.
+    """
+    normalized_source_lines = normalize_line_sequence_endings(source_lines)
+    normalized_working_lines = normalize_line_sequence_endings(working_lines)
+    with (
+        normalized_source_lines.acquire_lines() as acquired_source_lines,
+        normalized_working_lines.acquire_lines() as acquired_working_lines,
+    ):
+        try:
+            for _chunk in _merge_batch_acquired_line_chunks(
+                acquired_source_lines,
+                ownership,
+                acquired_working_lines,
+            ):
+                pass
+            return MergeCandidateSet(())
+        except MergeError:
+            pass
+
+        return _enumerate_merge_batch_candidates_acquired(
+            acquired_source_lines,
+            ownership,
+            acquired_working_lines,
+            max_candidates=max_candidates,
+        )
+
+
+def _enumerate_merge_batch_candidates_acquired(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    *,
+    max_candidates: int,
+) -> MergeCandidateSet:
+    resolved = ownership.resolve()
+    presence_line_set = resolved.presence_line_set
+    deletion_claims = resolved.deletion_claims
+
+    presence_mapping = match_lines(source_lines, working_lines)
+    try:
+        presence_key, presence_choices = _presence_choices_for_missing_claimed_run(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            presence_mapping,
+            max_results=max_candidates + 1,
+        )
+    finally:
+        presence_mapping.close()
+
+    if presence_key is not None and len(presence_choices) > max_candidates:
+        raise MergeError(_("Too many merge candidates to preview safely"))
+    if presence_key is not None and len(presence_choices) > 1:
+        valid_choices: list[_PresenceChoice] = []
+        for choice in presence_choices:
+            resolution = MergeResolution({presence_key: choice.choice_index})
+            try:
+                for _chunk in _merge_batch_acquired_line_chunks(
+                    source_lines,
+                    ownership,
+                    working_lines,
+                    resolution=resolution,
+                ):
+                    pass
+            except MergeError:
+                continue
+            valid_choices.append(choice)
+        if len(valid_choices) > 1:
+            count = len(valid_choices)
+            candidates = []
+            for ordinal, choice in enumerate(valid_choices, start=1):
+                summary = _(
+                    "insert source lines {start}-{end} after target line {after}, before target line {before}"
+                ).format(
+                    start=choice.run_start,
+                    end=choice.run_end,
+                    after=choice.target_after_line or "start",
+                    before=choice.target_before_line or "end",
+                )
+                candidates.append(
+                    MergeCandidate(
+                        ordinal=ordinal,
+                        count=count,
+                        decisions=(
+                            MergeResolutionDecision(
+                                ambiguity_key=presence_key,
+                                choice_index=choice.choice_index,
+                                choice_label=summary,
+                            ),
+                        ),
+                        summary=summary,
+                        source_line_range=(choice.run_start, choice.run_end),
+                        target_after_line=choice.target_after_line,
+                        target_before_line=choice.target_before_line,
+                        explanation=_("surrounding source context has multiple compatible placements"),
+                    )
+                )
+            return MergeCandidateSet(tuple(candidates))
+
+    if not deletion_claims:
+        return MergeCandidateSet(())
+
+    if len([claim for claim in deletion_claims if claim.content_lines]) != 1:
+        raise MergeError(_("Batch was created from a different version of the file"))
+
+    owned_mapping = match_lines(source_lines, working_lines)
+    try:
+        _check_structural_validity(
+            owned_mapping,
+            presence_line_set,
+            deletion_claims,
+            source_lines,
+            working_lines,
+        )
+        realized_entries = _apply_presence_constraints(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            source_to_working_mapping=owned_mapping,
+        )
+    finally:
+        owned_mapping.close()
+
+    try:
+        enumerable_claims = [
+            (index, claim)
+            for index, claim in enumerate(deletion_claims)
+            if claim.content_lines
+        ]
+        claim_index, claim = enumerable_claims[0]
+        forbidden_sequence = [
+            normalize_line_endings(line)
+            for line in claim.content_lines
+        ]
+        ambiguity_key = _absence_ambiguity_key(
+            claim_index,
+            claim.anchor_line,
+            forbidden_sequence,
+        )
+        choices = _absence_choices_for_claim(
+            realized_entries,
+            claim.anchor_line,
+            forbidden_sequence,
+            max_results=max_candidates + 1,
+        )
+        if len(choices) > max_candidates:
+            raise MergeError(_("Too many merge candidates to preview safely"))
+        if len(choices) <= 1:
+            return MergeCandidateSet(())
+
+        valid_choices: list[_AbsenceChoice] = []
+        for choice in choices:
+            resolution = MergeResolution({ambiguity_key: choice.choice_index})
+            try:
+                for _chunk in _merge_batch_acquired_line_chunks(
+                    source_lines,
+                    ownership,
+                    working_lines,
+                    resolution=resolution,
+                ):
+                    pass
+            except MergeError:
+                continue
+            valid_choices.append(choice)
+
+        if len(valid_choices) <= 1:
+            return MergeCandidateSet(())
+
+        count = len(valid_choices)
+        candidates: list[MergeCandidate] = []
+        for ordinal, choice in enumerate(valid_choices, start=1):
+            target_start = choice.position + 1
+            target_end = choice.position + len(forbidden_sequence)
+            summary = (
+                _("delete target lines {start}-{end}").format(
+                    start=target_start,
+                    end=target_end,
+                )
+                if target_start != target_end
+                else _("delete target line {line}").format(line=target_start)
+            )
+            candidates.append(
+                MergeCandidate(
+                    ordinal=ordinal,
+                    count=count,
+                    decisions=(
+                        MergeResolutionDecision(
+                            ambiguity_key=ambiguity_key,
+                            choice_index=choice.choice_index,
+                            choice_label=summary,
+                        ),
+                    ),
+                    summary=summary,
+                    source_line_range=(
+                        (claim.anchor_line, claim.anchor_line)
+                        if claim.anchor_line is not None
+                        else None
+                    ),
+                    target_after_line=choice.target_after_line,
+                    target_before_line=choice.target_before_line,
+                    explanation=_("deletion anchor has multiple compatible target placements"),
+                )
+            )
+        return MergeCandidateSet(tuple(candidates))
     finally:
         realized_entries.close()
 

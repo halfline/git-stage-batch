@@ -36,6 +36,7 @@ from ..batch.submodule_pointer import (
     refuse_batch_submodule_pointer_lines,
 )
 from ..batch.state_refs import sync_batch_state_refs
+from ..batch.source_selector import require_plain_batch_name
 from ..batch.validation import batch_exists, validate_batch_name
 from ..exceptions import MergeError, exit_with_error
 from ..i18n import _
@@ -86,6 +87,7 @@ def command_reset_from_batch(
     """
     require_git_repository()
     ensure_state_directory_exists()
+    batch_name = require_plain_batch_name(batch_name, "reset")
     validate_batch_name(batch_name)
     extra_action_parts = ()
     if to_batch is not None:

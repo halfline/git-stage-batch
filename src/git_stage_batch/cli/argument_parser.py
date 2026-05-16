@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .. import __version__
 from ..batch.validation import batch_exists
+from ..batch.source_selector import batch_name_for_source_lookup
 from ..batch.replacement import ReplacementText
 from .. import commands
 from ..batch.query import read_batch_metadata
@@ -489,18 +490,19 @@ def _resolve_batch_file_scope(
     file_patterns: list[str] | None,
 ) -> FileScope:
     """Resolve single-file or pattern-based batch file scope."""
+    lookup_batch_name = batch_name_for_source_lookup(batch_name)
     _validate_file_inputs(file_arg, file_patterns)
     if file_patterns is None:
         return FileScope.implicit() if file_arg is None else FileScope.explicit(file_arg)
-    if not batch_exists(batch_name):
-        raise CommandError(_("Batch '{name}' does not exist").format(name=batch_name))
+    if not batch_exists(lookup_batch_name):
+        raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch_name))
 
-    metadata = read_batch_metadata(batch_name)
+    metadata = read_batch_metadata(lookup_batch_name)
     resolved_files = resolve_gitignore_style_patterns(metadata.get("files", {}).keys(), file_patterns)
     if not resolved_files:
         raise CommandError(
             _("No files in batch '{name}' matched: {patterns}").format(
-                name=batch_name,
+                name=lookup_batch_name,
                 patterns=", ".join(file_patterns),
             )
         )
@@ -699,20 +701,39 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Output JSON for scripting instead of human-readable text"),
     )
+    parser_show.add_argument(
+        "--as",
+        dest="as_text",
+        metavar="TEXT",
+        help=_("Preview selected batch lines as replacement text"),
+    )
+    parser_show.add_argument(
+        "--as-stdin",
+        dest="as_stdin",
+        action="store_true",
+        help=_("Read replacement preview text from standard input exactly"),
+    )
     def dispatch_show(args: argparse.Namespace) -> None:
+        replacement_requested = args.as_text is not None or args.as_stdin
+        if replacement_requested and not args.from_batch:
+            raise CommandError(_("`show --as` requires `--from`."))
+        if args.as_text is not None and args.as_stdin:
+            raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
         resolved_file_scope = (
             _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
             if args.from_batch
             else _resolve_live_file_scope(args.file, args.file_patterns)
         )
         if args.page is not None:
-            if args.from_batch and not batch_exists(args.from_batch):
-                raise CommandError(_("Batch '{name}' does not exist").format(name=args.from_batch))
+            lookup_batch = batch_name_for_source_lookup(args.from_batch) if args.from_batch else None
+            if lookup_batch and not batch_exists(lookup_batch):
+                raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch))
             if resolved_file_scope.is_implicit:
                 if not (
                     args.from_batch
-                    and batch_exists(args.from_batch)
-                    and len(read_batch_metadata(args.from_batch).get("files", {})) == 1
+                    and lookup_batch is not None
+                    and batch_exists(lookup_batch)
+                    and len(read_batch_metadata(lookup_batch).get("files", {})) == 1
                 ):
                     raise CommandError(
                         _(
@@ -727,21 +748,29 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.porcelain:
                 raise CommandError(_("Cannot use `show --page` with `--porcelain`."))
         if args.from_batch:
+            replacement_text = _resolve_replacement_text(args) if replacement_requested else None
+            show_kwargs = {"page": args.page}
+            if args.porcelain:
+                show_kwargs["porcelain"] = args.porcelain
+            if replacement_text is not None:
+                show_kwargs["replacement_text"] = replacement_text
             if resolved_file_scope.is_multiple:
                 if args.line_ids:
                     raise CommandError(_("Cannot use --lines with multiple files."))
+                if replacement_requested:
+                    raise CommandError(_("`show --as` requires exactly one resolved file."))
                 commands.command_show_from_batch(
                     args.from_batch,
                     args.line_ids,
                     patterns=args.file_patterns,
-                    page=args.page,
+                    **show_kwargs,
                 )
             else:
                 commands.command_show_from_batch(
                     args.from_batch,
                     args.line_ids,
                     resolved_file_scope.optional_file(),
-                    page=args.page,
+                    **show_kwargs,
                 )
             return
         if args.line_ids or not resolved_file_scope.is_implicit:

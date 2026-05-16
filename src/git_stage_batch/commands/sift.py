@@ -47,6 +47,7 @@ from ..batch.storage import (
     _update_batch_commit,
 )
 from ..batch.validation import batch_exists, validate_batch_name
+from ..batch.source_selector import require_plain_batch_name
 from ..core.line_selection import LineRanges
 from ..core.models import BinaryFileChange
 from ..core.text_lifecycle import (
@@ -183,6 +184,8 @@ def add_sifted_text_file_to_batch(
 def command_sift_batch(source_batch: str, dest_batch: str) -> None:
     """Sift a batch to remove portions already present at tip."""
     require_git_repository()
+    source_batch = require_plain_batch_name(source_batch, "sift")
+    dest_batch = require_plain_batch_name(dest_batch, "sift")
     validate_batch_name(source_batch)
     validate_batch_name(dest_batch)
 

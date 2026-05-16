@@ -15,6 +15,15 @@ batch remains available after the command.
 .BI "\-\-from " BATCH
 Apply changes from
 .IR BATCH .
+To apply a reviewed ambiguity resolution, use
+.IR BATCH :apply: N
+with
+.BR \-\-file .
+The
+.IR BATCH :include: N
+selector belongs to
+.B include
+and is rejected here.
 .TP
 .BI "\-\-line, \-\-lines " IDS
 Apply only specific displayed line IDs.
@@ -27,6 +36,22 @@ is omitted, use the selected batch file when available.
 .TP
 .BI "\-\-files " PATTERN "..."
 Apply batch files matched by gitignore-style patterns.
+.SH CANDIDATES
+If a plain
+.B apply --from
+operation finds multiple safe structural placements, it refuses without
+changing the working tree and points to
+.B show --from
+.IR BATCH :apply .
+Review the candidate overview, or preview a numbered candidate, then apply
+that same reviewed candidate:
+.RS
+.nf
+git-stage-batch show --from cleanup:apply --file src/app.py
+git-stage-batch show --from cleanup:apply:2 --file src/app.py
+git-stage-batch apply --from cleanup:apply:2 --file src/app.py
+.fi
+.RE
 .SH SEE ALSO
 .BR git-stage-batch (1),
 .BR git-stage-batch-include (1),

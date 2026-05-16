@@ -415,6 +415,7 @@ def test_show_page_accepts_single_files_match(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["src/parser.py", "notes.txt"])
+    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: [])
 
     args = parse_command_line(["show", "--files", "*.py", "--page", "2"], quiet=True)
 
@@ -425,6 +426,7 @@ def test_show_page_accepts_single_files_match(monkeypatch):
 
 def test_show_page_rejects_multiple_files_matches(monkeypatch):
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py"])
+    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: [])
 
     args = parse_command_line(["show", "--files", "*.py", "--page", "2"], quiet=True)
 
@@ -1009,6 +1011,7 @@ def test_parse_command_line_show_with_files_uses_file_list(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_show_file_list", mock_command)
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py", "notes.txt"])
+    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: [])
 
     args = parse_command_line(["show", "--files", "*.py"], quiet=True)
 
@@ -1020,6 +1023,7 @@ def test_parse_command_line_show_with_files_uses_file_list(monkeypatch):
 def test_parse_command_line_show_with_files_raises_command_error_for_no_matches(monkeypatch):
     """Show should report unmatched --files patterns without a traceback."""
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["foo.py", "bar.py"])
+    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: [])
 
     args = parse_command_line(["show", "--files", "*.md"], quiet=True)
 

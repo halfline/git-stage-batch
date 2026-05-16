@@ -17,6 +17,7 @@ from git_stage_batch.batch.merge import (
     _try_apply_baseline_replacement_units,
     can_merge_batch_from_line_sequences,
     discard_batch_from_line_sequences_as_buffer,
+    enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
     _satisfy_constraints,
 )
@@ -1318,6 +1319,27 @@ class TestMergeBatch:
         result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
 
         assert result == b"line1\nline2\nline3\nline4\nline5\n"
+
+    def test_enumerates_displaced_absence_candidates(self):
+        """Ambiguous nearby deletion content can be previewed as candidates."""
+        source = [b"a\n", b"b\n"]
+        working = [b"a\n", b"insert\n", b"x\n", b"x\n", b"b\n"]
+        ownership = BatchOwnership(
+            [],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"x\n"])],
+        )
+
+        candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+            source,
+            ownership,
+            working,
+            max_candidates=10,
+        )
+
+        assert [candidate.summary for candidate in candidate_set.candidates] == [
+            "delete target line 3",
+            "delete target line 4",
+        ]
 
     def test_merge_multiple_deletions(self):
         """Test merge with multiple deletion constraints at different positions."""

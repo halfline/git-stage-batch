@@ -28,6 +28,10 @@ from ..batch.ownership import (
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
 )
+from ..batch.replacement import (
+    ReplacementPayload,
+    coerce_replacement_payload,
+)
 from ..batch.query import read_batch_metadata
 from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
@@ -551,7 +555,7 @@ def command_discard_file(
 
 
 def command_discard_file_as(
-    replacement_text: str,
+    replacement_text: str | ReplacementPayload,
     file: str | None = None,
     *,
     auto_advance: bool | None = None,
@@ -568,7 +572,8 @@ def command_discard_file_as(
         refuse_bare_action_after_file_list("discard --file --as")
         refuse_bare_action_after_auto_advance_disabled("discard --file --as")
 
-    operation_parts = ["discard", "--as", replacement_text]
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    operation_parts = ["discard", "--as", replacement_payload.display_text or "<stdin>"]
     if file is not None:
         operation_parts.extend(["--file", file])
 
@@ -592,7 +597,8 @@ def command_discard_file_as(
 
         absolute_path = get_git_repository_root_path() / target_file
         absolute_path.parent.mkdir(parents=True, exist_ok=True)
-        absolute_path.write_text(replacement_text, encoding="utf-8", errors="surrogateescape")
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+        absolute_path.write_bytes(replacement_payload.data)
 
         if preserve_selected_state:
             assert saved_selected_state is not None

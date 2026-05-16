@@ -2023,6 +2023,28 @@ def _absence_choices_for_claim(
     return tuple(choices)
 
 
+def _suppress_absence_with_resolution(
+    entries: Sequence[RealizedEntry],
+    anchor_line: int | None,
+    forbidden_sequence: list[bytes],
+    ambiguity_key: str,
+    resolution: MergeResolution,
+) -> _RealizedEntries:
+    choice_index = resolution.decisions.get(ambiguity_key)
+    if choice_index is None:
+        raise MergeError(_("Missing merge resolution for {key}").format(key=ambiguity_key))
+    choices = _absence_choices_for_claim(
+        entries,
+        anchor_line,
+        forbidden_sequence,
+        max_results=_MERGE_CANDIDATE_CAP + 1,
+    )
+    for choice in choices:
+        if choice.choice_index == choice_index:
+            return _remove_sequence_at_position(entries, choice.position, forbidden_sequence)
+    raise MergeError(_("Selected merge resolution is no longer valid"))
+
+
 def _sequence_matches_at_position(
     entries: Sequence[RealizedEntry],
     position: int,

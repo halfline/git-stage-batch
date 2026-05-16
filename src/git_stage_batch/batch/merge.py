@@ -1828,6 +1828,37 @@ def _find_boundary_after_source_line(
     return matching_indices[0] + 1
 
 
+def _boundary_choices_after_source_line(
+    entries: Sequence[RealizedEntry],
+    source_line: int | None,
+) -> tuple[int, ...]:
+    """Return all concrete boundary positions after a source line."""
+    if source_line is None:
+        return (0,)
+
+    matching_indices: list[int] = []
+    if isinstance(entries, _RealizedEntries):
+        for run in entries.provenance_runs():
+            if run.source_start == 0:
+                continue
+            run_length = run.dest_end - run.dest_start
+            if not run.source_start <= source_line < run.source_start + run_length:
+                continue
+            matching_indices.append(run.dest_start + (source_line - run.source_start))
+    else:
+        for index in range(len(entries)):
+            if _entry_source_line_at(entries, index) == source_line:
+                matching_indices.append(index)
+
+    if not matching_indices:
+        raise MissingAnchorError(
+            _("Cannot locate anchor boundary after source line {line}: "
+              "anchor not present in realized content").format(line=source_line)
+        )
+
+    return tuple(index + 1 for index in matching_indices)
+
+
 def _presence_ambiguity_key(
     run_start: int,
     run_end: int,

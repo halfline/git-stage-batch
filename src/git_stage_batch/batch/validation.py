@@ -14,7 +14,7 @@ def validate_batch_name(name: str) -> None:
         exit_with_error(_("Batch name cannot be empty"))
 
     # Check for invalid characters
-    invalid_chars = ['/', '\\', '..', ' ', '\t', '\n', '\r']
+    invalid_chars = ['/', '\\', '..', ':', ' ', '\t', '\n', '\r']
     for char in invalid_chars:
         if char in name:
             exit_with_error(_("Batch name cannot contain: {char}").format(char=repr(char)))

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .. import __version__
 from ..batch.validation import batch_exists
+from ..batch.replacement import ReplacementText
 from .. import commands
 from ..batch.query import read_batch_metadata
 from ..data.file_tracking import list_untracked_files
@@ -511,8 +512,16 @@ def _resolve_replacement_text(args: argparse.Namespace) -> str | None:
     if getattr(args, "as_text", None) is not None and getattr(args, "as_stdin", False):
         raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
     if getattr(args, "as_stdin", False):
-        return sys.stdin.buffer.read().decode("utf-8", errors="surrogateescape")
-    return getattr(args, "as_text", None)
+        data = sys.stdin.buffer.read()
+        return ReplacementText(
+            data.decode("utf-8", errors="surrogateescape"),
+            data=data,
+            exact=True,
+        )
+    as_text = getattr(args, "as_text", None)
+    if as_text is not None:
+        return ReplacementText(as_text, exact=True)
+    return None
 
 
 def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Namespace | None:

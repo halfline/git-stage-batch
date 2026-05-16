@@ -1591,7 +1591,8 @@ def _apply_absence_constraints(
     entries: Sequence[RealizedEntry],
     deletion_claims: list['AbsenceClaim'],
     *,
-    strict: bool = True
+    strict: bool = True,
+    resolution: MergeResolution | None = None,
 ) -> _RealizedEntries:
     """Apply absence constraints with boundary enforcement.
 
@@ -1634,8 +1635,32 @@ def _apply_absence_constraints(
 
     suppress_fn = _suppress_at_boundary_strict if strict else _suppress_at_boundary_for_realization
 
-    for claim in deletion_claims:
+    for claim_index, claim in enumerate(deletion_claims):
         if not claim.content_lines:
+            continue
+
+        forbidden_sequence = [
+            normalize_line_endings(line)
+            for line in claim.content_lines
+        ]
+
+        ambiguity_key = _absence_ambiguity_key(
+            claim_index,
+            claim.anchor_line,
+            forbidden_sequence,
+        )
+
+        if resolution is not None and ambiguity_key in resolution.decisions:
+            old_result = result
+            result = _suppress_absence_with_resolution(
+                result,
+                claim.anchor_line,
+                forbidden_sequence,
+                ambiguity_key,
+                resolution,
+            )
+            if result is not old_result and old_result is not entries:
+                old_result.close()
             continue
 
         # Find boundary (fails if ambiguous or missing - appropriate for both modes)
@@ -1645,12 +1670,6 @@ def _apply_absence_constraints(
             if strict:
                 raise
             boundary = _find_realization_fallback_boundary(result, claim.anchor_line)
-
-        # Normalize deletion content for comparison
-        forbidden_sequence = [
-            normalize_line_endings(line)
-            for line in claim.content_lines
-        ]
 
         old_result = result
         result = suppress_fn(result, boundary, forbidden_sequence)

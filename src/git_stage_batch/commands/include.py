@@ -24,6 +24,10 @@ from ..batch.ownership import (
     derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
 )
+from ..batch.replacement import (
+    ReplacementPayload,
+    coerce_replacement_payload,
+)
 from ..batch.query import read_batch_metadata
 from ..batch.selection import (
     line_selection_not_valid_message,
@@ -752,7 +756,7 @@ def command_include_file(
 
 
 def command_include_file_as(
-    replacement_text: str,
+    replacement_text: str | ReplacementPayload,
     file: str | None = None,
     *,
     auto_advance: bool | None = None,
@@ -769,7 +773,9 @@ def command_include_file_as(
         refuse_bare_action_after_file_list("include --file --as")
         refuse_bare_action_after_auto_advance_disabled("include --file --as")
 
-    operation_parts = ["include", "--as", replacement_text]
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    operation_text = replacement_payload.display_text
+    operation_parts = ["include", "--as", operation_text or "<stdin>"]
     if file is not None:
         operation_parts.extend(["--file", file])
 
@@ -800,9 +806,7 @@ def command_include_file_as(
                 if line_changes is None:
                     exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
-        with EditorBuffer.from_bytes(
-            replacement_text.encode("utf-8", errors="surrogateescape")
-        ) as replacement_buffer:
+        with EditorBuffer.from_bytes(replacement_payload.data) as replacement_buffer:
             update_index_with_blob_buffer(target_file, replacement_buffer)
 
         if preserve_selected_state:

@@ -9,6 +9,7 @@ from typing import Optional
 
 from ..batch.merge import discard_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import get_validated_baseline_commit, read_validated_batch_metadata
+from ..batch.source_selector import require_plain_batch_name
 from ..batch.selection import (
     acquire_batch_ownership_for_display_ids_from_lines,
     resolve_current_batch_binary_file_scope,
@@ -139,6 +140,7 @@ def command_discard_from_batch(
         patterns: Optional gitignore-style file patterns to filter batch files.
     """
     require_git_repository()
+    batch_name = require_plain_batch_name(batch_name, "discard")
     scope_resolution = resolve_batch_source_action_scope(
         FileReviewAction.DISCARD_FROM_BATCH,
         command_name="discard",

@@ -2,8 +2,11 @@
 
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.replacement import (
+    ReplacementText,
     ReplacementBatchView,
     build_replacement_batch_view_from_lines,
+    coerce_replacement_payload,
+    replacement_line_chunks,
 )
 
 
@@ -46,3 +49,15 @@ def test_build_replacement_batch_view_returns_named_result(line_sequence):
     with view:
         assert view.source_buffer.to_bytes() == b"line1\nnew\nline2\n"
         assert view.ownership.presence_line_set() == {2}
+
+
+def test_replacement_text_can_carry_exact_stdin_bytes():
+    payload = coerce_replacement_payload(
+        ReplacementText(
+            "first\r\nsecond",
+            data=b"first\r\nsecond",
+            exact=True,
+        )
+    )
+
+    assert replacement_line_chunks(payload) == [b"first\r\n", b"second"]

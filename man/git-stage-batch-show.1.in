@@ -8,6 +8,7 @@ git-stage-batch-show \- show the selected hunk or a file review
 [\fB\-\-line\fR \fIIDS\fR]
 [\fB\-\-page\fR \fIPAGES\fR]
 [\fB\-\-porcelain\fR]
+[\fB\-\-as\fR \fITEXT\fR | \fB\-\-as\-stdin\fR]
 .SH DESCRIPTION
 .B show
 prints the currently selected hunk. It can also open a page-aware review for
@@ -17,6 +18,14 @@ one file, list matching files, or show changes stored in a batch.
 .BI "\-\-from " BATCH
 Show changes from
 .IR BATCH .
+Candidate previews use
+.IR BATCH :apply ,
+.IR BATCH :apply: N ,
+.IR BATCH :include ,
+or
+.IR BATCH :include: N .
+The unnumbered apply and include forms print a compact overview of available
+candidates. Numbered forms show the full diff for one candidate.
 .TP
 .B \-\-file
 .RI [ PATH ]
@@ -44,12 +53,26 @@ or
 .TP
 .B \-\-porcelain
 Exit silently with status code 0 when a hunk exists and 1 when no hunk exists.
+.TP
+.BI "\-\-as " TEXT
+With
+.BR "\-\-from " BATCH
+and
+.BR "\-\-line " IDS ,
+preview the replacement batch view that
+.B include --from --as
+would use, without mutating the index or working tree.
+.TP
+.B \-\-as\-stdin
+Read replacement preview text from standard input exactly.
 .SH EXAMPLES
 .RS
 .nf
 git-stage-batch show
 git-stage-batch show --file src/app.py --page 2
 git-stage-batch show --from cleanup --files 'src/**' '!src/vendor/**'
+git-stage-batch show --from cleanup:apply --file src/app.py
+git-stage-batch show --from cleanup:include:2 --file src/app.py
 .fi
 .RE
 .SH SEE ALSO

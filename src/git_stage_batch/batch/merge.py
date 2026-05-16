@@ -1947,6 +1947,15 @@ def _presence_choices_for_missing_claimed_run(
 
 
 @dataclass(frozen=True)
+class _AbsenceChoice:
+    choice_index: int
+    position: int
+    target_after_line: int | None
+    target_before_line: int | None
+    explanation: str
+
+
+@dataclass(frozen=True)
 class _PresenceChoice:
     choice_index: int
     gap_index: int

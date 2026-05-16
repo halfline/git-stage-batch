@@ -1965,6 +1965,64 @@ class _PresenceChoice:
     target_before_line: int | None
 
 
+def _absence_choices_for_claim(
+    entries: Sequence[RealizedEntry],
+    anchor_line: int | None,
+    forbidden_sequence: Sequence[bytes],
+    *,
+    max_results: int | None = None,
+) -> tuple[_AbsenceChoice, ...]:
+    """Return concrete exact-removal choices for one absence claim."""
+    positions: list[tuple[int, str]] = []
+    seen: set[int] = set()
+
+    def add_position(position: int, explanation: str) -> None:
+        if position in seen:
+            return
+        if not _sequence_matches_at_position(entries, position, list(forbidden_sequence)):
+            return
+        seen.add(position)
+        positions.append((position, explanation))
+
+    for boundary in _boundary_choices_after_source_line(entries, anchor_line):
+        add_position(boundary, _("deletion content appears at the anchored boundary"))
+        after_claimed = _position_after_claimed_insertions_at_boundary(entries, boundary)
+        if after_claimed != boundary:
+            add_position(
+                after_claimed,
+                _("deletion content appears after claimed insertions at the anchored boundary"),
+            )
+
+    if len(positions) <= 1:
+        for position in iter_sequence_occurrences_nearby(
+            entries,
+            _boundary_choices_after_source_line(entries, anchor_line)[0],
+            forbidden_sequence,
+            window=20,
+            max_results=(max_results or _MERGE_CANDIDATE_CAP) + 1,
+        ):
+            add_position(position, _("deletion content appears nearby"))
+
+    positions.sort(key=lambda item: item[0])
+    if max_results is not None:
+        positions = positions[:max_results]
+
+    choices = []
+    for index, (position, explanation) in enumerate(positions, start=1):
+        after_line = None if position == 0 else position
+        before_line = None if position + len(forbidden_sequence) >= len(entries) else position + 1
+        choices.append(
+            _AbsenceChoice(
+                choice_index=index,
+                position=position,
+                target_after_line=after_line,
+                target_before_line=before_line,
+                explanation=explanation,
+            )
+        )
+    return tuple(choices)
+
+
 def _sequence_matches_at_position(
     entries: Sequence[RealizedEntry],
     position: int,

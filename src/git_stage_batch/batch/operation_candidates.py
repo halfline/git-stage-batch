@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 from dataclasses import dataclass
@@ -351,3 +352,26 @@ def build_include_candidate_previews(
         )
         previews.append(preview)
     return tuple(previews)
+
+
+def render_candidate_buffer_diff(
+    file_path: str,
+    before_buffer: EditorBuffer,
+    after_buffer: EditorBuffer,
+    *,
+    label_before: str,
+    label_after: str,
+    context_lines: int,
+) -> str:
+    """Render a unified diff between two candidate buffers."""
+    before_text = before_buffer.to_bytes().decode("utf-8", errors="surrogateescape")
+    after_text = after_buffer.to_bytes().decode("utf-8", errors="surrogateescape")
+    return "".join(
+        difflib.unified_diff(
+            before_text.splitlines(keepends=True),
+            after_text.splitlines(keepends=True),
+            fromfile=f"{label_before}/{file_path}",
+            tofile=f"{label_after}/{file_path}",
+            n=context_lines,
+        )
+    )

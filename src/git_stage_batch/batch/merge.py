@@ -1965,6 +1965,25 @@ def _find_sequence_nearby(
     return None
 
 
+def iter_sequence_occurrences_nearby(
+    entries: Sequence[RealizedEntry],
+    position: int,
+    sequence: Sequence[bytes],
+    *,
+    window: int,
+    max_results: int,
+) -> Iterator[int]:
+    """Yield exact nearby sequence positions after a boundary."""
+    search_end = min(position + window, len(entries) - len(sequence) + 1)
+    result_count = 0
+    for check_pos in range(position + 1, search_end):
+        if _sequence_matches_at_position(entries, check_pos, list(sequence)):
+            yield check_pos
+            result_count += 1
+            if result_count >= max_results:
+                return
+
+
 def _remove_sequence_at_position(
     entries: Sequence[RealizedEntry],
     position: int,

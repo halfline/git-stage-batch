@@ -30,6 +30,8 @@ from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_pa
 from ..utils.git import run_git_command
 from .completion import command_complete_files
 
+FileArgument = str | list[str] | None
+
 
 class FileScopeKind(str, Enum):
     """How a command's optional file scope was requested."""
@@ -231,8 +233,8 @@ def _add_file_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
     """Add a single-file argument that supports omitted values."""
     parser.add_argument(
         "--file",
-        nargs="?",
-        const="",
+        action="append",
+        nargs="*",
         default=None,
         metavar="PATH",
         help=help_text,
@@ -240,6 +242,7 @@ def _add_file_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
     parser.add_argument(
         "--files",
         dest="file_patterns",
+        action="append",
         nargs="+",
         default=None,
         metavar="PATTERN",
@@ -265,13 +268,113 @@ def _add_auto_advance_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _validate_file_inputs(
-    file_arg: str | None,
+def _flatten_file_patterns(
+    pattern_groups: list[list[str]] | None,
+) -> list[str] | None:
+    """Flatten repeated --files groups into one ordered pattern list."""
+    if pattern_groups is None:
+        return None
+    return [
+        pattern
+        for group in pattern_groups
+        for pattern in group
+    ]
+
+
+def _normalize_parsed_file_arguments(args: argparse.Namespace) -> None:
+    """Normalize parser storage for --file/--files before dispatch."""
+    if hasattr(args, "file_patterns"):
+        args.file_patterns = _flatten_file_patterns(args.file_patterns)
+
+    if not hasattr(args, "file") or args.file is None:
+        return
+
+    file_groups = args.file
+    if file_groups and not file_groups[-1]:
+        args.file = ""
+        return
+
+    file_values = [
+        value
+        for group in file_groups
+        for value in group
+    ]
+
+    if len(file_values) == 1:
+        args.file = file_values[0]
+    else:
+        args.file = file_values
+
+
+def _resolve_file_patterns(
+    file_arg: FileArgument,
     file_patterns: list[str] | None,
-) -> None:
-    """Validate cross-argument rules for file-scoped operations."""
-    if file_arg is not None and file_patterns is not None:
-        raise CommandError(_("Cannot use --file together with --files."))
+) -> list[str] | None:
+    """Return combined pattern arguments, preserving pathless --file."""
+    if file_arg == "":
+        if file_patterns is not None:
+            raise CommandError(_("Cannot use --file together with --files."))
+        return None
+
+    patterns: list[str] = []
+    if isinstance(file_arg, str):
+        patterns.append(file_arg)
+    elif file_arg is not None:
+        patterns.extend(file_arg)
+
+    if file_patterns is not None:
+        patterns.extend(file_patterns)
+
+    return patterns or None
+
+
+def _file_arg_values(file_arg: FileArgument) -> list[str]:
+    """Return argument-bearing --file values."""
+    if file_arg is None or file_arg == "":
+        return []
+    if isinstance(file_arg, str):
+        return [file_arg]
+    return list(file_arg)
+
+
+def _normalize_file_argument_path(path: str) -> str:
+    """Normalize a user-provided file path for exact candidate lookup."""
+    normalized = path.replace("\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
+
+
+def _resolve_file_argument_patterns(
+    candidates: Sequence[str],
+    file_arg: FileArgument,
+    file_patterns: list[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Resolve --file/--files values against candidates with exact --file fallback."""
+    file_values = _file_arg_values(file_arg)
+    display_patterns = [*file_values, *(file_patterns or [])]
+    candidate_by_path = {
+        _normalize_file_argument_path(candidate): candidate
+        for candidate in candidates
+    }
+
+    exact_files: list[str] = []
+    pattern_values: list[str] = []
+    for value in file_values:
+        exact_file = candidate_by_path.get(_normalize_file_argument_path(value))
+        if exact_file is not None:
+            exact_files.append(exact_file)
+        else:
+            pattern_values.append(value)
+
+    pattern_values.extend(file_patterns or [])
+    resolved_patterns = (
+        resolve_gitignore_style_patterns(candidates, pattern_values)
+        if pattern_values else
+        []
+    )
+    resolved_files = list(dict.fromkeys([*exact_files, *resolved_patterns]))
+    return resolved_files, display_patterns
 
 
 def _run_for_each_file(
@@ -465,20 +568,24 @@ def _discard_to_batch_each_resolved_file(
 
 
 def _resolve_live_file_scope(
-    file_arg: str | None,
+    file_arg: FileArgument,
     file_patterns: list[str] | None,
 ) -> FileScope:
     """Resolve single-file or pattern-based live file scope."""
-    _validate_file_inputs(file_arg, file_patterns)
-    if file_patterns is None:
-        return FileScope.implicit() if file_arg is None else FileScope.explicit(file_arg)
+    resolved_patterns = _resolve_file_patterns(file_arg, file_patterns)
+    if resolved_patterns is None:
+        return FileScope.implicit() if file_arg is None else FileScope.explicit("")
 
     candidate_files = list(dict.fromkeys([*list_changed_files(), *list_untracked_files()]))
-    resolved_files = resolve_gitignore_style_patterns(candidate_files, file_patterns)
+    resolved_files, display_patterns = _resolve_file_argument_patterns(
+        candidate_files,
+        file_arg,
+        file_patterns,
+    )
     if not resolved_files:
         raise CommandError(
             _("No changed files matched: {patterns}").format(
-                patterns=", ".join(file_patterns),
+                patterns=", ".join(display_patterns),
             )
         )
     return FileScope.pattern(resolved_files)
@@ -486,24 +593,28 @@ def _resolve_live_file_scope(
 
 def _resolve_batch_file_scope(
     batch_name: str,
-    file_arg: str | None,
+    file_arg: FileArgument,
     file_patterns: list[str] | None,
 ) -> FileScope:
     """Resolve single-file or pattern-based batch file scope."""
     lookup_batch_name = batch_name_for_source_lookup(batch_name)
-    _validate_file_inputs(file_arg, file_patterns)
-    if file_patterns is None:
-        return FileScope.implicit() if file_arg is None else FileScope.explicit(file_arg)
+    resolved_patterns = _resolve_file_patterns(file_arg, file_patterns)
+    if resolved_patterns is None:
+        return FileScope.implicit() if file_arg is None else FileScope.explicit("")
     if not batch_exists(lookup_batch_name):
         raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch_name))
 
     metadata = read_batch_metadata(lookup_batch_name)
-    resolved_files = resolve_gitignore_style_patterns(metadata.get("files", {}).keys(), file_patterns)
+    resolved_files, display_patterns = _resolve_file_argument_patterns(
+        list(metadata.get("files", {}).keys()),
+        file_arg,
+        file_patterns,
+    )
     if not resolved_files:
         raise CommandError(
             _("No files in batch '{name}' matched: {patterns}").format(
                 name=lookup_batch_name,
-                patterns=", ".join(file_patterns),
+                patterns=", ".join(display_patterns),
             )
         )
     return FileScope.pattern(resolved_files)
@@ -1497,7 +1608,9 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     # Parse arguments, return None on failure
     try:
-        return parser.parse_args(expanded)
+        parsed_args = parser.parse_args(expanded)
+        _normalize_parsed_file_arguments(parsed_args)
+        return parsed_args
     except argparse.ArgumentError:
         if not quiet:
             parser.print_usage(sys.stderr)

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .. import __version__
 from ..batch.validation import batch_exists
+from ..batch.source_selector import batch_name_for_source_lookup
 from ..batch.replacement import ReplacementText
 from .. import commands
 from ..batch.query import read_batch_metadata
@@ -489,18 +490,19 @@ def _resolve_batch_file_scope(
     file_patterns: list[str] | None,
 ) -> FileScope:
     """Resolve single-file or pattern-based batch file scope."""
+    lookup_batch_name = batch_name_for_source_lookup(batch_name)
     _validate_file_inputs(file_arg, file_patterns)
     if file_patterns is None:
         return FileScope.implicit() if file_arg is None else FileScope.explicit(file_arg)
-    if not batch_exists(batch_name):
-        raise CommandError(_("Batch '{name}' does not exist").format(name=batch_name))
+    if not batch_exists(lookup_batch_name):
+        raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch_name))
 
-    metadata = read_batch_metadata(batch_name)
+    metadata = read_batch_metadata(lookup_batch_name)
     resolved_files = resolve_gitignore_style_patterns(metadata.get("files", {}).keys(), file_patterns)
     if not resolved_files:
         raise CommandError(
             _("No files in batch '{name}' matched: {patterns}").format(
-                name=batch_name,
+                name=lookup_batch_name,
                 patterns=", ".join(file_patterns),
             )
         )
@@ -706,13 +708,15 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             else _resolve_live_file_scope(args.file, args.file_patterns)
         )
         if args.page is not None:
-            if args.from_batch and not batch_exists(args.from_batch):
-                raise CommandError(_("Batch '{name}' does not exist").format(name=args.from_batch))
+            lookup_batch = batch_name_for_source_lookup(args.from_batch) if args.from_batch else None
+            if lookup_batch and not batch_exists(lookup_batch):
+                raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch))
             if resolved_file_scope.is_implicit:
                 if not (
                     args.from_batch
-                    and batch_exists(args.from_batch)
-                    and len(read_batch_metadata(args.from_batch).get("files", {})) == 1
+                    and lookup_batch is not None
+                    and batch_exists(lookup_batch)
+                    and len(read_batch_metadata(lookup_batch).get("files", {})) == 1
                 ):
                     raise CommandError(
                         _(

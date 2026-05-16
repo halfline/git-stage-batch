@@ -1716,6 +1716,7 @@ def _satisfy_constraints(
     *,
     strict: bool = True,
     source_to_working_mapping: LineMapping | None = None,
+    resolution: MergeResolution | None = None,
 ) -> _RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
     realized_entries = _apply_presence_constraints(
@@ -1723,13 +1724,15 @@ def _satisfy_constraints(
         working_lines,
         presence_line_set,
         source_to_working_mapping=source_to_working_mapping,
+        resolution=resolution,
     )
 
     try:
         updated_entries = _apply_absence_constraints(
             realized_entries,
             deletion_claims,
-            strict=strict
+            strict=strict,
+            resolution=resolution,
         )
         if updated_entries is not realized_entries:
             realized_entries.close()
@@ -1744,7 +1747,8 @@ def _satisfy_constraints(
             updated_entries = _apply_presence_constraints(
                 source_lines,
                 current_lines,
-                presence_line_set
+                presence_line_set,
+                resolution=resolution,
             )
         finally:
             previous_entries.close()
@@ -1753,7 +1757,8 @@ def _satisfy_constraints(
         updated_entries = _apply_absence_constraints(
             realized_entries,
             deletion_claims,
-            strict=strict
+            strict=strict,
+            resolution=resolution,
         )
         if updated_entries is not realized_entries:
             realized_entries.close()

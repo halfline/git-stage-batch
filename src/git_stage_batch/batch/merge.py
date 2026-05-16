@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from array import array
 from bisect import bisect_right
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum, auto
+import hashlib
 from typing import TYPE_CHECKING, Any
 
-from .match import LineMapping, match_lines
+from .match import LineMapping, iter_exact_context_gaps, match_lines
 from ..core.line_selection import LineRanges, LineSelection
 from ..editor import (
     Editor,
@@ -29,6 +30,52 @@ from ..utils.text import (
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership, AbsenceClaim
+
+
+_MERGE_CANDIDATE_CAP = 50
+
+
+@dataclass(frozen=True)
+class MergeResolutionDecision:
+    """One selected merge ambiguity decision."""
+
+    ambiguity_key: str
+    choice_index: int
+    choice_label: str
+
+
+@dataclass(frozen=True)
+class MergeResolution:
+    """Concrete ambiguity decisions used to materialize a merge candidate."""
+
+    decisions: Mapping[str, int]
+
+
+@dataclass(frozen=True)
+class MergeCandidate:
+    """One complete target-level merge candidate."""
+
+    ordinal: int
+    count: int
+    decisions: tuple[MergeResolutionDecision, ...]
+    summary: str
+    source_line_range: tuple[int, int] | None
+    target_after_line: int | None
+    target_before_line: int | None
+    explanation: str
+
+    @property
+    def resolution(self) -> MergeResolution:
+        return MergeResolution(
+            {decision.ambiguity_key: decision.choice_index for decision in self.decisions}
+        )
+
+
+@dataclass(frozen=True)
+class MergeCandidateSet:
+    """Merge candidates for one target."""
+
+    candidates: tuple[MergeCandidate, ...]
 
 
 class RegionKind(Enum):

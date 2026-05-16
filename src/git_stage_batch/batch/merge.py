@@ -1859,6 +1859,16 @@ def _boundary_choices_after_source_line(
     return tuple(index + 1 for index in matching_indices)
 
 
+def _absence_ambiguity_key(
+    claim_index: int,
+    anchor_line: int | None,
+    forbidden_sequence: Sequence[bytes],
+) -> str:
+    anchor = "start" if anchor_line is None else str(anchor_line)
+    digest = hashlib.sha256(b"".join(forbidden_sequence)).hexdigest()[:12]
+    return f"absence:{claim_index}:{anchor}:{digest}"
+
+
 def _presence_ambiguity_key(
     run_start: int,
     run_end: int,

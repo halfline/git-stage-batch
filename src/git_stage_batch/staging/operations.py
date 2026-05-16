@@ -427,7 +427,7 @@ def build_target_working_tree_buffer_from_lines(
 def build_target_working_tree_buffer_with_replaced_lines(
     line_changes: LineLevelChange,
     replace_ids: set[int],
-    replacement_text: str,
+    replacement_text: str | ReplacementPayload,
     working_lines: Sequence[bytes],
     *,
     working_has_trailing_newline: bool,
@@ -473,8 +473,8 @@ def build_target_working_tree_buffer_with_replaced_lines(
         raise ValueError("Replacement selection must be one contiguous line range")
 
     working_line_count = len(working_lines)
-    replacement_bytes = replacement_text.encode("utf-8", errors="surrogateescape")
-    replacement_lines = replacement_bytes.splitlines()
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    replacement_lines = replacement_line_bodies(replacement_payload)
     selected_indices = [
         index
         for index, line in enumerate(line_changes.lines)
@@ -561,10 +561,14 @@ def build_target_working_tree_buffer_with_replaced_lines(
                 "or pass --no-edge-overlap to keep the edge-overlap text."
             )
 
-    trailing_newline = (
-        replacement_text.endswith("\n")
-        or working_has_trailing_newline
-    )
+    if replacement_payload.exact:
+        trailing_newline = (
+            replacement_payload.has_trailing_lf
+            if replace_end == working_line_count
+            else working_has_trailing_newline
+        )
+    else:
+        trailing_newline = replacement_payload.has_trailing_lf or working_has_trailing_newline
     return edit_lines_as_buffer(
         working_lines,
         replacement_lines,

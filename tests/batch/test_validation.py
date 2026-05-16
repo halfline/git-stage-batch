@@ -62,6 +62,13 @@ def test_validate_batch_name_with_dotdot(temp_git_repo):
     assert "cannot contain" in exc_info.value.message
 
 
+def test_validate_batch_name_with_colon(temp_git_repo):
+    """Test that batch name with colon fails validation."""
+    with pytest.raises(CommandError) as exc_info:
+        validate_batch_name("cleanup:apply")
+    assert "cannot contain" in exc_info.value.message
+
+
 def test_validate_batch_name_with_space(temp_git_repo):
     """Test that batch name with space fails validation."""
     with pytest.raises(CommandError) as exc_info:

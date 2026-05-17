@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from contextlib import nullcontext
 
@@ -38,6 +39,19 @@ def main() -> None:
         if e.message:
             print(e.message, file=sys.stderr)
         sys.exit(e.exit_code)
+    except subprocess.CalledProcessError as e:
+        if e.stderr:
+            print(e.stderr.rstrip(), file=sys.stderr)
+        else:
+            command = " ".join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
+            print(
+                _("Command failed with exit status {status}: {command}").format(
+                    status=e.returncode,
+                    command=command,
+                ),
+                file=sys.stderr,
+            )
+        sys.exit(e.returncode)
     except KeyboardInterrupt:
         print(_("Interrupted."), file=sys.stderr)
         sys.exit(130)

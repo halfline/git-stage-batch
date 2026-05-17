@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: git-stage-batch\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-16 11:12-0400\n"
-"PO-Revision-Date: 2026-05-16 11:30-0400\n"
+"POT-Creation-Date: 2026-05-16 20:12-0400\n"
+"PO-Revision-Date: 2026-05-16 20:20-0400\n"
 "Last-Translator: Translation contributors\n"
 "Language-Team: Japanese\n"
 "Language: ja\n"
@@ -24,135 +24,135 @@ msgid "... {count} more line ..."
 msgid_plural "... {count} more lines ..."
 msgstr[0] "... {count} more 行 ..."
 
-#: src/git_stage_batch/batch/merge.py:945
+#: src/git_stage_batch/batch/merge.py:946
 #, python-brace-format
 msgid "Cannot reliably place claimed line {line}: file completely rewritten"
 msgstr "できません reliably place 要求された行 {line}: ファイル completely rewritten"
 
-#: src/git_stage_batch/batch/merge.py:953
+#: src/git_stage_batch/batch/merge.py:954
 #, python-brace-format
 msgid "Claimed line {line} is out of range (batch source has {count} lines)"
 msgstr "要求された行 {line} is out of range (バッチソース has {count} 行)"
 
-#: src/git_stage_batch/batch/merge.py:975
+#: src/git_stage_batch/batch/merge.py:976
 #, python-brace-format
 msgid "Cannot reliably place claimed line {line}: surrounding context lost"
 msgstr "できません reliably place 要求された行 {line}: surrounding context lost"
 
-#: src/git_stage_batch/batch/merge.py:986
+#: src/git_stage_batch/batch/merge.py:987
 #, python-brace-format
 msgid "Deletion after line {line} is out of range"
 msgstr "Deletion after 行 {line} is out of range"
 
-#: src/git_stage_batch/batch/merge.py:998
+#: src/git_stage_batch/batch/merge.py:999
 #, python-brace-format
 msgid ""
-"Cannot determine deletion position after line {line}: anchor and neighbors "
-"missing"
+"Cannot determine deletion position after line {line}: anchor and neighbors"
+" missing"
 msgstr ""
 "できません determine deletion position after 行 {line}: anchor and neighbors "
 "missing"
 
-#: src/git_stage_batch/batch/merge.py:1067
-#: src/git_stage_batch/batch/merge.py:2287
-#: src/git_stage_batch/batch/merge.py:2938
+#: src/git_stage_batch/batch/merge.py:1068
+#: src/git_stage_batch/batch/merge.py:2304
+#: src/git_stage_batch/batch/merge.py:2960
 msgid "Batch was created from a different version of the file"
 msgstr "バッチ was created from a different version of the ファイル"
 
-#: src/git_stage_batch/batch/merge.py:1529
-#: src/git_stage_batch/batch/merge.py:2112
+#: src/git_stage_batch/batch/merge.py:1530
+#: src/git_stage_batch/batch/merge.py:2129
 msgid "Selected merge resolution is no longer valid"
 msgstr "選択したマージ解決はもう有効ではありません"
 
-#: src/git_stage_batch/batch/merge.py:1773
+#: src/git_stage_batch/batch/merge.py:1774
 #, python-brace-format
 msgid "Cannot satisfy claimed line {line}: removed by absence constraints"
 msgstr "できません satisfy 要求された行 {line}: removed by absence constraints"
 
-#: src/git_stage_batch/batch/merge.py:1876
-#: src/git_stage_batch/batch/merge.py:1922
+#: src/git_stage_batch/batch/merge.py:1877
+#: src/git_stage_batch/batch/merge.py:1923
 #, python-brace-format
 msgid ""
-"Cannot locate anchor boundary after source line {line}: anchor not present "
-"in realized content"
+"Cannot locate anchor boundary after source line {line}: anchor not present"
+" in realized content"
 msgstr ""
 "できません locate anchor boundary after ソース行 {line}: anchor not present in "
 "realized content"
 
-#: src/git_stage_batch/batch/merge.py:1885
+#: src/git_stage_batch/batch/merge.py:1886
 #, python-brace-format
 msgid ""
 "Anchor ambiguity: source line {line} appears {count} times in realized "
 "content but none are claimed"
 msgstr ""
-"Anchor ambiguity: ソース行 {line} appears {count} times in realized content but "
-"none are claimed"
+"Anchor ambiguity: ソース行 {line} appears {count} times in realized content "
+"but none are claimed"
 
-#: src/git_stage_batch/batch/merge.py:1891
+#: src/git_stage_batch/batch/merge.py:1892
 #, python-brace-format
 msgid "Anchor ambiguity: source line {line} claimed {count} times"
 msgstr "Anchor ambiguity: ソース行 {line} claimed {count} times"
 
-#: src/git_stage_batch/batch/merge.py:2055
+#: src/git_stage_batch/batch/merge.py:2072
 msgid "deletion content appears at the anchored boundary"
 msgstr "削除内容がアンカーされた境界にあります"
 
-#: src/git_stage_batch/batch/merge.py:2060
+#: src/git_stage_batch/batch/merge.py:2077
 msgid ""
 "deletion content appears after claimed insertions at the anchored boundary"
 msgstr "削除内容がアンカーされた境界の要求済み挿入の後にあります"
 
-#: src/git_stage_batch/batch/merge.py:2071
+#: src/git_stage_batch/batch/merge.py:2088
 msgid "deletion content appears nearby"
 msgstr "削除内容が近くにあります"
 
-#: src/git_stage_batch/batch/merge.py:2102
+#: src/git_stage_batch/batch/merge.py:2119
 #, python-brace-format
 msgid "Missing merge resolution for {key}"
 msgstr "{key} のマージ解決がありません"
 
-#: src/git_stage_batch/batch/merge.py:2886
-#: src/git_stage_batch/batch/merge.py:2981
+#: src/git_stage_batch/batch/merge.py:2903
+#: src/git_stage_batch/batch/merge.py:3003
 msgid "Too many merge candidates to preview safely"
 msgstr "安全にプレビューするにはマージ候補が多すぎます"
 
-#: src/git_stage_batch/batch/merge.py:2907
+#: src/git_stage_batch/batch/merge.py:2928
 #, python-brace-format
 msgid ""
-"insert source lines {start}-{end} after target line {after}, before target "
-"line {before}"
+"insert source lines {start}-{end} after target line {after}, before target"
+" line {before}"
 msgstr "ソース行 {start}-{end} を対象行 {after} の後、対象行 {before} の前に挿入します"
 
-#: src/git_stage_batch/batch/merge.py:2929
+#: src/git_stage_batch/batch/merge.py:2950
 msgid "surrounding source context has multiple compatible placements"
 msgstr "周辺のソースコンテキストに互換性のある配置が複数あります"
 
-#: src/git_stage_batch/batch/merge.py:3009
+#: src/git_stage_batch/batch/merge.py:3035
 #, python-brace-format
 msgid "delete target lines {start}-{end}"
 msgstr "対象行 {start}-{end} を削除"
 
-#: src/git_stage_batch/batch/merge.py:3014
+#: src/git_stage_batch/batch/merge.py:3040
 #, python-brace-format
 msgid "delete target line {line}"
 msgstr "対象行 {line} を削除"
 
-#: src/git_stage_batch/batch/merge.py:3035
+#: src/git_stage_batch/batch/merge.py:3061
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "削除アンカーに互換性のある対象配置が複数あります"
 
-#: src/git_stage_batch/batch/merge.py:3496
+#: src/git_stage_batch/batch/merge.py:3523
 #, python-brace-format
 msgid ""
 "Cannot discard source line {line}: no baseline restoration region found"
 msgstr "できません discard ソース行 {line}: no base行 restoration region found"
 
-#: src/git_stage_batch/batch/merge.py:3513
+#: src/git_stage_batch/batch/merge.py:3540
 #, python-brace-format
 msgid "Source line {line} offset {offset} outside region bounds"
 msgstr "ソース行 {line} offset {offset} outside region bounds"
 
-#: src/git_stage_batch/batch/merge.py:3534
+#: src/git_stage_batch/batch/merge.py:3561
 #, python-brace-format
 msgid ""
 "Cannot discard partial ownership of by-hunk replace region (source lines "
@@ -161,7 +161,7 @@ msgstr ""
 "できません discard partial ownership of by-hunk replace region (ソース行s "
 "{start}-{end}): バッチ owns {owned} of {total} 行"
 
-#: src/git_stage_batch/batch/merge.py:3554
+#: src/git_stage_batch/batch/merge.py:3581
 #, python-brace-format
 msgid "Unknown region kind: {kind}"
 msgstr "不明 region kind: {kind}"
@@ -179,7 +179,8 @@ msgstr ""
 
 #: src/git_stage_batch/batch/metadata_validation.py:40
 #, python-brace-format
-msgid "The git-stage-batch metadata path exists but is not a directory: {dir}"
+msgid ""
+"The git-stage-batch metadata path exists but is not a directory: {dir}"
 msgstr "The git-stage-バッチ メタデータ path exists but is not a directory: {dir}"
 
 #: src/git_stage_batch/batch/metadata_validation.py:76
@@ -281,13 +282,13 @@ msgstr "バッチ '{name}' は既に存在します"
 
 #: src/git_stage_batch/batch/operations.py:64
 #: src/git_stage_batch/batch/operations.py:80
-#: src/git_stage_batch/cli/argument_parser.py:498
-#: src/git_stage_batch/cli/argument_parser.py:730
+#: src/git_stage_batch/cli/argument_parser.py:605
+#: src/git_stage_batch/cli/argument_parser.py:841
 #: src/git_stage_batch/commands/apply_from.py:423
 #: src/git_stage_batch/commands/discard_from.py:156
 #: src/git_stage_batch/commands/include_from.py:569
 #: src/git_stage_batch/commands/reset.py:107
-#: src/git_stage_batch/commands/show_from.py:845
+#: src/git_stage_batch/commands/show_from.py:1280
 #: src/git_stage_batch/commands/sift.py:193
 #, python-brace-format
 msgid "Batch '{name}' does not exist"
@@ -343,7 +344,7 @@ msgid "No selected hunk. Run 'show' first or specify file path."
 msgstr "No selected hunk. Run 'show' first or specify ファイル path."
 
 #: src/git_stage_batch/batch/selection.py:156
-#: src/git_stage_batch/cli/argument_parser.py:504
+#: src/git_stage_batch/cli/argument_parser.py:615
 #, python-brace-format
 msgid "No files in batch '{name}' matched: {patterns}"
 msgstr "No ファイル in バッチ '{name}' matched: {patterns}"
@@ -389,23 +390,24 @@ msgstr "失敗しました {operation} バッチ '{name}': {error}"
 
 #: src/git_stage_batch/batch/selection.py:398
 #: src/git_stage_batch/commands/reset.py:281
-#: src/git_stage_batch/commands/show_from.py:1067
+#: src/git_stage_batch/commands/show_from.py:1504
 #, python-brace-format
 msgid ""
 "Line ID {id} is not available for this action. Select one of the numbered "
 "lines shown for this batch file."
 msgstr ""
-"Line ID {id} is not available for this action. Select one of the numbered 行 "
-"shown for this バッチ ファイル."
+"Line ID {id} is not available for this action. Select one of the numbered "
+"行 shown for this バッチ ファイル."
 
 #: src/git_stage_batch/batch/source_selector.py:37
 #, python-brace-format
 msgid ""
-"Invalid batch selector '{selector}'. Candidate selectors use 'BATCH:apply', "
-"'BATCH:apply:N', 'BATCH:include', or 'BATCH:include:N'."
+"Invalid batch selector '{selector}'. Candidate selectors use "
+"'BATCH:apply', 'BATCH:apply:N', 'BATCH:include', or 'BATCH:include:N'."
 msgstr ""
 "無効なバッチセレクター '{selector}' です。候補セレクターは "
-"'BATCH:apply'、'BATCH:apply:N'、'BATCH:include'、または 'BATCH:include:N' を使用します。"
+"'BATCH:apply'、'BATCH:apply:N'、'BATCH:include'、または 'BATCH:include:N' "
+"を使用します。"
 
 #: src/git_stage_batch/batch/source_selector.py:86
 #, python-brace-format
@@ -504,156 +506,158 @@ msgstr "バッチ名に次の文字は使用できません: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "バッチ名を '.' で始めることはできません"
 
-#: src/git_stage_batch/cli/argument_parser.py:246
+#: src/git_stage_batch/cli/argument_parser.py:249
 msgid "Resolve one or more gitignore-style PATTERNs to files."
 msgstr "Resolve one or more gitignore-style PATTERNs to ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:258
+#: src/git_stage_batch/cli/argument_parser.py:261
 msgid "Select the next hunk after the command completes"
 msgstr "コマンド完了後に次のハンクを選択する"
 
-#: src/git_stage_batch/cli/argument_parser.py:264
+#: src/git_stage_batch/cli/argument_parser.py:267
 msgid "Leave no hunk selected after the command completes"
 msgstr "コマンド完了後にハンクを選択したままにしない"
 
-#: src/git_stage_batch/cli/argument_parser.py:274
+#: src/git_stage_batch/cli/argument_parser.py:316
 msgid "Cannot use --file together with --files."
 msgstr "使用できません --file together with --files."
 
-#: src/git_stage_batch/cli/argument_parser.py:287
-#: src/git_stage_batch/cli/argument_parser.py:759
-#: src/git_stage_batch/cli/argument_parser.py:781
-#: src/git_stage_batch/cli/argument_parser.py:890
-#: src/git_stage_batch/cli/argument_parser.py:901
-#: src/git_stage_batch/cli/argument_parser.py:961
-#: src/git_stage_batch/cli/argument_parser.py:1009
-#: src/git_stage_batch/cli/argument_parser.py:1097
-#: src/git_stage_batch/cli/argument_parser.py:1166
+#: src/git_stage_batch/cli/argument_parser.py:390
+#: src/git_stage_batch/cli/argument_parser.py:870
+#: src/git_stage_batch/cli/argument_parser.py:892
+#: src/git_stage_batch/cli/argument_parser.py:1001
+#: src/git_stage_batch/cli/argument_parser.py:1012
+#: src/git_stage_batch/cli/argument_parser.py:1072
+#: src/git_stage_batch/cli/argument_parser.py:1120
+#: src/git_stage_batch/cli/argument_parser.py:1208
+#: src/git_stage_batch/cli/argument_parser.py:1277
 msgid "Cannot use --lines with multiple files."
 msgstr "使用できません --lines 複数のファイルでは."
 
-#: src/git_stage_batch/cli/argument_parser.py:345
+#: src/git_stage_batch/cli/argument_parser.py:448
 msgid "No hunks staged from matched files."
 msgstr "No hunks staged from matched ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:354
-#: src/git_stage_batch/cli/argument_parser.py:401
-#: src/git_stage_batch/cli/argument_parser.py:450
+#: src/git_stage_batch/cli/argument_parser.py:457
+#: src/git_stage_batch/cli/argument_parser.py:504
+#: src/git_stage_batch/cli/argument_parser.py:553
 #, python-brace-format
 msgid "{count} file"
 msgid_plural "{count} files"
 msgstr[0] "{count} ファイル"
 
-#: src/git_stage_batch/cli/argument_parser.py:361
+#: src/git_stage_batch/cli/argument_parser.py:464
 #, python-brace-format
 msgid "✓ Staged {count} hunk from {files}"
 msgid_plural "✓ Staged {count} hunks from {files}"
 msgstr[0] "✓ Staged {count} hunk from {files}"
 
-#: src/git_stage_batch/cli/argument_parser.py:392
+#: src/git_stage_batch/cli/argument_parser.py:495
 msgid "No hunks skipped from matched files."
 msgstr "No hunks skipped from matched ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:408
+#: src/git_stage_batch/cli/argument_parser.py:511
 #, python-brace-format
 msgid "✓ Skipped {count} hunk from {files}"
 msgid_plural "✓ Skipped {count} hunks from {files}"
 msgstr[0] "✓ Skipped {count} hunk from {files}"
 
-#: src/git_stage_batch/cli/argument_parser.py:441
+#: src/git_stage_batch/cli/argument_parser.py:544
 msgid "No hunks saved to batch from matched files."
 msgstr "No hunks saved to バッチ from matched ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:457
+#: src/git_stage_batch/cli/argument_parser.py:560
 #, python-brace-format
-msgid "✓ Saved {count} hunk from {files} to batch '{batch}' and discarded it"
+msgid ""
+"✓ Saved {count} hunk from {files} to batch '{batch}' and discarded it"
 msgid_plural ""
 "✓ Saved {count} hunks from {files} to batch '{batch}' and discarded them"
 msgstr[0] ""
 "✓ Saved {count} hunk from {files} to バッチ '{batch}' and discarded it"
 
-#: src/git_stage_batch/cli/argument_parser.py:480
+#: src/git_stage_batch/cli/argument_parser.py:587
 #, python-brace-format
 msgid "No changed files matched: {patterns}"
 msgstr "No changed ファイル matched: {patterns}"
 
-#: src/git_stage_batch/cli/argument_parser.py:515
-#: src/git_stage_batch/cli/argument_parser.py:721
-#: src/git_stage_batch/cli/argument_parser.py:885
-#: src/git_stage_batch/cli/argument_parser.py:1094
+#: src/git_stage_batch/cli/argument_parser.py:626
+#: src/git_stage_batch/cli/argument_parser.py:832
+#: src/git_stage_batch/cli/argument_parser.py:996
+#: src/git_stage_batch/cli/argument_parser.py:1205
 msgid "Cannot use `--as` and `--as-stdin` together."
 msgstr "使用できません `--as` and `--as-stdin` together."
 
-#: src/git_stage_batch/cli/argument_parser.py:561
+#: src/git_stage_batch/cli/argument_parser.py:672
 msgid "Hunk-by-hunk and line-by-line staging for git"
 msgstr "Gitのハンク単位および行単位のステージング"
 
-#: src/git_stage_batch/cli/argument_parser.py:575
+#: src/git_stage_batch/cli/argument_parser.py:686
 msgid "Run as if started in path"
 msgstr "指定パスで開始されたものとして実行"
 
-#: src/git_stage_batch/cli/argument_parser.py:581
+#: src/git_stage_batch/cli/argument_parser.py:692
 msgid "Start interactive mode"
 msgstr "対話モードを開始"
 
-#: src/git_stage_batch/cli/argument_parser.py:586
+#: src/git_stage_batch/cli/argument_parser.py:697
 msgid "Available commands"
 msgstr "利用可能なコマンド"
 
-#: src/git_stage_batch/cli/argument_parser.py:593
+#: src/git_stage_batch/cli/argument_parser.py:704
 msgid "Start a new batch staging session"
 msgstr "新しいバッチステージングセッションを開始"
 
-#: src/git_stage_batch/cli/argument_parser.py:601
+#: src/git_stage_batch/cli/argument_parser.py:712
 msgid "Number of context lines in diff output (default: 3)"
 msgstr "diff出力のコンテキスト行数（デフォルト: 3）"
 
-#: src/git_stage_batch/cli/argument_parser.py:615
+#: src/git_stage_batch/cli/argument_parser.py:726
 msgid "Start interactive hunk-by-hunk mode"
 msgstr "対話型ハンク単位モードを開始"
 
-#: src/git_stage_batch/cli/argument_parser.py:623
+#: src/git_stage_batch/cli/argument_parser.py:734
 msgid "Stop the selected session and clear state"
 msgstr "現在のセッションを停止して状態をクリア"
 
-#: src/git_stage_batch/cli/argument_parser.py:632
+#: src/git_stage_batch/cli/argument_parser.py:743
 msgid "Clear state and start a fresh pass"
 msgstr "状態をクリアして新しいパスを開始"
 
-#: src/git_stage_batch/cli/argument_parser.py:644
+#: src/git_stage_batch/cli/argument_parser.py:755
 msgid "Undo the most recent undoable session operation"
 msgstr "取り消し可能な最新のセッション操作を取り消す"
 
-#: src/git_stage_batch/cli/argument_parser.py:649
+#: src/git_stage_batch/cli/argument_parser.py:760
 msgid "Overwrite changes made after the undo checkpoint"
 msgstr "取り消しチェックポイント後に行われた変更を上書きする"
 
-#: src/git_stage_batch/cli/argument_parser.py:658
+#: src/git_stage_batch/cli/argument_parser.py:769
 msgid "Redo the most recently undone session operation"
 msgstr "直近で取り消したセッション操作をやり直す"
 
-#: src/git_stage_batch/cli/argument_parser.py:663
+#: src/git_stage_batch/cli/argument_parser.py:774
 msgid "Overwrite changes made after the undo"
 msgstr "取り消し後に行われた変更を上書きする"
 
-#: src/git_stage_batch/cli/argument_parser.py:671
+#: src/git_stage_batch/cli/argument_parser.py:782
 msgid "Show the selected hunk"
 msgstr "現在のハンクを表示"
 
-#: src/git_stage_batch/cli/argument_parser.py:677
+#: src/git_stage_batch/cli/argument_parser.py:788
 msgid "Show changes from batch"
 msgstr "バッチからの変更を表示"
 
-#: src/git_stage_batch/cli/argument_parser.py:684
+#: src/git_stage_batch/cli/argument_parser.py:795
 msgid "Show only specific line IDs (e.g., '1,3,5-7')"
 msgstr "Show only specific 行ID (e.g., '1,3,5-7')"
 
-#: src/git_stage_batch/cli/argument_parser.py:691
+#: src/git_stage_batch/cli/argument_parser.py:802
 msgid ""
-"Show page selection for a file review, e.g. '3', '3-5', '1,3,5-7', or 'all'."
+"Show page selection for a file review, e.g. '3', '3-5', '1,3,5-7', or "
+"'all'."
 msgstr "Show ページ 選択 for a ファイルレビュー, e.g. '3', '3-5', '1,3,5-7', or 'all'."
 
-#: src/git_stage_batch/cli/argument_parser.py:695
+#: src/git_stage_batch/cli/argument_parser.py:806
 msgid ""
 "Operate on entire file (live working tree state). If PATH omitted, uses "
 "selected hunk's file. With --line, operates on line IDs from entire file."
@@ -661,24 +665,24 @@ msgstr ""
 "Operate on entire ファイル (live 作業ツリー state). If PATH omitted, uses selected "
 "hunk's ファイル. With --行, operates on 行ID from entire ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:702
-#: src/git_stage_batch/cli/argument_parser.py:805
+#: src/git_stage_batch/cli/argument_parser.py:813
+#: src/git_stage_batch/cli/argument_parser.py:916
 msgid "Output JSON for scripting instead of human-readable text"
 msgstr "人間向けのテキストではなく、スクリプト用に JSON を出力"
 
-#: src/git_stage_batch/cli/argument_parser.py:708
+#: src/git_stage_batch/cli/argument_parser.py:819
 msgid "Preview selected batch lines as replacement text"
 msgstr "選択したバッチ行を置換テキストとしてプレビュー"
 
-#: src/git_stage_batch/cli/argument_parser.py:714
+#: src/git_stage_batch/cli/argument_parser.py:825
 msgid "Read replacement preview text from standard input exactly"
 msgstr "置換プレビューテキストを標準入力からそのまま読み取る"
 
-#: src/git_stage_batch/cli/argument_parser.py:719
+#: src/git_stage_batch/cli/argument_parser.py:830
 msgid "`show --as` requires `--from`."
 msgstr "`show --as` には `--from` が必要です。"
 
-#: src/git_stage_batch/cli/argument_parser.py:740
+#: src/git_stage_batch/cli/argument_parser.py:851
 msgid ""
 "`show --page` requires `--file` or a single-file `--files` match, unless "
 "`--from` names a single-file batch."
@@ -686,67 +690,68 @@ msgstr ""
 "`show --page` requires `--file` or a single-ファイル `--files` match, unless "
 "`--from` names a single-ファイル バッチ."
 
-#: src/git_stage_batch/cli/argument_parser.py:745
+#: src/git_stage_batch/cli/argument_parser.py:856
 msgid "`show --page` requires exactly one resolved file."
 msgstr "`show --page` requires exactly one resolved ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:747
+#: src/git_stage_batch/cli/argument_parser.py:858
 msgid "Cannot use `show --page` together with `show --line`."
 msgstr "使用できません `show --page` together with `show --line`."
 
-#: src/git_stage_batch/cli/argument_parser.py:749
+#: src/git_stage_batch/cli/argument_parser.py:860
 msgid "Cannot use `show --page` with `--porcelain`."
 msgstr "使用できません `show --page` with `--porcelain`."
 
-#: src/git_stage_batch/cli/argument_parser.py:761
+#: src/git_stage_batch/cli/argument_parser.py:872
 msgid "`show --as` requires exactly one resolved file."
 msgstr "`show --as` には解決済みファイルが 1 つだけ必要です。"
 
-#: src/git_stage_batch/cli/argument_parser.py:778
+#: src/git_stage_batch/cli/argument_parser.py:889
 msgid "Cannot use --porcelain with multiple files."
 msgstr "使用できません --porcelain 複数のファイルでは."
 
-#: src/git_stage_batch/cli/argument_parser.py:799
+#: src/git_stage_batch/cli/argument_parser.py:910
 msgid "Show selected session status"
 msgstr "現在のセッション状態を表示"
 
-#: src/git_stage_batch/cli/argument_parser.py:813
+#: src/git_stage_batch/cli/argument_parser.py:924
 msgid "Print FORMAT only when a session is active, for shell prompts"
 msgstr "シェルプロンプト用に、セッションがアクティブな場合だけ FORMAT を出力する"
 
-#: src/git_stage_batch/cli/argument_parser.py:827
+#: src/git_stage_batch/cli/argument_parser.py:938
 msgid "Stage the selected hunk"
 msgstr "現在のハンクをステージング"
 
-#: src/git_stage_batch/cli/argument_parser.py:834
+#: src/git_stage_batch/cli/argument_parser.py:945
 msgid "Stage only specific line IDs (e.g., '1,3,5-7')"
 msgstr "特定の行IDのみをステージング（例: '1,3,5-7'）"
 
-#: src/git_stage_batch/cli/argument_parser.py:838
+#: src/git_stage_batch/cli/argument_parser.py:949
 msgid ""
 "Operate on entire file (live working tree state). If PATH omitted, uses "
 "selected hunk's file. Without --line, stages entire file. With --line, "
 "operates on line IDs from entire file."
 msgstr ""
 "Operate on entire ファイル (live 作業ツリー state). If PATH omitted, uses selected "
-"hunk's ファイル. Without --行, stages entire ファイル. With --行, operates on 行ID from"
-" entire ファイル."
+"hunk's ファイル. Without --行, stages entire ファイル. With --行, operates on 行ID "
+"from entire ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:847
+#: src/git_stage_batch/cli/argument_parser.py:958
 msgid "Include changes from batch"
 msgstr "バッチから変更を含める"
 
-#: src/git_stage_batch/cli/argument_parser.py:853
+#: src/git_stage_batch/cli/argument_parser.py:964
 msgid "Include changes to batch"
 msgstr "バッチに変更を含める"
 
-#: src/git_stage_batch/cli/argument_parser.py:859
+#: src/git_stage_batch/cli/argument_parser.py:970
 msgid ""
-"Replace selected lines, or full file with --file, using TEXT before staging"
+"Replace selected lines, or full file with --file, using TEXT before "
+"staging"
 msgstr "Replace 選択済み 行, or full ファイル with --file, using TEXT before staging"
 
-#: src/git_stage_batch/cli/argument_parser.py:865
-#: src/git_stage_batch/cli/argument_parser.py:1074
+#: src/git_stage_batch/cli/argument_parser.py:976
+#: src/git_stage_batch/cli/argument_parser.py:1185
 msgid ""
 "Read replacement text from standard input exactly, preserving trailing "
 "newlines"
@@ -754,46 +759,46 @@ msgstr ""
 "Read replacement text from standard input exactly, preserving trailing "
 "newlines"
 
-#: src/git_stage_batch/cli/argument_parser.py:871
-#: src/git_stage_batch/cli/argument_parser.py:1080
+#: src/git_stage_batch/cli/argument_parser.py:982
+#: src/git_stage_batch/cli/argument_parser.py:1191
 msgid ""
 "Do not strip unchanged edge-overlap lines from replacement text used with "
 "--as"
 msgstr ""
 "Do not strip unchanged edge-overlap 行 from replacement text used with --as"
 
-#: src/git_stage_batch/cli/argument_parser.py:888
+#: src/git_stage_batch/cli/argument_parser.py:999
 msgid ""
 "`--no-edge-overlap` only applies to live `include --line --as` operations."
 msgstr ""
 "`--no-edge-overlap` only applies to live `include --line --as` operations."
 
-#: src/git_stage_batch/cli/argument_parser.py:919
-#: src/git_stage_batch/cli/argument_parser.py:933
+#: src/git_stage_batch/cli/argument_parser.py:1030
+#: src/git_stage_batch/cli/argument_parser.py:1044
 msgid ""
 "`include --as` requires `--file` or `--line` and does not support `--to`."
 msgstr ""
 "`include --as` requires `--file` or `--line` and does not support `--to`."
 
-#: src/git_stage_batch/cli/argument_parser.py:922
-#: src/git_stage_batch/cli/argument_parser.py:936
+#: src/git_stage_batch/cli/argument_parser.py:1033
+#: src/git_stage_batch/cli/argument_parser.py:1047
 msgid "`--no-edge-overlap` requires `include --line --as`."
 msgstr "`--no-edge-overlap` requires `include --line --as`."
 
-#: src/git_stage_batch/cli/argument_parser.py:924
-#: src/git_stage_batch/cli/argument_parser.py:1121
+#: src/git_stage_batch/cli/argument_parser.py:1035
+#: src/git_stage_batch/cli/argument_parser.py:1232
 msgid "Cannot use --as with multiple files."
 msgstr "使用できません --as 複数のファイルでは."
 
-#: src/git_stage_batch/cli/argument_parser.py:989
+#: src/git_stage_batch/cli/argument_parser.py:1100
 msgid "Skip the selected hunk without staging"
 msgstr "現在のハンクをステージングせずにスキップ"
 
-#: src/git_stage_batch/cli/argument_parser.py:996
+#: src/git_stage_batch/cli/argument_parser.py:1107
 msgid "Skip only specific line IDs (e.g., '1,3,5-7')"
 msgstr "特定の行IDのみをスキップ（例: '1,3,5-7'）"
 
-#: src/git_stage_batch/cli/argument_parser.py:1000
+#: src/git_stage_batch/cli/argument_parser.py:1111
 msgid ""
 "Operate on entire file (live working tree state). If PATH omitted, uses "
 "selected hunk's file. Without --line, skips all hunks from the file."
@@ -801,15 +806,15 @@ msgstr ""
 "Operate on entire ファイル (live 作業ツリー state). If PATH omitted, uses selected "
 "hunk's ファイル. With --行, operates on 行ID from entire ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:1036
+#: src/git_stage_batch/cli/argument_parser.py:1147
 msgid "Remove the selected hunk from working tree"
 msgstr "作業ツリーから現在のハンクを削除"
 
-#: src/git_stage_batch/cli/argument_parser.py:1043
+#: src/git_stage_batch/cli/argument_parser.py:1154
 msgid "Discard only specific line IDs (e.g., '1,3,5-7')"
 msgstr "特定の行IDのみを破棄（例: '1,3,5-7'）"
 
-#: src/git_stage_batch/cli/argument_parser.py:1047
+#: src/git_stage_batch/cli/argument_parser.py:1158
 msgid ""
 "Operate on entire file (live working tree state). If PATH omitted, uses "
 "selected hunk's file. Without --line, discards entire file. With --line, "
@@ -819,171 +824,172 @@ msgstr ""
 "hunk's ファイル. Without --行, discards entire ファイル. With --行, operates on 行ID "
 "from entire ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:1056
+#: src/git_stage_batch/cli/argument_parser.py:1167
 msgid "Discard changes from batch"
 msgstr "バッチから変更を破棄"
 
-#: src/git_stage_batch/cli/argument_parser.py:1062
+#: src/git_stage_batch/cli/argument_parser.py:1173
 msgid "Discard changes to batch"
 msgstr "バッチに変更を破棄"
 
-#: src/git_stage_batch/cli/argument_parser.py:1068
+#: src/git_stage_batch/cli/argument_parser.py:1179
 msgid "Replace selected lines, or full file with --file, using TEXT"
 msgstr "Replace 選択済み 行, or full ファイル with --file, using TEXT"
 
-#: src/git_stage_batch/cli/argument_parser.py:1116
-#: src/git_stage_batch/cli/argument_parser.py:1130
+#: src/git_stage_batch/cli/argument_parser.py:1227
+#: src/git_stage_batch/cli/argument_parser.py:1241
 msgid "`discard --as` requires `--file`, or `--to` with `--line`."
 msgstr "`discard --as` requires `--file`, or `--to` with `--line`."
 
-#: src/git_stage_batch/cli/argument_parser.py:1119
-#: src/git_stage_batch/cli/argument_parser.py:1133
+#: src/git_stage_batch/cli/argument_parser.py:1230
+#: src/git_stage_batch/cli/argument_parser.py:1244
 msgid "`--no-edge-overlap` requires `discard --to --line --as`."
 msgstr "`--no-edge-overlap` requires `discard --to --line --as`."
 
-#: src/git_stage_batch/cli/argument_parser.py:1193
+#: src/git_stage_batch/cli/argument_parser.py:1304
 msgid "Restore repository to pre-session state"
 msgstr "リポジトリをセッション前の状態に復元"
 
-#: src/git_stage_batch/cli/argument_parser.py:1202
+#: src/git_stage_batch/cli/argument_parser.py:1313
 msgid "Permanently exclude a file (adds to .gitignore)"
 msgstr "ファイルを永久に除外（.gitignoreに追加）"
 
-#: src/git_stage_batch/cli/argument_parser.py:1208
+#: src/git_stage_batch/cli/argument_parser.py:1319
 msgid "Path to the file to block (defaults to selected hunk's file)"
 msgstr "ブロックするファイルへのパス (既定では選択中のハンクのファイル)"
 
-#: src/git_stage_batch/cli/argument_parser.py:1217
+#: src/git_stage_batch/cli/argument_parser.py:1328
 msgid "Remove a file from the blocked list"
 msgstr "ブロックリストからファイルを削除"
 
-#: src/git_stage_batch/cli/argument_parser.py:1221
+#: src/git_stage_batch/cli/argument_parser.py:1332
 msgid "Path to the file to unblock"
 msgstr "ブロック解除するファイルのパス"
 
-#: src/git_stage_batch/cli/argument_parser.py:1230
+#: src/git_stage_batch/cli/argument_parser.py:1341
 msgid "Suggest which commit the selected hunk should be fixed up to"
 msgstr "現在のハンクを修正すべきコミットを提案"
 
-#: src/git_stage_batch/cli/argument_parser.py:1237
+#: src/git_stage_batch/cli/argument_parser.py:1348
 msgid "Analyze only specific line IDs (e.g., '1,3,5-7')"
 msgstr "特定の行IDのみを分析（例: '1,3,5-7'）"
 
-#: src/git_stage_batch/cli/argument_parser.py:1242
+#: src/git_stage_batch/cli/argument_parser.py:1353
 msgid "Reset state and start search over from most recent"
 msgstr "状態をリセットして最新から検索を再開"
 
-#: src/git_stage_batch/cli/argument_parser.py:1247
+#: src/git_stage_batch/cli/argument_parser.py:1358
 msgid "Clear state and exit without showing candidates"
 msgstr "状態をクリアして候補を表示せずに終了"
 
-#: src/git_stage_batch/cli/argument_parser.py:1252
+#: src/git_stage_batch/cli/argument_parser.py:1363
 msgid "Re-show the last candidate without advancing"
 msgstr "進めずに最後の候補を再表示"
 
-#: src/git_stage_batch/cli/argument_parser.py:1258
+#: src/git_stage_batch/cli/argument_parser.py:1369
 #, python-brace-format
-msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
+msgid ""
+"Git ref to use as lower bound for commit search (default: @{upstream})"
 msgstr "コミット検索の下限として使用するGit参照（デフォルト: @{upstream}）"
 
-#: src/git_stage_batch/cli/argument_parser.py:1280
+#: src/git_stage_batch/cli/argument_parser.py:1391
 msgid "Create a new batch"
 msgstr "新しいバッチを作成"
 
-#: src/git_stage_batch/cli/argument_parser.py:1284
+#: src/git_stage_batch/cli/argument_parser.py:1395
 msgid "Name of the batch to create"
 msgstr "作成するバッチの名前"
 
-#: src/git_stage_batch/cli/argument_parser.py:1289
+#: src/git_stage_batch/cli/argument_parser.py:1400
 msgid "Optional description for the batch"
 msgstr "バッチのオプション説明"
 
-#: src/git_stage_batch/cli/argument_parser.py:1297
+#: src/git_stage_batch/cli/argument_parser.py:1408
 msgid "List all batches"
 msgstr "すべてのバッチを一覧表示"
 
-#: src/git_stage_batch/cli/argument_parser.py:1305
+#: src/git_stage_batch/cli/argument_parser.py:1416
 msgid "Delete a batch"
 msgstr "バッチを削除"
 
-#: src/git_stage_batch/cli/argument_parser.py:1309
+#: src/git_stage_batch/cli/argument_parser.py:1420
 msgid "Name of the batch to delete"
 msgstr "削除するバッチの名前"
 
-#: src/git_stage_batch/cli/argument_parser.py:1317
+#: src/git_stage_batch/cli/argument_parser.py:1428
 msgid "Add or update batch description"
 msgstr "バッチの説明を追加または更新"
 
-#: src/git_stage_batch/cli/argument_parser.py:1321
+#: src/git_stage_batch/cli/argument_parser.py:1432
 msgid "Name of the batch"
 msgstr "バッチ名"
 
-#: src/git_stage_batch/cli/argument_parser.py:1325
+#: src/git_stage_batch/cli/argument_parser.py:1436
 msgid "Description text"
 msgstr "説明テキスト"
 
-#: src/git_stage_batch/cli/argument_parser.py:1333
+#: src/git_stage_batch/cli/argument_parser.py:1444
 msgid "Apply batch changes to working tree"
 msgstr "バッチの変更を作業ツリーに適用"
 
-#: src/git_stage_batch/cli/argument_parser.py:1340
+#: src/git_stage_batch/cli/argument_parser.py:1451
 msgid "Apply changes from batch to working tree"
 msgstr "バッチから作業ツリーに変更を適用"
 
-#: src/git_stage_batch/cli/argument_parser.py:1347
+#: src/git_stage_batch/cli/argument_parser.py:1458
 msgid "Apply only specific line IDs (e.g., '1,3,5-7')"
 msgstr "Apply only specific 行ID (e.g., '1,3,5-7')"
 
-#: src/git_stage_batch/cli/argument_parser.py:1351
+#: src/git_stage_batch/cli/argument_parser.py:1462
 msgid ""
-"Operate on entire file from batch. If PATH omitted, uses first file in batch"
-" (sorted order). With --line, operates on line IDs from entire file."
+"Operate on entire file from batch. If PATH omitted, uses first file in "
+"batch (sorted order). With --line, operates on line IDs from entire file."
 msgstr ""
 "Operate on entire ファイル from バッチ. If PATH omitted, uses first ファイル in バッチ "
 "(sorted order). With --行, operates on 行ID from entire ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:1376
-#: src/git_stage_batch/cli/argument_parser.py:1383
+#: src/git_stage_batch/cli/argument_parser.py:1487
+#: src/git_stage_batch/cli/argument_parser.py:1494
 msgid "Remove claims from batch"
 msgstr "バッチからクレームを削除"
 
-#: src/git_stage_batch/cli/argument_parser.py:1389
+#: src/git_stage_batch/cli/argument_parser.py:1500
 msgid "Move reset claims to another batch"
 msgstr "Move reset claims to another バッチ"
 
-#: src/git_stage_batch/cli/argument_parser.py:1396
+#: src/git_stage_batch/cli/argument_parser.py:1507
 msgid "Reset only specific line IDs (e.g., '1,3,5-7')"
 msgstr "特定の行IDのみをリセット (例: '1,3,5-7')"
 
-#: src/git_stage_batch/cli/argument_parser.py:1400
+#: src/git_stage_batch/cli/argument_parser.py:1511
 msgid ""
 "Operate on entire file from batch. If PATH omitted, uses selected hunk's "
 "file. With --line, operates on line IDs from entire file."
 msgstr ""
-"Operate on entire ファイル from バッチ. If PATH omitted, uses selected hunk's ファイル."
-" With --行, operates on 行ID from entire ファイル."
+"Operate on entire ファイル from バッチ. If PATH omitted, uses selected hunk's "
+"ファイル. With --行, operates on 行ID from entire ファイル."
 
-#: src/git_stage_batch/cli/argument_parser.py:1431
+#: src/git_stage_batch/cli/argument_parser.py:1542
 msgid "Remove already-present portions from a batch"
 msgstr "Remove already-present portions from a バッチ"
 
-#: src/git_stage_batch/cli/argument_parser.py:1438
+#: src/git_stage_batch/cli/argument_parser.py:1549
 msgid "Source batch to sift"
 msgstr "ソース バッチ to sift"
 
-#: src/git_stage_batch/cli/argument_parser.py:1445
+#: src/git_stage_batch/cli/argument_parser.py:1556
 msgid "Destination batch (may equal source for in-place sift)"
 msgstr "宛先 バッチ (may equal ソース for in-place sift)"
 
-#: src/git_stage_batch/cli/argument_parser.py:1452
+#: src/git_stage_batch/cli/argument_parser.py:1563
 msgid "Install bundled assistant assets into the repository"
 msgstr "Install bundled assistant assets into the repository"
 
-#: src/git_stage_batch/cli/argument_parser.py:1458
+#: src/git_stage_batch/cli/argument_parser.py:1569
 msgid "Bundled asset group to install"
 msgstr "Bundled asset group to install"
 
-#: src/git_stage_batch/cli/argument_parser.py:1465
+#: src/git_stage_batch/cli/argument_parser.py:1576
 msgid ""
 "Install only bundled assets whose names match one or more gitignore-style "
 "PATTERNs"
@@ -991,7 +997,7 @@ msgstr ""
 "Install only bundled assets whose names match one or more gitignore-style "
 "PATTERNs"
 
-#: src/git_stage_batch/cli/argument_parser.py:1470
+#: src/git_stage_batch/cli/argument_parser.py:1581
 msgid "Overwrite an existing installed asset"
 msgstr "Overwrite an existing installed asset"
 
@@ -1077,8 +1083,8 @@ msgstr "候補の実行はテキストのバッチエントリでのみ利用で
 
 #: src/git_stage_batch/commands/apply_from.py:205
 #: src/git_stage_batch/commands/include_from.py:239
-#: src/git_stage_batch/commands/show_from.py:648
-#: src/git_stage_batch/commands/show_from.py:704
+#: src/git_stage_batch/commands/show_from.py:1083
+#: src/git_stage_batch/commands/show_from.py:1139
 #, python-brace-format
 msgid "Batch source content is missing for {file}."
 msgstr "{file} のバッチソース内容がありません。"
@@ -1086,8 +1092,8 @@ msgstr "{file} のバッチソース内容がありません。"
 #: src/git_stage_batch/commands/apply_from.py:248
 #, python-brace-format
 msgid ""
-"Batch '{batch}' has {count} apply candidates for {file}; candidate {ordinal}"
-" does not exist."
+"Batch '{batch}' has {count} apply candidates for {file}; candidate "
+"{ordinal} does not exist."
 msgstr "バッチ '{batch}' には {file} 用の適用候補が {count} 個あります。候補 {ordinal} は存在しません。"
 
 #: src/git_stage_batch/commands/apply_from.py:268
@@ -1108,8 +1114,18 @@ msgstr ""
 
 #: src/git_stage_batch/commands/apply_from.py:282
 #, python-brace-format
-msgid "Applying apply candidate {ordinal} of {count} for batch '{batch}':"
-msgstr "バッチ '{batch}' の適用候補 {ordinal}/{count} を適用しています:"
+msgid "Applying candidate {ordinal} of {count} from batch '{batch}':"
+msgstr "バッチ '{batch}' の候補 {ordinal}/{count} を適用しています:"
+
+#: src/git_stage_batch/commands/apply_from.py:289
+#: src/git_stage_batch/commands/include_from.py:361
+#: src/git_stage_batch/commands/show_from.py:716
+#: src/git_stage_batch/commands/show_from.py:815
+#: src/git_stage_batch/commands/show_from.py:929
+#: src/git_stage_batch/commands/show_from.py:998
+#: src/git_stage_batch/tui/flow.py:38
+msgid "Working tree"
+msgstr "作業ツリー"
 
 #: src/git_stage_batch/commands/apply_from.py:304
 #, python-brace-format
@@ -1140,7 +1156,7 @@ msgstr ""
 #: src/git_stage_batch/commands/apply_from.py:434
 #: src/git_stage_batch/commands/discard_from.py:167
 #: src/git_stage_batch/commands/include_from.py:580
-#: src/git_stage_batch/commands/show_from.py:1157
+#: src/git_stage_batch/commands/show_from.py:1594
 #, python-brace-format
 msgid "Batch '{name}' is empty"
 msgstr "バッチ '{name}' is empty"
@@ -1151,7 +1167,8 @@ msgstr ""
 "できません use --行 with バイナリファイルs. バイナリファイルs must be applied as complete units."
 
 #: src/git_stage_batch/commands/apply_from.py:452
-#: src/git_stage_batch/commands/show_from.py:575
+#: src/git_stage_batch/commands/show_from.py:932
+#: src/git_stage_batch/commands/show_from.py:1017
 msgid "Apply"
 msgstr "適用"
 
@@ -1257,9 +1274,9 @@ msgid ""
 "current working tree. Use 'git-stage-batch show --from {batch}' to review "
 "the batch, or use '--lines' to apply only specific changes."
 msgstr ""
-"バッチ '{batch}' contains 変更 to {file} that are incompatible with the current "
-"作業ツリー. Use 'git-stage-バッチ show --from {batch}' to review the バッチ, or use '--"
-"行' to apply only specific 変更."
+"バッチ '{batch}' contains 変更 to {file} that are incompatible with the current"
+" 作業ツリー. Use 'git-stage-バッチ show --from {batch}' to review the バッチ, or use "
+"'--行' to apply only specific 変更."
 
 #: src/git_stage_batch/commands/apply_from.py:685
 #: src/git_stage_batch/commands/apply_from.py:728
@@ -1271,17 +1288,17 @@ msgid ""
 "current working tree. Use 'git-stage-batch show --from {batch}' to review "
 "the batch."
 msgstr ""
-"バッチ '{batch}' contains 変更 to {file} that are incompatible with the current "
-"作業ツリー. Use 'git-stage-バッチ show --from {batch}' to review the バッチ."
+"バッチ '{batch}' contains 変更 to {file} that are incompatible with the current"
+" 作業ツリー. Use 'git-stage-バッチ show --from {batch}' to review the バッチ."
 
 #: src/git_stage_batch/commands/apply_from.py:693
 #: src/git_stage_batch/commands/include_from.py:923
 #, python-brace-format
 msgid ""
-"Batch '{batch}' contains changes to one or more files that are incompatible "
-"with the current working tree. Failed for: {files}. Use 'git-stage-batch "
-"show --from {batch}' to review the batch, or use '--lines' to apply only "
-"specific changes."
+"Batch '{batch}' contains changes to one or more files that are "
+"incompatible with the current working tree. Failed for: {files}. Use 'git-"
+"stage-batch show --from {batch}' to review the batch, or use '--lines' to "
+"apply only specific changes."
 msgstr ""
 "バッチ '{batch}' contains 変更 to one or more ファイルs that are incompatible with "
 "the current 作業ツリー. Failed for: {files}. Use 'git-stage-バッチ show --from "
@@ -1291,12 +1308,12 @@ msgstr ""
 #: src/git_stage_batch/commands/include_from.py:968
 #, python-brace-format
 msgid ""
-"Batch '{batch}' contains changes to one or more files that are incompatible "
-"with the current working tree. Use 'git-stage-batch show --from {batch}' to "
-"review the batch."
+"Batch '{batch}' contains changes to one or more files that are "
+"incompatible with the current working tree. Use 'git-stage-batch show "
+"--from {batch}' to review the batch."
 msgstr ""
-"バッチ '{batch}' には現在の作業ツリーと互換性のない変更が 1 つ以上のファイルに含まれています。バッチを確認するには 'git-stage-"
-"batch show --from {batch}' を使用してください。"
+"バッチ '{batch}' には現在の作業ツリーと互換性のない変更が 1 つ以上のファイルに含まれています。バッチを確認するには 'git-"
+"stage-batch show --from {batch}' を使用してください。"
 
 #: src/git_stage_batch/commands/apply_from.py:747
 #, python-brace-format
@@ -1319,7 +1336,8 @@ msgstr "ブロックしたファイル: {}"
 
 #: src/git_stage_batch/commands/discard.py:158
 #, python-brace-format
-msgid "Cannot discard submodule pointer for {file}: missing baseline commit."
+msgid ""
+"Cannot discard submodule pointer for {file}: missing baseline commit."
 msgstr "{file} のサブモジュールポインターを破棄できません: ベースラインコミットがありません。"
 
 #: src/git_stage_batch/commands/discard.py:233
@@ -1340,7 +1358,8 @@ msgstr "No 変更 in ファイル '{file}'."
 #: src/git_stage_batch/commands/discard.py:267
 #: src/git_stage_batch/data/hunk_tracking.py:2052
 msgid ""
-"Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
+"Cached hunk is stale (file was changed). Run 'start' or 'again' to "
+"continue."
 msgstr ""
 "キャッシュされたハンクが古くなっています（ファイルが変更されました）。続行するには 'start' または 'again' を実行してください。"
 
@@ -1403,7 +1422,8 @@ msgstr "✓ Discarded 行(s): {lines} from {file}"
 #: src/git_stage_batch/commands/discard.py:1511
 #: src/git_stage_batch/commands/discard.py:1859
 #: src/git_stage_batch/commands/discard.py:1915
-msgid "Discarding submodule pointer changes to a batch is not supported yet."
+msgid ""
+"Discarding submodule pointer changes to a batch is not supported yet."
 msgstr "サブモジュールポインターの変更をバッチへ破棄することはまだサポートされていません。"
 
 #: src/git_stage_batch/commands/discard.py:920
@@ -1548,7 +1568,8 @@ msgid "✓ Removed binary file (not in baseline): {file}"
 msgstr "✓ Removed バイナリファイル (not in base行): {file}"
 
 #: src/git_stage_batch/commands/discard_from.py:183
-msgid "Cannot use --lines with binary files. Discard the whole file instead."
+msgid ""
+"Cannot use --lines with binary files. Discard the whole file instead."
 msgstr ""
 "できません use --行 with バイナリファイルs. バイナリファイルs must be applied as complete units."
 
@@ -1712,13 +1733,14 @@ msgid ""
 "Contiguous line selections cannot split one replacement. Select --lines "
 "{lines} instead, pick individual lines one at a time, or use --as."
 msgstr ""
-"Contiguous 行 selections cannot split one replacement. Select --lines {lines}"
-" instead, pick individual 行 one at a time, or use --as."
+"Contiguous 行 selections cannot split one replacement. Select --lines "
+"{lines} instead, pick individual 行 one at a time, or use --as."
 
 #: src/git_stage_batch/commands/include.py:1106
 msgid ""
-"That line range crosses separate changes while selecting only part of one. "
-"Select one change at a time, include every line in the range, or use --as."
+"That line range crosses separate changes while selecting only part of one."
+" Select one change at a time, include every line in the range, or use "
+"--as."
 msgstr ""
 "That 行 range crosses separate 変更 while selecting only part of one. Select "
 "one 変更 at a time, 含める every 行 in the range, or use --as."
@@ -1828,12 +1850,22 @@ msgstr "✓ ハンクをバッチ '{name}' に保存しました"
 msgid ""
 "Batch '{batch}' has {count} include candidates for {file}; candidate "
 "{ordinal} does not exist."
-msgstr "バッチ '{batch}' には {file} 用の取り込み候補が {count} 個あります。候補 {ordinal} は存在しません。"
+msgstr ""
+"バッチ '{batch}' には {file} 用の取り込み候補が {count} 個あります。候補 {ordinal} は存在しません。"
 
 #: src/git_stage_batch/commands/include_from.py:352
 #, python-brace-format
 msgid "Including candidate {ordinal} of {count} for batch '{batch}':"
 msgstr "バッチ '{batch}' の取り込み候補 {ordinal}/{count} を取り込んでいます:"
+
+#: src/git_stage_batch/commands/include_from.py:360
+#: src/git_stage_batch/commands/show_from.py:716
+#: src/git_stage_batch/commands/show_from.py:815
+#: src/git_stage_batch/commands/show_from.py:929
+#: src/git_stage_batch/commands/show_from.py:998
+#: src/git_stage_batch/tui/flow.py:41
+msgid "Index"
+msgstr "インデックス"
 
 #: src/git_stage_batch/commands/include_from.py:382
 #, python-brace-format
@@ -1841,7 +1873,7 @@ msgid "✓ Included candidate {ordinal} of {count} from batch '{batch}'"
 msgstr "✓ バッチ '{batch}' の候補 {ordinal}/{count} を取り込みました"
 
 #: src/git_stage_batch/commands/include_from.py:514
-#: src/git_stage_batch/commands/show_from.py:142
+#: src/git_stage_batch/commands/show_from.py:149
 msgid "Replacement selection must be one contiguous line range."
 msgstr "Replacement 選択 must be one contiguous 行 range."
 
@@ -1859,12 +1891,14 @@ msgid "`include --from --as` requires `--line`."
 msgstr "`include --from --as` requires `--line`."
 
 #: src/git_stage_batch/commands/include_from.py:603
-msgid "Cannot use --lines with binary files. Include the whole file instead."
+msgid ""
+"Cannot use --lines with binary files. Include the whole file instead."
 msgstr ""
 "できません use --行 with バイナリファイルs. バイナリファイルs must be applied as complete units."
 
 #: src/git_stage_batch/commands/include_from.py:605
-#: src/git_stage_batch/commands/show_from.py:575
+#: src/git_stage_batch/commands/show_from.py:932
+#: src/git_stage_batch/commands/show_from.py:1017
 msgid "Include"
 msgstr "取り込み"
 
@@ -2092,7 +2126,7 @@ msgid "Reset"
 msgstr "リセット"
 
 #: src/git_stage_batch/commands/reset.py:268
-#: src/git_stage_batch/commands/show_from.py:985
+#: src/git_stage_batch/commands/show_from.py:1422
 #, python-brace-format
 msgid "No changes for file '{file}' in batch '{name}'."
 msgstr "No 変更 for ファイル '{file}' in バッチ '{name}'."
@@ -2117,8 +2151,8 @@ msgstr "宛先 バッチ already has ファイル '{file}'"
 #: src/git_stage_batch/commands/reset.py:373
 #, python-brace-format
 msgid ""
-"Destination batch already has a binary version of '{file}', so text changes "
-"for the same file cannot be moved there."
+"Destination batch already has a binary version of '{file}', so text "
+"changes for the same file cannot be moved there."
 msgstr "宛先 バッチ already has ファイル '{file}' with a different バッチソース"
 
 #: src/git_stage_batch/commands/reset.py:379
@@ -2144,138 +2178,201 @@ msgstr "変更: ファイル対 HEAD"
 
 #: src/git_stage_batch/commands/show.py:156
 #: src/git_stage_batch/commands/show.py:166
-#: src/git_stage_batch/commands/show_from.py:945
-#: src/git_stage_batch/commands/show_from.py:968
+#: src/git_stage_batch/commands/show_from.py:1382
+#: src/git_stage_batch/commands/show_from.py:1405
 msgid "File review pages are only available for text changes."
 msgstr "File review ページ are only available for text 変更."
 
-#: src/git_stage_batch/commands/show_from.py:189
+#: src/git_stage_batch/commands/show_from.py:211
+msgid "working tree"
+msgstr "作業ツリー"
+
+#: src/git_stage_batch/commands/show_from.py:211
+#: src/git_stage_batch/data/undo.py:543
+msgid "index"
+msgstr "インデックス"
+
+#: src/git_stage_batch/commands/show_from.py:215
+msgid "has"
+msgstr "は"
+
+#: src/git_stage_batch/commands/show_from.py:217
+#, python-brace-format
+msgid "{first} and {second}"
+msgstr "{first}と{second}"
+
+#: src/git_stage_batch/commands/show_from.py:220
+#: src/git_stage_batch/commands/show_from.py:221
+msgid "have"
+msgstr "は"
+
+#: src/git_stage_batch/commands/show_from.py:221
+msgid "target files"
+msgstr "対象ファイル"
+
+#: src/git_stage_batch/commands/show_from.py:226
+msgid "1 choice"
+msgstr "1 個の選択肢"
+
+#: src/git_stage_batch/commands/show_from.py:227
+#, python-brace-format
+msgid "{count} choices"
+msgstr "{count} 個の選択肢"
+
+#: src/git_stage_batch/commands/show_from.py:232
+msgid "included"
+msgstr "取り込む"
+
+#: src/git_stage_batch/commands/show_from.py:233
+msgid "applied"
+msgstr "適用する"
+
+#: src/git_stage_batch/commands/show_from.py:251
+#: src/git_stage_batch/commands/show_from.py:253
+#: src/git_stage_batch/output/file_review.py:1248
+#, python-brace-format
+msgid "Note: {note}"
+msgstr "Note: {note}"
+
+#: src/git_stage_batch/commands/show_from.py:266
+#, python-brace-format
+msgid "{operation} candidates"
+msgstr "{operation} 候補"
+
+#: src/git_stage_batch/commands/show_from.py:282
+#, python-brace-format
+msgid "{operation} candidate {ordinal}/{count}"
+msgstr "{operation} 候補 {ordinal}/{count}"
+
+#: src/git_stage_batch/commands/show_from.py:338
 msgid "nothing"
 msgstr "何もなし"
 
-#: src/git_stage_batch/commands/show_from.py:194
+#: src/git_stage_batch/commands/show_from.py:343
+#: src/git_stage_batch/commands/show_from.py:354
 msgid "an empty line"
 msgstr "空行"
 
-#: src/git_stage_batch/commands/show_from.py:195
+#: src/git_stage_batch/commands/show_from.py:344
+#: src/git_stage_batch/commands/show_from.py:360
 #, python-brace-format
 msgid "{count} lines"
 msgstr "{count} 行"
 
-#: src/git_stage_batch/commands/show_from.py:225
-#: src/git_stage_batch/commands/show_from.py:230
+#: src/git_stage_batch/commands/show_from.py:349
+msgid "ambiguous block"
+msgstr "曖昧なブロック"
+
+#: src/git_stage_batch/commands/show_from.py:444
+#: src/git_stage_batch/commands/show_from.py:449
 #, python-brace-format
 msgid " near \"{context}\""
 msgstr " \"{context}\" の近く"
 
-#: src/git_stage_batch/commands/show_from.py:249
+#: src/git_stage_batch/commands/show_from.py:469
 #, python-brace-format
-msgid "Remove {text}{nearby}"
-msgstr "{text}{nearby} を削除"
+msgid " before {block}"
+msgstr "（{block}の前）"
 
-#: src/git_stage_batch/commands/show_from.py:254
+#: src/git_stage_batch/commands/show_from.py:473
 #, python-brace-format
-msgid "Add {text}{nearby}"
-msgstr "{text}{nearby} を追加"
+msgid " after {block}"
+msgstr "（{block}の後）"
 
-#: src/git_stage_batch/commands/show_from.py:258
+#: src/git_stage_batch/commands/show_from.py:480
 #, python-brace-format
-msgid "Replace {old} with {new}{nearby}"
-msgstr "{old} を {new}{nearby} に置換"
+msgid "Remove {text}{placement}"
+msgstr "{text}{placement}を削除"
 
-#: src/git_stage_batch/commands/show_from.py:337
-#: src/git_stage_batch/tui/flow.py:41
-msgid "Index"
-msgstr "インデックス"
+#: src/git_stage_batch/commands/show_from.py:485
+#, python-brace-format
+msgid "Add {text}{placement}"
+msgstr "{text}{placement}を追加"
 
-#: src/git_stage_batch/commands/show_from.py:337
-#: src/git_stage_batch/tui/flow.py:38
-msgid "Working tree"
-msgstr "作業ツリー"
+#: src/git_stage_batch/commands/show_from.py:489
+#, python-brace-format
+msgid "Replace {old} with {new}{placement}"
+msgstr "{old}を{new}{placement}に置換"
 
-#: src/git_stage_batch/commands/show_from.py:339
+#: src/git_stage_batch/commands/show_from.py:718
 msgid "No text changes"
 msgstr "テキスト変更はありません"
 
-#: src/git_stage_batch/commands/show_from.py:437
+#: src/git_stage_batch/commands/show_from.py:817
 #, python-brace-format
-msgid "{operation} candidates for batch '{batch}' in {file}."
-msgstr "{file} 内のバッチ '{batch}' の {operation} 候補。"
+msgid "{target} update, same for all candidates: {summary}"
+msgstr "{target} の更新、すべての候補で同じ: {summary}"
 
-#: src/git_stage_batch/commands/show_from.py:443
+#: src/git_stage_batch/commands/show_from.py:896
 #, python-brace-format
-msgid "Candidates: {count}"
-msgstr "候補: {count}"
+msgid ""
+"The {targets} {verb} changed in an ambiguous way since this batch was "
+"created."
+msgstr "{targets}{verb}このバッチの作成後に曖昧な形で変更されています。"
 
-#: src/git_stage_batch/commands/show_from.py:444
-#: src/git_stage_batch/commands/show_from.py:536
-msgid "No changes applied."
-msgstr "変更は適用されませんでした。"
+#: src/git_stage_batch/commands/show_from.py:902
+#, python-brace-format
+msgid "The batch can be {operation} in more than one way:"
+msgstr "バッチは複数の方法で{operation}ことができます:"
 
-#: src/git_stage_batch/commands/show_from.py:487
+#: src/git_stage_batch/commands/show_from.py:918
+#, python-brace-format
+msgid "Candidate {ordinal}/{count}"
+msgstr "候補 {ordinal}/{count}"
+
+#: src/git_stage_batch/commands/show_from.py:933
+msgid "Preview this candidate:"
+msgstr "この候補をプレビュー:"
+
+#: src/git_stage_batch/commands/show_from.py:935
+#, python-brace-format
+msgid "{action} this candidate:"
+msgstr "この候補を{action}:"
+
+#: src/git_stage_batch/commands/show_from.py:942
 #, python-brace-format
 msgid ""
 "... {count} more candidates. Preview another candidate with {selector}:N."
 msgstr "... さらに {count} 個の候補があります。別の候補は {selector}:N でプレビューしてください。"
 
-#: src/git_stage_batch/commands/show_from.py:528
+#: src/git_stage_batch/commands/show_from.py:1000
 #, python-brace-format
-msgid "{operation} candidate {ordinal} of {count} for batch '{batch}'."
-msgstr "バッチ '{batch}' の {operation} 候補 {ordinal}/{count}。"
+msgid "{target} update: {summary}"
+msgstr "{target} の更新: {summary}"
 
-#: src/git_stage_batch/commands/show_from.py:540
-#, python-brace-format
-msgid "Candidate {ordinal} of {count}"
-msgstr "候補 {ordinal}/{count}"
-
-#: src/git_stage_batch/commands/show_from.py:551
-#, python-brace-format
-msgid "{target} result:"
-msgstr "{target} の結果:"
-
-#: src/git_stage_batch/commands/show_from.py:557
-#, python-brace-format
-msgid "Plan: {summary}"
-msgstr "計画: {summary}"
-
-#: src/git_stage_batch/commands/show_from.py:559
-#, python-brace-format
-msgid "Reason: {reason}"
-msgstr "理由: {reason}"
-
-#: src/git_stage_batch/commands/show_from.py:577
+#: src/git_stage_batch/commands/show_from.py:1019
 #, python-brace-format
 msgid ""
 "{action} this candidate:\n"
-"  git-stage-batch {command} --from {selector} --file {file}"
+"  {command}"
 msgstr ""
-"この候補を {action}:\n"
-"  git-stage-batch {command} --from {selector} --file {file}"
+"この候補を{action}:\n"
+"  {command}"
 
-#: src/git_stage_batch/commands/show_from.py:590
+#: src/git_stage_batch/commands/show_from.py:1025
 msgid "Review candidates:"
 msgstr "候補を確認:"
 
-#: src/git_stage_batch/commands/show_from.py:591
+#: src/git_stage_batch/commands/show_from.py:1026
 #, python-brace-format
 msgid "  overview: {command}"
 msgstr "  概要: {command}"
 
-#: src/git_stage_batch/commands/show_from.py:595
+#: src/git_stage_batch/commands/show_from.py:1030
 #, python-brace-format
 msgid "  previous: {command}"
 msgstr "  前へ: {command}"
 
-#: src/git_stage_batch/commands/show_from.py:599
+#: src/git_stage_batch/commands/show_from.py:1034
 #, python-brace-format
 msgid "  next: {command}"
 msgstr "  次へ: {command}"
 
-#: src/git_stage_batch/commands/show_from.py:610
+#: src/git_stage_batch/commands/show_from.py:1045
 msgid "No candidates available."
 msgstr "利用可能な候補はありません。"
 
-#: src/git_stage_batch/commands/show_from.py:616
+#: src/git_stage_batch/commands/show_from.py:1051
 #, python-brace-format
 msgid ""
 "Batch '{batch}' has {count} {operation} candidates for {file}; candidate "
@@ -2284,68 +2381,70 @@ msgstr ""
 "バッチ '{batch}' には {file} 用の {operation} 候補が {count} 個あります。候補 {ordinal} "
 "は存在しません。"
 
-#: src/git_stage_batch/commands/show_from.py:625
+#: src/git_stage_batch/commands/show_from.py:1060
 msgid "Candidate ordinal must be at least 1."
 msgstr "候補番号は 1 以上でなければなりません。"
 
-#: src/git_stage_batch/commands/show_from.py:640
+#: src/git_stage_batch/commands/show_from.py:1075
 msgid "Cannot preview replacement text for binary files."
 msgstr "バイナリファイルの置換テキストはプレビューできません。"
 
-#: src/git_stage_batch/commands/show_from.py:642
+#: src/git_stage_batch/commands/show_from.py:1077
 msgid "Cannot preview replacement text for submodule pointers."
 msgstr "サブモジュールポインターの置換テキストはプレビューできません。"
 
-#: src/git_stage_batch/commands/show_from.py:699
+#: src/git_stage_batch/commands/show_from.py:1134
 msgid "Candidate preview is only available for text batch entries."
 msgstr "候補プレビューはテキストのバッチエントリでのみ利用できます。"
 
-#: src/git_stage_batch/commands/show_from.py:738
+#: src/git_stage_batch/commands/show_from.py:1173
 msgid "Replacement preview is not valid for apply candidates."
 msgstr "置換プレビューは適用候補には無効です。"
 
-#: src/git_stage_batch/commands/show_from.py:740
-#: src/git_stage_batch/commands/show_from.py:919
+#: src/git_stage_batch/commands/show_from.py:1175
+#: src/git_stage_batch/commands/show_from.py:1356
 msgid "`show --from --as` requires `--line`."
 msgstr "`show --from --as` には `--line` が必要です。"
 
-#: src/git_stage_batch/commands/show_from.py:841
+#: src/git_stage_batch/commands/show_from.py:1276
 msgid "Candidate preview does not support --page."
 msgstr "候補プレビューは --page をサポートしていません。"
 
-#: src/git_stage_batch/commands/show_from.py:865
+#: src/git_stage_batch/commands/show_from.py:1300
 msgid "Candidate preview requires exactly one file."
 msgstr "候補プレビューにはファイルが 1 つだけ必要です。"
 
-#: src/git_stage_batch/commands/show_from.py:883
+#: src/git_stage_batch/commands/show_from.py:1318
 #, python-brace-format
 msgid "Batch '{batch}' has no {operation} candidates for {file}."
 msgstr "バッチ '{batch}' には {file} 用の {operation} 候補がありません。"
 
-#: src/git_stage_batch/commands/show_from.py:916
-msgid "--porcelain is only supported for candidate preview in `show --from`."
+#: src/git_stage_batch/commands/show_from.py:1353
+msgid ""
+"--porcelain is only supported for candidate preview in `show --from`."
 msgstr "--porcelain は `show --from` の候補プレビューでのみサポートされます。"
 
-#: src/git_stage_batch/commands/show_from.py:921
+#: src/git_stage_batch/commands/show_from.py:1358
 msgid "`show --from --as` requires exactly one file."
 msgstr "`show --from --as` にはファイルが 1 つだけ必要です。"
 
-#: src/git_stage_batch/commands/show_from.py:942
+#: src/git_stage_batch/commands/show_from.py:1379
 msgid ""
-"Cannot use --lines with binary files. Run without --lines to view the binary"
-" change summary."
+"Cannot use --lines with binary files. Run without --lines to view the "
+"binary change summary."
 msgstr ""
 "できません use --行 with バイナリファイルs. バイナリファイルs must be reset as complete units."
 
-#: src/git_stage_batch/commands/show_from.py:965
+#: src/git_stage_batch/commands/show_from.py:1402
 msgid ""
-"Cannot use --lines with submodule pointers. Run without --lines to view the "
-"submodule pointer summary."
+"Cannot use --lines with submodule pointers. Run without --lines to view "
+"the submodule pointer summary."
 msgstr ""
-"サブモジュールポインターでは --lines を使用できません。サブモジュールポインターの概要を表示するには --lines なしで実行してください。"
+"サブモジュールポインターでは --lines を使用できません。サブモジュールポインターの概要を表示するには --lines "
+"なしで実行してください。"
 
-#: src/git_stage_batch/commands/show_from.py:1043
-#: src/git_stage_batch/commands/show_from.py:1152
+#: src/git_stage_batch/commands/show_from.py:1480
+#: src/git_stage_batch/commands/show_from.py:1589
 #, python-brace-format
 msgid "Changes: batch {name}"
 msgstr "✓ バッチ '{name}' を作成しました"
@@ -2372,11 +2471,11 @@ msgstr "Could not sift バッチ '{source}': {error}"
 #: src/git_stage_batch/commands/sift.py:300
 #, python-brace-format
 msgid ""
-"✓ Sifted batch '{name}' in-place: all content already present at tip (batch "
-"now empty)"
+"✓ Sifted batch '{name}' in-place: all content already present at tip "
+"(batch now empty)"
 msgstr ""
-"✓ Sifted バッチ '{name}' in-place: all content already present at tip (バッチ now "
-"empty)"
+"✓ Sifted バッチ '{name}' in-place: all content already present at tip (バッチ "
+"now empty)"
 
 #: src/git_stage_batch/commands/sift.py:307
 #, python-brace-format
@@ -2384,8 +2483,8 @@ msgid ""
 "✓ Sifted batch '{source}' to '{dest}': all content already present at tip "
 "(destination empty)"
 msgstr ""
-"✓ Sifted バッチ '{source}' to '{dest}': all content already present at tip (宛先 "
-"empty)"
+"✓ Sifted バッチ '{source}' to '{dest}': all content already present at tip "
+"(宛先 empty)"
 
 #: src/git_stage_batch/commands/sift.py:318
 #, python-brace-format
@@ -2401,8 +2500,8 @@ msgid ""
 "✓ Sifted batch '{source}' to '{dest}': {retained} of {total} files still "
 "need changes"
 msgstr ""
-"✓ Sifted バッチ '{source}' to '{dest}': {retained} of {total} ファイルs still need "
-"変更"
+"✓ Sifted バッチ '{source}' to '{dest}': {retained} of {total} ファイルs still "
+"need 変更"
 
 #: src/git_stage_batch/commands/sift.py:432
 #, python-brace-format
@@ -2717,8 +2816,8 @@ msgid ""
 "The selected file view for {file} came from batch '{batch}', not the live "
 "working tree."
 msgstr ""
-"The 選択済み ファイル view for {file} came from バッチ '{batch}', not the live working "
-"tree."
+"The 選択済み ファイル view for {file} came from バッチ '{batch}', not the live "
+"working tree."
 
 #: src/git_stage_batch/data/file_review_state.py:680
 msgid "To review all pages from the batch:"
@@ -2895,8 +2994,8 @@ msgid ""
 "Selected file came from a batch, not a live hunk. Open a live hunk with "
 "'show' or use the matching '--from' command."
 msgstr ""
-"Selected ファイル came from a バッチ, not a live hunk. Open a live hunk with 'show'"
-" or use the matching '--from' command."
+"Selected ファイル came from a バッチ, not a live hunk. Open a live hunk with "
+"'show' or use the matching '--from' command."
 
 #: src/git_stage_batch/data/hunk_tracking.py:2045
 #: src/git_stage_batch/data/line_state.py:80
@@ -2920,10 +3019,6 @@ msgstr "取り消しチェックポイントに {path} がありません"
 #, python-brace-format
 msgid "Failed to restore submodule pointer for {file}: {error}"
 msgstr "{file} のサブモジュールポインターを復元できませんでした: {error}"
-
-#: src/git_stage_batch/data/undo.py:543
-msgid "index"
-msgstr "インデックス"
 
 #: src/git_stage_batch/data/undo.py:546
 msgid "batch refs"
@@ -3076,11 +3171,6 @@ msgstr "✓ 行をスキップしました: {lines}"
 #: src/git_stage_batch/output/file_review.py:1243
 msgid "Showing the area around the change you were viewing."
 msgstr "Showing the area around the 変更 you were viewing."
-
-#: src/git_stage_batch/output/file_review.py:1248
-#, python-brace-format
-msgid "Note: {note}"
-msgstr "Note: {note}"
 
 #: src/git_stage_batch/output/file_review.py:1251
 msgid "Note:"
@@ -3598,3 +3688,22 @@ msgstr "[{y}]はい / [{n}]次 / [{r}]リセット: "
 #: src/git_stage_batch/utils/git.py:787
 msgid "Not inside a git repository."
 msgstr "Gitリポジトリ内ではありません。"
+
+#, python-brace-format
+#~ msgid "{operation} candidates for batch '{batch}' in {file}."
+#~ msgstr "{file} 内のバッチ '{batch}' の {operation} 候補。"
+
+#, python-brace-format
+#~ msgid "Candidates: {count}"
+#~ msgstr "候補: {count}"
+
+#~ msgid "No changes applied."
+#~ msgstr "変更は適用されませんでした。"
+
+#, python-brace-format
+#~ msgid "Plan: {summary}"
+#~ msgstr "計画: {summary}"
+
+#, python-brace-format
+#~ msgid "Reason: {reason}"
+#~ msgstr "理由: {reason}"

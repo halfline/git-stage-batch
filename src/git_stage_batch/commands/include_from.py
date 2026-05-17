@@ -357,8 +357,8 @@ def _execute_include_candidate(
                     file=sys.stderr,
                 )
                 print(f"  {file_path}:", file=sys.stderr)
-                print(f"    index: {index_target.summary}", file=sys.stderr)
-                print(f"    working tree: {worktree_target.summary}", file=sys.stderr)
+                print(f"    {_('Index')}", file=sys.stderr)
+                print(f"    {_('Working tree')}", file=sys.stderr)
                 operation_parts = ["include", "--from", raw_selector, "--file", file_path]
                 with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
                     snapshot_file_if_untracked(file_path)

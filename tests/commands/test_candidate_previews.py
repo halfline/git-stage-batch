@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -58,7 +59,7 @@ def temp_git_repo(tmp_path, monkeypatch):
     return repo
 
 
-def _create_displaced_absence_batch(repo):
+def _create_displaced_absence_batch(repo, note=None):
     (repo / "file.txt").write_text("a\nb\n")
     subprocess.run(["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True)
     subprocess.run(
@@ -68,7 +69,10 @@ def _create_displaced_absence_batch(repo):
         capture_output=True,
     )
     initialize_abort_state()
-    create_batch("ambiguous")
+    if note is None:
+        create_batch("ambiguous")
+    else:
+        create_batch("ambiguous", note)
     add_file_to_batch(
         "ambiguous",
         "file.txt",
@@ -130,15 +134,88 @@ def test_show_candidate_set_lists_context_and_commands(temp_git_repo, capsys):
     command_show_from_batch("ambiguous:apply", file="file.txt")
 
     captured = capsys.readouterr()
-    assert "Apply candidates for batch 'ambiguous' in file.txt." in captured.out
-    assert "Candidates: 2" in captured.out
-    assert '1. Working tree: Remove "x" near "insert"' in captured.out
-    assert '2. Working tree: Remove "x" near "mid"' in captured.out
-    assert "3 -x" in captured.out
-    assert "5 -x" in captured.out
-    assert "show: git-stage-batch show --from ambiguous:apply:1 --file file.txt" in captured.out
-    assert "apply: git-stage-batch apply --from ambiguous:apply:1 --file file.txt" in captured.out
+    assert "file.txt  ·  ambiguous  ·  apply candidates  ·  2 choices" in captured.out
+    assert (
+        "The working tree has changed in an ambiguous way since this batch was created."
+        in captured.out
+    )
+    assert "The batch can be applied in more than one way:" in captured.out
+    assert "Note:" not in captured.out
+    assert 'Candidate 1/2   Remove "x" before "mid"' in captured.out
+    assert 'Candidate 2/2   Remove "x" after "mid"' in captured.out
+    assert "Working tree:" not in captured.out
+    assert "3│ -x" in captured.out
+    assert "5│ -x" in captured.out
+    assert "Preview this candidate:\n     git-stage-batch show --from ambiguous:apply:1 --file file.txt" in captured.out
+    assert "Apply this candidate:\n     git-stage-batch apply --from ambiguous:apply:1 --file file.txt" in captured.out
     assert "Apply candidate 1 of 2 for batch 'ambiguous'." not in captured.err
+
+
+def test_multiline_ambiguous_block_summary_uses_ellipsis():
+    """Candidate summaries should name a multi-line block by its endpoints."""
+    assert show_from_module._summarize_ambiguity_block(
+        ["vanilla extract", "nutmeg"],
+    ) == '"vanilla extract … nutmeg"'
+
+
+def test_candidate_overview_subject_names_only_ambiguous_targets():
+    """The overview prose should mention only targets with multiple resolutions."""
+    preview = SimpleNamespace(
+        targets=(
+            SimpleNamespace(target="index", resolution_count=1),
+            SimpleNamespace(target="worktree", resolution_count=2),
+        ),
+    )
+    assert show_from_module._candidate_overview_subject((preview,)) == (
+        "working tree",
+        "has",
+    )
+
+    preview = SimpleNamespace(
+        targets=(
+            SimpleNamespace(target="index", resolution_count=2),
+            SimpleNamespace(target="worktree", resolution_count=1),
+        ),
+    )
+    assert show_from_module._candidate_overview_subject((preview,)) == (
+        "index",
+        "has",
+    )
+
+    preview = SimpleNamespace(
+        targets=(
+            SimpleNamespace(target="index", resolution_count=2),
+            SimpleNamespace(target="worktree", resolution_count=2),
+        ),
+    )
+    assert show_from_module._candidate_overview_subject((preview,)) == (
+        "working tree and index",
+        "have",
+    )
+
+
+def test_show_candidate_set_highlights_candidate_regions_when_colored(
+    temp_git_repo,
+    capsys,
+    monkeypatch,
+):
+    """Candidate summaries should visually mark the chosen ambiguous region."""
+    _create_displaced_absence_batch(temp_git_repo)
+    monkeypatch.setattr(
+        show_from_module.Colors,
+        "enabled",
+        staticmethod(lambda: True),
+    )
+
+    command_show_from_batch("ambiguous:apply", file="file.txt")
+
+    captured = capsys.readouterr()
+    assert show_from_module.Colors.REVERSE in captured.out
+    assert show_from_module.Colors.GRAY in captured.out
+    assert show_from_module.Colors.RED in captured.out
+    assert f"{show_from_module.Colors.REVERSE}{show_from_module.Colors.RED}" not in captured.out
+    assert f"{show_from_module.Colors.REVERSE}{show_from_module.Colors.GRAY}" in captured.out
+    assert "3│ " in captured.out
 
 
 def test_apply_candidate_can_run_from_overview(temp_git_repo, capsys):
@@ -153,6 +230,7 @@ def test_apply_candidate_can_run_from_overview(temp_git_repo, capsys):
 
     captured = capsys.readouterr()
     assert "Applied candidate 1 of 2 from batch 'ambiguous'" in captured.err
+    assert "delete target line" not in captured.err
     assert (temp_git_repo / "file.txt").read_text() == "a\ninsert\nmid\nx\nb\n"
     assert not _candidate_state_has_file("ambiguous", "file.txt")
 
@@ -230,18 +308,94 @@ def test_numbered_show_candidate_records_its_own_preview(temp_git_repo, capsys):
 
     command_show_from_batch("ambiguous:apply:1", file="file.txt")
     first_preview = capsys.readouterr()
-    assert "overview: git-stage-batch show --from ambiguous:apply --file file.txt" in first_preview.err
-    assert "next: git-stage-batch show --from ambiguous:apply:2 --file file.txt" in first_preview.err
+    assert first_preview.out.startswith(
+        "file.txt  ·  ambiguous  ·  apply candidate 1/2\n"
+    )
+    assert "Preview apply candidate 1 of 2 for batch 'ambiguous'." not in first_preview.out
+    assert "Note:" not in first_preview.out
+    assert "No changes applied." not in first_preview.out
+    assert "\nfile.txt\nCandidate 1 of 2\n" not in first_preview.out
+    assert 'Remove "x" before "mid"' in first_preview.out
+    assert "─\nRemove" in first_preview.out
+    assert 'Remove "x" before "mid"\n\nfile.txt ::' in first_preview.out
+    assert "Working tree:" not in first_preview.out
+    assert "Plan: delete target line" not in first_preview.out
+    assert "file.txt :: @@ -1,6 +1,5 @@" in first_preview.out
+    assert "3│ -x" in first_preview.out
+    assert "--- a/file.txt" not in first_preview.out
+    assert "overview: git-stage-batch show --from ambiguous:apply --file file.txt" in first_preview.out
+    assert "next: git-stage-batch show --from ambiguous:apply:2 --file file.txt" in first_preview.out
     command_show_from_batch("ambiguous:apply:2", file="file.txt")
     second_preview = capsys.readouterr()
-    assert "overview: git-stage-batch show --from ambiguous:apply --file file.txt" in second_preview.err
-    assert "previous: git-stage-batch show --from ambiguous:apply:1 --file file.txt" in second_preview.err
+    assert "overview: git-stage-batch show --from ambiguous:apply --file file.txt" in second_preview.out
+    assert "previous: git-stage-batch show --from ambiguous:apply:1 --file file.txt" in second_preview.out
 
     command_apply_from_batch("ambiguous:apply:1", file="file.txt")
 
     captured = capsys.readouterr()
     assert "Applied candidate 1 of 2 from batch 'ambiguous'" in captured.err
     assert (temp_git_repo / "file.txt").read_text() == "a\ninsert\nmid\nx\nb\n"
+
+
+def test_numbered_show_candidate_header_preserves_batch_note(temp_git_repo, capsys):
+    """Numbered candidate previews should keep the same framed header as overview."""
+    _create_displaced_absence_batch(temp_git_repo, note="Auto-created")
+
+    command_show_from_batch("ambiguous:apply:1", file="file.txt")
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith(
+        "file.txt  ·  ambiguous  ·  apply candidate 1/2\n"
+        "Note: Auto-created\n"
+    )
+    assert "Preview apply candidate" not in captured.out
+    assert "─\nRemove" in captured.out
+
+
+def test_numbered_show_candidate_keeps_diff_colors_when_colored(
+    temp_git_repo,
+    capsys,
+    monkeypatch,
+):
+    """Candidate diffs should use normal red/green diff colors."""
+    _create_displaced_absence_batch(temp_git_repo)
+    monkeypatch.setattr(
+        show_from_module.Colors,
+        "enabled",
+        staticmethod(lambda: True),
+    )
+
+    command_show_from_batch("ambiguous:apply:1", file="file.txt")
+
+    captured = capsys.readouterr()
+    assert show_from_module.Colors.REVERSE in captured.out
+    assert show_from_module.Colors.RED in captured.out
+    assert f"{show_from_module.Colors.REVERSE}{show_from_module.Colors.RED}" not in captured.out
+    assert f"{show_from_module.Colors.REVERSE}{show_from_module.Colors.GRAY}" in captured.out
+
+
+def test_numbered_include_candidate_separates_target_sections(
+    temp_git_repo,
+    capsys,
+):
+    """Numbered include previews should not duplicate target labels."""
+    _create_displaced_absence_batch(temp_git_repo)
+
+    command_show_from_batch("ambiguous:include:2", file="file.txt")
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith(
+        "file.txt  ·  ambiguous  ·  include candidate 2/2\n"
+    )
+    assert "Preview include candidate" not in captured.out
+    assert "Index update: No text changes\n\nWorking tree update: Remove" in captured.out
+    assert "Working tree update:\nRemove" not in captured.out
+    assert "Working tree update: Remove" in captured.out
+    assert "\n\n\nWorking tree update:" not in captured.out
+    assert "Index result:" not in captured.out
+    assert "Working-tree result:" not in captured.out
+    assert "Index: Remove" not in captured.out
+    assert "Working tree: Remove" not in captured.out
 
 
 def test_apply_candidate_rejects_changed_materialized_result(
@@ -296,13 +450,27 @@ def test_include_candidate_can_run_from_overview(temp_git_repo, capsys):
 
     command_show_from_batch("ambiguous:include", file="file.txt")
     overview = capsys.readouterr()
-    assert "include: git-stage-batch include --from ambiguous:include:2 --file file.txt" in overview.out
+    assert "file.txt  ·  ambiguous  ·  include candidates  ·  2 choices" in overview.out
+    assert (
+        "The working tree has changed in an ambiguous way since this batch was created."
+        in overview.out
+    )
+    assert "The batch can be included in more than one way:" in overview.out
+    assert "Note:" not in overview.out
+    assert "Index update, same for all candidates:" in overview.out
+    assert 'Candidate 1/2   Remove "x" before "mid"' in overview.out
+    assert 'Candidate 2/2   Remove "x" after "mid"' in overview.out
+    assert overview.out.index("Candidate 1/2") < overview.out.index("Index update")
+    assert "Candidate 1/2   Working tree:" not in overview.out
+    assert "Candidate 2/2   Working tree:" not in overview.out
+    assert "Include this candidate:\n     git-stage-batch include --from ambiguous:include:2 --file file.txt" in overview.out
     assert _candidate_state_has_file("ambiguous", "file.txt")
 
     command_include_from_batch("ambiguous:include:2", file="file.txt")
 
     captured = capsys.readouterr()
     assert "Included candidate 2 of 2 from batch 'ambiguous'" in captured.err
+    assert "delete target line" not in captured.err
     assert (temp_git_repo / "file.txt").read_text() == "a\ninsert\nx\nmid\nb\n"
     assert not _candidate_state_has_file("ambiguous", "file.txt")
 

@@ -50,6 +50,7 @@ class TargetCandidatePreview:
     resolution_count: int
     summary: str
     explanation: str
+    ambiguity_target_line_range: tuple[int, int] | None
 
     def close(self) -> None:
         self.before_buffer.close()
@@ -313,6 +314,9 @@ def _materialize_target_candidate(
         resolution_count=1 if candidate is None else candidate.count,
         summary="unambiguous" if candidate is None else candidate.summary,
         explanation="" if candidate is None else candidate.explanation,
+        ambiguity_target_line_range=(
+            None if candidate is None else candidate.ambiguity_target_line_range
+        ),
     )
 
 

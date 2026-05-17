@@ -63,6 +63,7 @@ class MergeCandidate:
     target_after_line: int | None
     target_before_line: int | None
     explanation: str
+    ambiguity_target_line_range: tuple[int, int] | None = None
 
     @property
     def resolution(self) -> MergeResolution:
@@ -2032,6 +2033,22 @@ class _PresenceChoice:
     target_before_line: int | None
 
 
+def _presence_ambiguity_target_line_range(
+    choices: Sequence[_PresenceChoice],
+    target_line_count: int,
+) -> tuple[int, int] | None:
+    """Return existing target lines spanning compatible insertion gaps."""
+    if target_line_count == 0:
+        return None
+
+    positions = [choice.gap_index for choice in choices]
+    start = max(1, min(positions))
+    end = min(target_line_count, max(positions) + 1)
+    if start > end:
+        return None
+    return start, end
+
+
 def _absence_choices_for_claim(
     entries: Sequence[RealizedEntry],
     anchor_line: int | None,
@@ -2901,6 +2918,10 @@ def _enumerate_merge_batch_candidates_acquired(
             valid_choices.append(choice)
         if len(valid_choices) > 1:
             count = len(valid_choices)
+            ambiguity_target_line_range = _presence_ambiguity_target_line_range(
+                valid_choices,
+                len(working_lines),
+            )
             candidates = []
             for ordinal, choice in enumerate(valid_choices, start=1):
                 summary = _(
@@ -2927,6 +2948,7 @@ def _enumerate_merge_batch_candidates_acquired(
                         target_after_line=choice.target_after_line,
                         target_before_line=choice.target_before_line,
                         explanation=_("surrounding source context has multiple compatible placements"),
+                        ambiguity_target_line_range=ambiguity_target_line_range,
                     )
                 )
             return MergeCandidateSet(tuple(candidates))
@@ -3001,6 +3023,10 @@ def _enumerate_merge_batch_candidates_acquired(
             return MergeCandidateSet(())
 
         count = len(valid_choices)
+        ambiguity_target_line_range = (
+            min(choice.position + 1 for choice in valid_choices),
+            max(choice.position + len(forbidden_sequence) for choice in valid_choices),
+        )
         candidates: list[MergeCandidate] = []
         for ordinal, choice in enumerate(valid_choices, start=1):
             target_start = choice.position + 1
@@ -3033,6 +3059,7 @@ def _enumerate_merge_batch_candidates_acquired(
                     target_after_line=choice.target_after_line,
                     target_before_line=choice.target_before_line,
                     explanation=_("deletion anchor has multiple compatible target placements"),
+                    ambiguity_target_line_range=ambiguity_target_line_range,
                 )
             )
         return MergeCandidateSet(tuple(candidates))

@@ -736,6 +736,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#automatic-hunk-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic Hunk Selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#status" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1423,6 +1434,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#automatic-hunk-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic Hunk Selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#status" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1794,8 +1816,11 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>❯ git-stage-batch start
 </span></code></pre></div>
 <p><strong>Options:</strong>
-- <code>-U N</code> or <code>--unified N</code>: Number of context lines in diff output (default: 3)</p>
+- <code>-U N</code> or <code>--unified N</code>: Number of context lines in diff output (default: 3)
+- <code>--auto-advance</code>: Select the next hunk after later actions (default)
+- <code>--no-auto-advance</code>: Leave no hunk selected after later actions</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>❯ git-stage-batch start -U5  # Show 5 lines of context
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>❯ git-stage-batch start --no-auto-advance
 </span></code></pre></div>
 <p>Resets state if a session is already in progress.</p>
 <hr />
@@ -1822,11 +1847,36 @@
 <p><strong>Show files in a batch:</strong>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--from<span class="w"> </span>cleanup-ui
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--from<span class="w"> </span>cleanup-ui<span class="w"> </span>--file<span class="w"> </span>src/config.py<span class="w"> </span>--page<span class="w"> </span><span class="m">2</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--from<span class="w"> </span>cleanup-ui<span class="w"> </span>--file<span class="w"> </span>src/config.py<span class="w"> </span>--line<span class="w"> </span><span class="m">3</span>-5<span class="w"> </span>--as<span class="w"> </span><span class="s2">&quot;replacement&quot;</span>
 </span></code></pre></div></p>
 <p>When <code>--file</code> is used, <code>show</code> displays a structured file review with global line IDs, page orientation, and exact follow-up commands. By default, large file reviews are bounded to the first relevant page. Use <code>--page all</code> or <code>--pages all</code> to review the whole file.</p>
 <p>When only part of a file review has been shown, unqualified actions such as <code>include</code>, <code>skip</code>, and <code>discard</code> refuse. Use one of the shown pathless <code>--line</code> selections for a complete change, show the page range that covers the complete change, or use <code>--file PATH</code> for the whole file.</p>
 <p>When <code>--files</code> resolves to multiple files, <code>show</code> prints a matched-files list with per-file change counts, changed-line counts, review page counts, and exact <code>show --file PATH</code> commands. This list is navigational: it does not select a hidden file for later bare actions.</p>
 <p>For multi-file batches, <code>show --from BATCH</code> uses the same matched-files list and repeats <code>--from BATCH</code> in the suggested open commands.</p>
+<p>When an <code>apply --from BATCH</code> or <code>include --from BATCH</code> operation cannot safely
+choose between multiple structural placements, the mutating command refuses
+without changing the working tree or index and points to operation-specific
+candidate previews. Candidate selectors use <code>BATCH:apply</code>, <code>BATCH:apply:N</code>,
+<code>BATCH:include</code>, or <code>BATCH:include:N</code>. <code>BATCH:apply</code> and <code>BATCH:include</code>
+show a compact candidate overview with local context and exact commands.
+Append <code>:N</code> to show the full diff for one numbered candidate. Bare numeric
+selectors such as
+<code>BATCH:2</code> are invalid because apply and include can have different candidate
+spaces.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--from<span class="w"> </span>cleanup-ui:apply<span class="w"> </span>--file<span class="w"> </span>src/config.py
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--from<span class="w"> </span>cleanup-ui:apply:2<span class="w"> </span>--file<span class="w"> </span>src/config.py
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>apply<span class="w"> </span>--from<span class="w"> </span>cleanup-ui:apply:2<span class="w"> </span>--file<span class="w"> </span>src/config.py
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--from<span class="w"> </span>cleanup-ui:include<span class="w"> </span>--file<span class="w"> </span>src/config.py
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--from<span class="w"> </span>cleanup-ui:include:2<span class="w"> </span>--file<span class="w"> </span>src/config.py
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>cleanup-ui:include:2<span class="w"> </span>--file<span class="w"> </span>src/config.py
+</span></code></pre></div>
+<p>Candidate execution requires a matching prior preview for the same file and
+selector. A candidate overview counts as review for the candidates it shows,
+so users can run a listed apply or include command directly from that summary.
+Re-preview after editing the target file or changing the index.</p>
+<p>Submodule pointer changes are shown as atomic entries. They support whole-entry
+actions, but not <code>--line</code>.</p>
 <p><strong>Options:</strong>
 - <code>--file [PATH]</code>: Display entire file instead of single hunk
   - Without PATH: uses selected hunk's file
@@ -1839,119 +1889,152 @@
   - Requires <code>--file</code>, or <code>--files</code> resolving to exactly one changed file
   - Cannot be combined with <code>--line</code>, multiple resolved <code>--files</code> matches, or <code>--porcelain</code>
 - <code>--porcelain</code>: Exit silently with status code only (no output)
-- <code>--from BATCH</code>: Show changes from a batch instead of live file-vs-HEAD changes</p>
+- <code>--from BATCH</code>: Show changes from a batch instead of live file-vs-HEAD changes
+- <code>--as TEXT</code>, <code>--as-stdin</code>: With <code>--from BATCH --line IDS</code>, preview the same replacement batch view used by <code>include --from BATCH --line IDS --as ...</code> without mutating anything</p>
 <p>When <code>--files</code> resolves to one file, <code>show</code> opens that single file review directly. When it resolves to multiple files, open one listed file with <code>show --file PATH</code> before using pathless <code>--line</code> actions.</p>
 <p><strong>Exit codes:</strong>
 - <code>0</code> if hunk/file has changes
 - <code>1</code> if no changes</p>
 <p><strong>Usage in scripts:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Check if hunk exists before processing</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">if</span><span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--porcelain<span class="p">;</span><span class="w"> </span><span class="k">then</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Hunk available for processing&quot;</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">else</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;No hunks remaining&quot;</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="k">fi</span>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="c1"># Check if a specific file has changes</span>
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="k">if</span><span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--file<span class="w"> </span>auth.py<span class="w"> </span>--porcelain<span class="p">;</span><span class="w"> </span><span class="k">then</span>
-</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;auth.py has changes&quot;</span>
-</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="k">fi</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Check if hunk exists before processing</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">if</span><span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--porcelain<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Hunk available for processing&quot;</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">else</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;No hunks remaining&quot;</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="k">fi</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># Check if a specific file has changes</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="k">if</span><span class="w"> </span>git-stage-batch<span class="w"> </span>show<span class="w"> </span>--file<span class="w"> </span>auth.py<span class="w"> </span>--porcelain<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;auth.py has changes&quot;</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="k">fi</span>
 </span></code></pre></div></p>
 <hr />
 <h3 id="include"><code>include</code><a class="headerlink" href="#include" title="Permanent link">&para;</a></h3>
-<p>Stage the cached hunk (entire hunk) to the index; advance to next.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>❯ git-stage-batch include
+<p>Stage the cached hunk (entire hunk) to the index; advance to next unless
+automatic selection is disabled.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>❯ git-stage-batch include
 </span></code></pre></div>
 <hr />
 <p>When a session is active, the bare command shows the selected hunk:
-<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>❯ git-stage-batch
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>❯ git-stage-batch
 </span></code></pre></div></p>
 <h3 id="skip"><code>skip</code><a class="headerlink" href="#skip" title="Permanent link">&para;</a></h3>
-<p>Mark the cached hunk as skipped; advance to next.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>❯ git-stage-batch skip
+<p>Mark the cached hunk as skipped; advance to next unless automatic selection is
+disabled.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>❯ git-stage-batch skip
 </span></code></pre></div>
 <p>Skipped hunks can be revisited with <code>again</code>.</p>
 <hr />
 <h3 id="discard"><code>discard</code><a class="headerlink" href="#discard" title="Permanent link">&para;</a></h3>
-<p>Reverse-apply the cached hunk to the working tree; advance to next.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>❯ git-stage-batch discard
+<p>Reverse-apply the cached hunk to the working tree; advance to next unless
+automatic selection is disabled.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>❯ git-stage-batch discard
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Destructive Operation</p>
 <p>This permanently removes changes from your working tree. Use with caution.</p>
 </div>
 <hr />
+<h3 id="automatic-hunk-selection">Automatic Hunk Selection<a class="headerlink" href="#automatic-hunk-selection" title="Permanent link">&para;</a></h3>
+<p>By default, <code>include</code>, <code>skip</code>, <code>discard</code>, <code>include --to</code>, and <code>discard --to</code>
+select and display the next hunk after they finish. Add
+<code>--no-auto-advance</code> to one action when you want the command to stop with no
+hunk selected:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--no-auto-advance
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>show
+</span></code></pre></div>
+<p>After <code>--no-auto-advance</code>, another bare action refuses until <code>show</code> selects
+the next hunk. Use <code>--auto-advance</code> to opt back in for one command.</p>
+<p><code>start</code> and <code>again</code> accept the same flags to set the session default for
+later actions that do not specify either flag.</p>
+<hr />
 <h3 id="status"><code>status</code><a class="headerlink" href="#status" title="Permanent link">&para;</a></h3>
 <p>Show session progress and remaining hunks.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>❯ git-stage-batch status
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>❯ git-stage-batch status
 </span></code></pre></div>
 <p><strong>Example output:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>Session: iteration 1 (in progress)
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>Current hunk:
-</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>  auth.py:42
-</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>  [#1-3]
-</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
-</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>Progress this iteration:
-</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>  Included:  2 hunks
-</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>  Skipped:   1 hunks
-</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>  Discarded: 0 hunks
-</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>  Remaining: ~3 hunks
-</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>
-</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>Skipped hunks:
-</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>  config.py:15 [#1,3-5]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>Session: iteration 1 (in progress)
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>Current hunk:
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>  auth.py:42
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>  [#1-3]
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>Progress this iteration:
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>  Included:  2 hunks
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>  Skipped:   1 hunks
+</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>  Discarded: 0 hunks
+</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>  Remaining: ~3 hunks
+</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>
+</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>Skipped hunks:
+</span><span id="__span-16-14"><a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>  config.py:15 [#1,3-5]
 </span></code></pre></div></p>
 <p><strong>Options:</strong>
-- <code>--porcelain</code>: Output in machine-readable JSON format</p>
+- <code>--porcelain</code>: Output in machine-readable JSON format
+- <code>--for-prompt[=FORMAT]</code>: Print a prompt segment only when a session is active</p>
 <p><strong>Porcelain output:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>status<span class="w"> </span>--porcelain
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>status<span class="w"> </span>--porcelain
 </span></code></pre></div></p>
 <p>Outputs JSON with stable fields for script integration:
-<div class="language-json highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p">{</span>
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span><span class="nt">&quot;session&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="nt">&quot;active&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="nt">&quot;iteration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;in_progress&quot;</span><span class="p">,</span>
-</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">    </span><span class="nt">&quot;in_progress&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">  </span><span class="nt">&quot;selected_change&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;hunk&quot;</span><span class="p">,</span>
-</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;auth.py&quot;</span><span class="p">,</span>
-</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="w">    </span><span class="nt">&quot;line&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
-</span><span id="__span-16-12"><a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="w">    </span><span class="nt">&quot;ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span>
-</span><span id="__span-16-13"><a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-16-14"><a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="w">  </span><span class="nt">&quot;file_review&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-</span><span id="__span-16-15"><a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="w">  </span><span class="nt">&quot;progress&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-16-16"><a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="w">    </span><span class="nt">&quot;included&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
-</span><span id="__span-16-17"><a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="w">    </span><span class="nt">&quot;skipped&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-</span><span id="__span-16-18"><a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="w">    </span><span class="nt">&quot;discarded&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-</span><span id="__span-16-19"><a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="w">    </span><span class="nt">&quot;remaining&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
-</span><span id="__span-16-20"><a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-16-21"><a id="__codelineno-16-21" name="__codelineno-16-21" href="#__codelineno-16-21"></a><span class="w">  </span><span class="nt">&quot;skipped_hunks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-16-22"><a id="__codelineno-16-22" name="__codelineno-16-22" href="#__codelineno-16-22"></a><span class="w">    </span><span class="p">{</span>
-</span><span id="__span-16-23"><a id="__codelineno-16-23" name="__codelineno-16-23" href="#__codelineno-16-23"></a><span class="w">      </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;config.py&quot;</span><span class="p">,</span>
-</span><span id="__span-16-24"><a id="__codelineno-16-24" name="__codelineno-16-24" href="#__codelineno-16-24"></a><span class="w">      </span><span class="nt">&quot;line&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span>
-</span><span id="__span-16-25"><a id="__codelineno-16-25" name="__codelineno-16-25" href="#__codelineno-16-25"></a><span class="w">      </span><span class="nt">&quot;ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="p">]</span>
-</span><span id="__span-16-26"><a id="__codelineno-16-26" name="__codelineno-16-26" href="#__codelineno-16-26"></a><span class="w">    </span><span class="p">}</span>
-</span><span id="__span-16-27"><a id="__codelineno-16-27" name="__codelineno-16-27" href="#__codelineno-16-27"></a><span class="w">  </span><span class="p">]</span>
-</span><span id="__span-16-28"><a id="__codelineno-16-28" name="__codelineno-16-28" href="#__codelineno-16-28"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="p">{</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">  </span><span class="nt">&quot;session&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">    </span><span class="nt">&quot;active&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">    </span><span class="nt">&quot;iteration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;in_progress&quot;</span><span class="p">,</span>
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">    </span><span class="nt">&quot;in_progress&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="w">  </span><span class="nt">&quot;selected_change&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;hunk&quot;</span><span class="p">,</span>
+</span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="w">    </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;auth.py&quot;</span><span class="p">,</span>
+</span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="w">    </span><span class="nt">&quot;line&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
+</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="w">    </span><span class="nt">&quot;ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span>
+</span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-18-14"><a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="w">  </span><span class="nt">&quot;file_review&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+</span><span id="__span-18-15"><a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a><span class="w">  </span><span class="nt">&quot;progress&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-18-16"><a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="w">    </span><span class="nt">&quot;included&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-18-17"><a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a><span class="w">    </span><span class="nt">&quot;skipped&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-18-18"><a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="w">    </span><span class="nt">&quot;discarded&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-18-19"><a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="w">    </span><span class="nt">&quot;remaining&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
+</span><span id="__span-18-20"><a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-18-21"><a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a><span class="w">  </span><span class="nt">&quot;skipped_hunks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-18-22"><a id="__codelineno-18-22" name="__codelineno-18-22" href="#__codelineno-18-22"></a><span class="w">    </span><span class="p">{</span>
+</span><span id="__span-18-23"><a id="__codelineno-18-23" name="__codelineno-18-23" href="#__codelineno-18-23"></a><span class="w">      </span><span class="nt">&quot;file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;config.py&quot;</span><span class="p">,</span>
+</span><span id="__span-18-24"><a id="__codelineno-18-24" name="__codelineno-18-24" href="#__codelineno-18-24"></a><span class="w">      </span><span class="nt">&quot;line&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span>
+</span><span id="__span-18-25"><a id="__codelineno-18-25" name="__codelineno-18-25" href="#__codelineno-18-25"></a><span class="w">      </span><span class="nt">&quot;ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="p">]</span>
+</span><span id="__span-18-26"><a id="__codelineno-18-26" name="__codelineno-18-26" href="#__codelineno-18-26"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-18-27"><a id="__codelineno-18-27" name="__codelineno-18-27" href="#__codelineno-18-27"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-18-28"><a id="__codelineno-18-28" name="__codelineno-18-28" href="#__codelineno-18-28"></a><span class="p">}</span>
 </span></code></pre></div></p>
+<p><strong>Prompt output:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nv">PS1</span><span class="o">=</span><span class="nv">$PS1</span><span class="s1">&#39;\r$(__git_ps1 &quot;\n╎\e[32m%s$(git-stage-batch status --for-prompt=\|{status}\ {processed}/{total})\e[0m&quot;)\n&#39;</span>
+</span></code></pre></div></p>
+<p>When no session is active, <code>--for-prompt</code> prints nothing, so any spacing or
+brackets included in <code>FORMAT</code> are hidden too. Without <code>FORMAT</code>, it prints
+<code>STAGING</code>. In prompt output, <code>{status}</code> is the operation name <code>STAGING</code>;
+<code>{progress_status}</code> exposes the underlying <code>in_progress</code> or <code>complete</code> state.
+Format fields include <code>{status}</code>, <code>{status_label}</code>, <code>{progress_status}</code>,
+<code>{progress_label}</code>, <code>{iteration}</code>, <code>{processed}</code>, <code>{total}</code>, <code>{included}</code>,
+<code>{skipped}</code>, <code>{discarded}</code>, <code>{remaining}</code>, <code>{selected_file}</code>,
+<code>{selected_line}</code>, <code>{selected_ids}</code>, and <code>{selected_kind}</code>. <code>{processed}</code> is
+<code>included + skipped + discarded</code>; <code>{total}</code> is <code>{processed} + remaining</code>.</p>
 <hr />
 <h2 id="session-management">Session Management<a class="headerlink" href="#session-management" title="Permanent link">&para;</a></h2>
 <h3 id="again"><code>again</code><a class="headerlink" href="#again" title="Permanent link">&para;</a></h3>
 <p>Clear the blocklist and restart iteration through all hunks.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>❯ git-stage-batch again
+<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>❯ git-stage-batch again
 </span></code></pre></div>
 <p>Useful for making another pass after committing some changes.</p>
+<p><strong>Options:</strong>
+- <code>--auto-advance</code>: Select the next hunk after later actions
+- <code>--no-auto-advance</code>: Leave no hunk selected after later actions</p>
 <hr />
 <h3 id="stop"><code>stop</code><a class="headerlink" href="#stop" title="Permanent link">&para;</a></h3>
 <p>End the selected session and remove all state.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>❯ git-stage-batch stop
+<div class="language-text highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>❯ git-stage-batch stop
 </span></code></pre></div>
 <hr />
 <h3 id="abort"><code>abort</code><a class="headerlink" href="#abort" title="Permanent link">&para;</a></h3>
 <p>Undo all changes made during the session, including commits and discards.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>❯ git-stage-batch abort
+<div class="language-text highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>❯ git-stage-batch abort
 </span></code></pre></div>
 <p>This:
 - Resets HEAD to where you started
@@ -1966,7 +2049,7 @@
 <h3 id="undo"><code>undo</code><a class="headerlink" href="#undo" title="Permanent link">&para;</a></h3>
 <p>Undo the most recent undoable session operation, restoring the repository
 to its state before that operation.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>❯ git-stage-batch undo
+<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>❯ git-stage-batch undo
 </span></code></pre></div>
 <p><strong>Options:</strong>
 - <code>--force</code>: Overwrite changes made after the undo checkpoint</p>
@@ -1974,17 +2057,17 @@ to its state before that operation.</p>
 <hr />
 <h3 id="redo"><code>redo</code><a class="headerlink" href="#redo" title="Permanent link">&para;</a></h3>
 <p>Redo the most recently undone session operation.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>❯ git-stage-batch redo
+<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>❯ git-stage-batch redo
 </span></code></pre></div>
 <p><strong>Options:</strong>
 - <code>--force</code>: Overwrite changes made after the undo</p>
 <p>Refuses by default if the current state has changed since the undo.</p>
 <p>Multiple undo/redo works in editor order:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="c1"># do A, do B, do C</span>
-</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>undo<span class="w">      </span><span class="c1"># removes C, redo stack: C</span>
-</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>undo<span class="w">      </span><span class="c1"># removes B, redo stack: B, C</span>
-</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>redo<span class="w">      </span><span class="c1"># reapplies B, redo stack: C</span>
-</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>redo<span class="w">      </span><span class="c1"># reapplies C, redo stack empty</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># do A, do B, do C</span>
+</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>undo<span class="w">      </span><span class="c1"># removes C, redo stack: C</span>
+</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>undo<span class="w">      </span><span class="c1"># removes B, redo stack: B, C</span>
+</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>redo<span class="w">      </span><span class="c1"># reapplies B, redo stack: C</span>
+</span><span id="__span-25-5"><a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>redo<span class="w">      </span><span class="c1"># reapplies C, redo stack empty</span>
 </span></code></pre></div>
 <p>A new undoable operation after undo clears the redo stack.</p>
 <hr />
@@ -1992,10 +2075,10 @@ to its state before that operation.</p>
 <h3 id="include-file-path"><code>include --file [PATH]</code><a class="headerlink" href="#include-file-path" title="Permanent link">&para;</a></h3>
 <p>Stage all hunks from a file.</p>
 <p><strong>Stage selected hunk's file:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>❯ git-stage-batch include --file
+<div class="language-text highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>❯ git-stage-batch include --file
 </span></code></pre></div></p>
 <p><strong>Stage specific file by path:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>❯ git-stage-batch include --file src/auth.py
+<div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>❯ git-stage-batch include --file src/auth.py
 </span></code></pre></div></p>
 <p>Stages all hunks from the specified file and advances to the next file. When a path is provided, you can stage any file in your working tree regardless of which file the selected hunk is from.</p>
 <p><strong>Use cases:</strong>
@@ -2003,40 +2086,40 @@ to its state before that operation.</p>
 - <code>--file PATH</code>: Stage all hunks from the specified file, even if it's not the selected file
 - <code>--files PATTERN...</code>: Stage all hunks from files matched by Git-style patterns</p>
 <p><strong>Example workflow:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
-</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="c1"># Current hunk is from config.py</span>
-</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>
-</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="c1"># Stage a different file without changing selected position</span>
-</span><span id="__span-25-5"><a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--file<span class="w"> </span>auth.py
-</span><span id="__span-25-6"><a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="c1"># auth.py is now fully staged, selected hunk still from config.py</span>
-</span><span id="__span-25-7"><a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>
-</span><span id="__span-25-8"><a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="c1"># Continue with selected file</span>
-</span><span id="__span-25-9"><a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
+</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="c1"># Current hunk is from config.py</span>
+</span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>
+</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="c1"># Stage a different file without changing selected position</span>
+</span><span id="__span-28-5"><a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--file<span class="w"> </span>auth.py
+</span><span id="__span-28-6"><a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="c1"># auth.py is now fully staged, selected hunk still from config.py</span>
+</span><span id="__span-28-7"><a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>
+</span><span id="__span-28-8"><a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="c1"># Continue with selected file</span>
+</span><span id="__span-28-9"><a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
 </span></code></pre></div></p>
 <p><strong>Pattern-based staging:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--files<span class="w"> </span><span class="s2">&quot;src/**/*.py&quot;</span><span class="w"> </span><span class="s2">&quot;!src/vendor/**&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--files<span class="w"> </span><span class="s2">&quot;src/**/*.py&quot;</span><span class="w"> </span><span class="s2">&quot;!src/vendor/**&quot;</span>
 </span></code></pre></div></p>
 <hr />
 <h3 id="skip-file-path"><code>skip --file [PATH]</code><a class="headerlink" href="#skip-file-path" title="Permanent link">&para;</a></h3>
 <p>Skip all hunks from a file.</p>
 <p><strong>Skip selected hunk's file:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>❯ git-stage-batch skip --file
+<div class="language-text highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>❯ git-stage-batch skip --file
 </span></code></pre></div></p>
 <p><strong>Skip specific file by path:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>❯ git-stage-batch skip --file src/debug.py
+<div class="language-text highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>❯ git-stage-batch skip --file src/debug.py
 </span></code></pre></div></p>
 <p>All hunks from the file are marked as skipped and can be revisited with <code>again</code>.</p>
 <p><strong>Skip files by pattern:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>skip<span class="w"> </span>--files<span class="w"> </span><span class="s2">&quot;docs/**/*.md&quot;</span><span class="w"> </span><span class="s2">&quot;scripts/*.sh&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>skip<span class="w"> </span>--files<span class="w"> </span><span class="s2">&quot;docs/**/*.md&quot;</span><span class="w"> </span><span class="s2">&quot;scripts/*.sh&quot;</span>
 </span></code></pre></div></p>
 <hr />
 <h3 id="discard-file-path"><code>discard --file [PATH]</code><a class="headerlink" href="#discard-file-path" title="Permanent link">&para;</a></h3>
 <p>Discard entire file from the working tree.</p>
 <p><strong>Discard selected hunk's file:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>❯ git-stage-batch discard --file
+<div class="language-text highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>❯ git-stage-batch discard --file
 </span></code></pre></div></p>
 <p><strong>Discard specific file by path:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>❯ git-stage-batch discard --file src/debug.py
+<div class="language-text highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>❯ git-stage-batch discard --file src/debug.py
 </span></code></pre></div></p>
 <p>Removes all changes from the specified file. When a path is provided, you can discard any file in your working tree regardless of which file the selected hunk is from.</p>
 <p><strong>Use cases:</strong>
@@ -2051,20 +2134,20 @@ to its state before that operation.</p>
 <h2 id="permanent-file-exclusion">Permanent File Exclusion<a class="headerlink" href="#permanent-file-exclusion" title="Permanent link">&para;</a></h2>
 <h3 id="block-file"><code>block-file</code><a class="headerlink" href="#block-file" title="Permanent link">&para;</a></h3>
 <p>Permanently exclude a file from all future sessions.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>❯ git-stage-batch block-file
+<div class="language-text highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>❯ git-stage-batch block-file
 </span></code></pre></div>
 <p>This:
 - Adds the selected file to <code>.gitignore</code>
 - Marks it as blocked in session state
 - Skips all its hunks automatically</p>
 <p>When run without a selected hunk, you can specify the file path:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>❯ git-stage-batch block-file path/to/file.txt
+<div class="language-text highlight"><pre><span></span><code><span id="__span-36-1"><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>❯ git-stage-batch block-file path/to/file.txt
 </span></code></pre></div>
 <p>Useful for build artifacts, IDE files, or other generated content.</p>
 <hr />
 <h3 id="unblock-file"><code>unblock-file</code><a class="headerlink" href="#unblock-file" title="Permanent link">&para;</a></h3>
 <p>Remove a file from the blocked list.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>❯ git-stage-batch unblock-file path/to/file.txt
+<div class="language-text highlight"><pre><span></span><code><span id="__span-37-1"><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>❯ git-stage-batch unblock-file path/to/file.txt
 </span></code></pre></div>
 <p>This:
 - Removes the file from <code>.gitignore</code>
@@ -2075,14 +2158,14 @@ to its state before that operation.</p>
 <p>Work with individual lines within a hunk for maximum granularity.</p>
 <h3 id="include-line-line_ids"><code>include --line LINE_IDS</code><a class="headerlink" href="#include-line-line_ids" title="Permanent link">&para;</a></h3>
 <p>Stage only specific lines from the selected hunk.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>❯ git-stage-batch include --line 1,3,5-7
+<div class="language-text highlight"><pre><span></span><code><span id="__span-38-1"><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>❯ git-stage-batch include --line 1,3,5-7
 </span></code></pre></div>
 <p>For simple replacement regions, selecting the matching deleted and added
 lines stages the semantic replacement row. For example, in a hunk like:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-36-1"><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>[#1] - a
-</span><span id="__span-36-2"><a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>[#2] - b
-</span><span id="__span-36-3"><a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>[#3] + A
-</span><span id="__span-36-4"><a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a>[#4] + B
+<div class="language-text highlight"><pre><span></span><code><span id="__span-39-1"><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>[#1] - a
+</span><span id="__span-39-2"><a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>[#2] - b
+</span><span id="__span-39-3"><a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a>[#3] + A
+</span><span id="__span-39-4"><a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a>[#4] + B
 </span></code></pre></div>
 <p><code>include --line 1,3</code> stages <code>a</code> -&gt; <code>A</code> while leaving <code>b</code> unchanged.
 If git-stage-batch cannot determine a clear semantic replacement, it falls
@@ -2093,26 +2176,26 @@ back to the regular line-level staging behavior.</p>
 - Range: <code>5-7</code>
 - Combined: <code>1,3,5-7</code></p>
 <p>Lines are displayed with IDs in brackets when you run <code>show</code> or <code>start</code>:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-37-1"><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>auth.py :: @@ -10,5 +10,5 @@
-</span><span id="__span-37-2"><a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>[#1] - old_function()
-</span><span id="__span-37-3"><a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>[#2] + new_function()
-</span><span id="__span-37-4"><a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a>[#3] + another_change()
-</span><span id="__span-37-5"><a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a>      context_line()
+<div class="language-text highlight"><pre><span></span><code><span id="__span-40-1"><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>auth.py :: @@ -10,5 +10,5 @@
+</span><span id="__span-40-2"><a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>[#1] - old_function()
+</span><span id="__span-40-3"><a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>[#2] + new_function()
+</span><span id="__span-40-4"><a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a>[#3] + another_change()
+</span><span id="__span-40-5"><a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a>      context_line()
 </span></code></pre></div>
 <p>To stage lines 1 and 3:
-<div class="language-text highlight"><pre><span></span><code><span id="__span-38-1"><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>❯ git-stage-batch include --line 1,3
+<div class="language-text highlight"><pre><span></span><code><span id="__span-41-1"><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>❯ git-stage-batch include --line 1,3
 </span></code></pre></div></p>
 <p>After processing, the hunk is recalculated to show remaining changes.</p>
 <hr />
 <h3 id="skip-line-line_ids"><code>skip --line LINE_IDS</code><a class="headerlink" href="#skip-line-line_ids" title="Permanent link">&para;</a></h3>
 <p>Mark specific lines as skipped without staging them.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-39-1"><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>❯ git-stage-batch skip --line 2
+<div class="language-text highlight"><pre><span></span><code><span id="__span-42-1"><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>❯ git-stage-batch skip --line 2
 </span></code></pre></div>
 <p>Useful when you want to defer certain changes to a later commit.</p>
 <hr />
 <h3 id="discard-line-line_ids"><code>discard --line LINE_IDS</code><a class="headerlink" href="#discard-line-line_ids" title="Permanent link">&para;</a></h3>
 <p>Remove specific lines from the working tree.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-40-1"><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>❯ git-stage-batch discard --line 3
+<div class="language-text highlight"><pre><span></span><code><span id="__span-43-1"><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>❯ git-stage-batch discard --line 3
 </span></code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Destructive Operation</p>
@@ -2135,14 +2218,17 @@ selected span. Pass <code>--no-edge-overlap</code> to keep those edge-overlap li
 literally.</p>
 <p>If the replacement text should come from a file or another command exactly,
 use <code>--as-stdin</code> instead of shell command substitution. For example:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-41-1"><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--file<span class="w"> </span>path.txt<span class="w"> </span>--as-stdin<span class="w"> </span>&lt;<span class="w"> </span>replacement.txt
-</span><span id="__span-41-2"><a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>❯<span class="w"> </span>some-command<span class="w"> </span><span class="p">|</span><span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-3<span class="w"> </span>--as-stdin
-</span><span id="__span-41-3"><a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--file<span class="w"> </span>path.txt<span class="w"> </span>--as-stdin<span class="w"> </span>&lt;<span class="w"> </span>replacement.txt
-</span><span id="__span-41-4"><a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>❯<span class="w"> </span>some-command<span class="w"> </span><span class="p">|</span><span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>batch<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-3<span class="w"> </span>--as-stdin
-</span><span id="__span-41-5"><a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-3<span class="w"> </span>--as<span class="w"> </span><span class="s1">&#39;keep1\nstaged\nkeep4&#39;</span><span class="w"> </span>--no-edge-overlap
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-44-1"><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--file<span class="w"> </span>path.txt<span class="w"> </span>--as-stdin<span class="w"> </span>&lt;<span class="w"> </span>replacement.txt
+</span><span id="__span-44-2"><a id="__codelineno-44-2" name="__codelineno-44-2" href="#__codelineno-44-2"></a>❯<span class="w"> </span>some-command<span class="w"> </span><span class="p">|</span><span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-3<span class="w"> </span>--as-stdin
+</span><span id="__span-44-3"><a id="__codelineno-44-3" name="__codelineno-44-3" href="#__codelineno-44-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--file<span class="w"> </span>path.txt<span class="w"> </span>--as-stdin<span class="w"> </span>&lt;<span class="w"> </span>replacement.txt
+</span><span id="__span-44-4"><a id="__codelineno-44-4" name="__codelineno-44-4" href="#__codelineno-44-4"></a>❯<span class="w"> </span>some-command<span class="w"> </span><span class="p">|</span><span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>batch<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-3<span class="w"> </span>--as-stdin
+</span><span id="__span-44-5"><a id="__codelineno-44-5" name="__codelineno-44-5" href="#__codelineno-44-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-3<span class="w"> </span>--as<span class="w"> </span><span class="s1">&#39;keep1\nstaged\nkeep4&#39;</span><span class="w"> </span>--no-edge-overlap
 </span></code></pre></div>
 <p>Unlike <code>--as "$(cat replacement.txt)"</code>, <code>--as-stdin</code> preserves trailing
 newlines exactly.</p>
+<p>For saved batches, <code>show --from BATCH --file PATH --line IDS --as TEXT</code> previews
+the replacement batch view without staging or writing it. The corresponding
+mutating command is <code>include --from BATCH --file PATH --line IDS --as TEXT</code>.</p>
 <p>These replacement workflows require one contiguous selected line-ID span.
 Selections such as <code>1-4</code> or <code>2,3,4</code> are accepted because they resolve to one
 continuous gutter-ID range. Selections such as <code>1-2,5-6</code> are rejected because
@@ -2155,19 +2241,19 @@ the full underlying file span from the first selected changed line to the last
 selected changed line.</p>
 <p>For example, if a file-scoped view shows three changed regions with IDs
 <code>1-2</code>, <code>3-4</code>, and <code>5-6</code>, then this is allowed:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-42-1"><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-6<span class="w"> </span>--as<span class="w"> </span><span class="s1">&#39;...&#39;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-45-1"><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-6<span class="w"> </span>--as<span class="w"> </span><span class="s1">&#39;...&#39;</span>
 </span></code></pre></div>
 <p>But this still requires separate commands because the selected IDs are not one
 contiguous span:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-43-1"><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-2<span class="w"> </span>--as<span class="w"> </span><span class="s1">&#39;...&#39;</span>
-</span><span id="__span-43-2"><a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">5</span>-6<span class="w"> </span>--as<span class="w"> </span><span class="s1">&#39;...&#39;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-46-1"><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">1</span>-2<span class="w"> </span>--as<span class="w"> </span><span class="s1">&#39;...&#39;</span>
+</span><span id="__span-46-2"><a id="__codelineno-46-2" name="__codelineno-46-2" href="#__codelineno-46-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--line<span class="w"> </span><span class="m">5</span>-6<span class="w"> </span>--as<span class="w"> </span><span class="s1">&#39;...&#39;</span>
 </span></code></pre></div>
 <p>The same rule applies to <code>discard --to BATCH --line ... --as TEXT</code>.</p>
 <hr />
 <h2 id="fixup-suggestions">Fixup Suggestions<a class="headerlink" href="#fixup-suggestions" title="Permanent link">&para;</a></h2>
 <h3 id="suggest-fixup"><code>suggest-fixup</code><a class="headerlink" href="#suggest-fixup" title="Permanent link">&para;</a></h3>
 <p>Suggest which commit the selected hunk should be fixed up to.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-44-1"><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>❯ git-stage-batch suggest-fixup [BOUNDARY]
+<div class="language-text highlight"><pre><span></span><code><span id="__span-47-1"><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>❯ git-stage-batch suggest-fixup [BOUNDARY]
 </span></code></pre></div>
 <p>Finds commits that previously modified the lines in the selected hunk and suggests them as fixup targets. Iteratively shows candidates starting from most recent, progressing backwards with each invocation.</p>
 <p><strong>Arguments:</strong>
@@ -2178,67 +2264,67 @@ contiguous span:</p>
 - <code>--last</code>: Re-show the last candidate without advancing
 - <code>--porcelain</code>: Output in machine-readable JSON format</p>
 <p><strong>Example workflow:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-45-1"><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a><span class="c1"># Make changes to existing code</span>
-</span><span id="__span-45-2"><a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
-</span><span id="__span-45-3"><a id="__codelineno-45-3" name="__codelineno-45-3" href="#__codelineno-45-3"></a>
-</span><span id="__span-45-4"><a id="__codelineno-45-4" name="__codelineno-45-4" href="#__codelineno-45-4"></a><span class="c1"># Find which commit to fixup (searches back to upstream by default)</span>
-</span><span id="__span-45-5"><a id="__codelineno-45-5" name="__codelineno-45-5" href="#__codelineno-45-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup
-</span><span id="__span-45-6"><a id="__codelineno-45-6" name="__codelineno-45-6" href="#__codelineno-45-6"></a>Candidate<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>a1b2c3d<span class="w"> </span>Fix<span class="w"> </span>authentication<span class="w"> </span>logic
-</span><span id="__span-45-7"><a id="__codelineno-45-7" name="__codelineno-45-7" href="#__codelineno-45-7"></a>
-</span><span id="__span-45-8"><a id="__codelineno-45-8" name="__codelineno-45-8" href="#__codelineno-45-8"></a><span class="c1"># Not the right commit, try next</span>
-</span><span id="__span-45-9"><a id="__codelineno-45-9" name="__codelineno-45-9" href="#__codelineno-45-9"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup
-</span><span id="__span-45-10"><a id="__codelineno-45-10" name="__codelineno-45-10" href="#__codelineno-45-10"></a>Candidate<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>e4f5g6h<span class="w"> </span>Add<span class="w"> </span>user<span class="w"> </span>validation
-</span><span id="__span-45-11"><a id="__codelineno-45-11" name="__codelineno-45-11" href="#__codelineno-45-11"></a>
-</span><span id="__span-45-12"><a id="__codelineno-45-12" name="__codelineno-45-12" href="#__codelineno-45-12"></a><span class="c1"># This is the one! Create fixup commit</span>
-</span><span id="__span-45-13"><a id="__codelineno-45-13" name="__codelineno-45-13" href="#__codelineno-45-13"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>--fixup<span class="o">=</span>e4f5g6h
-</span><span id="__span-45-14"><a id="__codelineno-45-14" name="__codelineno-45-14" href="#__codelineno-45-14"></a>
-</span><span id="__span-45-15"><a id="__codelineno-45-15" name="__codelineno-45-15" href="#__codelineno-45-15"></a><span class="c1"># Or specify a different boundary for the search</span>
-</span><span id="__span-45-16"><a id="__codelineno-45-16" name="__codelineno-45-16" href="#__codelineno-45-16"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup<span class="w"> </span>main
-</span><span id="__span-45-17"><a id="__codelineno-45-17" name="__codelineno-45-17" href="#__codelineno-45-17"></a>Candidate<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>a1b2c3d<span class="w"> </span>Fix<span class="w"> </span>authentication<span class="w"> </span>logic
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-48-1"><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a><span class="c1"># Make changes to existing code</span>
+</span><span id="__span-48-2"><a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
+</span><span id="__span-48-3"><a id="__codelineno-48-3" name="__codelineno-48-3" href="#__codelineno-48-3"></a>
+</span><span id="__span-48-4"><a id="__codelineno-48-4" name="__codelineno-48-4" href="#__codelineno-48-4"></a><span class="c1"># Find which commit to fixup (searches back to upstream by default)</span>
+</span><span id="__span-48-5"><a id="__codelineno-48-5" name="__codelineno-48-5" href="#__codelineno-48-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup
+</span><span id="__span-48-6"><a id="__codelineno-48-6" name="__codelineno-48-6" href="#__codelineno-48-6"></a>Candidate<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>a1b2c3d<span class="w"> </span>Fix<span class="w"> </span>authentication<span class="w"> </span>logic
+</span><span id="__span-48-7"><a id="__codelineno-48-7" name="__codelineno-48-7" href="#__codelineno-48-7"></a>
+</span><span id="__span-48-8"><a id="__codelineno-48-8" name="__codelineno-48-8" href="#__codelineno-48-8"></a><span class="c1"># Not the right commit, try next</span>
+</span><span id="__span-48-9"><a id="__codelineno-48-9" name="__codelineno-48-9" href="#__codelineno-48-9"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup
+</span><span id="__span-48-10"><a id="__codelineno-48-10" name="__codelineno-48-10" href="#__codelineno-48-10"></a>Candidate<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>e4f5g6h<span class="w"> </span>Add<span class="w"> </span>user<span class="w"> </span>validation
+</span><span id="__span-48-11"><a id="__codelineno-48-11" name="__codelineno-48-11" href="#__codelineno-48-11"></a>
+</span><span id="__span-48-12"><a id="__codelineno-48-12" name="__codelineno-48-12" href="#__codelineno-48-12"></a><span class="c1"># This is the one! Create fixup commit</span>
+</span><span id="__span-48-13"><a id="__codelineno-48-13" name="__codelineno-48-13" href="#__codelineno-48-13"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>--fixup<span class="o">=</span>e4f5g6h
+</span><span id="__span-48-14"><a id="__codelineno-48-14" name="__codelineno-48-14" href="#__codelineno-48-14"></a>
+</span><span id="__span-48-15"><a id="__codelineno-48-15" name="__codelineno-48-15" href="#__codelineno-48-15"></a><span class="c1"># Or specify a different boundary for the search</span>
+</span><span id="__span-48-16"><a id="__codelineno-48-16" name="__codelineno-48-16" href="#__codelineno-48-16"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup<span class="w"> </span>main
+</span><span id="__span-48-17"><a id="__codelineno-48-17" name="__codelineno-48-17" href="#__codelineno-48-17"></a>Candidate<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>a1b2c3d<span class="w"> </span>Fix<span class="w"> </span>authentication<span class="w"> </span>logic
 </span></code></pre></div></p>
 <p>The command uses <code>git log -L</code> to find commits that touched the affected lines, making it easy to create fixup commits for amendment during interactive rebase.</p>
 <p><strong>Porcelain output:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-46-1"><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup<span class="w"> </span>--porcelain
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-49-1"><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup<span class="w"> </span>--porcelain
 </span></code></pre></div></p>
 <p>Outputs JSON with stable fields for script integration:
-<div class="language-json highlight"><pre><span></span><code><span id="__span-47-1"><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a><span class="p">{</span>
-</span><span id="__span-47-2"><a id="__codelineno-47-2" name="__codelineno-47-2" href="#__codelineno-47-2"></a><span class="w">  </span><span class="nt">&quot;candidate&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-47-3"><a id="__codelineno-47-3" name="__codelineno-47-3" href="#__codelineno-47-3"></a><span class="w">    </span><span class="nt">&quot;hash&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a1b2c3d&quot;</span><span class="p">,</span>
-</span><span id="__span-47-4"><a id="__codelineno-47-4" name="__codelineno-47-4" href="#__codelineno-47-4"></a><span class="w">    </span><span class="nt">&quot;full_hash&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0&quot;</span><span class="p">,</span>
-</span><span id="__span-47-5"><a id="__codelineno-47-5" name="__codelineno-47-5" href="#__codelineno-47-5"></a><span class="w">    </span><span class="nt">&quot;subject&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Fix authentication logic&quot;</span><span class="p">,</span>
-</span><span id="__span-47-6"><a id="__codelineno-47-6" name="__codelineno-47-6" href="#__codelineno-47-6"></a><span class="w">    </span><span class="nt">&quot;author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;John Doe&quot;</span><span class="p">,</span>
-</span><span id="__span-47-7"><a id="__codelineno-47-7" name="__codelineno-47-7" href="#__codelineno-47-7"></a><span class="w">    </span><span class="nt">&quot;date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-03-01T10:30:00-05:00&quot;</span><span class="p">,</span>
-</span><span id="__span-47-8"><a id="__codelineno-47-8" name="__codelineno-47-8" href="#__codelineno-47-8"></a><span class="w">    </span><span class="nt">&quot;relative_date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2 weeks ago&quot;</span>
-</span><span id="__span-47-9"><a id="__codelineno-47-9" name="__codelineno-47-9" href="#__codelineno-47-9"></a><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-47-10"><a id="__codelineno-47-10" name="__codelineno-47-10" href="#__codelineno-47-10"></a><span class="w">  </span><span class="nt">&quot;iteration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-</span><span id="__span-47-11"><a id="__codelineno-47-11" name="__codelineno-47-11" href="#__codelineno-47-11"></a><span class="w">  </span><span class="nt">&quot;boundary&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;@{upstream}&quot;</span>
-</span><span id="__span-47-12"><a id="__codelineno-47-12" name="__codelineno-47-12" href="#__codelineno-47-12"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-50-1"><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a><span class="p">{</span>
+</span><span id="__span-50-2"><a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a><span class="w">  </span><span class="nt">&quot;candidate&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-50-3"><a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a><span class="w">    </span><span class="nt">&quot;hash&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a1b2c3d&quot;</span><span class="p">,</span>
+</span><span id="__span-50-4"><a id="__codelineno-50-4" name="__codelineno-50-4" href="#__codelineno-50-4"></a><span class="w">    </span><span class="nt">&quot;full_hash&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0&quot;</span><span class="p">,</span>
+</span><span id="__span-50-5"><a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a><span class="w">    </span><span class="nt">&quot;subject&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Fix authentication logic&quot;</span><span class="p">,</span>
+</span><span id="__span-50-6"><a id="__codelineno-50-6" name="__codelineno-50-6" href="#__codelineno-50-6"></a><span class="w">    </span><span class="nt">&quot;author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;John Doe&quot;</span><span class="p">,</span>
+</span><span id="__span-50-7"><a id="__codelineno-50-7" name="__codelineno-50-7" href="#__codelineno-50-7"></a><span class="w">    </span><span class="nt">&quot;date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-03-01T10:30:00-05:00&quot;</span><span class="p">,</span>
+</span><span id="__span-50-8"><a id="__codelineno-50-8" name="__codelineno-50-8" href="#__codelineno-50-8"></a><span class="w">    </span><span class="nt">&quot;relative_date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2 weeks ago&quot;</span>
+</span><span id="__span-50-9"><a id="__codelineno-50-9" name="__codelineno-50-9" href="#__codelineno-50-9"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-50-10"><a id="__codelineno-50-10" name="__codelineno-50-10" href="#__codelineno-50-10"></a><span class="w">  </span><span class="nt">&quot;iteration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-50-11"><a id="__codelineno-50-11" name="__codelineno-50-11" href="#__codelineno-50-11"></a><span class="w">  </span><span class="nt">&quot;boundary&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;@{upstream}&quot;</span>
+</span><span id="__span-50-12"><a id="__codelineno-50-12" name="__codelineno-50-12" href="#__codelineno-50-12"></a><span class="p">}</span>
 </span></code></pre></div></p>
 <p><strong>Automated fixup example:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-48-1"><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a><span class="c1"># Get fixup candidate programmatically</span>
-</span><span id="__span-48-2"><a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a><span class="nv">CANDIDATE</span><span class="o">=</span><span class="k">$(</span>git-stage-batch<span class="w"> </span>suggest-fixup<span class="w"> </span>--porcelain<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.candidate.hash&#39;</span><span class="k">)</span>
-</span><span id="__span-48-3"><a id="__codelineno-48-3" name="__codelineno-48-3" href="#__codelineno-48-3"></a>
-</span><span id="__span-48-4"><a id="__codelineno-48-4" name="__codelineno-48-4" href="#__codelineno-48-4"></a><span class="c1"># Create fixup commit automatically</span>
-</span><span id="__span-48-5"><a id="__codelineno-48-5" name="__codelineno-48-5" href="#__codelineno-48-5"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CANDIDATE</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
-</span><span id="__span-48-6"><a id="__codelineno-48-6" name="__codelineno-48-6" href="#__codelineno-48-6"></a><span class="w">  </span>git<span class="w"> </span>commit<span class="w"> </span>--fixup<span class="o">=</span><span class="nv">$CANDIDATE</span>
-</span><span id="__span-48-7"><a id="__codelineno-48-7" name="__codelineno-48-7" href="#__codelineno-48-7"></a><span class="k">fi</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-51-1"><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="c1"># Get fixup candidate programmatically</span>
+</span><span id="__span-51-2"><a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a><span class="nv">CANDIDATE</span><span class="o">=</span><span class="k">$(</span>git-stage-batch<span class="w"> </span>suggest-fixup<span class="w"> </span>--porcelain<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.candidate.hash&#39;</span><span class="k">)</span>
+</span><span id="__span-51-3"><a id="__codelineno-51-3" name="__codelineno-51-3" href="#__codelineno-51-3"></a>
+</span><span id="__span-51-4"><a id="__codelineno-51-4" name="__codelineno-51-4" href="#__codelineno-51-4"></a><span class="c1"># Create fixup commit automatically</span>
+</span><span id="__span-51-5"><a id="__codelineno-51-5" name="__codelineno-51-5" href="#__codelineno-51-5"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CANDIDATE</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+</span><span id="__span-51-6"><a id="__codelineno-51-6" name="__codelineno-51-6" href="#__codelineno-51-6"></a><span class="w">  </span>git<span class="w"> </span>commit<span class="w"> </span>--fixup<span class="o">=</span><span class="nv">$CANDIDATE</span>
+</span><span id="__span-51-7"><a id="__codelineno-51-7" name="__codelineno-51-7" href="#__codelineno-51-7"></a><span class="k">fi</span>
 </span></code></pre></div></p>
 <hr />
 <h3 id="line-level-fixup-suggestions">Line-level fixup suggestions<a class="headerlink" href="#line-level-fixup-suggestions" title="Permanent link">&para;</a></h3>
 <p>Suggest fixup target for specific lines only.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-49-1"><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>❯ git-stage-batch suggest-fixup [BOUNDARY] --line LINE_IDS
+<div class="language-text highlight"><pre><span></span><code><span id="__span-52-1"><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a>❯ git-stage-batch suggest-fixup [BOUNDARY] --line LINE_IDS
 </span></code></pre></div>
 <p><strong>Example:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-50-1"><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a>❯ git-stage-batch suggest-fixup --line 1,3
-</span><span id="__span-50-2"><a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a>❯ git-stage-batch suggest-fixup main --line 1,3
+<div class="language-text highlight"><pre><span></span><code><span id="__span-53-1"><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a>❯ git-stage-batch suggest-fixup --line 1,3
+</span><span id="__span-53-2"><a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a>❯ git-stage-batch suggest-fixup main --line 1,3
 </span></code></pre></div></p>
 <p>Useful when a hunk contains changes to multiple unrelated areas. You can get separate fixup suggestions for different line ranges within the same hunk.</p>
 <hr />
 <h2 id="assistant-assets">Assistant Assets<a class="headerlink" href="#assistant-assets" title="Permanent link">&para;</a></h2>
 <h3 id="install-assets-claude-agentsclaude-skillscodex-skills-filter-pattern-force"><code>install-assets [{claude-agents|claude-skills|codex-skills}] [--filter PATTERN...] [--force]</code><a class="headerlink" href="#install-assets-claude-agentsclaude-skillscodex-skills-filter-pattern-force" title="Permanent link">&para;</a></h3>
 <p>Install bundled assistant assets into the current repository.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-51-1"><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets
-</span><span id="__span-51-2"><a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-54-1"><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets
+</span><span id="__span-54-2"><a id="__codelineno-54-2" name="__codelineno-54-2" href="#__codelineno-54-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills
 </span></code></pre></div>
 <p>This writes bundled assistant assets into the repository root so the target
 assistant can discover them automatically.</p>
@@ -2249,10 +2335,10 @@ assistant can discover them automatically.</p>
 <li><code>codex-skills</code> installs into <code>.agents/skills/</code> and <code>.codex/config.toml</code></li>
 </ul>
 <p><strong>Install matching assets only:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-52-1"><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
-</span><span id="__span-52-2"><a id="__codelineno-52-2" name="__codelineno-52-2" href="#__codelineno-52-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-agents<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
-</span><span id="__span-52-3"><a id="__codelineno-52-3" name="__codelineno-52-3" href="#__codelineno-52-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
-</span><span id="__span-52-4"><a id="__codelineno-52-4" name="__codelineno-52-4" href="#__codelineno-52-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>codex-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span><span class="w"> </span><span class="s1">&#39;squash-*&#39;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-55-1"><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
+</span><span id="__span-55-2"><a id="__codelineno-55-2" name="__codelineno-55-2" href="#__codelineno-55-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-agents<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
+</span><span id="__span-55-3"><a id="__codelineno-55-3" name="__codelineno-55-3" href="#__codelineno-55-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
+</span><span id="__span-55-4"><a id="__codelineno-55-4" name="__codelineno-55-4" href="#__codelineno-55-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>codex-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span><span class="w"> </span><span class="s1">&#39;squash-*&#39;</span>
 </span></code></pre></div></p>
 <p><strong>Options:</strong>
 - <code>GROUP</code>: Optionally restrict installation to one bundled asset group
@@ -2270,7 +2356,7 @@ assistant can discover them automatically.</p>
 <h2 id="batch-operations">Batch Operations<a class="headerlink" href="#batch-operations" title="Permanent link">&para;</a></h2>
 <h3 id="sift"><code>sift</code><a class="headerlink" href="#sift" title="Permanent link">&para;</a></h3>
 <p>Reconcile a batch against the current tip by removing portions whose effect is already present.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-53-1"><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a>❯ git-stage-batch sift --from OLD_BATCH --to NEW_BATCH
+<div class="language-text highlight"><pre><span></span><code><span id="__span-56-1"><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a>❯ git-stage-batch sift --from OLD_BATCH --to NEW_BATCH
 </span></code></pre></div>
 <p><strong>Required arguments:</strong>
 - <code>--from BATCH</code>: Source batch to sift
@@ -2278,11 +2364,11 @@ assistant can discover them automatically.</p>
 <p><strong>Purpose:</strong></p>
 <p>After ad hoc history surgery, some parts of a batch may already have landed in history while other parts are still unapplied. <code>sift</code> removes the already-present portions and writes the remaining unapplied portion to the destination batch.</p>
 <p><strong>Examples:</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-54-1"><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a><span class="c1"># Sift to a new batch</span>
-</span><span id="__span-54-2"><a id="__codelineno-54-2" name="__codelineno-54-2" href="#__codelineno-54-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups-pruned
-</span><span id="__span-54-3"><a id="__codelineno-54-3" name="__codelineno-54-3" href="#__codelineno-54-3"></a>
-</span><span id="__span-54-4"><a id="__codelineno-54-4" name="__codelineno-54-4" href="#__codelineno-54-4"></a><span class="c1"># In-place sift</span>
-</span><span id="__span-54-5"><a id="__codelineno-54-5" name="__codelineno-54-5" href="#__codelineno-54-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-57-1"><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a><span class="c1"># Sift to a new batch</span>
+</span><span id="__span-57-2"><a id="__codelineno-57-2" name="__codelineno-57-2" href="#__codelineno-57-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups-pruned
+</span><span id="__span-57-3"><a id="__codelineno-57-3" name="__codelineno-57-3" href="#__codelineno-57-3"></a>
+</span><span id="__span-57-4"><a id="__codelineno-57-4" name="__codelineno-57-4" href="#__codelineno-57-4"></a><span class="c1"># In-place sift</span>
+</span><span id="__span-57-5"><a id="__codelineno-57-5" name="__codelineno-57-5" href="#__codelineno-57-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups
 </span></code></pre></div>
 <p><strong>Output:</strong></p>
 <p>Shows summary of:
@@ -2300,27 +2386,27 @@ assistant can discover them automatically.</p>
 </ul>
 <hr />
 <h2 id="workflow-example">Workflow Example<a class="headerlink" href="#workflow-example" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-55-1"><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a><span class="c1"># Make some changes to multiple files</span>
-</span><span id="__span-55-2"><a id="__codelineno-55-2" name="__codelineno-55-2" href="#__codelineno-55-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 1&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
-</span><span id="__span-55-3"><a id="__codelineno-55-3" name="__codelineno-55-3" href="#__codelineno-55-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 2&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file2.txt
-</span><span id="__span-55-4"><a id="__codelineno-55-4" name="__codelineno-55-4" href="#__codelineno-55-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;debug code&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
-</span><span id="__span-55-5"><a id="__codelineno-55-5" name="__codelineno-55-5" href="#__codelineno-55-5"></a>
-</span><span id="__span-55-6"><a id="__codelineno-55-6" name="__codelineno-55-6" href="#__codelineno-55-6"></a><span class="c1"># Start staging session</span>
-</span><span id="__span-55-7"><a id="__codelineno-55-7" name="__codelineno-55-7" href="#__codelineno-55-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
-</span><span id="__span-55-8"><a id="__codelineno-55-8" name="__codelineno-55-8" href="#__codelineno-55-8"></a>
-</span><span id="__span-55-9"><a id="__codelineno-55-9" name="__codelineno-55-9" href="#__codelineno-55-9"></a><span class="c1"># Include first hunk (feature 1)</span>
-</span><span id="__span-55-10"><a id="__codelineno-55-10" name="__codelineno-55-10" href="#__codelineno-55-10"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
-</span><span id="__span-55-11"><a id="__codelineno-55-11" name="__codelineno-55-11" href="#__codelineno-55-11"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 1&quot;</span>
-</span><span id="__span-55-12"><a id="__codelineno-55-12" name="__codelineno-55-12" href="#__codelineno-55-12"></a>
-</span><span id="__span-55-13"><a id="__codelineno-55-13" name="__codelineno-55-13" href="#__codelineno-55-13"></a><span class="c1"># Discard debug code</span>
-</span><span id="__span-55-14"><a id="__codelineno-55-14" name="__codelineno-55-14" href="#__codelineno-55-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard
-</span><span id="__span-55-15"><a id="__codelineno-55-15" name="__codelineno-55-15" href="#__codelineno-55-15"></a>
-</span><span id="__span-55-16"><a id="__codelineno-55-16" name="__codelineno-55-16" href="#__codelineno-55-16"></a><span class="c1"># Include feature 2</span>
-</span><span id="__span-55-17"><a id="__codelineno-55-17" name="__codelineno-55-17" href="#__codelineno-55-17"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
-</span><span id="__span-55-18"><a id="__codelineno-55-18" name="__codelineno-55-18" href="#__codelineno-55-18"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 2&quot;</span>
-</span><span id="__span-55-19"><a id="__codelineno-55-19" name="__codelineno-55-19" href="#__codelineno-55-19"></a>
-</span><span id="__span-55-20"><a id="__codelineno-55-20" name="__codelineno-55-20" href="#__codelineno-55-20"></a><span class="c1"># Check if anything remains</span>
-</span><span id="__span-55-21"><a id="__codelineno-55-21" name="__codelineno-55-21" href="#__codelineno-55-21"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>status
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-58-1"><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a><span class="c1"># Make some changes to multiple files</span>
+</span><span id="__span-58-2"><a id="__codelineno-58-2" name="__codelineno-58-2" href="#__codelineno-58-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 1&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
+</span><span id="__span-58-3"><a id="__codelineno-58-3" name="__codelineno-58-3" href="#__codelineno-58-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 2&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file2.txt
+</span><span id="__span-58-4"><a id="__codelineno-58-4" name="__codelineno-58-4" href="#__codelineno-58-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;debug code&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
+</span><span id="__span-58-5"><a id="__codelineno-58-5" name="__codelineno-58-5" href="#__codelineno-58-5"></a>
+</span><span id="__span-58-6"><a id="__codelineno-58-6" name="__codelineno-58-6" href="#__codelineno-58-6"></a><span class="c1"># Start staging session</span>
+</span><span id="__span-58-7"><a id="__codelineno-58-7" name="__codelineno-58-7" href="#__codelineno-58-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
+</span><span id="__span-58-8"><a id="__codelineno-58-8" name="__codelineno-58-8" href="#__codelineno-58-8"></a>
+</span><span id="__span-58-9"><a id="__codelineno-58-9" name="__codelineno-58-9" href="#__codelineno-58-9"></a><span class="c1"># Include first hunk (feature 1)</span>
+</span><span id="__span-58-10"><a id="__codelineno-58-10" name="__codelineno-58-10" href="#__codelineno-58-10"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
+</span><span id="__span-58-11"><a id="__codelineno-58-11" name="__codelineno-58-11" href="#__codelineno-58-11"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 1&quot;</span>
+</span><span id="__span-58-12"><a id="__codelineno-58-12" name="__codelineno-58-12" href="#__codelineno-58-12"></a>
+</span><span id="__span-58-13"><a id="__codelineno-58-13" name="__codelineno-58-13" href="#__codelineno-58-13"></a><span class="c1"># Discard debug code</span>
+</span><span id="__span-58-14"><a id="__codelineno-58-14" name="__codelineno-58-14" href="#__codelineno-58-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard
+</span><span id="__span-58-15"><a id="__codelineno-58-15" name="__codelineno-58-15" href="#__codelineno-58-15"></a>
+</span><span id="__span-58-16"><a id="__codelineno-58-16" name="__codelineno-58-16" href="#__codelineno-58-16"></a><span class="c1"># Include feature 2</span>
+</span><span id="__span-58-17"><a id="__codelineno-58-17" name="__codelineno-58-17" href="#__codelineno-58-17"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
+</span><span id="__span-58-18"><a id="__codelineno-58-18" name="__codelineno-58-18" href="#__codelineno-58-18"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 2&quot;</span>
+</span><span id="__span-58-19"><a id="__codelineno-58-19" name="__codelineno-58-19" href="#__codelineno-58-19"></a>
+</span><span id="__span-58-20"><a id="__codelineno-58-20" name="__codelineno-58-20" href="#__codelineno-58-20"></a><span class="c1"># Check if anything remains</span>
+</span><span id="__span-58-21"><a id="__codelineno-58-21" name="__codelineno-58-21" href="#__codelineno-58-21"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>status
 </span></code></pre></div>
 
 

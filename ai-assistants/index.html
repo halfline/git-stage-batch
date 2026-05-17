@@ -1325,52 +1325,54 @@ Use <code>--force</code> to replace an existing repo-local copy.</p>
 </span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">   </span><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch include`</span> (stage this hunk)
 </span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">   </span><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch skip`</span> (skip this hunk for now)
 </span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>   These commands automatically display the next hunk to evaluate.
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="k">3.</span> Repeatedly run these commands until all hunks relevant to the selected commit
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>   are processed, then commit the results.
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>
-</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="k">4.</span> Run <span class="sb">`git-stage-batch again`</span> to run through all previously skipped
-</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>   and unprocessed hunks for the next commit.
-</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>
-</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="k">5.</span> Repeat until all commits are in place.
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>   These commands automatically display the next hunk to evaluate. Use
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>   <span class="sb">`--no-auto-advance`</span> when the automation should stop after one action and
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>   run <span class="sb">`git-stage-batch show`</span> explicitly before the next bare action.
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="k">3.</span> Repeatedly run these commands until all hunks relevant to the selected commit
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>   are processed, then commit the results.
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="k">4.</span> Run <span class="sb">`git-stage-batch again`</span> to run through all previously skipped
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>   and unprocessed hunks for the next commit.
 </span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>
-</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="gu">### Fine-Grained Line Selection</span>
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="k">5.</span> Repeat until all commits are in place.
 </span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>
-</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>If a hunk is too coarse and contains multiple orthogonal changes, individual lines
-</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>may be included or skipped using:
-</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch include --line 1,3,5-7`</span> (stage specific lines)
-</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch skip --line 2,4`</span> (skip specific lines)
-</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>
-</span><span id="__span-1-36"><a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>Line IDs are shown in the hunk output as <span class="sb">`[#N]`</span> markers.
+</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a><span class="gu">### Fine-Grained Line Selection</span>
+</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>
+</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>If a hunk is too coarse and contains multiple orthogonal changes, individual lines
+</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>may be included or skipped using:
+</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch include --line 1,3,5-7`</span> (stage specific lines)
+</span><span id="__span-1-36"><a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch skip --line 2,4`</span> (skip specific lines)
 </span><span id="__span-1-37"><a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a>
-</span><span id="__span-1-38"><a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a><span class="gu">### Commit Messages</span>
+</span><span id="__span-1-38"><a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a>Line IDs are shown in the hunk output as <span class="sb">`[#N]`</span> markers.
 </span><span id="__span-1-39"><a id="__codelineno-1-39" name="__codelineno-1-39" href="#__codelineno-1-39"></a>
-</span><span id="__span-1-40"><a id="__codelineno-1-40" name="__codelineno-1-40" href="#__codelineno-1-40"></a>Commit messages should aid <span class="gs">**drive-by reviewers with limited context**</span>. Assume
-</span><span id="__span-1-41"><a id="__codelineno-1-41" name="__codelineno-1-41" href="#__codelineno-1-41"></a>the reader does not know the project well.
-</span><span id="__span-1-42"><a id="__codelineno-1-42" name="__codelineno-1-42" href="#__codelineno-1-42"></a>
-</span><span id="__span-1-43"><a id="__codelineno-1-43" name="__codelineno-1-43" href="#__codelineno-1-43"></a><span class="gs">**Format:**</span>
-</span><span id="__span-1-44"><a id="__codelineno-1-44" name="__codelineno-1-44" href="#__codelineno-1-44"></a><span class="k">-</span><span class="w"> </span><span class="gs">**First line**</span>: a concise summary with a lowercase prefix (<span class="sb">`module:`</span>, <span class="sb">`cli:`</span>, etc.)
-</span><span id="__span-1-45"><a id="__codelineno-1-45" name="__codelineno-1-45" href="#__codelineno-1-45"></a><span class="k">-</span><span class="w"> </span><span class="gs">**First paragraph**</span>: describe the program&#39;s <span class="gs">**selected state**</span> (what it has or provides)
-</span><span id="__span-1-46"><a id="__codelineno-1-46" name="__codelineno-1-46" href="#__codelineno-1-46"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>If part of a series, reflect the cumulative state after previous commits
-</span><span id="__span-1-47"><a id="__codelineno-1-47" name="__codelineno-1-47" href="#__codelineno-1-47"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Don&#39;t describe the diff, the change, or future goals
-</span><span id="__span-1-48"><a id="__codelineno-1-48" name="__codelineno-1-48" href="#__codelineno-1-48"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Second paragraph**</span>: explain the underlying problem
-</span><span id="__span-1-49"><a id="__codelineno-1-49" name="__codelineno-1-49" href="#__codelineno-1-49"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Choose perspective: maintainer (internal concerns) or user (external concerns)
-</span><span id="__span-1-50"><a id="__codelineno-1-50" name="__codelineno-1-50" href="#__codelineno-1-50"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Focus on <span class="gs">**missing capabilities**</span>, not symptoms
-</span><span id="__span-1-51"><a id="__codelineno-1-51" name="__codelineno-1-51" href="#__codelineno-1-51"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Prefer concrete limitations over vague words like &quot;cumbersome&quot; or &quot;better&quot;
-</span><span id="__span-1-52"><a id="__codelineno-1-52" name="__codelineno-1-52" href="#__codelineno-1-52"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Third paragraph**</span>: describe how this commit addresses the problem
-</span><span id="__span-1-53"><a id="__codelineno-1-53" name="__codelineno-1-53" href="#__codelineno-1-53"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Be precise about scope (if it only improves one aspect, say so)
-</span><span id="__span-1-54"><a id="__codelineno-1-54" name="__codelineno-1-54" href="#__codelineno-1-54"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Use &quot;This commit addresses that by...&quot;
-</span><span id="__span-1-55"><a id="__codelineno-1-55" name="__codelineno-1-55" href="#__codelineno-1-55"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>If part of a series, use progression words: &quot;begins&quot;, &quot;continues&quot;, &quot;completes&quot;
-</span><span id="__span-1-56"><a id="__codelineno-1-56" name="__codelineno-1-56" href="#__codelineno-1-56"></a>
-</span><span id="__span-1-57"><a id="__codelineno-1-57" name="__codelineno-1-57" href="#__codelineno-1-57"></a><span class="gs">**Key rules:**</span>
-</span><span id="__span-1-58"><a id="__codelineno-1-58" name="__codelineno-1-58" href="#__codelineno-1-58"></a><span class="k">-</span><span class="w"> </span>Write in <span class="gs">**present tense**</span> about the selected state (&quot;has&quot;, not &quot;used to have&quot;)
-</span><span id="__span-1-59"><a id="__codelineno-1-59" name="__codelineno-1-59" href="#__codelineno-1-59"></a><span class="k">-</span><span class="w"> </span>Use &quot;this&quot; only when referring to the commit itself
-</span><span id="__span-1-60"><a id="__codelineno-1-60" name="__codelineno-1-60" href="#__codelineno-1-60"></a><span class="k">-</span><span class="w"> </span>Don&#39;t overstate impact or use words like &quot;comprehensive&quot; or &quot;crucial&quot;
-</span><span id="__span-1-61"><a id="__codelineno-1-61" name="__codelineno-1-61" href="#__codelineno-1-61"></a>
-</span><span id="__span-1-62"><a id="__codelineno-1-62" name="__codelineno-1-62" href="#__codelineno-1-62"></a><span class="gs">**Anti-patterns to avoid:**</span>
+</span><span id="__span-1-40"><a id="__codelineno-1-40" name="__codelineno-1-40" href="#__codelineno-1-40"></a><span class="gu">### Commit Messages</span>
+</span><span id="__span-1-41"><a id="__codelineno-1-41" name="__codelineno-1-41" href="#__codelineno-1-41"></a>
+</span><span id="__span-1-42"><a id="__codelineno-1-42" name="__codelineno-1-42" href="#__codelineno-1-42"></a>Commit messages should aid <span class="gs">**drive-by reviewers with limited context**</span>. Assume
+</span><span id="__span-1-43"><a id="__codelineno-1-43" name="__codelineno-1-43" href="#__codelineno-1-43"></a>the reader does not know the project well.
+</span><span id="__span-1-44"><a id="__codelineno-1-44" name="__codelineno-1-44" href="#__codelineno-1-44"></a>
+</span><span id="__span-1-45"><a id="__codelineno-1-45" name="__codelineno-1-45" href="#__codelineno-1-45"></a><span class="gs">**Format:**</span>
+</span><span id="__span-1-46"><a id="__codelineno-1-46" name="__codelineno-1-46" href="#__codelineno-1-46"></a><span class="k">-</span><span class="w"> </span><span class="gs">**First line**</span>: a concise summary with a lowercase prefix (<span class="sb">`module:`</span>, <span class="sb">`cli:`</span>, etc.)
+</span><span id="__span-1-47"><a id="__codelineno-1-47" name="__codelineno-1-47" href="#__codelineno-1-47"></a><span class="k">-</span><span class="w"> </span><span class="gs">**First paragraph**</span>: describe the program&#39;s <span class="gs">**selected state**</span> (what it has or provides)
+</span><span id="__span-1-48"><a id="__codelineno-1-48" name="__codelineno-1-48" href="#__codelineno-1-48"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>If part of a series, reflect the cumulative state after previous commits
+</span><span id="__span-1-49"><a id="__codelineno-1-49" name="__codelineno-1-49" href="#__codelineno-1-49"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Don&#39;t describe the diff, the change, or future goals
+</span><span id="__span-1-50"><a id="__codelineno-1-50" name="__codelineno-1-50" href="#__codelineno-1-50"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Second paragraph**</span>: explain the underlying problem
+</span><span id="__span-1-51"><a id="__codelineno-1-51" name="__codelineno-1-51" href="#__codelineno-1-51"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Choose perspective: first-person maintainer (internal concerns) or user (external concerns)
+</span><span id="__span-1-52"><a id="__codelineno-1-52" name="__codelineno-1-52" href="#__codelineno-1-52"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Focus on <span class="gs">**missing capabilities**</span>, not symptoms
+</span><span id="__span-1-53"><a id="__codelineno-1-53" name="__codelineno-1-53" href="#__codelineno-1-53"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Prefer concrete limitations over vague words like &quot;cumbersome&quot; or &quot;better&quot;
+</span><span id="__span-1-54"><a id="__codelineno-1-54" name="__codelineno-1-54" href="#__codelineno-1-54"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Third paragraph**</span>: describe how this commit addresses the problem
+</span><span id="__span-1-55"><a id="__codelineno-1-55" name="__codelineno-1-55" href="#__codelineno-1-55"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Be precise about scope (if it only improves one aspect, say so)
+</span><span id="__span-1-56"><a id="__codelineno-1-56" name="__codelineno-1-56" href="#__codelineno-1-56"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Use &quot;This commit addresses that by...&quot;
+</span><span id="__span-1-57"><a id="__codelineno-1-57" name="__codelineno-1-57" href="#__codelineno-1-57"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>If part of a series, use progression words: &quot;begins&quot;, &quot;continues&quot;, &quot;completes&quot;
+</span><span id="__span-1-58"><a id="__codelineno-1-58" name="__codelineno-1-58" href="#__codelineno-1-58"></a>
+</span><span id="__span-1-59"><a id="__codelineno-1-59" name="__codelineno-1-59" href="#__codelineno-1-59"></a><span class="gs">**Key rules:**</span>
+</span><span id="__span-1-60"><a id="__codelineno-1-60" name="__codelineno-1-60" href="#__codelineno-1-60"></a><span class="k">-</span><span class="w"> </span>Write in <span class="gs">**present tense**</span> about the selected state (&quot;has&quot;, not &quot;used to have&quot;)
+</span><span id="__span-1-61"><a id="__codelineno-1-61" name="__codelineno-1-61" href="#__codelineno-1-61"></a><span class="k">-</span><span class="w"> </span>Use &quot;this&quot; only when referring to the commit itself
+</span><span id="__span-1-62"><a id="__codelineno-1-62" name="__codelineno-1-62" href="#__codelineno-1-62"></a><span class="k">-</span><span class="w"> </span>Don&#39;t overstate impact or use words like &quot;comprehensive&quot; or &quot;crucial&quot;
 </span><span id="__span-1-63"><a id="__codelineno-1-63" name="__codelineno-1-63" href="#__codelineno-1-63"></a>
-</span><span id="__span-1-64"><a id="__codelineno-1-64" name="__codelineno-1-64" href="#__codelineno-1-64"></a>❌ First paragraph describes the change:
+</span><span id="__span-1-64"><a id="__codelineno-1-64" name="__codelineno-1-64" href="#__codelineno-1-64"></a><span class="gs">**Anti-patterns to avoid:**</span>
+</span><span id="__span-1-65"><a id="__codelineno-1-65" name="__codelineno-1-65" href="#__codelineno-1-65"></a>
+</span><span id="__span-1-66"><a id="__codelineno-1-66" name="__codelineno-1-66" href="#__codelineno-1-66"></a>❌ First paragraph describes the change:
 </span></code></pre></div>
 This commit adds verbose output to the CLI...
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>✅ First paragraph describes selected state:

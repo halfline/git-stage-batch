@@ -1659,8 +1659,12 @@ This clarity assists contributors explore the codebase, maintainers review chang
 </span><span id="__span-4-41"><a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a># Start fresh after committing
 </span><span id="__span-4-42"><a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a>❯ git-stage-batch again   # or: a
 </span><span id="__span-4-43"><a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a>
-</span><span id="__span-4-44"><a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a># For advanced workflows, defer changes to named batches
-</span><span id="__span-4-45"><a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>❯ git-stage-batch include --to feature-work  # Save to batch for later
+</span><span id="__span-4-44"><a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a># Stop after one action instead of selecting the next hunk
+</span><span id="__span-4-45"><a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>❯ git-stage-batch include --no-auto-advance
+</span><span id="__span-4-46"><a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a>❯ git-stage-batch show
+</span><span id="__span-4-47"><a id="__codelineno-4-47" name="__codelineno-4-47" href="#__codelineno-4-47"></a>
+</span><span id="__span-4-48"><a id="__codelineno-4-48" name="__codelineno-4-48" href="#__codelineno-4-48"></a># For advanced workflows, defer changes to named batches
+</span><span id="__span-4-49"><a id="__codelineno-4-49" name="__codelineno-4-49" href="#__codelineno-4-49"></a>❯ git-stage-batch include --to feature-work  # Save to batch for later
 </span></code></pre></div>
 <p>See <a href="batches/">batch operations</a> for advanced patch-series organization.
 See <a href="commands/">commands reference</a> for the <code>--as</code> contiguous-range rules.</p>

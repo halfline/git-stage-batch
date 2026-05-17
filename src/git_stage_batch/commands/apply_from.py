@@ -279,14 +279,14 @@ def _execute_apply_candidate(
                     target.after_buffer,
                 )
                 print(
-                    _("Applying apply candidate {ordinal} of {count} for batch '{batch}':").format(
+                    _("Applying candidate {ordinal} of {count} from batch '{batch}':").format(
                         ordinal=preview.ordinal,
                         count=preview.count,
                         batch=batch_name,
                     ),
                     file=sys.stderr,
                 )
-                print(f"  {file_path}: {target.summary}", file=sys.stderr)
+                print(f"  {file_path}: {_('Working tree')}", file=sys.stderr)
                 operation_parts = ["apply", "--from", raw_selector, "--file", file_path]
                 with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
                     snapshot_file_if_untracked(file_path)

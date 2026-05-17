@@ -470,6 +470,7 @@ def test_include_candidate_can_run_from_overview(temp_git_repo, capsys):
 
     captured = capsys.readouterr()
     assert "Included candidate 2 of 2 from batch 'ambiguous'" in captured.err
+    assert "delete target line" not in captured.err
     assert (temp_git_repo / "file.txt").read_text() == "a\ninsert\nx\nmid\nb\n"
     assert not _candidate_state_has_file("ambiguous", "file.txt")
 

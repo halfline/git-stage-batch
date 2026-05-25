@@ -13,6 +13,7 @@ from ..utils.file_io import append_file_path_to_file, remove_file_path_from_file
 from ..utils.git import (
     git_add_paths,
     remove_file_from_gitignore,
+    remove_file_from_local_exclude,
     require_git_repository,
     resolve_file_path_to_repo_relative,
     run_git_command,
@@ -49,8 +50,9 @@ def command_unblock_file(file_path_arg: str) -> None:
     )
 
     with checkpoint:
-        # Remove from .gitignore
+        # Remove from .gitignore and .git/info/exclude
         removed_from_gitignore = remove_file_from_gitignore(file_path)
+        removed_from_local_exclude = remove_file_from_local_exclude(file_path)
 
         # Remove from blocked-files state
         remove_file_path_from_file(get_blocked_files_file_path(), file_path)
@@ -61,7 +63,7 @@ def command_unblock_file(file_path_arg: str) -> None:
             if result.returncode == 0:
                 append_file_path_to_file(get_auto_added_files_file_path(), file_path)
 
-    if removed_from_gitignore:
+    if removed_from_gitignore or removed_from_local_exclude:
         print(f"Unblocked file: {file_path}", file=sys.stderr)
     else:
         print(f"Removed from blocked list: {file_path} (was not in .gitignore)", file=sys.stderr)

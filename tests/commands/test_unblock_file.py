@@ -284,3 +284,74 @@ class TestCommandUnblockFile:
 
         blocked = read_file_paths_file(get_blocked_files_file_path())
         assert "dist/" not in blocked
+
+    def test_unblock_file_via_negation_when_directory_covers_path(self, temp_git_repo, capsys):
+        """Test that unblocking a file under a blocked directory uses negation."""
+        subdir = temp_git_repo / "build"
+        subdir.mkdir()
+        (subdir / "keep.c").write_text("important\n")
+        (subdir / "discard.o").write_text("binary\n")
+
+        command_block_file("build/")
+
+        # Verify directory is blocked
+        gitignore = get_gitignore_path()
+        assert "build/\n" in gitignore.read_text()
+
+        # Unblock a specific file inside the blocked directory
+        command_unblock_file("build/keep.c")
+
+        # .gitignore should have build/** (promoted) and !build/keep.c (negation)
+        content = gitignore.read_text()
+        assert "build/**\n" in content
+        assert "!build/keep.c\n" in content
+        assert "build/\n" not in content
+
+        # Blocked list should have !build/keep.c negation
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "!build/keep.c" in blocked
+        assert "build/" in blocked  # directory entry stays
+
+        captured = capsys.readouterr()
+        assert "Unblocked file: build/keep.c" in captured.err
+
+    def test_unblock_file_negation_blocks_other_files_in_directory(self, temp_git_repo):
+        """Test that unblocking one file in a directory leaves others blocked."""
+        from git_stage_batch.utils.file_io import is_path_blocked
+
+        subdir = temp_git_repo / "build"
+        subdir.mkdir()
+        (subdir / "keep.c").write_text("important\n")
+        (subdir / "discard.o").write_text("binary\n")
+
+        command_block_file("build/")
+        command_unblock_file("build/keep.c")
+
+        blocked = set(read_file_paths_file(get_blocked_files_file_path()))
+        assert not is_path_blocked("build/keep.c", blocked)
+        assert is_path_blocked("build/discard.o", blocked)
+
+    def test_unblock_file_negation_second_file_in_same_directory(self, temp_git_repo):
+        """Test that a second negation in an already-promoted directory works."""
+        subdir = temp_git_repo / "gen"
+        subdir.mkdir()
+        (subdir / "a.c").write_text("code\n")
+        (subdir / "b.c").write_text("code\n")
+        (subdir / "c.o").write_text("binary\n")
+
+        command_block_file("gen/")
+        command_unblock_file("gen/a.c")
+        command_unblock_file("gen/b.c")
+
+        gitignore = get_gitignore_path()
+        content = gitignore.read_text()
+        assert "gen/**\n" in content
+        assert content.count("gen/**") == 1  # not promoted twice
+        assert "!gen/a.c\n" in content
+        assert "!gen/b.c\n" in content
+
+        blocked = set(read_file_paths_file(get_blocked_files_file_path()))
+        from git_stage_batch.utils.file_io import is_path_blocked
+        assert not is_path_blocked("gen/a.c", blocked)
+        assert not is_path_blocked("gen/b.c", blocked)
+        assert is_path_blocked("gen/c.o", blocked)

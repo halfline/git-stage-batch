@@ -11,6 +11,7 @@ from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _
 from ..utils.file_io import append_file_path_to_file, remove_file_path_from_file
 from ..utils.git import (
+    add_file_to_local_exclude,
     add_file_to_gitignore,
     git_remove_paths,
     require_git_repository,
@@ -38,7 +39,7 @@ def _is_new_intent_to_add_file(file_path: str) -> bool:
     return head_check.returncode != 0
 
 
-def command_block_file(file_path_arg: str = "") -> None:
+def command_block_file(file_path_arg: str = "", local_only: bool = False) -> None:
     """Permanently exclude a file by adding it to .gitignore and blocked list."""
     require_git_repository()
     ensure_state_directory_exists()
@@ -53,14 +54,18 @@ def command_block_file(file_path_arg: str = "") -> None:
     # Resolve to repo-relative path
     file_path = resolve_file_path_to_repo_relative(file_path_arg)
     session_active = get_abort_head_file_path().exists()
+    checkpoint_paths = [] if local_only else [".gitignore"]
     checkpoint = (
-        undo_checkpoint(f"block-file {file_path}", worktree_paths=[".gitignore"])
+        undo_checkpoint(f"block-file {file_path}", worktree_paths=checkpoint_paths)
         if session_active else nullcontext()
     )
 
     with checkpoint:
-        # Add to .gitignore
-        add_file_to_gitignore(file_path)
+        # Add to .git/info/exclude or .gitignore
+        if local_only:
+            add_file_to_local_exclude(file_path)
+        else:
+            add_file_to_gitignore(file_path)
 
         # Remove from index if session is active and the file is a new intent-to-add entry
         if session_active and _is_new_intent_to_add_file(file_path):

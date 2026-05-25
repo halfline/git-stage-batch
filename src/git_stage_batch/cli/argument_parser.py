@@ -1318,7 +1318,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         default="",
         help=_("Path to the file to block (defaults to selected hunk's file)"),
     )
-    parser_block_file.set_defaults(func=lambda args: commands.command_block_file(args.file_path))
+    parser_block_file.add_argument(
+        "--local-only",
+        action="store_true",
+        default=False,
+        help=_("Add to .git/info/exclude instead of .gitignore"),
+    )
+    parser_block_file.set_defaults(func=lambda args: commands.command_block_file(args.file_path, local_only=args.local_only))
 
     # unblock-file - Remove a file from blocked list
     parser_unblock_file = _add_subcommand_parser(

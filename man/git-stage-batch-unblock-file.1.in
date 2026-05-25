@@ -8,8 +8,11 @@ git-stage-batch-unblock-file \- allow a blocked file to be reviewed again
 .B unblock-file
 removes
 .I PATH
-from the block list and removes the matching ignore entry so its hunks can be
-processed again.
+from the block list and removes the matching ignore entry from
+.B .gitignore
+and
+.B .git/info/exclude
+so its hunks can be processed again.
 .SH SEE ALSO
 .BR git-stage-batch (1),
 .BR git-stage-batch-block-file (1)

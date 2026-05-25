@@ -10,9 +10,13 @@ from ..data.hunk_tracking import advance_to_and_show_next_change
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _
-from ..utils.file_io import append_file_path_to_file, remove_file_path_from_file
+from ..utils.file_io import append_file_path_to_file, read_file_paths_file, remove_file_path_from_file
 from ..utils.git import (
+    add_file_to_gitignore,
+    add_file_to_local_exclude,
     git_add_paths,
+    promote_directory_to_glob_in_gitignore,
+    promote_directory_to_glob_in_local_exclude,
     remove_file_from_gitignore,
     remove_file_from_local_exclude,
     require_git_repository,
@@ -20,6 +24,14 @@ from ..utils.git import (
     run_git_command,
 )
 from ..utils.paths import ensure_state_directory_exists, get_abort_head_file_path, get_auto_added_files_file_path, get_blocked_files_file_path
+
+
+def _find_covering_directory(path: str, blocked_files: list[str]) -> str | None:
+    """Return the blocked directory entry that covers path, or None."""
+    for entry in blocked_files:
+        if entry.endswith("/") and path.startswith(entry):
+            return entry
+    return None
 
 
 def _is_absent_from_head(file_path: str) -> bool:
@@ -53,12 +65,28 @@ def command_unblock_file(file_path_arg: str) -> None:
     )
 
     with checkpoint:
-        # Remove from .gitignore and .git/info/exclude
+        # Try direct removal first
         removed_from_gitignore = remove_file_from_gitignore(file_path)
         removed_from_local_exclude = remove_file_from_local_exclude(file_path)
 
-        # Remove from blocked-files state
-        remove_file_path_from_file(get_blocked_files_file_path(), file_path)
+        blocked_files = read_file_paths_file(get_blocked_files_file_path())
+        directly_blocked = file_path in blocked_files
+        if directly_blocked:
+            remove_file_path_from_file(get_blocked_files_file_path(), file_path)
+
+        # If not found directly, check whether a directory entry covers this path.
+        # If so, promote dir/ to dir/** in the ignore file(s) and append a negation
+        # so git re-includes this specific file while still ignoring the rest.
+        if not removed_from_gitignore and not removed_from_local_exclude and not directly_blocked:
+            covering_dir = _find_covering_directory(file_path, blocked_files)
+            if covering_dir is not None:
+                if promote_directory_to_glob_in_gitignore(covering_dir):
+                    add_file_to_gitignore(f"!{file_path}")
+                    removed_from_gitignore = True
+                if promote_directory_to_glob_in_local_exclude(covering_dir):
+                    add_file_to_local_exclude(f"!{file_path}")
+                    removed_from_local_exclude = True
+                append_file_path_to_file(get_blocked_files_file_path(), f"!{file_path}")
 
         # Re-add new untracked files as intent-to-add if session is active
         if session_active and not file_path.endswith("/") and _is_absent_from_head(file_path) and _is_absent_from_index(file_path):

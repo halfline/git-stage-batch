@@ -119,9 +119,12 @@ def append_file_path_to_file(path: Path, file_path: str) -> None:
 def is_path_blocked(path: str, blocked_files: Collection[str]) -> bool:
     """Return True when path is covered by the blocked-files list.
 
+    A negation entry (!path) takes precedence over all other entries.
     An entry covers path if it equals path exactly, or if the entry ends
     with '/' and path starts with that prefix (directory match).
     """
+    if f"!{path}" in blocked_files:
+        return False
     if path in blocked_files:
         return True
     return any(path.startswith(entry) for entry in blocked_files if entry.endswith("/"))

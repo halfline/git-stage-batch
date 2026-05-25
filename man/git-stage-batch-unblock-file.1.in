@@ -13,6 +13,20 @@ from the block list and removes the matching ignore entry from
 and
 .B .git/info/exclude
 so its hunks can be processed again.
+.PP
+When
+.I PATH
+is not listed directly but is covered by a blocked directory entry such as
+.BR build/ ,
+.B unblock-file
+instead promotes that entry to
+.B build/**
+and appends
+.B !PATH
+as a negation. The
+.B build/**
+form leaves the directory node unexcluded so git honours the negation,
+while all other files in the directory remain ignored.
 .SH SEE ALSO
 .BR git-stage-batch (1),
 .BR git-stage-batch-block-file (1)

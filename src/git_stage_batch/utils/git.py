@@ -1001,3 +1001,56 @@ def remove_file_from_local_exclude(file_path: str) -> bool:
         write_text_file_contents(exclude_path, "".join(lines))
 
     return removed
+
+
+def promote_directory_to_glob_in_gitignore(dir_path: str) -> bool:
+    """Replace a dir/ entry with dir/** in .gitignore, enabling negation patterns.
+
+    Returns True when dir/ or dir/** is present (so negation will take effect),
+    False when the directory has no entry in .gitignore.
+    """
+    lines = read_gitignore_lines()
+    dir_entry = dir_path.rstrip("/") + "/"
+    glob_entry = dir_path.rstrip("/") + "/**"
+
+    if any(line.rstrip("\n") == glob_entry for line in lines):
+        return True  # Already promoted
+
+    found = False
+    for i, line in enumerate(lines):
+        if line.rstrip("\n") == dir_entry:
+            lines[i] = glob_entry + ("\n" if line.endswith("\n") else "")
+            found = True
+
+    if found:
+        write_gitignore_lines(lines)
+    return found
+
+
+def promote_directory_to_glob_in_local_exclude(dir_path: str) -> bool:
+    """Replace a dir/ entry with dir/** in .git/info/exclude, enabling negation patterns.
+
+    Returns True when dir/ or dir/** is present (so negation will take effect),
+    False when the directory has no entry in .git/info/exclude.
+    """
+    exclude_path = get_local_exclude_path()
+    if not exclude_path.exists():
+        return False
+
+    content = read_text_file_contents(exclude_path)
+    lines = content.splitlines(keepends=True)
+    dir_entry = dir_path.rstrip("/") + "/"
+    glob_entry = dir_path.rstrip("/") + "/**"
+
+    if any(line.rstrip("\n") == glob_entry for line in lines):
+        return True  # Already promoted
+
+    found = False
+    for i, line in enumerate(lines):
+        if line.rstrip("\n") == dir_entry:
+            lines[i] = glob_entry + ("\n" if line.endswith("\n") else "")
+            found = True
+
+    if found:
+        write_text_file_contents(exclude_path, "".join(lines))
+    return found

@@ -251,3 +251,36 @@ class TestCommandUnblockFile:
 
         captured = capsys.readouterr()
         assert "Unblocked file: both.txt" in captured.err
+
+    def test_unblock_file_directory_with_trailing_slash(self, temp_git_repo, capsys):
+        """Test that unblock-file removes a directory entry stored as dir/."""
+        subdir = temp_git_repo / "build"
+        subdir.mkdir()
+        (subdir / "out.o").write_text("binary\n")
+
+        command_block_file("build/")
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "build/" in blocked
+
+        command_unblock_file("build/")
+
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "build/" not in blocked
+
+        captured = capsys.readouterr()
+        assert "Unblocked file: build/" in captured.err
+
+    def test_unblock_file_directory_without_trailing_slash(self, temp_git_repo):
+        """Test that unblock-file normalizes a bare directory name to dir/ for removal."""
+        subdir = temp_git_repo / "dist"
+        subdir.mkdir()
+        (subdir / "bundle.js").write_text("code\n")
+
+        command_block_file("dist/")
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "dist/" in blocked
+
+        command_unblock_file("dist")
+
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "dist/" not in blocked

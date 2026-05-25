@@ -223,3 +223,48 @@ class TestCommandBlockFile:
 
         exclude = get_local_exclude_path()
         assert exclude.read_text().count("dup.txt") == 1
+
+    def test_block_file_directory_with_trailing_slash(self, temp_git_repo):
+        """Test that a directory argument with trailing slash is stored as dir/."""
+        subdir = temp_git_repo / "build"
+        subdir.mkdir()
+        (subdir / "output.o").write_text("binary\n")
+
+        command_block_file("build/")
+
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "build/" in blocked
+
+        gitignore = get_gitignore_path()
+        assert "build/\n" in gitignore.read_text()
+
+    def test_block_file_directory_without_trailing_slash(self, temp_git_repo):
+        """Test that a bare directory name is normalized to dir/ form."""
+        subdir = temp_git_repo / "dist"
+        subdir.mkdir()
+        (subdir / "bundle.js").write_text("code\n")
+
+        command_block_file("dist")
+
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "dist/" in blocked
+        assert "dist" not in blocked
+
+    def test_block_file_directory_prefix_match(self, temp_git_repo):
+        """Test that blocking a directory suppresses files under it during a session."""
+        from git_stage_batch.commands.start import command_start
+        from git_stage_batch.utils.file_io import is_path_blocked
+
+        subdir = temp_git_repo / "generated"
+        subdir.mkdir()
+        (subdir / "foo.c").write_text("code\n")
+        (subdir / "bar.c").write_text("code\n")
+
+        command_start()
+        command_block_file("generated/")
+
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        blocked_set = set(blocked)
+        assert is_path_blocked("generated/foo.c", blocked_set)
+        assert is_path_blocked("generated/bar.c", blocked_set)
+        assert not is_path_blocked("other.c", blocked_set)

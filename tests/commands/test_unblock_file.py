@@ -8,7 +8,7 @@ from git_stage_batch.commands.block_file import command_block_file
 from git_stage_batch.commands.unblock_file import command_unblock_file
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import append_file_path_to_file, read_file_paths_file
-from git_stage_batch.utils.git import get_gitignore_path
+from git_stage_batch.utils.git import get_gitignore_path, get_local_exclude_path
 from git_stage_batch.utils.paths import get_blocked_files_file_path
 
 
@@ -212,3 +212,42 @@ class TestCommandUnblockFile:
         # Should be removed (using relative path)
         blocked = read_file_paths_file(get_blocked_files_file_path())
         assert "file.txt" not in blocked
+
+    def test_unblock_file_removes_from_local_exclude(self, temp_git_repo, capsys):
+        """Test that unblock-file removes file from .git/info/exclude."""
+        (temp_git_repo / "local.txt").write_text("content\n")
+        command_block_file("local.txt", local_only=True)
+
+        exclude = get_local_exclude_path()
+        assert "local.txt\n" in exclude.read_text()
+
+        command_unblock_file("local.txt")
+
+        assert "local.txt" not in exclude.read_text()
+
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "local.txt" not in blocked
+
+        captured = capsys.readouterr()
+        assert "Unblocked file: local.txt" in captured.err
+
+    def test_unblock_file_removes_from_both_exclude_and_gitignore(self, temp_git_repo, capsys):
+        """Test that unblock-file removes file from both ignore sources at once."""
+        (temp_git_repo / "both.txt").write_text("content\n")
+
+        # Manually add to both
+        get_gitignore_path().write_text("both.txt\n")
+        exclude = get_local_exclude_path()
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        exclude.write_text("both.txt\n")
+        append_file_path_to_file(get_blocked_files_file_path(), "both.txt")
+
+        command_unblock_file("both.txt")
+
+        assert "both.txt" not in get_gitignore_path().read_text()
+        assert "both.txt" not in exclude.read_text()
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert "both.txt" not in blocked
+
+        captured = capsys.readouterr()
+        assert "Unblocked file: both.txt" in captured.err

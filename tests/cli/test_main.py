@@ -1,5 +1,6 @@
 """Tests for CLI entry point."""
 
+import subprocess
 import sys
 from argparse import Namespace
 from contextlib import contextmanager
@@ -91,4 +92,31 @@ def test_main_handles_keyboard_interrupt_without_traceback(capsys):
     assert exc_info.value.code == 130
     captured = capsys.readouterr()
     assert "Interrupted." in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_main_handles_git_failure_before_dispatch_without_traceback(capsys):
+    """Git setup failures should exit cleanly before command dispatch."""
+
+    @contextmanager
+    def failing_lock():
+        raise subprocess.CalledProcessError(
+            128,
+            ["git", "rev-parse", "--absolute-git-dir"],
+            stderr="fatal: not a git repository\n",
+        )
+        yield
+
+    args = Namespace(working_directory=None)
+
+    with patch.object(sys, "argv", ["git-stage-batch", "start"]):
+        with patch.object(main_module, "parse_command_line", return_value=args):
+            with patch.object(main_module, "should_page_output", return_value=False):
+                with patch.object(main_module, "acquire_session_lock", failing_lock):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main_module.main()
+
+    assert exc_info.value.code == 128
+    captured = capsys.readouterr()
+    assert "fatal: not a git repository" in captured.err
     assert "Traceback" not in captured.err

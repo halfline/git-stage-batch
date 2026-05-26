@@ -62,6 +62,7 @@ from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
 from .file_tracking import auto_add_untracked_files
 from ..utils.file_io import (
+    is_path_blocked,
     read_file_paths_file,
     read_text_file_line_set,
     read_text_file_contents,
@@ -1825,7 +1826,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     if gitlink_hash in blocked_hashes:
                         continue
 
-                    if item.path() in blocked_files:
+                    if is_path_blocked(item.path(), blocked_files):
                         continue
 
                     cache_gitlink_change(item)
@@ -1839,7 +1840,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
 
                     # Determine file path for blocked files check
                     file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
-                    if file_path in blocked_files:
+                    if is_path_blocked(file_path, blocked_files):
                         continue
 
                     cache_binary_file_change(item)
@@ -1857,7 +1858,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     item.lines,
                     annotator=annotate_with_batch_source,
                 )
-                if line_changes.path in blocked_files:
+                if is_path_blocked(line_changes.path, blocked_files):
                     continue
 
                 write_selected_hunk_patch_lines(item.lines)

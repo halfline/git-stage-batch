@@ -43,6 +43,7 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import (
     count_nonblank_text_file_lines,
+    is_path_blocked,
     stream_text_file_lines,
     read_file_paths_file,
     read_text_file_line_set,
@@ -124,7 +125,7 @@ def estimate_remaining_hunks() -> int:
                     file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
                 file_path = file_path.removeprefix("a/").removeprefix("b/")
 
-                if hunk_hash not in blocked_hashes and file_path not in blocked_files:
+                if hunk_hash not in blocked_hashes and not is_path_blocked(file_path, blocked_files):
                     remaining += 1
     except Exception:
         return 0

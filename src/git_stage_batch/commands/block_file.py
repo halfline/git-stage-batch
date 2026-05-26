@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from contextlib import nullcontext
+from pathlib import Path
 
 from ..data.hunk_tracking import advance_to_and_show_next_change
 from ..data.undo import undo_checkpoint
@@ -11,6 +12,7 @@ from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _
 from ..utils.file_io import append_file_path_to_file, remove_file_path_from_file
 from ..utils.git import (
+    add_file_to_local_exclude,
     add_file_to_gitignore,
     git_remove_paths,
     require_git_repository,
@@ -38,7 +40,7 @@ def _is_new_intent_to_add_file(file_path: str) -> bool:
     return head_check.returncode != 0
 
 
-def command_block_file(file_path_arg: str = "") -> None:
+def command_block_file(file_path_arg: str = "", local_only: bool = False) -> None:
     """Permanently exclude a file by adding it to .gitignore and blocked list."""
     require_git_repository()
     ensure_state_directory_exists()
@@ -50,20 +52,26 @@ def command_block_file(file_path_arg: str = "") -> None:
             exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
         file_path_arg = line_changes.path
 
-    # Resolve to repo-relative path
+    # Resolve to repo-relative path, normalizing directories to a trailing slash
     file_path = resolve_file_path_to_repo_relative(file_path_arg)
+    if file_path_arg.endswith("/") or Path(file_path_arg).is_dir():
+        file_path = file_path.rstrip("/") + "/"
     session_active = get_abort_head_file_path().exists()
+    checkpoint_paths = [] if local_only else [".gitignore"]
     checkpoint = (
-        undo_checkpoint(f"block-file {file_path}", worktree_paths=[".gitignore"])
+        undo_checkpoint(f"block-file {file_path}", worktree_paths=checkpoint_paths)
         if session_active else nullcontext()
     )
 
     with checkpoint:
-        # Add to .gitignore
-        add_file_to_gitignore(file_path)
+        # Add to .git/info/exclude or .gitignore
+        if local_only:
+            add_file_to_local_exclude(file_path)
+        else:
+            add_file_to_gitignore(file_path)
 
         # Remove from index if session is active and the file is a new intent-to-add entry
-        if session_active and _is_new_intent_to_add_file(file_path):
+        if session_active and not file_path.endswith("/") and _is_new_intent_to_add_file(file_path):
             git_remove_paths([file_path], cached=True, quiet=True, ignore_unmatch=True, check=False)
             remove_file_path_from_file(get_auto_added_files_file_path(), file_path)
 

@@ -6,7 +6,10 @@ import subprocess
 
 
 from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.query import get_batch_commit_sha
+from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.discard import command_discard_to_batch
+from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.start import command_start
 
 
@@ -15,6 +18,15 @@ def _presence_source_lines(file_metadata: dict) -> list[str]:
     for claim in file_metadata.get("presence_claims", []):
         lines.extend(claim.get("source_lines", []))
     return lines
+
+
+def _show_file(commit: str, path: str) -> str:
+    return subprocess.run(
+        ["git", "show", f"{commit}:{path}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
 
 
 def test_stale_source_advancement_on_discard(functional_repo):
@@ -65,6 +77,38 @@ def test_stale_source_advancement_on_discard(functional_repo):
     # Verify ownership was preserved and extended
     # Should now claim all 5 lines
     assert "1-5" in ",".join(_presence_source_lines(metadata["files"]["test.py"]))
+
+
+def test_again_include_to_new_batch_does_not_reuse_stale_session_source(functional_repo):
+    """A bridge repair after again must not save bytes from an older batch source."""
+    test_file = functional_repo / "api.py"
+    test_file.write_text('def api():\n    return "base"\n')
+
+    subprocess.run(["git", "add", "api.py"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Add api"], check=True, capture_output=True)
+
+    test_file.write_text('def api():\n    return "layer3"\n')
+
+    command_start()
+    command_discard_to_batch(batch_name="layer3", file="api.py", quiet=True)
+
+    test_file.write_text('def api():\n    return "bridge"\n')
+
+    command_again(quiet=True)
+    command_include_to_batch(batch_name="repair", quiet=True)
+
+    metadata = read_batch_metadata("repair")
+    file_metadata = metadata["files"]["api.py"]
+    source_content = _show_file(file_metadata["batch_source_commit"], "api.py")
+
+    batch_commit = get_batch_commit_sha("repair")
+    assert batch_commit is not None
+    realized_content = _show_file(batch_commit, "api.py")
+
+    assert 'return "bridge"' in source_content
+    assert 'return "layer3"' not in source_content
+    assert 'return "bridge"' in realized_content
+    assert 'return "layer3"' not in realized_content
 
 
 def test_stale_discard_preserves_previously_discarded_claimed_lines(functional_repo):

@@ -256,6 +256,15 @@ echo "$status" | jq '.progress.remaining'
 3. **Emphasize atomic commits** - Make it clear commits should be focused
 4. **Line-level control** - Remind the AI about `include --line` for mixed hunks
 5. **`again` command** - Ensure the AI knows to run `again` after commits
+6. **Capture repair edits** - When decomposing a messy working tree, an AI assistant
+   may need to edit files between `discard --to` operations to keep the remaining
+   intermediate state coherent. Instruct the AI to capture those intentional edits
+   with `include --to repair-*` rather than leaving them as anonymous working-tree
+   changes. Anonymous repairs can cause later `apply --from` or `discard --from`
+   operations to fail because the structural merge engine expects the file state
+   reflected in the batch, not an undocumented in-between state. See the
+   [bridge repair batch workflow](batches.md#advanced-workflow-decomposing-and-recomposing-history)
+   in the batches documentation.
 
 ## Benefits for AI-Assisted Development
 

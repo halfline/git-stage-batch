@@ -12,7 +12,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
-from ..data.batch_sources import load_session_batch_sources, save_session_batch_sources
+from ..data.batch_sources import (
+    create_batch_source_commit,
+    load_session_batch_sources,
+    save_session_batch_sources,
+)
+from ..editor import load_git_object_as_buffer, load_working_tree_file_as_buffer
 from .lineage import _BatchSourceLineage
 from .match import match_lines
 from .ownership import (
@@ -99,7 +104,23 @@ def ensure_batch_source_current_for_selection(
     Raises:
         ValueError: If stale source remapping fails
     """
-    # Detect if source is stale
+    if current_batch_source_commit is None:
+        cached_source_result = _prepare_initial_cached_source_for_selection(
+            file_path,
+            selected_lines,
+        )
+        if cached_source_result is not None:
+            batch_source_commit, prepared_selected_lines, source_was_advanced = (
+                cached_source_result
+            )
+            return RefreshedBatchSelection(
+                batch_source_commit=batch_source_commit,
+                ownership=existing_ownership,
+                selected_lines=prepared_selected_lines,
+                source_was_advanced=source_was_advanced,
+            )
+
+    # Detect if source is stale.
     is_stale = detect_stale_batch_source_for_selection(selected_lines)
 
     if is_stale and current_batch_source_commit and existing_ownership:
@@ -152,6 +173,7 @@ def ensure_batch_source_current_for_selection(
             selected_lines=reannotated_lines,
             source_was_advanced=False
         )
+
     else:
         # Source is current - no changes needed
         return RefreshedBatchSelection(
@@ -160,6 +182,80 @@ def ensure_batch_source_current_for_selection(
             selected_lines=selected_lines,
             source_was_advanced=False
         )
+
+
+def _line_entry_content(line: LineEntry) -> bytes:
+    return line.text_bytes + (b"\n" if line.has_trailing_newline else b"")
+
+
+def _selected_lines_fit_source(
+    selected_lines: list,
+    source_lines: Sequence[bytes],
+) -> bool:
+    """Return whether selected presence lines can be claimed from source bytes."""
+    if detect_stale_batch_source_for_selection(selected_lines):
+        return False
+
+    for line in selected_lines:
+        if line.kind not in (" ", "+"):
+            continue
+        if line.source_line is None:
+            return False
+
+        source_index = line.source_line - 1
+        if source_index < 0 or source_index >= len(source_lines):
+            return False
+        if source_lines[source_index] != _line_entry_content(line):
+            return False
+
+    return True
+
+
+def _cache_session_source(file_path: str, batch_source_commit: str) -> None:
+    batch_sources = load_session_batch_sources()
+    batch_sources[file_path] = batch_source_commit
+    save_session_batch_sources(batch_sources)
+
+
+def _create_current_working_source_for_selection(
+    file_path: str,
+    selected_lines: list,
+) -> tuple[str, list]:
+    with load_working_tree_file_as_buffer(file_path) as working_lines:
+        batch_source_commit = create_batch_source_commit(
+            file_path,
+            file_buffer_override=working_lines,
+        )
+    _cache_session_source(file_path, batch_source_commit)
+    return (
+        batch_source_commit,
+        _refresh_selected_lines_against_new_source(selected_lines),
+    )
+
+
+def _prepare_initial_cached_source_for_selection(
+    file_path: str,
+    selected_lines: list,
+) -> tuple[str, list, bool] | None:
+    batch_source_commit = load_session_batch_sources().get(file_path)
+    if not batch_source_commit:
+        return None
+
+    source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
+    if source_buffer is None:
+        raise ValueError(
+            f"Cannot read cached batch source for {file_path} at "
+            f"{batch_source_commit}"
+        )
+
+    with source_buffer as source_lines:
+        if _selected_lines_fit_source(selected_lines, source_lines):
+            return batch_source_commit, selected_lines, False
+
+    new_batch_source_commit, reannotated_lines = (
+        _create_current_working_source_for_selection(file_path, selected_lines)
+    )
+    return new_batch_source_commit, reannotated_lines, True
 
 
 def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:

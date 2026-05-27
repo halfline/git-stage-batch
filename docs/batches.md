@@ -543,107 +543,158 @@ Save the entire selected file to the batch, then discard the entire file from th
 
 When you have a messy working tree with multiple logical changes intertwined, you can use batches to decompose the changes into layers, create clean checkpoints, then recompose them as a series of well-organized commits.
 
-**Strategy:**
-1. Use `discard --to` to peel off the topmost logical layer
-2. Edit the tree to fix dependencies (remove calls to code you just discarded)
-3. Repeat for each layer, working from outside to inside
-4. Apply batches back in reverse order with clear commit messages
+This workflow has two phases: **decompose outside-in** and **recompose inside-out**.
 
-**Example workflow:**
+### Terminology
+
+**Layer batch** — a logical commit layer captured while peeling the working tree.
+
+- Captured with `discard --to <layer-batch>`: saves the selected change to the batch and removes it from the working tree.
+- Replayed during recomposition with `apply --from <layer-batch>`.
+
+**Bridge repair batch** — a temporary repair that makes an intermediate layer state coherent.
+
+- Captured with `include --to <repair-batch>`: saves the repair to a batch but leaves it in the working tree so the intermediate state can be tested or reviewed.
+- Replayed after the layer it repairs with `apply --from <repair-batch>`.
+- Removed before the next real layer with `discard --from <repair-batch>`.
+- A bridge repair is intentionally temporary: it may appear in one intermediate commit and then be removed by the next commit.
+
+Suggested naming convention:
+
+```text
+layer-1-database
+repair-after-layer-1
+layer-2-auth
+repair-after-layer-2
+layer-3-api
+```
+
+A `repair-after-layer-N` batch means: "temporary code needed after layer N has been committed, but before layer N+1 has been applied."
+
+### Why capture every repair?
+
+Batch application uses **structural merge**, not raw patch replay. The merge engine locates batch-claimed lines relative to the current file structure. If a repair edit is left anonymous in the working tree — not captured in any batch — then later `apply --from` or `discard --from` operations may fail or produce unexpected results because the file no longer looks like what the batch expects.
+
+Capturing every intentional edit (whether a real layer change or a temporary bridge) keeps the replay sequence explicit: `apply --from` adds, `discard --from` removes, and there are no hidden state changes between them.
+
+### Phase 1: Decompose outside-in
+
+Start with the final messy working tree. Peel the outermost (most-dependent) layer first using `discard --to`. If the remaining intermediate state needs a repair to be coherent, make that repair in the working tree and capture it with `include --to repair-*`. Remove the bridge before peeling the next inner layer so it does not pollute that layer's batch.
+
+Use `annotate` to add descriptions to batches. The `--note` flag is not available for `discard --to` or `include --to`.
 
 ```bash
-# Starting state: messy working tree with authentication refactor,
-# new API endpoint, and database migration all mixed together
+# Starting state: final messy working tree containing layer 1 + layer 2 + layer 3.
+# Layer 3 depends on layer 2; layer 2 depends on layer 1.
 
 ❯ git-stage-batch start
 
-# Layer 1: Peel off the API endpoint (topmost layer, depends on auth changes)
-❯ git-stage-batch discard --to api-endpoint --note "Layer 3: API endpoint (depends on layer 2: auth)"
-# Tree now has auth + database changes
+# Peel the outermost layer first.
+❯ git-stage-batch discard --to layer-3-api
+❯ git-stage-batch annotate layer-3-api "Layer 3: API endpoint"
 
-# Fix dependencies: remove the API route registration that depended on the endpoint
-❯ $EDITOR main.py  # Remove route registration
+# The remaining layer-1 + layer-2 state needs a small temporary repair
+# to build or run without layer 3. Make that repair in the working tree.
+❯ $EDITOR path/to/file
 
-# Layer 2: Peel off authentication refactor (depends on database schema)
-❯ git-stage-batch again  # Restart to see remaining hunks
-❯ git-stage-batch discard --to auth-refactor --note "Layer 2: auth refactor (depends on layer 1: database)"
-# Tree now has only database changes
-
-# Fix dependencies: remove auth code that depended on new DB columns
-❯ $EDITOR auth.py  # Remove references to new columns
-
-# Layer 3: What remains is the foundation (database migration)
 ❯ git-stage-batch again
-❯ git-stage-batch discard --to database-migration --note "Layer 1: database foundation (no dependencies)"
-# Tree is now clean (or back to original state)
+❯ git-stage-batch include --to repair-after-layer-2
+❯ git-stage-batch annotate repair-after-layer-2 "Temporary bridge after layer 2"
 
-# Review the decomposition
-❯ git-stage-batch list
-Batches:
-  database-migration: Layer 1: database foundation (no dependencies) (created 2 minutes ago)
-  auth-refactor: Layer 2: auth refactor (depends on layer 1: database) (created 1 minute ago)
-  api-endpoint: Layer 3: API endpoint (depends on layer 2: auth) (created 30 seconds ago)
+# Remove the bridge before peeling the next inner layer so it does not
+# become part of the layer-2 batch.
+❯ git-stage-batch discard --from repair-after-layer-2
 
-# Now recompose in dependency order (reverse of discard order)
+❯ git-stage-batch again
 
-# Step 1: Apply foundation layer
-❯ git-stage-batch include --from database-migration
-❯ git commit -m "database: Add user preferences table
+# Peel the next layer.
+❯ git-stage-batch discard --to layer-2-auth
+❯ git-stage-batch annotate layer-2-auth "Layer 2: auth refactor"
 
-The application stores all configuration in code, preventing users from
-customizing their experience across sessions.
+# The remaining layer-1 state needs a small temporary repair.
+❯ $EDITOR path/to/file
 
-Users need persistent storage for individual preferences like theme choice,
-language selection, and timezone settings that survive across logins.
+❯ git-stage-batch again
+❯ git-stage-batch include --to repair-after-layer-1
+❯ git-stage-batch annotate repair-after-layer-1 "Temporary bridge after layer 1"
 
-This commit adds a preferences table with columns for theme, language, and
-timezone. Includes migration script and updated schema documentation."
+# Remove the bridge before peeling the foundation layer.
+❯ git-stage-batch discard --from repair-after-layer-1
 
-# Step 2: Apply authentication layer
-❯ git-stage-batch include --from auth-refactor
-❯ git commit -m "auth: Load user preferences during session initialization
+❯ git-stage-batch again
 
-The authentication module creates sessions but doesn't populate user preferences,
-requiring separate queries throughout the application to access settings.
+# Peel the foundation layer.
+❯ git-stage-batch discard --to layer-1-database
+❯ git-stage-batch annotate layer-1-database "Layer 1: database foundation"
+```
 
-Users experience slower page loads as each component independently queries for
-preference data instead of loading it once at authentication time.
+!!! note "Missed pieces vs. bridge repairs"
+    If a "repair" is just leftover code from an upper layer — a call to a function that
+    was discarded, or an import that is no longer used — it is probably not a bridge
+    repair. It is a missed piece of the upper layer and should be captured into that
+    upper layer with `discard --to`.
 
-This commit updates the auth module to read user preferences from the new table
-during session creation. Preferences are cached in the session object, eliminating
-redundant database queries."
+    A true bridge repair is temporary compatibility code or cleanup that is correct
+    for an intermediate commit but intentionally disappears when the next layer is
+    applied.
 
-# Step 3: Apply API layer
-❯ git-stage-batch include --from api-endpoint
-❯ git commit -m "api: Add endpoint for updating user preferences
+### Phase 2: Recompose inside-out
 
-Users can view their preferences but have no way to modify them without direct
-database access, forcing administrators to handle routine preference changes.
+Start from the original base commit. Apply each layer batch and its corresponding bridge repair to the working tree, stage with `git-stage-batch include --files`, and commit. Before the next real layer, remove the previous bridge repair with `discard --from`.
 
-A self-service interface is needed for users to customize their experience without
-administrative intervention.
+Using `apply --from` (working-tree-only) followed by `git-stage-batch include --files` is preferred over `include --from` (which writes to both index and working tree simultaneously) because recomposition alternates `apply --from` and `discard --from`, and keeping the index separate lets you review the final working-tree state before staging.
 
-This commit adds a /api/preferences endpoint accepting PUT requests with theme,
-language, and timezone fields. Integrates with the authentication system to
-validate sessions and update preferences atomically."
+```bash
+# Start from the original base commit / pristine tree.
+# Recompose inside-out.
 
-# Clean up batches
-❯ git-stage-batch drop database-migration
-❯ git-stage-batch drop auth-refactor
-❯ git-stage-batch drop api-endpoint
+# Commit 1: foundation layer plus temporary bridge needed after layer 1.
+❯ git-stage-batch apply --from layer-1-database
+❯ git-stage-batch apply --from repair-after-layer-1
+
+❯ git diff          # review working tree
+❯ git-stage-batch include --files "**"
+❯ git commit -m "database: add foundation"
+
+# Commit 2: remove the layer-1 bridge, then apply the real layer-2 change.
+❯ git-stage-batch discard --from repair-after-layer-1
+❯ git-stage-batch apply --from layer-2-auth
+❯ git-stage-batch apply --from repair-after-layer-2
+
+❯ git diff
+❯ git-stage-batch include --files "**"
+❯ git commit -m "auth: build on database foundation"
+
+# Commit 3: remove the layer-2 bridge, then apply the real layer-3 change.
+❯ git-stage-batch discard --from repair-after-layer-2
+❯ git-stage-batch apply --from layer-3-api
+
+❯ git diff
+❯ git-stage-batch include --files "**"
+❯ git commit -m "api: add endpoint"
+
+# Clean up saved batches when finished.
+❯ git-stage-batch drop layer-1-database
+❯ git-stage-batch drop repair-after-layer-1
+❯ git-stage-batch drop layer-2-auth
+❯ git-stage-batch drop repair-after-layer-2
+❯ git-stage-batch drop layer-3-api
 
 # Result: clean, logical commit history instead of one messy commit
 ```
 
-**Key insights:**
+The second commit intentionally contains both "remove the previous temporary repair" and "apply the next real layer." That is the point of the bridge: it keeps commit 1 coherent without pretending the repair is part of the final layer stack.
 
-- Use `--note` to document layer dependencies when creating batches
-- Update notes with `annotate` if you discover dependencies later
-- The batches themselves are your backup - no need for checkpoint commits
-- The decomposition order is outside-in (what depends on what)
-- The recomposition order is inside-out (foundations first, dependents later)
-- Edit the tree between `discard --to` operations to fix broken dependencies
-- This pattern is powerful for untangling complex changesets into reviewable commits
+### Key insights
+
+- Use `discard --to` for real layer changes that should be peeled away from the working tree.
+- Use `include --to` for bridge repairs that should be saved to a batch but remain in the working tree.
+- A bridge repair is temporary. Apply it after the layer it repairs, then remove it with `discard --from` before applying the next real layer.
+- Prefer `apply --from` during recomposition, followed by `git-stage-batch include --files "**"`, so the index is staged from the final reviewed working-tree state for each commit.
+- Do not leave repair edits uncaptured. Uncaptured repairs can cause later structural replay to fail or force manual reconstruction.
+- If the repair is actually leftover upper-layer code, capture it into the upper-layer batch instead of creating a repair batch.
+- The decomposition order is outside-in; the recomposition order is inside-out.
+- The goal is a sequence of coherent, reviewable commits, even when some intermediate commits need temporary bridge code that later disappears.
 
 ---
 

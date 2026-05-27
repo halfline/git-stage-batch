@@ -1663,7 +1663,13 @@ def _command_include_file_to_batch(
         snapshot_file_if_untracked(file_path)
 
         # Save to batch
-        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
+        add_file_to_batch(
+            batch_name,
+            file_path,
+            update.ownership_after,
+            file_mode,
+            batch_source_commit=update.batch_source_commit,
+        )
 
     if not quiet:
         print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
@@ -1747,7 +1753,13 @@ def _command_include_file_lines_to_batch(
         snapshot_file_if_untracked(file_path)
 
         # Save to batch
-        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
+        add_file_to_batch(
+            batch_name,
+            file_path,
+            update.ownership_after,
+            file_mode,
+            batch_source_commit=update.batch_source_commit,
+        )
 
     if not quiet:
         print(_("Included line(s) from file '{file}' to batch '{batch}': {lines}").format(
@@ -1818,6 +1830,7 @@ def _command_include_lines_to_batch(
             line_changes.path,
             update.ownership_after,
             file_mode,
+            batch_source_commit=update.batch_source_commit,
         )
 
     if not quiet:
@@ -1987,7 +2000,13 @@ def _command_include_hunk_to_batch(
             )
 
         # Save to batch using batch source model (once, with all accumulated data)
-        add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
+        add_file_to_batch(
+            batch_name,
+            file_path,
+            update.ownership_after,
+            file_mode,
+            batch_source_commit=update.batch_source_commit,
+        )
 
     # Mark hunks as processed
     for hunk_lines, patch_hash in processed_hunks:

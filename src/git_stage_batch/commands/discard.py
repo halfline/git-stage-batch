@@ -1592,6 +1592,7 @@ def _command_discard_file_to_batch(
                 file_path,
                 update.ownership_after,
                 file_mode,
+                batch_source_commit=update.batch_source_commit,
             )
 
         # Record hunks as discarded for progress tracking
@@ -1705,6 +1706,7 @@ def _command_discard_file_lines_to_batch(
             file_path,
             update.ownership_after,
             file_mode,
+            batch_source_commit=update.batch_source_commit,
         )
 
     # Now discard selected lines from working tree
@@ -1801,6 +1803,7 @@ def _command_discard_lines_to_batch(
             line_changes.path,
             update.ownership_after,
             file_mode,
+            batch_source_commit=update.batch_source_commit,
         )
 
     log_journal("discard_lines_to_batch_after_add", batch_name=batch_name, file_path=line_changes.path)
@@ -1967,7 +1970,13 @@ def _command_discard_text_hunk_to_batch(
             log_journal("discard_hunk_to_batch_before_add", batch_name=batch_name, file_path=file_path, num_patches=len(patches_to_discard))
 
             # Save to batch using batch source model (once, with all accumulated data)
-            add_file_to_batch(batch_name, file_path, update.ownership_after, file_mode)
+            add_file_to_batch(
+                batch_name,
+                file_path,
+                update.ownership_after,
+                file_mode,
+                batch_source_commit=update.batch_source_commit,
+            )
 
         log_journal("discard_hunk_to_batch_after_add", batch_name=batch_name, file_path=file_path)
 

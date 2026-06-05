@@ -69,6 +69,7 @@ from ..data.hunk_tracking import (
     record_hunk_skipped,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
+    render_unstaged_file_as_single_hunk,
     render_binary_file_change,
     render_gitlink_change,
     require_selected_hunk,
@@ -1199,6 +1200,63 @@ def _apply_include_line_replacement(
     )
 
 
+def _line_identity_for_live_replacement(line) -> tuple[str, int | None, bytes, bool]:
+    """Return a stable identity for a changed line in a live file view."""
+    return (
+        line.kind,
+        line.source_line,
+        line.text_bytes,
+        line.has_trailing_newline,
+    )
+
+
+def _translate_file_view_replacement_to_unstaged_diff(
+    line_changes,
+    requested_ids: set[int],
+):
+    """Map file-vs-HEAD review IDs to the current unstaged diff, if possible."""
+    effective_ids = _expand_replacement_selection_ids(line_changes, requested_ids)
+    selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
+    if not selected_lines:
+        return None
+
+    unstaged_line_changes = render_unstaged_file_as_single_hunk(line_changes.path)
+    if unstaged_line_changes is None:
+        return None
+
+    annotated_selected_changes = _annotate_line_changes_with_working_tree_source(line_changes)
+    annotated_unstaged_changes = _annotate_line_changes_with_working_tree_source(
+        unstaged_line_changes
+    )
+    if annotated_selected_changes is None or annotated_unstaged_changes is None:
+        return None
+
+    unstaged_ids_by_identity: dict[tuple[str, int | None, bytes, bool], list[int]] = {}
+    for line in annotated_unstaged_changes.lines:
+        if line.id is None:
+            continue
+        unstaged_ids_by_identity.setdefault(
+            _line_identity_for_live_replacement(line),
+            [],
+        ).append(line.id)
+
+    translated_ids: list[int] = []
+    for line in annotated_selected_changes.lines:
+        if line.id not in effective_ids:
+            continue
+        candidate_ids = unstaged_ids_by_identity.get(
+            _line_identity_for_live_replacement(line),
+        )
+        if not candidate_ids:
+            return None
+        translated_ids.append(candidate_ids.pop(0))
+
+    if not translated_ids:
+        return None
+
+    return annotated_unstaged_changes, set(translated_ids)
+
+
 def command_include_line_as(
     line_id_specification: str,
     replacement_text: str | ReplacementPayload,
@@ -1242,14 +1300,51 @@ def command_include_line_as(
         if file is None:
             require_selected_hunk()
             line_changes = load_line_changes_from_state()
+            replacement_line_changes = line_changes
+            replacement_line_id_specification = line_id_specification
+            replacement_base_buffer = None
+            replacement_source_buffer = None
+            selected_change_kind = read_selected_change_kind()
+            requested_ids = set(parse_line_selection(line_id_specification))
+            if selected_change_kind == SelectedChangeKind.FILE:
+                require_line_selection_in_view(
+                    line_changes,
+                    requested_ids,
+                    line_id_specification=line_id_specification,
+                )
+                translated_replacement = _translate_file_view_replacement_to_unstaged_diff(
+                    line_changes,
+                    requested_ids,
+                )
+                if translated_replacement is not None:
+                    replacement_line_changes, replacement_ids = translated_replacement
+                    replacement_line_id_specification = format_line_ids(
+                        sorted(replacement_ids)
+                    )
+                    replacement_base_buffer = load_git_object_as_buffer(
+                        f":{line_changes.path}"
+                    )
+                    if replacement_base_buffer is None:
+                        replacement_base_buffer = EditorBuffer.from_bytes(b"")
+                    replacement_source_buffer = load_working_tree_file_as_buffer(
+                        line_changes.path
+                    )
+            if replacement_base_buffer is None:
+                replacement_base_buffer = EditorBuffer.from_path(
+                    get_index_snapshot_file_path()
+                )
+            if replacement_source_buffer is None:
+                replacement_source_buffer = EditorBuffer.from_path(
+                    get_working_tree_snapshot_file_path()
+                )
 
             with (
-                EditorBuffer.from_path(get_index_snapshot_file_path()) as hunk_base_lines,
-                EditorBuffer.from_path(get_working_tree_snapshot_file_path()) as hunk_source_lines,
+                replacement_base_buffer as hunk_base_lines,
+                replacement_source_buffer as hunk_source_lines,
             ):
                 _apply_include_line_replacement(
-                    line_changes,
-                    line_id_specification=line_id_specification,
+                    replacement_line_changes,
+                    line_id_specification=replacement_line_id_specification,
                     replacement_text=replacement_text,
                     hunk_base_lines=hunk_base_lines,
                     hunk_source_lines=hunk_source_lines,

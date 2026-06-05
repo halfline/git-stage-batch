@@ -1491,6 +1491,58 @@ class TestExplicitFilePath:
         assert "-line36" in working_diff
         assert "+last working" in working_diff
 
+    def test_include_line_as_after_partial_file_review_staging_uses_live_index(self, tmp_path, monkeypatch):
+        """File-review include --line --as should place later replacements against the live index."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        lines = [f"line{i}\n" for i in range(1, 21)]
+        file_path = repo / "module.py"
+        file_path.write_text("".join(lines))
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        rewritten = lines[:]
+        rewritten[2:2] = ["early one\n", "early two\n"]
+        rewritten.insert(17, "late working\n")
+        file_path.write_text("".join(rewritten))
+
+        command_start(quiet=True)
+        command_show(file="module.py", page="all", porcelain=True)
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        early_ids = ",".join(
+            str(line.id)
+            for line in line_changes.lines
+            if line.id is not None and line.display_text() in {"early one", "early two"}
+        )
+        assert early_ids == "1,2"
+        command_include_line(early_ids)
+
+        command_show(file="module.py", page="all", porcelain=True)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        late_ids = ",".join(
+            str(line.id)
+            for line in line_changes.lines
+            if line.id is not None and line.display_text() == "late working"
+        )
+        assert late_ids == "3"
+
+        command_include_line_as(late_ids, "late staged")
+
+        staged_content = run_git_command(["show", ":module.py"]).stdout
+        expected = lines[:]
+        expected[2:2] = ["early one\n", "early two\n"]
+        expected.insert(17, "late staged\n")
+        assert staged_content == "".join(expected)
+
     def test_include_line_as_with_explicit_path_trims_matching_edge_anchors(self, tmp_path, monkeypatch):
         """Explicit file-scoped include --line --as should accept unchanged edge anchors."""
         repo = tmp_path / "test_repo"

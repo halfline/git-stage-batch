@@ -215,6 +215,52 @@ def test_legacy_claimed_lines_metadata_owns_presence_units(temp_repo, monkeypatc
     assert owned_additions[0].owning_batches == {"legacy"}
 
 
+def test_build_file_attribution_reuses_batch_alignment_per_file(temp_repo, monkeypatch):
+    """Batch source alignment should be built once per file, not once per unit."""
+    test_file = temp_repo / "test.txt"
+    test_file.write_text(
+        "keep0\nold1\nkeep1\nold2\nkeep2\nold3\nkeep3\n"
+    )
+    subprocess.run(["git", "add", "test.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "baseline"], check=True, capture_output=True)
+
+    batch_source_commit = _create_batch_source_commit(
+        temp_repo,
+        "test.txt",
+        "keep0\nnew1\nkeep1\nnew2\nkeep2\nnew3\nkeep3\n",
+    )
+
+    monkeypatch.setattr(attribution_module, "list_batch_names", lambda: ["batch"])
+    monkeypatch.setattr(
+        attribution_module,
+        "read_batch_metadata",
+        lambda _name: {
+            "files": {
+                "test.txt": {
+                    "batch_source_commit": batch_source_commit,
+                    "presence_claims": [{"source_lines": ["2", "4", "6"]}],
+                    "deletions": [],
+                }
+            }
+        },
+    )
+
+    original_match_lines = attribution_module.match_lines
+    match_call_count = 0
+
+    def counting_match_lines(*args, **kwargs):
+        nonlocal match_call_count
+        match_call_count += 1
+        return original_match_lines(*args, **kwargs)
+
+    monkeypatch.setattr(attribution_module, "match_lines", counting_match_lines)
+
+    attribution = build_file_attribution("test.txt")
+
+    assert len(attribution.units) >= 3
+    assert match_call_count == 2
+
+
 class TestPresenceGranularity:
     """Test that PRESENCE_ONLY units are per-line, not per-run."""
 

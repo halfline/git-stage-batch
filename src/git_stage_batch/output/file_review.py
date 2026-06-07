@@ -989,8 +989,11 @@ def make_file_review_state(
             gutter_to_selection_id=gutter_to_selection_id,
             actionable_selection_groups=actionable_selection_groups,
             review_action_groups=review_action_groups,
+            line_changes=model.line_changes,
         ),
-        diff_fingerprint=compute_current_file_review_diff_fingerprint(model.line_changes.path),
+        diff_fingerprint=compute_current_file_review_diff_fingerprint(
+            model.line_changes.path, line_changes=model.line_changes,
+        ),
     )
 
 

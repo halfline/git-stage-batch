@@ -107,6 +107,9 @@ def _review_loop(state: FileReviewState) -> None:
         if normalized in {"i", "s", "d"}:
             _apply_line_action(state, normalized)
             continue
+        if normalized == "r":
+            _apply_replacement_action(state)
+            continue
         if normalized in {"I", "S", "D"}:
             _apply_file_action(state, normalized)
             continue
@@ -149,14 +152,15 @@ def _prompt_review_action(flow_state: FlowState) -> str:
         print(
             _(
                 "Review action: [i]nclude lines [d]iscard lines "
-                "[I]include file [D]discard file [g]page [o]open [q]back [?]help"
+                "[r]eplace lines [I]include file [D]discard file "
+                "[g]page [o]open [q]back [?]help"
             )
         )
     else:
         print(
             _(
                 "Review action: [i]nclude lines [s]kip lines [d]iscard lines "
-                "[I]include file [S]skip file [D]discard file "
+                "[r]eplace lines [I]include file [S]skip file [D]discard file "
                 "[g]page [o]open [q]back [?]help"
             )
         )
@@ -176,6 +180,7 @@ def _normalize_review_action(action: str) -> str:
         "include": "i",
         "skip": "s",
         "discard": "d",
+        "replace": "r",
         "include-file": "I",
         "include file": "I",
         "skip-file": "S",
@@ -201,6 +206,18 @@ def _prompt_page_spec() -> str | None:
     except (KeyboardInterrupt, EOFError):
         return None
     return value or None
+
+
+def _prompt_replacement_text() -> str | None:
+    try:
+        value = input(
+            wrap_prompt_for_readline(_("Replacement text (empty cancels): "))
+        )
+    except (KeyboardInterrupt, EOFError):
+        return None
+    if value == "":
+        return None
+    return value
 
 
 def _choose_file(
@@ -250,6 +267,24 @@ def _choose_file(
                 return entries[index].path
 
         print(_("Invalid file selection."), file=sys.stderr)
+
+
+def _apply_replacement_action(state: FileReviewState) -> None:
+    line_ids = prompt_line_ids()
+    if not line_ids:
+        return
+
+    replacement_text = _prompt_replacement_text()
+    if replacement_text is None:
+        return
+
+    try:
+        if state.flow_state.source.role is LocationRole.BATCH:
+            _apply_batch_replacement_action(state, line_ids, replacement_text)
+        else:
+            _apply_live_replacement_action(state, line_ids, replacement_text)
+    except CommandError as e:
+        print(e.message, file=sys.stderr)
 
 
 def _apply_line_action(state: FileReviewState, action: str) -> None:
@@ -356,6 +391,34 @@ def _apply_live_line_action(
     command_discard_line(line_ids, file=state.file_path, auto_advance=False)
 
 
+def _apply_live_replacement_action(
+    state: FileReviewState,
+    line_ids: str,
+    replacement_text: str,
+) -> None:
+    if state.flow_state.target.role is LocationRole.BATCH:
+        from ..commands.discard import command_discard_line_as_to_batch
+
+        command_discard_line_as_to_batch(
+            state.flow_state.target.batch_name,
+            line_ids,
+            replacement_text,
+            file=state.file_path,
+            quiet=True,
+            auto_advance=False,
+        )
+        return
+
+    from ..commands.include import command_include_line_as
+
+    command_include_line_as(
+        line_ids,
+        replacement_text,
+        file=state.file_path,
+        auto_advance=False,
+    )
+
+
 def _apply_live_file_action(state: FileReviewState, action: str) -> None:
     if action == "I":
         if state.flow_state.target.role is LocationRole.BATCH:
@@ -449,6 +512,28 @@ def _apply_batch_line_action(
     )
 
 
+def _apply_batch_replacement_action(
+    state: FileReviewState,
+    line_ids: str,
+    replacement_text: str,
+) -> None:
+    if state.flow_state.target.role is not LocationRole.STAGING_AREA:
+        print(
+            _("Batch-to-batch transfers not yet supported. Target must be staging."),
+            file=sys.stderr,
+        )
+        return
+
+    from ..commands.include_from import command_include_from_batch
+
+    command_include_from_batch(
+        state.flow_state.source.batch_name,
+        line_ids=line_ids,
+        file=state.file_path,
+        replacement_text=replacement_text,
+    )
+
+
 def _apply_batch_file_action(state: FileReviewState, action: str) -> None:
     if state.flow_state.target.role is not LocationRole.STAGING_AREA:
         print(
@@ -481,6 +566,7 @@ def _print_review_help(flow_state: FlowState) -> None:
     if flow_state.source.role is not LocationRole.BATCH:
         print(_("  s, skip          Skip selected file-review line IDs"))
     print(_("  d, discard       Discard selected file-review line IDs"))
+    print(_("  r, replace       Replace selected line IDs through current flow"))
     print(_("  I                Include the reviewed file"))
     if flow_state.source.role is not LocationRole.BATCH:
         print(_("  S                Skip the reviewed file"))

@@ -6,6 +6,8 @@ import pytest
 
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.exceptions import BypassRefresh
+from git_stage_batch.tui.file_review import ReviewFileEntry
+from git_stage_batch.tui.file_review import handle_file_browser
 from git_stage_batch.tui.file_review import handle_current_file_review
 from git_stage_batch.tui.file_review import list_review_file_entries
 from git_stage_batch.tui.flow import FlowLocation, FlowState
@@ -195,6 +197,124 @@ class TestHandleCurrentFileReview:
 
         assert "Skip is not available" in capsys.readouterr().err
         mock_skip.assert_not_called()
+
+    def test_current_file_review_opens_another_file(self):
+        """Test review can switch to another listed file."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("first.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch(
+                    "git_stage_batch.tui.file_review.list_review_file_entries",
+                    return_value=[
+                        ReviewFileEntry("first.txt"),
+                        ReviewFileEntry("second.txt"),
+                    ],
+                ):
+                    with patch("git_stage_batch.commands.show.command_show") as mock_show:
+                        with patch("builtins.input", side_effect=["o", "2", "q"]):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        assert mock_show.call_args_list[0].kwargs["file"] == "first.txt"
+        assert mock_show.call_args_list[1].kwargs["file"] == "second.txt"
+
+
+class TestHandleFileBrowser:
+    """Tests for review file chooser."""
+
+    def test_file_browser_opens_selected_file(self):
+        """Test file browser opens a selected entry in review mode."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.list_review_file_entries",
+            return_value=[
+                ReviewFileEntry("first.txt"),
+                ReviewFileEntry("second.txt"),
+            ],
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show") as mock_show:
+                    with patch("builtins.input", side_effect=["2", "q"]):
+                        with pytest.raises(BypassRefresh):
+                            handle_file_browser(flow_state)
+
+        mock_show.assert_called_once_with(
+            file="second.txt",
+            page=None,
+            selectable=True,
+        )
+
+    def test_file_browser_filters_entries(self):
+        """Test file browser accepts a pattern before choosing a file."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        entries_by_pattern = {
+            None: [
+                ReviewFileEntry("src/app.py"),
+                ReviewFileEntry("README.md"),
+            ],
+            "src/**": [ReviewFileEntry("src/app.py")],
+        }
+
+        def list_entries(_flow_state, pattern=None):
+            return entries_by_pattern[pattern]
+
+        with patch(
+            "git_stage_batch.tui.file_review.list_review_file_entries",
+            side_effect=list_entries,
+        ) as mock_list:
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show") as mock_show:
+                    with patch("builtins.input", side_effect=["/src/**", "1", "q"]):
+                        with pytest.raises(BypassRefresh):
+                            handle_file_browser(flow_state)
+
+        assert mock_list.call_args_list[0].kwargs["pattern"] is None
+        assert mock_list.call_args_list[1].kwargs["pattern"] == "src/**"
+        mock_show.assert_called_once_with(
+            file="src/app.py",
+            page=None,
+            selectable=True,
+        )
+
+    def test_file_browser_returns_when_no_entries(self, capsys):
+        """Test file browser exits when no files are reviewable."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.list_review_file_entries",
+            return_value=[],
+        ):
+            with pytest.raises(BypassRefresh):
+                handle_file_browser(flow_state)
+
+        assert "No files to review" in capsys.readouterr().out
 
 
 class TestListReviewFileEntries:

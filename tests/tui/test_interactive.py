@@ -80,6 +80,12 @@ class TestActionHandlers:
 
         assert handler.needs_hunk is True
 
+    def test_file_browser_action_registered(self):
+        """Test file browser action is available without a selected hunk."""
+        handler = ACTION_HANDLERS["o"]
+
+        assert handler.needs_hunk is False
+
 
 class TestHandleQuit:
     """Tests for handle_quit function."""

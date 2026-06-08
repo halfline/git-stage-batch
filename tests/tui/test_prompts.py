@@ -73,6 +73,9 @@ class TestPromptAction:
         with patch("builtins.input", return_value="v"):
             assert prompt_action(use_color=False) == "v"
 
+        with patch("builtins.input", return_value="o"):
+            assert prompt_action(use_color=False) == "o"
+
     def test_prompt_action_case_insensitive(self):
         """Test that input is case-insensitive."""
         with patch("builtins.input", return_value="I"):
@@ -150,6 +153,14 @@ class TestPromptAction:
         with patch("builtins.input", return_value="view"):
             assert prompt_action(use_color=False) == "v"
 
+    def test_prompt_action_open_normalized(self):
+        """Test that open aliases normalize to 'o'."""
+        with patch("builtins.input", return_value="open"):
+            assert prompt_action(use_color=False) == "o"
+
+        with patch("builtins.input", return_value="files"):
+            assert prompt_action(use_color=False) == "o"
+
     def test_prompt_action_shows_review_option(self):
         """Test that review appears when a hunk is selected."""
         with patch("builtins.input", return_value="q"):
@@ -160,6 +171,7 @@ class TestPromptAction:
 
         assert result == "q"
         assert "[v]iew" in output
+        assert "[o]pen" in output
 
 
 class TestConfirmDestructiveOperation:

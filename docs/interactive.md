@@ -107,7 +107,7 @@ Open the current file as a full file review using the same page layout and
 line IDs as `git-stage-batch show --file`:
 
 ```
-Review action: [i]nclude lines [s]kip lines [d]iscard lines [r]eplace lines [I]include file [S]skip file [D]discard file [g]page [q]back [?]help
+Review action: [i]nclude lines [s]kip lines [d]iscard lines [r]eplace lines [I]include file [S]skip file [D]discard file [B]block [U]unblock [g]page [q]back [?]help
 ```
 
 Line actions prompt for file-review line IDs, so selections can span the
@@ -131,6 +131,10 @@ When the source is a batch, `v` reviews the current batch file. Include pulls
 selected lines or the reviewed file from the batch, and discard removes
 selected lines or the reviewed file from the batch. Skip is not available when
 pulling from a batch.
+
+Use `B` to block the reviewed file from future sessions. After confirmation,
+choose whether to write the ignore entry to `.gitignore` or to the local
+exclude file. Use `U` to unblock the reviewed file.
 
 ---
 

@@ -113,6 +113,39 @@ class TestHandleCurrentFileReview:
             auto_advance=False,
         )
 
+    def test_current_file_review_routes_fixup_line_ids(self):
+        """Test fixup analyzes file-review line IDs."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show"):
+                    with patch(
+                        "git_stage_batch.commands.suggest_fixup.command_suggest_fixup_line"
+                    ) as mock_fixup:
+                        with patch(
+                            "git_stage_batch.tui.file_review.prompt_fixup_action",
+                            return_value="q",
+                        ):
+                            with patch(
+                                "git_stage_batch.commands.suggest_fixup._reset_suggest_fixup_state"
+                            ) as mock_reset:
+                                with patch("builtins.input", side_effect=["x", "1,3", "q"]):
+                                    with pytest.raises(BypassRefresh):
+                                        handle_current_file_review(flow_state)
+
+        mock_fixup.assert_called_once_with("1,3", file="test.txt")
+        mock_reset.assert_called_once_with()
+
     def test_current_file_review_routes_line_replacement_include(self):
         """Test replacement include acts on file-review line IDs."""
         flow_state = FlowState(
@@ -376,6 +409,28 @@ class TestHandleCurrentFileReview:
             page=None,
             selectable=True,
         )
+
+    def test_batch_source_omits_fixup_action(self, capsys):
+        """Test batch review does not advertise unsupported fixup."""
+        flow_state = FlowState(
+            source=FlowLocation.for_batch("scratch"),
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show_from.command_show_from_batch"):
+                    with patch("builtins.input", return_value="q"):
+                        with pytest.raises(BypassRefresh):
+                            handle_current_file_review(flow_state)
+
+        assert "fixup" not in capsys.readouterr().out
 
     def test_batch_source_disables_skip(self, capsys):
         """Test skip is not routed when reviewing a batch source."""

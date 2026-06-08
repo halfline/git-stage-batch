@@ -100,6 +100,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
             ("undo", "u", ""),
             ("redo", "U", ""),
             ("batch", "b", ""),
+            ("open", "o", ""),
             ("fixup", "x", ""),
             ("cmd", "!", ""),
             ("help", "?", ""),
@@ -125,6 +126,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
             ("undo", "u", ""),
             ("redo", "U", ""),
             ("batch", "b", ""),
+            ("open", "o", ""),
             ("cmd", "!", ""),
         ]
 
@@ -212,6 +214,8 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         "file": "f",
         "review": "v",
         "view": "v",
+        "open": "o",
+        "files": "o",
         "batch": "b",
         "fixup": "x",
         "command": "!",

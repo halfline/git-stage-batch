@@ -24,7 +24,7 @@ from ..utils.paths import (
     get_start_index_tree_file_path,
 )
 from .display import print_status_bar
-from .file_review import handle_current_file_review
+from .file_review import handle_current_file_review, handle_file_browser
 from .flow import FlowLocation, LocationRole, FlowState
 from .prompts import (
     confirm_destructive_operation,
@@ -162,6 +162,11 @@ def _handle_file_selection(flow_state: FlowState) -> None:
 def _handle_file_review(flow_state: FlowState) -> None:
     """Handle current-file review browser."""
     handle_current_file_review(flow_state)
+
+
+def _handle_file_browser(flow_state: FlowState) -> None:
+    """Handle review file chooser."""
+    handle_file_browser(flow_state)
 
 
 def _handle_fixup(flow_state: FlowState) -> None:
@@ -557,6 +562,7 @@ ACTION_HANDLERS = {
     "l": ActionHandler(needs_hunk=True, handler=_handle_line_selection),
     "f": ActionHandler(needs_hunk=True, handler=_handle_file_selection),
     "v": ActionHandler(needs_hunk=True, handler=_handle_file_review),
+    "o": ActionHandler(needs_hunk=False, handler=_handle_file_browser),
     "x": ActionHandler(needs_hunk=True, handler=_handle_fixup),
     "a": ActionHandler(needs_hunk=False, handler=_handle_again),
     "u": ActionHandler(needs_hunk=False, handler=_handle_undo),
@@ -1132,6 +1138,7 @@ def print_help() -> None:
     print(_("  l, lines     - Select specific lines from this hunk"))
     print(_("  f, file      - Include or skip all hunks in this file"))
     print(_("  v, view      - Review this whole file with page selection"))
+    print(_("  o, open      - Choose a file to review"))
     print(_("  x, fixup     - Suggest which commit to fixup (iterative)"))
     print(_("  !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)"))
     print(_("  ?, help      - Show this help message"))

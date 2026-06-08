@@ -72,6 +72,16 @@ def handle_current_file_review(flow_state: FlowState) -> None:
     raise BypassRefresh()
 
 
+def handle_file_browser(flow_state: FlowState) -> None:
+    """Open a file chooser and review the selected file."""
+    selected_file = _choose_file(flow_state)
+    if selected_file is None:
+        raise BypassRefresh()
+
+    _review_loop(FileReviewState(flow_state=flow_state, file_path=selected_file))
+    raise BypassRefresh()
+
+
 def _review_loop(state: FileReviewState) -> None:
     while True:
         if not _render_review(state):
@@ -87,6 +97,12 @@ def _review_loop(state: FileReviewState) -> None:
             continue
         if normalized in {"g", "page"}:
             state.page_spec = _prompt_page_spec()
+            continue
+        if normalized in {"o", "open"}:
+            selected_file = _choose_file(state.flow_state, selected_path=state.file_path)
+            if selected_file is not None:
+                state.file_path = selected_file
+                state.page_spec = None
             continue
         if normalized in {"i", "s", "d"}:
             _apply_line_action(state, normalized)
@@ -133,7 +149,7 @@ def _prompt_review_action(flow_state: FlowState) -> str:
         print(
             _(
                 "Review action: [i]nclude lines [d]iscard lines "
-                "[I]include file [D]discard file [g]page [q]back [?]help"
+                "[I]include file [D]discard file [g]page [o]open [q]back [?]help"
             )
         )
     else:
@@ -141,7 +157,7 @@ def _prompt_review_action(flow_state: FlowState) -> str:
             _(
                 "Review action: [i]nclude lines [s]kip lines [d]iscard lines "
                 "[I]include file [S]skip file [D]discard file "
-                "[g]page [q]back [?]help"
+                "[g]page [o]open [q]back [?]help"
             )
         )
 
@@ -168,6 +184,8 @@ def _normalize_review_action(action: str) -> str:
         "discard file": "D",
         "page": "g",
         "goto": "g",
+        "open": "o",
+        "files": "o",
         "back": "q",
         "quit": "q",
         "help": "?",
@@ -183,6 +201,55 @@ def _prompt_page_spec() -> str | None:
     except (KeyboardInterrupt, EOFError):
         return None
     return value or None
+
+
+def _choose_file(
+    flow_state: FlowState,
+    *,
+    selected_path: str | None = None,
+) -> str | None:
+    pattern: str | None = None
+
+    while True:
+        try:
+            entries = list_review_file_entries(flow_state, pattern=pattern)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            pattern = None
+            continue
+
+        if not entries:
+            if pattern:
+                print(_("No files matched pattern '{pattern}'.").format(pattern=pattern))
+            else:
+                print(_("No files to review."))
+            return None
+
+        print()
+        print(_("Files to review:"))
+        for index, entry in enumerate(entries, start=1):
+            marker = " *" if entry.path == selected_path else ""
+            print(f"  [{index}] {entry.path}{marker}")
+
+        print()
+        try:
+            choice = input(
+                wrap_prompt_for_readline(_("File number, /pattern, or q: "))
+            ).strip()
+        except (KeyboardInterrupt, EOFError):
+            return None
+
+        if choice in {"q", "quit", "back"}:
+            return None
+        if choice.startswith("/"):
+            pattern = choice[1:] or None
+            continue
+        if choice.isdigit():
+            index = int(choice) - 1
+            if 0 <= index < len(entries):
+                return entries[index].path
+
+        print(_("Invalid file selection."), file=sys.stderr)
 
 
 def _apply_line_action(state: FileReviewState, action: str) -> None:
@@ -419,4 +486,5 @@ def _print_review_help(flow_state: FlowState) -> None:
         print(_("  S                Skip the reviewed file"))
     print(_("  D                Discard the reviewed file"))
     print(_("  g, page          Show a page or page range"))
+    print(_("  o, open          Choose another reviewable file"))
     print(_("  q, back          Return to hunk review"))

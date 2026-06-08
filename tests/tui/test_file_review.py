@@ -7,6 +7,7 @@ import pytest
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.exceptions import BypassRefresh
 from git_stage_batch.tui.file_review import handle_current_file_review
+from git_stage_batch.tui.file_review import list_review_file_entries
 from git_stage_batch.tui.flow import FlowLocation, FlowState
 
 
@@ -194,3 +195,78 @@ class TestHandleCurrentFileReview:
 
         assert "Skip is not available" in capsys.readouterr().err
         mock_skip.assert_not_called()
+
+
+class TestListReviewFileEntries:
+    """Tests for file review entry groundwork."""
+
+    def test_live_entries_include_changed_and_untracked_files(self):
+        """Test live entries combine changed and untracked files."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.list_changed_files",
+            return_value=["src/app.py", "README.md"],
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.list_untracked_files",
+                return_value=["notes.txt"],
+            ):
+                entries = list_review_file_entries(flow_state)
+
+        assert [entry.path for entry in entries] == [
+            "src/app.py",
+            "README.md",
+            "notes.txt",
+        ]
+
+    def test_live_entries_apply_pattern_filter(self):
+        """Test live entries use gitignore-style filtering."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.list_changed_files",
+            return_value=["src/app.py", "README.md"],
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.list_untracked_files",
+                return_value=[],
+            ):
+                with patch(
+                    "git_stage_batch.tui.file_review.resolve_gitignore_style_patterns",
+                    return_value=["src/app.py"],
+                ) as mock_resolve:
+                    entries = list_review_file_entries(flow_state, pattern="src/**")
+
+        mock_resolve.assert_called_once_with(
+            ["src/app.py", "README.md"],
+            ["src/**"],
+        )
+        assert [entry.path for entry in entries] == ["src/app.py"]
+
+    def test_batch_entries_read_batch_metadata(self):
+        """Test batch entries come from batch metadata."""
+        flow_state = FlowState(
+            source=FlowLocation.for_batch("scratch"),
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.read_batch_metadata",
+            return_value={
+                "files": {
+                    "src/app.py": {},
+                    "README.md": {},
+                }
+            },
+        ) as mock_read:
+            entries = list_review_file_entries(flow_state)
+
+        mock_read.assert_called_once_with("scratch")
+        assert [entry.path for entry in entries] == ["src/app.py", "README.md"]

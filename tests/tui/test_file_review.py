@@ -236,6 +236,118 @@ class TestHandleCurrentFileReview:
             auto_advance=False,
         )
 
+    def test_current_file_review_blocks_file_in_gitignore(self):
+        """Test block action routes to block-file using gitignore."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show"):
+                    with patch(
+                        "git_stage_batch.tui.file_review.confirm_destructive_operation",
+                        return_value=True,
+                    ):
+                        with patch(
+                            "git_stage_batch.commands.block_file.command_block_file"
+                        ) as mock_block:
+                            with patch("builtins.input", side_effect=["B", "g", "q"]):
+                                with pytest.raises(BypassRefresh):
+                                    handle_current_file_review(flow_state)
+
+        mock_block.assert_called_once_with("test.txt", local_only=False)
+
+    def test_current_file_review_blocks_file_locally(self):
+        """Test block action can target local exclude."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show"):
+                    with patch(
+                        "git_stage_batch.tui.file_review.confirm_destructive_operation",
+                        return_value=True,
+                    ):
+                        with patch(
+                            "git_stage_batch.commands.block_file.command_block_file"
+                        ) as mock_block:
+                            with patch("builtins.input", side_effect=["B", "l", "q"]):
+                                with pytest.raises(BypassRefresh):
+                                    handle_current_file_review(flow_state)
+
+        mock_block.assert_called_once_with("test.txt", local_only=True)
+
+    def test_current_file_review_block_cancelled_by_confirmation(self):
+        """Test block action honors destructive confirmation."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show"):
+                    with patch(
+                        "git_stage_batch.tui.file_review.confirm_destructive_operation",
+                        return_value=False,
+                    ):
+                        with patch(
+                            "git_stage_batch.commands.block_file.command_block_file"
+                        ) as mock_block:
+                            with patch("builtins.input", side_effect=["B", "q"]):
+                                with pytest.raises(BypassRefresh):
+                                    handle_current_file_review(flow_state)
+
+        mock_block.assert_not_called()
+
+    def test_current_file_review_unblocks_file(self):
+        """Test unblock action routes to unblock-file."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show"):
+                    with patch(
+                        "git_stage_batch.commands.unblock_file.command_unblock_file"
+                    ) as mock_unblock:
+                        with patch("builtins.input", side_effect=["U", "q"]):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        mock_unblock.assert_called_once_with("test.txt")
+
     def test_batch_source_renders_batch_file(self):
         """Test batch source review uses the batch show command."""
         flow_state = FlowState(

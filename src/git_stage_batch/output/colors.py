@@ -39,13 +39,20 @@ def format_hotkey(text: str, hotkey: str, color: str = "") -> str:
     lower_text = text.lower()
     lower_hotkey = hotkey.lower()
 
-    # Find hotkey in text
-    if lower_hotkey in lower_text and len(lower_hotkey) == 1:
+    # Find hotkey in text. Uppercase hotkeys are distinct from lowercase
+    # hotkeys, so only inline them when the text contains that exact case.
+    if hotkey.isupper() and hotkey not in text:
+        hotkey_index = -1
+    elif lower_hotkey in lower_text and len(lower_hotkey) == 1:
+        hotkey_index = lower_text.index(lower_hotkey)
+    else:
+        hotkey_index = -1
+
+    if hotkey_index >= 0:
         # Find the position (preserve original case)
-        idx = lower_text.index(lower_hotkey)
-        before = text[:idx]
-        key_char = text[idx]
-        after = text[idx + 1:]
+        before = text[:hotkey_index]
+        key_char = text[hotkey_index]
+        after = text[hotkey_index + 1:]
 
         if use_color:
             return f"{before}{color}[{key_char}]{Colors.RESET}{after}"

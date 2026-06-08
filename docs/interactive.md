@@ -224,9 +224,13 @@ Batch operations:
   [e]dit
   [d]rop
   [a]pply
+  [s]ift
 ```
 
 If no batches exist, you are prompted to create one immediately.
+
+Use `s` to sift an existing batch. After choosing the source batch, enter a
+destination batch name, or leave it empty to sift in place.
 
 ---
 

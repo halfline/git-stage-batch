@@ -5,10 +5,13 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
+from ..batch.query import read_batch_metadata
 from ..data.line_state import load_line_changes_from_state
+from ..data.file_tracking import list_untracked_files
 from ..data.progress import get_hunk_counts
 from ..exceptions import BypassRefresh, CommandError
 from ..i18n import _
+from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
 from .display import print_status_bar
 from .flow import FlowState, LocationRole
 from .prompts import (
@@ -25,6 +28,33 @@ class FileReviewState:
     flow_state: FlowState
     file_path: str
     page_spec: str | None = None
+
+
+@dataclass(frozen=True)
+class ReviewFileEntry:
+    """One file that can be opened from a TUI file review source."""
+
+    path: str
+
+
+def list_review_file_entries(
+    flow_state: FlowState,
+    pattern: str | None = None,
+) -> list[ReviewFileEntry]:
+    """Return reviewable files for the current interactive source."""
+    if flow_state.source.role is LocationRole.BATCH:
+        batch_name = flow_state.source.batch_name
+        metadata = read_batch_metadata(batch_name)
+        candidates = list(metadata.get("files", {}).keys())
+    else:
+        candidates = list(
+            dict.fromkeys([*list_changed_files(), *list_untracked_files()])
+        )
+
+    if pattern:
+        candidates = resolve_gitignore_style_patterns(candidates, [pattern])
+
+    return [ReviewFileEntry(path=path) for path in candidates]
 
 
 def handle_current_file_review(flow_state: FlowState) -> None:

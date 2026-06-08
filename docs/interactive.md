@@ -38,7 +38,7 @@ What do you want to do with this hunk?
   [d]iscard
   [q]uit
 
-Other scope: [l]ines, [f]ile | Flow: [<]from, [>]to | More: [a]gain, [b]atch, [x]fixup, [!]cmd, [?]help
+Other scope: [l]ines, [f]ile, [v]iew | Flow: [<]from, [>]to | More: [a]gain, [b]atch, [x]fixup, [!]cmd, [?]help
 
 Action:
 ```
@@ -98,6 +98,33 @@ Action for all hunks in auth.py - [i]nclude, [s]kip, [d]iscard?
 ```
 
 File-level discard asks for confirmation.
+
+---
+
+### File Review (`v`)
+
+Open the current file as a full file review using the same page layout and
+line IDs as `git-stage-batch show --file`:
+
+```
+Review action: [i]nclude lines [s]kip lines [d]iscard lines [I]include file [S]skip file [D]discard file [g]page [q]back [?]help
+```
+
+Line actions prompt for file-review line IDs, so selections can span the
+visible page instead of only the current hunk. File actions operate on the
+reviewed file and keep you in the review until the file has no remaining
+changes or you press `q`.
+
+Use `g` to show a page or page range:
+
+```
+Page(s), for example 1, 2-4, all:
+```
+
+When the source is a batch, `v` reviews the current batch file. Include pulls
+selected lines or the reviewed file from the batch, and discard removes
+selected lines or the reviewed file from the batch. Skip is not available when
+pulling from a batch.
 
 ---
 
@@ -212,6 +239,7 @@ More options:
   a, again     - Clear state and start fresh pass through skipped hunks
   l, lines     - Select specific lines from this hunk
   f, file      - Include or skip all hunks in this file
+  v, view      - Review this whole file with page selection
   x, fixup     - Suggest which commit to fixup (iterative)
   !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)
   ?, help      - Show this help message
@@ -241,7 +269,7 @@ Keep staged changes? [y]es / [n]o:
 
 ## Degraded Mode
 
-If there are no changes to stage, interactive mode enters degraded mode. Primary hunk actions (`include`, `skip`, `discard`, `lines`, `file`, `fixup`) are disabled, but you can still:
+If there are no changes to stage, interactive mode enters degraded mode. Primary hunk actions (`include`, `skip`, `discard`, `lines`, `file`, `view`, `fixup`) are disabled, but you can still:
 
 - Manage batches (`b`)
 - Change flow source/target (`<`, `>`)

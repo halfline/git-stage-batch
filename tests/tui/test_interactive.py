@@ -508,6 +508,28 @@ class TestBatchSubmenu:
                                 start_interactive_mode()
                                 mock_apply.assert_called_once_with("test-batch")
 
+    def test_batch_sift_in_place(self, temp_git_repo):
+        """Test sifting a single batch in place from submenu."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("git_stage_batch.batch.query.list_batch_names", return_value=["test-batch"]):
+                with patch("git_stage_batch.batch.query.read_batch_metadata", return_value={"note": "some note", "created_at": ""}):
+                    with patch("builtins.input", side_effect=["s", "", KeyboardInterrupt]):
+                        with patch("git_stage_batch.commands.sift.command_sift_batch") as mock_sift:
+                            with patch("git_stage_batch.tui.interactive.handle_quit"):
+                                start_interactive_mode()
+                                mock_sift.assert_called_once_with("test-batch", "test-batch")
+
+    def test_batch_sift_to_destination(self, temp_git_repo):
+        """Test sifting a selected batch to a destination batch."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("git_stage_batch.batch.query.list_batch_names", return_value=["first", "second"]):
+                with patch("git_stage_batch.batch.query.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+                    with patch("builtins.input", side_effect=["s", "2", "filtered", KeyboardInterrupt]):
+                        with patch("git_stage_batch.commands.sift.command_sift_batch") as mock_sift:
+                            with patch("git_stage_batch.tui.interactive.handle_quit"):
+                                start_interactive_mode()
+                                mock_sift.assert_called_once_with("second", "filtered")
+
     def test_batch_select_no_batches(self, temp_git_repo, capsys):
         """Test auto-create when no batches exist."""
         # Use side_effect to mock list_batch_names:

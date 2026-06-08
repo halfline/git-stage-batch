@@ -113,6 +113,9 @@ def _review_loop(state: FileReviewState) -> None:
         if normalized in {"I", "S", "D"}:
             _apply_file_action(state, normalized)
             continue
+        if normalized in {"B", "U"}:
+            _apply_block_action(state, normalized)
+            continue
 
         print(_("Unknown review action: {action}").format(action=action))
 
@@ -153,7 +156,7 @@ def _prompt_review_action(flow_state: FlowState) -> str:
             _(
                 "Review action: [i]nclude lines [d]iscard lines "
                 "[r]eplace lines [I]include file [D]discard file "
-                "[g]page [o]open [q]back [?]help"
+                "[B]block [U]unblock [g]page [o]open [q]back [?]help"
             )
         )
     else:
@@ -161,7 +164,7 @@ def _prompt_review_action(flow_state: FlowState) -> str:
             _(
                 "Review action: [i]nclude lines [s]kip lines [d]iscard lines "
                 "[r]eplace lines [I]include file [S]skip file [D]discard file "
-                "[g]page [o]open [q]back [?]help"
+                "[B]block [U]unblock [g]page [o]open [q]back [?]help"
             )
         )
 
@@ -172,7 +175,7 @@ def _prompt_review_action(flow_state: FlowState) -> str:
 
 
 def _normalize_review_action(action: str) -> str:
-    if action in {"I", "S", "D"}:
+    if action in {"I", "S", "D", "B", "U"}:
         return action
 
     lowered = action.lower()
@@ -187,6 +190,12 @@ def _normalize_review_action(action: str) -> str:
         "skip file": "S",
         "discard-file": "D",
         "discard file": "D",
+        "block": "B",
+        "block-file": "B",
+        "block file": "B",
+        "unblock": "U",
+        "unblock-file": "U",
+        "unblock file": "U",
         "page": "g",
         "goto": "g",
         "open": "o",
@@ -218,6 +227,27 @@ def _prompt_replacement_text() -> str | None:
     if value == "":
         return None
     return value
+
+
+def _prompt_block_local_only() -> bool | None:
+    try:
+        choice = input(
+            wrap_prompt_for_readline(
+                _("Block target [g]itignore, [l]ocal exclude, or q: ")
+            )
+        ).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        return None
+
+    if choice in {"q", "quit", "cancel"}:
+        return None
+    if choice in {"l", "local", "local exclude"}:
+        return True
+    if choice in {"", "g", "gitignore"}:
+        return False
+
+    print(_("Invalid block target."), file=sys.stderr)
+    return None
 
 
 def _choose_file(
@@ -329,6 +359,34 @@ def _apply_file_action(state: FileReviewState, action: str) -> None:
             _apply_batch_file_action(state, action)
         else:
             _apply_live_file_action(state, action)
+    except CommandError as e:
+        print(e.message, file=sys.stderr)
+
+
+def _apply_block_action(state: FileReviewState, action: str) -> None:
+    if action == "B":
+        if not confirm_destructive_operation(
+            "block",
+            _("This will add the reviewed file to ignore state."),
+        ):
+            return
+
+        local_only = _prompt_block_local_only()
+        if local_only is None:
+            return
+
+        try:
+            from ..commands.block_file import command_block_file
+
+            command_block_file(state.file_path, local_only=local_only)
+        except CommandError as e:
+            print(e.message, file=sys.stderr)
+        return
+
+    try:
+        from ..commands.unblock_file import command_unblock_file
+
+        command_unblock_file(state.file_path)
     except CommandError as e:
         print(e.message, file=sys.stderr)
 
@@ -571,6 +629,8 @@ def _print_review_help(flow_state: FlowState) -> None:
     if flow_state.source.role is not LocationRole.BATCH:
         print(_("  S                Skip the reviewed file"))
     print(_("  D                Discard the reviewed file"))
+    print(_("  B                Block the reviewed file"))
+    print(_("  U                Unblock the reviewed file"))
     print(_("  g, page          Show a page or page range"))
     print(_("  o, open          Choose another reviewable file"))
     print(_("  q, back          Return to hunk review"))

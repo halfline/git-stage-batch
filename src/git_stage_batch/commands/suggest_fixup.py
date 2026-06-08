@@ -8,7 +8,12 @@ import sys
 from typing import Any
 
 from ..core.line_selection import parse_line_selection
-from ..data.hunk_tracking import require_selected_hunk
+from ..data.file_review_state import compute_current_file_review_diff_fingerprint
+from ..data.hunk_tracking import (
+    get_selected_change_file_path,
+    render_file_as_single_hunk,
+    require_selected_hunk,
+)
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started
 from ..exceptions import exit_with_error
@@ -373,6 +378,7 @@ def command_suggest_fixup_line(
     abort: bool = False,
     show_last: bool = False,
     *,
+    file: str | None = None,
     porcelain: bool = False
 ) -> None:
     """Suggest which commit specific lines should be fixed up to.
@@ -391,6 +397,7 @@ def command_suggest_fixup_line(
         reset: If True, reset state and start search over from most recent
         abort: If True, clear state and exit without showing candidates
         show_last: If True, re-show the last candidate without advancing
+        file: Optional file path whose file-review line IDs should be used
         porcelain: If True, output JSON for scripting instead of human-readable text
     """
     require_git_repository()
@@ -424,11 +431,30 @@ def command_suggest_fixup_line(
         _reset_suggest_fixup_state()
         state = None
 
-    require_selected_hunk()
-    line_changes = load_line_changes_from_state()
+    if file is None:
+        require_selected_hunk()
+        line_changes = load_line_changes_from_state()
+        if line_changes is None:
+            exit_with_error(_("Full hunk state not available. Run 'show' to select a hunk."))
 
-    # Get hunk hash for state tracking
-    hunk_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
+        # Get hunk hash for state tracking
+        hunk_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
+    else:
+        if file == "":
+            target_file = get_selected_change_file_path()
+            if target_file is None:
+                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+        else:
+            target_file = file
+
+        line_changes = render_file_as_single_hunk(target_file)
+        if line_changes is None:
+            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+
+        hunk_hash = "file:" + compute_current_file_review_diff_fingerprint(
+            target_file,
+            line_changes=line_changes,
+        )
 
     # Parse the line IDs
     requested_ids = parse_line_selection(line_id_specification)

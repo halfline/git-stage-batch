@@ -85,6 +85,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         scope_options = [
             ("lines", "l", ""),
             ("file", "f", ""),
+            ("view", "v", ""),
         ]
 
         # Flow options
@@ -209,6 +210,8 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         "redo": "U",
         "lines": "l",
         "file": "f",
+        "review": "v",
+        "view": "v",
         "batch": "b",
         "fixup": "x",
         "command": "!",

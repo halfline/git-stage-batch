@@ -61,6 +61,9 @@ class TestPromptAction:
         with patch("builtins.input", return_value="u"):
             assert prompt_action(use_color=False) == "u"
 
+        with patch("builtins.input", return_value="status"):
+            assert prompt_action(use_color=False) == "S"
+
         with patch("builtins.input", return_value="l"):
             assert prompt_action(use_color=False) == "l"
 
@@ -134,6 +137,7 @@ class TestPromptAction:
 
         assert result == "u"
         assert "[u]ndo" in output
+        assert "[S] status" in output
 
     def test_prompt_action_from_normalized(self):
         """Test that 'from' normalizes to '<'."""
@@ -172,6 +176,7 @@ class TestPromptAction:
         assert result == "q"
         assert "[v]iew" in output
         assert "[o]pen" in output
+        assert "[S] status" in output
 
 
 class TestConfirmDestructiveOperation:

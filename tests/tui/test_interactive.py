@@ -14,9 +14,11 @@ from unittest.mock import patch
 
 import pytest
 
+from git_stage_batch.exceptions import BypassRefresh
 from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
     ACTION_HANDLERS,
+    _dispatch_action,
     handle_file_selection,
     handle_line_selection,
     handle_quit,
@@ -85,6 +87,30 @@ class TestActionHandlers:
         handler = ACTION_HANDLERS["o"]
 
         assert handler.needs_hunk is False
+
+    def test_status_action_registered(self):
+        """Test status action is available without a selected hunk."""
+        handler = ACTION_HANDLERS["S"]
+
+        assert handler.needs_hunk is False
+
+    def test_status_action_dispatches_status_command(self):
+        """Test status action routes through the status command."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("git_stage_batch.commands.status.command_status") as mock_status:
+            with pytest.raises(BypassRefresh):
+                _dispatch_action(
+                    "S",
+                    has_hunk=False,
+                    use_color=False,
+                    flow_state=flow_state,
+                )
+
+        mock_status.assert_called_once_with()
 
 
 class TestHandleQuit:

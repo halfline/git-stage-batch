@@ -113,6 +113,99 @@ class TestHandleCurrentFileReview:
             auto_advance=False,
         )
 
+    def test_current_file_review_routes_line_replacement_include(self):
+        """Test replacement include acts on file-review line IDs."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show"):
+                    with patch(
+                        "git_stage_batch.commands.include.command_include_line_as"
+                    ) as mock_include_as:
+                        with patch(
+                            "builtins.input",
+                            side_effect=["r", "1-2", "replacement", "q"],
+                        ):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        mock_include_as.assert_called_once_with(
+            "1-2",
+            "replacement",
+            file="test.txt",
+            auto_advance=False,
+        )
+
+    def test_current_file_review_replacement_cancels_on_empty_text(self):
+        """Test empty replacement text cancels the replacement action."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show"):
+                    with patch(
+                        "git_stage_batch.commands.include.command_include_line_as"
+                    ) as mock_include_as:
+                        with patch("builtins.input", side_effect=["r", "1", "", "q"]):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        mock_include_as.assert_not_called()
+
+    def test_current_file_review_routes_line_replacement_to_batch(self):
+        """Test replacement can be saved to a target batch."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.for_batch("scratch"),
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show"):
+                    with patch(
+                        "git_stage_batch.commands.discard.command_discard_line_as_to_batch"
+                    ) as mock_discard_as:
+                        with patch(
+                            "builtins.input",
+                            side_effect=["r", "1", "replacement", "q"],
+                        ):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        mock_discard_as.assert_called_once_with(
+            "scratch",
+            "1",
+            "replacement",
+            file="test.txt",
+            quiet=True,
+            auto_advance=False,
+        )
+
     def test_current_file_review_routes_file_skip(self):
         """Test file skip acts on the reviewed file."""
         flow_state = FlowState(
@@ -197,6 +290,68 @@ class TestHandleCurrentFileReview:
 
         assert "Skip is not available" in capsys.readouterr().err
         mock_skip.assert_not_called()
+
+    def test_batch_source_routes_line_replacement_include(self):
+        """Test batch replacement include is routed through include-from."""
+        flow_state = FlowState(
+            source=FlowLocation.for_batch("scratch"),
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show_from.command_show_from_batch"):
+                    with patch(
+                        "git_stage_batch.commands.include_from.command_include_from_batch"
+                    ) as mock_include_from:
+                        with patch(
+                            "builtins.input",
+                            side_effect=["r", "1", "replacement", "q"],
+                        ):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        mock_include_from.assert_called_once_with(
+            "scratch",
+            line_ids="1",
+            file="test.txt",
+            replacement_text="replacement",
+        )
+
+    def test_batch_source_replacement_rejects_batch_target(self, capsys):
+        """Test replacement refuses batch-to-batch transfer."""
+        flow_state = FlowState(
+            source=FlowLocation.for_batch("source"),
+            target=FlowLocation.for_batch("target"),
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show_from.command_show_from_batch"):
+                    with patch(
+                        "git_stage_batch.commands.include_from.command_include_from_batch"
+                    ) as mock_include_from:
+                        with patch(
+                            "builtins.input",
+                            side_effect=["r", "1", "replacement", "q"],
+                        ):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        assert "Batch-to-batch transfers" in capsys.readouterr().err
+        mock_include_from.assert_not_called()
 
     def test_current_file_review_opens_another_file(self):
         """Test review can switch to another listed file."""

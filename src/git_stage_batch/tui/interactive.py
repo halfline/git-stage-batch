@@ -261,6 +261,7 @@ def _handle_batch(flow_state: FlowState) -> None:
             (_("edit"), "e", ""),
             (_("drop"), "d", Colors.RED if use_color else ""),
             (_("apply"), "a", ""),
+            (_("sift"), "s", ""),
         ]
         for text, hotkey, color in operations:
             formatted = format_hotkey(text, hotkey, color)
@@ -285,6 +286,8 @@ def _handle_batch(flow_state: FlowState) -> None:
             _batch_drop()
         elif action in ("a", "apply"):
             _batch_apply()
+        elif action in ("s", "sift"):
+            _batch_sift()
         else:
             print(_("\nUnknown action: '{action}'").format(action=action))
 
@@ -346,6 +349,30 @@ def _batch_apply() -> None:
     from ..commands.apply_from import command_apply_from_batch
     command_apply_from_batch(batch_name)
     print(_("\nBatch '{name}' applied to staging area.").format(name=batch_name))
+
+
+def _batch_sift() -> None:
+    """Prompt to select a batch and sift it."""
+    source_batch = _prompt_select_batch(purpose=_("sift"), skip_if_single=True)
+    if not source_batch:
+        return
+
+    try:
+        dest_batch = input(_("Destination batch (empty for in-place): ")).strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if not dest_batch:
+        dest_batch = source_batch
+
+    from ..commands.sift import command_sift_batch
+    command_sift_batch(source_batch, dest_batch)
+    print(
+        _("\nBatch '{source}' sifted to '{dest}'.").format(
+            source=source_batch,
+            dest=dest_batch,
+        )
+    )
 
 
 def _prompt_select_batch(purpose: str, skip_if_single: bool = False) -> str:

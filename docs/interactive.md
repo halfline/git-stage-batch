@@ -107,13 +107,19 @@ Open the current file as a full file review using the same page layout and
 line IDs as `git-stage-batch show --file`:
 
 ```
-Review action: [i]nclude lines [s]kip lines [d]iscard lines [I]include file [S]skip file [D]discard file [g]page [q]back [?]help
+Review action: [i]nclude lines [s]kip lines [d]iscard lines [r]eplace lines [I]include file [S]skip file [D]discard file [g]page [q]back [?]help
 ```
 
 Line actions prompt for file-review line IDs, so selections can span the
 visible page instead of only the current hunk. File actions operate on the
 reviewed file and keep you in the review until the file has no remaining
 changes or you press `q`.
+
+Use `r` to replace selected file-review line IDs with one line of replacement
+text. With the default flow, the replacement is staged for commit. When the
+target is a batch, the replacement is saved to the batch and the original
+selection is removed from the working tree. When the source is a batch, the
+replacement is included from the batch into the index and working tree.
 
 Use `g` to show a page or page range:
 

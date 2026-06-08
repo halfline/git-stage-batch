@@ -70,6 +70,9 @@ class TestPromptAction:
         with patch("builtins.input", return_value="?"):
             assert prompt_action(use_color=False) == "?"
 
+        with patch("builtins.input", return_value="v"):
+            assert prompt_action(use_color=False) == "v"
+
     def test_prompt_action_case_insensitive(self):
         """Test that input is case-insensitive."""
         with patch("builtins.input", return_value="I"):
@@ -138,6 +141,25 @@ class TestPromptAction:
         """Test that 'to' normalizes to '>'."""
         with patch("builtins.input", return_value="to"):
             assert prompt_action(use_color=False) == ">"
+
+    def test_prompt_action_review_normalized(self):
+        """Test that review aliases normalize to 'v'."""
+        with patch("builtins.input", return_value="review"):
+            assert prompt_action(use_color=False) == "v"
+
+        with patch("builtins.input", return_value="view"):
+            assert prompt_action(use_color=False) == "v"
+
+    def test_prompt_action_shows_review_option(self):
+        """Test that review appears when a hunk is selected."""
+        with patch("builtins.input", return_value="q"):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                with patch("sys.stdout.isatty", return_value=False):
+                    result = prompt_action(use_color=False, has_hunk=True)
+                    output = fake_out.getvalue()
+
+        assert result == "q"
+        assert "[v]iew" in output
 
 
 class TestConfirmDestructiveOperation:

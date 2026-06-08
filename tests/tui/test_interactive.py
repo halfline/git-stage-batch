@@ -16,6 +16,7 @@ import pytest
 
 from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
+    ACTION_HANDLERS,
     handle_file_selection,
     handle_line_selection,
     handle_quit,
@@ -56,6 +57,7 @@ class TestPrintHelp:
         assert "i, include" in captured.out
         assert "s, skip" in captured.out
         assert "d, discard" in captured.out
+        assert "v, view" in captured.out
         assert "u, undo" in captured.out
         assert "q, quit" in captured.out
         assert "?, help" in captured.out
@@ -67,6 +69,16 @@ class TestPrintHelp:
             captured = capsys.readouterr()
 
         assert "Interactive Mode Commands:" in captured.out
+
+
+class TestActionHandlers:
+    """Tests for interactive action registration."""
+
+    def test_current_file_review_action_registered(self):
+        """Test review action is available when a hunk is selected."""
+        handler = ACTION_HANDLERS["v"]
+
+        assert handler.needs_hunk is True
 
 
 class TestHandleQuit:

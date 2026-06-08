@@ -38,7 +38,7 @@ What do you want to do with this hunk?
   [d]iscard
   [q]uit
 
-Other scope: [l]ines, [f]ile, [v]iew | Flow: [<]from, [>]to | More: [a]gain, [b]atch, [o]pen, [x]fixup, [!]cmd, [?]help
+Other scope: [l]ines, [f]ile, [v]iew | Flow: [<] from, [>] to | More: [a]gain, [u]ndo, [U] redo, [S] status, [b]atch, [o]pen, fi[x]up, [!] cmd, [?] help
 
 Action:
 ```
@@ -166,6 +166,14 @@ Clear the blocklist and restart iteration from the first hunk. Useful for making
 
 ---
 
+### Status (`S`)
+
+Show the current session status without leaving interactive mode. The output is
+the same human-readable report produced by `git-stage-batch status`, including
+session progress and available batches.
+
+---
+
 ### Fixup Suggestions (`x`)
 
 Enter a submenu that iteratively suggests commits that modified the lines in the current hunk:
@@ -269,6 +277,9 @@ Primary actions:
 
 More options:
   a, again     - Clear state and start fresh pass through skipped hunks
+  u, undo      - Undo last action
+  U, redo      - Redo last undone action
+  S, status    - Show session status
   l, lines     - Select specific lines from this hunk
   f, file      - Include or skip all hunks in this file
   v, view      - Review this whole file with page selection

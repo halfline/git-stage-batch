@@ -16,6 +16,7 @@ from .display import print_status_bar
 from .flow import FlowState, LocationRole
 from .prompts import (
     confirm_destructive_operation,
+    prompt_fixup_action,
     prompt_line_ids,
     wrap_prompt_for_readline,
 )
@@ -110,6 +111,9 @@ def _review_loop(state: FileReviewState) -> None:
         if normalized == "r":
             _apply_replacement_action(state)
             continue
+        if normalized == "x":
+            _apply_fixup_action(state)
+            continue
         if normalized in {"I", "S", "D"}:
             _apply_file_action(state, normalized)
             continue
@@ -164,7 +168,7 @@ def _prompt_review_action(flow_state: FlowState) -> str:
             _(
                 "Review action: [i]nclude lines [s]kip lines [d]iscard lines "
                 "[r]eplace lines [I]include file [S]skip file [D]discard file "
-                "[B]block [U]unblock [g]page [o]open [q]back [?]help"
+                "[B]block [U]unblock [x]fixup lines [g]page [o]open [q]back [?]help"
             )
         )
 
@@ -196,6 +200,9 @@ def _normalize_review_action(action: str) -> str:
         "unblock": "U",
         "unblock-file": "U",
         "unblock file": "U",
+        "fixup": "x",
+        "fixup-lines": "x",
+        "fixup lines": "x",
         "page": "g",
         "goto": "g",
         "open": "o",
@@ -389,6 +396,64 @@ def _apply_block_action(state: FileReviewState, action: str) -> None:
         command_unblock_file(state.file_path)
     except CommandError as e:
         print(e.message, file=sys.stderr)
+
+
+def _apply_fixup_action(state: FileReviewState) -> None:
+    if state.flow_state.source.role is LocationRole.BATCH:
+        print(_("Suggest-fixup is not available when pulling from a batch."), file=sys.stderr)
+        return
+
+    line_ids = prompt_line_ids()
+    if not line_ids:
+        return
+
+    from ..commands.suggest_fixup import (
+        _load_suggest_fixup_state,
+        _reset_suggest_fixup_state,
+        command_suggest_fixup_line,
+    )
+
+    use_color = sys.stdout.isatty()
+
+    try:
+        command_suggest_fixup_line(line_ids, file=state.file_path)
+    except CommandError as e:
+        print(e.message, file=sys.stderr)
+        return
+
+    while True:
+        print()
+        action = prompt_fixup_action(use_color=use_color)
+
+        if action == "y":
+            fixup_state = _load_suggest_fixup_state()
+            if fixup_state and fixup_state.get("last_shown_commit"):
+                commit_hash = fixup_state["last_shown_commit"][:7]
+                print()
+                print(_("Create fixup commit with:"))
+                print(f"  git commit --fixup={commit_hash}")
+                print()
+            return
+        if action == "n":
+            try:
+                command_suggest_fixup_line(line_ids, file=state.file_path)
+            except CommandError as e:
+                print(e.message, file=sys.stderr)
+                return
+            continue
+        if action == "r":
+            try:
+                command_suggest_fixup_line(line_ids, file=state.file_path, reset=True)
+            except CommandError as e:
+                print(e.message, file=sys.stderr)
+                return
+            continue
+        if action == "q":
+            _reset_suggest_fixup_state()
+            print(_("\nCanceled."))
+            return
+
+        print(_("Unknown action: {action}").format(action=action))
 
 
 def _apply_live_line_action(
@@ -625,6 +690,8 @@ def _print_review_help(flow_state: FlowState) -> None:
         print(_("  s, skip          Skip selected file-review line IDs"))
     print(_("  d, discard       Discard selected file-review line IDs"))
     print(_("  r, replace       Replace selected line IDs through current flow"))
+    if flow_state.source.role is not LocationRole.BATCH:
+        print(_("  x, fixup         Suggest fixup commits for selected line IDs"))
     print(_("  I                Include the reviewed file"))
     if flow_state.source.role is not LocationRole.BATCH:
         print(_("  S                Skip the reviewed file"))

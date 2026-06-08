@@ -38,7 +38,7 @@ What do you want to do with this hunk?
   [d]iscard
   [q]uit
 
-Other scope: [l]ines, [f]ile, [v]iew | Flow: [<]from, [>]to | More: [a]gain, [b]atch, [x]fixup, [!]cmd, [?]help
+Other scope: [l]ines, [f]ile, [v]iew | Flow: [<]from, [>]to | More: [a]gain, [b]atch, [o]pen, [x]fixup, [!]cmd, [?]help
 
 Action:
 ```
@@ -125,6 +125,28 @@ When the source is a batch, `v` reviews the current batch file. Include pulls
 selected lines or the reviewed file from the batch, and discard removes
 selected lines or the reviewed file from the batch. Skip is not available when
 pulling from a batch.
+
+---
+
+### File Browser (`o`)
+
+Choose another reviewable file and open it in file review mode:
+
+```
+Files to review:
+  [1] auth.py
+  [2] tests/test_auth.py
+
+File number, /pattern, or q:
+```
+
+Enter a number to open that file. Enter `/pattern` to filter the list with the
+same gitignore-style patterns used by `show --files`, then choose from the
+filtered result. Press `q` to return to the main hunk prompt without opening a
+file.
+
+When the source is a batch, the file browser lists files from that batch and
+opens the selected batch file in the same review mode.
 
 ---
 
@@ -240,6 +262,7 @@ More options:
   l, lines     - Select specific lines from this hunk
   f, file      - Include or skip all hunks in this file
   v, view      - Review this whole file with page selection
+  o, open      - Choose a file to review
   x, fixup     - Suggest which commit to fixup (iterative)
   !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)
   ?, help      - Show this help message

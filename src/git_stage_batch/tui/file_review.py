@@ -6,6 +6,7 @@ import sys
 from dataclasses import dataclass
 
 from ..batch.query import read_batch_metadata
+from ..data.file_review_state import read_last_file_review_state
 from ..data.line_state import load_line_changes_from_state
 from ..data.file_tracking import list_untracked_files
 from ..data.progress import get_hunk_counts
@@ -99,6 +100,12 @@ def _review_loop(state: FileReviewState) -> None:
         if normalized in {"g", "page"}:
             state.page_spec = _prompt_page_spec()
             continue
+        if normalized in {"n", "next"}:
+            state.page_spec = _next_page_spec()
+            continue
+        if normalized in {"p", "prev", "previous"}:
+            state.page_spec = _previous_page_spec()
+            continue
         if normalized in {"o", "open"}:
             selected_file = _choose_file(state.flow_state, selected_path=state.file_path)
             if selected_file is not None:
@@ -160,7 +167,8 @@ def _prompt_review_action(flow_state: FlowState) -> str:
             _(
                 "Review action: [i]nclude lines [d]iscard lines "
                 "[r]eplace lines [I]include file [D]discard file "
-                "[B]block [U]unblock [g]page [o]open [q]back [?]help"
+                "[B]block [U]unblock [n]next [p]prev [g]page "
+                "[o]open [q]back [?]help"
             )
         )
     else:
@@ -168,7 +176,8 @@ def _prompt_review_action(flow_state: FlowState) -> str:
             _(
                 "Review action: [i]nclude lines [s]kip lines [d]iscard lines "
                 "[r]eplace lines [I]include file [S]skip file [D]discard file "
-                "[B]block [U]unblock [x]fixup lines [g]page [o]open [q]back [?]help"
+                "[B]block [U]unblock [x]fixup lines [n]next [p]prev [g]page "
+                "[o]open [q]back [?]help"
             )
         )
 
@@ -203,6 +212,9 @@ def _normalize_review_action(action: str) -> str:
         "fixup": "x",
         "fixup-lines": "x",
         "fixup lines": "x",
+        "next": "n",
+        "prev": "p",
+        "previous": "p",
         "page": "g",
         "goto": "g",
         "open": "o",
@@ -222,6 +234,34 @@ def _prompt_page_spec() -> str | None:
     except (KeyboardInterrupt, EOFError):
         return None
     return value or None
+
+
+def _next_page_spec() -> str | None:
+    review_state = read_last_file_review_state()
+    if review_state is None:
+        print(_("No file review page state is available."), file=sys.stderr)
+        return None
+
+    current_page = max(review_state.shown_pages)
+    if current_page >= review_state.page_count:
+        print(_("Already at the last file review page."), file=sys.stderr)
+        return review_state.page_spec
+
+    return str(current_page + 1)
+
+
+def _previous_page_spec() -> str | None:
+    review_state = read_last_file_review_state()
+    if review_state is None:
+        print(_("No file review page state is available."), file=sys.stderr)
+        return None
+
+    current_page = min(review_state.shown_pages)
+    if current_page <= 1:
+        print(_("Already at the first file review page."), file=sys.stderr)
+        return review_state.page_spec
+
+    return str(current_page - 1)
 
 
 def _prompt_replacement_text() -> str | None:
@@ -698,6 +738,8 @@ def _print_review_help(flow_state: FlowState) -> None:
     print(_("  D                Discard the reviewed file"))
     print(_("  B                Block the reviewed file"))
     print(_("  U                Unblock the reviewed file"))
+    print(_("  n, next          Show the next file review page"))
+    print(_("  p, prev          Show the previous file review page"))
     print(_("  g, page          Show a page or page range"))
     print(_("  o, open          Choose another reviewable file"))
     print(_("  q, back          Return to hunk review"))

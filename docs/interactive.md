@@ -135,7 +135,9 @@ Page(s), for example 1, 2-4, all:
 When the source is a batch, `v` reviews the current batch file. Include pulls
 selected lines or the reviewed file from the batch, and discard removes
 selected lines or the reviewed file from the batch. Skip is not available when
-pulling from a batch.
+pulling from a batch. Use `c` to preview include or apply candidates for the
+batch file, then enter a candidate number to preview it or `e N` to execute a
+reviewed candidate.
 
 Use `B` to block the reviewed file from future sessions. After confirmation,
 choose whether to write the ignore entry to `.gitignore` or to the local

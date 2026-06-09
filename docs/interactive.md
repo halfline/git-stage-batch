@@ -38,7 +38,7 @@ What do you want to do with this hunk?
   [d]iscard
   [q]uit
 
-Other scope: [l]ines, [f]ile, [v]iew | Flow: [<] from, [>] to | More: [a]gain, [u]ndo, [U] redo, [S] status, [b]atch, [o]pen, fi[x]up, [!] cmd, [?] help
+Other scope: [l]ines, [f]ile, [v]iew | Flow: [<] from, [>] to | More: [a]gain, [u]ndo, [U] redo, [S] status, [A] assets, [b]atch, [o]pen, fi[x]up, [!] cmd, [?] help
 
 Action:
 ```
@@ -186,6 +186,33 @@ session progress and available batches.
 
 ---
 
+### Assistant Assets (`A`)
+
+Install bundled assistant assets without leaving interactive mode. This is the
+same workflow as `git-stage-batch install-assets`:
+
+```
+Install bundled assistant assets:
+  [1] all asset groups
+  [2] claude-agents
+  [3] claude-skills
+  [4] codex-skills
+
+Group (empty to cancel):
+Filters (empty for all):
+Overwrite existing assets? [y/N]:
+```
+
+Choose a group by number or name. Leave the filters prompt empty to install all
+assets in the selected group, or enter one or more gitignore-style patterns such
+as `commit-*`. Answer `yes` only when existing installed assets should be
+replaced.
+
+The assets action is also available in degraded mode, so repositories with no
+current hunks can still use interactive mode for setup.
+
+---
+
 ### Fixup Suggestions (`x`)
 
 Enter a submenu that iteratively suggests commits that modified the lines in the current hunk:
@@ -296,6 +323,7 @@ More options:
   u, undo      - Undo last action
   U, redo      - Redo last undone action
   S, status    - Show session status
+  A, assets    - Install bundled assistant assets
   l, lines     - Select specific lines from this hunk
   f, file      - Include or skip all hunks in this file
   v, view      - Review this whole file with page selection

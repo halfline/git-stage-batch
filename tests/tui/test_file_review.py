@@ -1,5 +1,6 @@
 """Tests for TUI file review mode."""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -83,6 +84,68 @@ class TestHandleCurrentFileReview:
 
         assert mock_show.call_args_list[0].kwargs["page"] is None
         assert mock_show.call_args_list[1].kwargs["page"] == "2"
+
+    def test_current_file_review_moves_to_next_page(self):
+        """Test review can move to the next persisted page."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+        page_states = [
+            SimpleNamespace(shown_pages=(1,), page_count=3, page_spec="1"),
+            SimpleNamespace(shown_pages=(2,), page_count=3, page_spec="2"),
+        ]
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show") as mock_show:
+                    with patch(
+                        "git_stage_batch.tui.file_review.read_last_file_review_state",
+                        side_effect=page_states,
+                    ):
+                        with patch("builtins.input", side_effect=["n", "q"]):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        assert mock_show.call_args_list[0].kwargs["page"] is None
+        assert mock_show.call_args_list[1].kwargs["page"] == "2"
+
+    def test_current_file_review_moves_to_previous_page(self):
+        """Test review can move to the previous persisted page."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show.command_show") as mock_show:
+                    with patch(
+                        "git_stage_batch.tui.file_review.read_last_file_review_state",
+                        return_value=SimpleNamespace(
+                            shown_pages=(2,),
+                            page_count=3,
+                            page_spec="2",
+                        ),
+                    ):
+                        with patch("builtins.input", side_effect=["p", "q"]):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        assert mock_show.call_args_list[0].kwargs["page"] is None
+        assert mock_show.call_args_list[1].kwargs["page"] == "1"
 
     def test_current_file_review_routes_line_include(self):
         """Test line include acts on file-review line IDs."""

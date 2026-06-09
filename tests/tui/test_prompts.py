@@ -3,6 +3,7 @@
 from git_stage_batch.tui.prompts import _shell_command_history
 
 from io import StringIO
+from os import terminal_size
 from unittest.mock import patch
 
 from git_stage_batch.output.colors import Colors
@@ -182,6 +183,22 @@ class TestPromptAction:
         assert "[o]pen" in output
         assert "[S] status" in output
         assert "[A] assets" in output
+
+    def test_prompt_action_wraps_long_more_section(self):
+        """Test long menu sections wrap onto continuation lines."""
+        with patch("builtins.input", return_value="q"):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                with patch("sys.stdout.isatty", return_value=False):
+                    with patch(
+                        "git_stage_batch.tui.prompts.shutil.get_terminal_size",
+                        return_value=terminal_size((56, 20)),
+                    ):
+                        result = prompt_action(use_color=False, has_hunk=True)
+                        output = fake_out.getvalue()
+
+        assert result == "q"
+        assert "More: [a]gain" in output
+        assert "\n      " in output
 
     def test_prompt_action_install_assets_normalized(self):
         """Test that install-assets aliases normalize to assets."""

@@ -19,6 +19,7 @@ from ..output import Colors, format_hotkey, print_line_level_changes
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git import get_git_repository_root_path, run_git_command
 from ..utils.paths import (
+    get_abort_head_file_path,
     get_selected_hunk_hash_file_path,
     get_start_head_file_path,
     get_start_index_tree_file_path,
@@ -193,7 +194,7 @@ def _handle_fixup(flow_state: FlowState) -> None:
 
 def _handle_quit(flow_state: FlowState) -> None:
     """Handle quit action."""
-    handle_quit()
+    handle_quit(stop_session=flow_state.stop_session_on_quit)
     raise QuitInteractive()
 
 
@@ -745,6 +746,8 @@ def start_interactive_mode() -> None:
     # Import commands locally to avoid circular dependency
     from ..commands.start import command_start
 
+    session_was_active = get_abort_head_file_path().exists()
+
     # Auto-initialize session (allow degraded mode if no changes)
     degraded_mode = False
     try:
@@ -771,7 +774,8 @@ def start_interactive_mode() -> None:
     # Flow state - tracks source and target for operations
     flow_state = FlowState(
         source=FlowLocation.WORKING_TREE,
-        target=FlowLocation.STAGING_AREA
+        target=FlowLocation.STAGING_AREA,
+        stop_session_on_quit=not session_was_active,
     )
 
     # Main interactive loop
@@ -1166,7 +1170,7 @@ def handle_fixup_selection() -> None:
             print(_("\nUnknown action: '{action}'").format(action=action))
 
 
-def handle_quit() -> None:
+def handle_quit(*, stop_session: bool = True) -> None:
     """
     Handle quit action with smart quit logic.
 
@@ -1184,7 +1188,8 @@ def handle_quit() -> None:
 
     if not start_head_file.exists() or not start_index_tree_file.exists():
         # No start state recorded, just stop
-        command_stop()
+        if stop_session:
+            command_stop()
         return
 
     start_head = read_text_file_contents(start_head_file).strip()
@@ -1200,14 +1205,16 @@ def handle_quit() -> None:
 
     # If nothing changed, silently stop
     if selected_head == start_head and selected_index_tree == start_index_tree and not has_discards:
-        command_stop()
+        if stop_session:
+            command_stop()
         return
 
     # Changes exist, prompt user
     choice = prompt_quit_session()
 
     if choice == "keep":
-        command_stop()
+        if stop_session:
+            command_stop()
     elif choice == "undo":
         command_abort()
     else:  # cancel

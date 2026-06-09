@@ -616,6 +616,43 @@ class TestInteractiveVsNonInteractive:
         assert result.returncode == 0
 
 
+class TestInteractiveNativeTuiWorkflows:
+    """Test native TUI workflows beyond hunk actions."""
+
+    def test_file_review_includes_selected_line(self, repo_with_changes):
+        """Test file review can stage selected file-review line IDs."""
+        result = run_interactive("v", "i", "1", "q", "q")
+
+        assert result.returncode == 0
+        assert get_staged_files()
+
+    def test_file_browser_includes_marked_files(self, repo_with_changes):
+        """Test file browser can include a marked file set."""
+        result = run_interactive("o", "m 1", "m 2", "i", "", "q")
+
+        assert result.returncode == 0
+        assert len(get_staged_files()) >= 2
+
+    def test_status_drawer_runs_from_tui(self, repo_with_changes):
+        """Test native status drawer runs without leaving the TUI."""
+        result = run_interactive("S", "q")
+        output = result.stdout + result.stderr
+
+        assert result.returncode == 0
+        assert "status" in output.lower() or "session" in output.lower()
+
+    def test_batch_menu_sifts_batch(self, repo_with_changes):
+        """Test batch submenu can run sift for an existing batch."""
+        git_stage_batch("new", "cleanup")
+        git_stage_batch("start")
+        git_stage_batch("include", "--to", "cleanup", "--file", "README.md")
+        git_stage_batch("stop")
+
+        result = run_interactive("b", "s", "sifted", "", "q")
+
+        assert result.returncode == 0
+
+
 class TestInteractiveFlowControls:
     """Test interactive mode flow controls (< and >)."""
 

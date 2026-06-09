@@ -21,7 +21,7 @@ from .text import bytes_to_lines
 
 _GIT_REPOSITORY_ROOT_CACHE: dict[Path, Path] = {}
 _GIT_DIRECTORY_CACHE: dict[Path, Path] = {}
-_INDEX_LOCK_WAIT_SECONDS = 2.0
+_INDEX_LOCK_WAIT_SECONDS = 20.0
 _INDEX_LOCK_POLL_SECONDS = 0.05
 
 

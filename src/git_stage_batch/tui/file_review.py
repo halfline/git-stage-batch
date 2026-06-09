@@ -303,6 +303,7 @@ def _choose_file(
     selected_path: str | None = None,
 ) -> str | None:
     pattern: str | None = None
+    marked_paths: set[str] = set()
 
     while True:
         try:
@@ -319,16 +320,22 @@ def _choose_file(
                 print(_("No files to review."))
             return None
 
+        visible_paths = {entry.path for entry in entries}
+        marked_paths.intersection_update(visible_paths)
+
         print()
         print(_("Files to review:"))
         for index, entry in enumerate(entries, start=1):
             marker = " *" if entry.path == selected_path else ""
-            print(f"  [{index}] {entry.path}{marker}")
+            mark = "*" if entry.path in marked_paths else " "
+            print(f"  [{index}] [{mark}] {entry.path}{marker}")
 
         print()
         try:
             choice = input(
-                wrap_prompt_for_readline(_("File number, /pattern, or q: "))
+                wrap_prompt_for_readline(
+                    _("File number, /pattern, m N, u N, i/s/d/B marked, or q: ")
+                )
             ).strip()
         except (KeyboardInterrupt, EOFError):
             return None
@@ -338,12 +345,127 @@ def _choose_file(
         if choice.startswith("/"):
             pattern = choice[1:] or None
             continue
+        if choice.startswith("m "):
+            _mark_file_choice(choice[2:], entries, marked_paths)
+            continue
+        if choice.startswith("u "):
+            _unmark_file_choice(choice[2:], entries, marked_paths)
+            continue
+        if choice in {"i", "include", "s", "skip", "d", "discard", "B", "block"}:
+            _apply_marked_file_action(flow_state, marked_paths, choice)
+            marked_paths.clear()
+            continue
         if choice.isdigit():
             index = int(choice) - 1
             if 0 <= index < len(entries):
                 return entries[index].path
 
         print(_("Invalid file selection."), file=sys.stderr)
+
+
+def _mark_file_choice(
+    choice: str,
+    entries: list[ReviewFileEntry],
+    marked_paths: set[str],
+) -> None:
+    path = _file_choice_to_path(choice, entries)
+    if path is None:
+        print(_("Invalid file selection."), file=sys.stderr)
+        return
+    marked_paths.add(path)
+
+
+def _unmark_file_choice(
+    choice: str,
+    entries: list[ReviewFileEntry],
+    marked_paths: set[str],
+) -> None:
+    path = _file_choice_to_path(choice, entries)
+    if path is None:
+        print(_("Invalid file selection."), file=sys.stderr)
+        return
+    marked_paths.discard(path)
+
+
+def _file_choice_to_path(choice: str, entries: list[ReviewFileEntry]) -> str | None:
+    value = choice.strip()
+    if value.isdigit():
+        index = int(value) - 1
+        if 0 <= index < len(entries):
+            return entries[index].path
+    for entry in entries:
+        if entry.path == value:
+            return entry.path
+    return None
+
+
+def _apply_marked_file_action(
+    flow_state: FlowState,
+    marked_paths: set[str],
+    raw_action: str,
+) -> None:
+    if not marked_paths:
+        print(_("No files marked."), file=sys.stderr)
+        return
+
+    action = _normalize_marked_file_action(raw_action)
+    if action is None:
+        print(_("Invalid marked file action."), file=sys.stderr)
+        return
+    if action == "S" and flow_state.source.role is LocationRole.BATCH:
+        print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
+        return
+    if action == "B" and flow_state.source.role is LocationRole.BATCH:
+        print(_("Block is not available when pulling from a batch."), file=sys.stderr)
+        return
+
+    if action == "D" and flow_state.source.role is LocationRole.WORKING_TREE:
+        if not confirm_destructive_operation(
+            "discard",
+            _("This will discard the marked files from your working tree."),
+        ):
+            return
+
+    local_only = None
+    if action == "B":
+        if not confirm_destructive_operation(
+            "block",
+            _("This will add the marked files to ignore state."),
+        ):
+            return
+        local_only = _prompt_block_local_only()
+        if local_only is None:
+            return
+
+    for path in sorted(marked_paths):
+        try:
+            if action == "B":
+                from ..commands.block_file import command_block_file
+
+                command_block_file(path, local_only=local_only)
+                continue
+
+            state = FileReviewState(flow_state=flow_state, file_path=path)
+            if flow_state.source.role is LocationRole.BATCH:
+                _apply_batch_file_action(state, action)
+            else:
+                _apply_live_file_action(state, action)
+        except CommandError as e:
+            print(e.message, file=sys.stderr)
+
+
+def _normalize_marked_file_action(raw_action: str) -> str | None:
+    action = raw_action.strip()
+    if action in {"B", "block"}:
+        return "B"
+    lowered = action.lower()
+    if lowered in {"i", "include"}:
+        return "I"
+    if lowered in {"s", "skip"}:
+        return "S"
+    if lowered in {"d", "discard"}:
+        return "D"
+    return None
 
 
 def _apply_replacement_action(state: FileReviewState) -> None:

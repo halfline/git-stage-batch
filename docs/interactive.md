@@ -107,7 +107,7 @@ Open the current file as a full file review using the same page layout and
 line IDs as `git-stage-batch show --file`:
 
 ```
-Review action: [i]nclude lines [s]kip lines [d]iscard lines [r]eplace lines [I]include file [S]skip file [D]discard file [B]block [U]unblock [x]fixup lines [g]page [o]open [q]back [?]help
+Review action: [i]nclude lines [s]kip lines [d]iscard lines [r]eplace lines [I]include file [S]skip file [D]discard file [B]block [U]unblock [x]fixup lines [n]next [p]prev [g]page [o]open [q]back [?]help
 ```
 
 Line actions prompt for file-review line IDs, so selections can span the
@@ -125,7 +125,8 @@ Use `x` to run the suggest-fixup candidate browser for selected file-review
 line IDs. This is available for live working-tree file reviews and uses the
 same candidate controls as the main hunk-level fixup action.
 
-Use `g` to show a page or page range:
+Use `n` and `p` to move by one page from the current file review. Use `g` to
+show a specific page or page range:
 
 ```
 Page(s), for example 1, 2-4, all:

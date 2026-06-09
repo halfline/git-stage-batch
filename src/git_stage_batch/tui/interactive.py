@@ -156,6 +156,12 @@ def _handle_status(flow_state: FlowState) -> None:
     raise BypassRefresh()
 
 
+def _handle_assets(flow_state: FlowState) -> None:
+    """Handle bundled assistant asset installation."""
+    handle_install_assets()
+    raise BypassRefresh()
+
+
 def _handle_line_selection(flow_state: FlowState) -> None:
     """Handle line selection submenu."""
     handle_line_selection(flow_state)
@@ -373,6 +379,66 @@ def _batch_sift() -> None:
             dest=dest_batch,
         )
     )
+
+
+def handle_install_assets() -> None:
+    """Prompt for assistant asset install options and run the installer."""
+    from ..commands.install_assets import ASSET_GROUPS, command_install_assets
+
+    group_names = list(ASSET_GROUPS)
+
+    print()
+    print(_("Install bundled assistant assets:"))
+    print(f"  [1] {_('all asset groups')}")
+    for idx, group_name in enumerate(group_names, 2):
+        print(f"  [{idx}] {group_name}")
+
+    try:
+        choice = input(_("Group (empty to cancel): ")).strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if not choice:
+        return
+
+    asset_group_name: str | None
+    if choice == "1" or choice.lower() in ("all", _("all asset groups")):
+        asset_group_name = None
+    elif choice.isdigit():
+        group_idx = int(choice) - 2
+        if 0 <= group_idx < len(group_names):
+            asset_group_name = group_names[group_idx]
+        else:
+            print(_("\nInvalid selection."), file=sys.stderr)
+            return
+    elif choice in group_names:
+        asset_group_name = choice
+    else:
+        print(_("\nInvalid selection."), file=sys.stderr)
+        return
+
+    try:
+        filters_text = input(_("Filters (empty for all): ")).strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if filters_text:
+        try:
+            filters = shlex.split(filters_text)
+        except ValueError as error:
+            print(_("\nInvalid filter syntax: {error}").format(error=error), file=sys.stderr)
+            return
+    else:
+        filters = None
+
+    try:
+        force_text = input(_("Overwrite existing assets? [y/N]: ")).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    force = force_text in ("y", "yes")
+    command_install_assets(asset_group_name, filters, force=force)
+    print(_("\nAsset installation complete."))
 
 
 def _prompt_select_batch(purpose: str, skip_if_single: bool = False) -> str:
@@ -602,6 +668,7 @@ ACTION_HANDLERS = {
     "u": ActionHandler(needs_hunk=False, handler=_handle_undo),
     "U": ActionHandler(needs_hunk=False, handler=_handle_redo),
     "S": ActionHandler(needs_hunk=False, handler=_handle_status),
+    "A": ActionHandler(needs_hunk=False, handler=_handle_assets),
     "b": ActionHandler(needs_hunk=False, handler=_handle_batch),
     "?": ActionHandler(needs_hunk=False, handler=_handle_help),
     "q": ActionHandler(needs_hunk=False, handler=_handle_quit),
@@ -1171,6 +1238,7 @@ def print_help() -> None:
     print(_("  u, undo      - Undo the most recent operation"))
     print(_("  U, redo      - Redo the most recently undone operation"))
     print(_("  S, status    - Show session status"))
+    print(_("  A, assets    - Install bundled assistant assets"))
     print(_("  l, lines     - Select specific lines from this hunk"))
     print(_("  f, file      - Include or skip all hunks in this file"))
     print(_("  v, view      - Review this whole file with page selection"))

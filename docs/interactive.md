@@ -160,6 +160,11 @@ same gitignore-style patterns used by `show --files`, then choose from the
 filtered result. Press `q` to return to the main hunk prompt without opening a
 file.
 
+Use `m N` to mark a file and `u N` to unmark it. Use `i`, `s`, `d`, or `B` to
+include, skip, discard, or block marked files. Batch-source browsers support
+include and discard for marked batch files; skip and block are live-file
+actions.
+
 When the source is a batch, the file browser lists files from that batch and
 opens the selected batch file in the same review mode.
 

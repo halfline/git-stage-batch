@@ -38,7 +38,10 @@ What do you want to do with this hunk?
   [d]iscard
   [q]uit
 
-Other scope: [l]ines, [f]ile | Flow: [<]from, [>]to | More: [a]gain, [b]atch, [x]fixup, [!]cmd, [?]help
+Other scope: [l]ines, [f]ile, [v]iew
+Flow: [<] from, [>] to
+More: [a]gain, [u]ndo, [U] redo, [S] status, [A] assets, [b]atch, [o]pen
+      fi[x]up, [!] cmd, [?] help
 
 Action:
 ```
@@ -101,9 +104,115 @@ File-level discard asks for confirmation.
 
 ---
 
+### File Review (`v`)
+
+Open the current file as a full file review using the same page layout and
+line IDs as `git-stage-batch show --file`:
+
+```
+Review action: [i]nclude lines [s]kip lines [d]iscard lines [r]eplace lines [I]include file [S]skip file [D]discard file [B]block [U]unblock [x]fixup lines [n]next [p]prev [g]page [o]open [q]back [?]help
+```
+
+Line actions prompt for file-review line IDs, so selections can span the
+visible page instead of only the current hunk. File actions operate on the
+reviewed file and keep you in the review until the file has no remaining
+changes or you press `q`.
+
+Use `r` to replace selected file-review line IDs with one line of replacement
+text. With the default flow, the replacement is staged for commit. When the
+target is a batch, the replacement is saved to the batch and the original
+selection is removed from the working tree. When the source is a batch, the
+replacement is included from the batch into the index and working tree.
+
+Use `x` to run the suggest-fixup candidate browser for selected file-review
+line IDs. This is available for live working-tree file reviews and uses the
+same candidate controls as the main hunk-level fixup action.
+
+Use `n` and `p` to move by one page from the current file review. Use `g` to
+show a specific page or page range:
+
+```
+Page(s), for example 1, 2-4, all:
+```
+
+When the source is a batch, `v` reviews the current batch file. Include pulls
+selected lines or the reviewed file from the batch, and discard removes
+selected lines or the reviewed file from the batch. Skip is not available when
+pulling from a batch. Use `c` to preview include or apply candidates for the
+batch file, then enter a candidate number to preview it or `e N` to execute a
+reviewed candidate.
+
+Use `B` to block the reviewed file from future sessions. After confirmation,
+choose whether to write the ignore entry to `.gitignore` or to the local
+exclude file. Use `U` to unblock the reviewed file.
+
+---
+
+### File Browser (`o`)
+
+Choose another reviewable file and open it in file review mode:
+
+```
+Files to review:
+  [1] auth.py
+  [2] tests/test_auth.py
+
+File number, /pattern, or q:
+```
+
+Enter a number to open that file. Enter `/pattern` to filter the list with the
+same gitignore-style patterns used by `show --files`, then choose from the
+filtered result. Press `q` to return to the main hunk prompt without opening a
+file.
+
+Use `m N` to mark a file and `u N` to unmark it. Use `i`, `s`, `d`, or `B` to
+include, skip, discard, or block marked files. Batch-source browsers support
+include and discard for marked batch files; skip and block are live-file
+actions.
+
+When the source is a batch, the file browser lists files from that batch and
+opens the selected batch file in the same review mode.
+
+---
+
 ### Again (`a`)
 
 Clear the blocklist and restart iteration from the first hunk. Useful for making another pass after committing some changes.
+
+---
+
+### Status (`S`)
+
+Show the current session status without leaving interactive mode. The output is
+the same human-readable report produced by `git-stage-batch status`, including
+session progress and available batches.
+
+---
+
+### Assistant Assets (`A`)
+
+Install bundled assistant assets without leaving interactive mode. This is the
+same workflow as `git-stage-batch install-assets`:
+
+```
+Install bundled assistant assets:
+  [1] all asset groups
+  [2] claude-agents
+  [3] claude-skills
+  [4] codex-skills
+
+Group (empty to cancel):
+Filters (empty for all):
+Overwrite existing assets? [y/N]:
+```
+
+Choose a group by number or name. Leave the filters prompt empty to install all
+assets in the selected group, or enter one or more gitignore-style patterns such
+as `commit-*`. Answer `yes` only when existing installed assets should be
+replaced.
+
+The assets action is also available in degraded mode, so repositories with no
+current hunks can still use interactive mode for setup.
 
 ---
 
@@ -153,9 +262,13 @@ Batch operations:
   [e]dit
   [d]rop
   [a]pply
+  [s]ift
 ```
 
 If no batches exist, you are prompted to create one immediately.
+
+Use `s` to sift an existing batch. After choosing the source batch, enter a
+destination batch name, or leave it empty to sift in place.
 
 ---
 
@@ -210,8 +323,14 @@ Primary actions:
 
 More options:
   a, again     - Clear state and start fresh pass through skipped hunks
+  u, undo      - Undo last action
+  U, redo      - Redo last undone action
+  S, status    - Show session status
+  A, assets    - Install bundled assistant assets
   l, lines     - Select specific lines from this hunk
   f, file      - Include or skip all hunks in this file
+  v, view      - Review this whole file with page selection
+  o, open      - Choose a file to review
   x, fixup     - Suggest which commit to fixup (iterative)
   !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)
   ?, help      - Show this help message
@@ -237,11 +356,14 @@ Keep staged changes? [y]es / [n]o:
 | `n` | Undo everything (reset HEAD, restore working tree, restore batches) |
 | Ctrl-C | Cancel and return to the main menu |
 
+If a `git-stage-batch` session was already active before interactive mode was
+started, quitting returns to that existing session instead of stopping it.
+
 ---
 
 ## Degraded Mode
 
-If there are no changes to stage, interactive mode enters degraded mode. Primary hunk actions (`include`, `skip`, `discard`, `lines`, `file`, `fixup`) are disabled, but you can still:
+If there are no changes to stage, interactive mode enters degraded mode. Primary hunk actions (`include`, `skip`, `discard`, `lines`, `file`, `view`, `fixup`) are disabled, but you can still:
 
 - Manage batches (`b`)
 - Change flow source/target (`<`, `>`)

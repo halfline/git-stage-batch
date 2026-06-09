@@ -18,6 +18,7 @@ from git_stage_batch.commands.suggest_fixup import (
 )
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.hunk_tracking import render_file_as_single_hunk
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_suggest_fixup_state_file_path
 
@@ -347,6 +348,33 @@ class TestCommandSuggestFixupLine:
         captured = capsys.readouterr()
         assert "Candidate 1:" in captured.out
         assert "Modify line 1" in captured.out
+
+    def test_suggest_fixup_line_uses_file_review_line_ids(self, temp_git_repo, capsys):
+        """Test finding commits for file-scoped review line IDs."""
+        test_file = temp_git_repo / "test.py"
+        test_file.write_text("line 1\nline 2\nline 3\nline 4\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1\nline 2\nline 3 committed\nline 4\n")
+        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Modify line 3"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("line 1 changed\nline 2\nline 3 changed\nline 4\n")
+
+        command_start()
+        line_changes = render_file_as_single_hunk("test.py")
+        line_id = next(
+            entry.id
+            for entry in line_changes.lines
+            if entry.kind == "-" and entry.old_line_number == 3
+        )
+
+        command_suggest_fixup_line(str(line_id), boundary="HEAD~2", file="test.py")
+
+        captured = capsys.readouterr()
+        assert "Candidate 1:" in captured.out
+        assert "Modify line 3" in captured.out
 
     def test_suggest_fixup_line_errors_on_new_lines(self, temp_git_repo, capsys):
         """Test error when all specified lines are new."""

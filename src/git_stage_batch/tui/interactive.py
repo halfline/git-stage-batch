@@ -19,11 +19,13 @@ from ..output import Colors, format_hotkey, print_line_level_changes
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git import get_git_repository_root_path, run_git_command
 from ..utils.paths import (
+    get_abort_head_file_path,
     get_selected_hunk_hash_file_path,
     get_start_head_file_path,
     get_start_index_tree_file_path,
 )
 from .display import print_status_bar
+from .file_review import handle_current_file_review, handle_file_browser
 from .flow import FlowLocation, LocationRole, FlowState
 from .prompts import (
     confirm_destructive_operation,
@@ -148,6 +150,19 @@ def _handle_redo(flow_state: FlowState) -> None:
     command_redo()
 
 
+def _handle_status(flow_state: FlowState) -> None:
+    """Handle status drawer."""
+    from ..commands.status import command_status
+    command_status()
+    raise BypassRefresh()
+
+
+def _handle_assets(flow_state: FlowState) -> None:
+    """Handle bundled assistant asset installation."""
+    handle_install_assets()
+    raise BypassRefresh()
+
+
 def _handle_line_selection(flow_state: FlowState) -> None:
     """Handle line selection submenu."""
     handle_line_selection(flow_state)
@@ -156,6 +171,16 @@ def _handle_line_selection(flow_state: FlowState) -> None:
 def _handle_file_selection(flow_state: FlowState) -> None:
     """Handle file selection submenu."""
     handle_file_selection(flow_state)
+
+
+def _handle_file_review(flow_state: FlowState) -> None:
+    """Handle current-file review browser."""
+    handle_current_file_review(flow_state)
+
+
+def _handle_file_browser(flow_state: FlowState) -> None:
+    """Handle review file chooser."""
+    handle_file_browser(flow_state)
 
 
 def _handle_fixup(flow_state: FlowState) -> None:
@@ -169,7 +194,7 @@ def _handle_fixup(flow_state: FlowState) -> None:
 
 def _handle_quit(flow_state: FlowState) -> None:
     """Handle quit action."""
-    handle_quit()
+    handle_quit(stop_session=flow_state.stop_session_on_quit)
     raise QuitInteractive()
 
 
@@ -243,6 +268,7 @@ def _handle_batch(flow_state: FlowState) -> None:
             (_("edit"), "e", ""),
             (_("drop"), "d", Colors.RED if use_color else ""),
             (_("apply"), "a", ""),
+            (_("sift"), "s", ""),
         ]
         for text, hotkey, color in operations:
             formatted = format_hotkey(text, hotkey, color)
@@ -267,6 +293,8 @@ def _handle_batch(flow_state: FlowState) -> None:
             _batch_drop()
         elif action in ("a", "apply"):
             _batch_apply()
+        elif action in ("s", "sift"):
+            _batch_sift()
         else:
             print(_("\nUnknown action: '{action}'").format(action=action))
 
@@ -328,6 +356,90 @@ def _batch_apply() -> None:
     from ..commands.apply_from import command_apply_from_batch
     command_apply_from_batch(batch_name)
     print(_("\nBatch '{name}' applied to staging area.").format(name=batch_name))
+
+
+def _batch_sift() -> None:
+    """Prompt to select a batch and sift it."""
+    source_batch = _prompt_select_batch(purpose=_("sift"), skip_if_single=True)
+    if not source_batch:
+        return
+
+    try:
+        dest_batch = input(_("Destination batch (empty for in-place): ")).strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if not dest_batch:
+        dest_batch = source_batch
+
+    from ..commands.sift import command_sift_batch
+    command_sift_batch(source_batch, dest_batch)
+    print(
+        _("\nBatch '{source}' sifted to '{dest}'.").format(
+            source=source_batch,
+            dest=dest_batch,
+        )
+    )
+
+
+def handle_install_assets() -> None:
+    """Prompt for assistant asset install options and run the installer."""
+    from ..commands.install_assets import ASSET_GROUPS, command_install_assets
+
+    group_names = list(ASSET_GROUPS)
+
+    print()
+    print(_("Install bundled assistant assets:"))
+    print(f"  [1] {_('all asset groups')}")
+    for idx, group_name in enumerate(group_names, 2):
+        print(f"  [{idx}] {group_name}")
+
+    try:
+        choice = input(_("Group (empty to cancel): ")).strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if not choice:
+        return
+
+    asset_group_name: str | None
+    if choice == "1" or choice.lower() in ("all", _("all asset groups")):
+        asset_group_name = None
+    elif choice.isdigit():
+        group_idx = int(choice) - 2
+        if 0 <= group_idx < len(group_names):
+            asset_group_name = group_names[group_idx]
+        else:
+            print(_("\nInvalid selection."), file=sys.stderr)
+            return
+    elif choice in group_names:
+        asset_group_name = choice
+    else:
+        print(_("\nInvalid selection."), file=sys.stderr)
+        return
+
+    try:
+        filters_text = input(_("Filters (empty for all): ")).strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if filters_text:
+        try:
+            filters = shlex.split(filters_text)
+        except ValueError as error:
+            print(_("\nInvalid filter syntax: {error}").format(error=error), file=sys.stderr)
+            return
+    else:
+        filters = None
+
+    try:
+        force_text = input(_("Overwrite existing assets? [y/N]: ")).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    force = force_text in ("y", "yes")
+    command_install_assets(asset_group_name, filters, force=force)
+    print(_("\nAsset installation complete."))
 
 
 def _prompt_select_batch(purpose: str, skip_if_single: bool = False) -> str:
@@ -550,10 +662,14 @@ ACTION_HANDLERS = {
     "d": ActionHandler(needs_hunk=True, handler=_handle_discard),
     "l": ActionHandler(needs_hunk=True, handler=_handle_line_selection),
     "f": ActionHandler(needs_hunk=True, handler=_handle_file_selection),
+    "v": ActionHandler(needs_hunk=True, handler=_handle_file_review),
+    "o": ActionHandler(needs_hunk=False, handler=_handle_file_browser),
     "x": ActionHandler(needs_hunk=True, handler=_handle_fixup),
     "a": ActionHandler(needs_hunk=False, handler=_handle_again),
     "u": ActionHandler(needs_hunk=False, handler=_handle_undo),
     "U": ActionHandler(needs_hunk=False, handler=_handle_redo),
+    "S": ActionHandler(needs_hunk=False, handler=_handle_status),
+    "A": ActionHandler(needs_hunk=False, handler=_handle_assets),
     "b": ActionHandler(needs_hunk=False, handler=_handle_batch),
     "?": ActionHandler(needs_hunk=False, handler=_handle_help),
     "q": ActionHandler(needs_hunk=False, handler=_handle_quit),
@@ -630,6 +746,8 @@ def start_interactive_mode() -> None:
     # Import commands locally to avoid circular dependency
     from ..commands.start import command_start
 
+    session_was_active = get_abort_head_file_path().exists()
+
     # Auto-initialize session (allow degraded mode if no changes)
     degraded_mode = False
     try:
@@ -656,7 +774,8 @@ def start_interactive_mode() -> None:
     # Flow state - tracks source and target for operations
     flow_state = FlowState(
         source=FlowLocation.WORKING_TREE,
-        target=FlowLocation.STAGING_AREA
+        target=FlowLocation.STAGING_AREA,
+        stop_session_on_quit=not session_was_active,
     )
 
     # Main interactive loop
@@ -1051,7 +1170,7 @@ def handle_fixup_selection() -> None:
             print(_("\nUnknown action: '{action}'").format(action=action))
 
 
-def handle_quit() -> None:
+def handle_quit(*, stop_session: bool = True) -> None:
     """
     Handle quit action with smart quit logic.
 
@@ -1069,7 +1188,8 @@ def handle_quit() -> None:
 
     if not start_head_file.exists() or not start_index_tree_file.exists():
         # No start state recorded, just stop
-        command_stop()
+        if stop_session:
+            command_stop()
         return
 
     start_head = read_text_file_contents(start_head_file).strip()
@@ -1085,14 +1205,16 @@ def handle_quit() -> None:
 
     # If nothing changed, silently stop
     if selected_head == start_head and selected_index_tree == start_index_tree and not has_discards:
-        command_stop()
+        if stop_session:
+            command_stop()
         return
 
     # Changes exist, prompt user
     choice = prompt_quit_session()
 
     if choice == "keep":
-        command_stop()
+        if stop_session:
+            command_stop()
     elif choice == "undo":
         command_abort()
     else:  # cancel
@@ -1122,8 +1244,12 @@ def print_help() -> None:
     print(_("  a, again     - Clear state and start fresh pass through skipped hunks"))
     print(_("  u, undo      - Undo the most recent operation"))
     print(_("  U, redo      - Redo the most recently undone operation"))
+    print(_("  S, status    - Show session status"))
+    print(_("  A, assets    - Install bundled assistant assets"))
     print(_("  l, lines     - Select specific lines from this hunk"))
     print(_("  f, file      - Include or skip all hunks in this file"))
+    print(_("  v, view      - Review this whole file with page selection"))
+    print(_("  o, open      - Choose a file to review"))
     print(_("  x, fixup     - Suggest which commit to fixup (iterative)"))
     print(_("  !<cmd>       - Run shell command (e.g., !git log, or just ! to prompt)"))
     print(_("  ?, help      - Show this help message"))

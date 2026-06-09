@@ -61,6 +61,8 @@ class FlowState:
     Attributes:
         source: Where changes are coming from
         target: Where changes are going to
+        stop_session_on_quit: Whether quitting should clear session state
     """
     source: FlowLocation
     target: FlowLocation
+    stop_session_on_quit: bool = True

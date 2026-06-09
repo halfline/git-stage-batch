@@ -91,6 +91,15 @@ class TestInteractiveMode:
         assert result.returncode == 0
         assert "no changes" in result.stderr.lower()
 
+    def test_interactive_installs_filtered_assets_without_changes(self, functional_repo):
+        """Test assets action works from degraded interactive mode."""
+        result = run_interactive("assets", "codex-skills", "commit-*", "no", "q")
+
+        assert result.returncode == 0, f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+        assert Path(".agents/skills/commit-staged-changes/SKILL.md").exists()
+        assert Path(".agents/skills/commit-unstaged-changes/SKILL.md").exists()
+        assert not Path(".claude/skills/commit-staged-changes/SKILL.md").exists()
+
 
 class TestInteractiveCommands:
     """Test interactive mode commands."""
@@ -410,6 +419,17 @@ class TestInteractiveEdgeCases:
 class TestInteractiveSession:
     """Test interactive mode session management."""
 
+    def test_interactive_quit_keeps_prestarted_session(self, repo_with_changes):
+        """Test quitting interactive mode preserves a prestarted session."""
+        git_stage_batch("start")
+
+        result = run_interactive("q")
+        assert result.returncode == 0
+
+        status = git_stage_batch("status")
+        assert status.returncode == 0
+        assert "No batch staging session" not in status.stderr
+
     def test_interactive_preserves_session(self, repo_with_changes):
         """Test that interactive mode preserves session state."""
         # Start interactive, include something, quit
@@ -613,6 +633,43 @@ class TestInteractiveVsNonInteractive:
         git_stage_batch("new", "test-batch")
 
         result = run_interactive("i --to test-batch", "q")
+        assert result.returncode == 0
+
+
+class TestInteractiveNativeTuiWorkflows:
+    """Test native TUI workflows beyond hunk actions."""
+
+    def test_file_review_includes_selected_line(self, repo_with_changes):
+        """Test file review can stage selected file-review line IDs."""
+        result = run_interactive("v", "i", "1", "q", "q")
+
+        assert result.returncode == 0
+        assert get_staged_files()
+
+    def test_file_browser_includes_marked_files(self, repo_with_changes):
+        """Test file browser can include a marked file set."""
+        result = run_interactive("o", "m 1", "m 2", "i", "", "q")
+
+        assert result.returncode == 0
+        assert len(get_staged_files()) >= 2
+
+    def test_status_drawer_runs_from_tui(self, repo_with_changes):
+        """Test native status drawer runs without leaving the TUI."""
+        result = run_interactive("S", "q")
+        output = result.stdout + result.stderr
+
+        assert result.returncode == 0
+        assert "status" in output.lower() or "session" in output.lower()
+
+    def test_batch_menu_sifts_batch(self, repo_with_changes):
+        """Test batch submenu can run sift for an existing batch."""
+        git_stage_batch("new", "cleanup")
+        git_stage_batch("start")
+        git_stage_batch("include", "--to", "cleanup", "--file", "README.md")
+        git_stage_batch("stop")
+
+        result = run_interactive("b", "s", "sifted", "", "q")
+
         assert result.returncode == 0
 
 

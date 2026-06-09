@@ -3,6 +3,7 @@
 from git_stage_batch.tui.prompts import _shell_command_history
 
 from io import StringIO
+from os import terminal_size
 from unittest.mock import patch
 
 from git_stage_batch.output.colors import Colors
@@ -61,6 +62,12 @@ class TestPromptAction:
         with patch("builtins.input", return_value="u"):
             assert prompt_action(use_color=False) == "u"
 
+        with patch("builtins.input", return_value="status"):
+            assert prompt_action(use_color=False) == "S"
+
+        with patch("builtins.input", return_value="assets"):
+            assert prompt_action(use_color=False) == "A"
+
         with patch("builtins.input", return_value="l"):
             assert prompt_action(use_color=False) == "l"
 
@@ -69,6 +76,12 @@ class TestPromptAction:
 
         with patch("builtins.input", return_value="?"):
             assert prompt_action(use_color=False) == "?"
+
+        with patch("builtins.input", return_value="v"):
+            assert prompt_action(use_color=False) == "v"
+
+        with patch("builtins.input", return_value="o"):
+            assert prompt_action(use_color=False) == "o"
 
     def test_prompt_action_case_insensitive(self):
         """Test that input is case-insensitive."""
@@ -128,6 +141,8 @@ class TestPromptAction:
 
         assert result == "u"
         assert "[u]ndo" in output
+        assert "[S] status" in output
+        assert "[A] assets" in output
 
     def test_prompt_action_from_normalized(self):
         """Test that 'from' normalizes to '<'."""
@@ -138,6 +153,60 @@ class TestPromptAction:
         """Test that 'to' normalizes to '>'."""
         with patch("builtins.input", return_value="to"):
             assert prompt_action(use_color=False) == ">"
+
+    def test_prompt_action_review_normalized(self):
+        """Test that review aliases normalize to 'v'."""
+        with patch("builtins.input", return_value="review"):
+            assert prompt_action(use_color=False) == "v"
+
+        with patch("builtins.input", return_value="view"):
+            assert prompt_action(use_color=False) == "v"
+
+    def test_prompt_action_open_normalized(self):
+        """Test that open aliases normalize to 'o'."""
+        with patch("builtins.input", return_value="open"):
+            assert prompt_action(use_color=False) == "o"
+
+        with patch("builtins.input", return_value="files"):
+            assert prompt_action(use_color=False) == "o"
+
+    def test_prompt_action_shows_review_option(self):
+        """Test that review appears when a hunk is selected."""
+        with patch("builtins.input", return_value="q"):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                with patch("sys.stdout.isatty", return_value=False):
+                    result = prompt_action(use_color=False, has_hunk=True)
+                    output = fake_out.getvalue()
+
+        assert result == "q"
+        assert "[v]iew" in output
+        assert "[o]pen" in output
+        assert "[S] status" in output
+        assert "[A] assets" in output
+
+    def test_prompt_action_wraps_long_more_section(self):
+        """Test long menu sections wrap onto continuation lines."""
+        with patch("builtins.input", return_value="q"):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                with patch("sys.stdout.isatty", return_value=False):
+                    with patch(
+                        "git_stage_batch.tui.prompts.shutil.get_terminal_size",
+                        return_value=terminal_size((56, 20)),
+                    ):
+                        result = prompt_action(use_color=False, has_hunk=True)
+                        output = fake_out.getvalue()
+
+        assert result == "q"
+        assert "More: [a]gain" in output
+        assert "\n      " in output
+
+    def test_prompt_action_install_assets_normalized(self):
+        """Test that install-assets aliases normalize to assets."""
+        with patch("builtins.input", return_value="assets"):
+            assert prompt_action(use_color=False) == "A"
+
+        with patch("builtins.input", return_value="install-assets"):
+            assert prompt_action(use_color=False) == "A"
 
 
 class TestConfirmDestructiveOperation:

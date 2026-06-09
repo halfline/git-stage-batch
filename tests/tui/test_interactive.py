@@ -4,6 +4,7 @@ from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.git import run_git_command
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
+    get_abort_head_file_path,
     get_start_head_file_path,
     get_start_index_tree_file_path,
 )
@@ -14,8 +15,12 @@ from unittest.mock import patch
 
 import pytest
 
+from git_stage_batch.exceptions import BypassRefresh
 from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
+    ACTION_HANDLERS,
+    _dispatch_action,
+    handle_install_assets,
     handle_file_selection,
     handle_line_selection,
     handle_quit,
@@ -56,6 +61,7 @@ class TestPrintHelp:
         assert "i, include" in captured.out
         assert "s, skip" in captured.out
         assert "d, discard" in captured.out
+        assert "v, view" in captured.out
         assert "u, undo" in captured.out
         assert "q, quit" in captured.out
         assert "?, help" in captured.out
@@ -67,6 +73,85 @@ class TestPrintHelp:
             captured = capsys.readouterr()
 
         assert "Interactive Mode Commands:" in captured.out
+
+
+class TestActionHandlers:
+    """Tests for interactive action registration."""
+
+    def test_current_file_review_action_registered(self):
+        """Test review action is available when a hunk is selected."""
+        handler = ACTION_HANDLERS["v"]
+
+        assert handler.needs_hunk is True
+
+    def test_file_browser_action_registered(self):
+        """Test file browser action is available without a selected hunk."""
+        handler = ACTION_HANDLERS["o"]
+
+        assert handler.needs_hunk is False
+
+    def test_status_action_registered(self):
+        """Test status action is available without a selected hunk."""
+        handler = ACTION_HANDLERS["S"]
+
+        assert handler.needs_hunk is False
+
+    def test_assets_action_registered(self):
+        """Test asset installation is available without a selected hunk."""
+        handler = ACTION_HANDLERS["A"]
+
+        assert handler.needs_hunk is False
+
+    def test_status_action_dispatches_status_command(self):
+        """Test status action routes through the status command."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("git_stage_batch.commands.status.command_status") as mock_status:
+            with pytest.raises(BypassRefresh):
+                _dispatch_action(
+                    "S",
+                    has_hunk=False,
+                    use_color=False,
+                    flow_state=flow_state,
+                )
+
+        mock_status.assert_called_once_with()
+
+    def test_assets_action_dispatches_install_command(self):
+        """Test assets action routes through the install-assets command."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("builtins.input", side_effect=["codex-skills", "commit-*", "yes"]):
+            with patch("git_stage_batch.commands.install_assets.command_install_assets") as mock_install:
+                with pytest.raises(BypassRefresh):
+                    _dispatch_action(
+                        "A",
+                        has_hunk=False,
+                        use_color=False,
+                        flow_state=flow_state,
+                    )
+
+        mock_install.assert_called_once_with(
+            "codex-skills",
+            ["commit-*"],
+            force=True,
+        )
+
+    def test_handle_install_assets_cancels_on_bad_filter_syntax(self, capsys):
+        """Test invalid filter syntax does not call the installer."""
+        with patch("builtins.input", side_effect=["claude-skills", "'unterminated"]):
+            with patch("git_stage_batch.commands.install_assets.command_install_assets") as mock_install:
+                handle_install_assets()
+
+        mock_install.assert_not_called()
+        captured = capsys.readouterr()
+        assert "Invalid filter syntax" in captured.err
 
 
 class TestHandleQuit:
@@ -98,6 +183,22 @@ class TestHandleQuit:
                 mock_stop.assert_called_once()
                 mock_prompt.assert_not_called()
 
+    def test_handle_quit_no_changes_preserves_external_session(self, temp_git_repo):
+        """Test quit keeps a session that interactive mode did not start."""
+        ensure_state_directory_exists()
+
+        head = run_git_command(["rev-parse", "HEAD"]).stdout.strip()
+        index_tree = run_git_command(["write-tree"]).stdout.strip()
+
+        write_text_file_contents(get_start_head_file_path(), head)
+        write_text_file_contents(get_start_index_tree_file_path(), index_tree)
+
+        with patch("git_stage_batch.commands.stop.command_stop") as mock_stop:
+            with patch("git_stage_batch.tui.interactive.prompt_quit_session") as mock_prompt:
+                handle_quit(stop_session=False)
+                mock_stop.assert_not_called()
+                mock_prompt.assert_not_called()
+
     def test_handle_quit_with_changes_keep(self, temp_git_repo):
         """Test quit with changes and user chooses to keep."""
 
@@ -120,6 +221,26 @@ class TestHandleQuit:
                 with patch("git_stage_batch.commands.abort.command_abort") as mock_abort:
                     handle_quit()
                     mock_stop.assert_called_once()
+                    mock_abort.assert_not_called()
+
+    def test_handle_quit_with_changes_keep_preserves_external_session(self, temp_git_repo):
+        """Test keeping changes does not stop an external session."""
+        ensure_state_directory_exists()
+
+        head = run_git_command(["rev-parse", "HEAD"]).stdout.strip()
+        old_index_tree = run_git_command(["write-tree"]).stdout.strip()
+
+        write_text_file_contents(get_start_head_file_path(), head)
+        write_text_file_contents(get_start_index_tree_file_path(), old_index_tree)
+
+        (temp_git_repo / "test.txt").write_text("new file\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        with patch("git_stage_batch.tui.interactive.prompt_quit_session", return_value="keep"):
+            with patch("git_stage_batch.commands.stop.command_stop") as mock_stop:
+                with patch("git_stage_batch.commands.abort.command_abort") as mock_abort:
+                    handle_quit(stop_session=False)
+                    mock_stop.assert_not_called()
                     mock_abort.assert_not_called()
 
     def test_handle_quit_with_changes_undo(self, temp_git_repo):
@@ -355,6 +476,18 @@ class TestDegradedMode:
         captured = capsys.readouterr()
         assert "No changes to stage" in captured.err
 
+    def test_start_interactive_mode_quit_preserves_existing_session(self, temp_git_repo):
+        """Test quitting does not stop a session that already existed."""
+        ensure_state_directory_exists()
+        write_text_file_contents(get_abort_head_file_path(), "existing-session\n")
+
+        with patch("git_stage_batch.commands.start.command_start"):
+            with patch("git_stage_batch.tui.interactive.prompt_action", return_value="q"):
+                with patch("git_stage_batch.commands.stop.command_stop") as mock_stop:
+                    start_interactive_mode()
+
+        mock_stop.assert_not_called()
+
     def test_degraded_mode_help_works(self, temp_git_repo, capsys):
         """Test that help action works in degraded mode."""
         # No changes, try help action
@@ -463,6 +596,28 @@ class TestBatchSubmenu:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_apply.assert_called_once_with("test-batch")
+
+    def test_batch_sift_in_place(self, temp_git_repo):
+        """Test sifting a single batch in place from submenu."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("git_stage_batch.batch.query.list_batch_names", return_value=["test-batch"]):
+                with patch("git_stage_batch.batch.query.read_batch_metadata", return_value={"note": "some note", "created_at": ""}):
+                    with patch("builtins.input", side_effect=["s", "", KeyboardInterrupt]):
+                        with patch("git_stage_batch.commands.sift.command_sift_batch") as mock_sift:
+                            with patch("git_stage_batch.tui.interactive.handle_quit"):
+                                start_interactive_mode()
+                                mock_sift.assert_called_once_with("test-batch", "test-batch")
+
+    def test_batch_sift_to_destination(self, temp_git_repo):
+        """Test sifting a selected batch to a destination batch."""
+        with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
+            with patch("git_stage_batch.batch.query.list_batch_names", return_value=["first", "second"]):
+                with patch("git_stage_batch.batch.query.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+                    with patch("builtins.input", side_effect=["s", "2", "filtered", KeyboardInterrupt]):
+                        with patch("git_stage_batch.commands.sift.command_sift_batch") as mock_sift:
+                            with patch("git_stage_batch.tui.interactive.handle_quit"):
+                                start_interactive_mode()
+                                mock_sift.assert_called_once_with("second", "filtered")
 
     def test_batch_select_no_batches(self, temp_git_repo, capsys):
         """Test auto-create when no batches exist."""

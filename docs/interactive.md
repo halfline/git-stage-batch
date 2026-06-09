@@ -38,7 +38,10 @@ What do you want to do with this hunk?
   [d]iscard
   [q]uit
 
-Other scope: [l]ines, [f]ile, [v]iew | Flow: [<] from, [>] to | More: [a]gain, [u]ndo, [U] redo, [S] status, [A] assets, [b]atch, [o]pen, fi[x]up, [!] cmd, [?] help
+Other scope: [l]ines, [f]ile, [v]iew
+Flow: [<] from, [>] to
+More: [a]gain, [u]ndo, [U] redo, [S] status, [A] assets, [b]atch, [o]pen
+      fi[x]up, [!] cmd, [?] help
 
 Action:
 ```

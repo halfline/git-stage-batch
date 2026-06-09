@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 
 try:
     import readline
@@ -27,11 +28,61 @@ except ImportError:
     INPUT_USES_LIBEDIT = False
     readline = None  # type: ignore
 
-from ..output import Colors, format_hotkey, format_option_list
+from ..output import Colors, format_hotkey
 from ..i18n import _, pgettext
 
 # Module-level storage for shell command history
 _shell_command_history: list[str] = []
+
+ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _visible_len(text: str) -> int:
+    """Return display length without ANSI color sequences."""
+    return len(ANSI_PATTERN.sub("", text))
+
+
+def _format_menu_section_lines(
+    label: str,
+    options: list[tuple[str, str, str]],
+    use_color: bool,
+) -> list[str]:
+    """Format one menu section, wrapping options across continuation lines."""
+    width = max(40, shutil.get_terminal_size((88, 20)).columns)
+    formatted_options = [
+        format_hotkey(text, hotkey, color)
+        for text, hotkey, color in options
+    ]
+
+    if use_color and Colors.enabled():
+        rendered_label = f"{Colors.GRAY}{label}{Colors.RESET}"
+        rendered_prefix = f"{rendered_label}: {Colors.CYAN}"
+        rendered_suffix = Colors.RESET
+    else:
+        rendered_prefix = _("{label}: ").format(label=label)
+        rendered_suffix = ""
+
+    continuation_prefix = " " * (_visible_len(label) + 2)
+    lines: list[str] = []
+    current = rendered_prefix
+    current_visible_len = _visible_len(current)
+
+    for option in formatted_options:
+        separator = "" if current == rendered_prefix else ", "
+        candidate_len = current_visible_len + len(separator) + _visible_len(option)
+        if current != rendered_prefix and candidate_len > width:
+            lines.append(f"{current}{rendered_suffix}")
+            current = continuation_prefix + option
+            current_visible_len = _visible_len(current)
+            continue
+
+        current = f"{current}{separator}{option}"
+        current_visible_len = candidate_len
+
+    if current != rendered_prefix:
+        lines.append(f"{current}{rendered_suffix}")
+
+    return lines
 
 
 def wrap_prompt_for_readline(prompt: str) -> str:
@@ -144,7 +195,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
             formatted = format_hotkey(text, hotkey, color)
             print(f"  {formatted}")
 
-        # Three-section menu line
+        # Grouped secondary menu sections
         print()
 
         rendered_sections = []
@@ -155,22 +206,9 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
                 options,
                 use_color,
         ):
-                formatted_options = format_option_list(options)
-
-                if use_color and Colors.enabled():
-                        rendered_sections.append(
-                                _("{label}: {options}").format(
-                                        label=f"{Colors.GRAY}{label}{Colors.RESET}",
-                                        options=f"{Colors.CYAN}{formatted_options}{Colors.RESET}",
-                                )
-                        )
-                else:
-                        rendered_sections.append(
-                                _("{label}: {options}").format(
-                                        label=label,
-                                        options=formatted_options,
-                                )
-                        )
+                rendered_sections.extend(
+                        _format_menu_section_lines(label, options, use_color)
+                )
 
         section_specs = [
                 (pgettext("menu section label", "Other scope"), scope_options),
@@ -188,11 +226,8 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
                         )
 
         if rendered_sections:
-                separator = pgettext("menu section separator", " | ")
-                if use_color and Colors.enabled():
-                        separator = f"{Colors.GRAY}{separator}{Colors.RESET}"
-
-                print(separator.join(rendered_sections))
+                for rendered_section in rendered_sections:
+                        print(rendered_section)
 
         print()
     try:

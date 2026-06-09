@@ -554,6 +554,77 @@ class TestHandleCurrentFileReview:
             replacement_text="replacement",
         )
 
+    def test_batch_source_candidate_browser_executes_include(self):
+        """Test batch candidate browser executes include candidates."""
+        flow_state = FlowState(
+            source=FlowLocation.for_batch("scratch"),
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show_from.command_show_from_batch") as mock_show:
+                    with patch(
+                        "git_stage_batch.commands.include_from.command_include_from_batch"
+                    ) as mock_include_from:
+                        with patch(
+                            "builtins.input",
+                            side_effect=["c", "i", "2", "e 2", "q"],
+                        ):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        assert ("scratch:include",) in [
+            call.args for call in mock_show.call_args_list
+        ]
+        assert ("scratch:include:2",) in [
+            call.args for call in mock_show.call_args_list
+        ]
+        mock_include_from.assert_called_once_with(
+            "scratch:include:2",
+            file="test.txt",
+        )
+
+    def test_batch_source_candidate_browser_executes_apply(self):
+        """Test batch candidate browser executes apply candidates."""
+        flow_state = FlowState(
+            source=FlowLocation.for_batch("scratch"),
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.load_line_changes_from_state",
+            return_value=_line_changes("test.txt"),
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.get_hunk_counts",
+                return_value={},
+            ):
+                with patch("git_stage_batch.commands.show_from.command_show_from_batch") as mock_show:
+                    with patch(
+                        "git_stage_batch.commands.apply_from.command_apply_from_batch"
+                    ) as mock_apply_from:
+                        with patch(
+                            "builtins.input",
+                            side_effect=["c", "a", "e 1", "q"],
+                        ):
+                            with pytest.raises(BypassRefresh):
+                                handle_current_file_review(flow_state)
+
+        assert ("scratch:apply",) in [
+            call.args for call in mock_show.call_args_list
+        ]
+        mock_apply_from.assert_called_once_with(
+            "scratch:apply:1",
+            file="test.txt",
+        )
+
     def test_batch_source_replacement_rejects_batch_target(self, capsys):
         """Test replacement refuses batch-to-batch transfer."""
         flow_state = FlowState(

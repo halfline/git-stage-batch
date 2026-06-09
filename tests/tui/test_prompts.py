@@ -64,6 +64,9 @@ class TestPromptAction:
         with patch("builtins.input", return_value="status"):
             assert prompt_action(use_color=False) == "S"
 
+        with patch("builtins.input", return_value="assets"):
+            assert prompt_action(use_color=False) == "A"
+
         with patch("builtins.input", return_value="l"):
             assert prompt_action(use_color=False) == "l"
 
@@ -138,6 +141,7 @@ class TestPromptAction:
         assert result == "u"
         assert "[u]ndo" in output
         assert "[S] status" in output
+        assert "[A] assets" in output
 
     def test_prompt_action_from_normalized(self):
         """Test that 'from' normalizes to '<'."""
@@ -177,6 +181,15 @@ class TestPromptAction:
         assert "[v]iew" in output
         assert "[o]pen" in output
         assert "[S] status" in output
+        assert "[A] assets" in output
+
+    def test_prompt_action_install_assets_normalized(self):
+        """Test that install-assets aliases normalize to assets."""
+        with patch("builtins.input", return_value="assets"):
+            assert prompt_action(use_color=False) == "A"
+
+        with patch("builtins.input", return_value="install-assets"):
+            assert prompt_action(use_color=False) == "A"
 
 
 class TestConfirmDestructiveOperation:

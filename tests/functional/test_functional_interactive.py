@@ -91,6 +91,15 @@ class TestInteractiveMode:
         assert result.returncode == 0
         assert "no changes" in result.stderr.lower()
 
+    def test_interactive_installs_filtered_assets_without_changes(self, functional_repo):
+        """Test assets action works from degraded interactive mode."""
+        result = run_interactive("assets", "codex-skills", "commit-*", "no", "q")
+
+        assert result.returncode == 0, f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+        assert Path(".agents/skills/commit-staged-changes/SKILL.md").exists()
+        assert Path(".agents/skills/commit-unstaged-changes/SKILL.md").exists()
+        assert not Path(".claude/skills/commit-staged-changes/SKILL.md").exists()
+
 
 class TestInteractiveCommands:
     """Test interactive mode commands."""

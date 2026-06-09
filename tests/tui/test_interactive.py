@@ -19,6 +19,7 @@ from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
     ACTION_HANDLERS,
     _dispatch_action,
+    handle_install_assets,
     handle_file_selection,
     handle_line_selection,
     handle_quit,
@@ -94,6 +95,12 @@ class TestActionHandlers:
 
         assert handler.needs_hunk is False
 
+    def test_assets_action_registered(self):
+        """Test asset installation is available without a selected hunk."""
+        handler = ACTION_HANDLERS["A"]
+
+        assert handler.needs_hunk is False
+
     def test_status_action_dispatches_status_command(self):
         """Test status action routes through the status command."""
         flow_state = FlowState(
@@ -111,6 +118,39 @@ class TestActionHandlers:
                 )
 
         mock_status.assert_called_once_with()
+
+    def test_assets_action_dispatches_install_command(self):
+        """Test assets action routes through the install-assets command."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("builtins.input", side_effect=["codex-skills", "commit-*", "yes"]):
+            with patch("git_stage_batch.commands.install_assets.command_install_assets") as mock_install:
+                with pytest.raises(BypassRefresh):
+                    _dispatch_action(
+                        "A",
+                        has_hunk=False,
+                        use_color=False,
+                        flow_state=flow_state,
+                    )
+
+        mock_install.assert_called_once_with(
+            "codex-skills",
+            ["commit-*"],
+            force=True,
+        )
+
+    def test_handle_install_assets_cancels_on_bad_filter_syntax(self, capsys):
+        """Test invalid filter syntax does not call the installer."""
+        with patch("builtins.input", side_effect=["claude-skills", "'unterminated"]):
+            with patch("git_stage_batch.commands.install_assets.command_install_assets") as mock_install:
+                handle_install_assets()
+
+        mock_install.assert_not_called()
+        captured = capsys.readouterr()
+        assert "Invalid filter syntax" in captured.err
 
 
 class TestHandleQuit:

@@ -701,6 +701,88 @@ class TestHandleFileBrowser:
 
         assert "No files to review" in capsys.readouterr().out
 
+    def test_file_browser_includes_marked_files(self):
+        """Test marked files can be included from the chooser."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.list_review_file_entries",
+            return_value=[
+                ReviewFileEntry("first.txt"),
+                ReviewFileEntry("second.txt"),
+            ],
+        ):
+            with patch("git_stage_batch.commands.include.command_include_file") as mock_include:
+                with patch("builtins.input", side_effect=["m 1", "m 2", "i", "q"]):
+                    with pytest.raises(BypassRefresh):
+                        handle_file_browser(flow_state)
+
+        assert [call.args[0] for call in mock_include.call_args_list] == [
+            "first.txt",
+            "second.txt",
+        ]
+
+    def test_file_browser_discards_marked_batch_files(self):
+        """Test marked batch files can be discarded from a batch source."""
+        flow_state = FlowState(
+            source=FlowLocation.for_batch("scratch"),
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.list_review_file_entries",
+            return_value=[
+                ReviewFileEntry("first.txt"),
+                ReviewFileEntry("second.txt"),
+            ],
+        ):
+            with patch(
+                "git_stage_batch.commands.discard_from.command_discard_from_batch"
+            ) as mock_discard_from:
+                with patch("builtins.input", side_effect=["m 2", "d", "q"]):
+                    with pytest.raises(BypassRefresh):
+                        handle_file_browser(flow_state)
+
+        mock_discard_from.assert_called_once_with("scratch", file="second.txt")
+
+    def test_file_browser_blocks_marked_files(self):
+        """Test marked files can be blocked from the chooser."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_review.list_review_file_entries",
+            return_value=[
+                ReviewFileEntry("first.txt"),
+                ReviewFileEntry("second.txt"),
+            ],
+        ):
+            with patch(
+                "git_stage_batch.tui.file_review.confirm_destructive_operation",
+                return_value=True,
+            ):
+                with patch(
+                    "git_stage_batch.tui.file_review._prompt_block_local_only",
+                    return_value=True,
+                ):
+                    with patch(
+                        "git_stage_batch.commands.block_file.command_block_file"
+                    ) as mock_block:
+                        with patch("builtins.input", side_effect=["m 1", "m 2", "B", "q"]):
+                            with pytest.raises(BypassRefresh):
+                                handle_file_browser(flow_state)
+
+        assert [call.args[0] for call in mock_block.call_args_list] == [
+            "first.txt",
+            "second.txt",
+        ]
+        assert all(call.kwargs["local_only"] is True for call in mock_block.call_args_list)
+
 
 class TestListReviewFileEntries:
     """Tests for file review entry groundwork."""

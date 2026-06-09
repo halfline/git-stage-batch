@@ -419,6 +419,17 @@ class TestInteractiveEdgeCases:
 class TestInteractiveSession:
     """Test interactive mode session management."""
 
+    def test_interactive_quit_keeps_prestarted_session(self, repo_with_changes):
+        """Test quitting interactive mode preserves a prestarted session."""
+        git_stage_batch("start")
+
+        result = run_interactive("q")
+        assert result.returncode == 0
+
+        status = git_stage_batch("status")
+        assert status.returncode == 0
+        assert "No batch staging session" not in status.stderr
+
     def test_interactive_preserves_session(self, repo_with_changes):
         """Test that interactive mode preserves session state."""
         # Start interactive, include something, quit

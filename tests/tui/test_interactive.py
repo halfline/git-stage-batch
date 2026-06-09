@@ -4,6 +4,7 @@ from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.git import run_git_command
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
+    get_abort_head_file_path,
     get_start_head_file_path,
     get_start_index_tree_file_path,
 )
@@ -182,6 +183,22 @@ class TestHandleQuit:
                 mock_stop.assert_called_once()
                 mock_prompt.assert_not_called()
 
+    def test_handle_quit_no_changes_preserves_external_session(self, temp_git_repo):
+        """Test quit keeps a session that interactive mode did not start."""
+        ensure_state_directory_exists()
+
+        head = run_git_command(["rev-parse", "HEAD"]).stdout.strip()
+        index_tree = run_git_command(["write-tree"]).stdout.strip()
+
+        write_text_file_contents(get_start_head_file_path(), head)
+        write_text_file_contents(get_start_index_tree_file_path(), index_tree)
+
+        with patch("git_stage_batch.commands.stop.command_stop") as mock_stop:
+            with patch("git_stage_batch.tui.interactive.prompt_quit_session") as mock_prompt:
+                handle_quit(stop_session=False)
+                mock_stop.assert_not_called()
+                mock_prompt.assert_not_called()
+
     def test_handle_quit_with_changes_keep(self, temp_git_repo):
         """Test quit with changes and user chooses to keep."""
 
@@ -204,6 +221,26 @@ class TestHandleQuit:
                 with patch("git_stage_batch.commands.abort.command_abort") as mock_abort:
                     handle_quit()
                     mock_stop.assert_called_once()
+                    mock_abort.assert_not_called()
+
+    def test_handle_quit_with_changes_keep_preserves_external_session(self, temp_git_repo):
+        """Test keeping changes does not stop an external session."""
+        ensure_state_directory_exists()
+
+        head = run_git_command(["rev-parse", "HEAD"]).stdout.strip()
+        old_index_tree = run_git_command(["write-tree"]).stdout.strip()
+
+        write_text_file_contents(get_start_head_file_path(), head)
+        write_text_file_contents(get_start_index_tree_file_path(), old_index_tree)
+
+        (temp_git_repo / "test.txt").write_text("new file\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        with patch("git_stage_batch.tui.interactive.prompt_quit_session", return_value="keep"):
+            with patch("git_stage_batch.commands.stop.command_stop") as mock_stop:
+                with patch("git_stage_batch.commands.abort.command_abort") as mock_abort:
+                    handle_quit(stop_session=False)
+                    mock_stop.assert_not_called()
                     mock_abort.assert_not_called()
 
     def test_handle_quit_with_changes_undo(self, temp_git_repo):
@@ -438,6 +475,18 @@ class TestDegradedMode:
 
         captured = capsys.readouterr()
         assert "No changes to stage" in captured.err
+
+    def test_start_interactive_mode_quit_preserves_existing_session(self, temp_git_repo):
+        """Test quitting does not stop a session that already existed."""
+        ensure_state_directory_exists()
+        write_text_file_contents(get_abort_head_file_path(), "existing-session\n")
+
+        with patch("git_stage_batch.commands.start.command_start"):
+            with patch("git_stage_batch.tui.interactive.prompt_action", return_value="q"):
+                with patch("git_stage_batch.commands.stop.command_stop") as mock_stop:
+                    start_interactive_mode()
+
+        mock_stop.assert_not_called()
 
     def test_degraded_mode_help_works(self, temp_git_repo, capsys):
         """Test that help action works in degraded mode."""

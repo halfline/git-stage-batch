@@ -356,6 +356,9 @@ Keep staged changes? [y]es / [n]o:
 | `n` | Undo everything (reset HEAD, restore working tree, restore batches) |
 | Ctrl-C | Cancel and return to the main menu |
 
+If a `git-stage-batch` session was already active before interactive mode was
+started, quitting returns to that existing session instead of stopping it.
+
 ---
 
 ## Degraded Mode

@@ -62,9 +62,9 @@ class TestCommandIncludeToBatch:
         filtered_lines = load_line_changes_from_state()
         changed_lines = [line for line in filtered_lines.lines if line.kind != " "]
         assert len(changed_lines) == 2
-        # Line IDs should be renumbered: was [1,2,3], after filtering [1] should be [1,2]
-        assert changed_lines[0].id == 1
-        assert changed_lines[1].id == 2
+        # Remaining line IDs are left sparse so later references do not shift.
+        assert changed_lines[0].id == 2
+        assert changed_lines[1].id == 3
 
     def test_include_lines_to_batch_displays_filtered_hunk_once(self, temp_git_repo, capsys):
         """Line-level include to batch prints the remaining hunk only once."""
@@ -265,8 +265,8 @@ class TestCommandIncludeToBatch:
         # Include line 1
         command_include_to_batch("accum-batch", line_ids="1")
 
-        # Include line 3 (line 2 in filtered view)
-        command_include_to_batch("accum-batch", line_ids="2")
+        # Include line 3 using its preserved sparse ID.
+        command_include_to_batch("accum-batch", line_ids="3")
 
         # Verify batch contains both lines
         content = read_file_from_batch("accum-batch", "README.md")

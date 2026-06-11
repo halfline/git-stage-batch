@@ -59,7 +59,7 @@ no-build-isolation = true
 preview = true
 
 [tool.pytest.ini_options]
-addopts = ["-n", "auto"]
+addopts = ["--import-mode=importlib", "-n", "auto"]
 
 [tool.uv.extra-build-dependencies]
 git-stage-batch = [

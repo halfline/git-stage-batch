@@ -68,6 +68,25 @@ def multi_file_repo(tmp_path, monkeypatch):
     return repo
 
 
+def _create_one_to_many_replacement_repo(tmp_path, monkeypatch):
+    repo = tmp_path / "test_repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+    file_path = repo / "module.py"
+    file_path.write_text("keep\nold value\n")
+    subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+    file_path.write_text("keep\nnew value 1\nnew value 2\nnew value 3\n")
+    command_start()
+    return repo, file_path
+
+
 class TestShowFileFlag:
     """Test show command with --file flag for displaying entire files."""
 
@@ -1618,37 +1637,63 @@ class TestExplicitFilePath:
         assert staged_content == "keep1\nkeep2\nstaged\nkeep4\n"
         assert file_path.read_text() == "keep1\nkeep2\nnew\nkeep4\n"
 
-    def test_include_line_with_explicit_path_rejects_partial_replacement_range(self, tmp_path, monkeypatch):
-        """Explicit file-scoped include --line should refuse a partial replacement range."""
-        repo = tmp_path / "test_repo"
-        repo.mkdir()
-        monkeypatch.chdir(repo)
+    def test_include_line_with_explicit_path_accepts_partial_replacement_range(self, tmp_path, monkeypatch):
+        """Explicit file-scoped include --line should let the range define the replacement."""
+        _repo, file_path = _create_one_to_many_replacement_repo(tmp_path, monkeypatch)
 
-        subprocess.run(["git", "init"], check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+        command_include_line("1-2", file="module.py")
 
-        file_path = repo / "module.py"
-        file_path.write_text("keep\nold value\n")
-        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+        staged_content = run_git_command(["show", ":module.py"]).stdout
+        assert staged_content == "keep\nnew value 1\n"
+        assert file_path.read_text() == "keep\nnew value 1\nnew value 2\nnew value 3\n"
 
-        file_path.write_text("keep\nnew value 1\nnew value 2\nnew value 3\n")
+    def test_include_line_with_explicit_path_treats_replacement_tail_as_insertions(self, tmp_path, monkeypatch):
+        """Selecting only tail insertions should leave the replacement prefix unstaged."""
+        _repo, file_path = _create_one_to_many_replacement_repo(tmp_path, monkeypatch)
 
-        command_start()
+        command_include_line("3-4", file="module.py")
 
-        with pytest.raises(CommandError) as exc_info:
-            command_include_line("1-2", file="module.py")
+        staged_content = run_git_command(["show", ":module.py"]).stdout
+        assert staged_content == "keep\nold value\nnew value 2\nnew value 3\n"
+        assert file_path.read_text() == "keep\nnew value 1\nnew value 2\nnew value 3\n"
 
-        assert (
-            str(exc_info.value)
-            == "Contiguous line selections cannot split one replacement. "
-            "Select --lines 1-4 instead, pick individual "
-            "lines one at a time, or use --as."
-        )
+        unstaged_diff = run_git_command(["diff", "--", "module.py"]).stdout
+        assert "-old value" in unstaged_diff
+        assert "+new value 1" in unstaged_diff
+        assert "+new value 2" not in unstaged_diff
+        assert "+new value 3" not in unstaged_diff
 
-        result = run_git_command(["diff", "--cached", "--name-only"])
-        assert result.stdout == ""
+    def test_include_line_with_explicit_path_accepts_tail_before_replacement_prefix(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Tail insertions can be staged before the replacement prefix."""
+        _repo, file_path = _create_one_to_many_replacement_repo(tmp_path, monkeypatch)
+
+        command_include_line("3-4", file="module.py")
+        command_include_line("1-2", file="module.py")
+
+        staged_content = run_git_command(["show", ":module.py"]).stdout
+        assert staged_content == file_path.read_text()
+        assert file_path.read_text() == "keep\nnew value 1\nnew value 2\nnew value 3\n"
+
+    @pytest.mark.parametrize("line_spec", ["2", "2-3"])
+    def test_include_line_with_explicit_path_rejects_leading_addition_without_deletion(
+        self,
+        tmp_path,
+        monkeypatch,
+        line_spec,
+    ):
+        """The first replacement insertion should not be staged without the deletion."""
+        _repo, file_path = _create_one_to_many_replacement_repo(tmp_path, monkeypatch)
+
+        with pytest.raises(CommandError, match="leading edge of a replacement"):
+            command_include_line(line_spec, file="module.py")
+
+        staged_names = run_git_command(["diff", "--cached", "--name-only"]).stdout
+        assert staged_names == ""
+        assert file_path.read_text() == "keep\nnew value 1\nnew value 2\nnew value 3\n"
 
     def test_include_line_with_explicit_path_rejects_partial_later_structural_run(self, tmp_path, monkeypatch):
         """Explicit file-scoped include --line should reject a partial later run."""

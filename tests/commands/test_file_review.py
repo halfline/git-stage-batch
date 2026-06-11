@@ -26,12 +26,14 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
+from git_stage_batch.core.actionable_changes import ActionableSelectionReason
 import git_stage_batch.data.hunk_tracking as hunk_tracking_module
 from git_stage_batch.data.file_review_state import (
     FileReviewAction,
     ReviewSource,
     read_last_file_review_state,
     shown_review_selections_for_action,
+    validate_pathless_review_line_action,
 )
 from git_stage_batch.data.hunk_tracking import (
     SelectedChangeKind,
@@ -96,6 +98,22 @@ def _add_second_changed_file(repo):
     subprocess.run(["git", "add", "other.txt"], check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", "Add other"], check=True, capture_output=True)
     other_file.write_text("other 1\nother changed\n")
+
+
+def _create_one_to_many_replacement_repo(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+
+    file_path = tmp_path / "module.py"
+    file_path.write_text("keep\nold value\n")
+    subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+    file_path.write_text("keep\nnew value 1\nnew value 2\nnew value 3\n")
+    command_start(quiet=True)
+    return file_path
 
 
 def _create_multi_file_batch(repo):
@@ -937,18 +955,76 @@ def test_file_review_footer_suggests_pathless_line_commands(paged_file_repo, mon
     assert "git-stage-batch include --file file.txt --line" not in captured.out
 
 
-def test_pathless_include_line_rejects_partial_replacement_selection(paged_file_repo, monkeypatch, capsys):
-    _force_one_change_per_page(monkeypatch)
-    command_show(file="file.txt", page="1")
+def test_pathless_include_line_accepts_replacement_prefix_range(tmp_path, monkeypatch, capsys):
+    file_path = _create_one_to_many_replacement_repo(tmp_path, monkeypatch)
+
+    command_show(file="module.py")
     captured = capsys.readouterr()
-    assert "Change 1/3   lines 1–2   2-line group" in captured.out
+    assert "Change 1/1   lines 1–4   4-line group" in captured.out
 
     state = read_last_file_review_state()
     assert state is not None
-    partial_id = str(state.selections[0].display_ids[0])
+    assert state.selections[0].is_splittable is True
+    prefix_spec = format_line_ids(list(state.selections[0].display_ids[:2]))
 
-    with pytest.raises(CommandError, match="only partly selects"):
-        command_include_line(partial_id)
+    command_include_line(prefix_spec)
+
+    staged_content = subprocess.run(
+        ["git", "show", ":module.py"],
+        check=True,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert staged_content == "keep\nnew value 1\n"
+    assert file_path.read_text() == "keep\nnew value 1\nnew value 2\nnew value 3\n"
+
+
+@pytest.mark.parametrize("line_spec", ["2", "2-3"])
+def test_pathless_include_line_rejects_leading_addition_without_deletion(
+    tmp_path,
+    monkeypatch,
+    capsys,
+    line_spec,
+):
+    _create_one_to_many_replacement_repo(tmp_path, monkeypatch)
+
+    command_show(file="module.py")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="leading edge of a replacement"):
+        command_include_line(line_spec)
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        FileReviewAction.INCLUDE,
+        FileReviewAction.SKIP,
+        FileReviewAction.DISCARD,
+        FileReviewAction.INCLUDE_TO_BATCH,
+        FileReviewAction.DISCARD_TO_BATCH,
+    ],
+)
+def test_live_review_line_actions_accept_replacement_subranges(
+    tmp_path,
+    monkeypatch,
+    capsys,
+    action,
+):
+    _create_one_to_many_replacement_repo(tmp_path, monkeypatch)
+    command_show(file="module.py")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    assert state.selections[0].is_splittable is True
+    tail_spec = format_line_ids(list(state.selections[0].display_ids[2:]))
+
+    validate_pathless_review_line_action(
+        action,
+        tail_spec,
+        source=ReviewSource.FILE_VS_HEAD,
+    )
 
 
 def test_pathless_include_line_accepts_visible_presence_subset_from_review(
@@ -1001,6 +1077,30 @@ def test_pathless_include_line_rejects_unshown_change(paged_file_repo, monkeypat
 
     with pytest.raises(CommandError, match="not valid from the current file review"):
         command_include_line(unshown_spec)
+
+
+def test_partial_live_review_keeps_hidden_replacement_groups_for_page_guard(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+
+    state = read_last_file_review_state()
+    assert state is not None
+    assert state.shown_pages == (1,)
+    assert [selection.first_page for selection in state.selections] == [1, 2, 3]
+    assert [selection.reason for selection in state.selections] == [
+        ActionableSelectionReason.REPLACEMENT,
+        ActionableSelectionReason.REPLACEMENT,
+        ActionableSelectionReason.REPLACEMENT,
+    ]
+
+    hidden_spec = format_line_ids(list(state.selections[1].display_ids))
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        command_include_line(hidden_spec)
 
 
 def test_partial_review_line_action_keeps_stale_guard_for_followup_bare_action(

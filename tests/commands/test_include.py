@@ -15,7 +15,6 @@ from git_stage_batch.commands.include import (
     command_include_line_as,
     command_include_to_batch,
 )
-from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.data.hunk_tracking import (
@@ -288,30 +287,16 @@ class TestCommandIncludeLine:
         assert blob_result.stdout == b"newtarget"
         assert mode_result.stdout.split()[0] == "120000"
 
-    def test_replacement_analysis_accepts_non_list_line_sequences(self, line_sequence):
+    def test_replacement_line_analysis_accepts_non_list_sequences(self, line_sequence):
         """Include replacement analysis can read from indexed content sequences."""
-        header = HunkHeader(1, 3, 1, 3)
-        lines = [
-            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
-            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
-            LineEntry(2, "+", None, 2, text_bytes=b"new", text="new"),
-            LineEntry(None, " ", 3, 3, text_bytes=b"tail", text="tail"),
-        ]
-        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_lines = line_sequence([b"keep\r\n", b"old\r\n", b"tail\r\n"])
         source_lines = line_sequence([b"keep\r\n", b"new\r\n", b"tail\r\n"])
 
-        display_runs = include_command._derive_replacement_unit_display_ids(
-            line_changes,
-            hunk_base_lines=base_lines,
-            hunk_source_lines=source_lines,
-        )
         line_runs = include_command._derive_replacement_line_runs(
             hunk_base_lines=base_lines,
             hunk_source_lines=source_lines,
         )
 
-        assert display_runs == [{1, 2}]
         assert len(line_runs) == 1
         assert (line_runs[0].old_start, line_runs[0].old_end) == (2, 2)
         assert (line_runs[0].new_start, line_runs[0].new_end) == (2, 2)

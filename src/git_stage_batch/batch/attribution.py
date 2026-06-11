@@ -12,7 +12,6 @@ from collections.abc import Iterable, Sequence
 from contextlib import ExitStack
 import hashlib
 from dataclasses import dataclass
-from dataclasses import replace
 from enum import Enum
 
 from ..batch.match import LineMapping, match_lines
@@ -939,18 +938,13 @@ def filter_owned_diff_fragments(
     """Filter displayed diff fragments that correspond to owned units."""
     display_to_unit = project_attribution_to_diff(attribution, line_changes)
     filtered_lines = []
-    new_id = 1
 
     for idx, line_entry in enumerate(line_changes.lines):
         attr_unit = display_to_unit.get(idx)
         if attr_unit and attr_unit.owning_batches:
             continue
 
-        filtered_lines.append(
-            replace(line_entry, id=new_id if line_entry.kind != " " else None)
-        )
-        if line_entry.kind != " ":
-            new_id += 1
+        filtered_lines.append(line_entry)
 
     # Skip only if we had changes but they were all filtered out
     # Don't skip empty files (which have no lines to begin with)

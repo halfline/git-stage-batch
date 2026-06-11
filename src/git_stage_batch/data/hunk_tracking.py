@@ -55,6 +55,7 @@ from ..editor import (
     write_buffer_to_path,
 )
 from ..core.line_selection import LineRanges, write_line_ids_file
+from ..core.line_identity import preserve_line_ids_from_previous_view
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import print_line_level_changes, print_binary_file_change, print_gitlink_change
@@ -137,6 +138,17 @@ class SelectedChangeStateSnapshot:
 def write_selected_hunk_patch_lines(patch_lines: Sequence[bytes]) -> None:
     with EditorBuffer.from_chunks(iter(patch_lines)) as patch_buffer:
         write_buffer_to_path(get_selected_hunk_patch_file_path(), patch_buffer)
+
+
+def _write_line_changes_state(line_changes: LineLevelChange) -> None:
+    write_text_file_contents(
+        get_line_changes_json_file_path(),
+        json.dumps(
+            convert_line_changes_to_serializable_dict(line_changes),
+            ensure_ascii=False,
+            indent=0,
+        ),
+    )
 
 
 def _load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
@@ -992,23 +1004,14 @@ def _filter_consumed_replacement_masks(
 
     flush_changed_run()
 
-    new_id = 1
-    renumbered_lines = []
-    for line_entry in filtered_lines:
-        renumbered_lines.append(
-            replace(line_entry, id=new_id if line_entry.kind != " " else None)
-        )
-        if line_entry.kind != " ":
-            new_id += 1
-
-    has_changes_after_filter = any(line.kind in ("+", "-") for line in renumbered_lines)
+    has_changes_after_filter = any(line.kind in ("+", "-") for line in filtered_lines)
     if not has_changes_after_filter:
         return None
 
     return LineLevelChange(
         path=line_changes.path,
         header=line_changes.header,
-        lines=renumbered_lines,
+        lines=filtered_lines,
     )
 
 
@@ -2067,6 +2070,9 @@ def recalculate_selected_hunk_for_file(
         file_path: Repository-relative path to recalculate hunk for
     """
     selected_kind = read_selected_change_kind()
+    previous_line_changes = load_line_changes_from_state()
+    if previous_line_changes is not None and previous_line_changes.path != file_path:
+        previous_line_changes = None
 
     # Clear processed IDs since old line numbers don't apply to fresh hunk
     write_line_ids_file(get_processed_include_ids_file_path(), set())
@@ -2082,6 +2088,12 @@ def recalculate_selected_hunk_for_file(
             else:
                 mark_selected_change_cleared_by_auto_advance_disabled()
             return
+
+        line_changes = preserve_line_ids_from_previous_view(
+            previous_line_changes,
+            line_changes,
+        )
+        _write_line_changes_state(line_changes)
 
         if apply_line_level_batch_filter_to_cached_hunk():
             clear_selected_change_state_files()
@@ -2138,9 +2150,11 @@ def recalculate_selected_hunk_for_file(
                     single_hunk.lines,
                     annotator=annotate_with_batch_source,
                 )
-                write_text_file_contents(get_line_changes_json_file_path(),
-                                        json.dumps(convert_line_changes_to_serializable_dict(line_changes),
-                                                  ensure_ascii=False, indent=0))
+                line_changes = preserve_line_ids_from_previous_view(
+                    previous_line_changes,
+                    line_changes,
+                )
+                _write_line_changes_state(line_changes)
                 write_snapshots_for_selected_file_path(line_changes.path)
 
                 # Apply batch filter to exclude batched lines

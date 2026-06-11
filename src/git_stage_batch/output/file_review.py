@@ -181,6 +181,14 @@ def _change_is_presence_only(change: ReviewChange) -> bool:
     return saw_changed_row
 
 
+def _change_is_live_splittable(change: ReviewChange) -> bool:
+    """Return whether live explicit line ranges may select part of a change."""
+    return (
+        _change_is_presence_only(change)
+        or change.reason == ActionableSelectionReason.REPLACEMENT
+    )
+
+
 def _coerce_actionable_reason(reason: str) -> ActionableSelectionReason:
     try:
         return ActionableSelectionReason(reason)
@@ -918,13 +926,14 @@ def make_file_review_state(
             continue
         is_splittable = (
             source != ReviewSource.BATCH
-            and _change_is_presence_only(change)
+            and _change_is_live_splittable(change)
         )
-        display_ids = (
-            _display_ids_for_change_pages(model, change, shown_pages)
-            if is_splittable else
-            change.display_ids
-        )
+        if is_splittable:
+            display_ids = _display_ids_for_change_pages(model, change, shown_pages)
+            if not display_ids and change.reason == ActionableSelectionReason.REPLACEMENT:
+                display_ids = change.display_ids
+        else:
+            display_ids = change.display_ids
         if not display_ids:
             continue
         if visible_display_ids is not None and not set(display_ids).issubset(visible_display_ids):

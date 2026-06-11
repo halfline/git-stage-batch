@@ -12,10 +12,7 @@ import sys
 import uuid
 
 from ..batch import add_binary_file_to_batch, add_file_to_batch, add_gitlink_to_batch, create_batch, delete_batch
-from ..batch.comparison import (
-    derive_display_id_run_sets_from_lines,
-    derive_replacement_display_id_run_sets_from_lines,
-)
+from ..batch.comparison import derive_display_id_run_sets_from_lines
 from ..batch.display import annotate_with_batch_source
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.ownership import (
@@ -912,14 +909,15 @@ def command_include_line(
         ):
             selected_change_kind = read_selected_change_kind()
             if selected_change_kind == SelectedChangeKind.FILE:
-                partial_replacement_error = _build_partial_replacement_selection_error(
-                    line_changes,
-                    combined_include_ids,
-                    hunk_base_lines=hunk_base_lines,
-                    hunk_source_lines=hunk_source_lines,
+                leading_replacement_addition_error = (
+                    _build_leading_replacement_addition_selection_error(
+                        line_changes,
+                        combined_include_ids,
+                    )
                 )
-                if partial_replacement_error is not None:
-                    exit_with_error(partial_replacement_error)
+                if leading_replacement_addition_error is not None:
+                    exit_with_error(leading_replacement_addition_error)
+
                 partial_structural_run_error = _build_partial_structural_run_selection_error(
                     line_changes,
                     combined_include_ids,
@@ -1011,20 +1009,6 @@ def command_include_line(
         )
 
 
-def _derive_replacement_unit_display_ids(
-    line_changes,
-    *,
-    hunk_base_lines: Sequence[bytes],
-    hunk_source_lines: Sequence[bytes],
-) -> list[set[int]]:
-    """Map semantic replacement runs onto display IDs in the current selection."""
-    return derive_replacement_display_id_run_sets_from_lines(
-        line_changes,
-        source_lines=hunk_base_lines,
-        target_lines=hunk_source_lines,
-    )
-
-
 def _derive_replacement_line_runs(
     *,
     hunk_base_lines: Sequence[bytes],
@@ -1037,37 +1021,65 @@ def _derive_replacement_line_runs(
     )
 
 
-def _build_partial_replacement_selection_error(
+def _build_leading_replacement_addition_selection_error(
     line_changes,
     selected_ids: set[int],
-    *,
-    hunk_base_lines: Sequence[bytes],
-    hunk_source_lines: Sequence[bytes],
 ) -> str | None:
-    """Reject contiguous interval selections that tear a replacement unit."""
-    if len(selected_ids) <= 1:
-        return None
+    """Reject include selections that would keep the removed line with the first insertion."""
+    changed_run: list = []
 
-    sorted_ids = sorted(selected_ids)
-    is_contiguous_interval = sorted_ids == list(range(sorted_ids[0], sorted_ids[-1] + 1))
-    if not is_contiguous_interval:
-        return None
+    def check_run(run: list) -> str | None:
+        if not run:
+            return None
+        deletion_ids = {
+            line.id
+            for line in run
+            if line.kind == "-" and line.id is not None
+        }
+        addition_ids = tuple(
+            line.id
+            for line in run
+            if line.kind == "+" and line.id is not None
+        )
+        if not deletion_ids or not addition_ids:
+            return None
 
-    replacement_units = _derive_replacement_unit_display_ids(
-        line_changes,
-        hunk_base_lines=hunk_base_lines,
-        hunk_source_lines=hunk_source_lines,
-    )
-    for replacement_unit in replacement_units:
-        selected_in_unit = selected_ids & replacement_unit
-        if selected_in_unit and selected_in_unit != replacement_unit:
+        selected_deletions = selected_ids & deletion_ids
+        selected_addition_positions = [
+            index
+            for index, line_id in enumerate(addition_ids)
+            if line_id in selected_ids
+        ]
+        if not selected_addition_positions:
+            return None
+
+        selects_first_addition = selected_addition_positions[0] == 0
+        if selects_first_addition and not selected_deletions:
             return _(
-                "Contiguous line selections cannot split one replacement. "
-                "Select --lines {lines} instead, pick "
-                "individual lines one at a time, or use --as."
-            ).format(lines=format_line_ids(sorted(replacement_unit)))
+                "That line selection splits the leading edge of a replacement. "
+                "Select the removed line with the first inserted line, select only "
+                "later inserted lines, or use --as."
+            )
+        if selected_deletions:
+            expected_prefix = list(range(selected_addition_positions[-1] + 1))
+            if selected_addition_positions != expected_prefix:
+                return _(
+                    "That line selection splits the leading edge of a replacement. "
+                    "Select the removed line with a contiguous prefix of inserted "
+                    "lines, select only later inserted lines, or use --as."
+                )
+        return None
 
-    return None
+    for line in line_changes.lines:
+        if line.kind in ("+", "-") and line.id is not None:
+            changed_run.append(line)
+            continue
+        error = check_run(changed_run)
+        if error is not None:
+            return error
+        changed_run = []
+
+    return check_run(changed_run)
 
 
 def _build_partial_structural_run_selection_error(

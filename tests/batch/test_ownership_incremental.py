@@ -332,6 +332,72 @@ def test_translate_hunk_selection_keeps_one_to_many_replacement_atomic():
     ]
 
 
+def test_translate_hunk_selection_uses_partial_one_to_many_selection_as_replacement():
+    """A selected deletion plus insertion prefix defines the replacement unit."""
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'old', text='old', source_line=None),
+        LineEntry(id=2, kind='+', old_line_number=None, new_line_number=1,
+                  text_bytes=b'new one', text='new one', source_line=1),
+        LineEntry(id=3, kind='+', old_line_number=None, new_line_number=2,
+                  text_bytes=b'new two', text='new two', source_line=2),
+        LineEntry(id=4, kind='+', old_line_number=None, new_line_number=3,
+                  text_bytes=b'new three', text='new three', source_line=3),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {1, 2, 3},
+        replacement_line_runs=[
+            ReplacementLineRun(
+                old_start=1,
+                old_end=1,
+                new_start=1,
+                new_end=3,
+            ),
+        ],
+    )
+
+    assert ownership.presence_line_set() == {1, 2}
+    assert len(ownership.deletions) == 1
+    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert list(ownership.deletions[0].content_lines) == [b'old\n']
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+    ]
+
+
+def test_translate_hunk_selection_treats_replacement_tail_as_presence_only():
+    """Selected tail insertions should not claim the replacement deletion."""
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'old', text='old', source_line=None),
+        LineEntry(id=2, kind='+', old_line_number=None, new_line_number=1,
+                  text_bytes=b'new one', text='new one', source_line=1),
+        LineEntry(id=3, kind='+', old_line_number=None, new_line_number=2,
+                  text_bytes=b'new two', text='new two', source_line=2),
+        LineEntry(id=4, kind='+', old_line_number=None, new_line_number=3,
+                  text_bytes=b'new three', text='new three', source_line=3),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {3, 4},
+        replacement_line_runs=[
+            ReplacementLineRun(
+                old_start=1,
+                old_end=1,
+                new_start=1,
+                new_end=3,
+            ),
+        ],
+    )
+
+    assert ownership.presence_line_set() == {2, 3}
+    assert ownership.deletions == []
+    assert ownership.replacement_units == []
+
+
 def test_translate_hunk_selection_scans_replacement_ranges(monkeypatch):
     """File-derived replacement runs should be consumed through endpoints."""
     def fail_from_lines(cls, lines):

@@ -514,8 +514,8 @@ class TestCommandIncludeLine:
         # Include line 2 (which adds line1)
         command_include_line("2")
 
-        # Include line 3 (which adds line2) after recalculation
-        command_include_line("2")
+        # Include line 3 (which adds line2) using its preserved sparse ID.
+        command_include_line("3")
 
         # Check staged content
         result = subprocess.run(

@@ -350,13 +350,13 @@ class TestShowFileFlag:
         assert line_changes is not None
         remaining_ids = [line.id for line in line_changes.lines if line.id is not None]
         remaining_texts = [line.display_text() for line in line_changes.lines if line.id is not None]
-        assert remaining_ids == [1, 2]
+        assert remaining_ids == [6, 7]
         assert remaining_texts == [
             "from old_beta import helper",
             "from new_beta import helper",
         ]
 
-        command_include_line("1,2", file="module.py")
+        command_include_line(",".join(str(line_id) for line_id in remaining_ids), file="module.py")
 
         result = run_git_command(["show", ":module.py"])
         assert result.stdout == "".join(rewritten)

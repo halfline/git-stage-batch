@@ -661,9 +661,11 @@ def test_pathless_include_to_batch_line_filters_file_review_selection(
 
     filtered = load_line_changes_from_state()
     assert filtered is not None
-    assert [line.display_text() for line in filtered.lines if line.id is not None] == ["Y"]
+    filtered_lines = [line for line in filtered.lines if line.id is not None]
+    assert [line.display_text() for line in filtered_lines] == ["Y"]
+    assert [line.id for line in filtered_lines] == [2]
 
-    command_include_to_batch("second", line_ids="1", quiet=True)
+    command_include_to_batch("second", line_ids="2", quiet=True)
 
     first_metadata = read_batch_metadata("first")
     second_metadata = read_batch_metadata("second")

@@ -15,6 +15,7 @@ from git_stage_batch.data.hunk_tracking import (
     recalculate_selected_hunk_for_file,
     selected_change_was_cleared_by_auto_advance_disabled,
 )
+from git_stage_batch.data.line_state import load_line_changes_from_state
 
 import subprocess
 
@@ -123,6 +124,30 @@ class TestCommandDiscard:
             text=True,
         )
         assert "+added" not in diff_result.stdout
+
+    def test_discard_lines_to_batch_preserves_later_line_ids(self, temp_git_repo):
+        """Saving and removing a middle line leaves later line IDs sparse."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nLine 1\nLine 2\nLine 3\nLine 4\n")
+
+        command_start()
+        fetch_next_change()
+
+        command_discard_to_batch("stable-ids", line_ids="2", quiet=True)
+
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        changed_lines = [
+            line
+            for line in line_changes.lines
+            if line.kind in ("+", "-") and line.id is not None
+        ]
+        assert [line.id for line in changed_lines] == [1, 3, 4]
+        assert [line.display_text() for line in changed_lines] == [
+            "Line 1",
+            "Line 3",
+            "Line 4",
+        ]
 
     def test_discard_no_changes(self, temp_git_repo, capsys):
         """Test discard when no more hunks remain."""
@@ -665,8 +690,8 @@ class TestCommandDiscardToBatch:
         # Recalculate hunk after first discard
         recalculate_selected_hunk_for_file("README.md")
 
-        # Discard line 2 (now line 1 in the renumbered hunk)
-        command_discard_to_batch("accum-batch", line_ids="1")
+        # Discard line 2 using its preserved sparse ID.
+        command_discard_to_batch("accum-batch", line_ids="2")
 
         # Verify batch contains both lines
         content = read_file_from_batch("accum-batch", "README.md")

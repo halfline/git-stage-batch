@@ -11,6 +11,8 @@ from git_stage_batch.utils.paths import (
     get_auto_added_files_file_path,
 )
 
+EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+
 
 @pytest.fixture
 def temp_git_repo(tmp_path, monkeypatch):
@@ -240,8 +242,8 @@ class TestAutoAddUntrackedFiles:
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
         assert "my file.txt" in auto_added
 
-    def test_auto_add_skips_untracked_embedded_git_repository(self, temp_git_repo):
-        """Test that untracked embedded repositories are not auto-added."""
+    def test_auto_add_marks_untracked_embedded_git_repository_as_gitlink(self, temp_git_repo):
+        """Test that untracked embedded repositories are auto-added as gitlinks."""
         ensure_state_directory_exists()
 
         embedded_repo = temp_git_repo / "embedded"
@@ -252,11 +254,18 @@ class TestAutoAddUntrackedFiles:
         (embedded_repo / "file.txt").write_text("content\n")
         subprocess.run(["git", "add", "file.txt"], check=True, cwd=embedded_repo, capture_output=True)
         subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=embedded_repo, capture_output=True)
+        embedded_oid = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            cwd=embedded_repo,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
 
         auto_add_untracked_files()
 
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
-        assert "embedded" not in auto_added
+        assert "embedded" in auto_added
         assert "embedded/" not in auto_added
 
         result = subprocess.run(
@@ -266,4 +275,13 @@ class TestAutoAddUntrackedFiles:
             capture_output=True,
             text=True,
         )
-        assert result.stdout == ""
+        assert result.stdout.strip() == f"160000 {EMPTY_BLOB_HASH} 0\tembedded"
+
+        diff_result = subprocess.run(
+            ["git", "diff", "--ignore-submodules=none", "--submodule=short", "HEAD", "--", "embedded"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert f"+Subproject commit {embedded_oid}" in diff_result.stdout

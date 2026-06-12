@@ -33,6 +33,8 @@ from git_stage_batch.data.hunk_tracking import (
 )
 from git_stage_batch.exceptions import CommandError
 
+EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+
 
 @pytest.fixture
 def submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str, str]:
@@ -98,6 +100,32 @@ def added_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.fixture
+def untracked_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
+    """Create a superproject with an untracked embedded repository."""
+    repo = tmp_path / "repo"
+    submodule = repo / "sub"
+    repo.mkdir()
+
+    _run(["git", "init"], cwd=repo)
+    _configure_identity(repo)
+    (repo / "base.txt").write_text("base\n")
+    _run(["git", "add", "base.txt"], cwd=repo)
+    _run(["git", "commit", "-m", "Add base"], cwd=repo)
+
+    submodule.mkdir()
+    _run(["git", "init"], cwd=submodule)
+    _configure_identity(submodule)
+    (submodule / "file.txt").write_text("sub\n")
+    _run(["git", "add", "file.txt"], cwd=submodule)
+    _run(["git", "commit", "-m", "Add sub file"], cwd=submodule)
+    new_oid = _git_stdout(["rev-parse", "HEAD"], cwd=submodule)
+    _run(["git", "config", "diff.ignoreSubmodules", "all"], cwd=repo)
+    monkeypatch.chdir(repo)
+
+    return repo, new_oid
+
+
+@pytest.fixture
 def deleted_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
     """Create a superproject with a deleted submodule pointer."""
     repo = tmp_path / "repo"
@@ -156,6 +184,24 @@ def test_start_shows_added_submodule_pointer(
     assert f"sub :: Submodule added at {new_oid[:12]}" in captured.out
     assert read_selected_change_kind() == SelectedChangeKind.GITLINK
     assert get_selected_change_file_path() == "sub"
+
+
+def test_start_auto_adds_untracked_submodule_pointer(
+    untracked_submodule_pointer_repo: tuple[Path, str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """start should automatically present untracked embedded repositories."""
+    repo, new_oid = untracked_submodule_pointer_repo
+
+    command_start()
+
+    captured = capsys.readouterr()
+    assert f"sub :: Submodule added at {new_oid[:12]}" in captured.out
+    assert read_selected_change_kind() == SelectedChangeKind.GITLINK
+    assert get_selected_change_file_path() == "sub"
+    assert _git_stdout(["ls-files", "--stage", "--", "sub"], cwd=repo) == (
+        f"160000 {EMPTY_BLOB_HASH} 0\tsub"
+    )
 
 
 def test_start_shows_deleted_submodule_pointer(

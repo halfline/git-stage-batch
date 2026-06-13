@@ -251,6 +251,11 @@ def get_abort_snapshot_list_file_path() -> Path:
     return get_abort_state_directory_path() / "untracked-paths.txt"
 
 
+def get_staged_renames_file_path() -> Path:
+    """Get the path to start-time staged rename metadata."""
+    return get_abort_state_directory_path() / "staged-renames.json"
+
+
 def get_session_batch_sources_file_path() -> Path:
     """Get the path to the session batch sources cache file.
 

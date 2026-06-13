@@ -181,10 +181,13 @@ not count as coupling.
 ## Core Workflow
 
 1. Inspect the repository state with `git status --short`.
-2. Check whether the index already contains staged changes.
-3. If staged changes already exist, stop and tell the user this skill only
-   handles **unstaged** changes. Do not commit the staged set, and do not use
-   `git-stage-batch` to add more changes on top of it.
+2. Run `git-stage-batch check-unstaged` to check whether the index is
+   suitable for this unstaged-only workflow.
+3. If `check-unstaged` fails, stop and tell the user this skill only handles
+   **unstaged** changes. Do not commit the staged set, and do not use
+   `git-stage-batch` to add more changes on top of it. If it succeeds with a
+   staged-rename notice, continue; `git-stage-batch start` will normalize
+   those start-time renames into workflow content.
 4. Check for repository-specific commit guidance before planning messages.
    Read `CONTRIBUTING.md` when present, and inspect `.git/hooks/commit-msg`
    when present, so commit prefixes, body format, trailers, and validation
@@ -498,7 +501,10 @@ flag.
 ## `git-stage-batch` Workflow
 
 Use the non-interactive subcommands rather than interactive mode.
-Do not start a `git-stage-batch` session until the index is clean.
+Before starting a `git-stage-batch` session, run
+`git-stage-batch check-unstaged`. Do not start the session if that command
+fails. A passing staged-rename notice is allowed because `start` will present
+those renames as workflow content.
 
 ### Start a pass
 
@@ -608,9 +614,9 @@ not stop and restart. Run `stop` once at the very end.
 
 For each commit:
 
-1. Verify that the index does not already contain staged changes.
-2. If it does, stop and tell the user this skill only handles unstaged
-   changes.
+1. Run `git-stage-batch check-unstaged`.
+2. If it fails, stop and tell the user this skill only handles unstaged
+   changes, except for staged renames that pass this check.
 3. Otherwise, if no session is active, run `git-stage-batch start`.
 4. Inspect each selected hunk with `show`. Read the changed lines and
    classify each one by which concern it serves.

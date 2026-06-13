@@ -4,6 +4,20 @@ Complete reference of all available commands.
 
 ## Core Operations
 
+### `check-unstaged`
+
+Check whether the current index is suitable for an unstaged-only workflow.
+
+```
+❯ git-stage-batch check-unstaged
+```
+
+Exits successfully when the index is clean, or when the only staged changes
+are renames that `start` can normalize into workflow content. Exits with code
+2 when other staged changes are present.
+
+---
+
 ### `start`
 
 Find and display the first unprocessed hunk; cache as "selected".

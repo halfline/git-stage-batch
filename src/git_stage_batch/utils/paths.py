@@ -210,6 +210,11 @@ def get_selected_gitlink_file_json_path() -> Path:
     return get_selected_state_directory_path() / "gitlink-file.json"
 
 
+def get_selected_rename_file_json_path() -> Path:
+    """Get the path to the selected rename JSON file."""
+    return get_selected_state_directory_path() / "rename-file.json"
+
+
 def get_abort_head_file_path() -> Path:
     """Get the path to the abort HEAD file for session restoration.
 
@@ -244,6 +249,11 @@ def get_abort_snapshot_list_file_path() -> Path:
         Path to snapshot list file
     """
     return get_abort_state_directory_path() / "untracked-paths.txt"
+
+
+def get_staged_renames_file_path() -> Path:
+    """Get the path to start-time staged rename metadata."""
+    return get_abort_state_directory_path() / "staged-renames.json"
 
 
 def get_session_batch_sources_file_path() -> Path:

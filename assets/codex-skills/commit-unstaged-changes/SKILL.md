@@ -182,10 +182,13 @@ not count as coupling.
 ## Core Workflow
 
 1. Inspect the repository state with `git status --short`.
-2. Check whether the index already contains staged changes.
-3. If staged changes already exist, stop and tell the user this skill only
-   handles **unstaged** changes. Do not commit the staged set, and do not use
-   `git-stage-batch` to add more changes on top of it.
+2. Run `git-stage-batch check-unstaged` to check whether the index is
+   suitable for this unstaged-only workflow.
+3. If `check-unstaged` fails, stop and tell the user this skill only handles
+   **unstaged** changes. Do not commit the staged set, and do not use
+   `git-stage-batch` to add more changes on top of it. If it succeeds with a
+   staged-rename notice, continue; `git-stage-batch start` will normalize
+   those start-time renames into workflow content.
 4. If a required command fails because `.git` is read-only or a write under
    `.git` is blocked, immediately retry it with escalated permissions. Do not
    keep probing the repository with more read-only commands once the sandbox
@@ -678,7 +681,10 @@ pushing the problem back to the user.
 ## `git-stage-batch` Workflow
 
 Use the non-interactive subcommands rather than interactive mode.
-Do not start a `git-stage-batch` session until the index is clean.
+Before starting a `git-stage-batch` session, run
+`git-stage-batch check-unstaged`. Do not start the session if that command
+fails. A passing staged-rename notice is allowed because `start` will present
+those renames as workflow content.
 
 ### Start a pass
 
@@ -848,9 +854,9 @@ Always stop the session when done.
 
 For each commit:
 
-1. Verify that the index does not already contain staged changes.
-2. If it does, stop and tell the user this skill only handles unstaged
-   changes.
+1. Run `git-stage-batch check-unstaged`.
+2. If it fails, stop and tell the user this skill only handles unstaged
+   changes, except for staged renames that pass this check.
 3. Otherwise, if no session is active, run `git-stage-batch start`.
 4. Inspect each selected hunk with `show`. Read the changed lines and
    classify each one by which concern it serves. Record whether each line is
@@ -1327,7 +1333,9 @@ The program has Spanish translation but lacks French.
 
 ## Safety Checks
 
-- Do not commit pre-existing staged changes.
+- Do not commit pre-existing staged changes, except staged renames that pass
+  `git-stage-batch check-unstaged` and are then deliberately staged through the
+  `git-stage-batch` workflow.
 - Do not fold unrelated refactors, cleanup, or drive-by formatting into a
   feature commit just because they are adjacent in the diff.
 - Do not try to simplify the story by broadening the commit. When the rules

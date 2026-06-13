@@ -73,6 +73,17 @@ class BinaryFileChange:
         return self.change_type == "modified"
 
 
+@dataclass(frozen=True)
+class RenameChange:
+    """Represents an atomic file rename without content ownership."""
+    old_path: str
+    new_path: str
+
+    def path(self) -> str:
+        """Return the destination path for file-scoped follow-up actions."""
+        return self.new_path
+
+
 @dataclass
 class GitlinkChange:
     """Represents a change to a gitlink/submodule pointer.

@@ -9,6 +9,7 @@ from ..data.auto_advance import DEFAULT_AUTO_ADVANCE, write_auto_advance_default
 from ..data.hunk_tracking import clear_selected_change_state_files, fetch_next_change, show_selected_change
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.session import initialize_abort_state
+from ..data.staged_renames import normalize_start_time_staged_renames
 from ..exceptions import CommandError, NoMoreHunks
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents
@@ -43,6 +44,12 @@ def command_start(
 
     # Initialize abort state for new session
     initialize_abort_state()
+
+    # Staged renames are already in the index, so a plain worktree-vs-index
+    # pass would otherwise never offer them as workflow choices. Preserve the
+    # exact start state in abort metadata first, then expose rename pairs as
+    # unstaged rename choices for this session.
+    normalize_start_time_staged_renames()
 
     write_auto_advance_default(
         DEFAULT_AUTO_ADVANCE

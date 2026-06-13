@@ -189,6 +189,8 @@ def stream_git_diff(
     context_lines: int | None = None,
     no_color: bool = True,
     full_index: bool = False,
+    find_renames: bool = False,
+    no_renames: bool = False,
     ignore_submodules: str | None = None,
     submodule_format: str | None = None,
     paths: Iterable[str] = (),
@@ -207,6 +209,10 @@ def stream_git_diff(
         arguments.append(f"--submodule={submodule_format}")
     if full_index:
         arguments.append("--full-index")
+    if find_renames and not no_renames:
+        arguments.append("--find-renames")
+    if no_renames:
+        arguments.append("--no-renames")
     if no_color:
         arguments.append("--no-color")
     if cached:

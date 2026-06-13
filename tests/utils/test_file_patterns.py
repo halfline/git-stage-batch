@@ -1,6 +1,8 @@
 """Tests for gitignore-style file pattern resolution."""
 
-from git_stage_batch.utils.file_patterns import resolve_gitignore_style_patterns
+import subprocess
+
+from git_stage_batch.utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
 
 
 def test_resolve_gitignore_style_patterns_matches_basename_anywhere():
@@ -101,3 +103,24 @@ def test_resolve_gitignore_style_patterns_returns_empty_list_for_no_matches():
     )
 
     assert resolved == []
+
+
+def test_list_changed_files_reports_rename_delete_and_add(tmp_path, monkeypatch):
+    """Changed-file discovery should expose both paths of an unstaged rename."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+
+    subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+
+    (repo / "old.txt").write_text("one\ntwo\n")
+    subprocess.run(["git", "add", "old.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=repo, capture_output=True)
+
+    (repo / "old.txt").rename(repo / "new.txt")
+    (repo / "new.txt").write_text("one\ntwo\nthree\n")
+    subprocess.run(["git", "add", "-N", "new.txt"], check=True, cwd=repo, capture_output=True)
+
+    assert list_changed_files() == ["old.txt", "new.txt"]

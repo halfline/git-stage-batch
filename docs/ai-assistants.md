@@ -312,9 +312,9 @@ git commit -m "docs: Document dashboard feature"
 # AI refactors code with both rename and logic changes
 git-stage-batch start
 
-# Separate rename from logic changes using line-level
-# Hunk shows both rename and logic change
-git-stage-batch include --line 1-5    # rename only
+# Separate rename from logic changes
+# First prompt shows the structural rename
+git-stage-batch include               # rename only
 git commit -m "refactor: Rename helper_function to process_data"
 
 git-stage-batch again

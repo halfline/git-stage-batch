@@ -9,7 +9,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
@@ -30,6 +30,7 @@ from ..batch.query import get_batch_commit_sha, list_batch_names, read_batch_met
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
+    compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
 from ..core.models import (
@@ -38,6 +39,7 @@ from ..core.models import (
     LineLevelChange,
     HunkHeader,
     LineEntry,
+    RenameChange,
     RenderedBatchDisplay,
     ReviewActionGroup,
 )
@@ -58,7 +60,12 @@ from ..core.line_selection import LineRanges, write_line_ids_file
 from ..core.line_identity import preserve_line_ids_from_previous_view
 from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes, print_binary_file_change, print_gitlink_change
+from ..output import (
+    print_line_level_changes,
+    print_binary_file_change,
+    print_gitlink_change,
+    print_rename_change,
+)
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
 from .file_tracking import auto_add_untracked_files
@@ -84,6 +91,7 @@ from ..utils.paths import (
     get_selected_change_kind_file_path,
     get_selected_binary_file_json_path,
     get_selected_gitlink_file_json_path,
+    get_selected_rename_file_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
@@ -103,6 +111,7 @@ class SelectedChangeKind(str, Enum):
 
     HUNK = "hunk"
     FILE = "file"
+    RENAME = "rename"
     BINARY = "binary"
     GITLINK = "submodule"
     BATCH_FILE = "batch-file"
@@ -116,6 +125,12 @@ _BATCH_MERGE_REVIEW_ACTIONS = (
     "apply-from-batch",
 )
 _BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
+
+
+def stream_live_git_diff(**kwargs):
+    """Stream actionable live changes with rename detection enabled."""
+    kwargs.setdefault("find_renames", True)
+    return stream_git_diff(**kwargs)
 
 
 @dataclass
@@ -172,6 +187,7 @@ def _selected_change_state_paths():
         "clear_reason": get_selected_change_clear_reason_file_path(),
         "kind": get_selected_change_kind_file_path(),
         "line_state": get_line_changes_json_file_path(),
+        "rename": get_selected_rename_file_json_path(),
         "binary": get_selected_binary_file_json_path(),
         "gitlink": get_selected_gitlink_file_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
@@ -490,6 +506,36 @@ def load_selected_gitlink_change() -> Optional[GitlinkChange]:
         return None
 
 
+def _read_selected_rename_data() -> dict | None:
+    """Read cached rename selection data, if structurally valid."""
+    rename_path = get_selected_rename_file_json_path()
+    if not rename_path.exists():
+        return None
+    try:
+        rename_data = json.loads(read_text_file_contents(rename_path))
+    except json.JSONDecodeError:
+        return None
+    return rename_data if isinstance(rename_data, dict) else None
+
+
+def load_selected_rename_change() -> Optional[RenameChange]:
+    """Load the currently cached rename change."""
+    if read_selected_change_kind() != SelectedChangeKind.RENAME:
+        return None
+
+    rename_data = _read_selected_rename_data()
+    if rename_data is None:
+        return None
+
+    try:
+        return RenameChange(
+            old_path=rename_data["old_path"],
+            new_path=rename_data["new_path"],
+        )
+    except KeyError:
+        return None
+
+
 def compute_batch_binary_fingerprint(
     batch_name: str,
     file_path: str,
@@ -544,6 +590,7 @@ def cache_binary_file_change(
     }
     get_selected_hunk_patch_file_path().unlink(missing_ok=True)
     get_line_changes_json_file_path().unlink(missing_ok=True)
+    get_selected_rename_file_json_path().unlink(missing_ok=True)
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
@@ -586,6 +633,7 @@ def cache_gitlink_change(
     }
     get_selected_hunk_patch_file_path().unlink(missing_ok=True)
     get_line_changes_json_file_path().unlink(missing_ok=True)
+    get_selected_rename_file_json_path().unlink(missing_ok=True)
     get_selected_binary_file_json_path().unlink(missing_ok=True)
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
@@ -600,6 +648,31 @@ def cache_gitlink_change(
         compute_gitlink_change_hash(gitlink_change),
     )
     write_selected_change_kind(kind)
+
+
+def cache_rename_change(rename_change: RenameChange) -> None:
+    """Cache a rename change as the current selected change."""
+    rename_data = {
+        "old_path": rename_change.old_path,
+        "new_path": rename_change.new_path,
+    }
+    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
+    get_line_changes_json_file_path().unlink(missing_ok=True)
+    get_selected_binary_file_json_path().unlink(missing_ok=True)
+    get_selected_gitlink_file_json_path().unlink(missing_ok=True)
+    get_index_snapshot_file_path().unlink(missing_ok=True)
+    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+    get_processed_include_ids_file_path().unlink(missing_ok=True)
+    get_processed_skip_ids_file_path().unlink(missing_ok=True)
+    write_text_file_contents(
+        get_selected_rename_file_json_path(),
+        json.dumps(rename_data, ensure_ascii=False, indent=0),
+    )
+    write_text_file_contents(
+        get_selected_hunk_hash_file_path(),
+        compute_rename_change_hash(rename_change),
+    )
+    write_selected_change_kind(SelectedChangeKind.RENAME)
 
 
 def selected_batch_binary_matches_batch(batch_name: str) -> bool:
@@ -811,9 +884,24 @@ def gitlink_change_is_stale(gitlink_change: GitlinkChange) -> bool:
     )
 
 
+def rename_change_is_stale(rename_change: RenameChange) -> bool:
+    """Return whether a cached rename selection no longer matches Git state."""
+    current_change = render_rename_change(rename_change.new_path)
+    if current_change is None:
+        current_change = render_rename_change(rename_change.old_path)
+    if current_change is None:
+        return True
+    return (
+        current_change.old_path != rename_change.old_path
+        or current_change.new_path != rename_change.new_path
+    )
+
+
 def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     """Persist the kind of selected change cached in session state."""
     get_selected_change_clear_reason_file_path().unlink(missing_ok=True)
+    if kind != SelectedChangeKind.RENAME:
+        get_selected_rename_file_json_path().unlink(missing_ok=True)
     if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
         get_selected_binary_file_json_path().unlink(missing_ok=True)
     if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
@@ -837,9 +925,20 @@ def read_selected_change_kind() -> Optional[SelectedChangeKind]:
         return None
 
 
-def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, GitlinkChange]]:
+def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange]]:
     """Load the currently cached selected change, if any."""
     selected_kind = read_selected_change_kind()
+    rename_change = load_selected_rename_change()
+    if rename_change is not None:
+        if selected_kind == SelectedChangeKind.RENAME and rename_change_is_stale(rename_change):
+            raise CommandError(
+                _(
+                    "Selected rename no longer matches the working tree: {old} -> {new}.\n"
+                    "Run 'show' again before using a pathless action."
+                ).format(old=rename_change.old_path, new=rename_change.new_path)
+            )
+        return rename_change
+
     gitlink_change = load_selected_gitlink_change()
     if gitlink_change is not None:
         if selected_kind == SelectedChangeKind.GITLINK and gitlink_change_is_stale(gitlink_change):
@@ -884,6 +983,10 @@ def get_selected_change_file_path() -> Optional[str]:
     selected-lines.json is derived state and may lag after display/navigation
     edge cases.
     """
+    rename_change = load_selected_rename_change()
+    if rename_change is not None:
+        return rename_change.path()
+
     gitlink_change = load_selected_gitlink_change()
     if gitlink_change is not None:
         return gitlink_change.path()
@@ -1545,7 +1648,7 @@ def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     """Render all changes for a file as a single hunk without caching state."""
     auto_add_untracked_files([file_path])
     with acquire_unified_diff(
-        stream_git_diff(
+        stream_live_git_diff(
             base="HEAD",
             context_lines=get_context_lines(),
             full_index=True,
@@ -1565,7 +1668,7 @@ def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
     auto_add_untracked_files([file_path])
     try:
         with acquire_unified_diff(
-            stream_git_diff(
+            stream_live_git_diff(
                 base="HEAD",
                 full_index=True,
                 ignore_submodules="none",
@@ -1586,7 +1689,7 @@ def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
     auto_add_untracked_files([file_path])
     try:
         with acquire_unified_diff(
-            stream_git_diff(
+            stream_live_git_diff(
                 base="HEAD",
                 full_index=True,
                 ignore_submodules="none",
@@ -1602,11 +1705,33 @@ def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
     return None
 
 
+def render_rename_change(file_path: str) -> Optional[RenameChange]:
+    """Render a rename change involving file_path without caching state."""
+    auto_add_untracked_files([file_path])
+    try:
+        with acquire_unified_diff(
+            stream_live_git_diff(
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+            )
+        ) as patches:
+            for item in patches:
+                if (
+                    isinstance(item, RenameChange)
+                    and file_path in (item.old_path, item.new_path)
+                ):
+                    return item
+    except subprocess.CalledProcessError:
+        return None
+    return None
+
+
 def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     """Render the remaining unstaged changes for a file as a single hunk."""
     auto_add_untracked_files([file_path])
     with acquire_unified_diff(
-        stream_git_diff(
+        stream_live_git_diff(
             context_lines=get_context_lines(),
             full_index=True,
             ignore_submodules="none",
@@ -1722,7 +1847,7 @@ def _build_combined_file_line_changes(
     previous_new_end = None
 
     for single_hunk in patches:
-        if isinstance(single_hunk, (BinaryFileChange, GitlinkChange)):
+        if isinstance(single_hunk, (BinaryFileChange, GitlinkChange, RenameChange)):
             continue
 
         line_changes = build_line_changes_from_patch_lines(single_hunk.lines)
@@ -1798,7 +1923,7 @@ def _build_combined_file_line_changes(
     )
 
 
-def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange]:
+def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange]:
     """Find the next hunk or binary file that isn't blocked and cache it as selected.
 
     Returns:
@@ -1816,7 +1941,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
     # Stream git diff and parse incrementally - stops after first unblocked item found
     try:
         with acquire_unified_diff(
-            stream_git_diff(
+            stream_live_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
@@ -1824,6 +1949,20 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
             )
         ) as patches:
             for item in patches:
+                if isinstance(item, RenameChange):
+                    rename_hash = compute_rename_change_hash(item)
+                    if rename_hash in blocked_hashes:
+                        continue
+
+                    if (
+                        is_path_blocked(item.old_path, blocked_files)
+                        or is_path_blocked(item.new_path, blocked_files)
+                    ):
+                        continue
+
+                    cache_rename_change(item)
+                    return item
+
                 if isinstance(item, GitlinkChange):
                     gitlink_hash = compute_gitlink_change_hash(item)
                     if gitlink_hash in blocked_hashes:
@@ -1852,6 +1991,13 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     return item
 
                 # Handle text hunks (SingleHunkPatch)
+                if item.old_path != item.new_path:
+                    rename_hash = compute_rename_change_hash(
+                        RenameChange(old_path=item.old_path, new_path=item.new_path)
+                    )
+                    if rename_hash in blocked_hashes:
+                        continue
+
                 hunk_hash = compute_stable_hunk_hash_from_lines(item.lines)
                 if hunk_hash in blocked_hashes:
                     continue
@@ -1908,6 +2054,11 @@ def show_selected_change() -> None:
     This is a helper for commands that need to display the cached hunk
     without advancing (e.g., start, again).
     """
+    rename_change = load_selected_rename_change()
+    if rename_change is not None:
+        print_rename_change(rename_change)
+        return
+
     gitlink_change = load_selected_gitlink_change()
     if gitlink_change is not None:
         print_gitlink_change(gitlink_change)
@@ -1934,6 +2085,11 @@ def advance_to_and_show_next_change() -> None:
     prints a message to stderr.
     """
     advance_to_next_change()
+
+    rename_change = load_selected_rename_change()
+    if rename_change is not None:
+        print_rename_change(rename_change)
+        return
 
     gitlink_change = load_selected_gitlink_change()
     if gitlink_change is not None:
@@ -2115,7 +2271,7 @@ def recalculate_selected_hunk_for_file(
     # Stream git diff and parse incrementally - stops after first matching hunk found
     try:
         with acquire_unified_diff(
-            stream_git_diff(
+            stream_live_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
@@ -2125,6 +2281,14 @@ def recalculate_selected_hunk_for_file(
             for single_hunk in patches:
                 if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
                     continue
+
+                if isinstance(single_hunk, RenameChange):
+                    rename_hash = compute_rename_change_hash(single_hunk)
+                    if rename_hash in blocked_hashes:
+                        continue
+                    cache_rename_change(single_hunk)
+                    print_rename_change(single_hunk)
+                    return
 
                 if isinstance(single_hunk, GitlinkChange):
                     gitlink_hash = compute_gitlink_change_hash(single_hunk)
@@ -2136,6 +2300,16 @@ def recalculate_selected_hunk_for_file(
 
                 if isinstance(single_hunk, BinaryFileChange):
                     continue
+
+                if single_hunk.old_path != single_hunk.new_path:
+                    rename_hash = compute_rename_change_hash(
+                        RenameChange(
+                            old_path=single_hunk.old_path,
+                            new_path=single_hunk.new_path,
+                        )
+                    )
+                    if rename_hash in blocked_hashes:
+                        continue
 
                 hunk_hash = compute_stable_hunk_hash_from_lines(single_hunk.lines)
 
@@ -2264,6 +2438,23 @@ def record_gitlink_hunk_skipped(gitlink_change: GitlinkChange, hunk_hash: str) -
         "change_type": gitlink_change.change_type,
         "old_oid": gitlink_change.old_oid,
         "new_oid": gitlink_change.new_oid,
+    }
+
+    jsonl_path = get_skipped_hunks_jsonl_file_path()
+    with jsonl_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(metadata) + "\n")
+
+
+def record_rename_hunk_skipped(rename_change: RenameChange, hunk_hash: str) -> None:
+    """Record that a rename change was skipped with file-level metadata."""
+    metadata = {
+        "hash": hunk_hash,
+        "file": rename_change.new_path,
+        "line": None,
+        "ids": [],
+        "type": "rename",
+        "old_path": rename_change.old_path,
+        "new_path": rename_change.new_path,
     }
 
     jsonl_path = get_skipped_hunks_jsonl_file_path()

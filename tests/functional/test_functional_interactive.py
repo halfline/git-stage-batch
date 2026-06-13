@@ -227,7 +227,7 @@ class TestInteractiveWorkflow:
     def test_interactive_stage_incrementally(self, repo_with_changes):
         """Test staging changes incrementally across multiple hunks."""
         # Include from first hunk, skip, include from second
-        result = run_interactive("i", "s", "i", "q")
+        result = run_interactive("i", "s", "i", "q", "y")
         assert result.returncode == 0
         # Should have staged changes from two includes
         staged = get_staged_files()
@@ -502,7 +502,8 @@ class TestInteractiveMultiFile:
             "i",
             "s",
             "i",
-            "q"
+            "q",
+            "y",
         )
         assert result.returncode == 0, f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
         # Verify command succeeded (batch may or may not have content)
@@ -534,7 +535,7 @@ class TestInteractiveMultiFile:
             file_path.write_text(f"Line 1\nLine 2\nLine {i}\n")
 
         # Navigate through multiple hunks
-        result = run_interactive("i", "s", "i", "s", "i", "s", "i", "s", "i", "q")
+        result = run_interactive("i", "s", "i", "s", "i", "s", "i", "s", "i", "q", "y")
         assert result.returncode == 0
         staged = get_staged_files()
         assert len(staged) > 0

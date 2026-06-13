@@ -4,11 +4,21 @@ from __future__ import annotations
 
 import sys
 
+from ..data.staged_renames import restore_unstaged_start_time_renames
 from ..data.session import clear_session_state
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
-from ..utils.git import git_reset_paths, require_git_repository
+from ..utils.git import git_reset_paths, require_git_repository, run_git_command
 from ..utils.paths import get_auto_added_files_file_path
+
+
+def _path_has_staged_content(file_path: str) -> bool:
+    result = run_git_command(
+        ["diff", "--cached", "--quiet", "--no-renames", "--", file_path],
+        check=False,
+        requires_index_lock=False,
+    )
+    return result.returncode == 1
 
 
 def command_stop() -> None:
@@ -20,7 +30,11 @@ def command_stop() -> None:
     if auto_added_path.exists():
         auto_added = read_file_paths_file(auto_added_path)
         for file_path in auto_added:
+            if _path_has_staged_content(file_path):
+                continue
             git_reset_paths([file_path], check=False)
+
+    restore_unstaged_start_time_renames()
 
     # Clear all session state (preserves batches and batch-sources)
     clear_session_state()

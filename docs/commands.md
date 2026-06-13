@@ -4,6 +4,20 @@ Complete reference of all available commands.
 
 ## Core Operations
 
+### `check-unstaged`
+
+Check whether the current index is suitable for an unstaged-only workflow.
+
+```
+❯ git-stage-batch check-unstaged
+```
+
+Exits successfully when the index is clean, or when the only staged changes
+are renames that `start` can normalize into workflow content. Exits with code
+2 when other staged changes are present.
+
+---
+
 ### `start`
 
 Find and display the first unprocessed hunk; cache as "selected".
@@ -23,6 +37,12 @@ Find and display the first unprocessed hunk; cache as "selected".
 ```
 
 Resets state if a session is already in progress.
+
+Live session diffs render renames as atomic `old -> new` choices. A selected
+rename can be included, skipped, or discarded with the rest of the workflow.
+At session start, staged renames are temporarily normalized into that same
+live workflow; if a normalized start-time rename is left untouched, `stop` or
+`abort` restores the original staged rename.
 
 ---
 

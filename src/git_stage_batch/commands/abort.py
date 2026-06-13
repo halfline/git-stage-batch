@@ -8,6 +8,7 @@ import sys
 
 from ..data.batch_refs import restore_batch_refs
 from ..data.session import clear_session_state
+from ..data.staged_renames import read_staged_renames
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
@@ -18,6 +19,7 @@ from ..utils.git import (
     git_reset_hard,
     git_reset_paths,
     require_git_repository,
+    run_git_command,
 )
 from ..utils.paths import (
     get_abort_head_file_path,
@@ -27,6 +29,28 @@ from ..utils.paths import (
     get_auto_added_files_file_path,
     get_abort_state_directory_path,
 )
+
+
+def _remove_normalized_rename_destinations_before_stash_apply() -> None:
+    renames = read_staged_renames()
+    if not renames:
+        return
+
+    repo_root = get_git_repository_root_path()
+    for rename in renames:
+        tracked_result = run_git_command(
+            ["ls-files", "--error-unmatch", "--", rename.new_path],
+            check=False,
+            requires_index_lock=False,
+        )
+        if tracked_result.returncode == 0:
+            continue
+
+        target_path = repo_root / rename.new_path
+        if target_path.is_dir() and not target_path.is_symlink():
+            shutil.rmtree(target_path)
+        else:
+            target_path.unlink(missing_ok=True)
 
 
 def command_abort() -> None:
@@ -55,6 +79,7 @@ def command_abort() -> None:
 
     print(_("Resetting to {}...").format(abort_head[:7]), file=sys.stderr)
     git_reset_hard(abort_head, env=env)
+    _remove_normalized_rename_destinations_before_stash_apply()
 
     # Apply original stash if it exists (with --index to restore staged state)
     if abort_stash:

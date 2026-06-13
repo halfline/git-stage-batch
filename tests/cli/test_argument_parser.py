@@ -380,6 +380,19 @@ def test_parse_command_line_start_passes_auto_advance(monkeypatch):
     mock_command.assert_called_once_with(context_lines=None, auto_advance=False)
 
 
+def test_parse_command_line_check_unstaged(monkeypatch):
+    """check-unstaged dispatches to the unstaged-only index guard."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_check_unstaged", mock_command)
+
+    args = parse_command_line(["check-unstaged"], quiet=True)
+
+    assert args is not None
+    assert args.command == "check-unstaged"
+    args.func(args)
+    mock_command.assert_called_once_with()
+
+
 def test_parse_command_line_stop():
     """Test parsing stop command."""
     args = parse_command_line(["stop"], quiet=True)

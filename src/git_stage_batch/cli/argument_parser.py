@@ -697,6 +697,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Available commands"),
     )
 
+    # check-unstaged - Check whether the index fits an unstaged-only workflow
+    parser_check_unstaged = _add_subcommand_parser(
+        subparsers,
+        "check-unstaged",
+        help=_("Check whether the index fits an unstaged-only workflow"),
+    )
+    parser_check_unstaged.set_defaults(func=lambda _: commands.command_check_unstaged())
+
     # start - Start a new batch staging session
     parser_start = _add_subcommand_parser(
         subparsers,

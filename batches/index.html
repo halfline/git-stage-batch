@@ -1102,6 +1102,67 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Advanced Workflow: Decomposing and Recomposing History">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#terminology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-capture-every-repair" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why capture every repair?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-decompose-outside-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: Decompose outside-in
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-recompose-inside-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: Recompose inside-out
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-insights" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key insights
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1485,6 +1546,67 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Advanced Workflow: Decomposing and Recomposing History">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#terminology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminology
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-capture-every-repair" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why capture every repair?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-decompose-outside-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: Decompose outside-in
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-recompose-inside-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: Recompose inside-out
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-insights" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key insights
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2023,103 +2145,138 @@ If the batch doesn't exist, it will be automatically created.</p>
 <hr />
 <h2 id="advanced-workflow-decomposing-and-recomposing-history">Advanced Workflow: Decomposing and Recomposing History<a class="headerlink" href="#advanced-workflow-decomposing-and-recomposing-history" title="Permanent link">&para;</a></h2>
 <p>When you have a messy working tree with multiple logical changes intertwined, you can use batches to decompose the changes into layers, create clean checkpoints, then recompose them as a series of well-organized commits.</p>
-<p><strong>Strategy:</strong>
-1. Use <code>discard --to</code> to peel off the topmost logical layer
-2. Edit the tree to fix dependencies (remove calls to code you just discarded)
-3. Repeat for each layer, working from outside to inside
-4. Apply batches back in reverse order with clear commit messages</p>
-<p><strong>Example workflow:</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-41-1"><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a><span class="c1"># Starting state: messy working tree with authentication refactor,</span>
-</span><span id="__span-41-2"><a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a><span class="c1"># new API endpoint, and database migration all mixed together</span>
-</span><span id="__span-41-3"><a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>
-</span><span id="__span-41-4"><a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
-</span><span id="__span-41-5"><a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a>
-</span><span id="__span-41-6"><a id="__codelineno-41-6" name="__codelineno-41-6" href="#__codelineno-41-6"></a><span class="c1"># Layer 1: Peel off the API endpoint (topmost layer, depends on auth changes)</span>
-</span><span id="__span-41-7"><a id="__codelineno-41-7" name="__codelineno-41-7" href="#__codelineno-41-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>api-endpoint<span class="w"> </span>--note<span class="w"> </span><span class="s2">&quot;Layer 3: API endpoint (depends on layer 2: auth)&quot;</span>
-</span><span id="__span-41-8"><a id="__codelineno-41-8" name="__codelineno-41-8" href="#__codelineno-41-8"></a><span class="c1"># Tree now has auth + database changes</span>
-</span><span id="__span-41-9"><a id="__codelineno-41-9" name="__codelineno-41-9" href="#__codelineno-41-9"></a>
-</span><span id="__span-41-10"><a id="__codelineno-41-10" name="__codelineno-41-10" href="#__codelineno-41-10"></a><span class="c1"># Fix dependencies: remove the API route registration that depended on the endpoint</span>
-</span><span id="__span-41-11"><a id="__codelineno-41-11" name="__codelineno-41-11" href="#__codelineno-41-11"></a>❯<span class="w"> </span><span class="nv">$EDITOR</span><span class="w"> </span>main.py<span class="w">  </span><span class="c1"># Remove route registration</span>
-</span><span id="__span-41-12"><a id="__codelineno-41-12" name="__codelineno-41-12" href="#__codelineno-41-12"></a>
-</span><span id="__span-41-13"><a id="__codelineno-41-13" name="__codelineno-41-13" href="#__codelineno-41-13"></a><span class="c1"># Layer 2: Peel off authentication refactor (depends on database schema)</span>
-</span><span id="__span-41-14"><a id="__codelineno-41-14" name="__codelineno-41-14" href="#__codelineno-41-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>again<span class="w">  </span><span class="c1"># Restart to see remaining hunks</span>
-</span><span id="__span-41-15"><a id="__codelineno-41-15" name="__codelineno-41-15" href="#__codelineno-41-15"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>auth-refactor<span class="w"> </span>--note<span class="w"> </span><span class="s2">&quot;Layer 2: auth refactor (depends on layer 1: database)&quot;</span>
-</span><span id="__span-41-16"><a id="__codelineno-41-16" name="__codelineno-41-16" href="#__codelineno-41-16"></a><span class="c1"># Tree now has only database changes</span>
-</span><span id="__span-41-17"><a id="__codelineno-41-17" name="__codelineno-41-17" href="#__codelineno-41-17"></a>
-</span><span id="__span-41-18"><a id="__codelineno-41-18" name="__codelineno-41-18" href="#__codelineno-41-18"></a><span class="c1"># Fix dependencies: remove auth code that depended on new DB columns</span>
-</span><span id="__span-41-19"><a id="__codelineno-41-19" name="__codelineno-41-19" href="#__codelineno-41-19"></a>❯<span class="w"> </span><span class="nv">$EDITOR</span><span class="w"> </span>auth.py<span class="w">  </span><span class="c1"># Remove references to new columns</span>
-</span><span id="__span-41-20"><a id="__codelineno-41-20" name="__codelineno-41-20" href="#__codelineno-41-20"></a>
-</span><span id="__span-41-21"><a id="__codelineno-41-21" name="__codelineno-41-21" href="#__codelineno-41-21"></a><span class="c1"># Layer 3: What remains is the foundation (database migration)</span>
-</span><span id="__span-41-22"><a id="__codelineno-41-22" name="__codelineno-41-22" href="#__codelineno-41-22"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>again
-</span><span id="__span-41-23"><a id="__codelineno-41-23" name="__codelineno-41-23" href="#__codelineno-41-23"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>database-migration<span class="w"> </span>--note<span class="w"> </span><span class="s2">&quot;Layer 1: database foundation (no dependencies)&quot;</span>
-</span><span id="__span-41-24"><a id="__codelineno-41-24" name="__codelineno-41-24" href="#__codelineno-41-24"></a><span class="c1"># Tree is now clean (or back to original state)</span>
-</span><span id="__span-41-25"><a id="__codelineno-41-25" name="__codelineno-41-25" href="#__codelineno-41-25"></a>
-</span><span id="__span-41-26"><a id="__codelineno-41-26" name="__codelineno-41-26" href="#__codelineno-41-26"></a><span class="c1"># Review the decomposition</span>
-</span><span id="__span-41-27"><a id="__codelineno-41-27" name="__codelineno-41-27" href="#__codelineno-41-27"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>list
-</span><span id="__span-41-28"><a id="__codelineno-41-28" name="__codelineno-41-28" href="#__codelineno-41-28"></a>Batches:
-</span><span id="__span-41-29"><a id="__codelineno-41-29" name="__codelineno-41-29" href="#__codelineno-41-29"></a><span class="w">  </span>database-migration:<span class="w"> </span>Layer<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>database<span class="w"> </span>foundation<span class="w"> </span><span class="o">(</span>no<span class="w"> </span>dependencies<span class="o">)</span><span class="w"> </span><span class="o">(</span>created<span class="w"> </span><span class="m">2</span><span class="w"> </span>minutes<span class="w"> </span>ago<span class="o">)</span>
-</span><span id="__span-41-30"><a id="__codelineno-41-30" name="__codelineno-41-30" href="#__codelineno-41-30"></a><span class="w">  </span>auth-refactor:<span class="w"> </span>Layer<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>auth<span class="w"> </span>refactor<span class="w"> </span><span class="o">(</span>depends<span class="w"> </span>on<span class="w"> </span>layer<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>database<span class="o">)</span><span class="w"> </span><span class="o">(</span>created<span class="w"> </span><span class="m">1</span><span class="w"> </span>minute<span class="w"> </span>ago<span class="o">)</span>
-</span><span id="__span-41-31"><a id="__codelineno-41-31" name="__codelineno-41-31" href="#__codelineno-41-31"></a><span class="w">  </span>api-endpoint:<span class="w"> </span>Layer<span class="w"> </span><span class="m">3</span>:<span class="w"> </span>API<span class="w"> </span>endpoint<span class="w"> </span><span class="o">(</span>depends<span class="w"> </span>on<span class="w"> </span>layer<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>auth<span class="o">)</span><span class="w"> </span><span class="o">(</span>created<span class="w"> </span><span class="m">30</span><span class="w"> </span>seconds<span class="w"> </span>ago<span class="o">)</span>
-</span><span id="__span-41-32"><a id="__codelineno-41-32" name="__codelineno-41-32" href="#__codelineno-41-32"></a>
-</span><span id="__span-41-33"><a id="__codelineno-41-33" name="__codelineno-41-33" href="#__codelineno-41-33"></a><span class="c1"># Now recompose in dependency order (reverse of discard order)</span>
-</span><span id="__span-41-34"><a id="__codelineno-41-34" name="__codelineno-41-34" href="#__codelineno-41-34"></a>
-</span><span id="__span-41-35"><a id="__codelineno-41-35" name="__codelineno-41-35" href="#__codelineno-41-35"></a><span class="c1"># Step 1: Apply foundation layer</span>
-</span><span id="__span-41-36"><a id="__codelineno-41-36" name="__codelineno-41-36" href="#__codelineno-41-36"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>database-migration
-</span><span id="__span-41-37"><a id="__codelineno-41-37" name="__codelineno-41-37" href="#__codelineno-41-37"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;database: Add user preferences table</span>
-</span><span id="__span-41-38"><a id="__codelineno-41-38" name="__codelineno-41-38" href="#__codelineno-41-38"></a>
-</span><span id="__span-41-39"><a id="__codelineno-41-39" name="__codelineno-41-39" href="#__codelineno-41-39"></a><span class="s2">The application stores all configuration in code, preventing users from</span>
-</span><span id="__span-41-40"><a id="__codelineno-41-40" name="__codelineno-41-40" href="#__codelineno-41-40"></a><span class="s2">customizing their experience across sessions.</span>
-</span><span id="__span-41-41"><a id="__codelineno-41-41" name="__codelineno-41-41" href="#__codelineno-41-41"></a>
-</span><span id="__span-41-42"><a id="__codelineno-41-42" name="__codelineno-41-42" href="#__codelineno-41-42"></a><span class="s2">Users need persistent storage for individual preferences like theme choice,</span>
-</span><span id="__span-41-43"><a id="__codelineno-41-43" name="__codelineno-41-43" href="#__codelineno-41-43"></a><span class="s2">language selection, and timezone settings that survive across logins.</span>
-</span><span id="__span-41-44"><a id="__codelineno-41-44" name="__codelineno-41-44" href="#__codelineno-41-44"></a>
-</span><span id="__span-41-45"><a id="__codelineno-41-45" name="__codelineno-41-45" href="#__codelineno-41-45"></a><span class="s2">This commit adds a preferences table with columns for theme, language, and</span>
-</span><span id="__span-41-46"><a id="__codelineno-41-46" name="__codelineno-41-46" href="#__codelineno-41-46"></a><span class="s2">timezone. Includes migration script and updated schema documentation.&quot;</span>
-</span><span id="__span-41-47"><a id="__codelineno-41-47" name="__codelineno-41-47" href="#__codelineno-41-47"></a>
-</span><span id="__span-41-48"><a id="__codelineno-41-48" name="__codelineno-41-48" href="#__codelineno-41-48"></a><span class="c1"># Step 2: Apply authentication layer</span>
-</span><span id="__span-41-49"><a id="__codelineno-41-49" name="__codelineno-41-49" href="#__codelineno-41-49"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>auth-refactor
-</span><span id="__span-41-50"><a id="__codelineno-41-50" name="__codelineno-41-50" href="#__codelineno-41-50"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;auth: Load user preferences during session initialization</span>
-</span><span id="__span-41-51"><a id="__codelineno-41-51" name="__codelineno-41-51" href="#__codelineno-41-51"></a>
-</span><span id="__span-41-52"><a id="__codelineno-41-52" name="__codelineno-41-52" href="#__codelineno-41-52"></a><span class="s2">The authentication module creates sessions but doesn&#39;t populate user preferences,</span>
-</span><span id="__span-41-53"><a id="__codelineno-41-53" name="__codelineno-41-53" href="#__codelineno-41-53"></a><span class="s2">requiring separate queries throughout the application to access settings.</span>
-</span><span id="__span-41-54"><a id="__codelineno-41-54" name="__codelineno-41-54" href="#__codelineno-41-54"></a>
-</span><span id="__span-41-55"><a id="__codelineno-41-55" name="__codelineno-41-55" href="#__codelineno-41-55"></a><span class="s2">Users experience slower page loads as each component independently queries for</span>
-</span><span id="__span-41-56"><a id="__codelineno-41-56" name="__codelineno-41-56" href="#__codelineno-41-56"></a><span class="s2">preference data instead of loading it once at authentication time.</span>
-</span><span id="__span-41-57"><a id="__codelineno-41-57" name="__codelineno-41-57" href="#__codelineno-41-57"></a>
-</span><span id="__span-41-58"><a id="__codelineno-41-58" name="__codelineno-41-58" href="#__codelineno-41-58"></a><span class="s2">This commit updates the auth module to read user preferences from the new table</span>
-</span><span id="__span-41-59"><a id="__codelineno-41-59" name="__codelineno-41-59" href="#__codelineno-41-59"></a><span class="s2">during session creation. Preferences are cached in the session object, eliminating</span>
-</span><span id="__span-41-60"><a id="__codelineno-41-60" name="__codelineno-41-60" href="#__codelineno-41-60"></a><span class="s2">redundant database queries.&quot;</span>
-</span><span id="__span-41-61"><a id="__codelineno-41-61" name="__codelineno-41-61" href="#__codelineno-41-61"></a>
-</span><span id="__span-41-62"><a id="__codelineno-41-62" name="__codelineno-41-62" href="#__codelineno-41-62"></a><span class="c1"># Step 3: Apply API layer</span>
-</span><span id="__span-41-63"><a id="__codelineno-41-63" name="__codelineno-41-63" href="#__codelineno-41-63"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>api-endpoint
-</span><span id="__span-41-64"><a id="__codelineno-41-64" name="__codelineno-41-64" href="#__codelineno-41-64"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;api: Add endpoint for updating user preferences</span>
-</span><span id="__span-41-65"><a id="__codelineno-41-65" name="__codelineno-41-65" href="#__codelineno-41-65"></a>
-</span><span id="__span-41-66"><a id="__codelineno-41-66" name="__codelineno-41-66" href="#__codelineno-41-66"></a><span class="s2">Users can view their preferences but have no way to modify them without direct</span>
-</span><span id="__span-41-67"><a id="__codelineno-41-67" name="__codelineno-41-67" href="#__codelineno-41-67"></a><span class="s2">database access, forcing administrators to handle routine preference changes.</span>
-</span><span id="__span-41-68"><a id="__codelineno-41-68" name="__codelineno-41-68" href="#__codelineno-41-68"></a>
-</span><span id="__span-41-69"><a id="__codelineno-41-69" name="__codelineno-41-69" href="#__codelineno-41-69"></a><span class="s2">A self-service interface is needed for users to customize their experience without</span>
-</span><span id="__span-41-70"><a id="__codelineno-41-70" name="__codelineno-41-70" href="#__codelineno-41-70"></a><span class="s2">administrative intervention.</span>
-</span><span id="__span-41-71"><a id="__codelineno-41-71" name="__codelineno-41-71" href="#__codelineno-41-71"></a>
-</span><span id="__span-41-72"><a id="__codelineno-41-72" name="__codelineno-41-72" href="#__codelineno-41-72"></a><span class="s2">This commit adds a /api/preferences endpoint accepting PUT requests with theme,</span>
-</span><span id="__span-41-73"><a id="__codelineno-41-73" name="__codelineno-41-73" href="#__codelineno-41-73"></a><span class="s2">language, and timezone fields. Integrates with the authentication system to</span>
-</span><span id="__span-41-74"><a id="__codelineno-41-74" name="__codelineno-41-74" href="#__codelineno-41-74"></a><span class="s2">validate sessions and update preferences atomically.&quot;</span>
-</span><span id="__span-41-75"><a id="__codelineno-41-75" name="__codelineno-41-75" href="#__codelineno-41-75"></a>
-</span><span id="__span-41-76"><a id="__codelineno-41-76" name="__codelineno-41-76" href="#__codelineno-41-76"></a><span class="c1"># Clean up batches</span>
-</span><span id="__span-41-77"><a id="__codelineno-41-77" name="__codelineno-41-77" href="#__codelineno-41-77"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>database-migration
-</span><span id="__span-41-78"><a id="__codelineno-41-78" name="__codelineno-41-78" href="#__codelineno-41-78"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>auth-refactor
-</span><span id="__span-41-79"><a id="__codelineno-41-79" name="__codelineno-41-79" href="#__codelineno-41-79"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>api-endpoint
-</span><span id="__span-41-80"><a id="__codelineno-41-80" name="__codelineno-41-80" href="#__codelineno-41-80"></a>
-</span><span id="__span-41-81"><a id="__codelineno-41-81" name="__codelineno-41-81" href="#__codelineno-41-81"></a><span class="c1"># Result: clean, logical commit history instead of one messy commit</span>
-</span></code></pre></div>
-<p><strong>Key insights:</strong></p>
+<p>This workflow has two phases: <strong>decompose outside-in</strong> and <strong>recompose inside-out</strong>.</p>
+<h3 id="terminology">Terminology<a class="headerlink" href="#terminology" title="Permanent link">&para;</a></h3>
+<p><strong>Layer batch</strong> — a logical commit layer captured while peeling the working tree.</p>
 <ul>
-<li>Use <code>--note</code> to document layer dependencies when creating batches</li>
-<li>Update notes with <code>annotate</code> if you discover dependencies later</li>
-<li>The batches themselves are your backup - no need for checkpoint commits</li>
-<li>The decomposition order is outside-in (what depends on what)</li>
-<li>The recomposition order is inside-out (foundations first, dependents later)</li>
-<li>Edit the tree between <code>discard --to</code> operations to fix broken dependencies</li>
-<li>This pattern is powerful for untangling complex changesets into reviewable commits</li>
+<li>Captured with <code>discard --to &lt;layer-batch&gt;</code>: saves the selected change to the batch and removes it from the working tree.</li>
+<li>Replayed during recomposition with <code>apply --from &lt;layer-batch&gt;</code>.</li>
+</ul>
+<p><strong>Bridge repair batch</strong> — a temporary repair that makes an intermediate layer state coherent.</p>
+<ul>
+<li>Captured with <code>include --to &lt;repair-batch&gt;</code>: saves the repair to a batch but leaves it in the working tree so the intermediate state can be tested or reviewed.</li>
+<li>Replayed after the layer it repairs with <code>apply --from &lt;repair-batch&gt;</code>.</li>
+<li>Removed before the next real layer with <code>discard --from &lt;repair-batch&gt;</code>.</li>
+<li>A bridge repair is intentionally temporary: it may appear in one intermediate commit and then be removed by the next commit.</li>
+</ul>
+<p>Suggested naming convention:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-41-1"><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>layer-1-database
+</span><span id="__span-41-2"><a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>repair-after-layer-1
+</span><span id="__span-41-3"><a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>layer-2-auth
+</span><span id="__span-41-4"><a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>repair-after-layer-2
+</span><span id="__span-41-5"><a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a>layer-3-api
+</span></code></pre></div>
+<p>A <code>repair-after-layer-N</code> batch means: "temporary code needed after layer N has been committed, but before layer N+1 has been applied."</p>
+<h3 id="why-capture-every-repair">Why capture every repair?<a class="headerlink" href="#why-capture-every-repair" title="Permanent link">&para;</a></h3>
+<p>Batch application uses <strong>structural merge</strong>, not raw patch replay. The merge engine locates batch-claimed lines relative to the current file structure. If a repair edit is left anonymous in the working tree — not captured in any batch — then later <code>apply --from</code> or <code>discard --from</code> operations may fail or produce unexpected results because the file no longer looks like what the batch expects.</p>
+<p>Capturing every intentional edit (whether a real layer change or a temporary bridge) keeps the replay sequence explicit: <code>apply --from</code> adds, <code>discard --from</code> removes, and there are no hidden state changes between them.</p>
+<h3 id="phase-1-decompose-outside-in">Phase 1: Decompose outside-in<a class="headerlink" href="#phase-1-decompose-outside-in" title="Permanent link">&para;</a></h3>
+<p>Start with the final messy working tree. Peel the outermost (most-dependent) layer first using <code>discard --to</code>. If the remaining intermediate state needs a repair to be coherent, make that repair in the working tree and capture it with <code>include --to repair-*</code>. Remove the bridge before peeling the next inner layer so it does not pollute that layer's batch.</p>
+<p>Use <code>annotate</code> to add descriptions to batches. The <code>--note</code> flag is not available for <code>discard --to</code> or <code>include --to</code>.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-42-1"><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a><span class="c1"># Starting state: final messy working tree containing layer 1 + layer 2 + layer 3.</span>
+</span><span id="__span-42-2"><a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a><span class="c1"># Layer 3 depends on layer 2; layer 2 depends on layer 1.</span>
+</span><span id="__span-42-3"><a id="__codelineno-42-3" name="__codelineno-42-3" href="#__codelineno-42-3"></a>
+</span><span id="__span-42-4"><a id="__codelineno-42-4" name="__codelineno-42-4" href="#__codelineno-42-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
+</span><span id="__span-42-5"><a id="__codelineno-42-5" name="__codelineno-42-5" href="#__codelineno-42-5"></a>
+</span><span id="__span-42-6"><a id="__codelineno-42-6" name="__codelineno-42-6" href="#__codelineno-42-6"></a><span class="c1"># Peel the outermost layer first.</span>
+</span><span id="__span-42-7"><a id="__codelineno-42-7" name="__codelineno-42-7" href="#__codelineno-42-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>layer-3-api
+</span><span id="__span-42-8"><a id="__codelineno-42-8" name="__codelineno-42-8" href="#__codelineno-42-8"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>annotate<span class="w"> </span>layer-3-api<span class="w"> </span><span class="s2">&quot;Layer 3: API endpoint&quot;</span>
+</span><span id="__span-42-9"><a id="__codelineno-42-9" name="__codelineno-42-9" href="#__codelineno-42-9"></a>
+</span><span id="__span-42-10"><a id="__codelineno-42-10" name="__codelineno-42-10" href="#__codelineno-42-10"></a><span class="c1"># The remaining layer-1 + layer-2 state needs a small temporary repair</span>
+</span><span id="__span-42-11"><a id="__codelineno-42-11" name="__codelineno-42-11" href="#__codelineno-42-11"></a><span class="c1"># to build or run without layer 3. Make that repair in the working tree.</span>
+</span><span id="__span-42-12"><a id="__codelineno-42-12" name="__codelineno-42-12" href="#__codelineno-42-12"></a>❯<span class="w"> </span><span class="nv">$EDITOR</span><span class="w"> </span>path/to/file
+</span><span id="__span-42-13"><a id="__codelineno-42-13" name="__codelineno-42-13" href="#__codelineno-42-13"></a>
+</span><span id="__span-42-14"><a id="__codelineno-42-14" name="__codelineno-42-14" href="#__codelineno-42-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>again
+</span><span id="__span-42-15"><a id="__codelineno-42-15" name="__codelineno-42-15" href="#__codelineno-42-15"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>repair-after-layer-2
+</span><span id="__span-42-16"><a id="__codelineno-42-16" name="__codelineno-42-16" href="#__codelineno-42-16"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>annotate<span class="w"> </span>repair-after-layer-2<span class="w"> </span><span class="s2">&quot;Temporary bridge after layer 2&quot;</span>
+</span><span id="__span-42-17"><a id="__codelineno-42-17" name="__codelineno-42-17" href="#__codelineno-42-17"></a>
+</span><span id="__span-42-18"><a id="__codelineno-42-18" name="__codelineno-42-18" href="#__codelineno-42-18"></a><span class="c1"># Remove the bridge before peeling the next inner layer so it does not</span>
+</span><span id="__span-42-19"><a id="__codelineno-42-19" name="__codelineno-42-19" href="#__codelineno-42-19"></a><span class="c1"># become part of the layer-2 batch.</span>
+</span><span id="__span-42-20"><a id="__codelineno-42-20" name="__codelineno-42-20" href="#__codelineno-42-20"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--from<span class="w"> </span>repair-after-layer-2
+</span><span id="__span-42-21"><a id="__codelineno-42-21" name="__codelineno-42-21" href="#__codelineno-42-21"></a>
+</span><span id="__span-42-22"><a id="__codelineno-42-22" name="__codelineno-42-22" href="#__codelineno-42-22"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>again
+</span><span id="__span-42-23"><a id="__codelineno-42-23" name="__codelineno-42-23" href="#__codelineno-42-23"></a>
+</span><span id="__span-42-24"><a id="__codelineno-42-24" name="__codelineno-42-24" href="#__codelineno-42-24"></a><span class="c1"># Peel the next layer.</span>
+</span><span id="__span-42-25"><a id="__codelineno-42-25" name="__codelineno-42-25" href="#__codelineno-42-25"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>layer-2-auth
+</span><span id="__span-42-26"><a id="__codelineno-42-26" name="__codelineno-42-26" href="#__codelineno-42-26"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>annotate<span class="w"> </span>layer-2-auth<span class="w"> </span><span class="s2">&quot;Layer 2: auth refactor&quot;</span>
+</span><span id="__span-42-27"><a id="__codelineno-42-27" name="__codelineno-42-27" href="#__codelineno-42-27"></a>
+</span><span id="__span-42-28"><a id="__codelineno-42-28" name="__codelineno-42-28" href="#__codelineno-42-28"></a><span class="c1"># The remaining layer-1 state needs a small temporary repair.</span>
+</span><span id="__span-42-29"><a id="__codelineno-42-29" name="__codelineno-42-29" href="#__codelineno-42-29"></a>❯<span class="w"> </span><span class="nv">$EDITOR</span><span class="w"> </span>path/to/file
+</span><span id="__span-42-30"><a id="__codelineno-42-30" name="__codelineno-42-30" href="#__codelineno-42-30"></a>
+</span><span id="__span-42-31"><a id="__codelineno-42-31" name="__codelineno-42-31" href="#__codelineno-42-31"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>again
+</span><span id="__span-42-32"><a id="__codelineno-42-32" name="__codelineno-42-32" href="#__codelineno-42-32"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>repair-after-layer-1
+</span><span id="__span-42-33"><a id="__codelineno-42-33" name="__codelineno-42-33" href="#__codelineno-42-33"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>annotate<span class="w"> </span>repair-after-layer-1<span class="w"> </span><span class="s2">&quot;Temporary bridge after layer 1&quot;</span>
+</span><span id="__span-42-34"><a id="__codelineno-42-34" name="__codelineno-42-34" href="#__codelineno-42-34"></a>
+</span><span id="__span-42-35"><a id="__codelineno-42-35" name="__codelineno-42-35" href="#__codelineno-42-35"></a><span class="c1"># Remove the bridge before peeling the foundation layer.</span>
+</span><span id="__span-42-36"><a id="__codelineno-42-36" name="__codelineno-42-36" href="#__codelineno-42-36"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--from<span class="w"> </span>repair-after-layer-1
+</span><span id="__span-42-37"><a id="__codelineno-42-37" name="__codelineno-42-37" href="#__codelineno-42-37"></a>
+</span><span id="__span-42-38"><a id="__codelineno-42-38" name="__codelineno-42-38" href="#__codelineno-42-38"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>again
+</span><span id="__span-42-39"><a id="__codelineno-42-39" name="__codelineno-42-39" href="#__codelineno-42-39"></a>
+</span><span id="__span-42-40"><a id="__codelineno-42-40" name="__codelineno-42-40" href="#__codelineno-42-40"></a><span class="c1"># Peel the foundation layer.</span>
+</span><span id="__span-42-41"><a id="__codelineno-42-41" name="__codelineno-42-41" href="#__codelineno-42-41"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--to<span class="w"> </span>layer-1-database
+</span><span id="__span-42-42"><a id="__codelineno-42-42" name="__codelineno-42-42" href="#__codelineno-42-42"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>annotate<span class="w"> </span>layer-1-database<span class="w"> </span><span class="s2">&quot;Layer 1: database foundation&quot;</span>
+</span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Missed pieces vs. bridge repairs</p>
+<p>If a "repair" is just leftover code from an upper layer — a call to a function that
+was discarded, or an import that is no longer used — it is probably not a bridge
+repair. It is a missed piece of the upper layer and should be captured into that
+upper layer with <code>discard --to</code>.</p>
+<p>A true bridge repair is temporary compatibility code or cleanup that is correct
+for an intermediate commit but intentionally disappears when the next layer is
+applied.</p>
+</div>
+<h3 id="phase-2-recompose-inside-out">Phase 2: Recompose inside-out<a class="headerlink" href="#phase-2-recompose-inside-out" title="Permanent link">&para;</a></h3>
+<p>Start from the original base commit. Apply each layer batch and its corresponding bridge repair to the working tree, stage with <code>git-stage-batch include --files</code>, and commit. Before the next real layer, remove the previous bridge repair with <code>discard --from</code>.</p>
+<p>Using <code>apply --from</code> (working-tree-only) followed by <code>git-stage-batch include --files</code> is preferred over <code>include --from</code> (which writes to both index and working tree simultaneously) because recomposition alternates <code>apply --from</code> and <code>discard --from</code>, and keeping the index separate lets you review the final working-tree state before staging.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-43-1"><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a><span class="c1"># Start from the original base commit / pristine tree.</span>
+</span><span id="__span-43-2"><a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a><span class="c1"># Recompose inside-out.</span>
+</span><span id="__span-43-3"><a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>
+</span><span id="__span-43-4"><a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a><span class="c1"># Commit 1: foundation layer plus temporary bridge needed after layer 1.</span>
+</span><span id="__span-43-5"><a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>apply<span class="w"> </span>--from<span class="w"> </span>layer-1-database
+</span><span id="__span-43-6"><a id="__codelineno-43-6" name="__codelineno-43-6" href="#__codelineno-43-6"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>apply<span class="w"> </span>--from<span class="w"> </span>repair-after-layer-1
+</span><span id="__span-43-7"><a id="__codelineno-43-7" name="__codelineno-43-7" href="#__codelineno-43-7"></a>
+</span><span id="__span-43-8"><a id="__codelineno-43-8" name="__codelineno-43-8" href="#__codelineno-43-8"></a>❯<span class="w"> </span>git<span class="w"> </span>diff<span class="w">          </span><span class="c1"># review working tree</span>
+</span><span id="__span-43-9"><a id="__codelineno-43-9" name="__codelineno-43-9" href="#__codelineno-43-9"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--files<span class="w"> </span><span class="s2">&quot;**&quot;</span>
+</span><span id="__span-43-10"><a id="__codelineno-43-10" name="__codelineno-43-10" href="#__codelineno-43-10"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;database: add foundation&quot;</span>
+</span><span id="__span-43-11"><a id="__codelineno-43-11" name="__codelineno-43-11" href="#__codelineno-43-11"></a>
+</span><span id="__span-43-12"><a id="__codelineno-43-12" name="__codelineno-43-12" href="#__codelineno-43-12"></a><span class="c1"># Commit 2: remove the layer-1 bridge, then apply the real layer-2 change.</span>
+</span><span id="__span-43-13"><a id="__codelineno-43-13" name="__codelineno-43-13" href="#__codelineno-43-13"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--from<span class="w"> </span>repair-after-layer-1
+</span><span id="__span-43-14"><a id="__codelineno-43-14" name="__codelineno-43-14" href="#__codelineno-43-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>apply<span class="w"> </span>--from<span class="w"> </span>layer-2-auth
+</span><span id="__span-43-15"><a id="__codelineno-43-15" name="__codelineno-43-15" href="#__codelineno-43-15"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>apply<span class="w"> </span>--from<span class="w"> </span>repair-after-layer-2
+</span><span id="__span-43-16"><a id="__codelineno-43-16" name="__codelineno-43-16" href="#__codelineno-43-16"></a>
+</span><span id="__span-43-17"><a id="__codelineno-43-17" name="__codelineno-43-17" href="#__codelineno-43-17"></a>❯<span class="w"> </span>git<span class="w"> </span>diff
+</span><span id="__span-43-18"><a id="__codelineno-43-18" name="__codelineno-43-18" href="#__codelineno-43-18"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--files<span class="w"> </span><span class="s2">&quot;**&quot;</span>
+</span><span id="__span-43-19"><a id="__codelineno-43-19" name="__codelineno-43-19" href="#__codelineno-43-19"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;auth: build on database foundation&quot;</span>
+</span><span id="__span-43-20"><a id="__codelineno-43-20" name="__codelineno-43-20" href="#__codelineno-43-20"></a>
+</span><span id="__span-43-21"><a id="__codelineno-43-21" name="__codelineno-43-21" href="#__codelineno-43-21"></a><span class="c1"># Commit 3: remove the layer-2 bridge, then apply the real layer-3 change.</span>
+</span><span id="__span-43-22"><a id="__codelineno-43-22" name="__codelineno-43-22" href="#__codelineno-43-22"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard<span class="w"> </span>--from<span class="w"> </span>repair-after-layer-2
+</span><span id="__span-43-23"><a id="__codelineno-43-23" name="__codelineno-43-23" href="#__codelineno-43-23"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>apply<span class="w"> </span>--from<span class="w"> </span>layer-3-api
+</span><span id="__span-43-24"><a id="__codelineno-43-24" name="__codelineno-43-24" href="#__codelineno-43-24"></a>
+</span><span id="__span-43-25"><a id="__codelineno-43-25" name="__codelineno-43-25" href="#__codelineno-43-25"></a>❯<span class="w"> </span>git<span class="w"> </span>diff
+</span><span id="__span-43-26"><a id="__codelineno-43-26" name="__codelineno-43-26" href="#__codelineno-43-26"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--files<span class="w"> </span><span class="s2">&quot;**&quot;</span>
+</span><span id="__span-43-27"><a id="__codelineno-43-27" name="__codelineno-43-27" href="#__codelineno-43-27"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;api: add endpoint&quot;</span>
+</span><span id="__span-43-28"><a id="__codelineno-43-28" name="__codelineno-43-28" href="#__codelineno-43-28"></a>
+</span><span id="__span-43-29"><a id="__codelineno-43-29" name="__codelineno-43-29" href="#__codelineno-43-29"></a><span class="c1"># Clean up saved batches when finished.</span>
+</span><span id="__span-43-30"><a id="__codelineno-43-30" name="__codelineno-43-30" href="#__codelineno-43-30"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>layer-1-database
+</span><span id="__span-43-31"><a id="__codelineno-43-31" name="__codelineno-43-31" href="#__codelineno-43-31"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>repair-after-layer-1
+</span><span id="__span-43-32"><a id="__codelineno-43-32" name="__codelineno-43-32" href="#__codelineno-43-32"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>layer-2-auth
+</span><span id="__span-43-33"><a id="__codelineno-43-33" name="__codelineno-43-33" href="#__codelineno-43-33"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>repair-after-layer-2
+</span><span id="__span-43-34"><a id="__codelineno-43-34" name="__codelineno-43-34" href="#__codelineno-43-34"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>drop<span class="w"> </span>layer-3-api
+</span><span id="__span-43-35"><a id="__codelineno-43-35" name="__codelineno-43-35" href="#__codelineno-43-35"></a>
+</span><span id="__span-43-36"><a id="__codelineno-43-36" name="__codelineno-43-36" href="#__codelineno-43-36"></a><span class="c1"># Result: clean, logical commit history instead of one messy commit</span>
+</span></code></pre></div>
+<p>The second commit intentionally contains both "remove the previous temporary repair" and "apply the next real layer." That is the point of the bridge: it keeps commit 1 coherent without pretending the repair is part of the final layer stack.</p>
+<h3 id="key-insights">Key insights<a class="headerlink" href="#key-insights" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Use <code>discard --to</code> for real layer changes that should be peeled away from the working tree.</li>
+<li>Use <code>include --to</code> for bridge repairs that should be saved to a batch but remain in the working tree.</li>
+<li>A bridge repair is temporary. Apply it after the layer it repairs, then remove it with <code>discard --from</code> before applying the next real layer.</li>
+<li>Prefer <code>apply --from</code> during recomposition, followed by <code>git-stage-batch include --files "**"</code>, so the index is staged from the final reviewed working-tree state for each commit.</li>
+<li>Do not leave repair edits uncaptured. Uncaptured repairs can cause later structural replay to fail or force manual reconstruction.</li>
+<li>If the repair is actually leftover upper-layer code, capture it into the upper-layer batch instead of creating a repair batch.</li>
+<li>The decomposition order is outside-in; the recomposition order is inside-out.</li>
+<li>The goal is a sequence of coherent, reviewable commits, even when some intermediate commits need temporary bridge code that later disappears.</li>
 </ul>
 <hr />
 <h2 id="frequently-asked-questions">Frequently Asked Questions<a class="headerlink" href="#frequently-asked-questions" title="Permanent link">&para;</a></h2>
@@ -2127,12 +2284,12 @@ If the batch doesn't exist, it will be automatically created.</p>
 <p>A stash saves the entire state of your working tree so you can return to it later. A batch saves a <strong>logical change</strong> so you can organize it into a clean commit later.</p>
 <p>Stashes are for temporarily setting work aside. Batches are for structuring and organizing work before committing it.</p>
 <p>With a stash, you capture everything:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-42-1"><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>git<span class="w"> </span>stash
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-44-1"><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>git<span class="w"> </span>stash
 </span></code></pre></div>
 <p>With a batch, you capture only the parts you choose:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-43-1"><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
-</span><span id="__span-43-2"><a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>cli
-</span><span id="__span-43-3"><a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>docs
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-45-1"><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
+</span><span id="__span-45-2"><a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>cli
+</span><span id="__span-45-3"><a id="__codelineno-45-3" name="__codelineno-45-3" href="#__codelineno-45-3"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>docs
 </span></code></pre></div>
 <p>Later, you can turn each batch into a commit.</p>
 <hr />
@@ -2140,25 +2297,25 @@ If the batch doesn't exist, it will be automatically created.</p>
 <p>Stashes are snapshots of your workspace. They are not designed to organize code changes into meaningful commits.</p>
 <p>If your working tree contains multiple logical changes, a stash will bundle them all together. Batches let you separate them as you go.</p>
 <p>For example:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-44-1"><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>working tree:
-</span><span id="__span-44-2"><a id="__codelineno-44-2" name="__codelineno-44-2" href="#__codelineno-44-2"></a>  parser work
-</span><span id="__span-44-3"><a id="__codelineno-44-3" name="__codelineno-44-3" href="#__codelineno-44-3"></a>  CLI changes
-</span><span id="__span-44-4"><a id="__codelineno-44-4" name="__codelineno-44-4" href="#__codelineno-44-4"></a>  documentation updates
+<div class="language-text highlight"><pre><span></span><code><span id="__span-46-1"><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>working tree:
+</span><span id="__span-46-2"><a id="__codelineno-46-2" name="__codelineno-46-2" href="#__codelineno-46-2"></a>  parser work
+</span><span id="__span-46-3"><a id="__codelineno-46-3" name="__codelineno-46-3" href="#__codelineno-46-3"></a>  CLI changes
+</span><span id="__span-46-4"><a id="__codelineno-46-4" name="__codelineno-46-4" href="#__codelineno-46-4"></a>  documentation updates
 </span></code></pre></div>
 <p>With stashes, those changes are stored together.</p>
 <p>With batches, they can be separated:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-45-1"><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>parser
-</span><span id="__span-45-2"><a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a>cli
-</span><span id="__span-45-3"><a id="__codelineno-45-3" name="__codelineno-45-3" href="#__codelineno-45-3"></a>docs
+<div class="language-text highlight"><pre><span></span><code><span id="__span-47-1"><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>parser
+</span><span id="__span-47-2"><a id="__codelineno-47-2" name="__codelineno-47-2" href="#__codelineno-47-2"></a>cli
+</span><span id="__span-47-3"><a id="__codelineno-47-3" name="__codelineno-47-3" href="#__codelineno-47-3"></a>docs
 </span></code></pre></div>
 <p>Each batch can later become its own commit.</p>
 <hr />
 <h3 id="can-i-replace-stashes-with-batches">Can I replace stashes with batches?<a class="headerlink" href="#can-i-replace-stashes-with-batches" title="Permanent link">&para;</a></h3>
 <p>No. They solve different problems.</p>
 <p>Use stashes when you need to quickly save your working state:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-46-1"><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>git<span class="w"> </span>stash
-</span><span id="__span-46-2"><a id="__codelineno-46-2" name="__codelineno-46-2" href="#__codelineno-46-2"></a>git<span class="w"> </span>pull
-</span><span id="__span-46-3"><a id="__codelineno-46-3" name="__codelineno-46-3" href="#__codelineno-46-3"></a>git<span class="w"> </span>stash<span class="w"> </span>pop
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-48-1"><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>git<span class="w"> </span>stash
+</span><span id="__span-48-2"><a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a>git<span class="w"> </span>pull
+</span><span id="__span-48-3"><a id="__codelineno-48-3" name="__codelineno-48-3" href="#__codelineno-48-3"></a>git<span class="w"> </span>stash<span class="w"> </span>pop
 </span></code></pre></div>
 <p>Use batches when you're organizing a messy working tree into clean commits.</p>
 <hr />
@@ -2166,23 +2323,23 @@ If the batch doesn't exist, it will be automatically created.</p>
 <p>A commit is permanent project history. A batch is a temporary container for changes you are still organizing.</p>
 <p>You should think of a batch as a <strong>draft commit</strong>.</p>
 <p>Example workflow:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-47-1"><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
-</span><span id="__span-47-2"><a id="__codelineno-47-2" name="__codelineno-47-2" href="#__codelineno-47-2"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
-</span><span id="__span-47-3"><a id="__codelineno-47-3" name="__codelineno-47-3" href="#__codelineno-47-3"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
-</span><span id="__span-47-4"><a id="__codelineno-47-4" name="__codelineno-47-4" href="#__codelineno-47-4"></a>
-</span><span id="__span-47-5"><a id="__codelineno-47-5" name="__codelineno-47-5" href="#__codelineno-47-5"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>parser
-</span><span id="__span-47-6"><a id="__codelineno-47-6" name="__codelineno-47-6" href="#__codelineno-47-6"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add parser implementation&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-49-1"><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
+</span><span id="__span-49-2"><a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
+</span><span id="__span-49-3"><a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--to<span class="w"> </span>parser
+</span><span id="__span-49-4"><a id="__codelineno-49-4" name="__codelineno-49-4" href="#__codelineno-49-4"></a>
+</span><span id="__span-49-5"><a id="__codelineno-49-5" name="__codelineno-49-5" href="#__codelineno-49-5"></a>git-stage-batch<span class="w"> </span>include<span class="w"> </span>--from<span class="w"> </span>parser
+</span><span id="__span-49-6"><a id="__codelineno-49-6" name="__codelineno-49-6" href="#__codelineno-49-6"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add parser implementation&quot;</span>
 </span></code></pre></div>
 <p>The batch helps assemble the commit, but it is not part of the repository history itself.</p>
 <hr />
 <h3 id="why-not-just-commit-earlier">Why not just commit earlier?<a class="headerlink" href="#why-not-just-commit-earlier" title="Permanent link">&para;</a></h3>
 <p>Sometimes your working tree contains changes that belong to different commits but are mixed together.</p>
 <p>For example:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-48-1"><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>working tree:
-</span><span id="__span-48-2"><a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a>  parser feature
-</span><span id="__span-48-3"><a id="__codelineno-48-3" name="__codelineno-48-3" href="#__codelineno-48-3"></a>  CLI integration
-</span><span id="__span-48-4"><a id="__codelineno-48-4" name="__codelineno-48-4" href="#__codelineno-48-4"></a>  documentation
-</span><span id="__span-48-5"><a id="__codelineno-48-5" name="__codelineno-48-5" href="#__codelineno-48-5"></a>  refactor
+<div class="language-text highlight"><pre><span></span><code><span id="__span-50-1"><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a>working tree:
+</span><span id="__span-50-2"><a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a>  parser feature
+</span><span id="__span-50-3"><a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a>  CLI integration
+</span><span id="__span-50-4"><a id="__codelineno-50-4" name="__codelineno-50-4" href="#__codelineno-50-4"></a>  documentation
+</span><span id="__span-50-5"><a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a>  refactor
 </span></code></pre></div>
 <p>You could commit everything at once, but that produces messy history.</p>
 <p>Batches let you reorganize changes into logical commits before publishing them.</p>
@@ -2191,10 +2348,10 @@ If the batch doesn't exist, it will be automatically created.</p>
 <p>Not really.</p>
 <p>Branches organize commits. Batches organize <strong>uncommitted changes</strong>.</p>
 <p>A branch looks like this:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-49-1"><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>commit → commit → commit
+<div class="language-text highlight"><pre><span></span><code><span id="__span-51-1"><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>commit → commit → commit
 </span></code></pre></div>
 <p>A batch looks more like this:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-50-1"><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a>selected hunks → staged later → commit
+<div class="language-text highlight"><pre><span></span><code><span id="__span-52-1"><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a>selected hunks → staged later → commit
 </span></code></pre></div>
 <p>They operate at different levels of the workflow.</p>
 <hr />

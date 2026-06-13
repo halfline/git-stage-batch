@@ -764,10 +764,54 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#file-review-v" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Review (v)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-browser-o" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Browser (o)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#again-a" class="md-nav__link">
     <span class="md-ellipsis">
       
         Again (a)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#status-s" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status (S)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#assistant-assets-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assistant Assets (A)
       
     </span>
   </a>
@@ -1255,10 +1299,54 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#file-review-v" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Review (v)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-browser-o" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Browser (o)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#again-a" class="md-nav__link">
     <span class="md-ellipsis">
       
         Again (a)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#status-s" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status (S)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#assistant-assets-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assistant Assets (A)
       
     </span>
   </a>
@@ -1477,9 +1565,12 @@
 </span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>  [d]iscard
 </span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>  [q]uit
 </span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>Other scope: [l]ines, [f]ile | Flow: [&lt;]from, [&gt;]to | More: [a]gain, [b]atch, [x]fixup, [!]cmd, [?]help
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>Action:
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>Other scope: [l]ines, [f]ile, [v]iew
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>Flow: [&lt;] from, [&gt;] to
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>More: [a]gain, [u]ndo, [U] redo, [S] status, [A] assets, [b]atch, [o]pen
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>      fi[x]up, [!] cmd, [?] help
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>Action:
 </span></code></pre></div>
 <p>The status bar shows the current source and target for operations, along with progress counters. After each action, the next hunk is displayed automatically.</p>
 <div class="section-separator"></div>
@@ -1543,14 +1634,89 @@
 </span></code></pre></div>
 <p>File-level discard asks for confirmation.</p>
 <hr />
+<h3 id="file-review-v">File Review (<code>v</code>)<a class="headerlink" href="#file-review-v" title="Permanent link">&para;</a></h3>
+<p>Open the current file as a full file review using the same page layout and
+line IDs as <code>git-stage-batch show --file</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Review action: [i]nclude lines [s]kip lines [d]iscard lines [r]eplace lines [I]include file [S]skip file [D]discard file [B]block [U]unblock [x]fixup lines [n]next [p]prev [g]page [o]open [q]back [?]help
+</span></code></pre></div>
+<p>Line actions prompt for file-review line IDs, so selections can span the
+visible page instead of only the current hunk. File actions operate on the
+reviewed file and keep you in the review until the file has no remaining
+changes or you press <code>q</code>.</p>
+<p>Use <code>r</code> to replace selected file-review line IDs with one line of replacement
+text. With the default flow, the replacement is staged for commit. When the
+target is a batch, the replacement is saved to the batch and the original
+selection is removed from the working tree. When the source is a batch, the
+replacement is included from the batch into the index and working tree.</p>
+<p>Use <code>x</code> to run the suggest-fixup candidate browser for selected file-review
+line IDs. This is available for live working-tree file reviews and uses the
+same candidate controls as the main hunk-level fixup action.</p>
+<p>Use <code>n</code> and <code>p</code> to move by one page from the current file review. Use <code>g</code> to
+show a specific page or page range:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>Page(s), for example 1, 2-4, all:
+</span></code></pre></div>
+<p>When the source is a batch, <code>v</code> reviews the current batch file. Include pulls
+selected lines or the reviewed file from the batch, and discard removes
+selected lines or the reviewed file from the batch. Skip is not available when
+pulling from a batch. Use <code>c</code> to preview include or apply candidates for the
+batch file, then enter a candidate number to preview it or <code>e N</code> to execute a
+reviewed candidate.</p>
+<p>Use <code>B</code> to block the reviewed file from future sessions. After confirmation,
+choose whether to write the ignore entry to <code>.gitignore</code> or to the local
+exclude file. Use <code>U</code> to unblock the reviewed file.</p>
+<hr />
+<h3 id="file-browser-o">File Browser (<code>o</code>)<a class="headerlink" href="#file-browser-o" title="Permanent link">&para;</a></h3>
+<p>Choose another reviewable file and open it in file review mode:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Files to review:
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  [1] auth.py
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  [2] tests/test_auth.py
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>File number, /pattern, or q:
+</span></code></pre></div>
+<p>Enter a number to open that file. Enter <code>/pattern</code> to filter the list with the
+same gitignore-style patterns used by <code>show --files</code>, then choose from the
+filtered result. Press <code>q</code> to return to the main hunk prompt without opening a
+file.</p>
+<p>Use <code>m N</code> to mark a file and <code>u N</code> to unmark it. Use <code>i</code>, <code>s</code>, <code>d</code>, or <code>B</code> to
+include, skip, discard, or block marked files. Batch-source browsers support
+include and discard for marked batch files; skip and block are live-file
+actions.</p>
+<p>When the source is a batch, the file browser lists files from that batch and
+opens the selected batch file in the same review mode.</p>
+<hr />
 <h3 id="again-a">Again (<code>a</code>)<a class="headerlink" href="#again-a" title="Permanent link">&para;</a></h3>
 <p>Clear the blocklist and restart iteration from the first hunk. Useful for making another pass after committing some changes.</p>
 <hr />
+<h3 id="status-s">Status (<code>S</code>)<a class="headerlink" href="#status-s" title="Permanent link">&para;</a></h3>
+<p>Show the current session status without leaving interactive mode. The output is
+the same human-readable report produced by <code>git-stage-batch status</code>, including
+session progress and available batches.</p>
+<hr />
+<h3 id="assistant-assets-a">Assistant Assets (<code>A</code>)<a class="headerlink" href="#assistant-assets-a" title="Permanent link">&para;</a></h3>
+<p>Install bundled assistant assets without leaving interactive mode. This is the
+same workflow as <code>git-stage-batch install-assets</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>Install bundled assistant assets:
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  [1] all asset groups
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  [2] claude-agents
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  [3] claude-skills
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>  [4] codex-skills
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>Group (empty to cancel):
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>Filters (empty for all):
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>Overwrite existing assets? [y/N]:
+</span></code></pre></div>
+<p>Choose a group by number or name. Leave the filters prompt empty to install all
+assets in the selected group, or enter one or more gitignore-style patterns such
+as <code>commit-*</code>. Answer <code>yes</code> only when existing installed assets should be
+replaced.</p>
+<p>The assets action is also available in degraded mode, so repositories with no
+current hunks can still use interactive mode for setup.</p>
+<hr />
 <h3 id="fixup-suggestions-x">Fixup Suggestions (<code>x</code>)<a class="headerlink" href="#fixup-suggestions-x" title="Permanent link">&para;</a></h3>
 <p>Enter a submenu that iteratively suggests commits that modified the lines in the current hunk:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Candidate 1: a1b2c3d Fix authentication logic
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>[y]es / [n]ext / [r]eset:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Candidate 1: a1b2c3d Fix authentication logic
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>[y]es / [n]ext / [r]eset:
 </span></code></pre></div>
 <table>
 <thead>
@@ -1590,34 +1756,37 @@
 <hr />
 <h3 id="batch-management-b">Batch Management (<code>b</code>)<a class="headerlink" href="#batch-management-b" title="Permanent link">&para;</a></h3>
 <p>Open a submenu for managing named batches:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>Existing batches:
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  debug-code - Temporary debugging output
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  refactor - Code cleanup
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>Batch operations:
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  [c]reate
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  [e]dit
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>  [d]rop
-</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>  [a]pply
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>Existing batches:
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  debug-code - Temporary debugging output
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>  refactor - Code cleanup
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>Batch operations:
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>  [c]reate
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>  [e]dit
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>  [d]rop
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>  [a]pply
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>  [s]ift
 </span></code></pre></div>
 <p>If no batches exist, you are prompted to create one immediately.</p>
+<p>Use <code>s</code> to sift an existing batch. After choosing the source batch, enter a
+destination batch name, or leave it empty to sift in place.</p>
 <hr />
 <h3 id="flow-control-and">Flow Control (<code>&lt;</code> and <code>&gt;</code>)<a class="headerlink" href="#flow-control-and" title="Permanent link">&para;</a></h3>
 <p>By default, interactive mode pulls changes from the <strong>working tree</strong> and pushes them to <strong>staging</strong> (the index). Flow control lets you redirect these operations to or from named batches.</p>
 <h4 id="setting-the-source">Setting the source (<code>&lt;</code>)<a class="headerlink" href="#setting-the-source" title="Permanent link">&para;</a></h4>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Pull changes from:
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  [1] Working tree (selected)
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  [2] batch: debug-code - Temporary debugging output
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Pull changes from:
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>  [1] Working tree (selected)
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>  [2] batch: debug-code - Temporary debugging output
 </span></code></pre></div>
 <p>Or use the shorthand <code>&lt;batch-name</code> to select directly.</p>
 <p>When pulling from a batch, the batch's accumulated changes are presented as the current hunk. <code>include</code> stages them and <code>discard</code> removes them from the working tree.</p>
 <h4 id="setting-the-target">Setting the target (<code>&gt;</code>)<a class="headerlink" href="#setting-the-target" title="Permanent link">&para;</a></h4>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>Push changes to:
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  [1] Staging for commit (selected)
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  [2] batch: debug-code - Temporary debugging output
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>  [3] New Batch...
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Push changes to:
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  [1] Staging for commit (selected)
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>  [2] batch: debug-code - Temporary debugging output
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>  [3] New Batch...
 </span></code></pre></div>
 <p>Or use the shorthand <code>&gt;batch-name</code> to select directly.</p>
 <p>When the target is a batch, <code>include</code> saves changes to the batch (without staging them) and <code>discard</code> saves changes to the batch then removes them from the working tree.</p>
@@ -1628,21 +1797,27 @@
 <hr />
 <h3 id="help">Help (<code>?</code>)<a class="headerlink" href="#help" title="Permanent link">&para;</a></h3>
 <p>Display a summary of all available commands:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Interactive Mode Commands:
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>Primary actions:
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  i, include   - Stage this hunk to the index
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>  s, skip      - Skip this hunk for now
-</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>  d, discard   - Remove this hunk from working tree (DESTRUCTIVE)
-</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>  q, quit      - Exit interactive mode
-</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
-</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>More options:
-</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>  a, again     - Clear state and start fresh pass through skipped hunks
-</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>  l, lines     - Select specific lines from this hunk
-</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>  f, file      - Include or skip all hunks in this file
-</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>  x, fixup     - Suggest which commit to fixup (iterative)
-</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>  !&lt;cmd&gt;       - Run shell command (e.g., !git log, or just ! to prompt)
-</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>  ?, help      - Show this help message
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>Interactive Mode Commands:
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>Primary actions:
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>  i, include   - Stage this hunk to the index
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>  s, skip      - Skip this hunk for now
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>  d, discard   - Remove this hunk from working tree (DESTRUCTIVE)
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>  q, quit      - Exit interactive mode
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>More options:
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>  a, again     - Clear state and start fresh pass through skipped hunks
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>  u, undo      - Undo last action
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>  U, redo      - Redo last undone action
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>  S, status    - Show session status
+</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>  A, assets    - Install bundled assistant assets
+</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>  l, lines     - Select specific lines from this hunk
+</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>  f, file      - Include or skip all hunks in this file
+</span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>  v, view      - Review this whole file with page selection
+</span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>  o, open      - Choose a file to review
+</span><span id="__span-14-19"><a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a>  x, fixup     - Suggest which commit to fixup (iterative)
+</span><span id="__span-14-20"><a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>  !&lt;cmd&gt;       - Run shell command (e.g., !git log, or just ! to prompt)
+</span><span id="__span-14-21"><a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>  ?, help      - Show this help message
 </span></code></pre></div>
 <div class="section-separator"></div>
 
@@ -1650,7 +1825,7 @@
 <p>When you press <code>q</code>, interactive mode checks whether anything changed during the session (commits, staged changes, or discards).</p>
 <p><strong>No changes:</strong> silently exits.</p>
 <p><strong>Changes detected:</strong> prompts for what to do:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>Keep staged changes? [y]es / [n]o:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>Keep staged changes? [y]es / [n]o:
 </span></code></pre></div>
 <table>
 <thead>
@@ -1674,9 +1849,11 @@
 </tr>
 </tbody>
 </table>
+<p>If a <code>git-stage-batch</code> session was already active before interactive mode was
+started, quitting returns to that existing session instead of stopping it.</p>
 <hr />
 <h2 id="degraded-mode">Degraded Mode<a class="headerlink" href="#degraded-mode" title="Permanent link">&para;</a></h2>
-<p>If there are no changes to stage, interactive mode enters degraded mode. Primary hunk actions (<code>include</code>, <code>skip</code>, <code>discard</code>, <code>lines</code>, <code>file</code>, <code>fixup</code>) are disabled, but you can still:</p>
+<p>If there are no changes to stage, interactive mode enters degraded mode. Primary hunk actions (<code>include</code>, <code>skip</code>, <code>discard</code>, <code>lines</code>, <code>file</code>, <code>view</code>, <code>fixup</code>) are disabled, but you can still:</p>
 <ul>
 <li>Manage batches (<code>b</code>)</li>
 <li>Change flow source/target (<code>&lt;</code>, <code>&gt;</code>)</li>
@@ -1689,9 +1866,9 @@
 
 <h2 id="cli-escape-hatch">CLI Escape Hatch<a class="headerlink" href="#cli-escape-hatch" title="Permanent link">&para;</a></h2>
 <p>Any unrecognized input at the action prompt is parsed as a CLI command. This gives full access to non-interactive commands from within the interactive session:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Action: show --from my-batch
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>Action: status
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>Action: annotate my-batch &quot;updated note&quot;
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>Action: show --from my-batch
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>Action: status
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>Action: annotate my-batch &quot;updated note&quot;
 </span></code></pre></div>
 <div class="section-separator"></div>
 
@@ -1725,52 +1902,52 @@
 <div class="section-separator"></div>
 
 <h2 id="example-session">Example Session<a class="headerlink" href="#example-session" title="Permanent link">&para;</a></h2>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>❯ git-stage-batch -i
-</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
-</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>════════════════════════════════════════════════════════════════
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>Source: working tree → Target: staging
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>Included: 0  Skipped: 0  Discarded: 0
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
-</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>auth.py :: @@ -10,5 +10,5 @@
-</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>[#1] - old_hash_function()
-</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>[#2] + new_hash_function()
-</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>      validate_user()
-</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>
-</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>Action: i
-</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>
-</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>════════════════════════════════════════════════════════════════
-</span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>Source: working tree → Target: staging
-</span><span id="__span-13-16"><a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>Included: 1  Skipped: 0  Discarded: 0
-</span><span id="__span-13-17"><a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>
-</span><span id="__span-13-18"><a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>config.py :: @@ -20,3 +20,4 @@
-</span><span id="__span-13-19"><a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a>[#1] + DEBUG = True
-</span><span id="__span-13-20"><a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a>      TIMEOUT = 30
-</span><span id="__span-13-21"><a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a>
-</span><span id="__span-13-22"><a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a>Action: d
-</span><span id="__span-13-23"><a id="__codelineno-13-23" name="__codelineno-13-23" href="#__codelineno-13-23"></a>⚠️  This will remove the hunk from your working tree.
-</span><span id="__span-13-24"><a id="__codelineno-13-24" name="__codelineno-13-24" href="#__codelineno-13-24"></a>Are you sure? [yes/NO]: yes
-</span><span id="__span-13-25"><a id="__codelineno-13-25" name="__codelineno-13-25" href="#__codelineno-13-25"></a>
-</span><span id="__span-13-26"><a id="__codelineno-13-26" name="__codelineno-13-26" href="#__codelineno-13-26"></a>════════════════════════════════════════════════════════════════
-</span><span id="__span-13-27"><a id="__codelineno-13-27" name="__codelineno-13-27" href="#__codelineno-13-27"></a>Source: working tree → Target: staging
-</span><span id="__span-13-28"><a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a>Included: 1  Skipped: 0  Discarded: 1
-</span><span id="__span-13-29"><a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a>
-</span><span id="__span-13-30"><a id="__codelineno-13-30" name="__codelineno-13-30" href="#__codelineno-13-30"></a>utils.py :: @@ -5,7 +5,9 @@
-</span><span id="__span-13-31"><a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a>[#1] - def old_helper():
-</span><span id="__span-13-32"><a id="__codelineno-13-32" name="__codelineno-13-32" href="#__codelineno-13-32"></a>[#2] + def new_helper():
-</span><span id="__span-13-33"><a id="__codelineno-13-33" name="__codelineno-13-33" href="#__codelineno-13-33"></a>[#3] +     &quot;&quot;&quot;Better implementation.&quot;&quot;&quot;
-</span><span id="__span-13-34"><a id="__codelineno-13-34" name="__codelineno-13-34" href="#__codelineno-13-34"></a>      pass
-</span><span id="__span-13-35"><a id="__codelineno-13-35" name="__codelineno-13-35" href="#__codelineno-13-35"></a>
-</span><span id="__span-13-36"><a id="__codelineno-13-36" name="__codelineno-13-36" href="#__codelineno-13-36"></a>Action: l
-</span><span id="__span-13-37"><a id="__codelineno-13-37" name="__codelineno-13-37" href="#__codelineno-13-37"></a>
-</span><span id="__span-13-38"><a id="__codelineno-13-38" name="__codelineno-13-38" href="#__codelineno-13-38"></a>Changed line IDs: 1-3
-</span><span id="__span-13-39"><a id="__codelineno-13-39" name="__codelineno-13-39" href="#__codelineno-13-39"></a>
-</span><span id="__span-13-40"><a id="__codelineno-13-40" name="__codelineno-13-40" href="#__codelineno-13-40"></a>Action for lines [i]nclude, [s]kip, [d]iscard? i
-</span><span id="__span-13-41"><a id="__codelineno-13-41" name="__codelineno-13-41" href="#__codelineno-13-41"></a>Enter line IDs (e.g., 1,3,5-7): 2,3
-</span><span id="__span-13-42"><a id="__codelineno-13-42" name="__codelineno-13-42" href="#__codelineno-13-42"></a>
-</span><span id="__span-13-43"><a id="__codelineno-13-43" name="__codelineno-13-43" href="#__codelineno-13-43"></a>No more hunks to process.
-</span><span id="__span-13-44"><a id="__codelineno-13-44" name="__codelineno-13-44" href="#__codelineno-13-44"></a>
-</span><span id="__span-13-45"><a id="__codelineno-13-45" name="__codelineno-13-45" href="#__codelineno-13-45"></a>Action: q
-</span><span id="__span-13-46"><a id="__codelineno-13-46" name="__codelineno-13-46" href="#__codelineno-13-46"></a>Keep staged changes? [y]es / [n]o: y
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>❯ git-stage-batch -i
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>════════════════════════════════════════════════════════════════
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>Source: working tree → Target: staging
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>Included: 0  Skipped: 0  Discarded: 0
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>auth.py :: @@ -10,5 +10,5 @@
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>[#1] - old_hash_function()
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>[#2] + new_hash_function()
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>      validate_user()
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>Action: i
+</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>
+</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>════════════════════════════════════════════════════════════════
+</span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>Source: working tree → Target: staging
+</span><span id="__span-17-16"><a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>Included: 1  Skipped: 0  Discarded: 0
+</span><span id="__span-17-17"><a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>
+</span><span id="__span-17-18"><a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>config.py :: @@ -20,3 +20,4 @@
+</span><span id="__span-17-19"><a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a>[#1] + DEBUG = True
+</span><span id="__span-17-20"><a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>      TIMEOUT = 30
+</span><span id="__span-17-21"><a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a>
+</span><span id="__span-17-22"><a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a>Action: d
+</span><span id="__span-17-23"><a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a>⚠️  This will remove the hunk from your working tree.
+</span><span id="__span-17-24"><a id="__codelineno-17-24" name="__codelineno-17-24" href="#__codelineno-17-24"></a>Are you sure? [yes/NO]: yes
+</span><span id="__span-17-25"><a id="__codelineno-17-25" name="__codelineno-17-25" href="#__codelineno-17-25"></a>
+</span><span id="__span-17-26"><a id="__codelineno-17-26" name="__codelineno-17-26" href="#__codelineno-17-26"></a>════════════════════════════════════════════════════════════════
+</span><span id="__span-17-27"><a id="__codelineno-17-27" name="__codelineno-17-27" href="#__codelineno-17-27"></a>Source: working tree → Target: staging
+</span><span id="__span-17-28"><a id="__codelineno-17-28" name="__codelineno-17-28" href="#__codelineno-17-28"></a>Included: 1  Skipped: 0  Discarded: 1
+</span><span id="__span-17-29"><a id="__codelineno-17-29" name="__codelineno-17-29" href="#__codelineno-17-29"></a>
+</span><span id="__span-17-30"><a id="__codelineno-17-30" name="__codelineno-17-30" href="#__codelineno-17-30"></a>utils.py :: @@ -5,7 +5,9 @@
+</span><span id="__span-17-31"><a id="__codelineno-17-31" name="__codelineno-17-31" href="#__codelineno-17-31"></a>[#1] - def old_helper():
+</span><span id="__span-17-32"><a id="__codelineno-17-32" name="__codelineno-17-32" href="#__codelineno-17-32"></a>[#2] + def new_helper():
+</span><span id="__span-17-33"><a id="__codelineno-17-33" name="__codelineno-17-33" href="#__codelineno-17-33"></a>[#3] +     &quot;&quot;&quot;Better implementation.&quot;&quot;&quot;
+</span><span id="__span-17-34"><a id="__codelineno-17-34" name="__codelineno-17-34" href="#__codelineno-17-34"></a>      pass
+</span><span id="__span-17-35"><a id="__codelineno-17-35" name="__codelineno-17-35" href="#__codelineno-17-35"></a>
+</span><span id="__span-17-36"><a id="__codelineno-17-36" name="__codelineno-17-36" href="#__codelineno-17-36"></a>Action: l
+</span><span id="__span-17-37"><a id="__codelineno-17-37" name="__codelineno-17-37" href="#__codelineno-17-37"></a>
+</span><span id="__span-17-38"><a id="__codelineno-17-38" name="__codelineno-17-38" href="#__codelineno-17-38"></a>Changed line IDs: 1-3
+</span><span id="__span-17-39"><a id="__codelineno-17-39" name="__codelineno-17-39" href="#__codelineno-17-39"></a>
+</span><span id="__span-17-40"><a id="__codelineno-17-40" name="__codelineno-17-40" href="#__codelineno-17-40"></a>Action for lines [i]nclude, [s]kip, [d]iscard? i
+</span><span id="__span-17-41"><a id="__codelineno-17-41" name="__codelineno-17-41" href="#__codelineno-17-41"></a>Enter line IDs (e.g., 1,3,5-7): 2,3
+</span><span id="__span-17-42"><a id="__codelineno-17-42" name="__codelineno-17-42" href="#__codelineno-17-42"></a>
+</span><span id="__span-17-43"><a id="__codelineno-17-43" name="__codelineno-17-43" href="#__codelineno-17-43"></a>No more hunks to process.
+</span><span id="__span-17-44"><a id="__codelineno-17-44" name="__codelineno-17-44" href="#__codelineno-17-44"></a>
+</span><span id="__span-17-45"><a id="__codelineno-17-45" name="__codelineno-17-45" href="#__codelineno-17-45"></a>Action: q
+</span><span id="__span-17-46"><a id="__codelineno-17-46" name="__codelineno-17-46" href="#__codelineno-17-46"></a>Keep staged changes? [y]es / [n]o: y
 </span></code></pre></div>
 <div class="section-separator"></div>
 
@@ -1778,9 +1955,9 @@
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Interactive Mode</label><label for="__tabbed_1_2">Command Mode</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a># One command, multiple decisions
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>❯ git-stage-batch -i
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a># Then: i, s, d, l, etc.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a># One command, multiple decisions
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>❯ git-stage-batch -i
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a># Then: i, s, d, l, etc.
 </span></code></pre></div>
 <ul>
 <li>Guided, visual, familiar to <code>git add -p</code> users</li>
@@ -1789,12 +1966,12 @@
 </ul>
 </div>
 <div class="tabbed-block">
-<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a># Multiple commands, one decision each
-</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>❯ git-stage-batch start
-</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>❯ git-stage-batch include
-</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>❯ git-stage-batch skip
-</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>❯ git-stage-batch include --line 1,3
-</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>❯ git-stage-batch discard
+<div class="language-text highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a># Multiple commands, one decision each
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>❯ git-stage-batch start
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>❯ git-stage-batch include
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>❯ git-stage-batch skip
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>❯ git-stage-batch include --line 1,3
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>❯ git-stage-batch discard
 </span></code></pre></div>
 <ul>
 <li>Scriptable, automation-friendly, AI-compatible</li>

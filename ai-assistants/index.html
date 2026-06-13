@@ -1500,6 +1500,15 @@ they spawn a fresh-context subagent.</p>
 <li><strong>Emphasize atomic commits</strong> - Make it clear commits should be focused</li>
 <li><strong>Line-level control</strong> - Remind the AI about <code>include --line</code> for mixed hunks</li>
 <li><strong><code>again</code> command</strong> - Ensure the AI knows to run <code>again</code> after commits</li>
+<li><strong>Capture repair edits</strong> - When decomposing a messy working tree, an AI assistant
+   may need to edit files between <code>discard --to</code> operations to keep the remaining
+   intermediate state coherent. Instruct the AI to capture those intentional edits
+   with <code>include --to repair-*</code> rather than leaving them as anonymous working-tree
+   changes. Anonymous repairs can cause later <code>apply --from</code> or <code>discard --from</code>
+   operations to fail because the structural merge engine expects the file state
+   reflected in the batch, not an undocumented in-between state. See the
+   <a href="../batches/#advanced-workflow-decomposing-and-recomposing-history">bridge repair batch workflow</a>
+   in the batches documentation.</li>
 </ol>
 <h2 id="benefits-for-ai-assisted-development">Benefits for AI-Assisted Development<a class="headerlink" href="#benefits-for-ai-assisted-development" title="Permanent link">&para;</a></h2>
 <table>
@@ -1561,9 +1570,9 @@ use the full three-paragraph format described in the Commit Messages section.</p
 <div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a># AI refactors code with both rename and logic changes
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>git-stage-batch start
 </span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a># Separate rename from logic changes using line-level
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a># Hunk shows both rename and logic change
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>git-stage-batch include --line 1-5    # rename only
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a># Separate rename from logic changes
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a># First prompt shows the structural rename
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>git-stage-batch include               # rename only
 </span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>git commit -m &quot;refactor: Rename helper_function to process_data&quot;
 </span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>
 </span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>git-stage-batch again

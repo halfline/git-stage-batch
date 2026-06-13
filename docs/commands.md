@@ -24,6 +24,12 @@ Find and display the first unprocessed hunk; cache as "selected".
 
 Resets state if a session is already in progress.
 
+Live session diffs render renames as atomic `old -> new` choices. A selected
+rename can be included, skipped, or discarded with the rest of the workflow.
+At session start, staged renames are temporarily normalized into that same
+live workflow; if a normalized start-time rename is left untouched, `stop` or
+`abort` restores the original staged rename.
+
 ---
 
 ### `show [--file [PATH] | --files PATTERN...]`

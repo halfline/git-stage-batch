@@ -5,11 +5,13 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands.abort import command_abort
+from git_stage_batch.commands.check_unstaged import command_check_unstaged
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.core.models import RenameChange
 from git_stage_batch.data.hunk_tracking import load_selected_change, show_selected_change
+from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_staged_renames_file_path
 
 
@@ -149,3 +151,34 @@ def test_abort_restores_start_time_staged_rename(rename_repo):
     command_abort()
 
     assert _cached_name_status(rename_repo).strip() == "R100\told.txt\tnew.txt"
+
+
+def test_check_unstaged_allows_clean_index(rename_repo):
+    command_check_unstaged()
+
+
+def test_check_unstaged_allows_staged_rename(rename_repo):
+    _stage_rename(rename_repo)
+
+    command_check_unstaged()
+
+
+def test_check_unstaged_rejects_non_rename_staged_content(rename_repo):
+    (rename_repo / "other.txt").write_text("changed\n")
+    subprocess.run(["git", "add", "other.txt"], check=True, cwd=rename_repo, capture_output=True)
+
+    with pytest.raises(CommandError) as exc_info:
+        command_check_unstaged()
+
+    assert exc_info.value.exit_code == 2
+
+
+def test_check_unstaged_rejects_rename_mixed_with_other_staged_content(rename_repo):
+    _stage_rename(rename_repo)
+    (rename_repo / "other.txt").write_text("changed\n")
+    subprocess.run(["git", "add", "other.txt"], check=True, cwd=rename_repo, capture_output=True)
+
+    with pytest.raises(CommandError) as exc_info:
+        command_check_unstaged()
+
+    assert exc_info.value.exit_code == 2

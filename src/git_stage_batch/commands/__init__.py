@@ -7,6 +7,7 @@ from .again import command_again
 from .annotate import command_annotate_batch
 from .apply_from import command_apply_from_batch
 from .block_file import command_block_file
+from .check_unstaged import command_check_unstaged
 from .discard import (
     command_discard,
     command_discard_file,
@@ -44,6 +45,7 @@ __all__ = [
     "command_annotate_batch",
     "command_apply_from_batch",
     "command_block_file",
+    "command_check_unstaged",
     "command_discard",
     "command_discard_file",
     "command_discard_file_as",

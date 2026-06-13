@@ -39,6 +39,7 @@ from ..core.diff_parser import (
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
+    compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
 from ..core.line_selection import (
@@ -47,7 +48,7 @@ from ..core.line_selection import (
     read_line_ids_file,
     write_line_ids_file,
 )
-from ..core.models import BinaryFileChange, GitlinkChange
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
@@ -73,6 +74,7 @@ from ..data.hunk_tracking import (
     restore_selected_change_state,
     snapshot_selected_change_state,
     snapshots_are_stale,
+    stream_live_git_diff,
 )
 from ..data.file_review_state import (
     FileReviewAction,
@@ -111,13 +113,14 @@ from ..utils.file_io import (
 )
 from ..utils.git import (
     get_git_repository_root_path,
+    GitIndexEntryUpdate,
     git_add_paths,
     git_apply_to_index,
     git_update_index,
+    git_update_index_entries,
     git_update_gitlink,
     require_git_repository,
     run_git_command,
-    stream_git_diff,
 )
 from ..utils.journal import log_journal
 from ..utils.paths import (
@@ -153,6 +156,48 @@ def _update_index_for_gitlink_change(gitlink_change: GitlinkChange):
         file_path=file_path,
         oid=gitlink_change.new_oid,
         check=False,
+    )
+
+
+def _index_entry_for_path(file_path: str) -> tuple[str, str] | None:
+    """Return mode and object id for the current index entry at file_path."""
+    result = run_git_command(
+        ["ls-files", "-s", "--", file_path],
+        check=False,
+        text_output=False,
+        requires_index_lock=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    header = result.stdout.split(b"\n", 1)[0].split(b"\t", 1)[0]
+    parts = header.split()
+    if len(parts) < 2:
+        return None
+    return parts[0].decode("ascii"), parts[1].decode("ascii")
+
+
+def _stage_rename_change(rename_change: RenameChange) -> None:
+    """Stage only the structural rename, leaving destination content edits unstaged."""
+    index_entry = _index_entry_for_path(rename_change.old_path)
+    if index_entry is None:
+        exit_with_error(
+            _("Cannot stage rename {old} -> {new}: missing baseline index entry.").format(
+                old=rename_change.old_path,
+                new=rename_change.new_path,
+            )
+        )
+
+    mode, blob_sha = index_entry
+    git_update_index_entries(
+        [
+            GitIndexEntryUpdate(file_path=rename_change.old_path, force_remove=True),
+            GitIndexEntryUpdate(
+                file_path=rename_change.new_path,
+                mode=mode,
+                blob_sha=blob_sha,
+            ),
+        ]
     )
 
 
@@ -517,6 +562,25 @@ def command_include(
         patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
         # Handle based on item type
+        if isinstance(item, RenameChange):
+            _stage_rename_change(item)
+            record_hunk_included(patch_hash)
+
+            if not quiet:
+                print(
+                    _("✓ Rename staged: {old} -> {new}").format(
+                        old=item.old_path,
+                        new=item.new_path,
+                    ),
+                    file=sys.stderr,
+                )
+
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
+            return
+
         if isinstance(item, GitlinkChange):
             result = _update_index_for_gitlink_change(item)
             if result.returncode != 0:
@@ -656,14 +720,31 @@ def command_include_file(
         # follow-up `show --files` / `include --files` passes in the same session.
         hunks_staged = 0
         submodule_pointers_staged = 0
+        renames_staged = 0
+        staged_rename_pairs: set[tuple[str, str]] = set()
         with acquire_unified_diff(
-            stream_git_diff(
+            stream_live_git_diff(
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
             )
         ) as patches:
             for patch in patches:
+                if isinstance(patch, RenameChange):
+                    if target_file not in (patch.old_path, patch.new_path):
+                        continue
+
+                    _stage_rename_change(patch)
+                    result = git_add_paths([patch.new_path], check=False)
+                    if result.returncode != 0:
+                        print(_("Failed to stage renamed file: {error}").format(error=result.stderr), file=sys.stderr)
+                        break
+                    record_hunk_included(compute_rename_change_hash(patch))
+                    hunks_staged += 1
+                    renames_staged += 1
+                    staged_rename_pairs.add((patch.old_path, patch.new_path))
+                    continue
+
                 if isinstance(patch, GitlinkChange):
                     if patch.path() == target_file:
                         result = _update_index_for_gitlink_change(patch)
@@ -701,6 +782,9 @@ def command_include_file(
                 if target_file not in patch_paths:
                     continue
 
+                if (patch.old_path, patch.new_path) in staged_rename_pairs:
+                    continue
+
                 patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
                 if patch.old_path != patch.new_path:
@@ -734,7 +818,13 @@ def command_include_file(
         return hunks_staged
 
     # Print summary message
-    if submodule_pointers_staged == hunks_staged:
+    if renames_staged == hunks_staged:
+        msg = ngettext(
+            "✓ Staged {count} rename from {file}",
+            "✓ Staged {count} renames from {file}",
+            hunks_staged,
+        ).format(count=hunks_staged, file=target_file)
+    elif submodule_pointers_staged == hunks_staged:
         msg = ngettext(
             "✓ Staged {count} submodule pointer from {file}",
             "✓ Staged {count} submodule pointers from {file}",
@@ -1493,6 +1583,22 @@ def command_include_to_batch(
         if (
             file is None
             and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.RENAME
+        ):
+            selected_change = load_selected_change()
+            if isinstance(selected_change, RenameChange):
+                exit_with_error(
+                    _(
+                        "Cannot include rename '{old} -> {new}' to a batch yet. "
+                        "Stage, skip, or discard the rename first."
+                    ).format(
+                        old=selected_change.old_path,
+                        new=selected_change.new_path,
+                    )
+                )
+        if (
+            file is None
+            and line_ids is None
             and read_selected_change_kind() == SelectedChangeKind.GITLINK
         ):
             selected_change = load_selected_change()
@@ -1720,13 +1826,15 @@ def _command_include_file_to_batch(
     all_lines_to_batch = []
 
     with acquire_unified_diff(
-        stream_git_diff(
+        stream_live_git_diff(
             base="HEAD",
             context_lines=get_context_lines(),
             paths=[file_path],
         )
     ) as patches:
         for patch in patches:
+            if isinstance(patch, RenameChange):
+                continue
             hunk_lines = build_line_changes_from_patch_lines(
                 patch.lines,
                 annotator=annotate_with_batch_source,
@@ -1993,7 +2101,7 @@ def _command_include_hunk_to_batch(
     selected_line_changes = None
     selected_hash = None
     with acquire_unified_diff(
-        stream_git_diff(
+        stream_live_git_diff(
             context_lines=get_context_lines(),
             full_index=True,
             ignore_submodules="none",
@@ -2001,6 +2109,9 @@ def _command_include_hunk_to_batch(
         )
     ) as patches:
         for patch in patches:
+            if isinstance(patch, RenameChange):
+                continue
+
             if isinstance(patch, GitlinkChange):
                 patch_hash = compute_gitlink_change_hash(patch)
                 if patch_hash not in blocked_hashes:
@@ -2053,7 +2164,7 @@ def _command_include_hunk_to_batch(
     if file_only:
         # Collect ALL hunks from this file
         with acquire_unified_diff(
-            stream_git_diff(
+            stream_live_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
@@ -2061,6 +2172,9 @@ def _command_include_hunk_to_batch(
             )
         ) as patches:
             for patch in patches:
+                if isinstance(patch, RenameChange):
+                    continue
+
                 if patch.new_path != file_path:
                     continue
 

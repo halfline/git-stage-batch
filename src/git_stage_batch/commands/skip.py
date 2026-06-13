@@ -10,6 +10,7 @@ from ..core.diff_parser import acquire_unified_diff, build_line_changes_from_pat
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
+    compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
 from ..core.line_selection import (
@@ -18,7 +19,7 @@ from ..core.line_selection import (
     write_line_ids_file,
 )
 from ..batch.selection import require_line_selection_in_view
-from ..core.models import BinaryFileChange, GitlinkChange
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     fetch_next_change,
@@ -29,9 +30,11 @@ from ..data.hunk_tracking import (
     record_binary_hunk_skipped,
     record_gitlink_hunk_skipped,
     record_hunk_skipped,
+    record_rename_hunk_skipped,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     require_selected_hunk,
+    stream_live_git_diff,
 )
 from ..data.file_review_state import (
     FileReviewAction,
@@ -53,7 +56,7 @@ from ..utils.file_io import (
     read_text_file_contents,
     write_text_file_contents,
 )
-from ..utils.git import require_git_repository, stream_git_diff
+from ..utils.git import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
@@ -101,6 +104,26 @@ def command_skip(
         patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
         # Handle based on item type
+        if isinstance(item, RenameChange):
+            blocklist_path = get_block_list_file_path()
+            append_lines_to_file(blocklist_path, [patch_hash])
+            record_rename_hunk_skipped(item, patch_hash)
+
+            if not quiet:
+                print(
+                    _("✓ Rename skipped: {old} -> {new}").format(
+                        old=item.old_path,
+                        new=item.new_path,
+                    ),
+                    file=sys.stderr,
+                )
+
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
+            return
+
         if isinstance(item, GitlinkChange):
             blocklist_path = get_block_list_file_path()
             append_lines_to_file(blocklist_path, [patch_hash])
@@ -210,7 +233,7 @@ def command_skip_file(
 
         hunks_skipped = 0
         with acquire_unified_diff(
-            stream_git_diff(
+            stream_live_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
@@ -218,6 +241,20 @@ def command_skip_file(
             )
         ) as patches:
             for patch in patches:
+                if isinstance(patch, RenameChange):
+                    if target_file not in (patch.old_path, patch.new_path):
+                        continue
+
+                    patch_hash = compute_rename_change_hash(patch)
+                    if patch_hash in blocked_hashes:
+                        continue
+
+                    append_lines_to_file(blocklist_path, [patch_hash])
+                    blocked_hashes.add(patch_hash)
+                    record_rename_hunk_skipped(patch, patch_hash)
+                    hunks_skipped += 1
+                    continue
+
                 if isinstance(patch, GitlinkChange):
                     if patch.path() != target_file:
                         continue
@@ -247,7 +284,11 @@ def command_skip_file(
                     hunks_skipped += 1
                     continue
 
-                if patch.new_path != target_file:
+                patch_paths = {
+                    path for path in (patch.old_path, patch.new_path)
+                    if path != "/dev/null"
+                }
+                if target_file not in patch_paths:
                     continue
 
                 patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)

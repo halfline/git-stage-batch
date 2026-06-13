@@ -12,10 +12,11 @@ from ..batch.query import read_batch_metadata
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
+    compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
 from ..core.diff_parser import acquire_unified_diff
-from ..core.models import BinaryFileChange, GitlinkChange
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
 from ..data.file_review_state import (
     FileReviewAction,
     ReviewSource,
@@ -31,11 +32,14 @@ from ..data.hunk_tracking import (
     gitlink_change_is_stale,
     load_selected_binary_file,
     load_selected_gitlink_change,
+    load_selected_rename_change,
     mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_change_kind,
+    rename_change_is_stale,
     selected_batch_binary_batch_name,
     selected_batch_binary_file_for_batch,
     snapshots_are_stale,
+    stream_live_git_diff,
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import get_iteration_count
@@ -48,7 +52,7 @@ from ..utils.file_io import (
     read_file_paths_file,
     read_text_file_line_set,
 )
-from ..utils.git import require_git_repository, run_git_command, stream_git_diff
+from ..utils.git import require_git_repository, run_git_command
 from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
@@ -106,7 +110,7 @@ def estimate_remaining_hunks() -> int:
     remaining = 0
     try:
         with acquire_unified_diff(
-            stream_git_diff(
+            stream_live_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
@@ -114,13 +118,28 @@ def estimate_remaining_hunks() -> int:
             )
         ) as patches:
             for patch in patches:
-                if isinstance(patch, GitlinkChange):
+                if isinstance(patch, RenameChange):
+                    hunk_hash = compute_rename_change_hash(patch)
+                    if (
+                        hunk_hash not in blocked_hashes
+                        and not is_path_blocked(patch.old_path, blocked_files)
+                        and not is_path_blocked(patch.new_path, blocked_files)
+                    ):
+                        remaining += 1
+                    continue
+                elif isinstance(patch, GitlinkChange):
                     hunk_hash = compute_gitlink_change_hash(patch)
                     file_path = patch.path()
                 elif isinstance(patch, BinaryFileChange):
                     hunk_hash = compute_binary_file_hash(patch)
                     file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
                 else:
+                    if patch.old_path != patch.new_path:
+                        rename_hash = compute_rename_change_hash(
+                            RenameChange(old_path=patch.old_path, new_path=patch.new_path)
+                        )
+                        if rename_hash in blocked_hashes:
+                            continue
                     hunk_hash = compute_stable_hunk_hash_from_lines(patch.lines)
                     file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
                 file_path = file_path.removeprefix("a/").removeprefix("b/")
@@ -145,6 +164,7 @@ def _selected_kind_label(selected_kind: str | None) -> str:
         SelectedChangeKind.HUNK.value: _("Current hunk:"),
         SelectedChangeKind.FILE.value: _("Current file review:"),
         SelectedChangeKind.BATCH_FILE.value: _("Current batch file review:"),
+        SelectedChangeKind.RENAME.value: _("Current rename:"),
         SelectedChangeKind.BINARY.value: _("Current binary file:"),
         SelectedChangeKind.BATCH_BINARY.value: _("Current batch binary file:"),
         SelectedChangeKind.GITLINK.value: _("Current submodule pointer:"),
@@ -206,6 +226,22 @@ def _read_live_review_display_ids(file_path: str) -> list[int] | None:
 def _read_selected_change_summary() -> tuple[bool, dict | None]:
     """Return whether a non-stale selected change exists and its status summary."""
     selected_kind = read_selected_change_kind()
+    if selected_kind == SelectedChangeKind.RENAME:
+        rename_change = load_selected_rename_change()
+        if rename_change is None:
+            return False, None
+        if rename_change_is_stale(rename_change):
+            return False, None
+        return True, {
+            "kind": selected_kind.value,
+            "file": rename_change.new_path,
+            "line": None,
+            "ids": [],
+            "change_type": "renamed",
+            "old_path": rename_change.old_path,
+            "new_path": rename_change.new_path,
+        }
+
     if selected_kind in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
         gitlink_change = load_selected_gitlink_change()
         if gitlink_change is None:

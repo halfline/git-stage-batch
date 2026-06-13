@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from .colors import Colors
 
 if TYPE_CHECKING:
-    from ..core.models import BinaryFileChange, GitlinkChange
+    from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
 
 
 def print_colored_patch(patch_text: str) -> None:
@@ -80,6 +80,21 @@ def print_gitlink_change(gitlink_change: GitlinkChange) -> None:
     print(f"{bold}{path}{reset} :: {color}Submodule pointer modified{reset}")
     print(f"old {_short_oid(gitlink_change.old_oid)}")
     print(f"new {_short_oid(gitlink_change.new_oid)}")
+
+
+def print_rename_change(rename_change: RenameChange) -> None:
+    """Print a file rename as an atomic structural change."""
+    use_color = Colors.enabled()
+
+    reset = Colors.RESET if use_color else ""
+    bold = Colors.BOLD if use_color else ""
+    color = Colors.YELLOW if use_color else ""
+
+    print(
+        f"{bold}{rename_change.old_path}{reset} -> "
+        f"{bold}{rename_change.new_path}{reset} :: "
+        f"{color}Renamed file{reset}"
+    )
 
 
 def _short_oid(oid: str | None) -> str:

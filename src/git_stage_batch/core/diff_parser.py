@@ -13,6 +13,7 @@ from .models import (
     LineLevelChange,
     HunkHeader,
     LineEntry,
+    RenameChange,
     SingleHunkPatch,
 )
 from ..editor import (
@@ -31,7 +32,7 @@ from ..utils.paths import get_index_snapshot_file_path, get_working_tree_snapsho
 
 # Type for annotator hooks that enrich LineLevelChange with additional metadata
 LineLevelChangeAnnotator = Callable[[str, LineLevelChange], LineLevelChange]
-UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange]
+UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, RenameChange]
 
 
 HUNK_HEADER_PATTERN = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
@@ -54,6 +55,13 @@ def _metadata_indicates_gitlink(metadata_lines: list[bytes]) -> bool:
         if match is not None and match.group(3) == b"160000":
             return True
     return False
+
+
+def _metadata_indicates_rename(metadata_lines: list[bytes]) -> bool:
+    """Return whether diff metadata describes a path rename."""
+    has_rename_from = any(line.startswith(b"rename from ") for line in metadata_lines)
+    has_rename_to = any(line.startswith(b"rename to ") for line in metadata_lines)
+    return has_rename_from and has_rename_to
 
 
 def _gitlink_oids_from_index(metadata_lines: list[bytes]) -> tuple[str | None, str | None]:
@@ -336,10 +344,14 @@ class _UnifiedDiffParserBuildContext:
                             break
 
                     is_gitlink = _metadata_indicates_gitlink(metadata_lines)
+                    is_rename = _metadata_indicates_rename(metadata_lines)
                     index_old_oid, index_new_oid = _gitlink_oids_from_index(metadata_lines)
 
                     # Handle files without unified diff hunks
                     if old_file_line is None:
+                        if is_rename:
+                            yield RenameChange(old_path=old_path, new_path=new_path)
+
                         if is_gitlink:
                             yield GitlinkChange(
                                 old_path=_gitlink_old_path(old_path, index_old_oid),
@@ -384,6 +396,9 @@ class _UnifiedDiffParserBuildContext:
                             )
                             continue
 
+                        if is_rename:
+                            continue
+
                         # Check if this is an empty new file (new file with no content)
                         # Empty new files have "new file mode" and "index 0000000..e69de29" (empty blob, short hash)
                         EMPTY_BLOB_SHORT_HASH = b"e69de29"  # Short hash for empty blob
@@ -413,6 +428,9 @@ class _UnifiedDiffParserBuildContext:
                     if not plus_line_stripped.startswith(b"+++"):
                         continue
                     new_file_line = plus_line_stripped
+
+                    if is_rename:
+                        yield RenameChange(old_path=old_path, new_path=new_path)
 
                     if is_gitlink:
                         hunk_old_oid, hunk_new_oid = _consume_gitlink_hunks(next_line, peek_line)

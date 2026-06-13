@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .models import BinaryFileChange, GitlinkChange
+    from .models import BinaryFileChange, GitlinkChange, RenameChange
 
 
 def compute_stable_hunk_hash_from_lines(patch_lines: Iterable[bytes]) -> str:
@@ -105,5 +105,15 @@ def compute_gitlink_change_hash(gitlink_change: GitlinkChange) -> str:
         gitlink_change.old_oid or "",
         gitlink_change.new_oid or "",
         gitlink_change.change_type,
+    ]
+    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+
+
+def compute_rename_change_hash(rename_change: RenameChange) -> str:
+    """Compute a stable identity hash for an atomic rename change."""
+    parts = [
+        "rename",
+        rename_change.old_path,
+        rename_change.new_path,
     ]
     return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()

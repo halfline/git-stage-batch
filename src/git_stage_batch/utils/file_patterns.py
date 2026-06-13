@@ -96,21 +96,38 @@ def resolve_gitignore_style_patterns(
 
 
 def list_changed_files() -> list[str]:
-    """List repository-relative files currently present in the working-tree diff."""
+    """List repository-relative paths participating in the working-tree diff."""
     result = run_git_command(
         [
             "-c",
             "diff.ignoreSubmodules=none",
             "diff",
             "--ignore-submodules=none",
-            "--name-only",
+            "--find-renames",
+            "--name-status",
             "-z",
         ],
         text_output=False,
         requires_index_lock=False,
     )
-    return [
-        _normalize_path(path.decode("utf-8"))
-        for path in result.stdout.split(b"\0")
-        if path
-    ]
+
+    fields = result.stdout.split(b"\0")
+    changed_paths: list[str] = []
+    index = 0
+    while index < len(fields):
+        status_bytes = fields[index]
+        index += 1
+        if not status_bytes:
+            continue
+
+        status = status_bytes.decode("ascii", errors="replace")
+        path_count = 2 if status.startswith(("R", "C")) else 1
+        for _ in range(path_count):
+            if index >= len(fields):
+                break
+            path = fields[index]
+            index += 1
+            if path:
+                changed_paths.append(_normalize_path(path.decode("utf-8")))
+
+    return list(dict.fromkeys(changed_paths))

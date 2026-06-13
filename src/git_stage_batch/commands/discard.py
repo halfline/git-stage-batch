@@ -45,10 +45,11 @@ from ..core.diff_parser import (
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
+    compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
 from ..core.line_selection import parse_line_selection
-from ..core.models import BinaryFileChange, GitlinkChange
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
 from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
@@ -66,9 +67,11 @@ from ..data.hunk_tracking import (
     refuse_bare_action_after_file_list,
     render_binary_file_change,
     render_gitlink_change,
+    render_rename_change,
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
+    stream_live_git_diff,
 )
 from ..data.file_review_state import (
     FileReviewAction,
@@ -108,10 +111,10 @@ from ..utils.git import (
     git_apply_to_worktree,
     git_checkout_paths,
     git_remove_paths,
+    git_update_index,
     git_update_gitlink,
     require_git_repository,
     run_git_command,
-    stream_git_diff,
 )
 from ..utils.journal import log_journal
 from ..utils.paths import (
@@ -169,6 +172,59 @@ def _discard_gitlink_change(gitlink_change: GitlinkChange) -> None:
             _("Failed to update submodule pointer in the index for {file}: {error}").format(
                 file=file_path,
                 error=index_result.stderr,
+            )
+        )
+
+
+def _remove_worktree_path(file_path: str) -> None:
+    """Remove a working-tree path if it still exists after index cleanup."""
+    absolute_path = get_git_repository_root_path() / file_path
+    if not os.path.lexists(absolute_path):
+        return
+    if absolute_path.is_dir() and not absolute_path.is_symlink():
+        # A rename diff is file-oriented, but avoid leaving an untracked directory
+        # behind if the destination path was replaced while the prompt was open.
+        for child in sorted(absolute_path.rglob("*"), reverse=True):
+            if child.is_dir() and not child.is_symlink():
+                child.rmdir()
+            else:
+                child.unlink()
+        absolute_path.rmdir()
+        return
+    absolute_path.unlink()
+
+
+def _discard_rename_change(rename_change: RenameChange) -> None:
+    """Restore the old path and remove the renamed destination."""
+    snapshot_files_if_untracked([rename_change.new_path])
+
+    remove_result = git_remove_paths(
+        [rename_change.new_path],
+        force=True,
+        ignore_unmatch=True,
+        check=False,
+    )
+    if remove_result.returncode != 0:
+        index_result = git_update_index(
+            file_path=rename_change.new_path,
+            force_remove=True,
+            check=False,
+        )
+        if index_result.returncode != 0:
+            exit_with_error(
+                _("Failed to remove renamed path {file}: {error}").format(
+                    file=rename_change.new_path,
+                    error=index_result.stderr,
+                )
+            )
+        _remove_worktree_path(rename_change.new_path)
+
+    restore_result = git_checkout_paths("HEAD", [rename_change.old_path], check=False)
+    if restore_result.returncode != 0:
+        exit_with_error(
+            _("Failed to restore renamed source {file}: {error}").format(
+                file=rename_change.old_path,
+                error=restore_result.stderr,
             )
         )
 
@@ -281,6 +337,26 @@ def command_discard(
         patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
         # Handle based on item type
+        if isinstance(item, RenameChange):
+            _discard_rename_change(item)
+            append_lines_to_file(get_block_list_file_path(), [patch_hash])
+            record_hunk_discarded(patch_hash)
+
+            if not quiet:
+                print(
+                    _("✓ Rename discarded: {old} -> {new}").format(
+                        old=item.old_path,
+                        new=item.new_path,
+                    ),
+                    file=sys.stderr,
+                )
+
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
+            return
+
         if isinstance(item, GitlinkChange):
             _discard_gitlink_change(item)
             append_lines_to_file(get_block_list_file_path(), [patch_hash])
@@ -509,6 +585,23 @@ def command_discard_file(
             finish_selected_change_action(quiet=False, auto_advance=auto_advance)
             return
 
+        rename_change = render_rename_change(target_file)
+        if rename_change is not None:
+            patch_hash = compute_rename_change_hash(rename_change)
+            _discard_rename_change(rename_change)
+            if patch_hash not in blocked_hashes:
+                append_lines_to_file(blocklist_path, [patch_hash])
+                record_hunk_discarded(patch_hash)
+            print(
+                _("✓ Rename discarded: {old} -> {new}").format(
+                    old=rename_change.old_path,
+                    new=rename_change.new_path,
+                ),
+                file=sys.stderr,
+            )
+            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
+            return
+
         # Snapshot the file if it's untracked (for abort functionality)
         snapshot_file_if_untracked(target_file)
 
@@ -516,9 +609,18 @@ def command_discard_file(
         # (git rm -f will stage the deletion, making hunks disappear from git diff)
         hashes_to_block = []
         with acquire_unified_diff(
-            stream_git_diff(context_lines=get_context_lines())
+            stream_live_git_diff(context_lines=get_context_lines())
         ) as patches:
             for patch in patches:
+                if isinstance(patch, RenameChange):
+                    if target_file not in (patch.old_path, patch.new_path):
+                        continue
+
+                    patch_hash = compute_rename_change_hash(patch)
+                    if patch_hash not in blocked_hashes:
+                        hashes_to_block.append(patch_hash)
+                    continue
+
                 if isinstance(patch, BinaryFileChange):
                     file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
                     if file_path != target_file:
@@ -740,6 +842,22 @@ def command_discard_to_batch(
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
+        if (
+            file is None
+            and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.RENAME
+        ):
+            selected_change = load_selected_change()
+            if isinstance(selected_change, RenameChange):
+                exit_with_error(
+                    _(
+                        "Cannot discard rename '{old} -> {new}' to a batch yet. "
+                        "Discard, skip, or stage the rename first."
+                    ).format(
+                        old=selected_change.old_path,
+                        new=selected_change.new_path,
+                    )
+                )
         if (
             file is None
             and line_ids is None
@@ -1247,13 +1365,16 @@ def _collect_text_file_discard_inputs(
     files_with_text_patches: set[str] = set()
 
     with acquire_unified_diff(
-        stream_git_diff(
+        stream_live_git_diff(
             base="HEAD",
             context_lines=get_context_lines(),
             paths=files,
         )
     ) as patches:
         for patch in patches:
+            if isinstance(patch, RenameChange):
+                continue
+
             if isinstance(patch, GitlinkChange):
                 exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
 
@@ -1500,15 +1621,20 @@ def _command_discard_file_to_batch(
         patches_to_discard = []
 
         with acquire_unified_diff(
-            stream_git_diff(
+            stream_live_git_diff(
                 base="HEAD",
                 context_lines=get_context_lines(),
                 paths=[file_path],
             )
         ) as patches:
             for patch in patches:
+                if isinstance(patch, RenameChange):
+                    continue
+
                 if isinstance(patch, GitlinkChange):
                     exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
+                if isinstance(patch, BinaryFileChange):
+                    continue
 
                 patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
 
@@ -1858,6 +1984,13 @@ def _command_discard_hunk_to_batch(
     except NoMoreHunks:
         print(_("No changes to process."), file=sys.stderr)
         return 0
+    if isinstance(selected_item, RenameChange):
+        exit_with_error(
+            _(
+                "Cannot discard rename '{old} -> {new}' to a batch yet. "
+                "Discard, skip, or stage the rename first."
+            ).format(old=selected_item.old_path, new=selected_item.new_path)
+        )
     if isinstance(selected_item, GitlinkChange):
         exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
     if isinstance(selected_item, BinaryFileChange):
@@ -1911,11 +2044,16 @@ def _command_discard_text_hunk_to_batch(
         if file_only:
             # Collect ALL hunks from this file
             with acquire_unified_diff(
-                stream_git_diff(context_lines=get_context_lines())
+                stream_live_git_diff(context_lines=get_context_lines())
             ) as patches:
                 for patch in patches:
+                    if isinstance(patch, RenameChange):
+                        continue
+
                     if isinstance(patch, GitlinkChange):
                         exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
+                    if isinstance(patch, BinaryFileChange):
+                        continue
 
                     if patch.new_path != file_path:
                         continue

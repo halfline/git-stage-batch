@@ -11,23 +11,27 @@ from ..core.diff_parser import write_snapshots_for_selected_file_path
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
+    compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
-from ..core.models import BinaryFileChange, GitlinkChange
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
     cache_binary_file_change,
     cache_file_as_single_hunk,
     cache_gitlink_change,
+    cache_rename_change,
     clear_selected_change_state_files,
     get_selected_change_file_path,
     mark_selected_change_cleared_by_file_list,
     render_binary_file_change,
     render_gitlink_change,
+    render_rename_change,
     render_file_as_single_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
+    stream_live_git_diff,
     write_selected_hunk_patch_lines,
     write_selected_change_kind,
 )
@@ -40,7 +44,12 @@ from ..data.line_state import convert_line_changes_to_serializable_dict, load_li
 from ..data.session import require_session_started
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..output import print_binary_file_change, print_gitlink_change, print_line_level_changes
+from ..output import (
+    print_binary_file_change,
+    print_gitlink_change,
+    print_line_level_changes,
+    print_rename_change,
+)
 from ..output.file_review import (
     build_file_review_model,
     make_file_review_state,
@@ -52,13 +61,14 @@ from ..output.file_review_list import (
     make_binary_file_review_list_entry,
     make_file_review_list_entry,
     make_gitlink_file_review_list_entry,
+    make_rename_file_review_list_entry,
     print_file_review_list,
 )
 from ..utils.file_io import (
     read_text_file_line_set,
     write_text_file_contents,
 )
-from ..utils.git import require_git_repository, stream_git_diff
+from ..utils.git import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
@@ -83,6 +93,7 @@ def command_show_file_list(files: list[str]) -> None:
     ensure_state_directory_exists()
 
     entries = []
+    seen_rename_hashes: set[str] = set()
     for file_path in files:
         line_changes = render_file_as_single_hunk(file_path)
         if line_changes is not None:
@@ -95,6 +106,13 @@ def command_show_file_list(files: list[str]) -> None:
         gitlink_change = render_gitlink_change(file_path)
         if gitlink_change is not None:
             entries.append(make_gitlink_file_review_list_entry(gitlink_change))
+            continue
+        rename_change = render_rename_change(file_path)
+        if rename_change is not None:
+            rename_hash = compute_rename_change_hash(rename_change)
+            if rename_hash not in seen_rename_hashes:
+                entries.append(make_rename_file_review_list_entry(rename_change))
+                seen_rename_hashes.add(rename_hash)
 
     if not entries:
         print(_("No reviewable changes in matched files."), file=sys.stderr)
@@ -151,6 +169,21 @@ def command_show(
             if preview_lines is None and binary_change is None else
             None
         )
+        rename_change = (
+            render_rename_change(target_file)
+            if preview_lines is None and binary_change is None and gitlink_change is None else
+            None
+        )
+        if rename_change is not None:
+            if page is not None:
+                exit_with_error(_("File review pages are only available for text changes."))
+            if selectable:
+                clear_last_file_review_state()
+                cache_rename_change(rename_change)
+            if porcelain:
+                return
+            print_rename_change(rename_change)
+            return
         if gitlink_change is not None:
             if page is not None:
                 exit_with_error(_("File review pages are only available for text changes."))
@@ -240,7 +273,7 @@ def command_show(
 
     # Stream diff and show first unblocked hunk
     with acquire_unified_diff(
-        stream_git_diff(
+        stream_live_git_diff(
             context_lines=get_context_lines(),
             full_index=True,
             ignore_submodules="none",
@@ -248,6 +281,16 @@ def command_show(
         )
     ) as patches:
         for patch in patches:
+            if isinstance(patch, RenameChange):
+                rename_hash = compute_rename_change_hash(patch)
+                if rename_hash not in blocked_hashes:
+                    cache_rename_change(patch)
+                    clear_last_file_review_state()
+                    if not porcelain:
+                        print_rename_change(patch)
+                    return
+                continue
+
             if isinstance(patch, GitlinkChange):
                 gitlink_hash = compute_gitlink_change_hash(patch)
                 if gitlink_hash not in blocked_hashes:
@@ -267,6 +310,13 @@ def command_show(
                         print_binary_file_change(patch)
                     return
                 continue
+
+            if patch.old_path != patch.new_path:
+                rename_hash = compute_rename_change_hash(
+                    RenameChange(old_path=patch.old_path, new_path=patch.new_path)
+                )
+                if rename_hash in blocked_hashes:
+                    continue
 
             patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
             if patch_hash not in blocked_hashes:

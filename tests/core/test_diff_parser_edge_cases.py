@@ -8,7 +8,7 @@ Tests for handling:
 - Mixed scenarios
 """
 
-from git_stage_batch.core.models import BinaryFileChange, GitlinkChange, SingleHunkPatch
+from git_stage_batch.core.models import BinaryFileChange, GitlinkChange, RenameChange, SingleHunkPatch
 
 from tests.diff_parser_helpers import collect_unified_diff
 
@@ -372,9 +372,11 @@ index abc1234..def5678 100644
 """
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        # Should parse other.txt (renamed file has no hunks)
-        assert len(patches) == 1
-        assert patches[0].new_path == "other.txt"
+        assert len(patches) == 2
+        assert isinstance(patches[0], RenameChange)
+        assert patches[0].old_path == "old_name.txt"
+        assert patches[0].new_path == "new_name.txt"
+        assert patches[1].new_path == "other.txt"
 
     def test_renamed_file_with_changes(self):
         """Renamed file with content changes."""
@@ -394,9 +396,12 @@ index abc1234..def5678 100644
 """
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        assert len(patches) == 1
+        assert len(patches) == 2
+        assert isinstance(patches[0], RenameChange)
         assert patches[0].old_path == "old_name.txt"
         assert patches[0].new_path == "new_name.txt"
+        assert patches[1].old_path == "old_name.txt"
+        assert patches[1].new_path == "new_name.txt"
 
 
 class TestModeChanges:
@@ -486,18 +491,21 @@ index ghi789..jkl012 100644
 
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        # Should parse files with hunks plus binary file and empty new file
-        # Expected: new_empty.txt (empty), image.png (binary), normal1.txt, normal2.txt
-        assert len(patches) == 4
+        # Should parse files with hunks plus binary file, rename, and empty new file
+        # Expected: new_empty.txt (empty), image.png (binary), old->new rename, normal1.txt, normal2.txt
+        assert len(patches) == 5
         assert isinstance(patches[0], SingleHunkPatch)
         assert patches[0].new_path == "new_empty.txt"
         assert isinstance(patches[1], BinaryFileChange)
         assert patches[1].new_path == "image.png"
         assert patches[1].change_type == "added"
-        assert isinstance(patches[2], SingleHunkPatch)
-        assert patches[2].new_path == "normal1.txt"
+        assert isinstance(patches[2], RenameChange)
+        assert patches[2].old_path == "old.txt"
+        assert patches[2].new_path == "new.txt"
         assert isinstance(patches[3], SingleHunkPatch)
-        assert patches[3].new_path == "normal2.txt"
+        assert patches[3].new_path == "normal1.txt"
+        assert isinstance(patches[4], SingleHunkPatch)
+        assert patches[4].new_path == "normal2.txt"
 
     def test_intent_to_add_files(self):
         """Files added with git add -N (intent-to-add)."""

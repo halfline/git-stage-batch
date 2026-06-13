@@ -1,13 +1,16 @@
-"""Tests for rename selections in live sessions."""
+"""Tests for start-time staged rename normalization."""
 
 import subprocess
 
 import pytest
 
+from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.core.models import RenameChange
-from git_stage_batch.data.hunk_tracking import load_selected_change
+from git_stage_batch.data.hunk_tracking import load_selected_change, show_selected_change
+from git_stage_batch.utils.paths import get_staged_renames_file_path
 
 
 @pytest.fixture
@@ -26,6 +29,12 @@ def rename_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=repo, capture_output=True)
 
     return repo
+
+
+def _stage_rename(repo, *, new_content: str = "line 1\nline 2\n") -> None:
+    (repo / "old.txt").rename(repo / "new.txt")
+    (repo / "new.txt").write_text(new_content)
+    subprocess.run(["git", "add", "-A"], check=True, cwd=repo, capture_output=True)
 
 
 def _rename_without_staging(repo, *, new_content: str = "line 1\nline 2\n") -> None:
@@ -63,6 +72,21 @@ def _index_content(repo, file_path: str) -> str:
     ).stdout
 
 
+def test_start_exposes_staged_rename_as_rename_selection(rename_repo, capsys):
+    _stage_rename(rename_repo)
+
+    command_start(quiet=True)
+    show_selected_change()
+
+    assert get_staged_renames_file_path().exists()
+    assert _cached_name_status(rename_repo) == ""
+    selected_change = load_selected_change()
+    assert isinstance(selected_change, RenameChange)
+    assert selected_change.old_path == "old.txt"
+    assert selected_change.new_path == "new.txt"
+    assert "old.txt -> new.txt" in capsys.readouterr().out
+
+
 def test_start_exposes_unstaged_rename_as_rename_selection(rename_repo):
     _rename_without_staging(rename_repo)
 
@@ -83,3 +107,45 @@ def test_include_selected_rename_stages_rename_only_and_leaves_edits_unstaged(re
     assert _cached_name_status(rename_repo).strip() == "R100\told.txt\tnew.txt"
     assert _index_content(rename_repo, "new.txt") == "line 1\nline 2\n"
     assert _uncached_name_status(rename_repo).strip() == "M\tnew.txt"
+
+
+def test_stop_restores_untouched_start_time_staged_rename(rename_repo):
+    _stage_rename(rename_repo)
+
+    command_start(quiet=True)
+    command_stop()
+
+    assert _cached_name_status(rename_repo).strip() == "R100\told.txt\tnew.txt"
+
+
+def test_stop_preserves_staged_rename_content_after_workflow_use(rename_repo):
+    _stage_rename(rename_repo)
+
+    command_start(quiet=True)
+    (rename_repo / "new.txt").write_text("line 1\nline 2\nline 3\n")
+    subprocess.run(["git", "add", "-A"], check=True, cwd=rename_repo, capture_output=True)
+    command_stop()
+
+    assert _cached_name_status(rename_repo).strip().startswith("R")
+    assert _index_content(rename_repo, "new.txt") == "line 1\nline 2\nline 3\n"
+
+
+def test_stop_does_not_restore_rename_paths_changed_by_session_commit(rename_repo):
+    _stage_rename(rename_repo)
+
+    command_start(quiet=True)
+    (rename_repo / "new.txt").write_text("line 1\nline 2\nline 3\n")
+    subprocess.run(["git", "add", "-A"], check=True, cwd=rename_repo, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Rename file"], check=True, cwd=rename_repo, capture_output=True)
+    command_stop()
+
+    assert _cached_name_status(rename_repo) == ""
+
+
+def test_abort_restores_start_time_staged_rename(rename_repo):
+    _stage_rename(rename_repo)
+
+    command_start(quiet=True)
+    command_abort()
+
+    assert _cached_name_status(rename_repo).strip() == "R100\told.txt\tnew.txt"

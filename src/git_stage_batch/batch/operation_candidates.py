@@ -152,9 +152,19 @@ def _presence_claim_payload(claim) -> dict:
 
 
 def _replacement_unit_payload(unit) -> dict:
+    origin = unit.origin
     return {
         "presence_lines": unit.presence_lines,
         "deletion_indices": unit.deletion_indices,
+        "origin": None if origin is None else {
+            "old_start": origin.old_start,
+            "old_end": origin.old_end,
+            "new_start": origin.new_start,
+            "new_end": origin.new_end,
+            "baseline_reference": _baseline_reference_payload(
+                origin.baseline_reference
+            ),
+        },
     }
 
 

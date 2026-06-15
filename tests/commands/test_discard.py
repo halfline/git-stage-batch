@@ -724,6 +724,15 @@ class TestCommandDiscardToBatch:
         assert captured.out.count("file.txt ::") == 1
         assert file_path.read_text() == "a\nB\n"
 
+        metadata = read_batch_metadata("test")
+        replacement_unit = metadata["files"]["file.txt"]["replacement_units"][0]
+        assert replacement_unit["presence_lines"] == ["1"]
+        assert replacement_unit["deletion_indices"] == [0]
+        assert replacement_unit["original_unit"]["old_start"] == 1
+        assert replacement_unit["original_unit"]["old_end"] == 2
+        assert replacement_unit["original_unit"]["new_start"] == 1
+        assert replacement_unit["original_unit"]["new_end"] == 2
+
         command_apply_from_batch("test")
 
         assert file_path.read_text() == "A\nB\n"

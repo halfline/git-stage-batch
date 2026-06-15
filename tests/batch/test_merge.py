@@ -28,6 +28,7 @@ from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
+    ReplacementUnitOrigin,
 )
 from git_stage_batch.utils.text import normalize_line_sequence_endings
 
@@ -84,6 +85,7 @@ def merge_batch(
     working_content: bytes,
     *,
     source_to_working_mapping=None,
+    resolution=None,
 ) -> bytes:
     """Return merged bytes through the buffer-returning production API."""
     with (
@@ -94,6 +96,7 @@ def merge_batch(
             ownership,
             working_lines,
             source_to_working_mapping=source_to_working_mapping,
+            resolution=resolution,
         ) as buffer,
     ):
         return buffer.to_bytes()
@@ -1074,6 +1077,261 @@ class TestMergeBatch:
         result = merge_batch(source, ownership, source)
 
         assert result == source
+
+    def test_split_replacement_origin_places_subunit_inside_parent_boundary(self):
+        """Parent replacement context constrains exact split-unit reapply."""
+        source = b"head\nnew1\nnew2\ntail\n"
+        working = b"head\nold1\nold2\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["3"],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old2\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"old1",
+                        before_line=4,
+                        before_content=b"tail",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                3: BaselineReference(
+                    after_line=2,
+                    after_content=b"old1",
+                    before_line=4,
+                    before_content=b"tail",
+                    has_before_line=True,
+                )
+            },
+            replacement_units=[
+                ReplacementUnit(
+                    presence_lines=["3"],
+                    deletion_indices=[0],
+                    origin=ReplacementUnitOrigin(
+                        old_start=2,
+                        old_end=3,
+                        new_start=2,
+                        new_end=3,
+                        baseline_reference=BaselineReference(
+                            after_line=1,
+                            after_content=b"head",
+                            before_line=4,
+                            before_content=b"tail",
+                            has_before_line=True,
+                        ),
+                    ),
+                )
+            ],
+        )
+
+        result = merge_batch(source, ownership, working)
+
+        assert result == b"head\nold1\nnew2\ntail\n"
+
+    def test_split_replacement_origin_places_subunit_in_hybrid_parent(self):
+        """Split units should reapply where unselected sibling lines remain new."""
+        source = b"head\nnew1\nnew2\ntail\n"
+        working = b"head\nnew1\nold2\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["3"],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old2\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"old1",
+                        before_line=4,
+                        before_content=b"tail",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                3: BaselineReference(
+                    after_line=2,
+                    after_content=b"old1",
+                    before_line=4,
+                    before_content=b"tail",
+                    has_before_line=True,
+                )
+            },
+            replacement_units=[
+                ReplacementUnit(
+                    presence_lines=["3"],
+                    deletion_indices=[0],
+                    origin=ReplacementUnitOrigin(
+                        old_start=2,
+                        old_end=3,
+                        new_start=2,
+                        new_end=3,
+                        baseline_reference=BaselineReference(
+                            after_line=1,
+                            after_content=b"head",
+                            before_line=4,
+                            before_content=b"tail",
+                            has_before_line=True,
+                        ),
+                    ),
+                )
+            ],
+        )
+
+        result = merge_batch(source, ownership, working)
+
+        assert result == b"head\nnew1\nnew2\ntail\n"
+
+    def test_split_replacement_origin_refuses_missing_parent_boundary(self):
+        """Split replacement units should fail rather than guess a new location."""
+        source = b"head\nnew1\nnew2\ntail\n"
+        working = b"head\nold2\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["3"],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old2\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"old1",
+                        before_line=4,
+                        before_content=b"tail",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                3: BaselineReference(
+                    after_line=2,
+                    after_content=b"old1",
+                    before_line=4,
+                    before_content=b"tail",
+                    has_before_line=True,
+                )
+            },
+            replacement_units=[
+                ReplacementUnit(
+                    presence_lines=["3"],
+                    deletion_indices=[0],
+                    origin=ReplacementUnitOrigin(
+                        old_start=2,
+                        old_end=3,
+                        new_start=2,
+                        new_end=3,
+                        baseline_reference=BaselineReference(
+                            after_line=1,
+                            after_content=b"head",
+                            before_line=4,
+                            before_content=b"tail",
+                            has_before_line=True,
+                        ),
+                    ),
+                )
+            ],
+        )
+
+        with pytest.raises(MergeError, match="original replacement boundary"):
+            merge_batch(source, ownership, working)
+
+        candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+            source.splitlines(keepends=True),
+            ownership,
+            working.splitlines(keepends=True),
+            max_candidates=10,
+        )
+
+        assert [candidate.summary for candidate in candidate_set.candidates] == [
+            "replace target lines 2 with source lines 3",
+        ]
+
+        result = merge_batch(
+            source,
+            ownership,
+            working,
+            resolution=candidate_set.candidates[0].resolution,
+        )
+
+        assert result == b"head\nnew2\ntail\n"
+
+    def test_split_replacement_origin_enumerates_ambiguous_placements(self):
+        """Missing parent context should use reviewed candidates, not guessing."""
+        source = b"head\nnew1\nnew2\ntail\n"
+        working = b"head\nold2\nmid\nold2\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["3"],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old2\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"old1",
+                        before_line=4,
+                        before_content=b"tail",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                3: BaselineReference(
+                    after_line=2,
+                    after_content=b"old1",
+                    before_line=4,
+                    before_content=b"tail",
+                    has_before_line=True,
+                )
+            },
+            replacement_units=[
+                ReplacementUnit(
+                    presence_lines=["3"],
+                    deletion_indices=[0],
+                    origin=ReplacementUnitOrigin(
+                        old_start=2,
+                        old_end=3,
+                        new_start=2,
+                        new_end=3,
+                        baseline_reference=BaselineReference(
+                            after_line=1,
+                            after_content=b"head",
+                            before_line=4,
+                            before_content=b"tail",
+                            has_before_line=True,
+                        ),
+                    ),
+                )
+            ],
+        )
+
+        with pytest.raises(MergeError, match="original replacement boundary"):
+            merge_batch(source, ownership, working)
+
+        candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+            source.splitlines(keepends=True),
+            ownership,
+            working.splitlines(keepends=True),
+            max_candidates=10,
+        )
+
+        assert [candidate.summary for candidate in candidate_set.candidates] == [
+            "replace target lines 2 with source lines 3",
+            "replace target lines 4 with source lines 3",
+        ]
+        first, second = candidate_set.candidates
+        assert merge_batch(
+            source,
+            ownership,
+            working,
+            resolution=first.resolution,
+        ) == b"head\nnew2\nmid\nold2\ntail\n"
+        assert merge_batch(
+            source,
+            ownership,
+            working,
+            resolution=second.resolution,
+        ) == b"head\nold2\nmid\nnew2\ntail\n"
 
     def test_baseline_referenced_independent_presence_and_absence(self):
         """Independent baseline-coordinate insertions and removals can compose."""

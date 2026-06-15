@@ -11,7 +11,13 @@ import git_stage_batch.commands.apply_from as apply_from_module
 import git_stage_batch.commands.include_from as include_from_module
 import git_stage_batch.commands.show_from as show_from_module
 from git_stage_batch.batch import create_batch
-from git_stage_batch.batch.ownership import AbsenceClaim, BatchOwnership
+from git_stage_batch.batch.ownership import (
+    AbsenceClaim,
+    BaselineReference,
+    BatchOwnership,
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 from git_stage_batch.batch.storage import add_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
@@ -113,6 +119,69 @@ def _create_displaced_absence_block_batch(repo):
     (repo / "file.txt").write_text(
         "a\ninsert\nx\ny\nz\nmid\nx\ny\nz\nb\n"
     )
+
+
+def _create_split_replacement_origin_batch(repo):
+    (repo / "file.txt").write_text("head\nnew1\nnew2\ntail\n")
+    subprocess.run(["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add split replacement source file"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    initialize_abort_state()
+    create_batch("split-origin")
+    add_file_to_batch(
+        "split-origin",
+        "file.txt",
+        BatchOwnership.from_presence_lines(
+            ["3"],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old2\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"old1",
+                        before_line=4,
+                        before_content=b"tail",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                3: BaselineReference(
+                    after_line=2,
+                    after_content=b"old1",
+                    before_line=4,
+                    before_content=b"tail",
+                    has_before_line=True,
+                )
+            },
+            replacement_units=[
+                ReplacementUnit(
+                    presence_lines=["3"],
+                    deletion_indices=[0],
+                    origin=ReplacementUnitOrigin(
+                        old_start=2,
+                        old_end=3,
+                        new_start=2,
+                        new_end=3,
+                        baseline_reference=BaselineReference(
+                            after_line=1,
+                            after_content=b"head",
+                            before_line=4,
+                            before_content=b"tail",
+                            has_before_line=True,
+                        ),
+                    ),
+                )
+            ],
+        ),
+        "100644",
+    )
+    (repo / "file.txt").write_text("head\nold2\nmid\nold2\ntail\n")
 
 
 def _candidate_state_has_file(batch_name, file_path):
@@ -233,6 +302,36 @@ def test_apply_candidate_can_run_from_overview(temp_git_repo, capsys):
     assert "delete target line" not in captured.err
     assert (temp_git_repo / "file.txt").read_text() == "a\ninsert\nmid\nx\nb\n"
     assert not _candidate_state_has_file("ambiguous", "file.txt")
+
+
+def test_split_replacement_origin_uses_apply_candidates(temp_git_repo, capsys):
+    """Unprovable split replacement placement should use reviewed candidates."""
+    _create_split_replacement_origin_batch(temp_git_repo)
+
+    with pytest.raises(CommandError) as exc_info:
+        command_apply_from_batch("split-origin")
+
+    assert "file.txt has 2 apply candidates" in exc_info.value.message
+    assert "git-stage-batch show --from split-origin:apply --file file.txt" in (
+        exc_info.value.message
+    )
+
+    command_show_from_batch("split-origin:apply", file="file.txt")
+
+    overview = capsys.readouterr()
+    assert "file.txt  ·  split-origin  ·  apply candidates  ·  2 choices" in (
+        overview.out
+    )
+    assert "Candidate 1/2" in overview.out
+    assert "Candidate 2/2" in overview.out
+    assert _candidate_state_has_file("split-origin", "file.txt")
+
+    command_apply_from_batch("split-origin:apply:2", file="file.txt")
+
+    captured = capsys.readouterr()
+    assert "Applied candidate 2 of 2 from batch 'split-origin'" in captured.err
+    assert (temp_git_repo / "file.txt").read_text() == "head\nold2\nmid\nnew2\ntail\n"
+    assert not _candidate_state_has_file("split-origin", "file.txt")
 
 
 def test_candidate_preview_allows_equivalent_line_selection_spelling(

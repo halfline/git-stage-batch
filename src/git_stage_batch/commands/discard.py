@@ -25,6 +25,7 @@ from ..batch.ownership import (
     BatchOwnership,
     _advance_source_lines_preserving_existing_presence,
     _remap_batch_ownership_with_lineage,
+    derive_replacement_line_runs_from_lines,
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
 )
@@ -91,6 +92,7 @@ from ..data.undo import undo_checkpoint
 from ..editor import (
     EditorBuffer,
     load_git_object_as_buffer,
+    load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
     write_buffer_to_path,
 )
@@ -1011,6 +1013,18 @@ def command_discard_line_as_to_batch(
         finish_review_scoped_line_action(review_state, file_path=target_file)
 
 
+def _derive_live_replacement_line_runs(file_path: str):
+    """Derive file-level replacement runs for the current live file state."""
+    with (
+        load_git_object_as_buffer_or_empty(f"HEAD:{file_path}") as baseline_lines,
+        load_working_tree_file_as_buffer(file_path) as working_lines,
+    ):
+        return derive_replacement_line_runs_from_lines(
+            old_file_lines=baseline_lines,
+            new_file_lines=working_lines,
+        )
+
+
 def _command_discard_lines_to_batch_as(
     batch_name: str,
     line_id_specification: str,
@@ -1804,6 +1818,7 @@ def _command_discard_file_lines_to_batch(
 
     metadata = read_batch_metadata(batch_name)
     file_metadata = metadata.get("files", {}).get(file_path)
+    replacement_line_runs = _derive_live_replacement_line_runs(file_path)
 
     with ExitStack() as ownership_stack:
         try:
@@ -1813,6 +1828,8 @@ def _command_discard_file_lines_to_batch(
                     file_path=file_path,
                     file_metadata=file_metadata,
                     selected_lines=selected_lines,
+                    hunk_lines=line_changes.lines,
+                    replacement_line_runs=replacement_line_runs,
                 )
             )
         except ValueError as e:
@@ -1897,6 +1914,7 @@ def _command_discard_lines_to_batch(
 
     metadata = read_batch_metadata(batch_name)
     file_metadata = metadata.get("files", {}).get(line_changes.path)
+    replacement_line_runs = _derive_live_replacement_line_runs(line_changes.path)
 
     file_mode = _detect_file_mode(line_changes.path)
 
@@ -1908,6 +1926,8 @@ def _command_discard_lines_to_batch(
                     file_path=line_changes.path,
                     file_metadata=file_metadata,
                     selected_lines=selected_lines,
+                    hunk_lines=line_changes.lines,
+                    replacement_line_runs=replacement_line_runs,
                 )
             )
         except ValueError as e:

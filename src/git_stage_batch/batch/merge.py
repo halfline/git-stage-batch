@@ -1951,6 +1951,22 @@ def _presence_ambiguity_key(
     )
 
 
+def _replacement_origin_ambiguity_key(
+    unit_index: int,
+    deletion_index: int,
+    origin,
+    claimed_lines: Sequence[int],
+    forbidden_sequence: Sequence[bytes],
+) -> str:
+    claimed = ",".join(str(line) for line in claimed_lines)
+    digest = hashlib.sha256(b"".join(forbidden_sequence)).hexdigest()[:12]
+    return (
+        f"replacement-origin:{unit_index}:delete:{deletion_index}:"
+        f"claimed:{claimed}:old:{origin.old_start}-{origin.old_end}:"
+        f"new:{origin.new_start}-{origin.new_end}:{digest}"
+    )
+
+
 def _presence_choices_for_missing_claimed_run(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -2033,6 +2049,14 @@ class _PresenceChoice:
     target_before_line: int | None
 
 
+@dataclass(frozen=True)
+class _ReplacementOriginChoice:
+    choice_index: int
+    position: int
+    target_after_line: int | None
+    target_before_line: int | None
+
+
 def _presence_ambiguity_target_line_range(
     choices: Sequence[_PresenceChoice],
     target_line_count: int,
@@ -2105,6 +2129,65 @@ def _absence_choices_for_claim(
             )
         )
     return tuple(choices)
+
+
+def _replacement_origin_choices_for_unit(
+    claim: 'AbsenceClaim',
+    unit_index: int,
+    unit,
+    claimed_lines: Sequence[int],
+    working_lines: Sequence[bytes],
+    *,
+    max_results: int | None = None,
+) -> tuple[str | None, tuple[_ReplacementOriginChoice, ...]]:
+    """Return explicit target placements for an origin-tracked replacement."""
+    origin = getattr(unit, "origin", None)
+    if origin is None or not claim.content_lines:
+        return None, ()
+
+    forbidden_sequence = [
+        normalize_line_endings(line)
+        for line in claim.content_lines
+    ]
+    if not forbidden_sequence:
+        return None, ()
+    if len(forbidden_sequence) > len(working_lines):
+        return None, ()
+
+    choices: list[_ReplacementOriginChoice] = []
+    for position in range(0, len(working_lines) - len(forbidden_sequence) + 1):
+        if not _line_slice_equals(working_lines, position, forbidden_sequence):
+            continue
+        choices.append(
+            _ReplacementOriginChoice(
+                choice_index=len(choices) + 1,
+                position=position,
+                target_after_line=None if position == 0 else position,
+                target_before_line=(
+                    None
+                    if position + len(forbidden_sequence) >= len(working_lines) else
+                    position + len(forbidden_sequence) + 1
+                ),
+            )
+        )
+        if max_results is not None and len(choices) >= max_results:
+            break
+
+    if not choices:
+        return None, ()
+
+    deletion_indices = getattr(unit, "deletion_indices", [])
+    if len(deletion_indices) != 1:
+        return None, ()
+
+    key = _replacement_origin_ambiguity_key(
+        unit_index,
+        deletion_indices[0],
+        origin,
+        claimed_lines,
+        forbidden_sequence,
+    )
+    return key, tuple(choices)
 
 
 def _suppress_absence_with_resolution(
@@ -2541,6 +2624,188 @@ def _baseline_removal_edit(
     return position, position + len(forbidden_sequence), []
 
 
+def _replacement_origin_absence_bounds(
+    origin,
+    working_lines: Sequence[bytes],
+) -> tuple[int, int] | None:
+    """Return the target bounds of an original replacement parent, if provable."""
+    if origin is None or getattr(origin, "baseline_reference", None) is None:
+        return None
+    old_line_count = getattr(origin, "old_line_count", None)
+    if type(old_line_count) is not int or old_line_count <= 0:
+        return None
+
+    position = _baseline_reference_absence_position(
+        origin.baseline_reference,
+        working_lines,
+        old_line_count,
+    )
+    if position is None:
+        return None
+    return position, position + old_line_count
+
+
+def _replacement_edit_with_origin_guard(
+    claim: 'AbsenceClaim',
+    origin,
+    working_lines: Sequence[bytes],
+) -> _BaselineLineEdit | None:
+    """Return a removal edit only if it fits inside the original parent unit."""
+    removal_edit = _baseline_removal_edit(claim, working_lines)
+    if removal_edit is None:
+        return None
+
+    if origin is None:
+        return removal_edit
+
+    parent_bounds = _replacement_origin_absence_bounds(origin, working_lines)
+    if parent_bounds is None:
+        return None
+
+    start, end, replacement_lines = removal_edit
+    parent_start, parent_end = parent_bounds
+    if start < parent_start or end > parent_end:
+        return None
+    return start, end, replacement_lines
+
+
+def _replacement_edit_from_parent_offset(
+    claim: 'AbsenceClaim',
+    origin,
+    claimed_lines: Sequence[int],
+    working_lines: Sequence[bytes],
+) -> _BaselineLineEdit | None:
+    """Place an equal-size split replacement by offset inside its parent."""
+    if origin is None or not claim.content_lines:
+        return None
+
+    old_line_count = getattr(origin, "old_line_count", None)
+    new_start = getattr(origin, "new_start", None)
+    new_end = getattr(origin, "new_end", None)
+    if (
+        type(old_line_count) is not int
+        or type(new_start) is not int
+        or type(new_end) is not int
+        or old_line_count <= 0
+        or new_end < new_start
+    ):
+        return None
+
+    new_line_count = new_end - new_start + 1
+    if old_line_count != new_line_count:
+        return None
+
+    relative_offsets = [
+        claimed_line - new_start
+        for claimed_line in sorted(claimed_lines)
+    ]
+    if (
+        not relative_offsets
+        or relative_offsets[0] < 0
+        or relative_offsets[-1] >= new_line_count
+    ):
+        return None
+    if relative_offsets != list(
+        range(relative_offsets[0], relative_offsets[0] + len(relative_offsets))
+    ):
+        return None
+
+    forbidden_sequence = [
+        normalize_line_endings(line)
+        for line in claim.content_lines
+    ]
+    if len(forbidden_sequence) != len(relative_offsets):
+        return None
+
+    parent_bounds = _replacement_origin_absence_bounds(origin, working_lines)
+    if parent_bounds is None:
+        return None
+
+    parent_start, parent_end = parent_bounds
+    start = parent_start + relative_offsets[0]
+    end = start + len(forbidden_sequence)
+    if start < parent_start or end > parent_end:
+        return None
+    if not _line_slice_equals(working_lines, start, forbidden_sequence):
+        return None
+    return start, end, []
+
+
+def _replacement_edit_from_origin_resolution(
+    claim: 'AbsenceClaim',
+    unit_index: int,
+    unit,
+    claimed_lines: Sequence[int],
+    working_lines: Sequence[bytes],
+    resolution: MergeResolution | None,
+) -> _BaselineLineEdit | None:
+    """Return a replacement edit from a reviewed origin-placement choice."""
+    if resolution is None:
+        return None
+
+    key, choices = _replacement_origin_choices_for_unit(
+        claim,
+        unit_index,
+        unit,
+        claimed_lines,
+        working_lines,
+        max_results=_MERGE_CANDIDATE_CAP + 1,
+    )
+    if key is None or key not in resolution.decisions:
+        return None
+
+    choice_index = resolution.decisions[key]
+    forbidden_sequence = [
+        normalize_line_endings(line)
+        for line in claim.content_lines
+    ]
+    for choice in choices:
+        if choice.choice_index == choice_index:
+            return (
+                choice.position,
+                choice.position + len(forbidden_sequence),
+                [],
+            )
+
+    raise MergeError(_("Selected merge resolution is no longer valid"))
+
+
+def _replacement_baseline_edit(
+    claim: 'AbsenceClaim',
+    unit_index: int,
+    unit,
+    claimed_lines: Sequence[int],
+    working_lines: Sequence[bytes],
+    resolution: MergeResolution | None,
+) -> _BaselineLineEdit | None:
+    origin = getattr(unit, "origin", None)
+    offset_edit = _replacement_edit_from_parent_offset(
+        claim,
+        origin,
+        claimed_lines,
+        working_lines,
+    )
+    if offset_edit is not None:
+        return offset_edit
+
+    guarded_edit = _replacement_edit_with_origin_guard(
+        claim,
+        origin,
+        working_lines,
+    )
+    if guarded_edit is not None:
+        return guarded_edit
+
+    return _replacement_edit_from_origin_resolution(
+        claim,
+        unit_index,
+        unit,
+        claimed_lines,
+        working_lines,
+        resolution,
+    )
+
+
 def _apply_non_overlapping_baseline_edits(
     working_lines: Sequence[bytes],
     edits: list[_BaselineLineEdit],
@@ -2593,6 +2858,8 @@ def _try_apply_baseline_replacement_units(
     ownership: 'BatchOwnership',
     presence_line_set: LineSelection,
     deletion_claims: list['AbsenceClaim'],
+    *,
+    resolution: MergeResolution | None = None,
 ) -> Iterator[bytes] | None:
     """Apply baseline-coordinate edits when structural source anchors fail.
 
@@ -2620,7 +2887,7 @@ def _try_apply_baseline_replacement_units(
     unit_claimed_lines = LineRanges.empty()
     unit_deletion_indices: set[int] = set()
 
-    for unit in replacement_units:
+    for unit_index, unit in enumerate(replacement_units):
         claimed_selection = LineRanges.from_specs(unit.presence_lines)
         claimed_lines = list(claimed_selection)
         if not claimed_lines or len(unit.deletion_indices) != 1:
@@ -2635,9 +2902,13 @@ def _try_apply_baseline_replacement_units(
                 return None
             replacement_lines.append(source_lines[claimed_line - 1])
 
-        removal_edit = _baseline_removal_edit(
+        removal_edit = _replacement_baseline_edit(
             deletion_claims[deletion_index],
+            unit_index,
+            unit,
+            claimed_lines,
             working_lines,
+            resolution,
         )
         if removal_edit is None:
             return None
@@ -2688,6 +2959,152 @@ def _try_apply_baseline_replacement_units(
         return None
 
     return _apply_non_overlapping_baseline_edits(working_lines, edits)
+
+
+def _has_missing_origin_replacement_claims(
+    ownership: 'BatchOwnership',
+    presence_line_set: LineSelection,
+    source_lines: Sequence[bytes],
+    mapping: LineMapping,
+) -> bool:
+    """Return whether parent-tracked replacement lines would need placement."""
+    selected_presence = _as_line_ranges(presence_line_set)
+    for unit in getattr(ownership, "replacement_units", []):
+        if getattr(unit, "origin", None) is None:
+            continue
+        claimed_selection = LineRanges.from_specs(unit.presence_lines)
+        for claimed_line in selected_presence.intersection(claimed_selection):
+            if claimed_line < 1 or claimed_line > len(source_lines):
+                continue
+            if mapping.get_target_line_from_source_line(claimed_line) is None:
+                return True
+    return False
+
+
+def _replacement_origin_candidate_set(
+    source_lines: Sequence[bytes],
+    ownership: 'BatchOwnership',
+    working_lines: Sequence[bytes],
+    presence_line_set: LineSelection,
+    deletion_claims: list['AbsenceClaim'],
+    *,
+    max_candidates: int,
+) -> MergeCandidateSet:
+    """Enumerate reviewed placements for one unresolved split replacement."""
+    owned_mapping = match_lines(source_lines, working_lines)
+    try:
+        selected_presence = _as_line_ranges(presence_line_set)
+        unresolved: list[tuple[list[int], int, str, tuple[_ReplacementOriginChoice, ...]]] = []
+        for unit_index, unit in enumerate(getattr(ownership, "replacement_units", [])):
+            if getattr(unit, "origin", None) is None:
+                continue
+
+            claimed_selection = LineRanges.from_specs(unit.presence_lines)
+            claimed_lines = list(selected_presence.intersection(claimed_selection))
+            if not claimed_lines:
+                continue
+            if all(
+                1 <= claimed_line <= len(source_lines)
+                and owned_mapping.get_target_line_from_source_line(claimed_line) is not None
+                for claimed_line in claimed_lines
+            ):
+                continue
+            if len(unit.deletion_indices) != 1:
+                raise MergeError(_("Batch was created from a different version of the file"))
+
+            deletion_index = unit.deletion_indices[0]
+            if deletion_index < 0 or deletion_index >= len(deletion_claims):
+                raise MergeError(_("Batch was created from a different version of the file"))
+            key, choices = _replacement_origin_choices_for_unit(
+                deletion_claims[deletion_index],
+                unit_index,
+                unit,
+                claimed_lines,
+                working_lines,
+                max_results=max_candidates + 1,
+            )
+            if key is None:
+                continue
+            unresolved.append((claimed_lines, deletion_index, key, choices))
+    finally:
+        owned_mapping.close()
+
+    if not unresolved:
+        return MergeCandidateSet(())
+    if len(unresolved) > 1:
+        raise MergeError(_("Multiple split replacement placements need review"))
+
+    claimed_lines, deletion_index, key, choices = unresolved[0]
+    if len(choices) > max_candidates:
+        raise MergeError(_("Too many merge candidates to preview safely"))
+
+    valid_choices: list[_ReplacementOriginChoice] = []
+    for choice in choices:
+        resolution = MergeResolution({key: choice.choice_index})
+        try:
+            for _chunk in _merge_batch_acquired_line_chunks(
+                source_lines,
+                ownership,
+                working_lines,
+                resolution=resolution,
+            ):
+                pass
+        except MergeError:
+            continue
+        valid_choices.append(choice)
+
+    if not valid_choices:
+        return MergeCandidateSet(())
+
+    count = len(valid_choices)
+    claim = deletion_claims[deletion_index]
+    line_count = len(claim.content_lines)
+    source_start = min(claimed_lines)
+    source_end = max(claimed_lines)
+    ambiguity_target_line_range = (
+        min(choice.position + 1 for choice in valid_choices),
+        max(choice.position + line_count for choice in valid_choices),
+    )
+    candidates: list[MergeCandidate] = []
+    for ordinal, choice in enumerate(valid_choices, start=1):
+        target_start = choice.position + 1
+        target_end = choice.position + line_count
+        source_range = (
+            str(source_start)
+            if source_start == source_end else
+            f"{source_start}-{source_end}"
+        )
+        target_range = (
+            str(target_start)
+            if target_start == target_end else
+            f"{target_start}-{target_end}"
+        )
+        summary = _(
+            "replace target lines {target} with source lines {source}"
+        ).format(target=target_range, source=source_range)
+        candidates.append(
+            MergeCandidate(
+                ordinal=ordinal,
+                count=count,
+                decisions=(
+                    MergeResolutionDecision(
+                        ambiguity_key=key,
+                        choice_index=choice.choice_index,
+                        choice_label=summary,
+                    ),
+                ),
+                summary=summary,
+                source_line_range=(source_start, source_end),
+                target_after_line=choice.target_after_line,
+                target_before_line=choice.target_before_line,
+                explanation=_(
+                    "original replacement boundary is not present; "
+                    "selected replacement content has multiple compatible placements"
+                ),
+                ambiguity_target_line_range=ambiguity_target_line_range,
+            )
+        )
+    return MergeCandidateSet(tuple(candidates))
 
 
 def merge_batch_from_line_sequences_as_buffer(
@@ -2785,6 +3202,7 @@ def _merge_batch_acquired_line_chunks(
         ownership,
         presence_line_set,
         deletion_claims,
+        resolution=resolution,
     )
     if fallback_chunks is not None:
         yield from _byte_chunks(fallback_chunks)
@@ -2796,6 +3214,19 @@ def _merge_batch_acquired_line_chunks(
         owned_mapping = match_lines(source_lines, working_lines)
         mapping = owned_mapping
     try:
+        if _has_missing_origin_replacement_claims(
+            ownership,
+            presence_line_set,
+            source_lines,
+            mapping,
+        ):
+            raise MergeError(
+                _(
+                    "Cannot reliably place split replacement: original replacement "
+                    "boundary is not present"
+                )
+            )
+
         try:
             _check_structural_validity(
                 mapping,
@@ -2823,6 +3254,7 @@ def _merge_batch_acquired_line_chunks(
             ownership,
             presence_line_set,
             deletion_claims,
+            resolution=resolution,
         )
         if fallback_chunks is not None:
             yield from _byte_chunks(fallback_chunks)
@@ -2886,6 +3318,17 @@ def _enumerate_merge_batch_candidates_acquired(
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
+
+    replacement_candidates = _replacement_origin_candidate_set(
+        source_lines,
+        ownership,
+        working_lines,
+        presence_line_set,
+        deletion_claims,
+        max_candidates=max_candidates,
+    )
+    if replacement_candidates.candidates:
+        return replacement_candidates
 
     presence_mapping = match_lines(source_lines, working_lines)
     try:

@@ -22,9 +22,11 @@ from .lineage import _BatchSourceLineage
 from .match import match_lines
 from .ownership import (
     BatchOwnership,
+    ReplacementLineRun,
     advance_batch_source_for_file_with_provenance,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
+    translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
 )
 
@@ -372,12 +374,62 @@ def _refresh_selected_lines_against_source_lines(
         if mapping is not None:
             mapping.close()
 
+
+def _merge_refreshed_selected_lines_into_hunk(
+    hunk_lines: Sequence[LineEntry],
+    selected_lines: Sequence[LineEntry],
+) -> list[LineEntry]:
+    """Return full hunk lines with refreshed selected-line coordinates."""
+    selected_by_id = {
+        line.id: line
+        for line in selected_lines
+        if line.id is not None
+    }
+    if not selected_by_id:
+        return list(hunk_lines)
+
+    return [
+        selected_by_id.get(line.id, line)
+        if line.id is not None else
+        line
+        for line in hunk_lines
+    ]
+
+
+def _translate_selection_to_batch_ownership(
+    selected_lines: list,
+    *,
+    hunk_lines: Sequence[LineEntry] | None = None,
+    replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
+) -> BatchOwnership:
+    """Translate a selection, using full-hunk replacement context when available."""
+    selected_ids = {
+        line.id
+        for line in selected_lines
+        if line.id is not None
+    }
+    if hunk_lines is not None and replacement_line_runs is not None and selected_ids:
+        return translate_hunk_selection_to_batch_ownership(
+            _merge_refreshed_selected_lines_into_hunk(
+                hunk_lines,
+                selected_lines,
+            ),
+            selected_ids,
+            replacement_line_runs=list(replacement_line_runs),
+        )
+
+    return translate_lines_to_batch_ownership(selected_lines)
+
+
 def prepare_batch_ownership_update_for_selection(
     batch_name: str,
     file_path: str,
     current_batch_source_commit: str | None,
     existing_ownership: BatchOwnership | None,
     selected_lines: list,
+    *,
+    hunk_lines: Sequence[LineEntry] | None = None,
+    replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
 ) -> PreparedBatchUpdate:
     """Prepare complete ownership update for batch file, handling stale sources.
 
@@ -414,7 +466,11 @@ def prepare_batch_ownership_update_for_selection(
     )
 
     # Step 2: Translate selected lines to new ownership
-    new_ownership = translate_lines_to_batch_ownership(refreshed.selected_lines)
+    new_ownership = _translate_selection_to_batch_ownership(
+        refreshed.selected_lines,
+        hunk_lines=hunk_lines,
+        replacement_line_runs=replacement_line_runs,
+    )
 
     # Step 3: Merge with existing ownership
     if refreshed.ownership:
@@ -437,6 +493,8 @@ def acquire_batch_ownership_update_for_selection(
     file_path: str,
     file_metadata: dict | None,
     selected_lines: list,
+    hunk_lines: Sequence[LineEntry] | None = None,
+    replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
 ) -> Iterator[PreparedBatchUpdate]:
     """Acquire existing ownership metadata while preparing a batch update.
 
@@ -450,6 +508,8 @@ def acquire_batch_ownership_update_for_selection(
             current_batch_source_commit=None,
             existing_ownership=None,
             selected_lines=selected_lines,
+            hunk_lines=hunk_lines,
+            replacement_line_runs=replacement_line_runs,
         )
         return
 
@@ -460,4 +520,6 @@ def acquire_batch_ownership_update_for_selection(
             current_batch_source_commit=file_metadata.get("batch_source_commit"),
             existing_ownership=existing_ownership,
             selected_lines=selected_lines,
+            hunk_lines=hunk_lines,
+            replacement_line_runs=replacement_line_runs,
         )

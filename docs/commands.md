@@ -809,9 +809,11 @@ assistant can discover them automatically.
   - For `codex-skills`, this also replaces the bundled repo-local Codex config
 
 Bundled assets currently include the Claude agent
-`commit-message-drafter` plus the Claude skills
-`commit-staged-changes` and `commit-unstaged-changes`, and the Codex skills
-`commit-staged-changes` and `commit-unstaged-changes`.
+`commit-message-drafter`, Claude decomposition agents, the Claude skills
+`commit-staged-changes`, `commit-unstaged-changes`, and
+`decompose-and-commit-unstaged-changes`, and the Codex skills
+`commit-staged-changes`, `commit-unstaged-changes`, and
+`decompose-and-commit-unstaged-changes`.
 
 Installing `codex-skills` also writes the shared internal drafter brief at
 `.agents/internal/commit-message-drafter.md`.

@@ -107,6 +107,16 @@ class TestWheelContents:
             for f in files
         ), "Missing bundled staged Claude skill asset"
 
+    def test_wheel_contains_claude_decompose_skill_asset(self, build_wheel):
+        """Test that wheel contains the bundled decompose Claude skill asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/claude-skills/decompose-and-commit-unstaged-changes/SKILL.md' in f
+            for f in files
+        ), "Missing bundled decompose Claude skill asset"
+
     def test_wheel_contains_claude_agent_asset(self, build_wheel):
         """Test that wheel contains the bundled Claude agent asset."""
         with zipfile.ZipFile(build_wheel, 'r') as whl:
@@ -116,6 +126,16 @@ class TestWheelContents:
             'git_stage_batch/assets/claude-agents/commit-message-drafter.md' in f
             for f in files
         ), "Missing bundled Claude agent asset"
+
+    def test_wheel_contains_claude_decompose_agent_asset(self, build_wheel):
+        """Test that wheel contains the bundled decompose Claude agent asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/claude-agents/decompose-rebuilder.md' in f
+            for f in files
+        ), "Missing bundled decompose Claude agent asset"
 
     def test_wheel_contains_codex_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled Codex skill asset."""
@@ -147,6 +167,16 @@ class TestWheelContents:
             for f in files
         ), "Missing bundled staged Codex skill asset"
 
+    def test_wheel_contains_codex_decompose_skill_asset(self, build_wheel):
+        """Test that wheel contains the bundled decompose Codex skill asset."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/codex-skills/decompose-and-commit-unstaged-changes/SKILL.md' in f
+            for f in files
+        ), "Missing bundled decompose Codex skill asset"
+
     def test_wheel_contains_codex_staged_openai_yaml_asset(self, build_wheel):
         """Test that wheel contains the staged Codex UI metadata asset."""
         with zipfile.ZipFile(build_wheel, 'r') as whl:
@@ -156,6 +186,20 @@ class TestWheelContents:
             'git_stage_batch/assets/codex-skills/commit-staged-changes/agents/openai.yaml' in f
             for f in files
         ), "Missing bundled staged Codex UI metadata asset"
+
+    def test_wheel_contains_codex_decompose_reference_asset(self, build_wheel):
+        """Test that wheel contains the decompose Codex reference assets."""
+        with zipfile.ZipFile(build_wheel, 'r') as whl:
+            files = whl.namelist()
+
+        assert any(
+            'git_stage_batch/assets/codex-skills/decompose-and-commit-unstaged-changes/references/decompose-rebuilder.md' in f
+            for f in files
+        ), "Missing bundled decompose Codex reference asset"
+        assert any(
+            'git_stage_batch/assets/codex-skills/decompose-and-commit-unstaged-changes/agents/openai.yaml' in f
+            for f in files
+        ), "Missing bundled decompose Codex UI metadata asset"
 
     def test_wheel_contains_codex_config_asset(self, build_wheel):
         """Test that wheel contains the bundled Codex config asset."""

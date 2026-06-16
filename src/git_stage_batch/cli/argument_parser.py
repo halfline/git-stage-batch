@@ -821,6 +821,19 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Output JSON for scripting instead of human-readable text"),
     )
     parser_show.add_argument(
+        "--no-advance",
+        dest="advance",
+        action="store_false",
+        default=True,
+        help=_("Preview without selecting the shown change for later actions"),
+    )
+    parser_show.add_argument(
+        "--no-auto-advance",
+        dest="advance",
+        action="store_false",
+        help=argparse.SUPPRESS,
+    )
+    parser_show.add_argument(
         "--as",
         dest="as_text",
         metavar="TEXT",
@@ -871,6 +884,8 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             show_kwargs = {"page": args.page}
             if args.porcelain:
                 show_kwargs["porcelain"] = args.porcelain
+            if not args.advance:
+                show_kwargs["selectable"] = False
             if replacement_text is not None:
                 show_kwargs["replacement_text"] = replacement_text
             if resolved_file_scope.is_multiple:
@@ -898,15 +913,29 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if resolved_file_scope.is_multiple:
                 if args.line_ids:
                     raise CommandError(_("Cannot use --lines with multiple files."))
-                commands.command_show_file_list(list(resolved_file_scope.files))
+                show_list_kwargs = {}
+                if not args.advance:
+                    show_list_kwargs["selectable"] = False
+                commands.command_show_file_list(
+                    list(resolved_file_scope.files),
+                    **show_list_kwargs,
+                )
             else:
+                show_kwargs = {
+                    "file": resolved_file_scope.optional_file(),
+                    "page": args.page,
+                    "porcelain": args.porcelain,
+                }
+                if not args.advance:
+                    show_kwargs["selectable"] = False
                 commands.command_show(
-                    file=resolved_file_scope.optional_file(),
-                    page=args.page,
-                    porcelain=args.porcelain,
+                    **show_kwargs,
                 )
             return
-        commands.command_show(porcelain=args.porcelain)
+        show_kwargs = {"porcelain": args.porcelain}
+        if not args.advance:
+            show_kwargs["selectable"] = False
+        commands.command_show(**show_kwargs)
 
     parser_show.set_defaults(func=dispatch_show)
 

@@ -37,7 +37,7 @@ UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, Rename
 
 HUNK_HEADER_PATTERN = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
 INDEX_LINE_PATTERN = re.compile(br"^index ([0-9a-f]+)\.\.([0-9a-f]+)(?: ([0-7]+))?$")
-SUBPROJECT_COMMIT_PATTERN = re.compile(br"^([+-])Subproject commit ([0-9a-f]+)$")
+SUBPROJECT_COMMIT_PATTERN = re.compile(br"^([+-])Subproject commit ([0-9a-f]+)(?:-[^\s]+)?$")
 NULL_OBJECT_PREFIX = "0" * 7
 
 
@@ -466,6 +466,8 @@ class _UnifiedDiffParserBuildContext:
                         hunk_old_oid, hunk_new_oid = _consume_gitlink_hunks(next_line, peek_line)
                         old_oid = hunk_old_oid or _non_null_git_oid(index_old_oid)
                         new_oid = hunk_new_oid or _non_null_git_oid(index_new_oid)
+                        if old_oid is not None and old_oid == new_oid:
+                            continue
                         yield GitlinkChange(
                             old_path=_gitlink_old_path(old_path, old_oid or index_old_oid),
                             new_path=_gitlink_new_path(new_path, new_oid or index_new_oid),
@@ -509,6 +511,8 @@ class _UnifiedDiffParserBuildContext:
                             )
                         if subproject_oids is not None:
                             old_oid, new_oid = subproject_oids
+                            if old_oid is not None and old_oid == new_oid:
+                                continue
                             yield GitlinkChange(
                                 old_path=_gitlink_old_path(old_path, old_oid),
                                 new_path=_gitlink_new_path(new_path, new_oid),

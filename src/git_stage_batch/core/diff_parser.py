@@ -37,7 +37,7 @@ UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, Rename
 
 HUNK_HEADER_PATTERN = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
 INDEX_LINE_PATTERN = re.compile(br"^index ([0-9a-f]+)\.\.([0-9a-f]+)(?: ([0-7]+))?$")
-SUBPROJECT_COMMIT_PATTERN = re.compile(br"^[+-]Subproject commit ([0-9a-f]+)")
+SUBPROJECT_COMMIT_PATTERN = re.compile(br"^([+-])Subproject commit ([0-9a-f]+)(?:-[^\s]+)?$")
 NULL_OBJECT_PREFIX = "0" * 7
 
 
@@ -131,15 +131,45 @@ def _consume_gitlink_hunks(
             break
 
         next_line()
-        if next_l_stripped.startswith(b"-Subproject commit "):
-            match = SUBPROJECT_COMMIT_PATTERN.match(next_l_stripped)
-            if match is not None:
-                old_oid = match.group(1).decode("ascii")
-        elif next_l_stripped.startswith(b"+Subproject commit "):
-            match = SUBPROJECT_COMMIT_PATTERN.match(next_l_stripped)
-            if match is not None:
-                new_oid = match.group(1).decode("ascii")
+        match = SUBPROJECT_COMMIT_PATTERN.match(next_l_stripped)
+        if match is not None:
+            oid = match.group(2).decode("ascii")
+            if match.group(1) == b"-":
+                old_oid = oid
+            else:
+                new_oid = oid
 
+    return old_oid, new_oid
+
+
+def _gitlink_oids_from_subproject_commit_patch(
+    patch_lines: Iterable[bytes],
+) -> tuple[str | None, str | None] | None:
+    """Return gitlink oids when a patch only changes Subproject commit lines."""
+    old_oid = None
+    new_oid = None
+    changed_line_count = 0
+
+    for line in patch_lines:
+        stripped = line.rstrip(b"\n")
+        if stripped.startswith((b"--- ", b"+++ ", b"@@ ", b"\\ ")):
+            continue
+        if not stripped or stripped[0:1] not in (b"+", b"-"):
+            continue
+
+        changed_line_count += 1
+        match = SUBPROJECT_COMMIT_PATTERN.match(stripped)
+        if match is None:
+            return None
+
+        oid = match.group(2).decode("ascii")
+        if match.group(1) == b"-":
+            old_oid = oid
+        else:
+            new_oid = oid
+
+    if changed_line_count == 0:
+        return None
     return old_oid, new_oid
 
 
@@ -436,6 +466,8 @@ class _UnifiedDiffParserBuildContext:
                         hunk_old_oid, hunk_new_oid = _consume_gitlink_hunks(next_line, peek_line)
                         old_oid = hunk_old_oid or _non_null_git_oid(index_old_oid)
                         new_oid = hunk_new_oid or _non_null_git_oid(index_new_oid)
+                        if old_oid is not None and old_oid == new_oid:
+                            continue
                         yield GitlinkChange(
                             old_path=_gitlink_old_path(old_path, old_oid or index_old_oid),
                             new_path=_gitlink_new_path(new_path, new_oid or index_new_oid),
@@ -466,15 +498,39 @@ class _UnifiedDiffParserBuildContext:
                         # Consume the hunk header
                         next_line()
 
+                        patch_lines: Iterable[bytes] = hunk_line_chunks(
+                            old_file_line,
+                            new_file_line,
+                            hunk_header_stripped,
+                        )
+                        subproject_oids = None
+                        if not is_gitlink and not metadata_lines:
+                            patch_lines = list(patch_lines)
+                            subproject_oids = _gitlink_oids_from_subproject_commit_patch(
+                                patch_lines
+                            )
+                        if subproject_oids is not None:
+                            old_oid, new_oid = subproject_oids
+                            if old_oid is not None and old_oid == new_oid:
+                                continue
+                            yield GitlinkChange(
+                                old_path=_gitlink_old_path(old_path, old_oid),
+                                new_path=_gitlink_new_path(new_path, new_oid),
+                                old_oid=old_oid,
+                                new_oid=new_oid,
+                                change_type=_gitlink_change_type(
+                                    metadata_lines,
+                                    old_oid,
+                                    new_oid,
+                                ),
+                            )
+                            continue
+
                         # Yield this hunk immediately
                         yield self._build_single_hunk_patch(
                             old_path=old_path,
                             new_path=new_path,
-                            lines=hunk_line_chunks(
-                                old_file_line,
-                                new_file_line,
-                                hunk_header_stripped,
-                            ),
+                            lines=patch_lines,
                         )
 
                     # If we got --- and +++ but no hunks, check if it's an empty new file

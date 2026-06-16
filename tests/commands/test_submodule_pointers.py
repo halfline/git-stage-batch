@@ -126,6 +126,38 @@ def untracked_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 @pytest.fixture
+def dirty_only_submodule_with_file_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Create a superproject with a file edit and a dirty submodule worktree."""
+    repo = tmp_path / "repo"
+    submodule = repo / "sub"
+    repo.mkdir()
+
+    _run(["git", "init"], cwd=repo)
+    _configure_identity(repo)
+
+    (repo / "README.md").write_text("base\n")
+    _run(["git", "add", "README.md"], cwd=repo)
+    _run(["git", "commit", "-m", "Add readme"], cwd=repo)
+
+    submodule.mkdir()
+    _run(["git", "init"], cwd=submodule)
+    _configure_identity(submodule)
+    (submodule / "file.txt").write_text("sub\n")
+    _run(["git", "add", "file.txt"], cwd=submodule)
+    _run(["git", "commit", "-m", "Add sub file"], cwd=submodule)
+    sub_oid = _git_stdout(["rev-parse", "HEAD"], cwd=submodule)
+
+    _run(["git", "update-index", "--add", "--cacheinfo", "160000", sub_oid, "sub"], cwd=repo)
+    _run(["git", "commit", "-m", "Add submodule pointer"], cwd=repo)
+
+    (repo / "README.md").write_text("base\nchange\n")
+    (submodule / "dirty.txt").write_text("dirty\n")
+    monkeypatch.chdir(repo)
+
+    return repo
+
+
+@pytest.fixture
 def deleted_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
     """Create a superproject with a deleted submodule pointer."""
     repo = tmp_path / "repo"
@@ -201,6 +233,23 @@ def test_start_auto_adds_untracked_submodule_pointer(
     assert get_selected_change_file_path() == "sub"
     assert _git_stdout(["ls-files", "--stage", "--", "sub"], cwd=repo) == (
         f"160000 {EMPTY_BLOB_HASH} 0\tsub"
+    )
+
+
+def test_include_file_auto_advance_ignores_dirty_only_submodule(
+    dirty_only_submodule_with_file_repo: Path,
+) -> None:
+    """File include should not crash when the next diff is a dirty submodule."""
+    repo = dirty_only_submodule_with_file_repo
+
+    command_start(quiet=True)
+    command_include_file("README.md", quiet=True)
+
+    assert "+change" in _git_stdout(["diff", "--cached", "--", "README.md"], cwd=repo)
+    assert read_selected_change_kind() is None
+    assert "Subproject commit" in _git_stdout(
+        ["diff", "--ignore-submodules=none", "--submodule=short", "--", "sub"],
+        cwd=repo,
     )
 
 

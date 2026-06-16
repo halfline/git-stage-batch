@@ -1,0 +1,4 @@
+interface:
+  display_name: "Decompose and Commit Unstaged Changes"
+  short_description: "Decompose unstaged edits into commits"
+  default_prompt: "Use $decompose-and-commit-unstaged-changes to decompose the current unstaged working tree into an atomic commit series."

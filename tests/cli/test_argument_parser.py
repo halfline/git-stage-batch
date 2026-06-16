@@ -351,6 +351,19 @@ def test_parse_command_line_alias_help_uses_canonical_command_manpage(monkeypatc
     assert calls == ["stage-batch-include"]
 
 
+def test_show_help_hides_no_auto_advance_alias(monkeypatch, capsys):
+    """The muscle-memory alias should parse without being advertised."""
+    monkeypatch.setattr(argument_parser, "_show_git_stage_batch_help", lambda _topic: False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        parse_command_line(["show", "--help"], quiet=True)
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 0
+    assert "--no-advance" in captured.out
+    assert "--no-auto-advance" not in captured.out
+
+
 def test_parse_command_line_invalid_arg():
     """Test parsing invalid argument returns None."""
     parse_command_line(["--invalid-arg"], quiet=True)
@@ -440,6 +453,29 @@ def test_parse_command_line_show():
     assert callable(args.func)
 
 
+def test_parse_command_line_show_no_advance_peeks_without_selecting(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
+
+    args = parse_command_line(["show", "--no-advance"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(porcelain=False, selectable=False)
+
+
+def test_parse_command_line_show_no_auto_advance_is_show_local(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
+
+    args = parse_command_line(["show", "--no-auto-advance"], quiet=True)
+
+    assert args is not None
+    assert args.advance is False
+    args.func(args)
+    mock_command.assert_called_once_with(porcelain=False, selectable=False)
+
+
 def test_show_page_requires_file():
     args = parse_command_line(["show", "--page", "2"], quiet=True)
     assert args is not None
@@ -465,6 +501,49 @@ def test_show_page_accepts_single_files_match(monkeypatch):
     assert args is not None
     args.func(args)
     mock_command.assert_called_once_with(file="src/parser.py", page="2", porcelain=False)
+
+
+def test_show_file_no_advance_peeks_without_selecting(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
+    _mock_live_file_candidates(monkeypatch, ["src/parser.py"])
+
+    args = parse_command_line(["show", "--file", "src/parser.py", "--no-advance"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        file="src/parser.py",
+        page=None,
+        porcelain=False,
+        selectable=False,
+    )
+
+
+def test_show_from_no_advance_peeks_without_selecting(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
+    monkeypatch.setattr(
+        argument_parser,
+        "read_batch_metadata",
+        lambda name: {"files": {"src/parser.py": {}}},
+    )
+
+    args = parse_command_line(
+        ["show", "--from", "batch", "--file", "src/parser.py", "--no-advance"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "batch",
+        None,
+        "src/parser.py",
+        page=None,
+        selectable=False,
+    )
 
 
 def test_show_page_accepts_single_file_pattern_match(monkeypatch):

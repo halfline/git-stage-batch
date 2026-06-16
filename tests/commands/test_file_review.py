@@ -249,6 +249,23 @@ def test_non_selectable_live_preview_preserves_partial_review_guard(
         command_include(quiet=True)
 
 
+def test_non_selectable_live_preview_honors_requested_page(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+
+    command_show(file="file.txt", page="2", selectable=False)
+
+    captured = capsys.readouterr()
+    assert "page 2/3" in captured.out
+    assert "Change 2/3" in captured.out
+    assert "Change 1/3" not in captured.out
+    assert "[#" not in captured.out
+    assert read_last_file_review_state() is None
+
+
 def test_non_selectable_batch_preview_preserves_partial_review_guard(
     paged_file_repo,
     monkeypatch,

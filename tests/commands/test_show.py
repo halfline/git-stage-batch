@@ -213,6 +213,51 @@ class TestCommandShow:
         cached_hash = get_selected_hunk_hash_file_path().read_text()
         assert cached_hash == expected_hash
 
+    def test_show_no_advance_preserves_previous_selection(self, temp_git_repo, capsys):
+        """A non-selecting hunk preview should restore the prior selection."""
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("one\n")
+        file2.write_text("two\n")
+        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        file1.write_text("one changed\n")
+        file2.write_text("two changed\n")
+
+        command_start()
+        capsys.readouterr()
+        command_show(file="file2.txt")
+        capsys.readouterr()
+        assert get_selected_change_file_path() == "file2.txt"
+
+        command_show(selectable=False)
+
+        captured = capsys.readouterr()
+        assert "file1.txt" in captured.out
+        assert "[#1]" not in captured.out
+        assert get_selected_change_file_path() == "file2.txt"
+
+        cached = load_line_changes_from_state()
+        assert cached is not None
+        assert cached.path == "file2.txt"
+
+    def test_show_no_advance_leaves_empty_selection_empty(self, temp_git_repo, capsys):
+        """A non-selecting hunk preview should not create a selected change."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+
+        ensure_state_directory_exists()
+        initialize_abort_state()
+
+        command_show(selectable=False)
+
+        captured = capsys.readouterr()
+        assert "README.md" in captured.out
+        assert "[#1]" not in captured.out
+        assert get_selected_change_file_path() is None
+        assert not get_selected_hunk_patch_file_path().exists()
+
     def test_show_porcelain_with_hunk(self, temp_git_repo, capsys):
         """Test that show --porcelain exits 0 with no output when hunk exists."""
 

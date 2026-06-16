@@ -38,6 +38,7 @@ class AssetGroup:
     display_name_plural: str
     required_entry: str
     companion_assets: tuple["CompanionAsset", ...] = ()
+    entry_companion_assets: tuple[tuple[str, tuple["CompanionAsset", ...]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,33 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
                 source_segments=("assets", "claude-agents", "commit-message-drafter.md"),
                 target_segments=(".claude", "agents", "commit-message-drafter.md"),
                 display_name="Claude agent",
+            ),
+        ),
+        entry_companion_assets=(
+            (
+                "decompose-and-commit-unstaged-changes",
+                (
+                    CompanionAsset(
+                        source_segments=("assets", "claude-agents", "decompose-analyzer.md"),
+                        target_segments=(".claude", "agents", "decompose-analyzer.md"),
+                        display_name="Claude agent",
+                    ),
+                    CompanionAsset(
+                        source_segments=("assets", "claude-agents", "decompose-batch-peeler.md"),
+                        target_segments=(".claude", "agents", "decompose-batch-peeler.md"),
+                        display_name="Claude agent",
+                    ),
+                    CompanionAsset(
+                        source_segments=("assets", "claude-agents", "decompose-deconstructor.md"),
+                        target_segments=(".claude", "agents", "decompose-deconstructor.md"),
+                        display_name="Claude agent",
+                    ),
+                    CompanionAsset(
+                        source_segments=("assets", "claude-agents", "decompose-rebuilder.md"),
+                        target_segments=(".claude", "agents", "decompose-rebuilder.md"),
+                        display_name="Claude agent",
+                    ),
+                ),
             ),
         ),
     ),
@@ -141,6 +169,17 @@ def _copy_traversable_tree(source: Traversable, destination: Path) -> None:
 def _get_companion_source(companion: CompanionAsset) -> Traversable:
     """Return the packaged source for a companion asset."""
     return resources.files("git_stage_batch").joinpath(*companion.source_segments)
+
+
+def _get_entry_companion_assets(
+    group: AssetGroup,
+    entry_name: str,
+) -> tuple[CompanionAsset, ...]:
+    """Return companion assets required by one selected entry."""
+    for companion_entry_name, companion_assets in group.entry_companion_assets:
+        if companion_entry_name == entry_name:
+            return companion_assets
+    return ()
 
 
 def _validate_destination_path_shape(
@@ -263,6 +302,18 @@ def command_install_assets(
                     )
                 )
             planned_installs.append((entry, destination))
+            for companion in _get_entry_companion_assets(group, entry_name):
+                destination = repo_root.joinpath(*companion.target_segments)
+                companion_source = _get_companion_source(companion)
+                _validate_destination_path_shape(companion_source, destination, repo_root)
+                if destination.exists() and not force:
+                    raise CommandError(
+                        _("Refusing to overwrite existing {kind} '{name}'. Use --force to replace it.").format(
+                            kind=companion.display_name.lower(),
+                            name=str(destination.relative_to(repo_root)),
+                        )
+                    )
+                planned_installs.append((companion_source, destination))
         for companion in group.companion_assets:
             destination = repo_root.joinpath(*companion.target_segments)
             companion_source = _get_companion_source(companion)

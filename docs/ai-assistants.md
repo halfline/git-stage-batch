@@ -27,6 +27,8 @@ The bundled Claude skills currently include:
 
 - `commit-staged-changes` for turning the current staged index into one commit
 - `commit-unstaged-changes` for splitting unstaged work into one or more commits
+- `decompose-and-commit-unstaged-changes` for peeling larger unstaged work into
+  concern batches and rebuilding a fine-grained commit series
 
 Create or update `CLAUDE.md` in your repository root:
 
@@ -149,6 +151,8 @@ The bundled Codex skills currently include:
 
 - `commit-staged-changes` for turning the current staged index into one commit
 - `commit-unstaged-changes` for splitting unstaged work into one or more commits
+- `decompose-and-commit-unstaged-changes` for peeling larger unstaged work into
+  concern batches and rebuilding a fine-grained commit series
 
 Installing `codex-skills` also writes a shared internal drafter brief to
 `.agents/internal/commit-message-drafter.md` for those skills to use when

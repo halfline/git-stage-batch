@@ -6,6 +6,7 @@ from git_stage_batch.batch.ownership import (
     AbsenceClaim,
     ReplacementLineRun,
     ReplacementUnit,
+    ReplacementUnitOrigin,
     derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
@@ -297,6 +298,55 @@ def test_translate_hunk_selection_uses_file_derived_replacement_runs():
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
     ]
+    origin = ownership.replacement_units[0].origin
+    assert origin == ReplacementUnitOrigin(
+        old_start=1,
+        old_end=2,
+        new_start=1,
+        new_end=2,
+        baseline_reference=origin.baseline_reference,
+    )
+
+
+def test_translate_hunk_selection_records_parent_origin_for_split_replacement():
+    """Split replacement sub-units should remember their full parent run."""
+    lines = [
+        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
+                  text_bytes=b'a', text='a', source_line=None),
+        LineEntry(id=2, kind='-', old_line_number=2, new_line_number=None,
+                  text_bytes=b'b', text='b', source_line=1),
+        LineEntry(id=3, kind='+', old_line_number=None, new_line_number=1,
+                  text_bytes=b'A', text='A', source_line=1),
+        LineEntry(id=4, kind='+', old_line_number=None, new_line_number=2,
+                  text_bytes=b'B', text='B', source_line=2),
+        LineEntry(id=None, kind=' ', old_line_number=3, new_line_number=3,
+                  text_bytes=b'c', text='c', source_line=3),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {1, 3},
+        replacement_line_runs=[
+            ReplacementLineRun(
+                old_start=1,
+                old_end=2,
+                new_start=1,
+                new_end=2,
+            ),
+        ],
+    )
+
+    origin = ownership.replacement_units[0].origin
+    assert origin is not None
+    assert (origin.old_start, origin.old_end) == (1, 2)
+    assert (origin.new_start, origin.new_end) == (1, 2)
+    assert origin.baseline_reference.after_line is None
+    assert origin.baseline_reference.before_line == 3
+    assert origin.baseline_reference.before_content == b'c'
+
+    selected_reference = ownership.deletions[0].baseline_reference
+    assert selected_reference.before_line == 2
+    assert selected_reference.before_content == b'b'
 
 
 def test_translate_hunk_selection_keeps_one_to_many_replacement_atomic():

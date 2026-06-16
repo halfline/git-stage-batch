@@ -15,6 +15,7 @@ from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
+    ReplacementUnitOrigin,
     _AbsenceContentBuilder,
     _absence_signature,
     acquire_detached_batch_ownership,
@@ -395,6 +396,46 @@ def test_add_file_to_batch_persists_baseline_references(temp_git_repo):
     with BatchOwnership.acquire_for_metadata_dict(file_meta) as round_tripped:
         assert round_tripped.presence_baseline_references()[2] == presence_reference
         assert round_tripped.deletions[0].baseline_reference == deletion_reference
+
+
+def test_replacement_unit_origin_round_trips_metadata(temp_git_repo):
+    """Original replacement parent context should survive metadata loading."""
+    origin_reference = BaselineReference(
+        after_line=1,
+        after_content=b"before",
+        before_line=4,
+        before_content=b"after",
+        has_before_line=True,
+    )
+    origin = ReplacementUnitOrigin(
+        old_start=2,
+        old_end=3,
+        new_start=2,
+        new_end=3,
+        baseline_reference=origin_reference,
+    )
+    old_blob = create_git_blob([b"old\n"])
+
+    with BatchOwnership.acquire_for_metadata_dict({
+        "presence_claims": [{"source_lines": ["2"]}],
+        "deletions": [
+            {
+                "after_source_line": 1,
+                "blob": old_blob,
+            }
+        ],
+        "replacement_units": [
+            ReplacementUnit(
+                presence_lines=["2"],
+                deletion_indices=[0],
+                origin=origin,
+            ).to_dict()
+        ],
+    }) as ownership:
+        round_tripped_origin = ownership.replacement_units[0].origin
+        assert round_tripped_origin == origin
+        assert round_tripped_origin.baseline_reference.after_content == b"before"
+        assert round_tripped_origin.baseline_reference.before_content == b"after"
 
 
 def test_empty_replacement_units_are_omitted_from_metadata():

@@ -15,9 +15,11 @@ from git_stage_batch.batch.display import (
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
+    BaselineReference,
     OwnershipUnit,
     OwnershipUnitKind,
     ReplacementUnit,
+    ReplacementUnitOrigin,
     build_ownership_units_from_batch_source_lines,
     rebuild_ownership_from_units,
     select_ownership_units_by_display_ids,
@@ -587,13 +589,24 @@ def test_partial_atomic_selection_reports_range_backed_display_ids():
 def test_rebuild_preserves_explicit_replacement_units():
     """Filtering/rebuilding ownership should persist replacement couplings."""
     batch_source = b"new one\nnew two\nkeep\n"
+    origin = ReplacementUnitOrigin(
+        old_start=1,
+        old_end=2,
+        new_start=1,
+        new_end=2,
+        baseline_reference=BaselineReference(after_line=None),
+    )
     ownership = BatchOwnership.from_presence_lines(
         ["1-2"],
         [
             AbsenceClaim(anchor_line=None, content_lines=[b"old one\n", b"old two\n"]),
         ],
         replacement_units=[
-            ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+            ReplacementUnit(
+                presence_lines=["1-2"],
+                deletion_indices=[0],
+                origin=origin,
+            ),
         ],
     )
 
@@ -606,6 +619,7 @@ def test_rebuild_preserves_explicit_replacement_units():
     assert rebuilt.replacement_units == [
         ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
     ]
+    assert rebuilt.replacement_units[0].origin == origin
 
 
 def test_rebuild_preserves_mixed_same_anchor_deletion_order():

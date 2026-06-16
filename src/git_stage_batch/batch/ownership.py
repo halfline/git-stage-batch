@@ -253,6 +253,73 @@ def _deletion_reference_blob_ids(deletion_metadata: list[dict]) -> list[str]:
     ]
 
 
+def _replacement_origin_reference_blob_ids(replacement_metadata: list[dict]) -> list[str]:
+    blob_ids: list[str] = []
+    for metadata in replacement_metadata:
+        origin_metadata = metadata.get("original_unit", {})
+        if not isinstance(origin_metadata, dict):
+            continue
+        blob_ids.extend(
+            _baseline_reference_blob_ids(
+                origin_metadata.get("baseline_reference", {})
+            )
+        )
+    return blob_ids
+
+
+@dataclass
+class ReplacementUnitOrigin:
+    """Original full replacement region for a selectable replacement sub-unit.
+
+    Split replacement units may be smaller than the file-derived replacement run
+    that created them. This context records that original run so merge/discard
+    code can validate placement against the parent replacement boundary instead
+    of treating the selected sub-unit as an unrelated edit.
+    """
+
+    old_start: int
+    old_end: int
+    new_start: int
+    new_end: int
+    baseline_reference: BaselineReference | None = None
+
+    @property
+    def old_line_count(self) -> int:
+        """Return the number of baseline lines covered by the original unit."""
+        return self.old_end - self.old_start + 1
+
+    def to_dict(self) -> dict:
+        """Serialize to metadata dictionary."""
+        data = {
+            "old_start": self.old_start,
+            "old_end": self.old_end,
+            "new_start": self.new_start,
+            "new_end": self.new_end,
+        }
+        if self.baseline_reference is not None:
+            data["baseline_reference"] = self.baseline_reference.to_dict()
+        return data
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict,
+        blob_contents: dict[str, bytes] | None = None,
+    ) -> ReplacementUnitOrigin:
+        """Deserialize from metadata dictionary."""
+        baseline_metadata = data.get("baseline_reference")
+        return cls(
+            old_start=data["old_start"],
+            old_end=data["old_end"],
+            new_start=data["new_start"],
+            new_end=data["new_end"],
+            baseline_reference=(
+                BaselineReference.from_dict(baseline_metadata, blob_contents)
+                if baseline_metadata is not None else None
+            ),
+        )
+
+
 @dataclass
 class ReplacementUnit:
     """Explicit coupling between presence claims and absence claims.
@@ -263,20 +330,33 @@ class ReplacementUnit:
 
     presence_lines: list[str]
     deletion_indices: list[int]
+    origin: ReplacementUnitOrigin | None = field(default=None, compare=False)
 
     def to_dict(self) -> dict:
         """Serialize to metadata dictionary."""
-        return {
+        data = {
             "presence_lines": self.presence_lines,
             "deletion_indices": self.deletion_indices,
         }
+        if self.origin is not None:
+            data["original_unit"] = self.origin.to_dict()
+        return data
 
     @classmethod
-    def from_dict(cls, data: dict) -> ReplacementUnit:
+    def from_dict(
+        cls,
+        data: dict,
+        blob_contents: dict[str, bytes] | None = None,
+    ) -> ReplacementUnit:
         """Deserialize from metadata dictionary."""
+        origin_metadata = data.get("original_unit")
         return cls(
             presence_lines=data.get("presence_lines", data.get("claimed_lines", [])),
             deletion_indices=data.get("deletion_indices", []),
+            origin=(
+                ReplacementUnitOrigin.from_dict(origin_metadata, blob_contents)
+                if isinstance(origin_metadata, dict) else None
+            ),
         )
 
 
@@ -411,6 +491,7 @@ class BatchOwnership:
         """Acquire ownership for metadata with buffered deletion blobs."""
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
+        replacement_metadata = data.get("replacement_units", [])
         blob_buffers: dict[str, EditorBuffer] = {}
         buffers: list[EditorBuffer] = []
         try:
@@ -425,6 +506,7 @@ class BatchOwnership:
                 [
                     *_deletion_reference_blob_ids(deletion_metadata),
                     *_presence_claim_reference_blob_ids(presence_metadata),
+                    *_replacement_origin_reference_blob_ids(replacement_metadata),
                 ]
             )
             ownership = cls._from_metadata_dict(
@@ -466,7 +548,7 @@ class BatchOwnership:
             for d in deletion_metadata
         ]
         replacement_units = [
-            ReplacementUnit.from_dict(d)
+            ReplacementUnit.from_dict(d, blob_contents)
             for d in data.get("replacement_units", [])
         ]
         return cls(
@@ -552,6 +634,7 @@ def acquire_detached_batch_ownership(
                 ReplacementUnit(
                     presence_lines=unit.presence_lines[:],
                     deletion_indices=unit.deletion_indices[:],
+                    origin=unit.origin,
                 )
                 for unit in ownership.replacement_units
             ],
@@ -781,7 +864,7 @@ def _normalize_replacement_units(
     deletion_count: int,
 ) -> list[ReplacementUnit]:
     """Drop invalid references and coalesce overlapping replacement units."""
-    components: list[tuple[LineRanges, set[int]]] = []
+    components: list[tuple[LineRanges, set[int], ReplacementUnitOrigin | None]] = []
 
     for unit in replacement_units:
         claimed = _parse_line_ranges(unit.presence_lines)
@@ -792,36 +875,75 @@ def _normalize_replacement_units(
         }
         if not claimed or not deletion_indices:
             continue
+        origin = _normalize_replacement_unit_origin(unit.origin)
 
         overlapping_component_indices = [
             index
-            for index, (component_claimed, component_deletions)
+            for index, (component_claimed, component_deletions, _component_origin)
             in enumerate(components)
             if component_claimed.intersection(claimed) or component_deletions & deletion_indices
         ]
         if not overlapping_component_indices:
-            components.append((claimed, set(deletion_indices)))
+            components.append((claimed, set(deletion_indices), origin))
             continue
 
         target_index = overlapping_component_indices[0]
-        target_claimed, target_deletions = components[target_index]
+        target_claimed, target_deletions, target_origin = components[target_index]
         target_claimed = target_claimed.union(claimed)
         target_deletions.update(deletion_indices)
+        target_origin = _merge_replacement_unit_origins(target_origin, origin)
 
         for source_index in reversed(overlapping_component_indices[1:]):
-            source_claimed, source_deletions = components[source_index]
+            source_claimed, source_deletions, source_origin = components[source_index]
             target_claimed = target_claimed.union(source_claimed)
             target_deletions.update(source_deletions)
+            target_origin = _merge_replacement_unit_origins(
+                target_origin,
+                source_origin,
+            )
             del components[source_index]
-        components[target_index] = (target_claimed, target_deletions)
+        components[target_index] = (target_claimed, target_deletions, target_origin)
 
     return [
         ReplacementUnit(
             presence_lines=_format_line_set(claimed),
             deletion_indices=sorted(deletion_indices),
+            origin=origin,
         )
-        for claimed, deletion_indices in components
+        for claimed, deletion_indices, origin in components
     ]
+
+
+def _normalize_replacement_unit_origin(
+    origin: ReplacementUnitOrigin | None,
+) -> ReplacementUnitOrigin | None:
+    """Return valid original replacement context, or None."""
+    if origin is None:
+        return None
+    if (
+        type(origin.old_start) is not int
+        or type(origin.old_end) is not int
+        or type(origin.new_start) is not int
+        or type(origin.new_end) is not int
+        or origin.old_start > origin.old_end
+        or origin.new_start > origin.new_end
+    ):
+        return None
+    return origin
+
+
+def _merge_replacement_unit_origins(
+    left: ReplacementUnitOrigin | None,
+    right: ReplacementUnitOrigin | None,
+) -> ReplacementUnitOrigin | None:
+    """Keep parent context only when coalesced units agree on it."""
+    if left == right:
+        return left
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return None
 
 
 def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> BatchOwnership:
@@ -893,6 +1015,7 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
             combined_replacement_units.append(ReplacementUnit(
                 presence_lines=unit.presence_lines,
                 deletion_indices=remapped_indices,
+                origin=unit.origin,
             ))
 
     return BatchOwnership(
@@ -1195,6 +1318,24 @@ def _baseline_reference_for_old_line_range(
     )
 
 
+def _replacement_unit_origin_for_line_run(
+    replacement_run: ReplacementLineRun,
+    old_line_content: dict[int, bytes],
+) -> ReplacementUnitOrigin:
+    """Build parent replacement context for a file-derived replacement run."""
+    return ReplacementUnitOrigin(
+        old_start=replacement_run.old_start,
+        old_end=replacement_run.old_end,
+        new_start=replacement_run.new_start,
+        new_end=replacement_run.new_end,
+        baseline_reference=_baseline_reference_for_old_line_range(
+            replacement_run.old_start,
+            replacement_run.old_end,
+            old_line_content,
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class _HunkLineRangeScan:
     start: int
@@ -1337,6 +1478,7 @@ def translate_hunk_selection_to_batch_ownership(
         *,
         old_start: int,
         old_end: int,
+        origin: ReplacementUnitOrigin | None = None,
     ) -> None:
         deletion_anchor: int | None = None
         old_line_seen = False
@@ -1396,6 +1538,7 @@ def translate_hunk_selection_to_batch_ownership(
             ReplacementUnit(
                 presence_lines=selected_source_lines.finish().to_range_strings(),
                 deletion_indices=[len(absence_claims) - 1],
+                origin=origin,
             )
         )
         consumed_replacement_ids.update(consumed_ids)
@@ -1404,6 +1547,10 @@ def translate_hunk_selection_to_batch_ownership(
     new_cursor = 0
 
     for replacement_run in replacement_line_runs or []:
+        replacement_origin = _replacement_unit_origin_for_line_run(
+            replacement_run,
+            old_line_content,
+        )
         old_scan = _scan_hunk_line_range(
             hunk_lines,
             old_cursor,
@@ -1460,6 +1607,7 @@ def translate_hunk_selection_to_batch_ownership(
                         (new_line,),
                         old_start=old_line.old_line_number,
                         old_end=old_line.old_line_number,
+                        origin=replacement_origin,
                     )
             continue
 
@@ -1482,6 +1630,7 @@ def translate_hunk_selection_to_batch_ownership(
                 ),
                 old_start=replacement_run.old_start,
                 old_end=replacement_run.old_end,
+                origin=replacement_origin,
             )
 
     current_absence_anchor: int | None = None
@@ -1648,6 +1797,7 @@ class OwnershipUnit:
         is_atomic: If True, partial removal is not allowed
         atomic_reason: Explanation for why unit is atomic (for debugging/errors)
         preserves_replacement_unit: True when this unit came from persisted replacement metadata
+        replacement_origin: Original parent replacement context, when known
     """
     kind: OwnershipUnitKind
     claimed_source_lines: LineRanges
@@ -1656,6 +1806,7 @@ class OwnershipUnit:
     is_atomic: bool = False
     atomic_reason: str | None = None
     preserves_replacement_unit: bool = False
+    replacement_origin: ReplacementUnitOrigin | None = None
 
 
 def build_ownership_units_from_batch_source_lines(
@@ -1880,6 +2031,7 @@ def _build_explicit_replacement_units_from_display_lines(
             is_atomic=True,
             atomic_reason="explicit_replacement",
             preserves_replacement_unit=True,
+            replacement_origin=replacement_unit.origin,
         ))
         consumed_claimed_lines = consumed_claimed_lines.union(claimed_source_lines)
         consumed_deletion_indices.update(deletion_indices)
@@ -2151,6 +2303,7 @@ def rebuild_ownership_from_units(units: list[OwnershipUnit]) -> BatchOwnership:
             replacement_units.append(ReplacementUnit(
                 presence_lines=_format_line_set(unit.claimed_source_lines),
                 deletion_indices=deletion_indices,
+                origin=unit.replacement_origin,
             ))
 
     return BatchOwnership(
@@ -2186,6 +2339,7 @@ def _remap_replacement_units(
         remapped_units.append(ReplacementUnit(
             presence_lines=_format_line_set(new_presence_lines),
             deletion_indices=unit.deletion_indices,
+            origin=unit.origin,
         ))
 
     return _normalize_replacement_units(
@@ -2224,6 +2378,7 @@ def _remap_replacement_units_with_lineage(
                 lineage.translate_source_selection(old_presence_lines)
             ),
             deletion_indices=unit.deletion_indices,
+            origin=unit.origin,
         ))
 
     return _normalize_replacement_units(

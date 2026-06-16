@@ -351,6 +351,31 @@ index abc1234..def5678 100644
         assert patches[0].change_type == "modified"
         assert isinstance(patches[1], SingleHunkPatch)
 
+    def test_dirty_only_gitlink_without_metadata_is_skipped(self):
+        """Dirty-only submodule worktrees are not stageable pointer changes."""
+        oid = b"1111111111111111111111111111111111111111"
+        diff = b"""\
+diff --git a/sub b/sub
+--- a/sub
++++ b/sub
+@@ -1 +1 @@
+-Subproject commit """ + oid + b"""
++Subproject commit """ + oid + b"""-dirty
+diff --git a/text.txt b/text.txt
+index abc1234..def5678 100644
+--- a/text.txt
++++ b/text.txt
+@@ -1 +1,2 @@
+ line
++next
+"""
+
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
+
+        assert len(patches) == 1
+        assert isinstance(patches[0], SingleHunkPatch)
+        assert patches[0].new_path == "text.txt"
+
     def test_metadata_less_gitlink_pointer_change_is_atomic(self):
         """Subproject commit hunks without metadata still avoid line snapshots."""
         old_oid = b"1111111111111111111111111111111111111111"

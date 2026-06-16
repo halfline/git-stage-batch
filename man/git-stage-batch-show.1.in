@@ -8,6 +8,7 @@ git-stage-batch-show \- show the selected hunk or a file review
 [\fB\-\-line\fR \fIIDS\fR]
 [\fB\-\-page\fR \fIPAGES\fR]
 [\fB\-\-porcelain\fR]
+[\fB\-\-no\-advance\fR]
 [\fB\-\-as\fR \fITEXT\fR | \fB\-\-as\-stdin\fR]
 .SH DESCRIPTION
 .B show
@@ -53,6 +54,10 @@ or
 .TP
 .B \-\-porcelain
 Exit silently with status code 0 when a hunk exists and 1 when no hunk exists.
+.TP
+.B \-\-no\-advance
+Preview without selecting the shown change for later actions. This option does
+not read the session's automatic-advance preference.
 .TP
 .BI "\-\-as " TEXT
 With

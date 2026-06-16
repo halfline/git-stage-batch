@@ -88,7 +88,7 @@ _git_stage_batch()
                     return
                     ;;
             esac
-            COMPREPLY=($(compgen -W "--porcelain --from --file --files --line --page --pages --as --as-stdin" -- "$cur"))
+            COMPREPLY=($(compgen -W "--porcelain --no-advance --from --file --files --line --page --pages --as --as-stdin" -- "$cur"))
             ;;
         include)
             case "$prev" in

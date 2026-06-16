@@ -55,6 +55,11 @@ Display the cached "selected" hunk, one file review, or a matched-files list.
 ❯ git-stage-batch show
 ```
 
+**Peek at the next hunk without selecting it:**
+```
+❯ git-stage-batch show --no-advance
+```
+
 **Show all changes from selected hunk's file:**
 ```
 ❯ git-stage-batch show --file
@@ -134,6 +139,7 @@ actions, but not `--line`.
   - Requires `--file`, or `--files` resolving to exactly one changed file
   - Cannot be combined with `--line`, multiple resolved `--files` matches, or `--porcelain`
 - `--porcelain`: Exit silently with status code only (no output)
+- `--no-advance`: Preview without selecting the shown change for later actions. This does not use the session's `start --no-auto-advance` default.
 - `--from BATCH`: Show changes from a batch instead of live file-vs-HEAD changes
 - `--as TEXT`, `--as-stdin`: With `--from BATCH --line IDS`, preview the same replacement batch view used by `include --from BATCH --line IDS --as ...` without mutating anything
 

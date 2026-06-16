@@ -351,6 +351,29 @@ index abc1234..def5678 100644
         assert patches[0].change_type == "modified"
         assert isinstance(patches[1], SingleHunkPatch)
 
+    def test_metadata_less_gitlink_pointer_change_is_atomic(self):
+        """Subproject commit hunks without metadata still avoid line snapshots."""
+        old_oid = b"1111111111111111111111111111111111111111"
+        new_oid = b"2222222222222222222222222222222222222222"
+        diff = b"""\
+diff --git a/sub b/sub
+--- a/sub
++++ b/sub
+@@ -1 +1 @@
+-Subproject commit """ + old_oid + b"""
++Subproject commit """ + new_oid + b"""
+"""
+
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
+
+        assert len(patches) == 1
+        assert isinstance(patches[0], GitlinkChange)
+        assert patches[0].old_path == "sub"
+        assert patches[0].new_path == "sub"
+        assert patches[0].old_oid == old_oid.decode("ascii")
+        assert patches[0].new_oid == new_oid.decode("ascii")
+        assert patches[0].change_type == "modified"
+
 
 class TestRenamedFiles:
     """Test parsing diffs with renamed files."""

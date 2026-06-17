@@ -1305,6 +1305,8 @@ Use <code>--force</code> to replace an existing repo-local copy.</p>
 <ul>
 <li><code>commit-staged-changes</code> for turning the current staged index into one commit</li>
 <li><code>commit-unstaged-changes</code> for splitting unstaged work into one or more commits</li>
+<li><code>decompose-and-commit-unstaged-changes</code> for peeling larger unstaged work into
+  concern batches and rebuilding a fine-grained commit series</li>
 </ul>
 <p>Create or update <code>CLAUDE.md</code> in your repository root:</p>
 <p><div class="language-markdown highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="gu">## Commit Workflow</span>
@@ -1408,6 +1410,8 @@ Codex scans the skills automatically from the repository root.</p>
 <ul>
 <li><code>commit-staged-changes</code> for turning the current staged index into one commit</li>
 <li><code>commit-unstaged-changes</code> for splitting unstaged work into one or more commits</li>
+<li><code>decompose-and-commit-unstaged-changes</code> for peeling larger unstaged work into
+  concern batches and rebuilding a fine-grained commit series</li>
 </ul>
 <p>Installing <code>codex-skills</code> also writes a shared internal drafter brief to
 <code>.agents/internal/commit-message-drafter.md</code> for those skills to use when

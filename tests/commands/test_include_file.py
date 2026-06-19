@@ -119,6 +119,41 @@ class TestCommandIncludeFile:
         )
         assert "file2.txt" in result.stdout
 
+    def test_include_file_preserves_trailing_whitespace_with_apply_fix_config(
+        self,
+        temp_git_repo,
+        capsys,
+    ):
+        """File include should not inherit a whitespace-fixing git apply config."""
+        fixture = temp_git_repo / "fixture.patch"
+        fixture.write_bytes(b"base\n")
+        subprocess.run(["git", "add", "fixture.patch"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add fixture"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "apply.whitespace", "fix"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        expected = b"line with space \n-- \nno newline"
+        fixture.write_bytes(expected)
+
+        command_start()
+        command_include_file(file="fixture.patch")
+
+        staged = subprocess.run(
+            ["git", "show", ":fixture.patch"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        ).stdout
+        assert staged == expected
+
     def test_include_file_refreshes_untracked_path_after_external_unstage(
         self,
         temp_git_repo,

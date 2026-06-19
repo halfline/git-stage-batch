@@ -485,7 +485,7 @@ def git_apply_to_index(
 ) -> subprocess.CompletedProcess:
     """Apply patch chunks to the index."""
     return run_git_command(
-        ["apply", "--cached"],
+        ["apply", "--cached", "--whitespace=nowarn"],
         stdin_chunks=patch_chunks,
         check=check,
         requires_index_lock=True,
@@ -501,7 +501,7 @@ def git_apply_to_worktree(
     check: bool = True,
 ) -> subprocess.CompletedProcess:
     """Apply patch chunks to the working tree without writing the index."""
-    arguments = ["apply"]
+    arguments = ["apply", "--whitespace=nowarn"]
     if reverse:
         arguments.append("--reverse")
     if unidiff_zero:

@@ -1695,6 +1695,61 @@ class TestExplicitFilePath:
         assert staged_names == ""
         assert file_path.read_text() == "keep\nnew value 1\nnew value 2\nnew value 3\n"
 
+    def test_include_line_with_explicit_path_rejects_partial_removed_side_with_addition(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Inserted replacement lines should not attach to only the removed tail."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True, capture_output=True)
+
+        file_path = repo / "module.py"
+        file_path.write_text(
+            "def before():\n"
+            "    pass\n"
+            "\n"
+            "\n"
+            "def _bwrap_pairs(command: list[str], option: str) -> list[tuple[str, str]]:\n"
+            "    return [\n"
+            "        (command[index + 1], command[index + 2])\n"
+            "        for index, item in enumerate(command[:-2])\n"
+            "        if item == option\n"
+            "    ]\n"
+            "\n"
+            "\n"
+            "def after():\n"
+            "    pass\n"
+        )
+        subprocess.run(["git", "add", "module.py"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+
+        file_path.write_text(
+            "def before():\n"
+            "    pass\n"
+            "\n"
+            "\n"
+            "def test_workflow_container_version_follows_target_branch(tmp_path):\n"
+            "    assert version == 'c9s'\n"
+            "    assert version == 'c10s'\n"
+            "\n"
+            "\n"
+            "def after():\n"
+            "    pass\n"
+        )
+        command_start()
+
+        with pytest.raises(CommandError, match="removed side of a replacement"):
+            command_include_line("6-8", file="module.py")
+
+        staged_names = run_git_command(["diff", "--cached", "--name-only"]).stdout
+        assert staged_names == ""
+
     def test_include_line_with_explicit_path_rejects_partial_later_structural_run(self, tmp_path, monkeypatch):
         """Explicit file-scoped include --line should reject a partial later run."""
         repo = tmp_path / "test_repo"

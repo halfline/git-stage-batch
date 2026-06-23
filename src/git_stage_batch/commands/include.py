@@ -1115,17 +1115,17 @@ def _build_leading_replacement_addition_selection_error(
     line_changes,
     selected_ids: set[int],
 ) -> str | None:
-    """Reject include selections that would keep the removed line with the first insertion."""
+    """Reject include selections that split an inserted replacement prefix."""
     changed_run: list = []
 
     def check_run(run: list) -> str | None:
         if not run:
             return None
-        deletion_ids = {
+        deletion_ids = tuple(
             line.id
             for line in run
             if line.kind == "-" and line.id is not None
-        }
+        )
         addition_ids = tuple(
             line.id
             for line in run
@@ -1134,7 +1134,8 @@ def _build_leading_replacement_addition_selection_error(
         if not deletion_ids or not addition_ids:
             return None
 
-        selected_deletions = selected_ids & deletion_ids
+        deletion_id_set = set(deletion_ids)
+        selected_deletions = selected_ids & deletion_id_set
         selected_addition_positions = [
             index
             for index, line_id in enumerate(addition_ids)
@@ -1151,6 +1152,12 @@ def _build_leading_replacement_addition_selection_error(
                 "later inserted lines, or use --as."
             )
         if selected_deletions:
+            if selected_deletions != deletion_id_set:
+                return _(
+                    "That line selection splits the removed side of a replacement. "
+                    "Select every removed line with inserted lines, select only "
+                    "inserted lines, or use --as."
+                )
             expected_prefix = list(range(selected_addition_positions[-1] + 1))
             if selected_addition_positions != expected_prefix:
                 return _(

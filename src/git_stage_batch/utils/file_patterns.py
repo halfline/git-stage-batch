@@ -95,23 +95,8 @@ def resolve_gitignore_style_patterns(
     return [candidate for candidate in normalized_candidates if resolved_status.get(candidate, False)]
 
 
-def list_changed_files() -> list[str]:
-    """List repository-relative paths participating in the working-tree diff."""
-    result = run_git_command(
-        [
-            "-c",
-            "diff.ignoreSubmodules=none",
-            "diff",
-            "--ignore-submodules=none",
-            "--find-renames",
-            "--name-status",
-            "-z",
-        ],
-        text_output=False,
-        requires_index_lock=False,
-    )
-
-    fields = result.stdout.split(b"\0")
+def _paths_from_name_status_z(output: bytes) -> list[str]:
+    fields = output.split(b"\0")
     changed_paths: list[str] = []
     index = 0
     while index < len(fields):
@@ -131,3 +116,42 @@ def list_changed_files() -> list[str]:
                 changed_paths.append(_normalize_path(path.decode("utf-8")))
 
     return list(dict.fromkeys(changed_paths))
+
+
+def list_changed_files() -> list[str]:
+    """List repository-relative paths participating in the working-tree diff."""
+    result = run_git_command(
+        [
+            "-c",
+            "diff.ignoreSubmodules=none",
+            "diff",
+            "--ignore-submodules=none",
+            "--find-renames",
+            "--name-status",
+            "-z",
+        ],
+        text_output=False,
+        requires_index_lock=False,
+    )
+
+    return _paths_from_name_status_z(result.stdout)
+
+
+def list_staged_files() -> list[str]:
+    """List repository-relative paths participating in the index diff."""
+    result = run_git_command(
+        [
+            "-c",
+            "diff.ignoreSubmodules=none",
+            "diff",
+            "--cached",
+            "--ignore-submodules=none",
+            "--find-renames",
+            "--name-status",
+            "-z",
+        ],
+        text_output=False,
+        requires_index_lock=False,
+    )
+
+    return _paths_from_name_status_z(result.stdout)

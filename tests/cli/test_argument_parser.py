@@ -25,10 +25,11 @@ class _UnreadableStdin:
     buffer = _Buffer()
 
 
-def _mock_live_file_candidates(monkeypatch, changed, untracked=()):
+def _mock_live_file_candidates(monkeypatch, changed, untracked=(), staged=()):
     """Provide deterministic live file candidates for parser scope resolution."""
     monkeypatch.setattr(argument_parser, "list_changed_files", lambda: list(changed))
     monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: list(untracked))
+    monkeypatch.setattr(argument_parser, "list_staged_files", lambda: list(staged))
 
 
 def test_build_manpath_with_existing_environment(monkeypatch):
@@ -791,6 +792,26 @@ def test_parse_command_line_include_with_file_and_as_stdin_dispatches_file_repla
     args.func(args)
     mock_command.assert_called_once_with(
         "replacement\n",
+        file="path.txt",
+        auto_advance=None,
+    )
+
+
+def test_parse_command_line_include_file_as_can_resolve_staged_file(monkeypatch):
+    """Include --file --as should accept already-staged paths."""
+    mock_command = Mock()
+    monkeypatch.setattr(argument_parser.commands, "command_include_file_as", mock_command)
+    _mock_live_file_candidates(monkeypatch, [], staged=["path.txt"])
+
+    args = parse_command_line(
+        ["include", "--file", "path.txt", "--as", "replacement"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "replacement",
         file="path.txt",
         auto_advance=None,
     )

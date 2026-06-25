@@ -1300,6 +1300,27 @@ class TestExplicitFilePath:
         result = run_git_command(["diff", "gamma.txt"])
         assert "gamma2-modified" in result.stdout
 
+    def test_include_file_as_can_replace_already_staged_new_file(self, multi_file_repo):
+        """Full-file replacement should work after a new file is already staged."""
+        (multi_file_repo / "new.txt").write_text("alpha\nbeta\n")
+        command_start()
+
+        command_include_file(file="new.txt")
+        command_include_file_as("replacement\n", file="new.txt")
+
+        staged_content = run_git_command(["show", ":new.txt"]).stdout
+        assert staged_content == "replacement\n"
+        assert (multi_file_repo / "new.txt").read_text() == "alpha\nbeta\n"
+
+    def test_include_file_as_shorthand_requires_unstaged_selected_file(self, multi_file_repo):
+        """Pathless full-file replacement should not target staged-only state."""
+        command_start()
+
+        command_include_file(file="alpha.txt", advance=False)
+
+        with pytest.raises(CommandError, match="No changes in file 'alpha.txt'"):
+            command_include_file_as("replacement\n", file="")
+
     def test_include_file_line_as_with_explicit_path(self, multi_file_repo):
         """Include --file PATH --line IDS --as should preserve selected position."""
         command_start()

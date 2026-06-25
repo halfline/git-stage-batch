@@ -95,7 +95,7 @@ class TestRunGitCommand:
         calls = []
         command_env = {"CUSTOM": "1"}
 
-        def fake_wait(*, cwd, env):
+        def fake_wait(*, cwd, env, **_kwargs):
             calls.append(("wait", cwd, env))
 
         def fake_run_command(arguments, stdin_chunks=None, **kwargs):
@@ -110,6 +110,70 @@ class TestRunGitCommand:
         assert calls[0] == ("wait", "/repo", command_env)
         assert calls[1][0] == "run"
         assert calls[1][3]["env"] is command_env
+
+    def test_retries_transient_index_lock_error(self, monkeypatch):
+        """Index-writing commands should retry when Git loses the lock race."""
+        calls = []
+
+        def fake_wait(*, cwd, env, timeout_seconds, **_kwargs):
+            calls.append(("wait", cwd, env, timeout_seconds))
+
+        def fake_run_command(arguments, stdin_chunks=None, **kwargs):
+            calls.append(("run", arguments, stdin_chunks, kwargs))
+            if len([call for call in calls if call[0] == "run"]) == 1:
+                return subprocess.CompletedProcess(
+                    arguments,
+                    128,
+                    stdout="",
+                    stderr="fatal: Unable to create '/repo/.git/index.lock': File exists.\n",
+                )
+            return subprocess.CompletedProcess(arguments, 0, stdout="ok\n", stderr="")
+
+        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fake_wait)
+        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+
+        result = run_git_command(["apply", "--cached"], check=False, cwd="/repo")
+
+        assert result.returncode == 0
+        assert result.stdout == "ok\n"
+        assert [call[0] for call in calls] == ["wait", "run", "wait", "run"]
+
+    def test_retries_index_lock_error_with_reusable_stdin(self, monkeypatch):
+        """Retried index-writing commands must resend stdin chunks."""
+        seen_stdin = []
+
+        def fake_wait(**_kwargs):
+            pass
+
+        def fake_run_command(arguments, stdin_chunks=None, **_kwargs):
+            seen_stdin.append(list(stdin_chunks or []))
+            if len(seen_stdin) == 1:
+                return subprocess.CompletedProcess(
+                    arguments,
+                    128,
+                    stdout="",
+                    stderr="fatal: Unable to create '/repo/.git/index.lock': File exists.\n",
+                )
+            return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
+
+        def patch_chunks():
+            yield b"diff --git a/file.txt b/file.txt\n"
+            yield b"+new line\n"
+
+        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fake_wait)
+        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+
+        result = run_git_command(
+            ["apply", "--cached"],
+            stdin_chunks=patch_chunks(),
+            check=False,
+        )
+
+        assert result.returncode == 0
+        assert seen_stdin == [
+            [b"diff --git a/file.txt b/file.txt\n", b"+new line\n"],
+            [b"diff --git a/file.txt b/file.txt\n", b"+new line\n"],
+        ]
 
     def test_disables_optional_locks_for_read_only_commands(self, monkeypatch):
         """Read-only commands should opt out of Git's optional index refresh locks."""

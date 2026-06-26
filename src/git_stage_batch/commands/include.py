@@ -843,6 +843,39 @@ def command_include_file(
     return hunks_staged
 
 
+def _file_has_staged_changes(file_path: str) -> bool:
+    """Return whether the index version of a path differs from HEAD."""
+    result = run_git_command(
+        [
+            "diff",
+            "--cached",
+            "--quiet",
+            "--no-renames",
+            "--",
+            file_path,
+        ],
+        check=False,
+        requires_index_lock=False,
+    )
+    return result.returncode == 1
+
+
+def _file_has_unstaged_changes(file_path: str) -> bool:
+    """Return whether the working tree version of a path differs from the index."""
+    result = run_git_command(
+        [
+            "diff",
+            "--quiet",
+            "--no-renames",
+            "--",
+            file_path,
+        ],
+        check=False,
+        requires_index_lock=False,
+    )
+    return result.returncode == 1
+
+
 def command_include_file_as(
     replacement_text: str | ReplacementPayload,
     file: str | None = None,
@@ -885,9 +918,11 @@ def command_include_file_as(
 
         if preserve_selected_state:
             line_changes = cache_unstaged_file_as_single_hunk(target_file)
-            if line_changes is None:
+            if line_changes is None and not _file_has_staged_changes(target_file):
                 exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
         else:
+            if not _file_has_unstaged_changes(target_file):
+                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
             line_changes = load_line_changes_from_state()
             if line_changes is None or line_changes.path != target_file:
                 line_changes = cache_unstaged_file_as_single_hunk(target_file)

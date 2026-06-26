@@ -26,7 +26,11 @@ from ..data.undo import undo_checkpoint
 from ..exceptions import CommandError
 from ..i18n import _, ngettext
 from ..utils.command import run_command
-from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
+from ..utils.file_patterns import (
+    list_changed_files,
+    list_staged_files,
+    resolve_gitignore_style_patterns,
+)
 from ..utils.git import run_git_command
 from .completion import command_complete_files
 
@@ -570,13 +574,18 @@ def _discard_to_batch_each_resolved_file(
 def _resolve_live_file_scope(
     file_arg: FileArgument,
     file_patterns: list[str] | None,
+    *,
+    include_staged: bool = False,
 ) -> FileScope:
     """Resolve single-file or pattern-based live file scope."""
     resolved_patterns = _resolve_file_patterns(file_arg, file_patterns)
     if resolved_patterns is None:
         return FileScope.implicit() if file_arg is None else FileScope.explicit("")
 
-    candidate_files = list(dict.fromkeys([*list_changed_files(), *list_untracked_files()]))
+    candidate_files = [*list_changed_files(), *list_untracked_files()]
+    if include_staged:
+        candidate_files.extend(list_staged_files())
+    candidate_files = list(dict.fromkeys(candidate_files))
     resolved_files, display_patterns = _resolve_file_argument_patterns(
         candidate_files,
         file_arg,
@@ -1061,7 +1070,11 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 and args.from_batch is None
                 and args.to_batch is None
             ):
-                resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+                resolved_live_scope = _resolve_live_file_scope(
+                    args.file,
+                    args.file_patterns,
+                    include_staged=True,
+                )
                 if resolved_live_scope.is_implicit:
                     raise CommandError(
                         _("`include --as` requires `--file` or `--line` and does not support `--to`.")

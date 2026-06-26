@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .models import BinaryFileChange, GitlinkChange, RenameChange
+    from .models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 
 
 def compute_stable_hunk_hash_from_lines(patch_lines: Iterable[bytes]) -> str:
@@ -115,5 +115,15 @@ def compute_rename_change_hash(rename_change: RenameChange) -> str:
         "rename",
         rename_change.old_path,
         rename_change.new_path,
+    ]
+    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+
+
+def compute_text_file_deletion_hash(deletion_change: TextFileDeletionChange) -> str:
+    """Compute a stable identity hash for an atomic text file deletion."""
+    parts = [
+        "text-deletion",
+        deletion_change.old_path,
+        deletion_change.new_path,
     ]
     return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()

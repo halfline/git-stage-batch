@@ -32,6 +32,7 @@ from ..core.hashing import (
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
+    compute_text_file_deletion_hash,
 )
 from ..core.models import (
     BinaryFileChange,
@@ -42,6 +43,7 @@ from ..core.models import (
     RenameChange,
     RenderedBatchDisplay,
     ReviewActionGroup,
+    TextFileDeletionChange,
 )
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
@@ -65,6 +67,7 @@ from ..output import (
     print_binary_file_change,
     print_gitlink_change,
     print_rename_change,
+    print_text_file_deletion_change,
 )
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
@@ -92,6 +95,7 @@ from ..utils.paths import (
     get_selected_binary_file_json_path,
     get_selected_gitlink_file_json_path,
     get_selected_rename_file_json_path,
+    get_selected_text_deletion_file_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
@@ -112,6 +116,7 @@ class SelectedChangeKind(str, Enum):
     HUNK = "hunk"
     FILE = "file"
     RENAME = "rename"
+    DELETION = "deletion"
     BINARY = "binary"
     GITLINK = "submodule"
     BATCH_FILE = "batch-file"
@@ -188,6 +193,7 @@ def _selected_change_state_paths():
         "kind": get_selected_change_kind_file_path(),
         "line_state": get_line_changes_json_file_path(),
         "rename": get_selected_rename_file_json_path(),
+        "text_deletion": get_selected_text_deletion_file_json_path(),
         "binary": get_selected_binary_file_json_path(),
         "gitlink": get_selected_gitlink_file_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
@@ -536,6 +542,36 @@ def load_selected_rename_change() -> Optional[RenameChange]:
         return None
 
 
+def _read_selected_text_deletion_data() -> dict | None:
+    """Read cached text deletion selection data, if structurally valid."""
+    deletion_path = get_selected_text_deletion_file_json_path()
+    if not deletion_path.exists():
+        return None
+    try:
+        deletion_data = json.loads(read_text_file_contents(deletion_path))
+    except json.JSONDecodeError:
+        return None
+    return deletion_data if isinstance(deletion_data, dict) else None
+
+
+def load_selected_text_deletion_change() -> Optional[TextFileDeletionChange]:
+    """Load the currently cached text file deletion change."""
+    if read_selected_change_kind() != SelectedChangeKind.DELETION:
+        return None
+
+    deletion_data = _read_selected_text_deletion_data()
+    if deletion_data is None:
+        return None
+
+    try:
+        return TextFileDeletionChange(
+            old_path=deletion_data["old_path"],
+            new_path=deletion_data.get("new_path", "/dev/null"),
+        )
+    except KeyError:
+        return None
+
+
 def compute_batch_binary_fingerprint(
     batch_name: str,
     file_path: str,
@@ -591,6 +627,7 @@ def cache_binary_file_change(
     get_selected_hunk_patch_file_path().unlink(missing_ok=True)
     get_line_changes_json_file_path().unlink(missing_ok=True)
     get_selected_rename_file_json_path().unlink(missing_ok=True)
+    get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
@@ -635,6 +672,7 @@ def cache_gitlink_change(
     get_line_changes_json_file_path().unlink(missing_ok=True)
     get_selected_rename_file_json_path().unlink(missing_ok=True)
     get_selected_binary_file_json_path().unlink(missing_ok=True)
+    get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
@@ -660,6 +698,7 @@ def cache_rename_change(rename_change: RenameChange) -> None:
     get_line_changes_json_file_path().unlink(missing_ok=True)
     get_selected_binary_file_json_path().unlink(missing_ok=True)
     get_selected_gitlink_file_json_path().unlink(missing_ok=True)
+    get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
@@ -673,6 +712,33 @@ def cache_rename_change(rename_change: RenameChange) -> None:
         compute_rename_change_hash(rename_change),
     )
     write_selected_change_kind(SelectedChangeKind.RENAME)
+
+
+def cache_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
+    """Cache a whole-text-file deletion as the current selected change."""
+    deletion_data = {
+        "old_path": deletion_change.old_path,
+        "new_path": deletion_change.new_path,
+    }
+    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
+    get_line_changes_json_file_path().unlink(missing_ok=True)
+    get_selected_binary_file_json_path().unlink(missing_ok=True)
+    get_selected_gitlink_file_json_path().unlink(missing_ok=True)
+    get_selected_rename_file_json_path().unlink(missing_ok=True)
+    get_index_snapshot_file_path().unlink(missing_ok=True)
+    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+    get_processed_include_ids_file_path().unlink(missing_ok=True)
+    get_processed_skip_ids_file_path().unlink(missing_ok=True)
+    write_text_file_contents(
+        get_selected_text_deletion_file_json_path(),
+        json.dumps(deletion_data, ensure_ascii=False, indent=0),
+    )
+    write_text_file_contents(
+        get_selected_hunk_hash_file_path(),
+        compute_text_file_deletion_hash(deletion_change),
+    )
+    write_snapshots_for_selected_file_path(deletion_change.path())
+    write_selected_change_kind(SelectedChangeKind.DELETION)
 
 
 def selected_batch_binary_matches_batch(batch_name: str) -> bool:
@@ -897,11 +963,26 @@ def rename_change_is_stale(rename_change: RenameChange) -> bool:
     )
 
 
+def text_deletion_change_is_stale(deletion_change: TextFileDeletionChange) -> bool:
+    """Return whether a cached text deletion selection no longer matches Git state."""
+    if snapshots_are_stale(deletion_change.path()):
+        return True
+    current_change = render_text_deletion_change(deletion_change.path())
+    if current_change is None:
+        return True
+    return (
+        current_change.old_path != deletion_change.old_path
+        or current_change.new_path != deletion_change.new_path
+    )
+
+
 def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     """Persist the kind of selected change cached in session state."""
     get_selected_change_clear_reason_file_path().unlink(missing_ok=True)
     if kind != SelectedChangeKind.RENAME:
         get_selected_rename_file_json_path().unlink(missing_ok=True)
+    if kind != SelectedChangeKind.DELETION:
+        get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
     if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
         get_selected_binary_file_json_path().unlink(missing_ok=True)
     if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
@@ -925,7 +1006,7 @@ def read_selected_change_kind() -> Optional[SelectedChangeKind]:
         return None
 
 
-def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange]]:
+def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]]:
     """Load the currently cached selected change, if any."""
     selected_kind = read_selected_change_kind()
     rename_change = load_selected_rename_change()
@@ -938,6 +1019,17 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
                 ).format(old=rename_change.old_path, new=rename_change.new_path)
             )
         return rename_change
+
+    deletion_change = load_selected_text_deletion_change()
+    if deletion_change is not None:
+        if selected_kind == SelectedChangeKind.DELETION and text_deletion_change_is_stale(deletion_change):
+            raise CommandError(
+                _(
+                    "Selected text file deletion no longer matches the working tree: {file}.\n"
+                    "Run 'show' again before using a pathless action."
+                ).format(file=deletion_change.path())
+            )
+        return deletion_change
 
     gitlink_change = load_selected_gitlink_change()
     if gitlink_change is not None:
@@ -986,6 +1078,10 @@ def get_selected_change_file_path() -> Optional[str]:
     rename_change = load_selected_rename_change()
     if rename_change is not None:
         return rename_change.path()
+
+    deletion_change = load_selected_text_deletion_change()
+    if deletion_change is not None:
+        return deletion_change.path()
 
     gitlink_change = load_selected_gitlink_change()
     if gitlink_change is not None:
@@ -1059,6 +1155,11 @@ def _empty_text_lifecycle_change_is_batched(file_path: str) -> bool:
         if file_meta is not None and file_meta.get("change_type") == change_type:
             return True
     return False
+
+
+def text_deletion_change_is_batched(deletion_change: TextFileDeletionChange) -> bool:
+    """Return whether a whole-text-file deletion is already represented in a batch."""
+    return _empty_text_lifecycle_change_is_batched(deletion_change.path())
 
 
 def _filter_consumed_replacement_masks(
@@ -1727,6 +1828,25 @@ def render_rename_change(file_path: str) -> Optional[RenameChange]:
     return None
 
 
+def render_text_deletion_change(file_path: str) -> Optional[TextFileDeletionChange]:
+    """Render a whole-text-file deletion for file-scoped display without caching state."""
+    try:
+        with acquire_unified_diff(
+            stream_live_git_diff(
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+                paths=[file_path],
+            )
+        ) as patches:
+            for item in patches:
+                if isinstance(item, TextFileDeletionChange):
+                    return item
+    except subprocess.CalledProcessError:
+        return None
+    return None
+
+
 def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     """Render the remaining unstaged changes for a file as a single hunk."""
     auto_add_untracked_files([file_path])
@@ -1847,7 +1967,7 @@ def _build_combined_file_line_changes(
     previous_new_end = None
 
     for single_hunk in patches:
-        if isinstance(single_hunk, (BinaryFileChange, GitlinkChange, RenameChange)):
+        if isinstance(single_hunk, (BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange)):
             continue
 
         line_changes = build_line_changes_from_patch_lines(single_hunk.lines)
@@ -1923,7 +2043,7 @@ def _build_combined_file_line_changes(
     )
 
 
-def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange]:
+def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]:
     """Find the next hunk or binary file that isn't blocked and cache it as selected.
 
     Returns:
@@ -1961,6 +2081,17 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                         continue
 
                     cache_rename_change(item)
+                    return item
+
+                if isinstance(item, TextFileDeletionChange):
+                    deletion_hash = compute_text_file_deletion_hash(item)
+                    if deletion_hash in blocked_hashes or text_deletion_change_is_batched(item):
+                        continue
+
+                    if is_path_blocked(item.path(), blocked_files):
+                        continue
+
+                    cache_text_deletion_change(item)
                     return item
 
                 if isinstance(item, GitlinkChange):
@@ -2059,6 +2190,11 @@ def show_selected_change() -> None:
         print_rename_change(rename_change)
         return
 
+    deletion_change = load_selected_text_deletion_change()
+    if deletion_change is not None:
+        print_text_file_deletion_change(deletion_change)
+        return
+
     gitlink_change = load_selected_gitlink_change()
     if gitlink_change is not None:
         print_gitlink_change(gitlink_change)
@@ -2089,6 +2225,11 @@ def advance_to_and_show_next_change() -> None:
     rename_change = load_selected_rename_change()
     if rename_change is not None:
         print_rename_change(rename_change)
+        return
+
+    deletion_change = load_selected_text_deletion_change()
+    if deletion_change is not None:
+        print_text_file_deletion_change(deletion_change)
         return
 
     gitlink_change = load_selected_gitlink_change()
@@ -2290,6 +2431,14 @@ def recalculate_selected_hunk_for_file(
                     print_rename_change(single_hunk)
                     return
 
+                if isinstance(single_hunk, TextFileDeletionChange):
+                    deletion_hash = compute_text_file_deletion_hash(single_hunk)
+                    if deletion_hash in blocked_hashes or text_deletion_change_is_batched(single_hunk):
+                        continue
+                    cache_text_deletion_change(single_hunk)
+                    print_text_file_deletion_change(single_hunk)
+                    return
+
                 if isinstance(single_hunk, GitlinkChange):
                     gitlink_hash = compute_gitlink_change_hash(single_hunk)
                     if gitlink_hash in blocked_hashes:
@@ -2455,6 +2604,22 @@ def record_rename_hunk_skipped(rename_change: RenameChange, hunk_hash: str) -> N
         "type": "rename",
         "old_path": rename_change.old_path,
         "new_path": rename_change.new_path,
+    }
+
+    jsonl_path = get_skipped_hunks_jsonl_file_path()
+    with jsonl_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(metadata) + "\n")
+
+
+def record_text_deletion_hunk_skipped(deletion_change: TextFileDeletionChange, hunk_hash: str) -> None:
+    """Record that a whole-text-file deletion was skipped with file-level metadata."""
+    metadata = {
+        "hash": hunk_hash,
+        "file": deletion_change.path(),
+        "line": None,
+        "ids": [],
+        "type": "text-deletion",
+        "change_type": "deleted",
     }
 
     jsonl_path = get_skipped_hunks_jsonl_file_path()

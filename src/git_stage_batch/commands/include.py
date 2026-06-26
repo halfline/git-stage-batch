@@ -41,6 +41,7 @@ from ..core.hashing import (
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
+    compute_text_file_deletion_hash,
 )
 from ..core.line_selection import (
     format_line_ids,
@@ -48,8 +49,8 @@ from ..core.line_selection import (
     read_line_ids_file,
     write_line_ids_file,
 )
-from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
-from ..core.text_lifecycle import detect_empty_text_lifecycle_change
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
@@ -65,11 +66,13 @@ from ..data.hunk_tracking import (
     record_gitlink_hunk_skipped,
     record_hunk_included,
     record_hunk_skipped,
+    record_text_deletion_hunk_skipped,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     render_unstaged_file_as_single_hunk,
     render_binary_file_change,
     render_gitlink_change,
+    render_text_deletion_change,
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -93,7 +96,6 @@ from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..editor import (
     EditorBuffer,
-    buffer_byte_count,
     buffer_matches,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -199,6 +201,22 @@ def _stage_rename_change(rename_change: RenameChange) -> None:
             ),
         ]
     )
+
+
+def _stage_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
+    """Stage a whole-text-file deletion in the index."""
+    result = git_update_index(
+        file_path=deletion_change.path(),
+        force_remove=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        exit_with_error(
+            _("Failed to stage deletion for {file}: {error}").format(
+                file=deletion_change.path(),
+                error=result.stderr,
+            )
+        )
 
 
 class TransientIncludeFailureReason(Enum):
@@ -465,23 +483,12 @@ def _try_build_index_content_via_transient_batch(
 
 def _stage_live_line_target_buffer(file_path: str, target_buffer: EditorBuffer) -> None:
     """Stage the result of live line-level include."""
-    full_path = get_git_repository_root_path() / file_path
-    if buffer_byte_count(target_buffer) == 0 and not os.path.lexists(full_path):
-        result = git_update_index(
-            file_path=file_path,
-            force_remove=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            exit_with_error(
-                _("Failed to stage deletion for {file}: {error}").format(
-                    file=file_path,
-                    error=result.stderr,
-                )
-            )
-        return
-
     update_index_with_blob_buffer(file_path, target_buffer)
+
+
+def _patch_is_text_file_path_deletion(patch_lines: Sequence[bytes]) -> bool:
+    """Return whether patch lines describe deletion of the file path itself."""
+    return any(line.rstrip(b"\n") == b"+++ /dev/null" for line in patch_lines)
 
 
 def _transient_include_failure_message(
@@ -581,6 +588,22 @@ def command_include(
             )
             return
 
+        if isinstance(item, TextFileDeletionChange):
+            _stage_text_deletion_change(item)
+            record_hunk_included(patch_hash)
+
+            if not quiet:
+                print(
+                    _("✓ Text file deletion staged: {file}").format(file=item.path()),
+                    file=sys.stderr,
+                )
+
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
+            return
+
         if isinstance(item, GitlinkChange):
             result = _update_index_for_gitlink_change(item)
             if result.returncode != 0:
@@ -634,12 +657,17 @@ def command_include(
         filename = item.path
 
         with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
-            apply_result = git_apply_to_index(
-                patch_buffer.byte_chunks(),
-                check=False,
-            )
+            if _patch_is_text_file_path_deletion(patch_buffer):
+                with EditorBuffer.from_bytes(b"") as empty_buffer:
+                    update_index_with_blob_buffer(filename, empty_buffer)
+                apply_result = None
+            else:
+                apply_result = git_apply_to_index(
+                    patch_buffer.byte_chunks(),
+                    check=False,
+                )
 
-        if apply_result.returncode != 0:
+        if apply_result is not None and apply_result.returncode != 0:
             print(_("Failed to apply hunk: {error}").format(error=apply_result.stderr), file=sys.stderr)
             return
 
@@ -745,6 +773,15 @@ def command_include_file(
                     staged_rename_pairs.add((patch.old_path, patch.new_path))
                     continue
 
+                if isinstance(patch, TextFileDeletionChange):
+                    if patch.path() != target_file:
+                        continue
+
+                    _stage_text_deletion_change(patch)
+                    record_hunk_included(compute_text_file_deletion_hash(patch))
+                    hunks_staged += 1
+                    continue
+
                 if isinstance(patch, GitlinkChange):
                     if patch.path() == target_file:
                         result = _update_index_for_gitlink_change(patch)
@@ -797,8 +834,13 @@ def command_include_file(
                     hunks_staged += 1
                     continue
 
-                apply_result = git_apply_to_index(patch.lines, check=False)
-                if apply_result.returncode == 0:
+                if _patch_is_text_file_path_deletion(patch.lines):
+                    with EditorBuffer.from_bytes(b"") as empty_buffer:
+                        update_index_with_blob_buffer(target_file, empty_buffer)
+                    apply_result = None
+                else:
+                    apply_result = git_apply_to_index(patch.lines, check=False)
+                if apply_result is None or apply_result.returncode == 0:
                     # Record for progress tracking
                     record_hunk_included(patch_hash)
 
@@ -1663,6 +1705,28 @@ def command_include_to_batch(
         elif (
             file is None
             and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.DELETION
+        ):
+            selected_change = load_selected_change()
+            if isinstance(selected_change, TextFileDeletionChange):
+                _command_include_text_deletion_to_batch(
+                    batch_name,
+                    selected_change,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
+                return
+            else:
+                _command_include_hunk_to_batch(
+                    batch_name,
+                    file_only=False,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
+                return
+        elif (
+            file is None
+            and line_ids is None
             and read_selected_change_kind() == SelectedChangeKind.BINARY
         ):
             selected_change = load_selected_change()
@@ -1770,6 +1834,39 @@ def _save_empty_text_lifecycle_to_batch(
     return change_type.value
 
 
+def _command_include_text_deletion_to_batch(
+    batch_name: str,
+    deletion_change: TextFileDeletionChange,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
+    """Save one whole-text-file deletion to a batch and mark it processed."""
+    file_path = deletion_change.path()
+    patch_hash = compute_text_file_deletion_hash(deletion_change)
+
+    add_file_to_batch(
+        batch_name,
+        file_path,
+        BatchOwnership([], []),
+        _detect_file_mode(file_path),
+        change_type=TextFileChangeType.DELETED.value,
+    )
+    append_lines_to_file(get_block_list_file_path(), [patch_hash])
+    record_text_deletion_hunk_skipped(deletion_change, patch_hash)
+
+    if not quiet:
+        print(
+            _("Included text file deletion '{file}' to batch '{batch}'").format(
+                file=file_path,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+
+    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
+
+
 def _command_include_binary_to_batch(
     batch_name: str,
     binary_change: BinaryFileChange,
@@ -1842,6 +1939,16 @@ def _command_include_file_to_batch(
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
+    deletion_change = render_text_deletion_change(file_path)
+    if deletion_change is not None:
+        _command_include_text_deletion_to_batch(
+            batch_name,
+            deletion_change,
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
+        return
+
     binary_change = render_binary_file_change(file_path)
     if binary_change is not None:
         _command_include_binary_to_batch(
@@ -1875,7 +1982,7 @@ def _command_include_file_to_batch(
         )
     ) as patches:
         for patch in patches:
-            if isinstance(patch, RenameChange):
+            if isinstance(patch, (RenameChange, TextFileDeletionChange)):
                 continue
             hunk_lines = build_line_changes_from_patch_lines(
                 patch.lines,
@@ -2154,6 +2261,18 @@ def _command_include_hunk_to_batch(
             if isinstance(patch, RenameChange):
                 continue
 
+            if isinstance(patch, TextFileDeletionChange):
+                patch_hash = compute_text_file_deletion_hash(patch)
+                if patch_hash not in blocked_hashes:
+                    _command_include_text_deletion_to_batch(
+                        batch_name,
+                        patch,
+                        quiet=quiet,
+                        auto_advance=auto_advance,
+                    )
+                    return
+                continue
+
             if isinstance(patch, GitlinkChange):
                 patch_hash = compute_gitlink_change_hash(patch)
                 if patch_hash not in blocked_hashes:
@@ -2214,7 +2333,7 @@ def _command_include_hunk_to_batch(
             )
         ) as patches:
             for patch in patches:
-                if isinstance(patch, RenameChange):
+                if isinstance(patch, (RenameChange, TextFileDeletionChange)):
                     continue
 
                 if patch.new_path != file_path:

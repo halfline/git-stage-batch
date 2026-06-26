@@ -111,8 +111,46 @@ def _prepare_git_command_environment(
 ) -> dict[str, str] | None:
     if requires_index_lock:
         wait_for_git_index_lock(cwd=cwd, env=env)
+    return _git_command_environment(requires_index_lock=requires_index_lock, env=env)
+
+
+def _git_command_environment(
+    *,
+    requires_index_lock: bool,
+    env: dict[str, str] | None,
+) -> dict[str, str] | None:
+    if requires_index_lock:
         return env
     return _git_environment_with_optional_locks_disabled(env)
+
+
+def _index_lock_error_text(stream: str | bytes | None) -> str:
+    if stream is None:
+        return ""
+    if isinstance(stream, bytes):
+        return stream.decode("utf-8", errors="replace")
+    return stream
+
+
+def _is_git_index_lock_error(result: subprocess.CompletedProcess) -> bool:
+    stderr_text = _index_lock_error_text(result.stderr).lower()
+    return "index.lock" in stderr_text and (
+        "file exists" in stderr_text
+        or "unable to create" in stderr_text
+    )
+
+
+def _raise_git_command_error(result: subprocess.CompletedProcess) -> None:
+    raise subprocess.CalledProcessError(
+        result.returncode,
+        result.args,
+        output=result.stdout,
+        stderr=result.stderr,
+    )
+
+
+def _remaining_index_lock_wait_seconds(deadline: float) -> float:
+    return max(0.0, deadline - time.monotonic())
 
 
 def stream_git_command(
@@ -308,20 +346,58 @@ def run_git_command(
     Raises:
         subprocess.CalledProcessError: If check=True and command fails
     """
-    return run_command(
-        ["git", *arguments],
-        stdin_chunks,
-        check=check,
-        text_output=text_output,
-        cwd=cwd,
-        env=_prepare_git_command_environment(
-            requires_index_lock=requires_index_lock,
+    command = ["git", *arguments]
+    reusable_stdin_chunks = (
+        list(stdin_chunks)
+        if requires_index_lock and stdin_chunks is not None
+        else stdin_chunks
+    )
+    retry_deadline = (
+        time.monotonic() + _INDEX_LOCK_WAIT_SECONDS
+        if requires_index_lock
+        else None
+    )
+
+    if retry_deadline is not None:
+        wait_for_git_index_lock(
             cwd=cwd,
             env=env,
-        ),
-        capture_stdout=capture_stdout,
-        capture_stderr=capture_stderr,
-    )
+            timeout_seconds=_remaining_index_lock_wait_seconds(retry_deadline),
+        )
+
+    while True:
+        result = run_command(
+            command,
+            reusable_stdin_chunks,
+            check=False,
+            text_output=text_output,
+            cwd=cwd,
+            env=_git_command_environment(
+                requires_index_lock=requires_index_lock,
+                env=env,
+            ),
+            capture_stdout=capture_stdout,
+            capture_stderr=capture_stderr,
+        )
+        if not (
+            retry_deadline is not None
+            and result.returncode != 0
+            and _is_git_index_lock_error(result)
+        ):
+            break
+
+        remaining_seconds = _remaining_index_lock_wait_seconds(retry_deadline)
+        if remaining_seconds <= 0:
+            break
+        wait_for_git_index_lock(
+            cwd=cwd,
+            env=env,
+            timeout_seconds=remaining_seconds,
+        )
+
+    if check and result.returncode != 0:
+        _raise_git_command_error(result)
+    return result
 
 
 @contextmanager

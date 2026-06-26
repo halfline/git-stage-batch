@@ -8,7 +8,13 @@ Tests for handling:
 - Mixed scenarios
 """
 
-from git_stage_batch.core.models import BinaryFileChange, GitlinkChange, RenameChange, SingleHunkPatch
+from git_stage_batch.core.models import (
+    BinaryFileChange,
+    GitlinkChange,
+    RenameChange,
+    SingleHunkPatch,
+    TextFileDeletionChange,
+)
 
 from tests.diff_parser_helpers import collect_unified_diff
 
@@ -36,10 +42,11 @@ index abc1234..def5678 100644
 """
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        # Should parse the normal.txt patch (empty.txt has no hunks)
-        assert len(patches) == 1
-        assert patches[0].new_path == "normal.txt"
-        assert len(patches[0].lines) == 7  # ---, +++, @@, 4 body lines
+        assert len(patches) == 2
+        assert isinstance(patches[0], TextFileDeletionChange)
+        assert patches[0].path() == "empty.txt"
+        assert patches[1].new_path == "normal.txt"
+        assert len(patches[1].lines) == 7  # ---, +++, @@, 4 body lines
 
     def test_deleted_empty_file_followed_by_new_file(self):
         """Deleted empty file followed by a new file."""
@@ -61,9 +68,11 @@ index 0000000..83db48f
 """
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        assert len(patches) == 1
-        assert patches[0].new_path == "new.txt"
-        assert patches[0].old_path == "new.txt"
+        assert len(patches) == 2
+        assert isinstance(patches[0], TextFileDeletionChange)
+        assert patches[0].path() == "deleted.txt"
+        assert patches[1].new_path == "new.txt"
+        assert patches[1].old_path == "new.txt"
 
     def test_multiple_deleted_empty_files(self):
         """Multiple deleted empty files in sequence."""
@@ -88,9 +97,12 @@ index abc1234..def5678 100644
 """
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        # Should only parse normal.txt (the empty files have no hunks)
-        assert len(patches) == 1
-        assert patches[0].new_path == "normal.txt"
+        assert len(patches) == 3
+        assert isinstance(patches[0], TextFileDeletionChange)
+        assert patches[0].path() == "empty1.txt"
+        assert isinstance(patches[1], TextFileDeletionChange)
+        assert patches[1].path() == "empty2.txt"
+        assert patches[2].new_path == "normal.txt"
 
 
 class TestNewEmptyFiles:
@@ -539,21 +551,23 @@ index ghi789..jkl012 100644
 
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        # Should parse files with hunks plus binary file, rename, and empty new file
-        # Expected: new_empty.txt (empty), image.png (binary), old->new rename, normal1.txt, normal2.txt
-        assert len(patches) == 5
-        assert isinstance(patches[0], SingleHunkPatch)
-        assert patches[0].new_path == "new_empty.txt"
-        assert isinstance(patches[1], BinaryFileChange)
-        assert patches[1].new_path == "image.png"
-        assert patches[1].change_type == "added"
-        assert isinstance(patches[2], RenameChange)
-        assert patches[2].old_path == "old.txt"
-        assert patches[2].new_path == "new.txt"
-        assert isinstance(patches[3], SingleHunkPatch)
-        assert patches[3].new_path == "normal1.txt"
+        # Expected: deleted_empty.txt (deletion), new_empty.txt (empty),
+        # image.png (binary), old->new rename, normal1.txt, normal2.txt
+        assert len(patches) == 6
+        assert isinstance(patches[0], TextFileDeletionChange)
+        assert patches[0].path() == "deleted_empty.txt"
+        assert isinstance(patches[1], SingleHunkPatch)
+        assert patches[1].new_path == "new_empty.txt"
+        assert isinstance(patches[2], BinaryFileChange)
+        assert patches[2].new_path == "image.png"
+        assert patches[2].change_type == "added"
+        assert isinstance(patches[3], RenameChange)
+        assert patches[3].old_path == "old.txt"
+        assert patches[3].new_path == "new.txt"
         assert isinstance(patches[4], SingleHunkPatch)
-        assert patches[4].new_path == "normal2.txt"
+        assert patches[4].new_path == "normal1.txt"
+        assert isinstance(patches[5], SingleHunkPatch)
+        assert patches[5].new_path == "normal2.txt"
 
     def test_intent_to_add_files(self):
         """Files added with git add -N (intent-to-add)."""
@@ -584,11 +598,11 @@ index 0000000..7654321
 """
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        # Should parse both file_a.py and file_b.py
-        # The deleted_intent.py has no hunks
-        assert len(patches) == 2
+        assert len(patches) == 3
         assert patches[0].new_path == "file_a.py"
-        assert patches[1].new_path == "file_b.py"
+        assert isinstance(patches[1], TextFileDeletionChange)
+        assert patches[1].path() == "deleted_intent.py"
+        assert patches[2].new_path == "file_b.py"
 
 
 class TestStreamingBehavior:

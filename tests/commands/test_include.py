@@ -17,6 +17,7 @@ from git_stage_batch.commands.include import (
 )
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.show import command_show
+from git_stage_batch.core.models import TextFileDeletionChange
 from git_stage_batch.data.hunk_tracking import (
     fetch_next_change,
     load_selected_change,
@@ -672,7 +673,7 @@ class TestCommandIncludeLine:
         assert result.stdout == "keep1\nkeep2\n"
 
     def test_include_line_stages_full_file_deletion(self, temp_git_repo):
-        """Full-file deletion selections should remove the path from the index."""
+        """Full-file deletion selections should stage empty content before path removal."""
         test_file = temp_git_repo / "test.txt"
         test_file.write_text("remove1\nremove2\n")
         subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
@@ -692,7 +693,16 @@ class TestCommandIncludeLine:
             capture_output=True,
             text=True,
         )
-        assert status.stdout == "D  test.txt\n"
+        assert status.stdout == "MD test.txt\n"
+
+        index_content = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert index_content.stdout == ""
 
         index_entry = subprocess.run(
             ["git", "ls-files", "-s", "--", "test.txt"],
@@ -701,7 +711,21 @@ class TestCommandIncludeLine:
             capture_output=True,
             text=True,
         )
-        assert index_entry.stdout == ""
+        assert "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391" in index_entry.stdout
+
+        selected_change = load_selected_change()
+        assert isinstance(selected_change, TextFileDeletionChange)
+
+        command_include(quiet=True)
+
+        final_status = subprocess.run(
+            ["git", "status", "--short", "--", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert final_status.stdout == "D  test.txt\n"
 
     def test_include_line_as_replaces_staged_content_and_masks_hunk(self, temp_git_repo):
         """Test include --line --as stages replacement text and hides the line."""

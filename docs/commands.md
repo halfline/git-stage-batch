@@ -12,9 +12,10 @@ Check whether the current index is suitable for an unstaged-only workflow.
 ❯ git-stage-batch check-unstaged
 ```
 
-Exits successfully when the index is clean, or when the only staged changes
-are renames that `start` can normalize into workflow content. Exits with code
-2 when other staged changes are present.
+Exits successfully when the index is clean, or when every staged change is a
+start-time file-level intent that `start` can normalize into workflow content:
+regular text deletions and renames. These deletion and rename records may be
+mixed. Exits with code 2 when other staged changes are present.
 
 ---
 
@@ -40,9 +41,16 @@ Resets state if a session is already in progress.
 
 Live session diffs render renames as atomic `old -> new` choices. A selected
 rename can be included, skipped, or discarded with the rest of the workflow.
-At session start, staged renames are temporarily normalized into that same
-live workflow; if a normalized start-time rename is left untouched, `stop` or
-`abort` restores the original staged rename.
+At session start, staged renames and regular text deletions are temporarily
+normalized into that same live workflow; if a normalized start-time change is
+left untouched, `stop` or `abort` restores the original staged change.
+
+Deleted text files are handled in two steps. First, the deleted lines are
+shown as normal line-level changes, so you can include, skip, or discard only
+part of the content deletion. If the staged/index version becomes an empty
+file while the working-tree path is still absent, the path removal is shown as
+a separate text-file deletion change. Including that second change removes the
+path from the index; discarding it restores the empty file.
 
 ---
 

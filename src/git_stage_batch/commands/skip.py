@@ -12,6 +12,7 @@ from ..core.hashing import (
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
+    compute_text_file_deletion_hash,
 )
 from ..core.line_selection import (
     parse_line_selection,
@@ -19,7 +20,7 @@ from ..core.line_selection import (
     write_line_ids_file,
 )
 from ..batch.selection import require_line_selection_in_view
-from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     fetch_next_change,
@@ -31,6 +32,7 @@ from ..data.hunk_tracking import (
     record_gitlink_hunk_skipped,
     record_hunk_skipped,
     record_rename_hunk_skipped,
+    record_text_deletion_hunk_skipped,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     require_selected_hunk,
@@ -117,6 +119,20 @@ def command_skip(
                     ),
                     file=sys.stderr,
                 )
+
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
+            return
+
+        if isinstance(item, TextFileDeletionChange):
+            blocklist_path = get_block_list_file_path()
+            append_lines_to_file(blocklist_path, [patch_hash])
+            record_text_deletion_hunk_skipped(item, patch_hash)
+
+            if not quiet:
+                print(_("✓ Text file deletion skipped: {file}").format(file=item.path()), file=sys.stderr)
 
             finish_selected_change_action(
                 quiet=quiet,
@@ -252,6 +268,20 @@ def command_skip_file(
                     append_lines_to_file(blocklist_path, [patch_hash])
                     blocked_hashes.add(patch_hash)
                     record_rename_hunk_skipped(patch, patch_hash)
+                    hunks_skipped += 1
+                    continue
+
+                if isinstance(patch, TextFileDeletionChange):
+                    if patch.path() != target_file:
+                        continue
+
+                    patch_hash = compute_text_file_deletion_hash(patch)
+                    if patch_hash in blocked_hashes:
+                        continue
+
+                    append_lines_to_file(blocklist_path, [patch_hash])
+                    blocked_hashes.add(patch_hash)
+                    record_text_deletion_hunk_skipped(patch, patch_hash)
                     hunks_skipped += 1
                     continue
 

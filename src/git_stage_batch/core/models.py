@@ -84,6 +84,17 @@ class RenameChange:
         return self.new_path
 
 
+@dataclass(frozen=True)
+class TextFileDeletionChange:
+    """Represents an atomic whole-text-file deletion."""
+    old_path: str
+    new_path: str = "/dev/null"
+
+    def path(self) -> str:
+        """Return the repository path that identifies the deleted file."""
+        return self.old_path
+
+
 @dataclass
 class GitlinkChange:
     """Represents a change to a gitlink/submodule pointer.

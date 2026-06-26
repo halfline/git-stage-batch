@@ -187,8 +187,8 @@ not count as coupling.
 3. If `check-unstaged` fails, stop and tell the user this skill only handles
    **unstaged** changes. Do not commit the staged set, and do not use
    `git-stage-batch` to add more changes on top of it. If it succeeds with a
-   staged-rename notice, continue; `git-stage-batch start` will normalize
-   those start-time renames into workflow content.
+   staged-deletion and/or start-time rename notice, continue; `start`
+   normalizes those file-level states into workflow content.
 4. If a required command fails because `.git` is read-only or a write under
    `.git` is blocked, immediately retry it with escalated permissions. Do not
    keep probing the repository with more read-only commands once the sandbox
@@ -683,8 +683,14 @@ pushing the problem back to the user.
 Use the non-interactive subcommands rather than interactive mode.
 Before starting a `git-stage-batch` session, run
 `git-stage-batch check-unstaged`. Do not start the session if that command
-fails. A passing staged-rename notice is allowed because `start` will present
-those renames as workflow content.
+fails. A passing staged-deletion and/or start-time rename notice is allowed;
+`start` presents those file-level states as workflow content alongside the
+remaining unstaged work.
+
+Treat that allowance narrowly. The staging area is allowed here only as an
+intent channel for file-level states that the workflow cannot otherwise infer
+reliably. Do not pre-stage ordinary additions, modifications, or mixed content
+to steer the split.
 
 ### Start a pass
 
@@ -856,7 +862,8 @@ For each commit:
 
 1. Run `git-stage-batch check-unstaged`.
 2. If it fails, stop and tell the user this skill only handles unstaged
-   changes, except for staged renames that pass this check.
+   changes, except for staged text deletions and start-time renames that pass
+   this check.
 3. Otherwise, if no session is active, run `git-stage-batch start`.
 4. Inspect each selected hunk with `show`. Read the changed lines and
    classify each one by which concern it serves. Record whether each line is
@@ -1333,9 +1340,9 @@ The program has Spanish translation but lacks French.
 
 ## Safety Checks
 
-- Do not commit pre-existing staged changes, except staged renames that pass
-  `git-stage-batch check-unstaged` and are then deliberately staged through the
-  `git-stage-batch` workflow.
+- Do not commit pre-existing staged changes directly. Staged text deletions
+  and start-time renames that pass `git-stage-batch check-unstaged` must be
+  handled through the `git-stage-batch` workflow before they are committed.
 - Do not fold unrelated refactors, cleanup, or drive-by formatting into a
   feature commit just because they are adjacent in the diff.
 - Do not try to simplify the story by broadening the commit. When the rules

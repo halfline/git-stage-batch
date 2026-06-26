@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from .colors import Colors
 
 if TYPE_CHECKING:
-    from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
+    from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 
 
 def print_colored_patch(patch_text: str) -> None:
@@ -95,6 +95,17 @@ def print_rename_change(rename_change: RenameChange) -> None:
         f"{bold}{rename_change.new_path}{reset} :: "
         f"{color}Renamed file{reset}"
     )
+
+
+def print_text_file_deletion_change(deletion_change: TextFileDeletionChange) -> None:
+    """Print a whole-text-file deletion as an atomic path change."""
+    use_color = Colors.enabled()
+
+    reset = Colors.RESET if use_color else ""
+    bold = Colors.BOLD if use_color else ""
+    color = Colors.RED if use_color else ""
+
+    print(f"{bold}{deletion_change.path()}{reset} :: {color}Deleted text file{reset}")
 
 
 def _short_oid(oid: str | None) -> str:

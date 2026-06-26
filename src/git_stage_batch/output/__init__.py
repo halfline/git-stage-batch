@@ -7,6 +7,7 @@ from .patch import (
     print_colored_patch,
     print_gitlink_change,
     print_rename_change,
+    print_text_file_deletion_change,
 )
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "print_colored_patch",
     "print_gitlink_change",
     "print_rename_change",
+    "print_text_file_deletion_change",
 ]

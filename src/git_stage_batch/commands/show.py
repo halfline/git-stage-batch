@@ -13,8 +13,9 @@ from ..core.hashing import (
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
+    compute_text_file_deletion_hash,
 )
-from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
@@ -22,16 +23,19 @@ from ..data.hunk_tracking import (
     cache_file_as_single_hunk,
     cache_gitlink_change,
     cache_rename_change,
+    cache_text_deletion_change,
     clear_selected_change_state_files,
     get_selected_change_file_path,
     mark_selected_change_cleared_by_file_list,
     render_binary_file_change,
     render_gitlink_change,
     render_rename_change,
+    render_text_deletion_change,
     render_file_as_single_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
     stream_live_git_diff,
+    text_deletion_change_is_batched,
     write_selected_hunk_patch_lines,
     write_selected_change_kind,
 )
@@ -49,6 +53,7 @@ from ..output import (
     print_gitlink_change,
     print_line_level_changes,
     print_rename_change,
+    print_text_file_deletion_change,
 )
 from ..output.file_review import (
     build_file_review_model,
@@ -62,6 +67,7 @@ from ..output.file_review_list import (
     make_file_review_list_entry,
     make_gitlink_file_review_list_entry,
     make_rename_file_review_list_entry,
+    make_text_deletion_file_review_list_entry,
     print_file_review_list,
 )
 from ..utils.file_io import (
@@ -98,6 +104,10 @@ def command_show_file_list(files: list[str], *, selectable: bool = True) -> None
         line_changes = render_file_as_single_hunk(file_path)
         if line_changes is not None:
             entries.append(make_file_review_list_entry(line_changes))
+            continue
+        deletion_change = render_text_deletion_change(file_path)
+        if deletion_change is not None and not text_deletion_change_is_batched(deletion_change):
+            entries.append(make_text_deletion_file_review_list_entry(deletion_change))
             continue
         binary_change = render_binary_file_change(file_path)
         if binary_change is not None:
@@ -164,17 +174,34 @@ def command_show(
             target_file = file
 
         preview_lines = render_file_as_single_hunk(target_file)
-        binary_change = render_binary_file_change(target_file) if preview_lines is None else None
+        deletion_change = render_text_deletion_change(target_file) if preview_lines is None else None
+        if deletion_change is not None and text_deletion_change_is_batched(deletion_change):
+            deletion_change = None
+        binary_change = (
+            render_binary_file_change(target_file)
+            if preview_lines is None and deletion_change is None else
+            None
+        )
         gitlink_change = (
             render_gitlink_change(target_file)
-            if preview_lines is None and binary_change is None else
+            if preview_lines is None and deletion_change is None and binary_change is None else
             None
         )
         rename_change = (
             render_rename_change(target_file)
-            if preview_lines is None and binary_change is None and gitlink_change is None else
+            if preview_lines is None and deletion_change is None and binary_change is None and gitlink_change is None else
             None
         )
+        if deletion_change is not None:
+            if page is not None:
+                exit_with_error(_("File review pages are only available for text changes."))
+            if selectable:
+                clear_last_file_review_state()
+                cache_text_deletion_change(deletion_change)
+            if porcelain:
+                return
+            print_text_file_deletion_change(deletion_change)
+            return
         if rename_change is not None:
             if page is not None:
                 exit_with_error(_("File review pages are only available for text changes."))
@@ -308,6 +335,17 @@ def command_show(
                             clear_last_file_review_state()
                         if not porcelain:
                             print_rename_change(patch)
+                        return
+                    continue
+
+                if isinstance(patch, TextFileDeletionChange):
+                    deletion_hash = compute_text_file_deletion_hash(patch)
+                    if deletion_hash not in blocked_hashes and not text_deletion_change_is_batched(patch):
+                        cache_text_deletion_change(patch)
+                        if selectable:
+                            clear_last_file_review_state()
+                        if not porcelain:
+                            print_text_file_deletion_change(patch)
                         return
                     continue
 

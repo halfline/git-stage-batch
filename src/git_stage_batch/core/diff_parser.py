@@ -15,6 +15,7 @@ from .models import (
     LineEntry,
     RenameChange,
     SingleHunkPatch,
+    TextFileDeletionChange,
 )
 from ..editor import (
     EditorBuffer,
@@ -32,7 +33,7 @@ from ..utils.paths import get_index_snapshot_file_path, get_working_tree_snapsho
 
 # Type for annotator hooks that enrich LineLevelChange with additional metadata
 LineLevelChangeAnnotator = Callable[[str, LineLevelChange], LineLevelChange]
-UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, RenameChange]
+UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]
 
 
 HUNK_HEADER_PATTERN = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
@@ -62,6 +63,11 @@ def _metadata_indicates_rename(metadata_lines: list[bytes]) -> bool:
     has_rename_from = any(line.startswith(b"rename from ") for line in metadata_lines)
     has_rename_to = any(line.startswith(b"rename to ") for line in metadata_lines)
     return has_rename_from and has_rename_to
+
+
+def _metadata_indicates_deleted_file(metadata_lines: list[bytes]) -> bool:
+    """Return whether diff metadata describes a deleted file."""
+    return any(line.startswith(b"deleted file mode ") for line in metadata_lines)
 
 
 def _gitlink_oids_from_index(metadata_lines: list[bytes]) -> tuple[str | None, str | None]:
@@ -375,6 +381,7 @@ class _UnifiedDiffParserBuildContext:
 
                     is_gitlink = _metadata_indicates_gitlink(metadata_lines)
                     is_rename = _metadata_indicates_rename(metadata_lines)
+                    is_deleted_file = _metadata_indicates_deleted_file(metadata_lines)
                     index_old_oid, index_new_oid = _gitlink_oids_from_index(metadata_lines)
 
                     # Handle files without unified diff hunks
@@ -427,6 +434,10 @@ class _UnifiedDiffParserBuildContext:
                             continue
 
                         if is_rename:
+                            continue
+
+                        if is_deleted_file:
+                            yield TextFileDeletionChange(old_path=old_path)
                             continue
 
                         # Check if this is an empty new file (new file with no content)
@@ -552,6 +563,8 @@ class _UnifiedDiffParserBuildContext:
                                     b"@@ -0,0 +0,0 @@\n",
                                 ],
                             )
+                        elif is_deleted_file:
+                            yield TextFileDeletionChange(old_path=old_path)
         finally:
             close = getattr(line_iter, "close", None)
             if close is not None:

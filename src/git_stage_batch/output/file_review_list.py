@@ -5,7 +5,7 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 
-from ..core.models import BinaryFileChange, GitlinkChange, LineLevelChange, RenameChange
+from ..core.models import BinaryFileChange, GitlinkChange, LineLevelChange, RenameChange, TextFileDeletionChange
 from ..i18n import _
 from .file_review import build_file_review_model
 
@@ -22,6 +22,7 @@ class FileReviewListEntry:
     page_count: int
     binary_change_type: str | None = None
     gitlink_change_type: str | None = None
+    text_deletion: bool = False
     rename_old_path: str | None = None
     rename_new_path: str | None = None
 
@@ -91,6 +92,19 @@ def make_rename_file_review_list_entry(rename_change: RenameChange) -> FileRevie
     )
 
 
+def make_text_deletion_file_review_list_entry(deletion_change: TextFileDeletionChange) -> FileReviewListEntry:
+    """Build a list entry from a whole-text-file deletion."""
+    return FileReviewListEntry(
+        path=deletion_change.path(),
+        change_count=1,
+        changed_line_count=0,
+        addition_count=0,
+        deletion_count=0,
+        page_count=1,
+        text_deletion=True,
+    )
+
+
 def print_file_review_list(
     *,
     source_label: str,
@@ -119,6 +133,13 @@ def print_file_review_list(
                 f"{index}. {entry.path.ljust(path_width)}  "
                 f"{entry.change_count} {change_word} · "
                 f"submodule pointer {entry.gitlink_change_type} · "
+                f"{entry.page_count} {page_word}"
+            )
+        elif entry.text_deletion:
+            print(
+                f"{index}. {entry.path.ljust(path_width)}  "
+                f"{entry.change_count} {change_word} · "
+                f"text file deleted · "
                 f"{entry.page_count} {page_word}"
             )
         elif entry.rename_old_path is not None and entry.rename_new_path is not None:

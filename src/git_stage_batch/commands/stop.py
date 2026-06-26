@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ..data.staged_renames import restore_unstaged_start_time_renames
+from ..data.staged_renames import restore_unstaged_start_time_deletions, restore_unstaged_start_time_renames
 from ..data.session import clear_session_state
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
@@ -35,6 +35,7 @@ def command_stop() -> None:
             git_reset_paths([file_path], check=False)
 
     restore_unstaged_start_time_renames()
+    restore_unstaged_start_time_deletions()
 
     # Clear all session state (preserves batches and batch-sources)
     clear_session_state()

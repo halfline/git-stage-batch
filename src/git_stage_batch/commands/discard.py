@@ -48,9 +48,10 @@ from ..core.hashing import (
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
+    compute_text_file_deletion_hash,
 )
 from ..core.line_selection import parse_line_selection
-from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
@@ -69,6 +70,7 @@ from ..data.hunk_tracking import (
     render_binary_file_change,
     render_gitlink_change,
     render_rename_change,
+    render_text_deletion_change,
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -231,6 +233,25 @@ def _discard_rename_change(rename_change: RenameChange) -> None:
         )
 
 
+def _discard_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
+    """Restore a whole-text-file path deletion from the current index."""
+    file_path = deletion_change.path()
+    snapshot_file_if_untracked(file_path)
+
+    restore_result = run_git_command(
+        ["checkout", "--", file_path],
+        check=False,
+        requires_index_lock=True,
+    )
+    if restore_result.returncode != 0:
+        exit_with_error(
+            _("Failed to restore deleted file {file}: {error}").format(
+                file=file_path,
+                error=restore_result.stderr,
+            )
+        )
+
+
 @dataclass(frozen=True)
 class _CollectedTextFileDiscards:
     inputs_by_file: dict[str, _TextFileDiscardInput]
@@ -267,10 +288,10 @@ def _buffer_ends_with_lf(buffer: EditorBuffer) -> bool:
     return bool(last_chunk) and last_chunk.endswith(b"\n")
 
 
-def _path_contains_only_whitespace(path: Path) -> bool:
+def _path_is_empty(path: Path) -> bool:
     with path.open("rb") as file_handle:
         while chunk := file_handle.read(1024 * 1024):
-            if chunk.strip():
+            if chunk:
                 return False
     return True
 
@@ -352,6 +373,20 @@ def command_discard(
                     ),
                     file=sys.stderr,
                 )
+
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
+            return
+
+        if isinstance(item, TextFileDeletionChange):
+            _discard_text_deletion_change(item)
+            append_lines_to_file(get_block_list_file_path(), [patch_hash])
+            record_hunk_discarded(patch_hash)
+
+            if not quiet:
+                print(_("✓ Text file deletion discarded: {file}").format(file=item.path()), file=sys.stderr)
 
             finish_selected_change_action(
                 quiet=quiet,
@@ -459,7 +494,7 @@ def command_discard(
         if is_new_file:
             absolute_path = get_git_repository_root_path() / filename
             if absolute_path.exists():
-                if _path_contains_only_whitespace(absolute_path):
+                if _path_is_empty(absolute_path):
                     absolute_path.unlink()
 
         # Add hash to blocklist
@@ -573,6 +608,20 @@ def command_discard_file(
         blocklist_path = get_block_list_file_path()
         blocked_hashes = read_text_file_line_set(blocklist_path)
 
+        deletion_change = render_text_deletion_change(target_file)
+        if deletion_change is not None:
+            patch_hash = compute_text_file_deletion_hash(deletion_change)
+            _discard_text_deletion_change(deletion_change)
+            if patch_hash not in blocked_hashes:
+                append_lines_to_file(blocklist_path, [patch_hash])
+                record_hunk_discarded(patch_hash)
+            print(
+                _("✓ Text file deletion discarded: {file}").format(file=target_file),
+                file=sys.stderr,
+            )
+            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
+            return
+
         gitlink_change = render_gitlink_change(target_file)
         if gitlink_change is not None:
             patch_hash = compute_gitlink_change_hash(gitlink_change)
@@ -619,6 +668,15 @@ def command_discard_file(
                         continue
 
                     patch_hash = compute_rename_change_hash(patch)
+                    if patch_hash not in blocked_hashes:
+                        hashes_to_block.append(patch_hash)
+                    continue
+
+                if isinstance(patch, TextFileDeletionChange):
+                    if patch.path() != target_file:
+                        continue
+
+                    patch_hash = compute_text_file_deletion_hash(patch)
                     if patch_hash not in blocked_hashes:
                         hashes_to_block.append(patch_hash)
                     continue
@@ -874,6 +932,26 @@ def command_discard_to_batch(
             selected_change = load_selected_change()
             if isinstance(selected_change, BinaryFileChange):
                 saved_hunks = _command_discard_binary_to_batch(
+                    batch_name,
+                    selected_change,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
+            else:
+                saved_hunks = _command_discard_hunk_to_batch(
+                    batch_name,
+                    file_only=False,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
+        elif (
+            file is None
+            and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.DELETION
+        ):
+            selected_change = load_selected_change()
+            if isinstance(selected_change, TextFileDeletionChange):
+                saved_hunks = _command_discard_text_deletion_to_batch(
                     batch_name,
                     selected_change,
                     quiet=quiet,
@@ -1324,6 +1402,45 @@ def _command_discard_binary_to_batch(
     return 1
 
 
+def _command_discard_text_deletion_to_batch(
+    batch_name: str,
+    deletion_change: TextFileDeletionChange,
+    *,
+    quiet: bool = False,
+    advance: bool = True,
+    auto_advance: bool | None = None,
+) -> int:
+    """Save one whole-text-file deletion to a batch, then restore it locally."""
+    file_path = deletion_change.path()
+    patch_hash = compute_text_file_deletion_hash(deletion_change)
+
+    snapshot_file_if_untracked(file_path)
+    add_file_to_batch(
+        batch_name,
+        file_path,
+        BatchOwnership([], []),
+        _detect_file_mode(file_path),
+        change_type=TextFileChangeType.DELETED.value,
+    )
+    _discard_text_deletion_change(deletion_change)
+
+    append_lines_to_file(get_block_list_file_path(), [patch_hash])
+    record_hunk_discarded(patch_hash)
+
+    if not quiet:
+        print(
+            _("Discarded text file deletion '{file}' to batch '{batch}'").format(
+                file=file_path,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+
+    if advance:
+        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
+    return 1
+
+
 def _prepare_text_file_discard_to_batch(
     batch_name: str,
     discard_input: _TextFileDiscardInput,
@@ -1387,6 +1504,9 @@ def _collect_text_file_discard_inputs(
     ) as patches:
         for patch in patches:
             if isinstance(patch, RenameChange):
+                continue
+
+            if isinstance(patch, TextFileDeletionChange):
                 continue
 
             if isinstance(patch, GitlinkChange):
@@ -1610,6 +1730,16 @@ def _command_discard_file_to_batch(
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
+    deletion_change = render_text_deletion_change(file_path)
+    if deletion_change is not None:
+        return _command_discard_text_deletion_to_batch(
+            batch_name,
+            deletion_change,
+            quiet=quiet,
+            advance=advance,
+            auto_advance=auto_advance,
+        )
+
     binary_change = render_binary_file_change(file_path)
     if binary_change is not None:
         return _command_discard_binary_to_batch(
@@ -1643,6 +1773,9 @@ def _command_discard_file_to_batch(
         ) as patches:
             for patch in patches:
                 if isinstance(patch, RenameChange):
+                    continue
+
+                if isinstance(patch, TextFileDeletionChange):
                     continue
 
                 if isinstance(patch, GitlinkChange):
@@ -2020,6 +2153,13 @@ def _command_discard_hunk_to_batch(
             quiet=quiet,
             auto_advance=auto_advance,
         )
+    if isinstance(selected_item, TextFileDeletionChange):
+        return _command_discard_text_deletion_to_batch(
+            batch_name,
+            selected_item,
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
 
     # Get the file path and hash from currently cached hunk
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
@@ -2068,6 +2208,9 @@ def _command_discard_text_hunk_to_batch(
             ) as patches:
                 for patch in patches:
                     if isinstance(patch, RenameChange):
+                        continue
+
+                    if isinstance(patch, TextFileDeletionChange):
                         continue
 
                     if isinstance(patch, GitlinkChange):
@@ -2201,7 +2344,7 @@ def _command_discard_text_hunk_to_batch(
                 git_remove_paths([file_path], cached=True, quiet=True, check=False)
             elif is_new_file:
                 # New file: only remove if it's empty after reverse patches
-                if _path_contains_only_whitespace(absolute_path):
+                if _path_is_empty(absolute_path):
                     absolute_path.unlink()
                     git_remove_paths([file_path], cached=True, quiet=True, check=False)
             # else: file still exists with content (reverted to HEAD state), leave it alone

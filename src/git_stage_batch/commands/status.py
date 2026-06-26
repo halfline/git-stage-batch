@@ -14,9 +14,10 @@ from ..core.hashing import (
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
+    compute_text_file_deletion_hash,
 )
 from ..core.diff_parser import acquire_unified_diff
-from ..core.models import BinaryFileChange, GitlinkChange, RenameChange
+from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.file_review_state import (
     FileReviewAction,
     ReviewSource,
@@ -33,6 +34,7 @@ from ..data.hunk_tracking import (
     load_selected_binary_file,
     load_selected_gitlink_change,
     load_selected_rename_change,
+    load_selected_text_deletion_change,
     mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_change_kind,
     rename_change_is_stale,
@@ -40,6 +42,8 @@ from ..data.hunk_tracking import (
     selected_batch_binary_file_for_batch,
     snapshots_are_stale,
     stream_live_git_diff,
+    text_deletion_change_is_batched,
+    text_deletion_change_is_stale,
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import get_iteration_count
@@ -127,6 +131,11 @@ def estimate_remaining_hunks() -> int:
                     ):
                         remaining += 1
                     continue
+                elif isinstance(patch, TextFileDeletionChange):
+                    if text_deletion_change_is_batched(patch):
+                        continue
+                    hunk_hash = compute_text_file_deletion_hash(patch)
+                    file_path = patch.path()
                 elif isinstance(patch, GitlinkChange):
                     hunk_hash = compute_gitlink_change_hash(patch)
                     file_path = patch.path()
@@ -165,6 +174,7 @@ def _selected_kind_label(selected_kind: str | None) -> str:
         SelectedChangeKind.FILE.value: _("Current file review:"),
         SelectedChangeKind.BATCH_FILE.value: _("Current batch file review:"),
         SelectedChangeKind.RENAME.value: _("Current rename:"),
+        SelectedChangeKind.DELETION.value: _("Current text file deletion:"),
         SelectedChangeKind.BINARY.value: _("Current binary file:"),
         SelectedChangeKind.BATCH_BINARY.value: _("Current batch binary file:"),
         SelectedChangeKind.GITLINK.value: _("Current submodule pointer:"),
@@ -240,6 +250,20 @@ def _read_selected_change_summary() -> tuple[bool, dict | None]:
             "change_type": "renamed",
             "old_path": rename_change.old_path,
             "new_path": rename_change.new_path,
+        }
+
+    if selected_kind == SelectedChangeKind.DELETION:
+        deletion_change = load_selected_text_deletion_change()
+        if deletion_change is None:
+            return False, None
+        if text_deletion_change_is_stale(deletion_change):
+            return False, None
+        return True, {
+            "kind": selected_kind.value,
+            "file": deletion_change.path(),
+            "line": None,
+            "ids": [],
+            "change_type": "deleted",
         }
 
     if selected_kind in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):

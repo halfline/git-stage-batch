@@ -24,6 +24,7 @@ import pytest
 from git_stage_batch.commands.discard import command_discard, command_discard_line, command_discard_line_as_to_batch
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.core.models import TextFileDeletionChange
 from git_stage_batch.exceptions import CommandError
 
 
@@ -488,6 +489,34 @@ class TestCommandDiscardLine:
         # Try to discard - should fail because file doesn't exist
         with pytest.raises(CommandError):
             command_discard_line("1")
+
+    def test_discard_path_removal_keeps_empty_file_after_deleted_lines_staged(self, temp_git_repo):
+        """Discarding the second deletion prompt should restore the empty index file."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("content\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.unlink()
+
+        command_start(quiet=True)
+        command_include(quiet=True)
+
+        selected_change = load_selected_change()
+        assert isinstance(selected_change, TextFileDeletionChange)
+
+        command_discard(quiet=True)
+
+        assert test_file.exists()
+        assert test_file.read_text() == ""
+        cached = subprocess.run(
+            ["git", "diff", "--cached", "--name-status", "--", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert cached.stdout.strip() == "M\ttest.txt"
 
     def test_discard_line_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
         """discard --line should reject the selection when any ID is stale."""

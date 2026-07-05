@@ -690,6 +690,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#how-does-this-compare-to-jujutsu-and-jj-hunk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does this compare to Jujutsu and jj-hunk?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#is-this-safe-for-protected-branches" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1394,6 +1405,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#how-does-this-compare-to-jujutsu-and-jj-hunk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does this compare to Jujutsu and jj-hunk?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#is-this-safe-for-protected-branches" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1775,6 +1797,32 @@ See <a href="commands/">commands reference</a> for the <code>--as</code> contigu
 </span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>repeat
 </span></code></pre></div>
 <p>This makes it easier to organize a large working tree into a series of clean commits.</p>
+<h3 id="how-does-this-compare-to-jujutsu-and-jj-hunk">How does this compare to Jujutsu and jj-hunk?<a class="headerlink" href="#how-does-this-compare-to-jujutsu-and-jj-hunk" title="Permanent link">&para;</a></h3>
+<p><a href="https://github.com/jj-vcs/jj">Jujutsu</a> (<code>jj</code>) is a Git-compatible version
+control system with a different workflow model. It can use Git repositories and
+Git remotes, but it does not center the workflow on Git's index and staging
+area. Instead, it treats the working copy as a commit and provides commit-first
+tools for splitting, squashing, moving, and rewriting changes.</p>
+<p><a href="https://github.com/laulauland/jj-hunk">jj-hunk</a> builds on that model by adding
+programmatic hunk selection for <code>jj</code>. It can list hunks and apply a JSON or
+YAML selection spec when splitting, committing, or squashing changes. That makes
+it especially useful for automation and AI agents in repositories where <code>jj</code> is
+already the chosen workflow.</p>
+<p>The overlap is the goal: turning messy development into logical, reviewable
+commits. The niche is different:</p>
+<ul>
+<li><code>git-stage-batch</code> is for Git-native repositories and workflows. It works with
+  Git's index, regular Git commits, and existing Git hosting without asking the
+  project or contributor to adopt a new VCS workflow.</li>
+<li><code>jj</code> is a broader replacement workflow for people who want Jujutsu's commit
+  model, operation log, automatic rebasing, and history-editing primitives.</li>
+<li><code>jj-hunk</code> is the hunk-selection layer for that <code>jj</code> workflow, especially when
+  an agent or script needs to select hunks non-interactively.</li>
+</ul>
+<p>If your project and collaborators use Git, <code>git-stage-batch</code> fills the
+automation-friendly gap between <code>git add -p</code> and larger history-rewrite tools.
+If your project already uses <code>jj</code>, <code>jj-hunk</code> may be the more natural tool for
+the same kind of commit curation.</p>
 <h3 id="is-this-safe-for-protected-branches">Is this safe for protected branches?<a class="headerlink" href="#is-this-safe-for-protected-branches" title="Permanent link">&para;</a></h3>
 <p>Yes — because you should not use it there.</p>
 <p>This tool is meant for local development branches before merging.</p>

@@ -1837,9 +1837,10 @@
 <p>Check whether the current index is suitable for an unstaged-only workflow.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>❯ git-stage-batch check-unstaged
 </span></code></pre></div>
-<p>Exits successfully when the index is clean, or when the only staged changes
-are renames that <code>start</code> can normalize into workflow content. Exits with code
-2 when other staged changes are present.</p>
+<p>Exits successfully when the index is clean, or when every staged change is a
+start-time file-level intent that <code>start</code> can normalize into workflow content:
+regular text deletions and renames. These deletion and rename records may be
+mixed. Exits with code 2 when other staged changes are present.</p>
 <hr />
 <h3 id="start"><code>start</code><a class="headerlink" href="#start" title="Permanent link">&para;</a></h3>
 <p>Find and display the first unprocessed hunk; cache as "selected".</p>
@@ -1855,9 +1856,15 @@ are renames that <code>start</code> can normalize into workflow content. Exits w
 <p>Resets state if a session is already in progress.</p>
 <p>Live session diffs render renames as atomic <code>old -&gt; new</code> choices. A selected
 rename can be included, skipped, or discarded with the rest of the workflow.
-At session start, staged renames are temporarily normalized into that same
-live workflow; if a normalized start-time rename is left untouched, <code>stop</code> or
-<code>abort</code> restores the original staged rename.</p>
+At session start, staged renames and regular text deletions are temporarily
+normalized into that same live workflow; if a normalized start-time change is
+left untouched, <code>stop</code> or <code>abort</code> restores the original staged change.</p>
+<p>Deleted text files are handled in two steps. First, the deleted lines are
+shown as normal line-level changes, so you can include, skip, or discard only
+part of the content deletion. If the staged/index version becomes an empty
+file while the working-tree path is still absent, the path removal is shown as
+a separate text-file deletion change. Including that second change removes the
+path from the index; discarding it restores the empty file.</p>
 <hr />
 <h3 id="show-file-path-files-pattern"><code>show [--file [PATH] | --files PATTERN...]</code><a class="headerlink" href="#show-file-path-files-pattern" title="Permanent link">&para;</a></h3>
 <p>Display the cached "selected" hunk, one file review, or a matched-files list.</p>

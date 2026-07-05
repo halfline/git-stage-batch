@@ -361,6 +361,36 @@ repeat
 
 This makes it easier to organize a large working tree into a series of clean commits.
 
+### How does this compare to Jujutsu and jj-hunk?
+
+[Jujutsu](https://github.com/jj-vcs/jj) (`jj`) is a Git-compatible version
+control system with a different workflow model. It can use Git repositories and
+Git remotes, but it does not center the workflow on Git's index and staging
+area. Instead, it treats the working copy as a commit and provides commit-first
+tools for splitting, squashing, moving, and rewriting changes.
+
+[jj-hunk](https://github.com/laulauland/jj-hunk) builds on that model by adding
+programmatic hunk selection for `jj`. It can list hunks and apply a JSON or
+YAML selection spec when splitting, committing, or squashing changes. That makes
+it especially useful for automation and AI agents in repositories where `jj` is
+already the chosen workflow.
+
+The overlap is the goal: turning messy development into logical, reviewable
+commits. The niche is different:
+
+- `git-stage-batch` is for Git-native repositories and workflows. It works with
+  Git's index, regular Git commits, and existing Git hosting without asking the
+  project or contributor to adopt a new VCS workflow.
+- `jj` is a broader replacement workflow for people who want Jujutsu's commit
+  model, operation log, automatic rebasing, and history-editing primitives.
+- `jj-hunk` is the hunk-selection layer for that `jj` workflow, especially when
+  an agent or script needs to select hunks non-interactively.
+
+If your project and collaborators use Git, `git-stage-batch` fills the
+automation-friendly gap between `git add -p` and larger history-rewrite tools.
+If your project already uses `jj`, `jj-hunk` may be the more natural tool for
+the same kind of commit curation.
+
 ### Is this safe for protected branches?
 
 Yes — because you should not use it there.

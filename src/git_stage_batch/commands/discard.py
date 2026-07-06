@@ -29,7 +29,7 @@ from ..batch.ownership import (
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
 )
-from ..batch.replacement import (
+from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
 )

@@ -101,7 +101,7 @@ from ..editor import (
 )
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes, print_remaining_line_changes_header
+from ..output import print_line_level_changes
 from ..staging.operations import (
     build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,
@@ -1609,8 +1609,7 @@ def command_include_line_as(
                     ),
                     file=sys.stderr,
                 )
-                print_remaining_line_changes_header(target_file)
-                recalculate_selected_hunk_for_command(
+                refresh_selected_hunk_after_line_action(
                     target_file,
                     auto_advance=auto_advance,
                 )

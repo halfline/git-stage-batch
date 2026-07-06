@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from .batch_refs import restore_batch_refs, snapshot_batch_refs
 from .file_tracking import auto_add_untracked_files
-from .hunk_tracking import (
+from .progress import (
     format_id_range,
+    get_file_progress,
+    get_hunk_counts,
     record_hunk_discarded,
     record_hunk_included,
     record_hunk_skipped,
 )
-from .progress import get_file_progress, get_hunk_counts
 
 __all__ = [
     "auto_add_untracked_files",

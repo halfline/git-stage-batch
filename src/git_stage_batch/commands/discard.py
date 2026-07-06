@@ -99,7 +99,6 @@ from ..editor import (
 )
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
-from ..output import print_remaining_line_changes_header
 from ..staging.operations import (
     build_target_working_tree_buffer_from_lines,
     build_target_working_tree_buffer_with_replaced_lines,
@@ -130,7 +129,10 @@ from ..utils.paths import (
 from .include import (
     _expand_replacement_selection_ids,
 )
-from .selection.selected_hunk_refresh import recalculate_selected_hunk_for_command
+from .selection.selected_hunk_refresh import (
+    recalculate_selected_hunk_for_command,
+    refresh_selected_hunk_after_line_action,
+)
 
 
 @dataclass(frozen=True)
@@ -850,8 +852,7 @@ def command_discard_line(
             ),
             file=sys.stderr,
         )
-        print_remaining_line_changes_header(line_changes.path)
-        recalculate_selected_hunk_for_command(
+        refresh_selected_hunk_after_line_action(
             line_changes.path,
             auto_advance=auto_advance,
         )

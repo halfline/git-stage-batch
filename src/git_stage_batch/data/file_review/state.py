@@ -24,7 +24,7 @@ from ...utils.paths import (
     get_last_file_review_state_file_path,
     get_working_tree_snapshot_file_path,
 )
-from ..hunk_tracking import SelectedChangeKind, get_selected_change_file_path, read_selected_change_kind
+from ..selected_change.store import SelectedChangeKind, read_selected_change_kind
 
 
 class ReviewSource(str, Enum):
@@ -124,6 +124,12 @@ def _hash_file(path: Path) -> str | None:
         for chunk in buffer.byte_chunks():
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _get_selected_change_file_path() -> str | None:
+    from ..selected_change.store import get_selected_change_file_path
+
+    return get_selected_change_file_path()
 
 
 def fingerprint_selected_file_view(
@@ -292,7 +298,7 @@ def resolve_batch_source_action_scope(
     extra_action_parts: tuple[str, ...] = (),
 ) -> ActionScopeResolution:
     """Resolve pathless and implicit-file batch actions against the last batch review."""
-    from ..hunk_tracking import (
+    from ..selected_change.store import (
         refuse_bare_action_after_file_list,
         refuse_bare_action_after_stale_batch_selection,
     )
@@ -395,7 +401,7 @@ def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
     selected_kind = read_selected_change_kind()
     if not selected_change_kind_matches_review_source(selected_kind, review_state):
         return False
-    if get_selected_change_file_path() != review_state.file_path:
+    if _get_selected_change_file_path() != review_state.file_path:
         return False
     if selected_kind is None:
         return False
@@ -447,7 +453,7 @@ def selected_batch_review_matches_reset_state(review_state: FileReviewState) -> 
         return False
     if not selected_change_kind_matches_review_source(selected_kind, review_state):
         return False
-    if get_selected_change_file_path() != review_state.file_path:
+    if _get_selected_change_file_path() != review_state.file_path:
         return False
 
     from ..hunk_tracking import render_batch_file_display
@@ -702,7 +708,7 @@ def refuse_live_action_for_batch_selection(action: FileReviewAction | str) -> bo
             )
         raise CommandError("\n".join(lines))
 
-    file_path = get_selected_change_file_path() or _("the selected file")
+    file_path = _get_selected_change_file_path() or _("the selected file")
     raise CommandError(
         _(
             "The selected file view for {file} came from a batch, not the live working tree.\n"
@@ -826,7 +832,7 @@ def validate_implicit_live_to_batch_file_action(
     use that explicit file path. The boolean is true when the caller should stop
     after a live-action guard handled the request.
     """
-    from ..hunk_tracking import (
+    from ..selected_change.store import (
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )
@@ -875,7 +881,7 @@ def resolve_live_to_batch_action_scope(
     file: str | None,
 ) -> ActionScopeResolution:
     """Resolve pathless and implicit-file live-to-batch actions against live reviews."""
-    from ..hunk_tracking import (
+    from ..selected_change.store import (
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )
@@ -938,7 +944,7 @@ def resolve_live_line_action_scope(
     validate_pathless_before_live_guard: bool = False,
 ) -> ActionScopeResolution:
     """Validate a pathless or implicit-file live line action against review state."""
-    from ..hunk_tracking import (
+    from ..selected_change.store import (
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )

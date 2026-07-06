@@ -2188,7 +2188,11 @@ to its state before that operation.</p>
 - Skips all its hunks automatically</p>
 <p>When run without a selected hunk, you can specify the file path:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-38-1"><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>❯ git-stage-batch block-file path/to/file.txt
+</span><span id="__span-38-2"><a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>❯ git-stage-batch block-file --local-only .claude/
 </span></code></pre></div>
+<p>Use <code>--local-only</code> to write the ignore entry to <code>.git/info/exclude</code> instead
+of <code>.gitignore</code>, which is useful for personal assistant assets or other
+machine-local files.</p>
 <p>Useful for build artifacts, IDE files, or other generated content.</p>
 <hr />
 <h3 id="unblock-file"><code>unblock-file</code><a class="headerlink" href="#unblock-file" title="Permanent link">&para;</a></h3>

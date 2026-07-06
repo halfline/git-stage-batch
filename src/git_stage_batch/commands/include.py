@@ -135,7 +135,10 @@ from ..utils.paths import (
     get_session_batch_sources_file_path,
     get_working_tree_snapshot_file_path,
 )
-from .selection.selected_hunk_refresh import recalculate_selected_hunk_for_command
+from .selection.selected_hunk_refresh import (
+    recalculate_selected_hunk_for_command,
+    refresh_selected_hunk_after_line_action,
+)
 
 
 def _update_index_for_gitlink_change(gitlink_change: GitlinkChange):
@@ -1160,8 +1163,7 @@ def command_include_line(
                 ),
                 file=sys.stderr,
             )
-            print_remaining_line_changes_header(line_changes.path)
-            recalculate_selected_hunk_for_command(
+            refresh_selected_hunk_after_line_action(
                 line_changes.path,
                 auto_advance=auto_advance,
             )

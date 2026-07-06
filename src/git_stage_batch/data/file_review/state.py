@@ -24,6 +24,7 @@ from ...utils.paths import (
     get_last_file_review_state_file_path,
     get_working_tree_snapshot_file_path,
 )
+from ..batch import file_display
 from ..selected_change.store import SelectedChangeKind, read_selected_change_kind
 
 
@@ -408,9 +409,10 @@ def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
     gutter_to_selection_id = None
     line_changes = None
     if review_state.source == ReviewSource.BATCH and review_state.batch_name is not None:
-        from ..hunk_tracking import render_batch_file_display
-
-        rendered = render_batch_file_display(review_state.batch_name, review_state.file_path)
+        rendered = file_display.render_batch_file_display(
+            review_state.batch_name,
+            review_state.file_path,
+        )
         if rendered is None:
             return False
         gutter_to_selection_id = (
@@ -456,9 +458,10 @@ def selected_batch_review_matches_reset_state(review_state: FileReviewState) -> 
     if _get_selected_change_file_path() != review_state.file_path:
         return False
 
-    from ..hunk_tracking import render_batch_file_display
-
-    rendered = render_batch_file_display(review_state.batch_name, review_state.file_path)
+    rendered = file_display.render_batch_file_display(
+        review_state.batch_name,
+        review_state.file_path,
+    )
     if rendered is None:
         return False
     if (

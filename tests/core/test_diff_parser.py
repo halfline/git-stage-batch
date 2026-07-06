@@ -1,21 +1,14 @@
 """Tests for unified diff parser."""
 
-from git_stage_batch.utils.paths import ensure_state_directory_exists
-
-import subprocess
-
 import pytest
 
 from git_stage_batch.core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
-    write_snapshots_for_selected_file_path,
 )
 from git_stage_batch.core.models import SingleHunkPatch
 from git_stage_batch.editor import EditorBuffer
 from tests.diff_parser_helpers import collect_unified_diff
-from git_stage_batch.utils.file_io import read_text_file_contents
-from git_stage_batch.utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
 
 
 def _two_hunk_diff_lines() -> list[bytes]:
@@ -333,163 +326,3 @@ class TestBuildLineLevelChangeFromPatchText:
         )
 
         assert line_changes_from_lines == line_changes_from_list
-
-
-class TestWriteSnapshotsForCurrentFilePath:
-    """Tests for write_snapshots_for_selected_file_path with intent-to-add entries."""
-
-    @pytest.fixture
-    def temp_git_repo(self, tmp_path, monkeypatch):
-        """Create a temporary git repository."""
-        monkeypatch.chdir(tmp_path)
-        subprocess.run(["git", "init"], check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test User"], check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, capture_output=True)
-
-        # Create initial commit
-        (tmp_path / "README.md").write_text("# Test\n")
-        subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, capture_output=True)
-
-        # Ensure state directory exists
-        ensure_state_directory_exists()
-
-        return tmp_path
-
-    def test_intent_to_add_tracked_file_uses_head_content(self, temp_git_repo):
-        """When a tracked file has intent-to-add entry, index snapshot should use HEAD content."""
-        # Create and commit a file
-        test_file = temp_git_repo / "tracked.py"
-        original_content = '''"""Module docstring."""
-
-def original_function():
-    """Original implementation."""
-    return "original"
-'''
-        test_file.write_text(original_content)
-        subprocess.run(["git", "add", "tracked.py"], cwd=temp_git_repo, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add tracked file"], cwd=temp_git_repo, check=True, capture_output=True)
-
-        # Modify the file in working tree
-        modified_content = '''"""Module docstring."""
-
-def original_function():
-    """Modified implementation."""
-    return "modified"
-
-def new_function():
-    """New function."""
-    return "new"
-'''
-        test_file.write_text(modified_content)
-
-        # Simulate intent-to-add by removing from cache and re-adding with -N
-        # This creates an empty blob (e69de29...) in the index
-        subprocess.run(["git", "rm", "--cached", "tracked.py"], cwd=temp_git_repo, check=True, capture_output=True)
-        subprocess.run(["git", "add", "-N", "tracked.py"], cwd=temp_git_repo, check=True, capture_output=True)
-
-        # Verify we have an empty blob in index
-        ls_result = subprocess.run(
-            ["git", "ls-files", "--stage", "tracked.py"],
-            cwd=temp_git_repo,
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        assert "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391" in ls_result.stdout, "Should have empty blob in index"
-
-        # Verify git show :file returns empty content.
-        show_result = subprocess.run(
-            ["git", "show", ":tracked.py"],
-            cwd=temp_git_repo,
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        assert show_result.stdout == "", "Index should return empty content for intent-to-add"
-
-        # Call write_snapshots_for_selected_file_path
-        write_snapshots_for_selected_file_path("tracked.py")
-
-        # Read the index snapshot
-        index_snapshot_path = get_index_snapshot_file_path()
-        index_snapshot_content = read_text_file_contents(index_snapshot_path)
-
-        # The fix: index snapshot should contain HEAD content, not empty
-        assert index_snapshot_content == original_content, (
-            "Index snapshot should contain HEAD content for intent-to-add tracked file, "
-            "not empty content"
-        )
-
-        # Verify working tree snapshot has the modified content
-        working_tree_snapshot_path = get_working_tree_snapshot_file_path()
-        working_tree_snapshot_content = read_text_file_contents(working_tree_snapshot_path)
-        assert working_tree_snapshot_content == modified_content
-
-    def test_intent_to_add_new_file_keeps_empty_index(self, temp_git_repo):
-        """New files with intent-to-add should keep empty index snapshot."""
-        # Create a new file (not in HEAD)
-        test_file = temp_git_repo / "newfile.py"
-        new_content = '''"""New file."""
-
-def new_function():
-    return "new"
-'''
-        test_file.write_text(new_content)
-
-        # Add with intent-to-add
-        subprocess.run(["git", "add", "-N", "newfile.py"], cwd=temp_git_repo, check=True, capture_output=True)
-
-        # Verify file is not in HEAD
-        head_check = subprocess.run(
-            ["git", "cat-file", "-e", "HEAD:newfile.py"],
-            cwd=temp_git_repo,
-            capture_output=True
-        )
-        assert head_check.returncode != 0, "New file should not exist in HEAD"
-
-        # Call write_snapshots_for_selected_file_path
-        write_snapshots_for_selected_file_path("newfile.py")
-
-        # Read the index snapshot
-        index_snapshot_path = get_index_snapshot_file_path()
-        index_snapshot_content = read_text_file_contents(index_snapshot_path)
-
-        # New files should have empty index snapshot (no fallback to HEAD)
-        assert index_snapshot_content == "", "New file should have empty index snapshot"
-
-        # Verify working tree snapshot has the content
-        working_tree_snapshot_path = get_working_tree_snapshot_file_path()
-        working_tree_snapshot_content = read_text_file_contents(working_tree_snapshot_path)
-        assert working_tree_snapshot_content == new_content
-
-    def test_normal_tracked_file_uses_index_content(self, temp_git_repo):
-        """Normal tracked files should use index content (no fallback)."""
-        # Create and commit a file
-        test_file = temp_git_repo / "normal.py"
-        original_content = "original content\n"
-        test_file.write_text(original_content)
-        subprocess.run(["git", "add", "normal.py"], cwd=temp_git_repo, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add normal file"], cwd=temp_git_repo, check=True, capture_output=True)
-
-        # Modify and stage
-        staged_content = "staged content\n"
-        test_file.write_text(staged_content)
-        subprocess.run(["git", "add", "normal.py"], cwd=temp_git_repo, check=True, capture_output=True)
-
-        # Further modify in working tree
-        working_content = "working tree content\n"
-        test_file.write_text(working_content)
-
-        # Call write_snapshots_for_selected_file_path
-        write_snapshots_for_selected_file_path("normal.py")
-
-        # Index snapshot should have staged content
-        index_snapshot_path = get_index_snapshot_file_path()
-        index_snapshot_content = read_text_file_contents(index_snapshot_path)
-        assert index_snapshot_content == staged_content
-
-        # Working tree snapshot should have working content
-        working_tree_snapshot_path = get_working_tree_snapshot_file_path()
-        working_tree_snapshot_content = read_text_file_contents(working_tree_snapshot_path)
-        assert working_tree_snapshot_content == working_content

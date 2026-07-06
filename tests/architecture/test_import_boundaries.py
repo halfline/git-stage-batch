@@ -144,6 +144,17 @@ def test_file_review_output_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_batch_selection_does_not_import_hunk_navigation():
+    """Batch selection should use focused data helpers instead of hunk navigation."""
+    selection_path = SRC_ROOT / "batch" / "selection.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

@@ -7,8 +7,7 @@ import tempfile
 import subprocess
 import sys
 from enum import Enum
-from hashlib import sha256
-from typing import Generator, Mapping, Optional, Union
+from typing import Generator, Optional, Union
 
 from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
 from ..batch.display import annotate_with_batch_source
@@ -96,10 +95,14 @@ from ..utils.paths import (
 from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from .batch_selected_changes import (
     compute_batch_binary_fingerprint as compute_batch_binary_fingerprint,
+    compute_batch_gitlink_fingerprint as compute_batch_gitlink_fingerprint,
     require_current_selected_batch_binary_file_for_batch as require_current_selected_batch_binary_file_for_batch,
+    require_current_selected_batch_gitlink_file_for_batch as require_current_selected_batch_gitlink_file_for_batch,
     selected_batch_binary_batch_name as selected_batch_binary_batch_name,
     selected_batch_binary_file_for_batch as selected_batch_binary_file_for_batch,
     selected_batch_binary_matches_batch as selected_batch_binary_matches_batch,
+    selected_batch_gitlink_file_for_batch as selected_batch_gitlink_file_for_batch,
+    selected_batch_gitlink_matches_batch as selected_batch_gitlink_matches_batch,
 )
 from .selected_change.lifecycle import clear_selected_change_state_files as clear_selected_change_state_files
 from .selected_change.store import (
@@ -118,9 +121,7 @@ from .selected_change.store import (
     load_selected_text_deletion_change,
     mark_selected_change_cleared_by_auto_advance_disabled,
     mark_selected_change_cleared_by_file_list as mark_selected_change_cleared_by_file_list,
-    mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_change_kind,
-    read_selected_gitlink_data as _read_selected_gitlink_data,
     refuse_bare_action_after_auto_advance_disabled as refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list as refuse_bare_action_after_file_list,
     refuse_bare_action_after_stale_batch_selection as refuse_bare_action_after_stale_batch_selection,
@@ -155,98 +156,6 @@ def stream_live_git_diff(**kwargs):
     """Stream actionable live changes with rename detection enabled."""
     kwargs.setdefault("find_renames", True)
     return stream_git_diff(**kwargs)
-
-
-def compute_batch_gitlink_fingerprint(
-    file_path: str,
-    file_meta: Mapping[str, object],
-) -> str:
-    """Return a stable identity for the current stored submodule pointer."""
-    payload = {
-        "file_path": file_path,
-        "file_type": file_meta.get("file_type"),
-        "change_type": file_meta.get("change_type"),
-        "mode": file_meta.get("mode"),
-        "old_oid": file_meta.get("old_oid"),
-        "new_oid": file_meta.get("new_oid"),
-    }
-    data = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return sha256(data.encode("utf-8", errors="surrogateescape")).hexdigest()
-
-
-def selected_batch_gitlink_matches_batch(batch_name: str) -> bool:
-    """Return whether the cached batch submodule pointer came from this batch."""
-    if read_selected_change_kind() != SelectedChangeKind.BATCH_GITLINK:
-        return False
-    gitlink_data = _read_selected_gitlink_data()
-    if gitlink_data is None:
-        return False
-    return gitlink_data.get("batch_name") == batch_name
-
-
-def selected_batch_gitlink_file_for_batch(
-    batch_name: str,
-    all_files: Mapping[str, dict],
-) -> str | None:
-    """Return the selected batch submodule pointer if it is still current."""
-    if not selected_batch_gitlink_matches_batch(batch_name):
-        return None
-
-    gitlink_change = load_selected_gitlink_change()
-    if gitlink_change is None:
-        return None
-
-    file_path = gitlink_change.path()
-    file_meta = all_files.get(file_path)
-    if file_meta is None:
-        return None
-    if file_meta.get("file_type") != "gitlink":
-        return None
-    if file_meta.get("change_type") != gitlink_change.change_type:
-        return None
-    if file_meta.get("old_oid") != gitlink_change.old_oid:
-        return None
-    if file_meta.get("new_oid") != gitlink_change.new_oid:
-        return None
-
-    gitlink_data = _read_selected_gitlink_data()
-    if gitlink_data is None:
-        return None
-    cached_fingerprint = gitlink_data.get("batch_gitlink_fingerprint")
-    if not isinstance(cached_fingerprint, str):
-        return None
-    current_fingerprint = compute_batch_gitlink_fingerprint(file_path, file_meta)
-    if current_fingerprint != cached_fingerprint:
-        return None
-
-    return file_path
-
-
-def require_current_selected_batch_gitlink_file_for_batch(
-    batch_name: str,
-    all_files: Mapping[str, dict],
-) -> str | None:
-    """Return selected batch submodule pointer, or refuse if it went stale."""
-    if not selected_batch_gitlink_matches_batch(batch_name):
-        return None
-
-    selected_file = selected_batch_gitlink_file_for_batch(batch_name, all_files)
-    if selected_file is not None:
-        return selected_file
-
-    gitlink_change = load_selected_gitlink_change()
-    file_path = gitlink_change.path() if gitlink_change is not None else "the selected batch submodule pointer"
-    clear_selected_change_state_files()
-    mark_selected_change_cleared_by_stale_batch_selection(
-        batch_name=batch_name,
-        file_path=file_path,
-    )
-    exit_with_error(
-        _(
-            "The selected batch submodule pointer no longer matches batch '{name}'.\n"
-            "Show the batch again before using a pathless batch action."
-        ).format(name=batch_name)
-    )
 
 
 def binary_file_change_is_stale(binary_change: BinaryFileChange) -> bool:

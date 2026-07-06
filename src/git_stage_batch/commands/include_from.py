@@ -17,9 +17,9 @@ from ..batch.operation_candidates import (
     load_candidate_preview_state,
 )
 from ..batch.query import get_batch_commit_sha
-from ..batch.replacement import (
+from ..batch.replacement import build_replacement_batch_view_from_lines
+from ..core.replacement import (
     ReplacementPayload,
-    build_replacement_batch_view_from_lines,
     coerce_replacement_payload,
 )
 from ..batch.selection import (

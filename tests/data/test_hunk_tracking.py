@@ -20,6 +20,7 @@ import pytest
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import (
+    RecalculateSelectedHunkResult,
     advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
     build_file_hunk_from_buffer,
@@ -580,6 +581,40 @@ class TestRecalculateCurrentHunkForFile:
 
         output = captured.getvalue()
         assert "No pending hunks" in output or not get_selected_hunk_patch_file_path().exists()
+
+    def test_reports_next_change_when_file_is_exhausted(self, temp_git_repo):
+        """Recalculation should not call the show command for the next file."""
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("base 1\n")
+        file2.write_text("base 2\n")
+        subprocess.run(
+            ["git", "add", "file1.txt", "file2.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        file1.write_text("base 1\nselected\n")
+        file2.write_text("base 2\nnext\n")
+        selected = fetch_next_change()
+        assert selected.path == "file1.txt"
+
+        file1.write_text("base 1\n")
+
+        result = recalculate_selected_hunk_for_file(
+            "file1.txt",
+            auto_advance=True,
+        )
+
+        assert result is RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
+        assert not get_selected_hunk_patch_file_path().exists()
 
 
 class TestRecordHunkFunctions:

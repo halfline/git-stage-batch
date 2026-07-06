@@ -18,6 +18,10 @@ from ..core.hashing import (
 )
 from ..core.diff_parser import acquire_unified_diff
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ..data.batch_selected_changes import (
+    selected_batch_binary_batch_name,
+    selected_batch_binary_file_for_batch,
+)
 from ..data.file_review.state import (
     FileReviewAction,
     ReviewSource,
@@ -30,8 +34,6 @@ from ..data.hunk_tracking import (
     format_id_range,
     gitlink_change_is_stale,
     rename_change_is_stale,
-    selected_batch_binary_batch_name,
-    selected_batch_binary_file_for_batch,
     snapshots_are_stale,
     stream_live_git_diff,
     text_deletion_change_is_batched,

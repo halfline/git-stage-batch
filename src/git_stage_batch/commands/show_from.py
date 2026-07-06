@@ -39,13 +39,13 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
 )
 from ..core.diff_parser import build_line_changes_from_patch_lines
+from ..batch.file_display import render_batch_file_display
 from ..data.batch_selected_changes import (
     compute_batch_binary_fingerprint,
     compute_batch_gitlink_fingerprint,
 )
 from ..data.hunk_tracking import (
     cache_rendered_batch_file_display,
-    render_batch_file_display,
 )
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (

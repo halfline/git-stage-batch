@@ -49,14 +49,16 @@ from ..data.file_review.state import (
     validate_review_scoped_line_selection,
 )
 from ..data.hunk_tracking import (
-    SelectedChangeKind,
-    clear_selected_change_state_files,
-    get_selected_change_file_path,
-    mark_selected_change_cleared_by_stale_batch_selection,
-    read_selected_change_kind,
     render_batch_file_display,
     selected_batch_binary_matches_batch,
     selected_batch_gitlink_matches_batch,
+)
+from ..data.selected_change.lifecycle import clear_selected_change_state_files
+from ..data.selected_change.store import (
+    SelectedChangeKind,
+    get_selected_change_file_path,
+    mark_selected_change_cleared_by_stale_batch_selection,
+    read_selected_change_kind,
 )
 from ..data.undo import undo_checkpoint
 from ..editor import load_git_object_as_buffer

@@ -95,6 +95,7 @@ from ..utils.paths import (
     get_working_tree_snapshot_file_path,
 )
 from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from .selected_change.lifecycle import clear_selected_change_state_files as clear_selected_change_state_files
 from .selected_change.store import (
     SelectedChangeClearReason as SelectedChangeClearReason,
     SelectedChangeKind,
@@ -103,7 +104,6 @@ from .selected_change.store import (
     cache_gitlink_change,
     cache_rename_change,
     cache_text_deletion_change,
-    clear_selected_change_persistence_files,
     get_selected_change_file_path as get_selected_change_file_path,
     load_line_changes_from_patch_path as _load_line_changes_from_patch_path,
     load_selected_binary_file,
@@ -150,14 +150,6 @@ def stream_live_git_diff(**kwargs):
     """Stream actionable live changes with rename detection enabled."""
     kwargs.setdefault("find_renames", True)
     return stream_git_diff(**kwargs)
-
-
-def clear_selected_change_state_files() -> None:
-    """Clear selected change state and dependent file-review state."""
-    from .file_review.state import clear_last_file_review_state
-
-    clear_selected_change_persistence_files()
-    clear_last_file_review_state()
 
 
 def compute_batch_binary_fingerprint(

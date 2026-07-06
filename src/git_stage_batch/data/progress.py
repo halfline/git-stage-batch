@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import json
 
-from ..utils.file_io import count_nonblank_text_file_lines, read_text_file_contents
+from ..utils.file_io import (
+    count_nonblank_text_file_lines,
+    read_text_file_contents,
+    read_text_file_line_set,
+    write_text_file_contents,
+)
 from ..utils.git import run_git_command
 from ..utils.paths import (
     get_line_changes_json_file_path,
@@ -12,6 +17,14 @@ from ..utils.paths import (
     get_included_hunks_file_path,
     get_skipped_hunks_jsonl_file_path,
 )
+
+
+def record_hunk_included(hunk_hash: str) -> None:
+    """Record that a hunk was included (staged)."""
+    included_path = get_included_hunks_file_path()
+    existing = read_text_file_line_set(included_path)
+    existing.add(hunk_hash)
+    write_text_file_contents(included_path, "\n".join(sorted(existing)) + "\n" if existing else "")
 
 
 def get_hunk_counts() -> dict[str, int]:

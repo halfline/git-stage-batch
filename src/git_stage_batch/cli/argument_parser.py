@@ -17,7 +17,7 @@ from pathlib import Path
 from .. import __version__
 from ..batch.validation import batch_exists
 from ..batch.source_selector import batch_name_for_source_lookup
-from ..batch.replacement import ReplacementText
+from ..core.replacement import ReplacementText
 from .. import commands
 from ..batch.query import read_batch_metadata
 from ..data.file_tracking import list_untracked_files

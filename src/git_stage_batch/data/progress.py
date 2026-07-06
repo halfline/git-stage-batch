@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 
-from ..core.models import LineLevelChange
+from ..core.models import (
+    BinaryFileChange,
+    LineLevelChange,
+)
 from ..utils.file_io import (
     count_nonblank_text_file_lines,
     read_text_file_contents,
@@ -57,6 +60,19 @@ def record_hunk_skipped(line_changes: LineLevelChange, hunk_hash: str) -> None:
         "file": line_changes.path,
         "line": first_changed_line or 0,
         "ids": line_changes.changed_line_ids(),
+    }
+    _append_skipped_hunk_metadata(metadata)
+
+
+def record_binary_hunk_skipped(binary_change: BinaryFileChange, hunk_hash: str) -> None:
+    """Record that a binary change was skipped with file-level metadata."""
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    metadata = {
+        "hash": hunk_hash,
+        "file": file_path,
+        "line": None,
+        "ids": [],
+        "change_type": binary_change.change_type,
     }
     _append_skipped_hunk_metadata(metadata)
 

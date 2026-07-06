@@ -21,7 +21,7 @@ from .merge import (
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
 )
-from .replacement import ReplacementPayload
+from ..core.replacement import ReplacementPayload
 
 
 CandidateOperation = Literal["apply", "include"]

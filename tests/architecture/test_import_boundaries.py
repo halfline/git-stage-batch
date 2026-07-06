@@ -108,3 +108,15 @@ def test_selected_change_store_stays_below_orchestration_state():
 
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
     assert "git_stage_batch.data.file_review.state" not in imported_modules
+
+
+def test_batch_file_display_stays_below_hunk_navigation():
+    """Batch file rendering should not depend on selected-change orchestration."""
+    renderer_path = SRC_ROOT / "batch" / "file_display.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(renderer_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+    assert "git_stage_batch.data.file_review.state" not in imported_modules

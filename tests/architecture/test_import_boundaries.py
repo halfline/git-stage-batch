@@ -145,9 +145,10 @@ def test_file_review_output_does_not_import_hunk_navigation():
 
 
 def test_recalc_handoff_stays_in_command_helper():
-    """Include command should use the command refresh handoff."""
+    """Include and discard commands should use the command refresh handoff."""
     command_paths = (
         SRC_ROOT / "commands" / "include.py",
+        SRC_ROOT / "commands" / "discard.py",
     )
     forbidden_names = {
         "RecalculateSelectedHunkResult",

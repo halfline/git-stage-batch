@@ -6,6 +6,7 @@ from ...data.hunk_tracking import (
     RecalculateSelectedHunkResult,
     recalculate_selected_hunk_for_file,
 )
+from ...output import print_remaining_line_changes_header
 
 
 def recalculate_selected_hunk_for_command(
@@ -22,3 +23,16 @@ def recalculate_selected_hunk_for_command(
         from ..show import command_show
 
         command_show()
+
+
+def refresh_selected_hunk_after_line_action(
+    file_path: str,
+    *,
+    auto_advance: bool | None = None,
+) -> None:
+    """Print the line-action boundary and refresh selected hunk state."""
+    print_remaining_line_changes_header(file_path)
+    recalculate_selected_hunk_for_command(
+        file_path,
+        auto_advance=auto_advance,
+    )

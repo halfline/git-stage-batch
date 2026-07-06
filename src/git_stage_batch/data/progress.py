@@ -131,6 +131,34 @@ def _append_skipped_hunk_metadata(metadata: dict) -> None:
         f.write(json.dumps(metadata) + "\n")
 
 
+def format_id_range(ids: list[int]) -> str:
+    """Format list of IDs as compact range string (e.g., '1-5,7,9-11')."""
+    if not ids:
+        return ""
+
+    ids = sorted(ids)
+    ranges = []
+    start = ids[0]
+    end = ids[0]
+
+    for i in range(1, len(ids)):
+        if ids[i] == end + 1:
+            end = ids[i]
+        else:
+            if start == end:
+                ranges.append(str(start))
+            else:
+                ranges.append(f"{start}-{end}")
+            start = end = ids[i]
+
+    if start == end:
+        ranges.append(str(start))
+    else:
+        ranges.append(f"{start}-{end}")
+
+    return ",".join(ranges)
+
+
 def get_hunk_counts() -> dict[str, int]:
     """Get counts of hunks in various states.
 

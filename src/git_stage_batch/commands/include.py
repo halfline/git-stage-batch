@@ -21,7 +21,7 @@ from ..batch.ownership import (
     derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
 )
-from ..batch.replacement import (
+from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
 )

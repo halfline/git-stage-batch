@@ -20,6 +20,7 @@ from ..core.line_selection import (
     parse_line_selection,
     parse_line_selection_ranges,
 )
+from ..batch.file_display import render_batch_file_display
 from ..data.batch_selected_changes import (
     require_current_selected_batch_binary_file_for_batch,
     require_current_selected_batch_gitlink_file_for_batch,
@@ -380,7 +381,6 @@ def translate_batch_file_gutter_ids_to_selection_ids(
         fresh_batch_review_selections_for_action,
         validate_review_scoped_line_selection,
     )
-    from ..data.hunk_tracking import render_batch_file_display
 
     review_selections = fresh_batch_review_selections_for_action(batch_name, file_path, action)
     if review_selections is not None:

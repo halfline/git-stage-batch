@@ -65,6 +65,17 @@ from ..output import (
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
 from .file_tracking import auto_add_untracked_files
+from .progress import (
+    format_id_range as format_id_range,
+    record_binary_hunk_skipped as record_binary_hunk_skipped,
+    record_gitlink_hunk_skipped as record_gitlink_hunk_skipped,
+    record_hunk_discarded as record_hunk_discarded,
+    record_hunk_included as record_hunk_included,
+    record_hunk_skipped as record_hunk_skipped,
+    record_hunks_discarded as record_hunks_discarded,
+    record_rename_hunk_skipped as record_rename_hunk_skipped,
+    record_text_deletion_hunk_skipped as record_text_deletion_hunk_skipped,
+)
 from .selected_change.snapshots import write_snapshots_for_selected_file_path
 from ..utils.file_io import (
     is_path_blocked,
@@ -87,9 +98,6 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
-    get_discarded_hunks_file_path,
-    get_included_hunks_file_path,
-    get_skipped_hunks_jsonl_file_path,
     get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
@@ -1886,157 +1894,3 @@ def recalculate_selected_hunk_for_file(
         command_show()
     else:
         mark_selected_change_cleared_by_auto_advance_disabled()
-
-def record_hunk_included(hunk_hash: str) -> None:
-    """Record that a hunk was included (staged)."""
-    included_path = get_included_hunks_file_path()
-    existing = read_text_file_line_set(included_path)
-    existing.add(hunk_hash)
-    write_text_file_contents(included_path, "\n".join(sorted(existing)) + "\n" if existing else "")
-
-
-def record_hunk_discarded(hunk_hash: str) -> None:
-    """Record that a hunk was discarded (removed from working tree)."""
-    record_hunks_discarded([hunk_hash])
-
-
-def record_hunks_discarded(hunk_hashes: list[str]) -> None:
-    """Record that hunks were discarded (removed from working tree)."""
-    new_hashes = {hunk_hash for hunk_hash in hunk_hashes if hunk_hash}
-    if not new_hashes:
-        return
-    discarded_path = get_discarded_hunks_file_path()
-    existing = read_text_file_line_set(discarded_path)
-    existing.update(new_hashes)
-    write_text_file_contents(discarded_path, "\n".join(sorted(existing)) + "\n" if existing else "")
-
-
-def record_hunk_skipped(line_changes: LineLevelChange, hunk_hash: str) -> None:
-    """Record that a hunk was skipped with metadata for display.
-
-    Args:
-        line_changes: Current hunk's lines
-        hunk_hash: SHA-1 hash of the hunk
-    """
-    # Extract first changed line number for display
-    first_changed_line = None
-    for entry in line_changes.lines:
-        if entry.kind != " ":  # Not context
-            first_changed_line = entry.old_line_number or entry.new_line_number
-            break
-
-    # Build metadata object
-    metadata = {
-        "hash": hunk_hash,
-        "file": line_changes.path,
-        "line": first_changed_line or 0,
-        "ids": line_changes.changed_line_ids()
-    }
-
-    # Append to JSONL file
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def record_binary_hunk_skipped(binary_change: BinaryFileChange, hunk_hash: str) -> None:
-    """Record that a binary change was skipped with file-level metadata."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-    metadata = {
-        "hash": hunk_hash,
-        "file": file_path,
-        "line": None,
-        "ids": [],
-        "change_type": binary_change.change_type,
-    }
-
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def record_gitlink_hunk_skipped(gitlink_change: GitlinkChange, hunk_hash: str) -> None:
-    """Record that a gitlink change was skipped with file-level metadata."""
-    metadata = {
-        "hash": hunk_hash,
-        "file": gitlink_change.path(),
-        "line": None,
-        "ids": [],
-        "type": "submodule",
-        "change_type": gitlink_change.change_type,
-        "old_oid": gitlink_change.old_oid,
-        "new_oid": gitlink_change.new_oid,
-    }
-
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def record_rename_hunk_skipped(rename_change: RenameChange, hunk_hash: str) -> None:
-    """Record that a rename change was skipped with file-level metadata."""
-    metadata = {
-        "hash": hunk_hash,
-        "file": rename_change.new_path,
-        "line": None,
-        "ids": [],
-        "type": "rename",
-        "old_path": rename_change.old_path,
-        "new_path": rename_change.new_path,
-    }
-
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def record_text_deletion_hunk_skipped(deletion_change: TextFileDeletionChange, hunk_hash: str) -> None:
-    """Record that a whole-text-file deletion was skipped with file-level metadata."""
-    metadata = {
-        "hash": hunk_hash,
-        "file": deletion_change.path(),
-        "line": None,
-        "ids": [],
-        "type": "text-deletion",
-        "change_type": "deleted",
-    }
-
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def format_id_range(ids: list[int]) -> str:
-    """Format list of IDs as compact range string (e.g., '1-5,7,9-11').
-
-    Args:
-        ids: List of integer IDs
-
-    Returns:
-        Compact range string
-    """
-    if not ids:
-        return ""
-
-    ids = sorted(ids)
-    ranges = []
-    start = ids[0]
-    end = ids[0]
-
-    for i in range(1, len(ids)):
-        if ids[i] == end + 1:
-            end = ids[i]
-        else:
-            if start == end:
-                ranges.append(str(start))
-            else:
-                ranges.append(f"{start}-{end}")
-            start = end = ids[i]
-
-    # Add final range
-    if start == end:
-        ranges.append(str(start))
-    else:
-        ranges.append(f"{start}-{end}")
-
-    return ",".join(ranges)

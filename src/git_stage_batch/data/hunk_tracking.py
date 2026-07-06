@@ -6,7 +6,6 @@ import json
 import tempfile
 import subprocess
 import sys
-from contextlib import ExitStack
 from hashlib import sha256
 from typing import Generator, Mapping, Optional, Union
 
@@ -37,7 +36,6 @@ from ..core.diff_parser import (
 )
 from ..editor import (
     EditorBuffer,
-    buffer_matches,
     load_git_object_as_buffer,
 )
 from ..core.line_selection import write_line_ids_file
@@ -66,7 +64,10 @@ from .progress import (
     record_rename_hunk_skipped as record_rename_hunk_skipped,
     record_text_deletion_hunk_skipped as record_text_deletion_hunk_skipped,
 )
-from .selected_change.snapshots import write_snapshots_for_selected_file_path
+from .selected_change.snapshots import (
+    snapshots_are_stale as snapshots_are_stale,
+    write_snapshots_for_selected_file_path,
+)
 from ..utils.file_io import (
     is_path_blocked,
     read_file_paths_file,
@@ -75,7 +76,6 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.git import (
-    get_git_repository_root_path,
     run_git_command,
     stream_git_command,
     stream_git_diff,
@@ -1355,53 +1355,6 @@ def select_next_change_after_action(
     return False
 
 
-
-
-def snapshots_are_stale(file_path: str) -> bool:
-    """Check if cached snapshots are stale (file changed since snapshots taken).
-
-    Args:
-        file_path: Repository-relative path to check
-
-    Returns:
-        True if the file has been committed or otherwise changed such that
-        the cached hunk no longer applies
-    """
-    snapshot_base_path = get_index_snapshot_file_path()
-    snapshot_new_path = get_working_tree_snapshot_file_path()
-
-    # Missing snapshots means state is incomplete/stale
-    if not snapshot_base_path.exists() or not snapshot_new_path.exists():
-        return True
-
-    try:
-        with ExitStack() as stack:
-            cached_index_content = stack.enter_context(
-                EditorBuffer.from_path(snapshot_base_path)
-            )
-            cached_worktree_content = stack.enter_context(
-                EditorBuffer.from_path(snapshot_new_path)
-            )
-
-            selected_index_content = load_git_object_as_buffer(f":{file_path}")
-            if selected_index_content is None:
-                selected_index_content = EditorBuffer.from_bytes(b"")
-            stack.enter_context(selected_index_content)
-
-            repo_root = get_git_repository_root_path()
-            file_full_path = repo_root / file_path
-            if file_full_path.exists():
-                selected_worktree_content = EditorBuffer.from_path(file_full_path)
-            else:
-                selected_worktree_content = EditorBuffer.from_bytes(b"")
-            stack.enter_context(selected_worktree_content)
-
-            return (
-                not buffer_matches(cached_index_content, selected_index_content)
-                or not buffer_matches(cached_worktree_content, selected_worktree_content)
-            )
-    except Exception:
-        return True  # Error reading means state is stale
 
 
 def require_selected_hunk() -> None:

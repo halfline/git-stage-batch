@@ -6,6 +6,7 @@ from contextlib import ExitStack
 
 from ...editor import (
     EditorBuffer,
+    buffer_matches,
     buffer_byte_count,
     buffer_preview,
     load_git_object_as_buffer,
@@ -86,3 +87,50 @@ def _buffer_line_count(buffer: EditorBuffer) -> int:
     if last_byte in (ord("\n"), ord("\r")):
         return line_breaks
     return line_breaks + 1
+
+
+def snapshots_are_stale(file_path: str) -> bool:
+    """Check if cached snapshots are stale (file changed since snapshots taken).
+
+    Args:
+        file_path: Repository-relative path to check
+
+    Returns:
+        True if the file has been committed or otherwise changed such that
+        the cached hunk no longer applies
+    """
+    snapshot_base_path = get_index_snapshot_file_path()
+    snapshot_new_path = get_working_tree_snapshot_file_path()
+
+    # Missing snapshots means state is incomplete/stale
+    if not snapshot_base_path.exists() or not snapshot_new_path.exists():
+        return True
+
+    try:
+        with ExitStack() as stack:
+            cached_index_content = stack.enter_context(
+                EditorBuffer.from_path(snapshot_base_path)
+            )
+            cached_worktree_content = stack.enter_context(
+                EditorBuffer.from_path(snapshot_new_path)
+            )
+
+            selected_index_content = load_git_object_as_buffer(f":{file_path}")
+            if selected_index_content is None:
+                selected_index_content = EditorBuffer.from_bytes(b"")
+            stack.enter_context(selected_index_content)
+
+            repo_root = get_git_repository_root_path()
+            file_full_path = repo_root / file_path
+            if file_full_path.exists():
+                selected_worktree_content = EditorBuffer.from_path(file_full_path)
+            else:
+                selected_worktree_content = EditorBuffer.from_bytes(b"")
+            stack.enter_context(selected_worktree_content)
+
+            return (
+                not buffer_matches(cached_index_content, selected_index_content)
+                or not buffer_matches(cached_worktree_content, selected_worktree_content)
+            )
+    except Exception:
+        return True  # Error reading means state is stale

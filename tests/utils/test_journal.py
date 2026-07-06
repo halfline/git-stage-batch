@@ -4,12 +4,11 @@ from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 import json
 import subprocess
-from pathlib import Path
 
 import pytest
 
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.utils.journal import log_journal
+from git_stage_batch.utils.journal import GLOBAL_JOURNAL_PATH_ENV, log_journal
 from git_stage_batch.utils.paths import get_state_directory_path
 
 
@@ -27,6 +26,14 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "commit", "-m", "initial"], check=True, capture_output=True)
 
     return tmp_path
+
+
+@pytest.fixture
+def global_journal_path(tmp_path, monkeypatch):
+    """Provide an isolated global journal path for tests."""
+    path = tmp_path / "journals" / "global.jsonl"
+    monkeypatch.setenv(GLOBAL_JOURNAL_PATH_ENV, str(path))
+    return path
 
 
 class TestJournal:
@@ -55,17 +62,16 @@ class TestJournal:
             assert "timestamp" in entry
             assert "operation" in entry
 
-    def test_journal_global_only_with_debug_env(self, temp_git_repo, monkeypatch):
+    def test_journal_global_only_with_debug_env(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        global_journal_path,
+    ):
         """Test that global journal only logs when GIT_STAGE_BATCH_DEBUG is set."""
-
-        global_journal_path = Path("/var/tmp/git-stage-batch-journal.jsonl")
 
         # Ensure state directory exists
         ensure_state_directory_exists()
-
-        # Clear any existing global journal
-        if global_journal_path.exists():
-            global_journal_path.unlink()
 
         # Without debug env var, global journal is not created.
         monkeypatch.delenv("GIT_STAGE_BATCH_DEBUG", raising=False)
@@ -79,10 +85,6 @@ class TestJournal:
         # Test 2: With debug env var, should create global journal
         monkeypatch.setenv("GIT_STAGE_BATCH_DEBUG", "1")
 
-        # Clear global journal again
-        if global_journal_path.exists():
-            global_journal_path.unlink()
-
         log_journal("test_operation_with_debug", test=True)
 
         # Global journal should now exist and have content
@@ -90,10 +92,6 @@ class TestJournal:
 
         content = global_journal_path.read_text()
         assert "test_operation_with_debug" in content
-
-        # Clean up
-        if global_journal_path.exists():
-            global_journal_path.unlink()
 
     def test_journal_entries_have_required_fields(self, temp_git_repo):
         """Test that journal entries have all required fields."""
@@ -125,15 +123,14 @@ class TestJournal:
         # Stack should be a list
         assert isinstance(entry["stack"], list)
 
-    def test_journal_global_includes_repo_path(self, temp_git_repo, monkeypatch):
+    def test_journal_global_includes_repo_path(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        global_journal_path,
+    ):
         """Test that global journal entries include repo path."""
         monkeypatch.setenv("GIT_STAGE_BATCH_DEBUG", "1")
-
-        global_journal_path = Path("/var/tmp/git-stage-batch-journal.jsonl")
-
-        # Clear existing
-        if global_journal_path.exists():
-            global_journal_path.unlink()
 
         log_journal("test_repo_path", test=True)
 
@@ -147,9 +144,6 @@ class TestJournal:
         assert "repo" in entry
         assert entry["repo"] is not None
         assert str(temp_git_repo) in entry["repo"]
-
-        # Clean up
-        global_journal_path.unlink()
 
     def test_journal_logging_never_breaks_operations(self, temp_git_repo, monkeypatch):
         """Test that journal logging failures don't break operations."""

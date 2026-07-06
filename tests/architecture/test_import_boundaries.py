@@ -96,3 +96,15 @@ def test_diff_parser_does_not_import_snapshot_runtime_io():
         ),
         "write_snapshots_for_selected_file_path",
     )
+
+
+def test_selected_change_store_stays_below_orchestration_state():
+    """Selected-change persistence should stay below orchestration state."""
+    store_path = SRC_ROOT / "data" / "selected_change" / "store.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(store_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+    assert "git_stage_batch.data.file_review.state" not in imported_modules

@@ -20,9 +20,9 @@ from ..batch.operation_candidates import (
     render_candidate_buffer_diff,
     save_candidate_preview_state,
 )
-from ..batch.replacement import (
+from ..batch.replacement import build_replacement_batch_view_from_lines
+from ..core.replacement import (
     ReplacementPayload,
-    build_replacement_batch_view_from_lines,
     coerce_replacement_payload,
 )
 from ..batch.selection import (

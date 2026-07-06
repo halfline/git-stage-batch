@@ -53,3 +53,32 @@ def test_recalculate_selected_hunk_for_command_shows_next_change(monkeypatch):
     )
 
     assert show_calls == [True]
+
+
+def test_refresh_selected_hunk_after_line_action_prints_header_before_refresh(
+    monkeypatch,
+):
+    calls = []
+
+    monkeypatch.setattr(
+        selected_hunk_refresh,
+        "print_remaining_line_changes_header",
+        lambda file_path: calls.append(("header", file_path)),
+    )
+    monkeypatch.setattr(
+        selected_hunk_refresh,
+        "recalculate_selected_hunk_for_command",
+        lambda file_path, *, auto_advance=None: calls.append(
+            ("refresh", file_path, auto_advance)
+        ),
+    )
+
+    selected_hunk_refresh.refresh_selected_hunk_after_line_action(
+        "file.txt",
+        auto_advance=True,
+    )
+
+    assert calls == [
+        ("header", "file.txt"),
+        ("refresh", "file.txt", True),
+    ]

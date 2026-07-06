@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from ..core.models import LineLevelChange
 from ..utils.file_io import (
     count_nonblank_text_file_lines,
     read_text_file_contents,
@@ -41,6 +42,29 @@ def record_hunks_discarded(hunk_hashes: list[str]) -> None:
     existing = read_text_file_line_set(discarded_path)
     existing.update(new_hashes)
     write_text_file_contents(discarded_path, "\n".join(sorted(existing)) + "\n" if existing else "")
+
+
+def record_hunk_skipped(line_changes: LineLevelChange, hunk_hash: str) -> None:
+    """Record that a hunk was skipped with metadata for display."""
+    first_changed_line = None
+    for entry in line_changes.lines:
+        if entry.kind != " ":
+            first_changed_line = entry.old_line_number or entry.new_line_number
+            break
+
+    metadata = {
+        "hash": hunk_hash,
+        "file": line_changes.path,
+        "line": first_changed_line or 0,
+        "ids": line_changes.changed_line_ids(),
+    }
+    _append_skipped_hunk_metadata(metadata)
+
+
+def _append_skipped_hunk_metadata(metadata: dict) -> None:
+    jsonl_path = get_skipped_hunks_jsonl_file_path()
+    with jsonl_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(metadata) + "\n")
 
 
 def get_hunk_counts() -> dict[str, int]:

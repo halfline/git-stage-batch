@@ -13,9 +13,21 @@ from .git import run_git_command
 from .paths import get_state_directory_path
 
 
+GLOBAL_JOURNAL_PATH_ENV = "GIT_STAGE_BATCH_GLOBAL_JOURNAL_PATH"
+DEFAULT_GLOBAL_JOURNAL_PATH = Path("/var/tmp/git-stage-batch-journal.jsonl")
+
+
 def _get_journal_path() -> Path:
     """Get path to journal file."""
     return get_state_directory_path() / "journal.jsonl"
+
+
+def _get_global_journal_path() -> Path:
+    """Get path to the cross-repository debug journal file."""
+    override = os.environ.get(GLOBAL_JOURNAL_PATH_ENV)
+    if override:
+        return Path(override)
+    return DEFAULT_GLOBAL_JOURNAL_PATH
 
 
 def _get_index_state(file_path: str | None = None) -> dict[str, Any]:
@@ -54,8 +66,10 @@ def log_journal(operation: str, **kwargs: Any) -> None:
     (cleared by abort, preserved by again)
 
     If GIT_STAGE_BATCH_DEBUG environment variable is set, also writes to
-    global journal: /var/tmp/git-stage-batch-journal.jsonl (persists across
-    sessions and repositories, useful for debugging).
+    global journal: /var/tmp/git-stage-batch-journal.jsonl by default
+    (persists across sessions and repositories, useful for debugging).
+    Tests and callers can override the global path with
+    GIT_STAGE_BATCH_GLOBAL_JOURNAL_PATH.
 
     Args:
         operation: Name of the operation
@@ -96,7 +110,8 @@ def log_journal(operation: str, **kwargs: Any) -> None:
             except Exception:
                 pass
 
-            global_journal_path = Path("/var/tmp/git-stage-batch-journal.jsonl")
+            global_journal_path = _get_global_journal_path()
+            global_journal_path.parent.mkdir(parents=True, exist_ok=True)
             global_entry = {
                 "repo": repo_path,
                 **entry

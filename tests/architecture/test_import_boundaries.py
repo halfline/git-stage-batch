@@ -75,3 +75,24 @@ def test_replacement_payload_imports_use_core_boundary():
                 violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
     assert violations == []
+
+
+def test_diff_parser_does_not_import_snapshot_runtime_io():
+    """Diff parsing should not own selected-file snapshot persistence."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(diff_parser_path)
+    }
+
+    assert "git_stage_batch.data.selected_change.snapshots" not in imported_modules
+    assert "git_stage_batch.utils.git" not in imported_modules
+    assert "git_stage_batch.utils.journal" not in imported_modules
+    assert "git_stage_batch.utils.paths" not in imported_modules
+    assert not hasattr(
+        __import__(
+            "git_stage_batch.core.diff_parser",
+            fromlist=["write_snapshots_for_selected_file_path"],
+        ),
+        "write_snapshots_for_selected_file_path",
+    )

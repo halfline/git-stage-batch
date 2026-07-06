@@ -14,9 +14,11 @@ from .selected_change.lifecycle import clear_selected_change_state_files
 from .selected_change.store import (
     SelectedChangeKind,
     load_selected_binary_file,
+    load_selected_gitlink_change,
     mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_binary_data,
     read_selected_change_kind,
+    read_selected_gitlink_data,
 )
 
 
@@ -133,6 +135,98 @@ def require_current_selected_batch_binary_file_for_batch(
     exit_with_error(
         _(
             "The selected batch binary no longer matches batch '{name}'.\n"
+            "Show the batch again before using a pathless batch action."
+        ).format(name=batch_name)
+    )
+
+
+def compute_batch_gitlink_fingerprint(
+    file_path: str,
+    file_meta: Mapping[str, object],
+) -> str:
+    """Return a stable identity for the current stored submodule pointer."""
+    payload = {
+        "file_path": file_path,
+        "file_type": file_meta.get("file_type"),
+        "change_type": file_meta.get("change_type"),
+        "mode": file_meta.get("mode"),
+        "old_oid": file_meta.get("old_oid"),
+        "new_oid": file_meta.get("new_oid"),
+    }
+    data = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return sha256(data.encode("utf-8", errors="surrogateescape")).hexdigest()
+
+
+def selected_batch_gitlink_matches_batch(batch_name: str) -> bool:
+    """Return whether the cached batch submodule pointer came from this batch."""
+    if read_selected_change_kind() != SelectedChangeKind.BATCH_GITLINK:
+        return False
+    gitlink_data = read_selected_gitlink_data()
+    if gitlink_data is None:
+        return False
+    return gitlink_data.get("batch_name") == batch_name
+
+
+def selected_batch_gitlink_file_for_batch(
+    batch_name: str,
+    all_files: Mapping[str, dict],
+) -> str | None:
+    """Return the selected batch submodule pointer if it is still current."""
+    if not selected_batch_gitlink_matches_batch(batch_name):
+        return None
+
+    gitlink_change = load_selected_gitlink_change()
+    if gitlink_change is None:
+        return None
+
+    file_path = gitlink_change.path()
+    file_meta = all_files.get(file_path)
+    if file_meta is None:
+        return None
+    if file_meta.get("file_type") != "gitlink":
+        return None
+    if file_meta.get("change_type") != gitlink_change.change_type:
+        return None
+    if file_meta.get("old_oid") != gitlink_change.old_oid:
+        return None
+    if file_meta.get("new_oid") != gitlink_change.new_oid:
+        return None
+
+    gitlink_data = read_selected_gitlink_data()
+    if gitlink_data is None:
+        return None
+    cached_fingerprint = gitlink_data.get("batch_gitlink_fingerprint")
+    if not isinstance(cached_fingerprint, str):
+        return None
+    current_fingerprint = compute_batch_gitlink_fingerprint(file_path, file_meta)
+    if current_fingerprint != cached_fingerprint:
+        return None
+
+    return file_path
+
+
+def require_current_selected_batch_gitlink_file_for_batch(
+    batch_name: str,
+    all_files: Mapping[str, dict],
+) -> str | None:
+    """Return selected batch submodule pointer, or refuse if it went stale."""
+    if not selected_batch_gitlink_matches_batch(batch_name):
+        return None
+
+    selected_file = selected_batch_gitlink_file_for_batch(batch_name, all_files)
+    if selected_file is not None:
+        return selected_file
+
+    gitlink_change = load_selected_gitlink_change()
+    file_path = gitlink_change.path() if gitlink_change is not None else "the selected batch submodule pointer"
+    clear_selected_change_state_files()
+    mark_selected_change_cleared_by_stale_batch_selection(
+        batch_name=batch_name,
+        file_path=file_path,
+    )
+    exit_with_error(
+        _(
+            "The selected batch submodule pointer no longer matches batch '{name}'.\n"
             "Show the batch again before using a pathless batch action."
         ).format(name=batch_name)
     )

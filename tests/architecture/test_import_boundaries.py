@@ -177,6 +177,38 @@ def test_recalc_handoff_stays_in_command_helper():
     assert violations == []
 
 
+def test_line_action_refresh_header_stays_in_command_helper():
+    """Include line actions should use the command refresh helper."""
+    command_paths = (
+        SRC_ROOT / "commands" / "include.py",
+    )
+    violations = []
+
+    for command_path in command_paths:
+        imports = _import_from_nodes(command_path)
+        imports_refresh_helper = False
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.selection.selected_hunk_refresh"
+                and "refresh_selected_hunk_after_line_action" in imported_names
+            ):
+                imports_refresh_helper = True
+
+            if imported_module != "git_stage_batch.output":
+                continue
+            if "print_remaining_line_changes_header" in imported_names:
+                relative_path = command_path.relative_to(REPO_ROOT)
+                violations.append(
+                    f"{relative_path}:{node.lineno} imports "
+                    "print_remaining_line_changes_header"
+                )
+
+        assert imports_refresh_helper
+
+    assert violations == []
+
+
 def test_hunk_tracking_does_not_import_show_command():
     """Hunk navigation state should not depend on the show command."""
     hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"

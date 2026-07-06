@@ -27,6 +27,7 @@ from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
 from git_stage_batch.core.actionable_changes import ActionableSelectionReason
+import git_stage_batch.batch.file_display as file_display_module
 import git_stage_batch.data.hunk_tracking as hunk_tracking_module
 from git_stage_batch.data.file_review.state import (
     FileReviewAction,
@@ -1868,7 +1869,7 @@ def test_pathless_include_from_batch_refuses_when_rerendered_batch_diff_changes(
     assert state is not None
     line_spec = format_line_ids(list(state.selections[0].display_ids))
 
-    original_render = hunk_tracking_module.render_batch_file_display
+    original_render = file_display_module.render_batch_file_display
 
     def changed_render(batch_name, file_path, metadata=None):
         rendered = original_render(batch_name, file_path, metadata=metadata)
@@ -1890,7 +1891,7 @@ def test_pathless_include_from_batch_refuses_when_rerendered_batch_diff_changes(
             selection_id_to_gutter=rendered.selection_id_to_gutter,
         )
 
-    monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", changed_render)
+    monkeypatch.setattr(file_display_module, "render_batch_file_display", changed_render)
 
     with pytest.raises(CommandError, match="no longer matches"):
         command_include_from_batch("cleanup", line_ids=line_spec)
@@ -2559,6 +2560,7 @@ def test_show_from_batch_line_after_review_uses_review_id_space(
         )
 
     monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_review_only_first_line)
+    monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_review_only_first_line)
     monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_review_only_first_line)
 
     command_show_from_batch("manual", file="file.txt", page="all")
@@ -2652,6 +2654,7 @@ def test_show_from_batch_line_without_review_uses_printed_review_id_space(
         )
 
     monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_review_only_second_line)
+    monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_review_only_second_line)
     monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_review_only_second_line)
 
     command_show_from_batch("manual", file="file.txt", line_ids="2")

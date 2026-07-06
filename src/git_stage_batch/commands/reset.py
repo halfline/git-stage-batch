@@ -40,6 +40,7 @@ from ..batch.source_selector import require_plain_batch_name
 from ..batch.validation import batch_exists, validate_batch_name
 from ..exceptions import MergeError, exit_with_error
 from ..i18n import _
+from ..batch.file_display import render_batch_file_display
 from ..data.batch_selected_changes import (
     selected_batch_binary_matches_batch,
     selected_batch_gitlink_matches_batch,
@@ -51,9 +52,6 @@ from ..data.file_review.state import (
     read_last_file_review_state,
     resolve_batch_source_action_scope,
     validate_review_scoped_line_selection,
-)
-from ..data.hunk_tracking import (
-    render_batch_file_display,
 )
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (

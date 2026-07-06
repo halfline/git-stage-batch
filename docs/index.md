@@ -342,13 +342,18 @@ Automatically detects and clears cached state when files are committed or modifi
 
 ### Is this rewriting Git history?
 
-No.
+Usually no.
 
 git-stage-batch is intended for organizing draft patch sets before they are committed or shared. It helps you turn a messy working tree into a clean sequence of logical commits.
 
-It does not rewrite existing commits, and it is not meant to modify the history of shared or protected branches.
+The normal workflow stages selected working-tree changes into new commits
+rather than rewriting existing commits. Assistant decomposition workflows may
+polish commits they have just created while rebuilding a local series, but
+that rewriting is limited to fresh draft history.
 
-Think of it as helping you prepare commits before they become part of history, not changing history afterward.
+It is not meant to modify shared history or protected branches. Think of it as
+helping you prepare commits before they become part of reviewable project
+history, with any assistant-side polishing confined to local draft commits.
 
 ### When should I use this?
 

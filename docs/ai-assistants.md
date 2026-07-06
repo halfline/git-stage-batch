@@ -43,6 +43,11 @@ The bundled Claude skills currently include:
 - `decompose-and-commit-unstaged-changes` for peeling larger unstaged work into
   concern batches and rebuilding a fine-grained commit series
 
+The regular commit skills stage the current working tree into new commits. The
+decomposition skill may rewrite commits it just created while polishing a local
+draft series, but it is not intended to rewrite shared or protected branch
+history.
+
 Create or update `CLAUDE.md` in your repository root:
 
 ```markdown

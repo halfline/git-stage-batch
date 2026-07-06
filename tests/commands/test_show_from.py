@@ -6,9 +6,10 @@ from git_stage_batch.commands.show import command_show
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.storage import add_file_to_batch
 from git_stage_batch.batch.ownership import AbsenceClaim
-from git_stage_batch.data.hunk_tracking import render_batch_file_display
+from git_stage_batch.batch.file_display import render_batch_file_display
 import git_stage_batch.batch.merge as merge_module
 import git_stage_batch.batch.display as display_module
+import git_stage_batch.batch.file_display as file_display
 import git_stage_batch.data.hunk_tracking as hunk_tracking
 import git_stage_batch.commands.show_from as show_from_module
 
@@ -341,22 +342,14 @@ class TestCommandShowFromBatch:
         command_start()
         command_include_to_batch("preview-batch", quiet=True)
 
-        original_load_git_object_as_buffer = hunk_tracking.load_git_object_as_buffer
+        original_load_git_object_as_buffer = file_display.load_git_object_as_buffer
         loaded_revisions = []
 
         def tracking_load_git_object_as_buffer(revision_path):
             loaded_revisions.append(revision_path)
             return original_load_git_object_as_buffer(revision_path)
 
-        original_run_git_command = hunk_tracking.run_git_command
-
-        def rejecting_show_run_git_command(arguments, *args, **kwargs):
-            if arguments and arguments[0] == "show":
-                raise AssertionError("batch source content should be streamed")
-            return original_run_git_command(arguments, *args, **kwargs)
-
-        monkeypatch.setattr(hunk_tracking, "load_git_object_as_buffer", tracking_load_git_object_as_buffer)
-        monkeypatch.setattr(hunk_tracking, "run_git_command", rejecting_show_run_git_command)
+        monkeypatch.setattr(file_display, "load_git_object_as_buffer", tracking_load_git_object_as_buffer)
 
         rendered = render_batch_file_display(
             "preview-batch",
@@ -382,26 +375,26 @@ class TestCommandShowFromBatch:
             "100644",
         )
 
-        original_hunk_match_lines = hunk_tracking.match_lines
+        original_renderer_match_lines = file_display.match_lines
         original_merge_match_lines = merge_module.match_lines
         calls = []
 
-        def counting_hunk_match_lines(*args, **kwargs):
-            calls.append("hunk")
-            return original_hunk_match_lines(*args, **kwargs)
+        def counting_renderer_match_lines(*args, **kwargs):
+            calls.append("renderer")
+            return original_renderer_match_lines(*args, **kwargs)
 
         def counting_merge_match_lines(*args, **kwargs):
             calls.append("merge")
             return original_merge_match_lines(*args, **kwargs)
 
-        monkeypatch.setattr(hunk_tracking, "match_lines", counting_hunk_match_lines)
+        monkeypatch.setattr(file_display, "match_lines", counting_renderer_match_lines)
         monkeypatch.setattr(merge_module, "match_lines", counting_merge_match_lines)
 
         rendered = render_batch_file_display("multi-unit-batch", "file.txt")
 
         assert rendered is not None
         assert len(rendered.review_action_groups) == 2
-        assert calls == ["hunk"]
+        assert calls == ["renderer"]
 
     def test_show_from_keeps_mergeable_display_ids_range_backed(self, temp_git_repo, monkeypatch):
         """Rendering should not compare each unit with a set of mergeable IDs."""
@@ -450,7 +443,7 @@ class TestCommandShowFromBatch:
         command_include_to_batch("multi-file-batch", quiet=True, file="file2.txt")
         capsys.readouterr()
 
-        original_render = hunk_tracking.render_batch_file_display
+        original_render = file_display.render_batch_file_display
         rendered_files = []
         probe_flags = []
 

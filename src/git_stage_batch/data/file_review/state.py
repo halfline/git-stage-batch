@@ -26,6 +26,7 @@ from ...utils.paths import (
 )
 from ...batch import file_display
 from ..selected_change.store import SelectedChangeKind, read_selected_change_kind
+from ..selected_change.snapshots import snapshots_are_stale
 
 
 class ReviewSource(str, Enum):
@@ -423,8 +424,6 @@ def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
         review_action_groups = rendered.review_action_groups or None
         line_changes = rendered.line_changes
     else:
-        from ..hunk_tracking import snapshots_are_stale
-
         if snapshots_are_stale(review_state.file_path):
             return False
         actionable_selection_groups = None

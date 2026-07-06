@@ -26,17 +26,9 @@ from ..data.file_review.state import (
     shown_review_selections_for_action,
 )
 from ..data.hunk_tracking import (
-    SelectedChangeKind,
     binary_file_change_is_stale,
-    clear_selected_change_state_files,
     format_id_range,
     gitlink_change_is_stale,
-    load_selected_binary_file,
-    load_selected_gitlink_change,
-    load_selected_rename_change,
-    load_selected_text_deletion_change,
-    mark_selected_change_cleared_by_stale_batch_selection,
-    read_selected_change_kind,
     rename_change_is_stale,
     selected_batch_binary_batch_name,
     selected_batch_binary_file_for_batch,
@@ -46,6 +38,16 @@ from ..data.hunk_tracking import (
     text_deletion_change_is_stale,
 )
 from ..data.line_state import load_line_changes_from_state
+from ..data.selected_change.lifecycle import clear_selected_change_state_files
+from ..data.selected_change.store import (
+    SelectedChangeKind,
+    load_selected_binary_file,
+    load_selected_gitlink_change,
+    load_selected_rename_change,
+    load_selected_text_deletion_change,
+    mark_selected_change_cleared_by_stale_batch_selection,
+    read_selected_change_kind,
+)
 from ..data.session import get_iteration_count
 from ..exceptions import CommandError
 from ..i18n import _

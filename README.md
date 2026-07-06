@@ -58,6 +58,25 @@ git-stage-batch status
 git-stage-batch again
 ```
 
+### AI Assistant Quick Start
+
+```bash
+# Install the command
+python -m pipx install git-stage-batch
+
+# Install Claude Code commit skills into this repository
+git-stage-batch install-assets claude-skills --filter 'commit-*'
+
+# Keep the local Claude assets out of reviews
+git-stage-batch block-file --local-only .claude/
+
+# Ask Claude Code to split and commit the unstaged work
+claude "/commit-unstaged-changes"
+```
+
+Omit `--filter` when installing Claude skills if you also want the larger
+`/decompose-and-commit-unstaged-changes` workflow.
+
 ## Example Workflow
 
 ```bash

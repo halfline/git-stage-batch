@@ -23,12 +23,30 @@ git-stage-batch install-assets claude-skills --filter 'commit-*'
 Omit `--filter` to install all bundled Claude skills.
 Use `--force` to replace an existing repo-local copy.
 
+For a new environment, a minimal Claude setup looks like:
+
+```bash
+python -m pipx install git-stage-batch
+git-stage-batch install-assets claude-skills --filter 'commit-*'
+git-stage-batch block-file --local-only .claude/
+claude "/commit-unstaged-changes"
+```
+
+The `block-file --local-only` line is useful when the Claude assets should
+remain local. It keeps `.claude/` out of future reviews without adding it to
+the project `.gitignore`.
+
 The bundled Claude skills currently include:
 
 - `commit-staged-changes` for turning the current staged index into one commit
 - `commit-unstaged-changes` for splitting unstaged work into one or more commits
 - `decompose-and-commit-unstaged-changes` for peeling larger unstaged work into
   concern batches and rebuilding a fine-grained commit series
+
+The regular commit skills stage the current working tree into new commits. The
+decomposition skill may rewrite commits it just created while polishing a local
+draft series, but it is not intended to rewrite shared or protected branch
+history.
 
 Create or update `CLAUDE.md` in your repository root:
 

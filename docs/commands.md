@@ -522,7 +522,12 @@ When run without a selected hunk, you can specify the file path:
 
 ```
 ❯ git-stage-batch block-file path/to/file.txt
+❯ git-stage-batch block-file --local-only .claude/
 ```
+
+Use `--local-only` to write the ignore entry to `.git/info/exclude` instead
+of `.gitignore`, which is useful for personal assistant assets or other
+machine-local files.
 
 Useful for build artifacts, IDE files, or other generated content.
 

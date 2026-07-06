@@ -834,9 +834,14 @@ They operate at different levels of the workflow.
 
 ### Do batches modify my Git history?
 
-No.
+Not by themselves.
 
-Batches are stored separately from your commit history. They only affect how you prepare commits.
+Batches are stored separately from your commit history. The normal workflow uses
+them to prepare commits without rewriting existing history.
+
+Assistant decomposition workflows can use batches while rebuilding a local
+draft series, and may polish commits they just created before the series is
+shared. That is different from modifying protected branch history.
 
 Once a batch is included and committed, the batch itself can be dropped.
 

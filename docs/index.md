@@ -215,6 +215,34 @@ Similar to `git add -p` but **more granular and flexible**:
 See [batch operations](batches.md) for advanced patch-series organization.
 See [commands reference](commands.md) for the `--as` contiguous-range rules.
 
+### AI Assistant Quick Start
+
+For Claude Code, install the tool and the bundled commit skills in the
+repository where the assistant will work:
+
+```
+❯ python -m pipx install git-stage-batch
+❯ git-stage-batch install-assets claude-skills --filter 'commit-*'
+```
+
+If you want the Claude assets to stay local, keep them out of reviews without
+changing the project `.gitignore`:
+
+```
+❯ git-stage-batch block-file --local-only .claude/
+```
+
+Then ask Claude Code to split and commit the current unstaged work:
+
+```
+❯ claude "/commit-unstaged-changes"
+```
+
+Omit `--filter` when installing Claude skills if you also want the larger
+`/decompose-and-commit-unstaged-changes` workflow. See the
+[AI assistant guide](ai-assistants.md) for Codex setup and fuller assistant
+configuration.
+
 ## Example Workflow
 
 <div class="workflow-showcase">
@@ -314,13 +342,18 @@ Automatically detects and clears cached state when files are committed or modifi
 
 ### Is this rewriting Git history?
 
-No.
+Usually no.
 
 git-stage-batch is intended for organizing draft patch sets before they are committed or shared. It helps you turn a messy working tree into a clean sequence of logical commits.
 
-It does not rewrite existing commits, and it is not meant to modify the history of shared or protected branches.
+The normal workflow stages selected working-tree changes into new commits
+rather than rewriting existing commits. Assistant decomposition workflows may
+polish commits they have just created while rebuilding a local series, but
+that rewriting is limited to fresh draft history.
 
-Think of it as helping you prepare commits before they become part of history, not changing history afterward.
+It is not meant to modify shared history or protected branches. Think of it as
+helping you prepare commits before they become part of reviewable project
+history, with any assistant-side polishing confined to local draft commits.
 
 ### When should I use this?
 

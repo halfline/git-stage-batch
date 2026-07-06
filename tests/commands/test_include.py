@@ -225,6 +225,42 @@ class TestCommandInclude:
 class TestCommandIncludeLine:
     """Tests for command_include_line."""
 
+    def test_include_line_auto_advance_after_file_is_exhausted(
+        self,
+        temp_git_repo,
+    ):
+        """Line include should show the next file after current-file refresh ends."""
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("base 1\n")
+        file2.write_text("base 2\n")
+        subprocess.run(
+            ["git", "add", "file1.txt", "file2.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        file1.write_text("base 1\nselected\n")
+        file2.write_text("base 2\nnext\n")
+        command_start(quiet=True)
+
+        first_change = load_line_changes_from_state()
+        assert first_change is not None
+        assert first_change.path == "file1.txt"
+
+        command_include_line("1", auto_advance=True)
+
+        next_change = load_line_changes_from_state()
+        assert next_change is not None
+        assert next_change.path == "file2.txt"
+
     def test_include_line_symlink_reads_link_target_not_referent(
         self,
         temp_git_repo,

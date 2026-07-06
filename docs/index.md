@@ -215,6 +215,34 @@ Similar to `git add -p` but **more granular and flexible**:
 See [batch operations](batches.md) for advanced patch-series organization.
 See [commands reference](commands.md) for the `--as` contiguous-range rules.
 
+### AI Assistant Quick Start
+
+For Claude Code, install the tool and the bundled commit skills in the
+repository where the assistant will work:
+
+```
+❯ python -m pipx install git-stage-batch
+❯ git-stage-batch install-assets claude-skills --filter 'commit-*'
+```
+
+If you want the Claude assets to stay local, keep them out of reviews without
+changing the project `.gitignore`:
+
+```
+❯ git-stage-batch block-file --local-only .claude/
+```
+
+Then ask Claude Code to split and commit the current unstaged work:
+
+```
+❯ claude "/commit-unstaged-changes"
+```
+
+Omit `--filter` when installing Claude skills if you also want the larger
+`/decompose-and-commit-unstaged-changes` workflow. See the
+[AI assistant guide](ai-assistants.md) for Codex setup and fuller assistant
+configuration.
+
 ## Example Workflow
 
 <div class="workflow-showcase">

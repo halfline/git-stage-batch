@@ -24,7 +24,7 @@ from ..data.file_review.state import (
     fingerprint_selected_file_view,
     _line_action_command,
 )
-from ..data.hunk_tracking import SelectedChangeKind
+from ..data.selected_change.store import SelectedChangeKind
 from ..exceptions import CommandError
 from ..i18n import _
 from .colors import Colors

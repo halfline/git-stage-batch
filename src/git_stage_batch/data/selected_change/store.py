@@ -12,7 +12,11 @@ from enum import Enum
 from pathlib import Path
 
 from ...core.diff_parser import build_line_changes_from_patch_lines
-from ...core.models import LineLevelChange
+from ...core.hashing import compute_rename_change_hash
+from ...core.models import (
+    LineLevelChange,
+    RenameChange,
+)
 from ...editor import EditorBuffer, write_buffer_to_path
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
 from ...utils.paths import (
@@ -24,6 +28,7 @@ from ...utils.paths import (
     get_processed_skip_ids_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
+    get_selected_rename_file_json_path,
     get_working_tree_snapshot_file_path,
 )
 from ..line_state import convert_line_changes_to_serializable_dict
@@ -83,6 +88,7 @@ def _selected_change_state_paths():
         "clear_reason": get_selected_change_clear_reason_file_path(),
         "kind": get_selected_change_kind_file_path(),
         "line_state": get_line_changes_json_file_path(),
+        "rename": get_selected_rename_file_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
         "working_snapshot": get_working_tree_snapshot_file_path(),
         "processed_include_ids": get_processed_include_ids_file_path(),
@@ -125,9 +131,65 @@ def clear_selected_change_persistence_files() -> None:
     for path in _selected_change_state_paths().values():
         path.unlink(missing_ok=True)
 
+def _clear_selected_line_payload_files() -> None:
+    """Clear selected line/hunk state before storing an atomic file selection."""
+    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
+    get_line_changes_json_file_path().unlink(missing_ok=True)
+    get_index_snapshot_file_path().unlink(missing_ok=True)
+    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+    get_processed_include_ids_file_path().unlink(missing_ok=True)
+    get_processed_skip_ids_file_path().unlink(missing_ok=True)
+
+def read_selected_rename_data() -> dict | None:
+    """Read cached rename selection data, if structurally valid."""
+    rename_path = get_selected_rename_file_json_path()
+    if not rename_path.exists():
+        return None
+    try:
+        rename_data = json.loads(read_text_file_contents(rename_path))
+    except json.JSONDecodeError:
+        return None
+    return rename_data if isinstance(rename_data, dict) else None
+
+def load_selected_rename_change() -> RenameChange | None:
+    """Load the currently cached rename change."""
+    if read_selected_change_kind() != SelectedChangeKind.RENAME:
+        return None
+
+    rename_data = read_selected_rename_data()
+    if rename_data is None:
+        return None
+
+    try:
+        return RenameChange(
+            old_path=rename_data["old_path"],
+            new_path=rename_data["new_path"],
+        )
+    except KeyError:
+        return None
+
+def cache_rename_change(rename_change: RenameChange) -> None:
+    """Cache a rename change as the current selected change."""
+    rename_data = {
+        "old_path": rename_change.old_path,
+        "new_path": rename_change.new_path,
+    }
+    _clear_selected_line_payload_files()
+    write_text_file_contents(
+        get_selected_rename_file_json_path(),
+        json.dumps(rename_data, ensure_ascii=False, indent=0),
+    )
+    write_text_file_contents(
+        get_selected_hunk_hash_file_path(),
+        compute_rename_change_hash(rename_change),
+    )
+    write_selected_change_kind(SelectedChangeKind.RENAME)
+
 def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     """Persist the kind of selected change cached in session state."""
     get_selected_change_clear_reason_file_path().unlink(missing_ok=True)
+    if kind != SelectedChangeKind.RENAME:
+        get_selected_rename_file_json_path().unlink(missing_ok=True)
     write_text_file_contents(get_selected_change_kind_file_path(), kind)
 
 

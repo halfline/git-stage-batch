@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -30,13 +29,13 @@ from ...exceptions import CommandError
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
 from ...utils.paths import (
-    get_selected_change_clear_reason_file_path,
-    get_selected_change_kind_file_path,
     get_index_snapshot_file_path,
     get_line_changes_json_file_path,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
     get_selected_binary_file_json_path,
+    get_selected_change_clear_reason_file_path,
+    get_selected_change_kind_file_path,
     get_selected_gitlink_file_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
@@ -61,6 +60,7 @@ class SelectedChangeKind(str, Enum):
     BATCH_BINARY = "batch-binary"
     BATCH_GITLINK = "batch-submodule"
 
+
 class SelectedChangeClearReason(str, Enum):
     """Reasons selected change state was intentionally cleared."""
 
@@ -68,6 +68,8 @@ class SelectedChangeClearReason(str, Enum):
     FILE_LIST = "file-list"
     STALE_BATCH_SELECTION = "stale-batch-selection"
 
+
+@dataclass
 class SelectedChangeStateSnapshot:
     """Temporary file copy of selected change state."""
 
@@ -83,9 +85,11 @@ class SelectedChangeStateSnapshot:
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
 
+
 def write_selected_hunk_patch_lines(patch_lines: Sequence[bytes]) -> None:
     with EditorBuffer.from_chunks(iter(patch_lines)) as patch_buffer:
         write_buffer_to_path(get_selected_hunk_patch_file_path(), patch_buffer)
+
 
 def write_line_changes_state(line_changes: LineLevelChange) -> None:
     write_text_file_contents(
@@ -97,9 +101,11 @@ def write_line_changes_state(line_changes: LineLevelChange) -> None:
         ),
     )
 
+
 def load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
     with EditorBuffer.from_path(patch_path) as patch_lines:
         return build_line_changes_from_patch_lines(patch_lines)
+
 
 def _selected_change_state_paths():
     """Return files that make up the cached selected change state."""
@@ -140,6 +146,7 @@ def snapshot_selected_change_state() -> SelectedChangeStateSnapshot:
         temporary_directory=temporary_directory,
     )
 
+
 def restore_selected_change_state(snapshot: SelectedChangeStateSnapshot) -> None:
     """Restore a previously captured selected change cache."""
     for name, path in _selected_change_state_paths().items():
@@ -150,10 +157,13 @@ def restore_selected_change_state(snapshot: SelectedChangeStateSnapshot) -> None
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(snapshot_path, path)
 
+
 def clear_selected_change_persistence_files() -> None:
     """Clear cached selected change state files."""
     for path in _selected_change_state_paths().values():
         path.unlink(missing_ok=True)
+    # processed_batch_ids is global state (union of all batches), not per-hunk state
+
 
 def _clear_selected_line_payload_files() -> None:
     """Clear selected line/hunk state before storing an atomic file selection."""
@@ -163,6 +173,7 @@ def _clear_selected_line_payload_files() -> None:
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
     get_processed_skip_ids_file_path().unlink(missing_ok=True)
+
 
 def read_selected_binary_data() -> dict | None:
     """Read cached binary selection data, if structurally valid."""
@@ -174,6 +185,7 @@ def read_selected_binary_data() -> dict | None:
     except json.JSONDecodeError:
         return None
     return binary_data if isinstance(binary_data, dict) else None
+
 
 def load_selected_binary_file() -> BinaryFileChange | None:
     """Load the currently cached binary file."""
@@ -193,6 +205,7 @@ def load_selected_binary_file() -> BinaryFileChange | None:
     except KeyError:
         return None
 
+
 def read_selected_gitlink_data() -> dict | None:
     """Read cached gitlink selection data, if structurally valid."""
     gitlink_path = get_selected_gitlink_file_json_path()
@@ -203,6 +216,7 @@ def read_selected_gitlink_data() -> dict | None:
     except json.JSONDecodeError:
         return None
     return gitlink_data if isinstance(gitlink_data, dict) else None
+
 
 def load_selected_gitlink_change() -> GitlinkChange | None:
     """Load the currently cached gitlink change."""
@@ -224,6 +238,7 @@ def load_selected_gitlink_change() -> GitlinkChange | None:
     except KeyError:
         return None
 
+
 def read_selected_rename_data() -> dict | None:
     """Read cached rename selection data, if structurally valid."""
     rename_path = get_selected_rename_file_json_path()
@@ -234,6 +249,7 @@ def read_selected_rename_data() -> dict | None:
     except json.JSONDecodeError:
         return None
     return rename_data if isinstance(rename_data, dict) else None
+
 
 def load_selected_rename_change() -> RenameChange | None:
     """Load the currently cached rename change."""
@@ -252,6 +268,7 @@ def load_selected_rename_change() -> RenameChange | None:
     except KeyError:
         return None
 
+
 def read_selected_text_deletion_data() -> dict | None:
     """Read cached text deletion selection data, if structurally valid."""
     deletion_path = get_selected_text_deletion_file_json_path()
@@ -262,6 +279,7 @@ def read_selected_text_deletion_data() -> dict | None:
     except json.JSONDecodeError:
         return None
     return deletion_data if isinstance(deletion_data, dict) else None
+
 
 def load_selected_text_deletion_change() -> TextFileDeletionChange | None:
     """Load the currently cached text file deletion change."""
@@ -279,6 +297,7 @@ def load_selected_text_deletion_change() -> TextFileDeletionChange | None:
         )
     except KeyError:
         return None
+
 
 def cache_binary_file_change(
     binary_change: BinaryFileChange,
@@ -315,6 +334,7 @@ def cache_binary_file_change(
         write_snapshots_for_selected_file_path(file_path)
     write_selected_change_kind(kind)
 
+
 def cache_gitlink_change(
     gitlink_change: GitlinkChange,
     *,
@@ -349,6 +369,7 @@ def cache_gitlink_change(
     )
     write_selected_change_kind(kind)
 
+
 def cache_rename_change(rename_change: RenameChange) -> None:
     """Cache a rename change as the current selected change."""
     rename_data = {
@@ -365,6 +386,7 @@ def cache_rename_change(rename_change: RenameChange) -> None:
         compute_rename_change_hash(rename_change),
     )
     write_selected_change_kind(SelectedChangeKind.RENAME)
+
 
 def cache_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
     """Cache a whole-text-file deletion as the current selected change."""
@@ -383,6 +405,7 @@ def cache_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
     )
     write_snapshots_for_selected_file_path(deletion_change.path())
     write_selected_change_kind(SelectedChangeKind.DELETION)
+
 
 def get_selected_change_file_path() -> str | None:
     """Return the file path for the currently cached selected change."""
@@ -409,6 +432,7 @@ def get_selected_change_file_path() -> str | None:
     line_changes = load_line_changes_from_patch_path(patch_path)
     return line_changes.path
 
+
 def mark_selected_change_cleared_by_file_list(
     *,
     source: str,
@@ -420,6 +444,7 @@ def mark_selected_change_cleared_by_file_list(
         source=source,
         batch_name=batch_name,
     )
+
 
 def mark_selected_change_cleared_by_stale_batch_selection(
     *,
@@ -433,6 +458,15 @@ def mark_selected_change_cleared_by_stale_batch_selection(
         batch_name=batch_name,
         file_path=file_path,
     )
+
+
+def mark_selected_change_cleared_by_auto_advance_disabled() -> None:
+    """Record that an action left the next change unselected."""
+    _write_selected_change_clear_reason(
+        reason=SelectedChangeClearReason.AUTO_ADVANCE_DISABLED,
+        source="auto-advance",
+    )
+
 
 def _write_selected_change_clear_reason(
     *,
@@ -455,6 +489,7 @@ def _write_selected_change_clear_reason(
             indent=0,
         ),
     )
+
 
 def _read_selected_change_clear_reason() -> dict[str, str | None] | None:
     """Return the structured clear marker, tolerating legacy plain-text state."""
@@ -483,6 +518,7 @@ def _read_selected_change_clear_reason() -> dict[str, str | None] | None:
         "file_path": data.get("file_path") if isinstance(data.get("file_path"), str) else None,
     }
 
+
 def selected_change_was_cleared_by_file_list(
     *,
     source: str | None = None,
@@ -504,6 +540,7 @@ def selected_change_was_cleared_by_file_list(
         return False
     return True
 
+
 def selected_change_was_cleared_by_stale_batch_selection(
     *,
     batch_name: str | None = None,
@@ -519,6 +556,17 @@ def selected_change_was_cleared_by_stale_batch_selection(
     if batch_name is not None and marker["batch_name"] != batch_name:
         return False
     return True
+
+
+def selected_change_was_cleared_by_auto_advance_disabled() -> bool:
+    """Return whether the current empty selection needs an explicit show."""
+    if read_selected_change_kind() is not None:
+        return False
+    marker = _read_selected_change_clear_reason()
+    if marker is None:
+        return False
+    return marker["reason"] == SelectedChangeClearReason.AUTO_ADVANCE_DISABLED.value
+
 
 def refuse_bare_action_after_file_list(
     action_command: str,
@@ -543,6 +591,24 @@ def refuse_bare_action_after_file_list(
         ).format(open_command=open_command, action=action_command)
     )
 
+
+def refuse_bare_action_after_auto_advance_disabled(action_command: str) -> None:
+    """Refuse a bare action after a command declined to select the next hunk."""
+    if not selected_change_was_cleared_by_auto_advance_disabled():
+        return
+    raise CommandError(
+        _(
+            "No selected change.\n"
+            "The previous command did not choose the next hunk because automatic "
+            "advancement is disabled.\n\n"
+            "Run:\n"
+            "  git-stage-batch show\n"
+            "before running:\n"
+            "  git-stage-batch {action}"
+        ).format(action=action_command)
+    )
+
+
 def refuse_bare_action_after_stale_batch_selection(
     action_command: str,
     *,
@@ -564,6 +630,7 @@ def refuse_bare_action_after_stale_batch_selection(
             "  git-stage-batch {action}"
         ).format(file=file_path, batch=batch_name, action=action_command)
     )
+
 
 def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     """Persist the kind of selected change cached in session state."""

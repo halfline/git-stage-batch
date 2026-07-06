@@ -12,10 +12,14 @@ from enum import Enum
 from pathlib import Path
 
 from ...core.diff_parser import build_line_changes_from_patch_lines
-from ...core.hashing import compute_rename_change_hash
+from ...core.hashing import (
+    compute_rename_change_hash,
+    compute_text_file_deletion_hash,
+)
 from ...core.models import (
     LineLevelChange,
     RenameChange,
+    TextFileDeletionChange,
 )
 from ...editor import EditorBuffer, write_buffer_to_path
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
@@ -29,9 +33,11 @@ from ...utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_selected_rename_file_json_path,
+    get_selected_text_deletion_file_json_path,
     get_working_tree_snapshot_file_path,
 )
 from ..line_state import convert_line_changes_to_serializable_dict
+from .snapshots import write_snapshots_for_selected_file_path
 
 
 class SelectedChangeKind(str, Enum):
@@ -89,6 +95,7 @@ def _selected_change_state_paths():
         "kind": get_selected_change_kind_file_path(),
         "line_state": get_line_changes_json_file_path(),
         "rename": get_selected_rename_file_json_path(),
+        "text_deletion": get_selected_text_deletion_file_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
         "working_snapshot": get_working_tree_snapshot_file_path(),
         "processed_include_ids": get_processed_include_ids_file_path(),
@@ -168,6 +175,34 @@ def load_selected_rename_change() -> RenameChange | None:
     except KeyError:
         return None
 
+def read_selected_text_deletion_data() -> dict | None:
+    """Read cached text deletion selection data, if structurally valid."""
+    deletion_path = get_selected_text_deletion_file_json_path()
+    if not deletion_path.exists():
+        return None
+    try:
+        deletion_data = json.loads(read_text_file_contents(deletion_path))
+    except json.JSONDecodeError:
+        return None
+    return deletion_data if isinstance(deletion_data, dict) else None
+
+def load_selected_text_deletion_change() -> TextFileDeletionChange | None:
+    """Load the currently cached text file deletion change."""
+    if read_selected_change_kind() != SelectedChangeKind.DELETION:
+        return None
+
+    deletion_data = read_selected_text_deletion_data()
+    if deletion_data is None:
+        return None
+
+    try:
+        return TextFileDeletionChange(
+            old_path=deletion_data["old_path"],
+            new_path=deletion_data.get("new_path", "/dev/null"),
+        )
+    except KeyError:
+        return None
+
 def cache_rename_change(rename_change: RenameChange) -> None:
     """Cache a rename change as the current selected change."""
     rename_data = {
@@ -185,11 +220,31 @@ def cache_rename_change(rename_change: RenameChange) -> None:
     )
     write_selected_change_kind(SelectedChangeKind.RENAME)
 
+def cache_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
+    """Cache a whole-text-file deletion as the current selected change."""
+    deletion_data = {
+        "old_path": deletion_change.old_path,
+        "new_path": deletion_change.new_path,
+    }
+    _clear_selected_line_payload_files()
+    write_text_file_contents(
+        get_selected_text_deletion_file_json_path(),
+        json.dumps(deletion_data, ensure_ascii=False, indent=0),
+    )
+    write_text_file_contents(
+        get_selected_hunk_hash_file_path(),
+        compute_text_file_deletion_hash(deletion_change),
+    )
+    write_snapshots_for_selected_file_path(deletion_change.path())
+    write_selected_change_kind(SelectedChangeKind.DELETION)
+
 def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     """Persist the kind of selected change cached in session state."""
     get_selected_change_clear_reason_file_path().unlink(missing_ok=True)
     if kind != SelectedChangeKind.RENAME:
         get_selected_rename_file_json_path().unlink(missing_ok=True)
+    if kind != SelectedChangeKind.DELETION:
+        get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
     write_text_file_contents(get_selected_change_kind_file_path(), kind)
 
 

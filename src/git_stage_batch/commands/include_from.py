@@ -51,9 +51,7 @@ from ..data.file_review.state import (
     finish_review_scoped_line_action,
     resolve_batch_source_action_scope,
 )
-from ..data.hunk_tracking import (
-    render_batch_file_display,
-)
+from ..batch.file_display import render_batch_file_display
 from ..editor import (
     EditorBuffer,
     load_git_object_as_buffer,

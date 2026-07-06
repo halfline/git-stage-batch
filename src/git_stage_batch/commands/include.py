@@ -1547,8 +1547,7 @@ def command_include_line_as(
                 ),
                 file=sys.stderr,
             )
-            print_remaining_line_changes_header(line_changes.path)
-            recalculate_selected_hunk_for_command(
+            refresh_selected_hunk_after_line_action(
                 line_changes.path,
                 auto_advance=auto_advance,
             )

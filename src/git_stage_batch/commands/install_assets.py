@@ -120,7 +120,6 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
     ),
 }
 
-
 def _get_group_root(group: AssetGroup) -> Traversable:
     """Return the packaged root for an asset group."""
     return resources.files("git_stage_batch").joinpath(*group.source_segments)
@@ -156,8 +155,15 @@ def _list_group_entries(group_name: str, group: AssetGroup) -> dict[str, Travers
     return dict(sorted(entries.items()))
 
 
+def _should_skip_asset_entry(entry: Traversable) -> bool:
+    """Return whether a packaged entry is generated Python cache data."""
+    return entry.name == "__pycache__" or entry.name.endswith((".pyc", ".pyo"))
+
+
 def _copy_traversable_tree(source: Traversable, destination: Path) -> None:
     """Copy a Traversable tree into a filesystem path."""
+    if _should_skip_asset_entry(source):
+        return
     if source.is_dir():
         for child in source.iterdir():
             _copy_traversable_tree(child, destination / child.name)

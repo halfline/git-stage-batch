@@ -24,6 +24,7 @@ from ..data.batch_selected_changes import (
     require_current_selected_batch_binary_file_for_batch,
     require_current_selected_batch_gitlink_file_for_batch,
 )
+from ..data.progress import format_id_range
 from ..data.selected_change.store import (
     SelectedChangeKind,
     get_selected_change_file_path,
@@ -327,8 +328,6 @@ def translate_atomic_unit_error_to_gutter_ids(
     Raises:
         CommandError: Always exits with translated error message
     """
-    from ..data.hunk_tracking import format_id_range
-
     if error.required_selection_ids:
         # Translate required selection IDs to gutter IDs
         gutter_ids = []

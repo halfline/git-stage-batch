@@ -178,9 +178,10 @@ def test_recalc_handoff_stays_in_command_helper():
 
 
 def test_line_action_refresh_header_stays_in_command_helper():
-    """Include line actions should use the command refresh helper."""
+    """Include and discard line actions should use the command refresh helper."""
     command_paths = (
         SRC_ROOT / "commands" / "include.py",
+        SRC_ROOT / "commands" / "discard.py",
     )
     violations = []
 

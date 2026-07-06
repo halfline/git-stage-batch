@@ -14,11 +14,13 @@ from pathlib import Path
 from ...core.diff_parser import build_line_changes_from_patch_lines
 from ...core.hashing import (
     compute_binary_file_hash,
+    compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_text_file_deletion_hash,
 )
 from ...core.models import (
     BinaryFileChange,
+    GitlinkChange,
     LineLevelChange,
     RenameChange,
     TextFileDeletionChange,
@@ -33,6 +35,7 @@ from ...utils.paths import (
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
     get_selected_binary_file_json_path,
+    get_selected_gitlink_file_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_selected_rename_file_json_path,
@@ -100,6 +103,7 @@ def _selected_change_state_paths():
         "rename": get_selected_rename_file_json_path(),
         "text_deletion": get_selected_text_deletion_file_json_path(),
         "binary": get_selected_binary_file_json_path(),
+        "gitlink": get_selected_gitlink_file_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
         "working_snapshot": get_working_tree_snapshot_file_path(),
         "processed_include_ids": get_processed_include_ids_file_path(),
@@ -176,6 +180,37 @@ def load_selected_binary_file() -> BinaryFileChange | None:
             old_path=binary_data["old_path"],
             new_path=binary_data["new_path"],
             change_type=binary_data["change_type"],
+        )
+    except KeyError:
+        return None
+
+def read_selected_gitlink_data() -> dict | None:
+    """Read cached gitlink selection data, if structurally valid."""
+    gitlink_path = get_selected_gitlink_file_json_path()
+    if not gitlink_path.exists():
+        return None
+    try:
+        gitlink_data = json.loads(read_text_file_contents(gitlink_path))
+    except json.JSONDecodeError:
+        return None
+    return gitlink_data if isinstance(gitlink_data, dict) else None
+
+def load_selected_gitlink_change() -> GitlinkChange | None:
+    """Load the currently cached gitlink change."""
+    if read_selected_change_kind() not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
+        return None
+
+    gitlink_data = read_selected_gitlink_data()
+    if gitlink_data is None:
+        return None
+
+    try:
+        return GitlinkChange(
+            old_path=gitlink_data["old_path"],
+            new_path=gitlink_data["new_path"],
+            old_oid=gitlink_data.get("old_oid"),
+            new_oid=gitlink_data.get("new_oid"),
+            change_type=gitlink_data["change_type"],
         )
     except KeyError:
         return None
@@ -271,6 +306,40 @@ def cache_binary_file_change(
         write_snapshots_for_selected_file_path(file_path)
     write_selected_change_kind(kind)
 
+def cache_gitlink_change(
+    gitlink_change: GitlinkChange,
+    *,
+    kind: SelectedChangeKind = SelectedChangeKind.GITLINK,
+    batch_name: str | None = None,
+    batch_gitlink_fingerprint: str | None = None,
+) -> None:
+    """Cache a gitlink change as the current selected change."""
+    if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
+        raise ValueError("gitlink selections must use a gitlink selected-change kind")
+    gitlink_data = {
+        "old_path": gitlink_change.old_path,
+        "new_path": gitlink_change.new_path,
+        "old_oid": gitlink_change.old_oid,
+        "new_oid": gitlink_change.new_oid,
+        "change_type": gitlink_change.change_type,
+        "batch_name": batch_name if kind == SelectedChangeKind.BATCH_GITLINK else None,
+        "batch_gitlink_fingerprint": (
+            batch_gitlink_fingerprint
+            if kind == SelectedChangeKind.BATCH_GITLINK else
+            None
+        ),
+    }
+    _clear_selected_line_payload_files()
+    write_text_file_contents(
+        get_selected_gitlink_file_json_path(),
+        json.dumps(gitlink_data, ensure_ascii=False, indent=0),
+    )
+    write_text_file_contents(
+        get_selected_hunk_hash_file_path(),
+        compute_gitlink_change_hash(gitlink_change),
+    )
+    write_selected_change_kind(kind)
+
 def cache_rename_change(rename_change: RenameChange) -> None:
     """Cache a rename change as the current selected change."""
     rename_data = {
@@ -315,6 +384,8 @@ def write_selected_change_kind(kind: SelectedChangeKind) -> None:
         get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
     if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
         get_selected_binary_file_json_path().unlink(missing_ok=True)
+    if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
+        get_selected_gitlink_file_json_path().unlink(missing_ok=True)
     write_text_file_contents(get_selected_change_kind_file_path(), kind)
 
 

@@ -49,7 +49,6 @@ from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
-    write_snapshots_for_selected_file_path,
 )
 from ..editor import (
     EditorBuffer,
@@ -72,6 +71,7 @@ from ..output import (
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
 from .file_tracking import auto_add_untracked_files
+from .selected_change.snapshots import write_snapshots_for_selected_file_path
 from ..utils.file_io import (
     is_path_blocked,
     read_file_paths_file,

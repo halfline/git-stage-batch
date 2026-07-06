@@ -27,6 +27,22 @@ def record_hunk_included(hunk_hash: str) -> None:
     write_text_file_contents(included_path, "\n".join(sorted(existing)) + "\n" if existing else "")
 
 
+def record_hunk_discarded(hunk_hash: str) -> None:
+    """Record that a hunk was discarded (removed from working tree)."""
+    record_hunks_discarded([hunk_hash])
+
+
+def record_hunks_discarded(hunk_hashes: list[str]) -> None:
+    """Record that hunks were discarded (removed from working tree)."""
+    new_hashes = {hunk_hash for hunk_hash in hunk_hashes if hunk_hash}
+    if not new_hashes:
+        return
+    discarded_path = get_discarded_hunks_file_path()
+    existing = read_text_file_line_set(discarded_path)
+    existing.update(new_hashes)
+    write_text_file_contents(discarded_path, "\n".join(sorted(existing)) + "\n" if existing else "")
+
+
 def get_hunk_counts() -> dict[str, int]:
     """Get counts of hunks in various states.
 

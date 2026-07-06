@@ -20,8 +20,14 @@ from ..core.line_selection import (
     parse_line_selection,
     parse_line_selection_ranges,
 )
+from ..data.batch_selected_changes import (
+    require_current_selected_batch_binary_file_for_batch,
+    require_current_selected_batch_gitlink_file_for_batch,
+)
 from ..data.selected_change.store import (
+    SelectedChangeKind,
     get_selected_change_file_path,
+    read_selected_change_kind,
 )
 from ..exceptions import CommandError, exit_with_error
 from ..i18n import _
@@ -180,13 +186,6 @@ def resolve_current_batch_atomic_file_scope(
     """
     if patterns is not None or line_ids is not None or file not in (None, ""):
         return file
-
-    from ..data.hunk_tracking import (
-        SelectedChangeKind,
-        read_selected_change_kind,
-        require_current_selected_batch_binary_file_for_batch,
-        require_current_selected_batch_gitlink_file_for_batch,
-    )
 
     selected_kind = read_selected_change_kind()
     if selected_kind == SelectedChangeKind.BATCH_BINARY:

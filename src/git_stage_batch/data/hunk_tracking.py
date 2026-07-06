@@ -6,6 +6,7 @@ import json
 import tempfile
 import subprocess
 import sys
+from enum import Enum
 from hashlib import sha256
 from typing import Generator, Mapping, Optional, Union
 
@@ -127,6 +128,14 @@ from .selected_change.store import (
     write_selected_change_kind,
     write_selected_hunk_patch_lines,
 )
+
+
+class RecalculateSelectedHunkResult(str, Enum):
+    """Outcome from refreshing the selected hunk for one file."""
+
+    RECALCULATED = "recalculated"
+    CLEARED = "cleared"
+    SHOW_NEXT_CHANGE = "show-next-change"
 
 
 _BATCH_MERGE_REVIEW_ACTIONS = (
@@ -1382,7 +1391,7 @@ def recalculate_selected_hunk_for_file(
     file_path: str,
     *,
     auto_advance: bool | None = None,
-) -> None:
+) -> RecalculateSelectedHunkResult:
     """Recalculate the selected hunk for a specific file after modifications.
 
     After discard --line or include --line changes the working tree or index,
@@ -1406,10 +1415,11 @@ def recalculate_selected_hunk_for_file(
             clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
                 from ..commands.show import command_show
+
                 command_show()
-            else:
-                mark_selected_change_cleared_by_auto_advance_disabled()
-            return
+                return RecalculateSelectedHunkResult.RECALCULATED
+            mark_selected_change_cleared_by_auto_advance_disabled()
+            return RecalculateSelectedHunkResult.CLEARED
 
         line_changes = preserve_line_ids_from_previous_view(
             previous_line_changes,
@@ -1421,15 +1431,16 @@ def recalculate_selected_hunk_for_file(
             clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
                 from ..commands.show import command_show
+
                 command_show()
-            else:
-                mark_selected_change_cleared_by_auto_advance_disabled()
-            return
+                return RecalculateSelectedHunkResult.RECALCULATED
+            mark_selected_change_cleared_by_auto_advance_disabled()
+            return RecalculateSelectedHunkResult.CLEARED
 
         line_changes = load_line_changes_from_state()
         if line_changes is not None:
             print_line_level_changes(line_changes)
-        return
+        return RecalculateSelectedHunkResult.RECALCULATED
 
     # Load blocklist
     blocked_hashes = read_text_file_line_set(get_block_list_file_path())
@@ -1454,7 +1465,7 @@ def recalculate_selected_hunk_for_file(
                         continue
                     cache_rename_change(single_hunk)
                     print_rename_change(single_hunk)
-                    return
+                    return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, TextFileDeletionChange):
                     deletion_hash = compute_text_file_deletion_hash(single_hunk)
@@ -1462,7 +1473,7 @@ def recalculate_selected_hunk_for_file(
                         continue
                     cache_text_deletion_change(single_hunk)
                     print_text_file_deletion_change(single_hunk)
-                    return
+                    return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, GitlinkChange):
                     gitlink_hash = compute_gitlink_change_hash(single_hunk)
@@ -1470,7 +1481,7 @@ def recalculate_selected_hunk_for_file(
                         continue
                     cache_gitlink_change(single_hunk)
                     print_gitlink_change(single_hunk)
-                    return
+                    return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, BinaryFileChange):
                     continue
@@ -1510,24 +1521,25 @@ def recalculate_selected_hunk_for_file(
                     # All lines were batched, clear the hunk
                     clear_selected_change_state_files()
                     print(_("No more lines in this hunk."), file=sys.stderr)
-                    return
+                    return RecalculateSelectedHunkResult.CLEARED
 
                 # Display filtered hunk
                 line_changes = load_line_changes_from_state()
                 if line_changes is not None:
                     print_line_level_changes(line_changes)
-                return
+                return RecalculateSelectedHunkResult.RECALCULATED
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         clear_selected_change_state_files()
         print(_("No pending hunks."), file=sys.stderr)
-        return
+        return RecalculateSelectedHunkResult.CLEARED
 
     # No more hunks for this file, advance to next file
     clear_selected_change_state_files()
-    # Import here to avoid circular dependency
     if resolve_auto_advance(auto_advance):
         from ..commands.show import command_show
+
         command_show()
-    else:
-        mark_selected_change_cleared_by_auto_advance_disabled()
+        return RecalculateSelectedHunkResult.RECALCULATED
+    mark_selected_change_cleared_by_auto_advance_disabled()
+    return RecalculateSelectedHunkResult.CLEARED

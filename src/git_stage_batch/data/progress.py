@@ -8,6 +8,7 @@ from ..core.models import (
     BinaryFileChange,
     GitlinkChange,
     LineLevelChange,
+    RenameChange,
 )
 from ..utils.file_io import (
     count_nonblank_text_file_lines,
@@ -89,6 +90,20 @@ def record_gitlink_hunk_skipped(gitlink_change: GitlinkChange, hunk_hash: str) -
         "change_type": gitlink_change.change_type,
         "old_oid": gitlink_change.old_oid,
         "new_oid": gitlink_change.new_oid,
+    }
+    _append_skipped_hunk_metadata(metadata)
+
+
+def record_rename_hunk_skipped(rename_change: RenameChange, hunk_hash: str) -> None:
+    """Record that a rename change was skipped with file-level metadata."""
+    metadata = {
+        "hash": hunk_hash,
+        "file": rename_change.new_path,
+        "line": None,
+        "ids": [],
+        "type": "rename",
+        "old_path": rename_change.old_path,
+        "new_path": rename_change.new_path,
     }
     _append_skipped_hunk_metadata(metadata)
 

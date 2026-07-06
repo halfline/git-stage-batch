@@ -131,3 +131,14 @@ def test_file_review_state_does_not_import_hunk_navigation():
     }
 
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_file_review_output_does_not_import_hunk_navigation():
+    """File-review output should not depend on hunk navigation."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules

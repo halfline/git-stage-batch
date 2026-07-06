@@ -13,10 +13,12 @@ from pathlib import Path
 
 from ...core.diff_parser import build_line_changes_from_patch_lines
 from ...core.hashing import (
+    compute_binary_file_hash,
     compute_rename_change_hash,
     compute_text_file_deletion_hash,
 )
 from ...core.models import (
+    BinaryFileChange,
     LineLevelChange,
     RenameChange,
     TextFileDeletionChange,
@@ -30,6 +32,7 @@ from ...utils.paths import (
     get_line_changes_json_file_path,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
+    get_selected_binary_file_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_selected_rename_file_json_path,
@@ -96,6 +99,7 @@ def _selected_change_state_paths():
         "line_state": get_line_changes_json_file_path(),
         "rename": get_selected_rename_file_json_path(),
         "text_deletion": get_selected_text_deletion_file_json_path(),
+        "binary": get_selected_binary_file_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
         "working_snapshot": get_working_tree_snapshot_file_path(),
         "processed_include_ids": get_processed_include_ids_file_path(),
@@ -146,6 +150,35 @@ def _clear_selected_line_payload_files() -> None:
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
     get_processed_skip_ids_file_path().unlink(missing_ok=True)
+
+def read_selected_binary_data() -> dict | None:
+    """Read cached binary selection data, if structurally valid."""
+    binary_path = get_selected_binary_file_json_path()
+    if not binary_path.exists():
+        return None
+    try:
+        binary_data = json.loads(read_text_file_contents(binary_path))
+    except json.JSONDecodeError:
+        return None
+    return binary_data if isinstance(binary_data, dict) else None
+
+def load_selected_binary_file() -> BinaryFileChange | None:
+    """Load the currently cached binary file."""
+    if read_selected_change_kind() not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
+        return None
+
+    binary_data = read_selected_binary_data()
+    if binary_data is None:
+        return None
+
+    try:
+        return BinaryFileChange(
+            old_path=binary_data["old_path"],
+            new_path=binary_data["new_path"],
+            change_type=binary_data["change_type"],
+        )
+    except KeyError:
+        return None
 
 def read_selected_rename_data() -> dict | None:
     """Read cached rename selection data, if structurally valid."""
@@ -203,6 +236,41 @@ def load_selected_text_deletion_change() -> TextFileDeletionChange | None:
     except KeyError:
         return None
 
+def cache_binary_file_change(
+    binary_change: BinaryFileChange,
+    *,
+    kind: SelectedChangeKind = SelectedChangeKind.BINARY,
+    batch_name: str | None = None,
+    batch_binary_fingerprint: str | None = None,
+) -> None:
+    """Cache a binary file change as the current selected change."""
+    if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
+        raise ValueError("binary selections must use a binary selected-change kind")
+    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    binary_data = {
+        "old_path": binary_change.old_path,
+        "new_path": binary_change.new_path,
+        "change_type": binary_change.change_type,
+        "batch_name": batch_name if kind == SelectedChangeKind.BATCH_BINARY else None,
+        "batch_binary_fingerprint": (
+            batch_binary_fingerprint
+            if kind == SelectedChangeKind.BATCH_BINARY else
+            None
+        ),
+    }
+    _clear_selected_line_payload_files()
+    write_text_file_contents(
+        get_selected_binary_file_json_path(),
+        json.dumps(binary_data, ensure_ascii=False, indent=0),
+    )
+    write_text_file_contents(
+        get_selected_hunk_hash_file_path(),
+        compute_binary_file_hash(binary_change),
+    )
+    if kind == SelectedChangeKind.BINARY:
+        write_snapshots_for_selected_file_path(file_path)
+    write_selected_change_kind(kind)
+
 def cache_rename_change(rename_change: RenameChange) -> None:
     """Cache a rename change as the current selected change."""
     rename_data = {
@@ -245,6 +313,8 @@ def write_selected_change_kind(kind: SelectedChangeKind) -> None:
         get_selected_rename_file_json_path().unlink(missing_ok=True)
     if kind != SelectedChangeKind.DELETION:
         get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
+    if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
+        get_selected_binary_file_json_path().unlink(missing_ok=True)
     write_text_file_contents(get_selected_change_kind_file_path(), kind)
 
 

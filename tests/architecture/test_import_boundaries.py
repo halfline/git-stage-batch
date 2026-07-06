@@ -144,6 +144,38 @@ def test_file_review_output_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_recalc_handoff_stays_in_command_helper():
+    """Include command should use the command refresh handoff."""
+    command_paths = (
+        SRC_ROOT / "commands" / "include.py",
+    )
+    forbidden_names = {
+        "RecalculateSelectedHunkResult",
+        "recalculate_selected_hunk_for_file",
+    }
+    violations = []
+
+    for command_path in command_paths:
+        imported_modules = {
+            imported_module
+            for imported_module, _node in _import_from_nodes(command_path)
+        }
+        assert "git_stage_batch.commands.selection.selected_hunk_refresh" in imported_modules
+
+        for imported_module, node in _import_from_nodes(command_path):
+            if imported_module != "git_stage_batch.data.hunk_tracking":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & forbidden_names
+            if disallowed_names:
+                relative_path = command_path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_hunk_tracking_does_not_import_show_command():
     """Hunk navigation state should not depend on the show command."""
     hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"

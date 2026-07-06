@@ -6,7 +6,7 @@ import pytest
 
 import git_stage_batch.commands.reset as reset_module
 import git_stage_batch.commands.show_from as show_from_module
-import git_stage_batch.data.hunk_tracking as hunk_tracking_module
+import git_stage_batch.batch.file_display as file_display_module
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
@@ -19,7 +19,8 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.line_selection import LineRanges, parse_line_selection
 from git_stage_batch.core.models import RenderedBatchDisplay, ReviewActionGroup
 from git_stage_batch.data.batch_sources import create_batch_source_commit, save_session_batch_sources
-from git_stage_batch.data.hunk_tracking import fetch_next_change, render_batch_file_display
+from git_stage_batch.batch.file_display import render_batch_file_display
+from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.editor import EditorBuffer
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
 
@@ -298,7 +299,7 @@ class TestResetFromBatch:
 
         monkeypatch.setattr(reset_module, "render_batch_file_display", render_with_shifted_gutter)
         monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_shifted_gutter)
-        monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_shifted_gutter)
 
         command_show_from_batch("mybatch", file="test.py", page="all")
 
@@ -345,7 +346,7 @@ class TestResetFromBatch:
 
         monkeypatch.setattr(reset_module, "render_batch_file_display", render_with_shifted_gutter)
         monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_shifted_gutter)
-        monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_shifted_gutter)
 
         command_show_from_batch("mybatch", file="test.py", page="all")
 
@@ -408,11 +409,11 @@ class TestResetFromBatch:
 
         monkeypatch.setattr(reset_module, "render_batch_file_display", render_with_shifted_gutter)
         monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_shifted_gutter)
-        monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_shifted_gutter)
 
         command_show_from_batch("mybatch", file="test.py", page="all")
 
-        monkeypatch.setattr(hunk_tracking_module, "render_batch_file_display", render_with_raw_gutter)
+        monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_raw_gutter)
 
         with pytest.raises(CommandError, match="no longer matches"):
             command_reset_from_batch("mybatch", line_ids="1", file="test.py")

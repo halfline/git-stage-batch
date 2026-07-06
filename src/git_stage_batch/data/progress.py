@@ -9,6 +9,7 @@ from ..core.models import (
     GitlinkChange,
     LineLevelChange,
     RenameChange,
+    TextFileDeletionChange,
 )
 from ..utils.file_io import (
     count_nonblank_text_file_lines,
@@ -104,6 +105,22 @@ def record_rename_hunk_skipped(rename_change: RenameChange, hunk_hash: str) -> N
         "type": "rename",
         "old_path": rename_change.old_path,
         "new_path": rename_change.new_path,
+    }
+    _append_skipped_hunk_metadata(metadata)
+
+
+def record_text_deletion_hunk_skipped(
+    deletion_change: TextFileDeletionChange,
+    hunk_hash: str,
+) -> None:
+    """Record that a whole-text-file deletion was skipped with file-level metadata."""
+    metadata = {
+        "hash": hunk_hash,
+        "file": deletion_change.path(),
+        "line": None,
+        "ids": [],
+        "type": "text-deletion",
+        "change_type": "deleted",
     }
     _append_skipped_hunk_metadata(metadata)
 

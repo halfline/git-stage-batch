@@ -1414,10 +1414,7 @@ def recalculate_selected_hunk_for_file(
         if line_changes is None:
             clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
-                from ..commands.show import command_show
-
-                command_show()
-                return RecalculateSelectedHunkResult.RECALCULATED
+                return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
             mark_selected_change_cleared_by_auto_advance_disabled()
             return RecalculateSelectedHunkResult.CLEARED
 
@@ -1430,10 +1427,7 @@ def recalculate_selected_hunk_for_file(
         if apply_line_level_batch_filter_to_cached_hunk():
             clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
-                from ..commands.show import command_show
-
-                command_show()
-                return RecalculateSelectedHunkResult.RECALCULATED
+                return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
             mark_selected_change_cleared_by_auto_advance_disabled()
             return RecalculateSelectedHunkResult.CLEARED
 
@@ -1537,9 +1531,6 @@ def recalculate_selected_hunk_for_file(
     # No more hunks for this file, advance to next file
     clear_selected_change_state_files()
     if resolve_auto_advance(auto_advance):
-        from ..commands.show import command_show
-
-        command_show()
-        return RecalculateSelectedHunkResult.RECALCULATED
+        return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
     mark_selected_change_cleared_by_auto_advance_disabled()
     return RecalculateSelectedHunkResult.CLEARED

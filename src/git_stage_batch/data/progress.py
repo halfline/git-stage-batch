@@ -6,6 +6,7 @@ import json
 
 from ..core.models import (
     BinaryFileChange,
+    GitlinkChange,
     LineLevelChange,
 )
 from ..utils.file_io import (
@@ -73,6 +74,21 @@ def record_binary_hunk_skipped(binary_change: BinaryFileChange, hunk_hash: str) 
         "line": None,
         "ids": [],
         "change_type": binary_change.change_type,
+    }
+    _append_skipped_hunk_metadata(metadata)
+
+
+def record_gitlink_hunk_skipped(gitlink_change: GitlinkChange, hunk_hash: str) -> None:
+    """Record that a gitlink change was skipped with file-level metadata."""
+    metadata = {
+        "hash": hunk_hash,
+        "file": gitlink_change.path(),
+        "line": None,
+        "ids": [],
+        "type": "submodule",
+        "change_type": gitlink_change.change_type,
+        "old_oid": gitlink_change.old_oid,
+        "new_oid": gitlink_change.new_oid,
     }
     _append_skipped_hunk_metadata(metadata)
 

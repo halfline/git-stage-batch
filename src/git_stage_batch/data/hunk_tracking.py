@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from enum import Enum
 from typing import Optional, Union
 
@@ -33,12 +32,6 @@ from ..core.line_selection import write_line_ids_file
 from ..core.line_identity import preserve_line_ids_from_previous_view
 from ..exceptions import CommandError, NoMoreHunks, exit_with_error
 from ..i18n import _
-from ..output import (
-    print_line_level_changes,
-    print_gitlink_change,
-    print_rename_change,
-    print_text_file_deletion_change,
-)
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
 from . import change_freshness as _change_freshness
@@ -78,6 +71,8 @@ class RecalculateSelectedHunkResult(str, Enum):
     RECALCULATED = "recalculated"
     CLEARED = "cleared"
     SHOW_NEXT_CHANGE = "show-next-change"
+    NO_MORE_LINES = "no-more-lines"
+    NO_PENDING_HUNKS = "no-pending-hunks"
 
 
 _BATCH_MERGE_REVIEW_ACTIONS = (
@@ -501,9 +496,6 @@ def recalculate_selected_hunk_for_file(
             _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
             return RecalculateSelectedHunkResult.CLEARED
 
-        line_changes = _line_state.load_line_changes_from_state()
-        if line_changes is not None:
-            print_line_level_changes(line_changes)
         return RecalculateSelectedHunkResult.RECALCULATED
 
     # Load blocklist
@@ -528,7 +520,6 @@ def recalculate_selected_hunk_for_file(
                     if rename_hash in blocked_hashes:
                         continue
                     _selected_store.cache_rename_change(single_hunk)
-                    print_rename_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, TextFileDeletionChange):
@@ -541,7 +532,6 @@ def recalculate_selected_hunk_for_file(
                     ):
                         continue
                     _selected_store.cache_text_deletion_change(single_hunk)
-                    print_text_file_deletion_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, GitlinkChange):
@@ -549,7 +539,6 @@ def recalculate_selected_hunk_for_file(
                     if gitlink_hash in blocked_hashes:
                         continue
                     _selected_store.cache_gitlink_change(single_hunk)
-                    print_gitlink_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, BinaryFileChange):
@@ -591,19 +580,13 @@ def recalculate_selected_hunk_for_file(
                 if apply_line_level_batch_filter_to_cached_hunk():
                     # All lines were batched, clear the hunk
                     _clear_selected_change_state_files()
-                    print(_("No more lines in this hunk."), file=sys.stderr)
-                    return RecalculateSelectedHunkResult.CLEARED
+                    return RecalculateSelectedHunkResult.NO_MORE_LINES
 
-                # Display filtered hunk
-                line_changes = _line_state.load_line_changes_from_state()
-                if line_changes is not None:
-                    print_line_level_changes(line_changes)
                 return RecalculateSelectedHunkResult.RECALCULATED
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         _clear_selected_change_state_files()
-        print(_("No pending hunks."), file=sys.stderr)
-        return RecalculateSelectedHunkResult.CLEARED
+        return RecalculateSelectedHunkResult.NO_PENDING_HUNKS
 
     # No more hunks for this file, advance to next file
     _clear_selected_change_state_files()

@@ -67,7 +67,7 @@ from ..utils.paths import (
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
 )
-from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from . import line_state as _line_state
 from .selected_change.lifecycle import (
     clear_selected_change_state_files as _clear_selected_change_state_files,
 )
@@ -155,7 +155,7 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
 
     require_selected_hunk()
 
-    line_changes = load_line_changes_from_state()
+    line_changes = _line_state.load_line_changes_from_state()
     if line_changes is not None:
         return line_changes
 
@@ -173,7 +173,7 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     Returns:
         True if hunk should be skipped (all lines filtered), False otherwise
     """
-    line_changes = load_line_changes_from_state()
+    line_changes = _line_state.load_line_changes_from_state()
     if line_changes is None:
         return True
 
@@ -203,8 +203,13 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     # Update cached hunk with filtered version
     write_text_file_contents(
         get_line_changes_json_file_path(),
-        json.dumps(convert_line_changes_to_serializable_dict(filtered_line_changes),
-                  ensure_ascii=False, indent=0)
+        json.dumps(
+            _line_state.convert_line_changes_to_serializable_dict(
+                filtered_line_changes
+            ),
+            ensure_ascii=False,
+            indent=0,
+        ),
     )
 
     return False
@@ -374,9 +379,16 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     _selected_store.SelectedChangeKind.HUNK
                 )
 
-                write_text_file_contents(get_line_changes_json_file_path(),
-                                         json.dumps(convert_line_changes_to_serializable_dict(line_changes),
-                                                    ensure_ascii=False, indent=0))
+                write_text_file_contents(
+                    get_line_changes_json_file_path(),
+                    json.dumps(
+                        _line_state.convert_line_changes_to_serializable_dict(
+                            line_changes
+                        ),
+                        ensure_ascii=False,
+                        indent=0,
+                    ),
+                )
                 _write_snapshots_for_selected_file_path(line_changes.path)
 
                 # Apply line-level batch filtering
@@ -386,7 +398,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     continue
 
                 # Return filtered hunk (or original if no filtering applied)
-                return load_line_changes_from_state()
+                return _line_state.load_line_changes_from_state()
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         pass
@@ -558,7 +570,7 @@ def recalculate_selected_hunk_for_file(
         file_path: Repository-relative path to recalculate hunk for
     """
     selected_kind = _selected_store.read_selected_change_kind()
-    previous_line_changes = load_line_changes_from_state()
+    previous_line_changes = _line_state.load_line_changes_from_state()
     if previous_line_changes is not None and previous_line_changes.path != file_path:
         previous_line_changes = None
 
@@ -588,7 +600,7 @@ def recalculate_selected_hunk_for_file(
             _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
             return RecalculateSelectedHunkResult.CLEARED
 
-        line_changes = load_line_changes_from_state()
+        line_changes = _line_state.load_line_changes_from_state()
         if line_changes is not None:
             print_line_level_changes(line_changes)
         return RecalculateSelectedHunkResult.RECALCULATED
@@ -682,7 +694,7 @@ def recalculate_selected_hunk_for_file(
                     return RecalculateSelectedHunkResult.CLEARED
 
                 # Display filtered hunk
-                line_changes = load_line_changes_from_state()
+                line_changes = _line_state.load_line_changes_from_state()
                 if line_changes is not None:
                     print_line_level_changes(line_changes)
                 return RecalculateSelectedHunkResult.RECALCULATED

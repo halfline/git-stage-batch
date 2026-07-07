@@ -11,8 +11,10 @@ from git_stage_batch.data.auto_advance import (
     write_auto_advance_default,
 )
 from git_stage_batch.data.hunk_tracking import (
-    refuse_bare_action_after_auto_advance_disabled,
     select_next_change_after_action,
+)
+from git_stage_batch.data.selected_change.store import (
+    refuse_bare_action_after_auto_advance_disabled,
     selected_change_was_cleared_by_auto_advance_disabled,
 )
 from git_stage_batch.exceptions import CommandError

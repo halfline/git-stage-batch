@@ -13,9 +13,11 @@ from git_stage_batch.data.hunk_tracking import (
     fetch_next_change,
     load_selected_change,
     recalculate_selected_hunk_for_file,
-    selected_change_was_cleared_by_auto_advance_disabled,
 )
 from git_stage_batch.data.line_state import load_line_changes_from_state
+from git_stage_batch.data.selected_change.store import (
+    selected_change_was_cleared_by_auto_advance_disabled,
+)
 
 import subprocess
 

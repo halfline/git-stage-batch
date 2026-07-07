@@ -15,6 +15,9 @@ from git_stage_batch.commands.include import (
     command_include_line_as,
     command_include_to_batch,
 )
+from git_stage_batch.commands.selection.replacement_selection import (
+    derive_replacement_line_runs,
+)
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.core.models import TextFileDeletionChange
@@ -331,7 +334,7 @@ class TestCommandIncludeLine:
         base_lines = line_sequence([b"keep\r\n", b"old\r\n", b"tail\r\n"])
         source_lines = line_sequence([b"keep\r\n", b"new\r\n", b"tail\r\n"])
 
-        line_runs = include_command._derive_replacement_line_runs(
+        line_runs = derive_replacement_line_runs(
             hunk_base_lines=base_lines,
             hunk_source_lines=source_lines,
         )

@@ -98,6 +98,36 @@ def test_diff_parser_does_not_import_snapshot_runtime_io():
     )
 
 
+def test_diff_parser_uses_core_buffer_boundary():
+    """Diff parsing should depend on the core buffer primitive."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(diff_parser_path)
+    }
+
+    assert "git_stage_batch.core.buffer" in imported_modules
+    assert "git_stage_batch.editor" not in imported_modules
+
+
+def test_editor_package_does_not_reexport_buffer_primitives():
+    """Buffer primitives should be imported from core, not the editor package."""
+    editor = __import__("git_stage_batch.editor", fromlist=["editor"])
+    buffer_names = {
+        "BufferInput",
+        "LineBuffer",
+        "buffer_byte_chunks",
+        "buffer_byte_count",
+        "buffer_has_data",
+        "buffer_matches",
+        "buffer_preview",
+        "write_buffer_to_path",
+        "write_buffer_to_working_tree_path",
+    }
+
+    assert buffer_names.isdisjoint(vars(editor))
+
+
 def test_selected_change_store_stays_below_orchestration_state():
     """Selected-change persistence should stay below orchestration state."""
     store_path = SRC_ROOT / "data" / "selected_change" / "store.py"

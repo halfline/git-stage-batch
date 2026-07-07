@@ -13,7 +13,7 @@ from git_stage_batch.batch.ownership import (
 )
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.models import LineEntry
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 
 
 def test_translate_lines_creates_deletion_constraints():
@@ -33,7 +33,7 @@ def test_translate_lines_creates_deletion_constraints():
     # Should create deletion constraint for - line (suppression constraint)
     assert len(ownership.deletions) == 1
     assert isinstance(ownership.deletions[0], AbsenceClaim)
-    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert isinstance(ownership.deletions[0].content_lines, LineBuffer)
     assert list(ownership.deletions[0].content_lines) == [b'old_version\n']
     assert len(ownership.replacement_units) == 1
     assert ownership.replacement_units[0].presence_lines == ["1"]
@@ -110,7 +110,7 @@ def test_translate_lines_stores_large_deletion_as_editor_buffer():
 
     assert len(ownership.deletions) == 1
     content_lines = ownership.deletions[0].content_lines
-    assert isinstance(content_lines, EditorBuffer)
+    assert isinstance(content_lines, LineBuffer)
     assert len(content_lines) == 1000
     assert content_lines[0] == b'old 0\n'
     assert content_lines[999] == b'old 999\n'
@@ -200,10 +200,10 @@ def test_translate_lines_preserves_deletion_structure():
 
     # Should have two separate absence claims (not collapsed)
     assert len(ownership.deletions) == 2
-    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert isinstance(ownership.deletions[0].content_lines, LineBuffer)
     assert list(ownership.deletions[0].content_lines) == [b'del1\n', b'del2\n']
     assert ownership.deletions[0].anchor_line is None  # before any source line
-    assert isinstance(ownership.deletions[1].content_lines, EditorBuffer)
+    assert isinstance(ownership.deletions[1].content_lines, LineBuffer)
     assert list(ownership.deletions[1].content_lines) == [b'del3\n']
     assert ownership.deletions[1].anchor_line == 1  # after source line 1
     assert ownership.replacement_units == []
@@ -222,7 +222,7 @@ def test_translate_lines_keeps_file_start_anchor_for_deletion_run():
 
     assert len(ownership.deletions) == 1
     assert ownership.deletions[0].anchor_line is None
-    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert isinstance(ownership.deletions[0].content_lines, LineBuffer)
     assert list(ownership.deletions[0].content_lines) == [
         b'first\n',
         b'second\n',
@@ -253,7 +253,7 @@ def test_translate_hunk_selection_uses_full_hunk_boundaries():
 
     assert ownership.presence_line_set() == {1}
     assert len(ownership.deletions) == 1
-    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert isinstance(ownership.deletions[0].content_lines, LineBuffer)
     assert list(ownership.deletions[0].content_lines) == [b'a\n']
     assert ownership.deletions[0].baseline_reference.after_line == 1
     assert ownership.deletions[0].baseline_reference.after_content == b'same'
@@ -293,7 +293,7 @@ def test_translate_hunk_selection_uses_file_derived_replacement_runs():
 
     assert ownership.presence_line_set() == {1}
     assert len(ownership.deletions) == 1
-    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert isinstance(ownership.deletions[0].content_lines, LineBuffer)
     assert list(ownership.deletions[0].content_lines) == [b'a\n']
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
@@ -375,7 +375,7 @@ def test_translate_hunk_selection_keeps_one_to_many_replacement_atomic():
 
     assert ownership.presence_line_set() == {1, 2}
     assert len(ownership.deletions) == 1
-    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert isinstance(ownership.deletions[0].content_lines, LineBuffer)
     assert list(ownership.deletions[0].content_lines) == [b'old\n']
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
@@ -410,7 +410,7 @@ def test_translate_hunk_selection_uses_partial_one_to_many_selection_as_replacem
 
     assert ownership.presence_line_set() == {1, 2}
     assert len(ownership.deletions) == 1
-    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert isinstance(ownership.deletions[0].content_lines, LineBuffer)
     assert list(ownership.deletions[0].content_lines) == [b'old\n']
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
@@ -492,7 +492,7 @@ def test_translate_hunk_selection_scans_replacement_ranges(monkeypatch):
     )
 
     assert ownership.presence_claims[0].source_lines == ["1-1000"]
-    assert isinstance(ownership.deletions[0].content_lines, EditorBuffer)
+    assert isinstance(ownership.deletions[0].content_lines, LineBuffer)
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
     ]
@@ -539,7 +539,7 @@ def test_translate_hunk_selection_stores_large_replacement_absence_buffer():
 
     assert len(ownership.deletions) == 1
     content_lines = ownership.deletions[0].content_lines
-    assert isinstance(content_lines, EditorBuffer)
+    assert isinstance(content_lines, LineBuffer)
     assert len(content_lines) == 1000
     assert content_lines[0] == b'old 0\n'
     assert content_lines[999] == b'old 999\n'

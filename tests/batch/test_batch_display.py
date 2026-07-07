@@ -13,7 +13,7 @@ from git_stage_batch.batch.display import (
 )
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 
 
 class _NoLenByteLines(Sequence[bytes]):
@@ -275,7 +275,7 @@ def test_annotate_with_batch_source_working_lines_accepts_sequences(
     monkeypatch.setattr(
         display_module,
         "load_git_object_as_buffer",
-        lambda revision_path: EditorBuffer.from_chunks(
+        lambda revision_path: LineBuffer.from_chunks(
             iter([b"line 1\n", b"line 2\n"])
         ),
     )
@@ -343,7 +343,7 @@ def test_annotate_with_batch_source_loads_indexed_buffers(monkeypatch, tmp_path)
 
     def fake_load_git_object_as_buffer(revision_path):
         loaded_revisions.append(revision_path)
-        return EditorBuffer.from_chunks(iter([b"line 1\n", b"line 2\n"]))
+        return LineBuffer.from_chunks(iter([b"line 1\n", b"line 2\n"]))
 
     monkeypatch.setattr(
         display_module,
@@ -353,7 +353,7 @@ def test_annotate_with_batch_source_loads_indexed_buffers(monkeypatch, tmp_path)
 
     def fake_load_working_tree_file_as_buffer(path):
         loaded_working_paths.append(path)
-        return EditorBuffer.from_chunks(
+        return LineBuffer.from_chunks(
             iter([b"line 1\n", b"inserted\n", b"line 2\n"])
         )
 

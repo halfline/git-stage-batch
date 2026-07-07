@@ -23,7 +23,7 @@ from git_stage_batch.batch.ownership import (
     advance_source_lines_preserving_existing_presence,
 )
 from git_stage_batch.core.models import LineEntry
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 
 
 def _advance_source_from_content(
@@ -33,8 +33,8 @@ def _advance_source_from_content(
     ownership: BatchOwnership,
 ):
     with (
-        EditorBuffer.from_bytes(old_source_buffer) as old_source_lines,
-        EditorBuffer.from_bytes(working_buffer) as working_lines,
+        LineBuffer.from_bytes(old_source_buffer) as old_source_lines,
+        LineBuffer.from_bytes(working_buffer) as working_lines,
     ):
         return advance_source_lines_preserving_existing_presence(
             old_lines=old_source_lines,

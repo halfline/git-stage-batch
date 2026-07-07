@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.data.file_hunk_display import build_file_hunk_from_buffer
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
@@ -46,7 +46,7 @@ def test_build_file_hunk_from_buffer_accepts_buffer(temp_git_repo):
         capture_output=True,
     )
 
-    with EditorBuffer.from_chunks([b"line1\nchanged\n"]) as buffer:
+    with LineBuffer.from_chunks([b"line1\nchanged\n"]) as buffer:
         line_changes = build_file_hunk_from_buffer("test.txt", buffer)
 
     assert line_changes is not None

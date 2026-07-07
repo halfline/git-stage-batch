@@ -2,7 +2,7 @@
 
 import pytest
 
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.utils.text import (
     bytes_to_lines,
     normalize_line_ending,
@@ -154,7 +154,7 @@ class TestNormalizeLineSequenceEndings:
 
     def test_acquired_lf_lines_stay_scoped_views(self):
         """Normalized acquisitions preserve unchanged acquired lines."""
-        with EditorBuffer.from_bytes(b"one\ntwo\r\nthree\r") as buffer:
+        with LineBuffer.from_bytes(b"one\ntwo\r\nthree\r") as buffer:
             normalized = normalize_line_sequence_endings(buffer)
             with normalized.acquire_lines() as acquired:
                 unchanged = acquired[0]

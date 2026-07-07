@@ -7,10 +7,10 @@ import sys
 from ...data.hunk_tracking import (
     advance_to_next_change,
     select_next_change_after_action,
-    show_selected_change,
 )
 from ...data.selected_change.store import read_selected_change_kind
 from ...i18n import _
+from .selected_change_display import show_selected_change
 
 
 def finish_selected_change_action(

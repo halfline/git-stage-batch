@@ -26,10 +26,6 @@ from ..data.hunk_tracking import (
     clear_selected_change_state_files,
     get_selected_change_file_path,
     mark_selected_change_cleared_by_file_list,
-    render_binary_file_change,
-    render_gitlink_change,
-    render_rename_change,
-    render_text_deletion_change,
     render_file_as_single_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -37,6 +33,12 @@ from ..data.hunk_tracking import (
     text_deletion_change_is_batched,
     write_selected_hunk_patch_lines,
     write_selected_change_kind,
+)
+from ..data.file_change_display import (
+    render_binary_file_change,
+    render_gitlink_change,
+    render_rename_change,
+    render_text_deletion_change,
 )
 from ..data.file_review.state import (
     clear_last_file_review_state,

@@ -400,6 +400,74 @@ def test_batch_file_display_stays_below_hunk_navigation():
     assert "git_stage_batch.data.file_review.state" not in imported_modules
 
 
+def test_ignore_file_helpers_stay_in_data_layer():
+    """Ignore-file editing should stay below command execution utilities."""
+    ignore_files = __import__(
+        "git_stage_batch.data.ignore_files",
+        fromlist=["ignore_files"],
+    )
+    git_utils = __import__(
+        "git_stage_batch.utils.git",
+        fromlist=["git"],
+    )
+    public_names = {
+        "add_file_to_gitignore",
+        "add_file_to_local_exclude",
+        "get_gitignore_path",
+        "get_local_exclude_path",
+        "promote_directory_to_glob_in_gitignore",
+        "promote_directory_to_glob_in_local_exclude",
+        "read_gitignore_lines",
+        "remove_file_from_gitignore",
+        "remove_file_from_local_exclude",
+        "write_gitignore_lines",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "block_file.py": {
+            "add_file_to_gitignore",
+            "add_file_to_local_exclude",
+        },
+        SRC_ROOT / "commands" / "unblock_file.py": {
+            "add_file_to_gitignore",
+            "add_file_to_local_exclude",
+            "promote_directory_to_glob_in_gitignore",
+            "promote_directory_to_glob_in_local_exclude",
+            "remove_file_from_gitignore",
+            "remove_file_from_local_exclude",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(ignore_files)
+    assert public_names.isdisjoint(vars(git_utils))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "ignore_files.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.ignore_files":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.utils.git":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names}"
+                    )
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
     """Batch file selection caching should not depend on hunk navigation."""
     cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"

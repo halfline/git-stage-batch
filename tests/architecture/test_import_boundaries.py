@@ -308,6 +308,25 @@ def test_cli_dispatch_does_not_import_command_facade():
     assert "git_stage_batch.commands.interactive" in imported_modules
 
 
+def test_argument_parser_does_not_import_command_facade():
+    """Argument parsing should import exact command modules for dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    parser_text = parser_path.read_text()
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+
+    assert "git_stage_batch.commands" not in imported_modules
+    assert "from .. import commands" not in parser_text
+    assert "commands.command_" not in parser_text
+    assert "commands.DEFAULT_PROMPT_FORMAT" not in parser_text
+    assert "git_stage_batch.commands.show" in imported_modules
+    assert "git_stage_batch.commands.include" in imported_modules
+    assert "git_stage_batch.commands.discard" in imported_modules
+    assert "git_stage_batch.commands.status" in imported_modules
+
+
 def test_hunk_tracking_does_not_reexport_live_change_helpers():
     """Moved live-change helpers should not stay available from hunk tracking."""
     hunk_tracking = __import__(

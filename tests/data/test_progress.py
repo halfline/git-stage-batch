@@ -4,7 +4,12 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.data.progress import get_file_progress, get_hunk_counts
+from git_stage_batch.data.progress import (
+    get_file_progress,
+    get_hunk_counts,
+    record_hunk_discarded,
+    record_hunk_included,
+)
 from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -32,6 +37,30 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
 
     return repo
+
+
+class TestRecordHunkFunctions:
+    """Tests for hunk recording functions."""
+
+    def test_record_hunk_included(self, temp_git_repo):
+        """Test recording included hunk."""
+        ensure_state_directory_exists()
+
+        record_hunk_included("abc123")
+
+        included_file = get_included_hunks_file_path()
+        assert included_file.exists()
+        assert "abc123" in included_file.read_text()
+
+    def test_record_hunk_discarded(self, temp_git_repo):
+        """Test recording discarded hunk."""
+        ensure_state_directory_exists()
+
+        record_hunk_discarded("xyz789")
+
+        discarded_file = get_discarded_hunks_file_path()
+        assert discarded_file.exists()
+        assert "xyz789" in discarded_file.read_text()
 
 
 class TestHunkCounts:

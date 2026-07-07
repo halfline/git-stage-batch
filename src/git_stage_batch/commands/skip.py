@@ -44,6 +44,10 @@ from ..data.file_review.state import (
     refuse_live_action_for_batch_selection,
     resolve_live_line_action_scope,
 )
+from ..data.file_hunk_display import (
+    cache_unstaged_file_as_single_hunk,
+    render_unstaged_file_as_single_hunk,
+)
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
@@ -389,8 +393,6 @@ def command_skip_line(
         else:
             target_file = file
         auto_add_untracked_files([target_file])
-        from ..data.hunk_tracking import cache_unstaged_file_as_single_hunk
-        from ..data.hunk_tracking import render_unstaged_file_as_single_hunk
 
         reuse_selected_file_view = (
             read_selected_change_kind() == SelectedChangeKind.FILE

@@ -21,7 +21,10 @@ from git_stage_batch.commands.sift import (
     validate_sifted_text_file_result_from_lines,
 )
 from git_stage_batch.batch.query import read_batch_metadata
-from git_stage_batch.batch import add_binary_file_to_batch, read_file_from_batch
+from git_stage_batch.batch.storage import (
+    add_binary_file_to_batch,
+    read_file_from_batch,
+)
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.core.buffer import LineBuffer

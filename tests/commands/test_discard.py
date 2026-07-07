@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
-from git_stage_batch.batch import list_batch_files, read_batch_metadata, read_file_from_batch
+from git_stage_batch.batch.query import list_batch_files, read_batch_metadata
+from git_stage_batch.batch.storage import read_file_from_batch
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.commands.apply_from import command_apply_from_batch

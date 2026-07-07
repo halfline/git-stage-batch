@@ -185,6 +185,57 @@ def test_data_package_does_not_reexport_data_apis():
     assert facade_names.isdisjoint(vars(data))
 
 
+def test_batch_package_does_not_reexport_batch_apis():
+    """Batch callers should import concrete modules instead of the package."""
+    batch_path = SRC_ROOT / "batch" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_path)
+    }
+    batch = __import__("git_stage_batch.batch", fromlist=["batch"])
+    facade_names = {
+        "BatchFileUpdate",
+        "add_binary_file_to_batch",
+        "add_file_to_batch",
+        "add_files_to_batch",
+        "add_gitlink_to_batch",
+        "batch_exists",
+        "copy_file_from_batch_to_batch",
+        "create_batch",
+        "delete_batch",
+        "get_batch_baseline_commit",
+        "get_batch_commit_sha",
+        "get_batch_tree_sha",
+        "get_validated_baseline_commit",
+        "list_batch_files",
+        "list_batch_names",
+        "read_batch_metadata",
+        "read_file_from_batch",
+        "read_validated_batch_metadata",
+        "require_batch_metadata_sane",
+        "update_batch_note",
+        "validate_batch_name",
+    }
+    violations = []
+
+    assert imported_modules <= {"__future__"}
+    assert facade_names.isdisjoint(vars(batch))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.batch":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_repository_buffer_helpers_stay_in_data_layer():
     """Repository buffer readers should not be exported from editor."""
     editor = __import__("git_stage_batch.editor", fromlist=["editor"])
@@ -526,6 +577,47 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.discard" in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.commands.status" in imported_modules
+
+
+def test_argument_parser_command_entries_stay_in_commands_modules():
+    """CLI command functions should enter through command modules."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    violations = []
+
+    for imported_module, node in _import_from_nodes(parser_path):
+        command_names = {
+            alias.name for alias in node.names if alias.name.startswith("command_")
+        }
+        if not command_names:
+            continue
+        if imported_module == "git_stage_batch.cli.completion":
+            continue
+        if imported_module is None or not imported_module.startswith(
+            "git_stage_batch.commands."
+        ):
+            relative_path = parser_path.relative_to(REPO_ROOT)
+            names = ", ".join(sorted(command_names))
+            violations.append(f"{relative_path}:{node.lineno} imports {names}")
+            continue
+
+        module_path = SRC_ROOT.joinpath(
+            *imported_module.removeprefix("git_stage_batch.").split(".")
+        ).with_suffix(".py")
+        tree = ast.parse(module_path.read_text(), filename=str(module_path))
+        defined_functions = {
+            child.name
+            for child in tree.body
+            if isinstance(child, (ast.AsyncFunctionDef, ast.FunctionDef))
+        }
+        missing_names = command_names - defined_functions
+        if missing_names:
+            relative_path = parser_path.relative_to(REPO_ROOT)
+            names = ", ".join(sorted(missing_names))
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {names} from non-entry module"
+            )
+
+    assert violations == []
 
 
 def test_suggest_fixup_state_stays_in_data_layer():

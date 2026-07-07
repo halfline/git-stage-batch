@@ -528,6 +528,66 @@ def test_file_review_state_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_file_review_fingerprints_stay_out_of_state_module():
+    """File-review fingerprinting should live beside persisted state."""
+    review_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+    fingerprints = __import__(
+        "git_stage_batch.data.file_review.fingerprints",
+        fromlist=["fingerprints"],
+    )
+    public_names = {
+        "compute_current_file_review_diff_fingerprint",
+        "fingerprint_selected_file_view",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "suggest_fixup.py": {
+            "compute_current_file_review_diff_fingerprint",
+        },
+        SRC_ROOT / "data" / "file_review" / "state.py": public_names,
+        SRC_ROOT / "output" / "file_review.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(fingerprints)
+    assert public_names.isdisjoint(vars(review_state))
+
+    state_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            SRC_ROOT / "data" / "file_review" / "state.py"
+        )
+    }
+    assert "git_stage_batch.core.buffer" not in state_imports
+    assert "git_stage_batch.data.line_state" not in state_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "fingerprints.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.fingerprints":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_file_review_output_does_not_import_hunk_navigation():
     """File-review output should not depend on hunk navigation."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"

@@ -232,6 +232,29 @@ def test_status_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_argument_parser_delegates_multi_file_action_flow():
+    """Parser branches should not own selected-change follow-up display."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    helper_path = (
+        SRC_ROOT / "commands" / "file_scope" / "multi_file_actions.py"
+    )
+    helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(helper_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in parser_imports
+    assert (
+        "git_stage_batch.commands.file_scope.multi_file_actions"
+        in parser_imports
+    )
+    assert "git_stage_batch.data.hunk_tracking" in helper_imports
+
+
 def test_hunk_tracking_does_not_reexport_live_change_helpers():
     """Moved live-change helpers should not stay available from hunk tracking."""
     hunk_tracking = __import__(

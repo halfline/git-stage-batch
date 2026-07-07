@@ -2155,15 +2155,79 @@ def test_selected_change_loading_stays_out_of_hunk_tracking():
     assert violations == []
 
 
+def test_selected_hunk_filtering_stays_out_of_hunk_tracking():
+    """Cached hunk filtering should live outside hunk navigation."""
+    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
+    moved_names = {
+        "apply_line_level_batch_filter_to_cached_hunk",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "include.py": moved_names,
+        SRC_ROOT / "commands" / "show.py": moved_names,
+    }
+    violations = []
+
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    selected_filtering = __import__(
+        "git_stage_batch.data.selected_change.hunk_filtering",
+        fromlist=["hunk_filtering"],
+    )
+    hunk_tracking_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
+    }
+
+    assert moved_names <= vars(selected_filtering).keys()
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+    assert "git_stage_batch.batch.attribution" not in hunk_tracking_imports
+    assert (
+        "git_stage_batch.data.consumed_replacement_masks"
+        not in hunk_tracking_imports
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_filtering_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.selected_change.hunk_filtering":
+                imported_filtering_names |= imported_names & moved_names
+            if imported_module == "git_stage_batch.data.hunk_tracking":
+                moved_imports = imported_names & moved_names
+                if moved_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_filtering_names
+
+    assert violations == []
+
+
 def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     """Consumed replacement metadata should stay outside hunk navigation."""
+    filtering_path = SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py"
     hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
-    imports = _import_from_nodes(hunk_tracking_path)
-    imported_modules = {imported_module for imported_module, _node in imports}
+    filtering_imports = _import_from_nodes(filtering_path)
+    filtering_imported_modules = {
+        imported_module for imported_module, _node in filtering_imports
+    }
+    hunk_tracking_imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
+    }
     imports_mask_module_alias = any(
         imported_module == "git_stage_batch.data"
         and any(alias.name == "consumed_replacement_masks" for alias in node.names)
-        for imported_module, node in imports
+        for imported_module, node in filtering_imports
     )
     hunk_tracking = __import__(
         "git_stage_batch.data.hunk_tracking",
@@ -2175,8 +2239,18 @@ def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     )
 
     assert imports_mask_module_alias
-    assert "git_stage_batch.data.consumed_replacement_masks" not in imported_modules
-    assert "git_stage_batch.data.consumed_selections" not in imported_modules
+    assert (
+        "git_stage_batch.data.consumed_replacement_masks"
+        not in filtering_imported_modules
+    )
+    assert (
+        "git_stage_batch.data.consumed_selections"
+        not in hunk_tracking_imported_modules
+    )
+    assert (
+        "git_stage_batch.data.consumed_replacement_masks"
+        not in hunk_tracking_imported_modules
+    )
     assert "filter_consumed_replacement_masks" in vars(consumed_masks)
     assert "filter_consumed_replacement_masks" not in vars(hunk_tracking)
     assert "_filter_consumed_replacement_masks" not in vars(hunk_tracking)

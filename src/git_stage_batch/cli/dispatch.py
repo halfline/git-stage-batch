@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..commands import command_show
+from ..commands.show import command_show
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.paths import get_abort_head_file_path
@@ -18,7 +18,7 @@ def dispatch_args(args: argparse.Namespace) -> None:
     """
     # Check for -i flag first
     if hasattr(args, 'interactive_flag') and args.interactive_flag:
-        from ..commands import command_interactive
+        from ..commands.interactive import command_interactive
         command_interactive()
     elif args.command is None:
         if get_abort_head_file_path().exists():

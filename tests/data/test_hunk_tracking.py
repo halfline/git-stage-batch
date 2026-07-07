@@ -7,9 +7,6 @@ from git_stage_batch.utils.paths import get_blocked_files_file_path
 from git_stage_batch.utils.file_io import append_file_path_to_file
 from git_stage_batch.exceptions import NoMoreHunks
 from git_stage_batch.commands.include import command_include_to_batch
-import io
-import sys
-from git_stage_batch.data.session import initialize_abort_state
 
 import subprocess
 
@@ -18,10 +15,8 @@ import pytest
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import (
-    RecalculateSelectedHunkResult,
     advance_to_next_change,
     fetch_next_change,
-    recalculate_selected_hunk_for_file,
 )
 from git_stage_batch.utils.file_io import append_lines_to_file
 from git_stage_batch.utils.paths import (
@@ -264,135 +259,3 @@ class TestAdvanceToNextHunk:
         # State files should be cleared
         assert not get_selected_hunk_patch_file_path().exists()
         assert not get_selected_hunk_hash_file_path().exists()
-
-
-class TestRecalculateCurrentHunkForFile:
-    """Tests for recalculate_selected_hunk_for_file()."""
-
-    def test_recalculates_hunk_after_modification(self, temp_git_repo):
-        """Test that hunk is recalculated after file modification."""
-        # Create a file with multiple lines
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("line1\nline2\nline3\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("changed1\nchanged2\nchanged3\n")
-
-        # Cache initial hunk
-        initial_lines = fetch_next_change()
-        assert initial_lines is not None
-
-        # Partially modify the file (simulate line-level operation)
-        test_file.write_text("changed1\nline2\nchanged3\n")
-
-        # Recalculate
-        captured = io.StringIO()
-        sys.stdout = captured
-        try:
-            recalculate_selected_hunk_for_file("test.txt")
-        finally:
-            sys.stdout = sys.__stdout__
-
-        # Should have updated the cached hunk
-        assert get_selected_hunk_patch_file_path().exists()
-        new_patch = get_selected_hunk_patch_file_path().read_text()
-        assert "test.txt" in new_patch
-
-    def test_clears_processed_ids(self, temp_git_repo):
-        """Test that processed IDs are cleared when recalculating."""
-        # Create a file
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("original\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("modified\n")
-
-        # Cache hunk and add some processed IDs
-        fetch_next_change()
-        get_processed_include_ids_file_path().write_text("1\n2\n")
-
-        # Recalculate
-        captured = io.StringIO()
-        sys.stdout = captured
-        try:
-            recalculate_selected_hunk_for_file("test.txt")
-        finally:
-            sys.stdout = sys.__stdout__
-
-        # Processed IDs should be cleared
-        if get_processed_include_ids_file_path().exists():
-            content = get_processed_include_ids_file_path().read_text()
-            assert content.strip() == ""
-
-    def test_skips_blocked_hunks(self, temp_git_repo):
-        """Test that blocked hunks are skipped during recalculation."""
-
-        # Create a file with change
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("original\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("modified\n")
-
-        # Get the hunk hash and block it
-        result = subprocess.run(
-            ["git", "diff", "--no-color", "test.txt"],
-            check=True,
-            cwd=temp_git_repo,
-            capture_output=True,)
-        stdout_bytes = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode("utf-8")
-        patches = list(collect_unified_diff(stdout_bytes.splitlines(keepends=True)))
-        hunk_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
-
-        append_lines_to_file(get_block_list_file_path(), [hunk_hash])
-
-        # Initialize session state
-        initialize_abort_state()
-
-        # Try to recalculate - should find no hunks
-        captured = io.StringIO()
-        sys.stderr = captured
-        try:
-            recalculate_selected_hunk_for_file("test.txt")
-        finally:
-            sys.stderr = sys.__stderr__
-
-        output = captured.getvalue()
-        assert "No pending hunks" in output or not get_selected_hunk_patch_file_path().exists()
-
-    def test_reports_next_change_when_file_is_exhausted(self, temp_git_repo):
-        """Recalculation should not call the show command for the next file."""
-        file1 = temp_git_repo / "file1.txt"
-        file2 = temp_git_repo / "file2.txt"
-        file1.write_text("base 1\n")
-        file2.write_text("base 2\n")
-        subprocess.run(
-            ["git", "add", "file1.txt", "file2.txt"],
-            check=True,
-            cwd=temp_git_repo,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "Add files"],
-            check=True,
-            cwd=temp_git_repo,
-            capture_output=True,
-        )
-
-        file1.write_text("base 1\nselected\n")
-        file2.write_text("base 2\nnext\n")
-        selected = fetch_next_change()
-        assert selected.path == "file1.txt"
-
-        file1.write_text("base 1\n")
-
-        result = recalculate_selected_hunk_for_file(
-            "file1.txt",
-            auto_advance=True,
-        )
-
-        assert result is RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
-        assert not get_selected_hunk_patch_file_path().exists()

@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch import create_batch
+from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim, ReplacementUnit
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_file_to_batch

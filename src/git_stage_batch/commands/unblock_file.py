@@ -7,17 +7,19 @@ from contextlib import nullcontext
 from pathlib import Path
 
 from ..data.undo import undo_checkpoint
-from ..exceptions import NoMoreHunks, exit_with_error
-from ..i18n import _
-from ..utils.file_io import append_file_path_to_file, read_file_paths_file, remove_file_path_from_file
-from ..utils.git import (
+from ..data.ignore_files import (
     add_file_to_gitignore,
     add_file_to_local_exclude,
-    git_add_paths,
     promote_directory_to_glob_in_gitignore,
     promote_directory_to_glob_in_local_exclude,
     remove_file_from_gitignore,
     remove_file_from_local_exclude,
+)
+from ..exceptions import NoMoreHunks, exit_with_error
+from ..i18n import _
+from ..utils.file_io import append_file_path_to_file, read_file_paths_file, remove_file_path_from_file
+from ..utils.git import (
+    git_add_paths,
     require_git_repository,
     resolve_file_path_to_repo_relative,
     run_git_command,

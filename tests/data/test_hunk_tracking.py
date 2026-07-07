@@ -7,7 +7,6 @@ from git_stage_batch.utils.paths import get_blocked_files_file_path
 from git_stage_batch.utils.file_io import append_file_path_to_file
 from git_stage_batch.exceptions import NoMoreHunks
 from git_stage_batch.commands.include import command_include_to_batch
-from git_stage_batch.core.line_selection import write_line_ids_file
 import io
 import sys
 from git_stage_batch.data.session import initialize_abort_state
@@ -21,7 +20,6 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import (
     RecalculateSelectedHunkResult,
     advance_to_next_change,
-    apply_line_level_batch_filter_to_cached_hunk,
     fetch_next_change,
     recalculate_selected_hunk_for_file,
 )
@@ -217,33 +215,6 @@ class TestFindAndCacheNextUnblockedHunk:
 
         with pytest.raises(NoMoreHunks):
             fetch_next_change()
-
-
-class TestApplyLineLevelBatchFilter:
-    """Tests for apply_line_level_batch_filter_to_cached_hunk()."""
-
-    def test_returns_false_when_no_batched_ids(self, temp_git_repo):
-        """Test that function returns False when no IDs are batched."""
-
-        # Create a file and cache a hunk
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("line1\nline2\nline3\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("changed1\nchanged2\nchanged3\n")
-
-        fetch_next_change()
-
-        # Create empty batched IDs file
-        write_line_ids_file(get_processed_batch_ids_file_path(), set())
-
-        # Should return False (no filtering needed)
-        assert apply_line_level_batch_filter_to_cached_hunk() is False
-
-    def test_returns_true_when_no_cached_hunk(self, temp_git_repo):
-        """Test that function returns True when no hunk is cached."""
-        assert apply_line_level_batch_filter_to_cached_hunk() is True
 
 
 class TestAdvanceToNextHunk:

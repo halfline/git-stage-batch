@@ -236,6 +236,46 @@ def test_batch_package_does_not_reexport_batch_apis():
     assert violations == []
 
 
+def test_output_package_does_not_reexport_output_apis():
+    """Output callers should import concrete modules instead of the package."""
+    output_path = SRC_ROOT / "output" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(output_path)
+    }
+    output = __import__("git_stage_batch.output", fromlist=["output"])
+    facade_names = {
+        "Colors",
+        "format_hotkey",
+        "format_option_list",
+        "print_binary_file_change",
+        "print_colored_patch",
+        "print_gitlink_change",
+        "print_line_level_changes",
+        "print_remaining_line_changes_header",
+        "print_rename_change",
+        "print_text_file_deletion_change",
+    }
+    violations = []
+
+    assert imported_modules <= {"__future__"}
+    assert facade_names.isdisjoint(vars(output))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.output":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_repository_buffer_helpers_stay_in_utils_layer():
     """Repository buffer readers should live below workflow data."""
     editor = __import__("git_stage_batch.editor", fromlist=["editor"])

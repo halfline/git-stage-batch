@@ -87,7 +87,7 @@ def paged_batch_repo(paged_file_repo):
 
 
 def _force_one_change_per_page(monkeypatch):
-    from git_stage_batch.output import file_review
+    import git_stage_batch.output.file_review as file_review
 
     monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
 
@@ -1051,7 +1051,7 @@ def test_pathless_include_line_accepts_visible_presence_subset_from_review(
     monkeypatch,
     capsys,
 ):
-    from git_stage_batch.output import file_review
+    import git_stage_batch.output.file_review as file_review
 
     monkeypatch.chdir(tmp_path)
     subprocess.run(["git", "init"], check=True, capture_output=True)
@@ -2241,7 +2241,7 @@ def test_file_review_multiline_note_is_part_of_header(capsys):
 
 
 def test_presence_only_review_keeps_visual_group_with_page_local_actions(capsys, monkeypatch):
-    from git_stage_batch.output import file_review
+    import git_stage_batch.output.file_review as file_review
 
     lines = [
         LineEntry(

@@ -19,7 +19,7 @@ from ..core.buffer import (
 from ..data.repository_buffers import (
     load_git_blob_as_buffer,
 )
-from ..editor import Editor
+from ..editor.edit import Editor
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
 from ..utils.git import (

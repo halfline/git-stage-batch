@@ -29,7 +29,7 @@ from ..core.buffer import (
     LineBuffer,
     buffer_has_data,
 )
-from ..editor import (
+from ..editor.line_endings import (
     choose_line_ending,
     restore_line_endings_in_chunks,
 )

@@ -264,6 +264,37 @@ def test_argument_parser_delegates_multi_file_action_flow():
     )
 
 
+def test_argument_parser_uses_file_scope_resolver_module():
+    """Parser branches should not own repository file-scope resolution."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    file_scope_path = SRC_ROOT / "cli" / "file_scope.py"
+    file_scope_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(file_scope_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    parser_local_names = {
+        "FileScope",
+        "FileScopeKind",
+        "_resolve_live_file_scope",
+        "_resolve_batch_file_scope",
+    }
+
+    assert "git_stage_batch.cli.file_scope" in parser_imports
+    assert "git_stage_batch.data.file_tracking" not in parser_imports
+    assert "git_stage_batch.utils.file_patterns" not in parser_imports
+    assert "git_stage_batch.data.file_tracking" in file_scope_imports
+    assert "git_stage_batch.utils.file_patterns" in file_scope_imports
+    assert parser_local_names.isdisjoint(vars(parser))
+
+
 def test_cli_dispatch_does_not_import_command_facade():
     """CLI dispatch should import exact command modules for fallback paths."""
     dispatch_path = SRC_ROOT / "cli" / "dispatch.py"

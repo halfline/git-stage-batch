@@ -210,6 +210,28 @@ def test_status_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_hunk_tracking_does_not_reexport_live_change_helpers():
+    """Moved live-change helpers should not stay available from hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    moved_names = {
+        "binary_file_change_is_stale",
+        "gitlink_change_is_stale",
+        "rename_change_is_stale",
+        "render_binary_file_change",
+        "render_gitlink_change",
+        "render_rename_change",
+        "render_text_deletion_change",
+        "stream_live_git_diff",
+        "text_deletion_change_is_batched",
+        "text_deletion_change_is_stale",
+    }
+
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

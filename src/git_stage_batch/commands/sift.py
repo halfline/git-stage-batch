@@ -33,7 +33,7 @@ from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
-from ..batch.ownership import BatchOwnership, AbsenceClaim, _AbsenceContentBuilder
+from ..batch.ownership import BatchOwnership, AbsenceClaim, AbsenceContentBuilder
 from ..batch.query import get_batch_baseline_commit, read_batch_metadata
 from ..batch.state_refs import (
     delete_batch_state_refs,
@@ -613,7 +613,7 @@ def build_ownership_from_working_and_target_lines(
         source_start: int,
         source_end: int,
     ) -> AbsenceClaim:
-        with _AbsenceContentBuilder() as builder:
+        with AbsenceContentBuilder() as builder:
             builder.append_line_range(
                 working_lines,
                 source_start - 1,

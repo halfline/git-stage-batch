@@ -54,7 +54,6 @@ from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycl
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
-    cache_unstaged_file_as_single_hunk,
     clear_selected_change_state_files,
     fetch_next_change,
     finish_selected_change_action,
@@ -68,7 +67,6 @@ from ..data.hunk_tracking import (
     record_text_deletion_hunk_skipped,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
-    render_unstaged_file_as_single_hunk,
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -78,6 +76,10 @@ from ..data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
     render_text_deletion_change,
+)
+from ..data.file_hunk_display import (
+    cache_unstaged_file_as_single_hunk,
+    render_unstaged_file_as_single_hunk,
 )
 from ..data.file_review.state import (
     FileReviewAction,

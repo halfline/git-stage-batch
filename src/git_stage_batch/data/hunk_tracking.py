@@ -497,25 +497,6 @@ def advance_to_and_show_next_change() -> None:
         print(_("No more hunks to process."), file=sys.stderr)
 
 
-def finish_selected_change_action(
-    *,
-    quiet: bool,
-    auto_advance: bool | None = None,
-) -> None:
-    """Apply the configured selection step after a hunk action completes."""
-    if not select_next_change_after_action(auto_advance=auto_advance):
-        return
-
-    if quiet:
-        return
-
-    if _selected_store.read_selected_change_kind() is None:
-        print(_("No more hunks to process."), file=sys.stderr)
-        return
-
-    show_selected_change()
-
-
 def select_next_change_after_action(
     *,
     auto_advance: bool | None = None,
@@ -528,8 +509,6 @@ def select_next_change_after_action(
     _clear_selected_change_state_files()
     _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
     return False
-
-
 
 
 def require_selected_hunk() -> None:

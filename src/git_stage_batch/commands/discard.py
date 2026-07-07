@@ -55,7 +55,6 @@ from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFil
 from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     fetch_next_change,
-    finish_selected_change_action,
     load_selected_change,
     require_selected_hunk,
 )
@@ -138,6 +137,7 @@ from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
 )
+from .selection.action_completion import finish_selected_change_action
 
 
 @dataclass(frozen=True)

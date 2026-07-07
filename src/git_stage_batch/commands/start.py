@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .again import command_again
 from ..data.auto_advance import DEFAULT_AUTO_ADVANCE, write_auto_advance_default
 from ..data.hunk_tracking import fetch_next_change, show_selected_change
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
@@ -16,6 +15,7 @@ from ..i18n import _
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import require_git_repository
 from ..utils.paths import ensure_state_directory_exists, get_context_lines_file_path, get_abort_head_file_path
+from .session.iteration import restart_iteration_pass
 
 
 def command_start(
@@ -36,7 +36,9 @@ def command_start(
 
     # If session already exists, run again logic instead
     if get_abort_head_file_path().exists():
-        command_again(quiet=quiet, auto_advance=auto_advance)
+        if auto_advance is not None:
+            write_auto_advance_default(auto_advance)
+        restart_iteration_pass(quiet=quiet)
         return
 
     # Batch reviews may be shown outside an active session. A new session must

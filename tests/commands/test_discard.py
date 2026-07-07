@@ -12,9 +12,9 @@ from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.data.hunk_tracking import (
     fetch_next_change,
-    load_selected_change,
     recalculate_selected_hunk_for_file,
 )
+from git_stage_batch.data.selected_change.loading import load_selected_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.data.selected_change.store import (
     selected_change_was_cleared_by_auto_advance_disabled,

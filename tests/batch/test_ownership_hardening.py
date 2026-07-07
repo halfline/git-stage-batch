@@ -19,7 +19,7 @@ from git_stage_batch.batch.match import match_lines
 from git_stage_batch.core.diff_parser import (
     build_line_changes_from_patch_lines,
 )
-from git_stage_batch.editor import (
+from git_stage_batch.data.repository_buffers import (
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )

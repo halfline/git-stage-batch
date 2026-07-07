@@ -36,7 +36,7 @@ from ..core.replacement import (
 from ..batch.query import read_batch_metadata
 from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
-from ..batch.source_refresh import _refresh_selected_lines_against_source_lines
+from ..batch.source_refresh import refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
 from ..batch.submodule_pointer import discard_submodule_pointer_from_batch
 from ..core.diff_parser import (
@@ -1218,7 +1218,7 @@ def _command_discard_lines_to_batch_as(
                                 ownership=existing_ownership,
                                 lineage=source_with_provenance.lineage,
                             )
-                            refreshed_selected_lines = _refresh_selected_lines_against_source_lines(
+                            refreshed_selected_lines = refresh_selected_lines_against_source_lines(
                                 rewritten_selected_lines,
                                 source_lines=source_with_provenance.source_buffer,
                                 working_lines=(),

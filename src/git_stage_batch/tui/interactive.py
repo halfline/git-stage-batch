@@ -1114,7 +1114,11 @@ def handle_fixup_selection() -> None:
     move to next, reset, or cancel. Maintains iteration state across
     invocations within the same hunk context.
     """
-    from ..commands.suggest_fixup import command_suggest_fixup, _load_suggest_fixup_state, _reset_suggest_fixup_state
+    from ..commands.suggest_fixup import command_suggest_fixup
+    from ..data.suggest_fixup_state import (
+        clear_suggest_fixup_state,
+        read_suggest_fixup_state,
+    )
 
     use_color = Colors.enabled()
     line_changes = load_line_changes_from_state()
@@ -1136,7 +1140,7 @@ def handle_fixup_selection() -> None:
 
         if action == "y":
             # Accept - show how to create fixup commit
-            state = _load_suggest_fixup_state()
+            state = read_suggest_fixup_state()
             if state and state.get("last_shown_commit"):
                 commit_hash = state["last_shown_commit"][:7]
                 print()
@@ -1163,7 +1167,7 @@ def handle_fixup_selection() -> None:
                 break
         elif action == "q":
             # Cancel - abort and exit submenu
-            _reset_suggest_fixup_state()
+            clear_suggest_fixup_state()
             print(_("\nCanceled."))
             break
         else:

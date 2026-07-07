@@ -55,8 +55,10 @@ from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFil
 from ..core.text_lifecycle import TextFileChangeType
 from ..data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
-    apply_line_level_batch_filter_to_cached_hunk,
     fetch_next_change,
+)
+from ..data.selected_change.hunk_filtering import (
+    apply_line_level_batch_filter_to_cached_hunk,
 )
 from ..data.selected_change.loading import (
     load_selected_change,

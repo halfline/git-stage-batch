@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from ..editor import Editor
+from ..editor.edit import Editor
 from ..utils.mapped_storage import ChunkedMappedRecordVector
 
 

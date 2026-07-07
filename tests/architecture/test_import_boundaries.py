@@ -2319,6 +2319,7 @@ def test_selected_hunk_cache_writes_stay_in_selected_change_store():
     caller_paths = (
         SRC_ROOT / "data" / "hunk_tracking.py",
         SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py",
+        SRC_ROOT / "commands" / "show.py",
     )
     forbidden_imports = {
         "git_stage_batch.data.selected_change.snapshots": {
@@ -2347,6 +2348,12 @@ def test_selected_hunk_cache_writes_stay_in_selected_change_store():
             for node in ast.walk(tree)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
+        }
+        call_names |= {
+            node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
         }
         relative_path = path.relative_to(REPO_ROOT)
 

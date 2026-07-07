@@ -60,8 +60,6 @@ from ..data.hunk_tracking import (
     get_selected_change_file_path,
     load_selected_change,
     read_selected_change_kind,
-    record_hunk_discarded,
-    record_hunks_discarded,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     require_selected_hunk,
@@ -91,6 +89,7 @@ from ..data.file_review.state import (
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
+from ..data.progress import record_hunk_discarded, record_hunks_discarded
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
 from ..data.session import require_session_started, snapshot_file_if_untracked, snapshot_files_if_untracked
 from ..data.undo import undo_checkpoint

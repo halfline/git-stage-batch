@@ -620,7 +620,7 @@ def _show_command_for_review_state(review_state: FileReviewState, *, page: str |
     return command
 
 
-def _line_action_command(
+def line_action_command(
     action: FileReviewAction | str,
     review_state: FileReviewState,
     *,
@@ -690,7 +690,7 @@ def refuse_live_action_for_batch_selection(action: FileReviewAction | str) -> bo
                 ]
             )
 
-        whole_file_command = _line_action_command(review_action, review_state, whole_file=True)
+        whole_file_command = line_action_command(review_action, review_state, whole_file=True)
         if whole_file_command is not None:
             lines.extend(
                 [
@@ -769,7 +769,7 @@ def refuse_ambiguous_bare_action_after_partial_file_review(action: FileReviewAct
     if missing:
         lines.append(_("Pages {pages} were not shown.").format(pages=_format_pages(missing)))
     if selection_specs:
-        line_command = _line_action_command(
+        line_command = line_action_command(
             review_action, review_state, line_spec=",".join(selection_specs)
         )
         if line_command is not None:
@@ -788,7 +788,7 @@ def refuse_ambiguous_bare_action_after_partial_file_review(action: FileReviewAct
         ]
     )
 
-    whole_file_command = _line_action_command(review_action, review_state, whole_file=True)
+    whole_file_command = line_action_command(review_action, review_state, whole_file=True)
     if whole_file_command is not None:
         lines.extend(
             [
@@ -1084,7 +1084,7 @@ def validate_pathless_review_line_action(
                 batch=review_state.batch_name,
             )
         ]
-        line_command = _line_action_command(review_action, review_state, line_spec=line_id_specification)
+        line_command = line_action_command(review_action, review_state, line_spec=line_id_specification)
         if line_command is not None:
             lines.extend(["", _("To act on the batch file:"), f"  {line_command}"])
         else:

@@ -22,7 +22,7 @@ from ..data.file_review.state import (
     ReviewSource,
     compute_current_file_review_diff_fingerprint,
     fingerprint_selected_file_view,
-    _line_action_command,
+    line_action_command,
 )
 from ..data.selected_change.store import SelectedChangeKind
 from ..exceptions import CommandError
@@ -1410,7 +1410,7 @@ def _print_footer(
     if primary_selections:
         combined_selection = _line_spec_for_selections(primary_selections)
         include_line_command = (
-            _line_action_command("include", review_state, line_spec=combined_selection, pathless_line=True)
+            line_action_command("include", review_state, line_spec=combined_selection, pathless_line=True)
             if review_state is not None else
             None
         )
@@ -1422,7 +1422,7 @@ def _print_footer(
         )
         if not command_source_args:
             skip_line_command = (
-                _line_action_command("skip", review_state, line_spec=combined_selection, pathless_line=True)
+                line_action_command("skip", review_state, line_spec=combined_selection, pathless_line=True)
                 if review_state is not None else
                 None
             )
@@ -1433,7 +1433,7 @@ def _print_footer(
                 )
             )
         discard_line_command = (
-            _line_action_command("discard", review_state, line_spec=combined_selection, pathless_line=True)
+            line_action_command("discard", review_state, line_spec=combined_selection, pathless_line=True)
             if review_state is not None else
             None
         )
@@ -1445,7 +1445,7 @@ def _print_footer(
         )
         if source == ReviewSource.BATCH and reset_selections:
             reset_selection = _line_spec_for_selections(reset_selections)
-            reset_line_command = _line_action_command(
+            reset_line_command = line_action_command(
                 FileReviewAction.RESET_FROM_BATCH,
                 review_state,
                 line_spec=reset_selection,
@@ -1459,7 +1459,7 @@ def _print_footer(
             )
     elif reset_selections:
         reset_selection = _line_spec_for_selections(reset_selections)
-        reset_line_command = _line_action_command(
+        reset_line_command = line_action_command(
             FileReviewAction.RESET_FROM_BATCH,
             review_state,
             line_spec=reset_selection,

@@ -33,11 +33,11 @@ from ..data.hunk_tracking import (
     binary_file_change_is_stale,
     gitlink_change_is_stale,
     rename_change_is_stale,
-    stream_live_git_diff,
     text_deletion_change_is_batched,
     text_deletion_change_is_stale,
 )
 from ..data.line_state import load_line_changes_from_state
+from ..data.live_diff import stream_live_git_diff
 from ..data.progress import format_id_range
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (

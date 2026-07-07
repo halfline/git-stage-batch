@@ -77,6 +77,20 @@ def test_dispatch_args_interactive_command_uses_interactive_runner(monkeypatch):
     assert called == [True]
 
 
+def test_run_interactive_command_launches_tui(monkeypatch):
+    """The dispatch runner should call the TUI entry point directly."""
+    called = []
+
+    monkeypatch.setattr(
+        "git_stage_batch.tui.interactive.start_interactive_mode",
+        lambda: called.append(True),
+    )
+
+    dispatch._run_interactive_command()
+
+    assert called == [True]
+
+
 def test_dispatch_args_no_command_shows_selected_hunk_when_session_active(monkeypatch):
     """Test dispatch with no command falls back to show during an active session."""
     args = argparse.Namespace(command=None)

@@ -130,9 +130,7 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
-from .include import (
-    _expand_replacement_selection_ids,
-)
+from .selection import replacement_selection
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -1126,7 +1124,10 @@ def _command_discard_lines_to_batch_as(
         requested_ids,
         line_id_specification=line_id_specification,
     )
-    effective_ids = _expand_replacement_selection_ids(line_changes, requested_ids)
+    effective_ids = replacement_selection.expand_replacement_selection_ids(
+        line_changes,
+        requested_ids,
+    )
 
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")

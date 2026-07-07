@@ -466,6 +466,40 @@ def test_action_completion_stays_in_command_helper():
     assert violations == []
 
 
+def test_advance_display_stays_in_command_helper():
+    """Block and unblock should use the command flow helper."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    assert "advance_to_and_show_next_change" not in vars(hunk_tracking)
+
+    command_paths = (
+        SRC_ROOT / "commands" / "block_file.py",
+        SRC_ROOT / "commands" / "unblock_file.py",
+    )
+    violations = []
+
+    for command_path in command_paths:
+        imports = _import_from_nodes(command_path)
+        imported_modules = {imported_module for imported_module, _node in imports}
+        assert "git_stage_batch.commands.selection.action_completion" in imported_modules
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.data.hunk_tracking":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            if "advance_to_and_show_next_change" in imported_names:
+                relative_path = command_path.relative_to(REPO_ROOT)
+                violations.append(
+                    f"{relative_path}:{node.lineno} imports "
+                    "advance_to_and_show_next_change"
+                )
+
+    assert violations == []
+
+
 def test_line_action_refresh_header_stays_in_command_helper():
     """Include and discard line actions should use the command refresh helper."""
     command_paths = (

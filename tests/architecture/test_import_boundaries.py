@@ -188,6 +188,17 @@ def test_file_change_display_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_file_hunk_display_does_not_import_hunk_navigation():
+    """File-scoped text rendering should not depend on hunk navigation."""
+    display_path = SRC_ROOT / "data" / "file_hunk_display.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(display_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
 def test_change_freshness_does_not_import_hunk_navigation():
     """Cached change freshness checks should not depend on hunk navigation."""
     freshness_path = SRC_ROOT / "data" / "change_freshness.py"

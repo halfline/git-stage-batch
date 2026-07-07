@@ -20,11 +20,15 @@ from ..batch.source_selector import batch_name_for_source_lookup
 from ..core.replacement import ReplacementText
 from .. import commands
 from ..batch.query import read_batch_metadata
+from ..commands.file_scope.multi_file_actions import (
+    discard_to_batch_each_resolved_file,
+    include_each_resolved_file,
+    skip_each_resolved_file,
+)
 from ..data.file_tracking import list_untracked_files
-from ..data.hunk_tracking import select_next_change_after_action, show_selected_change
 from ..data.undo import undo_checkpoint
 from ..exceptions import CommandError
-from ..i18n import _, ngettext
+from ..i18n import _
 from ..utils.command import run_command
 from ..utils.file_patterns import (
     list_changed_files,
@@ -426,149 +430,6 @@ def _multi_file_undo_checkpoint(
         _format_multi_file_operation(command, files),
         worktree_paths=paths,
     )
-
-
-def _include_each_resolved_file(
-    files: list[str],
-    *,
-    auto_advance: bool | None = None,
-) -> None:
-    """Stage a multi-file live scope and report one aggregate summary."""
-    total_hunks = 0
-    staged_files: list[str] = []
-
-    with _multi_file_undo_checkpoint("include", files):
-        for file_path in files:
-            staged_hunks = commands.command_include_file(
-                file_path,
-                quiet=True,
-                advance=False,
-            )
-            if staged_hunks > 0:
-                total_hunks += staged_hunks
-                staged_files.append(file_path)
-
-    if total_hunks == 0:
-        print(_("No hunks staged from matched files."), file=sys.stderr)
-        return
-
-    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
-
-    if len(staged_files) == 1:
-        file_summary = staged_files[0]
-    else:
-        file_summary = ngettext(
-            "{count} file",
-            "{count} files",
-            len(staged_files),
-        ).format(count=len(staged_files))
-
-    print(
-        ngettext(
-            "✓ Staged {count} hunk from {files}",
-            "✓ Staged {count} hunks from {files}",
-            total_hunks,
-        ).format(count=total_hunks, files=file_summary),
-        file=sys.stderr,
-    )
-    if should_show_next:
-        show_selected_change()
-
-
-def _skip_each_resolved_file(
-    files: list[str],
-    *,
-    auto_advance: bool | None = None,
-) -> None:
-    """Skip a multi-file live scope and report one aggregate summary."""
-    total_hunks = 0
-    skipped_files: list[str] = []
-
-    with _multi_file_undo_checkpoint("skip", files):
-        for file_path in files:
-            skipped_hunks = commands.command_skip_file(
-                file_path,
-                quiet=True,
-                advance=False,
-            )
-            if skipped_hunks > 0:
-                total_hunks += skipped_hunks
-                skipped_files.append(file_path)
-
-    if total_hunks == 0:
-        print(_("No hunks skipped from matched files."), file=sys.stderr)
-        return
-
-    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
-
-    if len(skipped_files) == 1:
-        file_summary = skipped_files[0]
-    else:
-        file_summary = ngettext(
-            "{count} file",
-            "{count} files",
-            len(skipped_files),
-        ).format(count=len(skipped_files))
-
-    print(
-        ngettext(
-            "✓ Skipped {count} hunk from {files}",
-            "✓ Skipped {count} hunks from {files}",
-            total_hunks,
-        ).format(count=total_hunks, files=file_summary),
-        file=sys.stderr,
-    )
-    if should_show_next:
-        show_selected_change()
-
-
-def _discard_to_batch_each_resolved_file(
-    batch_name: str,
-    files: list[str],
-    *,
-    auto_advance: bool | None = None,
-) -> None:
-    """Save a multi-file live scope to a batch and report one aggregate summary."""
-    total_hunks = 0
-    discarded_files: list[str] = []
-
-    operation = f"discard --to {shlex.quote(batch_name)}"
-    with _multi_file_undo_checkpoint(operation, files, worktree_paths=files):
-        result = commands.command_discard_files_to_batch(
-            batch_name,
-            files,
-            quiet=True,
-            advance=False,
-            auto_advance=auto_advance,
-        )
-        total_hunks = result.discarded_hunks
-        discarded_files = result.discarded_files
-
-    if total_hunks == 0:
-        print(_("No hunks saved to batch from matched files."), file=sys.stderr)
-        return
-
-    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
-
-    if len(discarded_files) == 1:
-        file_summary = discarded_files[0]
-    else:
-        file_summary = ngettext(
-            "{count} file",
-            "{count} files",
-            len(discarded_files),
-        ).format(count=len(discarded_files))
-
-    print(
-        ngettext(
-            "✓ Saved {count} hunk from {files} to batch '{batch}' and discarded it",
-            "✓ Saved {count} hunks from {files} to batch '{batch}' and discarded them",
-            total_hunks,
-        ).format(count=total_hunks, files=file_summary, batch=batch_name),
-        file=sys.stderr,
-    )
-    if should_show_next:
-        show_selected_change()
 
 
 def _resolve_live_file_scope(
@@ -1128,7 +989,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         else:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
             if resolved_live_scope.is_multiple:
-                _include_each_resolved_file(
+                include_each_resolved_file(
                     list(resolved_live_scope.files),
                     auto_advance=args.auto_advance,
                 )
@@ -1175,7 +1036,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             )
         elif not resolved_file_scope.is_implicit:
             if resolved_file_scope.is_multiple:
-                _skip_each_resolved_file(
+                skip_each_resolved_file(
                     list(resolved_file_scope.files),
                     auto_advance=args.auto_advance,
                 )
@@ -1304,7 +1165,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         elif args.to_batch:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
             if resolved_live_scope.is_multiple and args.line_ids is None:
-                _discard_to_batch_each_resolved_file(
+                discard_to_batch_each_resolved_file(
                     args.to_batch,
                     list(resolved_live_scope.files),
                     auto_advance=args.auto_advance,

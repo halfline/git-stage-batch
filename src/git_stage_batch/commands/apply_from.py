@@ -21,7 +21,6 @@ from ..batch.selection import (
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
-    translate_batch_file_gutter_ids_to_selection_ids,
     translate_atomic_unit_error_to_gutter_ids,
 )
 from ..batch.submodule_pointer import (
@@ -45,6 +44,7 @@ from ..data.file_review.state import (
     finish_review_scoped_line_action,
     resolve_batch_source_action_scope,
 )
+from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..batch.file_display import render_batch_file_display
 from ..core.buffer import (
     LineBuffer,

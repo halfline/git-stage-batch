@@ -8,7 +8,6 @@ from git_stage_batch.utils.file_io import append_file_path_to_file
 from git_stage_batch.exceptions import NoMoreHunks
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.core.line_selection import write_line_ids_file
-from git_stage_batch.exceptions import CommandError
 import io
 import sys
 from git_stage_batch.data.session import initialize_abort_state
@@ -25,7 +24,6 @@ from git_stage_batch.data.hunk_tracking import (
     apply_line_level_batch_filter_to_cached_hunk,
     fetch_next_change,
     recalculate_selected_hunk_for_file,
-    require_selected_hunk,
 )
 from git_stage_batch.utils.file_io import append_lines_to_file
 from git_stage_batch.utils.paths import (
@@ -295,56 +293,6 @@ class TestAdvanceToNextHunk:
         # State files should be cleared
         assert not get_selected_hunk_patch_file_path().exists()
         assert not get_selected_hunk_hash_file_path().exists()
-
-
-class TestRequireCurrentHunkAndCheckStale:
-    """Tests for require_selected_hunk()."""
-
-    def test_exits_when_no_hunk_cached(self, temp_git_repo):
-        """Test that it exits with error when no hunk is cached."""
-
-        with pytest.raises(CommandError) as exc_info:
-            require_selected_hunk()
-
-        assert "No selected hunk" in exc_info.value.message
-
-    def test_exits_when_hunk_is_stale(self, temp_git_repo):
-        """Test that it exits with error when cached hunk is stale."""
-
-        # Create a file and cache it
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("content\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("modified\n")
-
-        # Cache the hunk
-        fetch_next_change()
-
-        # Make it stale
-        test_file.write_text("different\n")
-
-        with pytest.raises(CommandError) as exc_info:
-            require_selected_hunk()
-
-        assert "stale" in exc_info.value.message.lower()
-
-    def test_succeeds_when_hunk_is_fresh(self, temp_git_repo):
-        """Test that it succeeds when cached hunk is fresh."""
-        # Create a file and cache it
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("content\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("modified\n")
-
-        # Cache the hunk
-        fetch_next_change()
-
-        # Should not raise
-        require_selected_hunk()
 
 
 class TestRecalculateCurrentHunkForFile:

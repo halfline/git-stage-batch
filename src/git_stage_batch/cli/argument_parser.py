@@ -1438,7 +1438,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             command_parts.extend(["--to", shlex.quote(args.to_batch)])
         if args.line_ids is not None:
             command_parts.extend(["--line", shlex.quote(args.line_ids)])
-        _run_for_each_file(
+        run_for_each_resolved_file(
             resolved_file_scope,
             lambda file: commands.command_reset_from_batch(
                 args.from_batch,

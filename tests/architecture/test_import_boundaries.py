@@ -2410,6 +2410,35 @@ def test_batch_file_mode_detection_stays_in_data_module():
         assert expected_names <= imported_file_mode_names
 
 
+def test_index_entry_lookup_stays_in_data_module():
+    """Index-entry parsing should stay behind the shared data helper."""
+    index_entries = __import__(
+        "git_stage_batch.data.index_entries",
+        fromlist=["index_entries"],
+    )
+    expected_imports = {
+        SRC_ROOT / "commands" / "include.py": {"read_index_entry"},
+        SRC_ROOT / "data" / "staged_renames.py": {"read_index_entry"},
+    }
+
+    assert {"IndexEntry", "read_index_entry"} <= vars(index_entries).keys()
+
+    for path, expected_names in expected_imports.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        helper_names = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+        }
+        imported_index_names = set()
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.index_entries":
+                continue
+            imported_index_names |= {alias.name for alias in node.names}
+
+        assert "_index_entry_for_path" not in helper_names
+        assert expected_names <= imported_index_names
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

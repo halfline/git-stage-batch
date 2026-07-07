@@ -22,15 +22,17 @@ from ..core.line_selection import (
 from ..batch.selection import require_line_selection_in_view
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
-    SelectedChangeKind,
     fetch_next_change,
     finish_selected_change_action,
-    get_selected_change_file_path,
     load_selected_change,
+    require_selected_hunk,
+)
+from ..data.selected_change.store import (
+    SelectedChangeKind,
+    get_selected_change_file_path,
     read_selected_change_kind,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
-    require_selected_hunk,
 )
 from ..data.file_review.state import (
     FileReviewAction,

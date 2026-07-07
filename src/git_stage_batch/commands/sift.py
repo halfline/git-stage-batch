@@ -42,9 +42,9 @@ from ..batch.state_refs import (
 )
 from ..batch.storage import (
     add_binary_file_to_batch,
-    _build_realized_buffer_from_lines,
-    _remove_file_from_batch_commit,
-    _update_batch_commit,
+    build_realized_buffer_from_lines,
+    remove_file_from_batch_commit,
+    update_batch_commit,
 )
 from ..batch.validation import batch_exists, validate_batch_name
 from ..batch.source_selector import require_plain_batch_name
@@ -165,13 +165,13 @@ def add_sifted_text_file_to_batch(
 
     source_buffers = {file_path: target_buffer}
     if text_change_type == TextFileChangeType.DELETED:
-        _remove_file_from_batch_commit(
+        remove_file_from_batch_commit(
             batch_name,
             file_path,
             source_buffers=source_buffers,
         )
     else:
-        _update_batch_commit(
+        update_batch_commit(
             batch_name,
             file_path,
             target_blob_sha,
@@ -539,7 +539,7 @@ def _compute_sifted_text_file(
         working_buffer,
         BatchOwnership.acquire_for_metadata_dict(file_meta) as source_ownership,
     ):
-        target_buffer = _build_realized_buffer_from_lines(
+        target_buffer = build_realized_buffer_from_lines(
             baseline_buffer,
             batch_source_buffer,
             source_ownership,

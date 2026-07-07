@@ -655,6 +655,59 @@ def test_file_review_freshness_stays_out_of_state_module():
     assert violations == []
 
 
+def test_file_review_selection_validation_stays_out_of_state_module():
+    """File-review selection validation should live beside state."""
+    review_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+    selection_validation = __import__(
+        "git_stage_batch.data.file_review.selection_validation",
+        fromlist=["selection_validation"],
+    )
+    public_names = {
+        "shown_review_selections_for_action",
+        "validate_review_scoped_line_selection",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "status.py": {
+            "shown_review_selections_for_action",
+        },
+        SRC_ROOT / "data" / "file_review" / "batch_selection.py": {
+            "validate_review_scoped_line_selection",
+        },
+        SRC_ROOT / "data" / "file_review" / "state.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(selection_validation)
+    assert public_names.isdisjoint(vars(review_state))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "selection_validation.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.selection_validation":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_file_review_records_stay_out_of_state_module():
     """File-review record types should live beside validation state."""
     review_state = __import__(

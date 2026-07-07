@@ -113,7 +113,7 @@ from ..data.repository_buffers import (
 )
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes
+from ..output.hunk import print_line_level_changes
 from ..staging.operations import (
     build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,

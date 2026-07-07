@@ -58,11 +58,11 @@ from ..data.file_review.state import (
     clear_last_file_review_state,
     write_last_file_review_state,
 )
-from ..output import (
-    Colors,
+from ..output.colors import Colors
+from ..output.hunk import print_line_level_changes
+from ..output.patch import (
     print_binary_file_change,
     print_gitlink_change,
-    print_line_level_changes,
 )
 from ..output.file_review import (
     build_file_review_model,

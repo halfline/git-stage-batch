@@ -15,7 +15,8 @@ from ..data.progress import format_id_range, get_hunk_counts
 from ..data.line_state import load_line_changes_from_state
 from ..exceptions import BypassRefresh, CommandError, QuitInteractive
 from ..i18n import _
-from ..output import Colors, format_hotkey, print_line_level_changes
+from ..output.colors import Colors, format_hotkey
+from ..output.hunk import print_line_level_changes
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git import get_git_repository_root_path, run_git_command
 from ..utils.paths import (

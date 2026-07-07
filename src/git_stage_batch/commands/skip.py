@@ -58,7 +58,10 @@ from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes, print_remaining_line_changes_header
+from ..output.hunk import (
+    print_line_level_changes,
+    print_remaining_line_changes_header,
+)
 from ..utils.file_io import (
     append_lines_to_file,
     read_text_file_line_set,

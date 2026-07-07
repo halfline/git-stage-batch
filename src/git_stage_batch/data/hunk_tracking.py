@@ -46,8 +46,8 @@ from . import change_freshness as _change_freshness
 from . import file_hunk_display as _file_hunk_display
 from . import live_diff as _live_diff
 from .selected_change.snapshots import (
-    snapshots_are_stale as snapshots_are_stale,
-    write_snapshots_for_selected_file_path,
+    snapshots_are_stale as _snapshots_are_stale,
+    write_snapshots_for_selected_file_path as _write_snapshots_for_selected_file_path,
 )
 from ..utils.file_io import (
     is_path_blocked,
@@ -78,7 +78,9 @@ from .batch_selected_changes import (
     selected_batch_gitlink_file_for_batch as selected_batch_gitlink_file_for_batch,
     selected_batch_gitlink_matches_batch as selected_batch_gitlink_matches_batch,
 )
-from .selected_change.lifecycle import clear_selected_change_state_files as clear_selected_change_state_files
+from .selected_change.lifecycle import (
+    clear_selected_change_state_files as _clear_selected_change_state_files,
+)
 from .selected_change.store import (
     SelectedChangeClearReason as SelectedChangeClearReason,
     SelectedChangeKind,
@@ -412,12 +414,12 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                 write_text_file_contents(get_line_changes_json_file_path(),
                                          json.dumps(convert_line_changes_to_serializable_dict(line_changes),
                                                     ensure_ascii=False, indent=0))
-                write_snapshots_for_selected_file_path(line_changes.path)
+                _write_snapshots_for_selected_file_path(line_changes.path)
 
                 # Apply line-level batch filtering
                 if apply_line_level_batch_filter_to_cached_hunk():
                     # All lines were batched, skip this hunk and continue
-                    clear_selected_change_state_files()
+                    _clear_selected_change_state_files()
                     continue
 
                 # Return filtered hunk (or original if no filtering applied)
@@ -435,7 +437,7 @@ def advance_to_next_change() -> None:
 
     If no more hunks exist, clears state and returns silently.
     """
-    clear_selected_change_state_files()
+    _clear_selected_change_state_files()
     try:
         fetch_next_change()
     except NoMoreHunks:
@@ -544,7 +546,7 @@ def select_next_change_after_action(
         advance_to_next_change()
         return True
 
-    clear_selected_change_state_files()
+    _clear_selected_change_state_files()
     mark_selected_change_cleared_by_auto_advance_disabled()
     return False
 
@@ -567,8 +569,8 @@ def require_selected_hunk() -> None:
     if get_line_changes_json_file_path().exists():
         data = json.loads(read_text_file_contents(get_line_changes_json_file_path()))
         file_path = data["path"]
-        if snapshots_are_stale(file_path):
-            clear_selected_change_state_files()
+        if _snapshots_are_stale(file_path):
+            _clear_selected_change_state_files()
             exit_with_error(_("Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."))
 
 
@@ -597,7 +599,7 @@ def recalculate_selected_hunk_for_file(
     if selected_kind == SelectedChangeKind.FILE:
         line_changes = _file_hunk_display.cache_unstaged_file_as_single_hunk(file_path)
         if line_changes is None:
-            clear_selected_change_state_files()
+            _clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
                 return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
             mark_selected_change_cleared_by_auto_advance_disabled()
@@ -610,7 +612,7 @@ def recalculate_selected_hunk_for_file(
         _write_line_changes_state(line_changes)
 
         if apply_line_level_batch_filter_to_cached_hunk():
-            clear_selected_change_state_files()
+            _clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
                 return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
             mark_selected_change_cleared_by_auto_advance_disabled()
@@ -698,12 +700,12 @@ def recalculate_selected_hunk_for_file(
                     line_changes,
                 )
                 _write_line_changes_state(line_changes)
-                write_snapshots_for_selected_file_path(line_changes.path)
+                _write_snapshots_for_selected_file_path(line_changes.path)
 
                 # Apply batch filter to exclude batched lines
                 if apply_line_level_batch_filter_to_cached_hunk():
                     # All lines were batched, clear the hunk
-                    clear_selected_change_state_files()
+                    _clear_selected_change_state_files()
                     print(_("No more lines in this hunk."), file=sys.stderr)
                     return RecalculateSelectedHunkResult.CLEARED
 
@@ -714,12 +716,12 @@ def recalculate_selected_hunk_for_file(
                 return RecalculateSelectedHunkResult.RECALCULATED
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
-        clear_selected_change_state_files()
+        _clear_selected_change_state_files()
         print(_("No pending hunks."), file=sys.stderr)
         return RecalculateSelectedHunkResult.CLEARED
 
     # No more hunks for this file, advance to next file
-    clear_selected_change_state_files()
+    _clear_selected_change_state_files()
     if resolve_auto_advance(auto_advance):
         return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
     mark_selected_change_cleared_by_auto_advance_disabled()

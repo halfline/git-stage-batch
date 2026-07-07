@@ -660,6 +660,70 @@ def test_batch_storage_uses_public_content_helpers():
     assert violations == []
 
 
+def test_batch_ownership_units_bridge_keeps_display_out_of_ownership():
+    """Source-line unit construction should live in the bridge module."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    bridge = __import__(
+        "git_stage_batch.batch.ownership_units",
+        fromlist=["ownership_units"],
+    )
+    ownership_path = SRC_ROOT / "batch" / "ownership.py"
+    bridge_path = SRC_ROOT / "batch" / "ownership_units.py"
+    expected_bridge_callers = {
+        SRC_ROOT / "batch" / "selection.py",
+        SRC_ROOT / "commands" / "reset.py",
+    }
+    moved_name = "build_ownership_units_from_batch_source_lines"
+    violations = []
+
+    assert moved_name not in vars(ownership)
+    assert moved_name in vars(bridge)
+
+    ownership_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(ownership_path)
+    }
+    bridge_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(bridge_path)
+    }
+
+    assert "git_stage_batch.batch.display" not in ownership_imports
+    assert "git_stage_batch.batch.display" in bridge_imports
+    assert "git_stage_batch.batch.ownership" in bridge_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path in {ownership_path, bridge_path}:
+            continue
+
+        imports = _import_from_nodes(path)
+        imports_bridge = False
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.batch.ownership"
+                and moved_name in imported_names
+            ):
+                relative_path = path.relative_to(REPO_ROOT)
+                violations.append(
+                    f"{relative_path}:{node.lineno} imports {moved_name}"
+                )
+            if (
+                imported_module == "git_stage_batch.batch.ownership_units"
+                and moved_name in imported_names
+            ):
+                imports_bridge = True
+
+        if path in expected_bridge_callers:
+            assert imports_bridge
+
+    assert violations == []
+
+
 def test_batch_merge_uses_public_entry_helpers():
     """Batch callers should import public merge entry helpers."""
     merge = __import__(

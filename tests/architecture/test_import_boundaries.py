@@ -673,7 +673,6 @@ def test_file_review_records_stay_out_of_state_module():
         "ReviewSource",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "selection.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "apply_from.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "discard.py": {
             "FileReviewAction",
@@ -696,6 +695,7 @@ def test_file_review_records_stay_out_of_state_module():
             "FileReviewAction",
             "ReviewSource",
         },
+        SRC_ROOT / "data" / "batch_file_review_selection.py": {"FileReviewAction"},
         SRC_ROOT / "output" / "file_review.py": {
             "FileReviewAction",
             "FileReviewSelectionState",
@@ -806,6 +806,63 @@ def test_batch_selection_does_not_import_hunk_navigation():
     }
 
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_batch_review_selection_translation_stays_in_data_layer():
+    """Review-aware batch selection translation should live under data."""
+    batch_selection = __import__(
+        "git_stage_batch.batch.selection",
+        fromlist=["selection"],
+    )
+    review_selection = __import__(
+        "git_stage_batch.data.batch_file_review_selection",
+        fromlist=["batch_file_review_selection"],
+    )
+    public_names = {
+        "translate_batch_file_gutter_ids_to_selection_ids",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "apply_from.py": public_names,
+        SRC_ROOT / "commands" / "discard_from.py": public_names,
+        SRC_ROOT / "commands" / "include_from.py": public_names,
+        SRC_ROOT / "commands" / "show_from.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(review_selection)
+    assert public_names.isdisjoint(vars(batch_selection))
+
+    selection_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            SRC_ROOT / "batch" / "selection.py"
+        )
+    }
+    assert "git_stage_batch.data.file_review.state" not in selection_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "batch_file_review_selection.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.batch_file_review_selection":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.batch.selection":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
 
 
 def test_batch_selected_changes_does_not_import_hunk_navigation():

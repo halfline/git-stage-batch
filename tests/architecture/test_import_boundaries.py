@@ -400,7 +400,7 @@ def test_argument_parser_uses_file_scope_resolver_module():
 
 
 def test_cli_dispatch_does_not_import_command_facade():
-    """CLI dispatch should import exact command modules for fallback paths."""
+    """CLI dispatch should import exact modules for fallback and TUI paths."""
     dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
     imported_modules = {
         imported_module
@@ -409,7 +409,25 @@ def test_cli_dispatch_does_not_import_command_facade():
 
     assert "git_stage_batch.commands" not in imported_modules
     assert "git_stage_batch.commands.show" in imported_modules
-    assert "git_stage_batch.commands.interactive" in imported_modules
+    assert "git_stage_batch.commands.interactive" not in imported_modules
+    assert "git_stage_batch.tui.interactive" in imported_modules
+
+
+def test_commands_do_not_import_tui():
+    """Command modules should not launch or depend on TUI modules."""
+    violations = []
+
+    for path in (SRC_ROOT / "commands").rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module is None:
+                continue
+            if imported_module == "git_stage_batch.tui" or imported_module.startswith(
+                "git_stage_batch.tui."
+            ):
+                relative_path = path.relative_to(REPO_ROOT)
+                violations.append(f"{relative_path}:{node.lineno} imports {imported_module}")
+
+    assert violations == []
 
 
 def test_commands_package_does_not_reexport_command_apis():

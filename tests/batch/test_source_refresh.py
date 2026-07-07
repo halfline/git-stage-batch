@@ -18,8 +18,8 @@ from git_stage_batch.batch.source_refresh import (
     prepare_batch_ownership_update_for_selection,
     refresh_selected_lines_against_source_lines,
 )
-from git_stage_batch.batch.ownership import (
-    BatchOwnership,
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.source_advancement import (
     advance_source_lines_preserving_existing_presence,
 )
 from git_stage_batch.core.models import LineEntry

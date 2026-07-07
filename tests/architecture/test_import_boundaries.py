@@ -2310,6 +2310,64 @@ def test_selected_hunk_recalculation_stays_out_of_hunk_tracking():
     assert stale_import_violations == []
 
 
+def test_selected_hunk_cache_writes_stay_in_selected_change_store():
+    """Navigation and recalculation should delegate text-hunk state writes."""
+    selected_store = __import__(
+        "git_stage_batch.data.selected_change.store",
+        fromlist=["store"],
+    )
+    caller_paths = (
+        SRC_ROOT / "data" / "hunk_tracking.py",
+        SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py",
+    )
+    forbidden_imports = {
+        "git_stage_batch.data.selected_change.snapshots": {
+            "write_snapshots_for_selected_file_path",
+        },
+        "git_stage_batch.utils.file_io": {
+            "write_text_file_contents",
+        },
+        "git_stage_batch.utils.paths": {
+            "get_line_changes_json_file_path",
+            "get_selected_hunk_hash_file_path",
+        },
+    }
+    forbidden_calls = {
+        "write_selected_change_kind",
+        "write_selected_hunk_patch_lines",
+    }
+    violations = []
+
+    assert "cache_hunk_change" in vars(selected_store)
+
+    for path in caller_paths:
+        tree = ast.parse(path.read_text(), filename=str(path))
+        call_names = {
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+        }
+        relative_path = path.relative_to(REPO_ROOT)
+
+        assert "cache_hunk_change" in call_names
+        disallowed_calls = call_names & forbidden_calls
+        if disallowed_calls:
+            names = ", ".join(sorted(disallowed_calls))
+            violations.append(f"{relative_path} calls {names}")
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            disallowed_imports = (
+                imported_names & forbidden_imports.get(imported_module, set())
+            )
+            if disallowed_imports:
+                names = ", ".join(sorted(disallowed_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

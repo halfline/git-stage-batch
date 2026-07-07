@@ -345,6 +345,45 @@ def test_hunk_tracking_does_not_reexport_batch_selection_helpers():
     assert batch_selection_names.isdisjoint(vars(hunk_tracking))
 
 
+def test_hunk_tracking_does_not_reexport_selected_change_store_helpers():
+    """Selected-change store helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    selected_store_names = {
+        "SelectedChangeClearReason",
+        "SelectedChangeKind",
+        "SelectedChangeStateSnapshot",
+        "cache_binary_file_change",
+        "cache_gitlink_change",
+        "cache_rename_change",
+        "cache_text_deletion_change",
+        "get_selected_change_file_path",
+        "load_line_changes_from_patch_path",
+        "load_selected_binary_file",
+        "load_selected_gitlink_change",
+        "load_selected_rename_change",
+        "load_selected_text_deletion_change",
+        "mark_selected_change_cleared_by_auto_advance_disabled",
+        "mark_selected_change_cleared_by_file_list",
+        "read_selected_change_kind",
+        "refuse_bare_action_after_auto_advance_disabled",
+        "refuse_bare_action_after_file_list",
+        "refuse_bare_action_after_stale_batch_selection",
+        "restore_selected_change_state",
+        "selected_change_was_cleared_by_auto_advance_disabled",
+        "selected_change_was_cleared_by_file_list",
+        "selected_change_was_cleared_by_stale_batch_selection",
+        "snapshot_selected_change_state",
+        "write_line_changes_state",
+        "write_selected_change_kind",
+        "write_selected_hunk_patch_lines",
+    }
+
+    assert selected_store_names.isdisjoint(vars(hunk_tracking))
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

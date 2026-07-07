@@ -2257,6 +2257,59 @@ def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     assert "read_consumed_file_metadata" not in vars(hunk_tracking)
 
 
+def test_selected_hunk_recalculation_stays_out_of_hunk_tracking():
+    """Selected-hunk recalculation should stay outside hunk navigation."""
+    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
+    refresh_path = SRC_ROOT / "commands" / "selection" / "selected_hunk_refresh.py"
+    moved_names = {
+        "RecalculateSelectedHunkResult",
+        "recalculate_selected_hunk_for_file",
+    }
+    refresh_imported_names = set()
+    stale_import_violations = []
+    hunk_tracking_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
+    }
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    recalculation = __import__(
+        "git_stage_batch.data.selected_change.hunk_recalculation",
+        fromlist=["hunk_recalculation"],
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                path == refresh_path
+                and imported_module == "git_stage_batch.data.selected_change.hunk_recalculation"
+            ):
+                refresh_imported_names |= imported_names & moved_names
+
+            if imported_module != "git_stage_batch.data.hunk_tracking":
+                continue
+
+            moved_imports = imported_names & moved_names
+            if moved_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_imports))
+                stale_import_violations.append(
+                    f"{relative_path}:{node.lineno} imports {names}"
+                )
+
+    assert moved_names <= vars(recalculation).keys()
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+    assert (
+        "git_stage_batch.data.selected_change.hunk_recalculation"
+        not in hunk_tracking_imports
+    )
+    assert refresh_imported_names == moved_names
+    assert stale_import_violations == []
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

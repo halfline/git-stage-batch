@@ -1266,6 +1266,43 @@ def test_batch_merge_candidates_uses_public_data_types():
     assert violations == []
 
 
+def test_batch_merge_does_not_reexport_merge_exceptions():
+    """Merge exceptions should stay on the shared exception boundary."""
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    exception_names = {
+        "AmbiguousAnchorError",
+        "MergeError",
+        "MissingAnchorError",
+    }
+    show_from_exception_imports = set()
+    violations = []
+
+    assert exception_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.exceptions":
+                if path == SRC_ROOT / "commands" / "show_from.py":
+                    show_from_exception_imports |= imported_names & exception_names
+                continue
+
+            if imported_module != "git_stage_batch.batch.merge":
+                continue
+
+            moved_names = imported_names & exception_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert "MergeError" in show_from_exception_imports
+    assert violations == []
+
+
 def test_batch_merge_uses_public_entry_helpers():
     """Batch callers should import public merge entry helpers."""
     merge = __import__(

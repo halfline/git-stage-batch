@@ -55,8 +55,6 @@ from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFil
 from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     SelectedChangeKind,
-    build_file_hunk_from_buffer,
-    cache_unstaged_file_as_single_hunk,
     fetch_next_change,
     finish_selected_change_action,
     get_selected_change_file_path,
@@ -75,6 +73,10 @@ from ..data.file_change_display import (
     render_gitlink_change,
     render_rename_change,
     render_text_deletion_change,
+)
+from ..data.file_hunk_display import (
+    build_file_hunk_from_buffer,
+    cache_unstaged_file_as_single_hunk,
 )
 from ..data.file_review.state import (
     FileReviewAction,

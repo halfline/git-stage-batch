@@ -2098,6 +2098,34 @@ def test_hunk_tracking_does_not_reexport_line_state_helpers():
     assert line_state_names.isdisjoint(vars(hunk_tracking))
 
 
+def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
+    """Consumed replacement metadata should stay outside hunk navigation."""
+    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
+    imports = _import_from_nodes(hunk_tracking_path)
+    imported_modules = {imported_module for imported_module, _node in imports}
+    imports_mask_module_alias = any(
+        imported_module == "git_stage_batch.data"
+        and any(alias.name == "consumed_replacement_masks" for alias in node.names)
+        for imported_module, node in imports
+    )
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    consumed_masks = __import__(
+        "git_stage_batch.data.consumed_replacement_masks",
+        fromlist=["consumed_replacement_masks"],
+    )
+
+    assert imports_mask_module_alias
+    assert "git_stage_batch.data.consumed_replacement_masks" not in imported_modules
+    assert "git_stage_batch.data.consumed_selections" not in imported_modules
+    assert "filter_consumed_replacement_masks" in vars(consumed_masks)
+    assert "filter_consumed_replacement_masks" not in vars(hunk_tracking)
+    assert "_filter_consumed_replacement_masks" not in vars(hunk_tracking)
+    assert "read_consumed_file_metadata" not in vars(hunk_tracking)
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

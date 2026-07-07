@@ -54,7 +54,6 @@ from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycl
 from ..data.hunk_tracking import (
     SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
-    clear_selected_change_state_files,
     fetch_next_change,
     finish_selected_change_action,
     get_selected_change_file_path,
@@ -65,7 +64,6 @@ from ..data.hunk_tracking import (
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
-    snapshots_are_stale,
 )
 from ..data.file_change_display import (
     render_binary_file_change,
@@ -97,6 +95,8 @@ from ..data.progress import (
     record_hunk_skipped,
     record_text_deletion_hunk_skipped,
 )
+from ..data.selected_change.lifecycle import clear_selected_change_state_files
+from ..data.selected_change.snapshots import snapshots_are_stale
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..editor import (

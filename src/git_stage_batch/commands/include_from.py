@@ -46,8 +46,8 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     selected_text_target_change_type,
 )
+from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
-    FileReviewAction,
     finish_review_scoped_line_action,
     resolve_batch_source_action_scope,
 )

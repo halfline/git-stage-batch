@@ -33,8 +33,8 @@ from ..data.selected_change.store import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
 )
+from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
-    FileReviewAction,
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,

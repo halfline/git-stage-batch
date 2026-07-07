@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from ..exceptions import AtomicUnitError
     from ..core.models import LineLevelChange
     from ..core.models import RenderedBatchDisplay
-    from ..data.file_review.state import FileReviewAction
+    from ..data.file_review.records import FileReviewAction
 
 
 def _default_live_file_review_command(file_path: str) -> str:

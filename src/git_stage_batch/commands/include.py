@@ -78,8 +78,8 @@ from ..data.file_hunk_display import (
     cache_unstaged_file_as_single_hunk,
     render_unstaged_file_as_single_hunk,
 )
+from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
-    FileReviewAction,
     clear_last_file_review_state_if_file_matches,
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,

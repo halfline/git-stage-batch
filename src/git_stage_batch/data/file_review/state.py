@@ -6,7 +6,6 @@ import json
 import shlex
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from enum import Enum
 
 from ..batch import file_display
 from ...core.actionable_changes import ActionableSelectionReason
@@ -15,6 +14,7 @@ from ...exceptions import CommandError
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
 from ...utils.paths import get_last_file_review_state_file_path
+from . import records as _records
 from .fingerprints import (
     compute_current_file_review_diff_fingerprint as _compute_current_file_review_diff_fingerprint,
     fingerprint_selected_file_view as _fingerprint_selected_file_view,
@@ -23,87 +23,16 @@ from ..selected_change.store import SelectedChangeKind, read_selected_change_kin
 from ..selected_change.snapshots import snapshots_are_stale
 
 
-class ReviewSource(str, Enum):
-    """Source of the selected file review."""
-
-    FILE_VS_HEAD = "file-vs-head"
-    UNSTAGED = "unstaged"
-    BATCH = "batch"
-
-
-class FileReviewAction(str, Enum):
-    """Commands that may act on a file-review selection."""
-
-    INCLUDE = "include"
-    SKIP = "skip"
-    DISCARD = "discard"
-    INCLUDE_TO_BATCH = "include-to-batch"
-    DISCARD_TO_BATCH = "discard-to-batch"
-    INCLUDE_FROM_BATCH = "include-from-batch"
-    DISCARD_FROM_BATCH = "discard-from-batch"
-    APPLY_FROM_BATCH = "apply-from-batch"
-    RESET_FROM_BATCH = "reset-from-batch"
-
-
-@dataclass(frozen=True)
-class FileReviewSelectionState:
-    """One actionable selection shown by a file review."""
-
-    display_ids: tuple[int, ...]
-    selection_ids: tuple[int, ...]
-    change_index: int
-    first_page: int
-    last_page: int
-    reason: ActionableSelectionReason
-    actions: tuple[FileReviewAction, ...]
-    is_splittable: bool = False
-
-
-@dataclass(frozen=True)
-class FileReviewState:
-    """Persisted identity and safety state for the last file review."""
-
-    source: ReviewSource
-    batch_name: str | None
-    file_path: str
-    page_spec: str
-    shown_pages: tuple[int, ...]
-    page_count: int
-    entire_file_shown: bool
-    selections: tuple[FileReviewSelectionState, ...]
-    selected_change_kind: SelectedChangeKind
-    selected_file_fingerprint: str
-    diff_fingerprint: str
-
-
-@dataclass(frozen=True)
-class ImplicitLiveToBatchFileActionResult:
-    """Validated target for `--to --file` with no path."""
-
-    reviewed_file: str | None = None
-    review_state: FileReviewState | None = None
-    should_stop: bool = False
-
-
-@dataclass(frozen=True)
-class ActionScopeResolution:
-    """Resolved file-review scope for a command prologue."""
-
-    file: str | None
-    review_state: FileReviewState | None = None
-    should_stop: bool = False
-
-
 class ReviewScopedSelectionError(CommandError):
     """Raised when a pathless line action is not valid for the current review."""
 
 
-def _coerce_review_source(source: ReviewSource | str) -> ReviewSource:
-    return source if isinstance(source, ReviewSource) else ReviewSource(source)
+def _coerce_review_source(source: _records.ReviewSource | str) -> _records.ReviewSource:
+    return source if isinstance(source, _records.ReviewSource) else _records.ReviewSource(source)
 
 
-def _coerce_review_action(action: FileReviewAction | str) -> FileReviewAction:
-    return action if isinstance(action, FileReviewAction) else FileReviewAction(action)
+def _coerce_review_action(action: _records.FileReviewAction | str) -> _records.FileReviewAction:
+    return action if isinstance(action, _records.FileReviewAction) else _records.FileReviewAction(action)
 
 
 def _get_selected_change_file_path() -> str | None:
@@ -112,7 +41,7 @@ def _get_selected_change_file_path() -> str | None:
     return get_selected_change_file_path()
 
 
-def write_last_file_review_state(review_state: FileReviewState) -> None:
+def write_last_file_review_state(review_state: _records.FileReviewState) -> None:
     """Persist the last file review state."""
     write_text_file_contents(
         get_last_file_review_state_file_path(),
@@ -120,7 +49,7 @@ def write_last_file_review_state(review_state: FileReviewState) -> None:
     )
 
 
-def read_last_file_review_state() -> FileReviewState | None:
+def read_last_file_review_state() -> _records.FileReviewState | None:
     """Read the last file review state, if present and valid."""
     path = get_last_file_review_state_file_path()
     if not path.exists():
@@ -128,20 +57,20 @@ def read_last_file_review_state() -> FileReviewState | None:
     try:
         data = json.loads(read_text_file_contents(path))
         selections = tuple(
-            FileReviewSelectionState(
+            _records.FileReviewSelectionState(
                 display_ids=tuple(selection["display_ids"]),
                 selection_ids=tuple(selection["selection_ids"]),
                 change_index=selection["change_index"],
                 first_page=selection["first_page"],
                 last_page=selection["last_page"],
                 reason=ActionableSelectionReason(selection["reason"]),
-                actions=tuple(FileReviewAction(action) for action in selection["actions"]),
+                actions=tuple(_records.FileReviewAction(action) for action in selection["actions"]),
                 is_splittable=bool(selection["is_splittable"]),
             )
             for selection in data.get("selections", [])
         )
-        return FileReviewState(
-            source=ReviewSource(data["source"]),
+        return _records.FileReviewState(
+            source=_records.ReviewSource(data["source"]),
             batch_name=data.get("batch_name"),
             file_path=data["file_path"],
             page_spec=data["page_spec"],
@@ -170,13 +99,13 @@ def clear_last_file_review_state_if_file_matches(file_path: str) -> None:
         clear_last_file_review_state()
 
 
-def line_action_came_from_partial_review(review_state: FileReviewState | None) -> bool:
+def line_action_came_from_partial_review(review_state: _records.FileReviewState | None) -> bool:
     """Return whether a line action was validated by a partial file review."""
     return review_state is not None and not review_state.entire_file_shown
 
 
 def finish_review_scoped_line_action(
-    review_state: FileReviewState | None,
+    review_state: _records.FileReviewState | None,
     *,
     file_path: str | None = None,
 ) -> None:
@@ -207,7 +136,7 @@ def _batch_from_action_command(
 
 
 def resolve_batch_source_action_scope(
-    action: FileReviewAction | str,
+    action: _records.FileReviewAction | str,
     *,
     command_name: str,
     batch_name: str,
@@ -215,7 +144,7 @@ def resolve_batch_source_action_scope(
     file: str | None,
     patterns: list[str] | None,
     extra_action_parts: tuple[str, ...] = (),
-) -> ActionScopeResolution:
+) -> _records.ActionScopeResolution:
     """Resolve pathless and implicit-file batch actions against the last batch review."""
     from ..selected_change.store import (
         refuse_bare_action_after_file_list,
@@ -224,7 +153,7 @@ def resolve_batch_source_action_scope(
 
     review_action = _coerce_review_action(action)
     if patterns is not None:
-        return ActionScopeResolution(file=file)
+        return _records.ActionScopeResolution(file=file)
 
     if file is None:
         action_command = _batch_from_action_command(
@@ -237,7 +166,7 @@ def resolve_batch_source_action_scope(
         refuse_bare_action_after_file_list(
             action_command,
             open_command=f"git-stage-batch show --from {shlex.quote(batch_name)} --file PATH",
-            source=ReviewSource.BATCH.value,
+            source=_records.ReviewSource.BATCH.value,
             batch_name=batch_name,
         )
         refuse_bare_action_after_stale_batch_selection(action_command, batch_name=batch_name)
@@ -245,18 +174,18 @@ def resolve_batch_source_action_scope(
         if line_ids is None:
             reviewed_file = resolve_review_file_for_bare_whole_file_action(
                 review_action,
-                source=ReviewSource.BATCH,
+                source=_records.ReviewSource.BATCH,
                 batch_name=batch_name,
             )
-            return ActionScopeResolution(file=reviewed_file if reviewed_file is not None else file)
+            return _records.ActionScopeResolution(file=reviewed_file if reviewed_file is not None else file)
 
         review_state = validate_pathless_review_line_action(
             review_action,
             line_ids,
-            source=ReviewSource.BATCH,
+            source=_records.ReviewSource.BATCH,
             batch_name=batch_name,
         )
-        return ActionScopeResolution(
+        return _records.ActionScopeResolution(
             file=review_state.file_path if review_state is not None else file,
             review_state=review_state,
         )
@@ -272,7 +201,7 @@ def resolve_batch_source_action_scope(
         refuse_bare_action_after_file_list(
             action_command,
             open_command=f"git-stage-batch show --from {shlex.quote(batch_name)} --file PATH",
-            source=ReviewSource.BATCH.value,
+            source=_records.ReviewSource.BATCH.value,
             batch_name=batch_name,
         )
         refuse_bare_action_after_stale_batch_selection(action_command, batch_name=batch_name)
@@ -280,33 +209,33 @@ def resolve_batch_source_action_scope(
         if line_ids is None:
             reviewed_file = resolve_review_file_for_bare_whole_file_action(
                 review_action,
-                source=ReviewSource.BATCH,
+                source=_records.ReviewSource.BATCH,
                 batch_name=batch_name,
             )
-            return ActionScopeResolution(file=reviewed_file if reviewed_file is not None else file)
+            return _records.ActionScopeResolution(file=reviewed_file if reviewed_file is not None else file)
 
         review_state = validate_pathless_review_line_action(
             review_action,
             line_ids,
-            source=ReviewSource.BATCH,
+            source=_records.ReviewSource.BATCH,
             batch_name=batch_name,
         )
-        return ActionScopeResolution(
+        return _records.ActionScopeResolution(
             file=review_state.file_path if review_state is not None else file,
             review_state=review_state,
         )
 
-    return ActionScopeResolution(file=file)
+    return _records.ActionScopeResolution(file=file)
 
 
 def selected_change_kind_matches_review_source(
     selected_kind: SelectedChangeKind | None,
-    review_state: FileReviewState,
+    review_state: _records.FileReviewState,
 ) -> bool:
     """Return whether the selected kind is compatible with the review source."""
-    if review_state.source in (ReviewSource.FILE_VS_HEAD, ReviewSource.UNSTAGED):
+    if review_state.source in (_records.ReviewSource.FILE_VS_HEAD, _records.ReviewSource.UNSTAGED):
         return selected_kind == SelectedChangeKind.FILE
-    if review_state.source == ReviewSource.BATCH:
+    if review_state.source == _records.ReviewSource.BATCH:
         return selected_kind in (
             SelectedChangeKind.BATCH_FILE,
             SelectedChangeKind.BATCH_BINARY,
@@ -315,7 +244,7 @@ def selected_change_kind_matches_review_source(
     return False
 
 
-def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
+def selected_change_matches_review_state(review_state: _records.FileReviewState) -> bool:
     """Return whether selected state still matches the persisted review state."""
     selected_kind = read_selected_change_kind()
     if not selected_change_kind_matches_review_source(selected_kind, review_state):
@@ -326,7 +255,7 @@ def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
         return False
     gutter_to_selection_id = None
     line_changes = None
-    if review_state.source == ReviewSource.BATCH and review_state.batch_name is not None:
+    if review_state.source == _records.ReviewSource.BATCH and review_state.batch_name is not None:
         rendered = file_display.render_batch_file_display(
             review_state.batch_name,
             review_state.file_path,
@@ -367,10 +296,10 @@ def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
     )
 
 
-def selected_batch_review_matches_reset_state(review_state: FileReviewState) -> bool:
+def selected_batch_review_matches_reset_state(review_state: _records.FileReviewState) -> bool:
     """Return whether a batch review still has stable reset IDs."""
     selected_kind = read_selected_change_kind()
-    if review_state.source != ReviewSource.BATCH or review_state.batch_name is None:
+    if review_state.source != _records.ReviewSource.BATCH or review_state.batch_name is None:
         return False
     if not selected_change_kind_matches_review_source(selected_kind, review_state):
         return False
@@ -395,12 +324,12 @@ def selected_batch_review_matches_reset_state(review_state: FileReviewState) -> 
     current_reset_groups = [
         (group.display_ids, group.selection_ids)
         for group in rendered.review_action_groups
-        if FileReviewAction.RESET_FROM_BATCH.value in group.actions
+        if _records.FileReviewAction.RESET_FROM_BATCH.value in group.actions
     ]
     persisted_reset_groups = {
         (selection.display_ids, selection.selection_ids)
         for selection in review_state.selections
-        if FileReviewAction.RESET_FROM_BATCH in selection.actions
+        if _records.FileReviewAction.RESET_FROM_BATCH in selection.actions
     }
 
     def can_cover(
@@ -426,14 +355,14 @@ def selected_batch_review_matches_reset_state(review_state: FileReviewState) -> 
 
 
 def _review_state_matches_action(
-    review_state: FileReviewState,
-    action: FileReviewAction | str,
+    review_state: _records.FileReviewState,
+    action: _records.FileReviewAction | str,
 ) -> bool:
     """Return whether a review is fresh for a specific action."""
     review_action = _coerce_review_action(action)
     if (
-        review_state.source == ReviewSource.BATCH
-        and review_action == FileReviewAction.RESET_FROM_BATCH
+        review_state.source == _records.ReviewSource.BATCH
+        and review_action == _records.FileReviewAction.RESET_FROM_BATCH
     ):
         return selected_batch_review_matches_reset_state(review_state)
     return selected_change_matches_review_state(review_state)
@@ -462,9 +391,9 @@ class _ReviewValidationGroup:
 
 
 def shown_review_selections_for_action(
-    review_state: FileReviewState,
-    action: FileReviewAction | str,
-) -> list[FileReviewSelectionState]:
+    review_state: _records.FileReviewState,
+    action: _records.FileReviewAction | str,
+) -> list[_records.FileReviewSelectionState]:
     """Return actionable selections fully contained by the shown review pages."""
     review_action = _coerce_review_action(action)
     shown_pages = (
@@ -483,13 +412,13 @@ def shown_review_selections_for_action(
 def fresh_batch_review_selections_for_action(
     batch_name: str,
     file_path: str,
-    action: FileReviewAction | str,
-) -> list[FileReviewSelectionState] | None:
+    action: _records.FileReviewAction | str,
+) -> list[_records.FileReviewSelectionState] | None:
     """Return shown review selections for a fresh matching batch review, if one is active."""
     review_state = read_last_file_review_state()
     if review_state is None:
         return None
-    if review_state.source != ReviewSource.BATCH:
+    if review_state.source != _records.ReviewSource.BATCH:
         return None
     if review_state.batch_name != batch_name or review_state.file_path != file_path:
         return None
@@ -514,7 +443,7 @@ def fresh_batch_review_selections_for_action(
     return shown_review_selections_for_action(review_state, action)
 
 
-def _print_stale_or_mismatched_file_review_help(action: str, review_state: FileReviewState) -> None:
+def _print_stale_or_mismatched_file_review_help(action: str, review_state: _records.FileReviewState) -> None:
     show_command = _show_command_for_review_state(review_state)
     raise ReviewScopedSelectionError(
         _(
@@ -530,9 +459,9 @@ def _quote(value: str) -> str:
     return shlex.quote(value)
 
 
-def _show_command_for_review_state(review_state: FileReviewState, *, page: str | None = None) -> str:
+def _show_command_for_review_state(review_state: _records.FileReviewState, *, page: str | None = None) -> str:
     command = "git-stage-batch show"
-    if review_state.source == ReviewSource.BATCH and review_state.batch_name is not None:
+    if review_state.source == _records.ReviewSource.BATCH and review_state.batch_name is not None:
         command += f" --from {_quote(review_state.batch_name)}"
     command += f" --file {_quote(review_state.file_path)}"
     if page is not None:
@@ -541,8 +470,8 @@ def _show_command_for_review_state(review_state: FileReviewState, *, page: str |
 
 
 def line_action_command(
-    action: FileReviewAction | str,
-    review_state: FileReviewState,
+    action: _records.FileReviewAction | str,
+    review_state: _records.FileReviewState,
     *,
     line_spec: str | None = None,
     whole_file: bool = False,
@@ -550,16 +479,16 @@ def line_action_command(
 ) -> str | None:
     review_action = _coerce_review_action(action)
     action_value = review_action.value
-    if review_action in (FileReviewAction.INCLUDE_TO_BATCH, FileReviewAction.DISCARD_TO_BATCH):
+    if review_action in (_records.FileReviewAction.INCLUDE_TO_BATCH, _records.FileReviewAction.DISCARD_TO_BATCH):
         return None
-    if review_state.source == ReviewSource.BATCH:
-        if review_action in (FileReviewAction.INCLUDE, FileReviewAction.INCLUDE_FROM_BATCH):
-            action_value = FileReviewAction.INCLUDE.value
-        elif review_action in (FileReviewAction.DISCARD, FileReviewAction.DISCARD_FROM_BATCH):
-            action_value = FileReviewAction.DISCARD.value
-        elif review_action == FileReviewAction.APPLY_FROM_BATCH:
+    if review_state.source == _records.ReviewSource.BATCH:
+        if review_action in (_records.FileReviewAction.INCLUDE, _records.FileReviewAction.INCLUDE_FROM_BATCH):
+            action_value = _records.FileReviewAction.INCLUDE.value
+        elif review_action in (_records.FileReviewAction.DISCARD, _records.FileReviewAction.DISCARD_FROM_BATCH):
+            action_value = _records.FileReviewAction.DISCARD.value
+        elif review_action == _records.FileReviewAction.APPLY_FROM_BATCH:
             action_value = "apply"
-        elif review_action == FileReviewAction.RESET_FROM_BATCH:
+        elif review_action == _records.FileReviewAction.RESET_FROM_BATCH:
             action_value = "reset"
         else:
             return None
@@ -578,7 +507,7 @@ def line_action_command(
     return command
 
 
-def refuse_live_action_for_batch_selection(action: FileReviewAction | str) -> bool:
+def refuse_live_action_for_batch_selection(action: _records.FileReviewAction | str) -> bool:
     """Refuse bare live actions when the current selection came from a batch view."""
     review_action = _coerce_review_action(action)
     if read_selected_change_kind() not in (
@@ -590,7 +519,7 @@ def refuse_live_action_for_batch_selection(action: FileReviewAction | str) -> bo
 
     review_state = read_last_file_review_state()
     if review_state is not None:
-        if review_state.source != ReviewSource.BATCH:
+        if review_state.source != _records.ReviewSource.BATCH:
             _print_stale_or_mismatched_file_review_help(review_action.value, review_state)
         if not selected_change_matches_review_state(review_state):
             _print_stale_or_mismatched_file_review_help(review_action.value, review_state)
@@ -641,7 +570,7 @@ def refuse_live_action_for_batch_selection(action: FileReviewAction | str) -> bo
     )
 
 
-def refuse_ambiguous_bare_action_after_partial_file_review(action: FileReviewAction | str) -> bool:
+def refuse_ambiguous_bare_action_after_partial_file_review(action: _records.FileReviewAction | str) -> bool:
     """Refuse pathless whole-file actions after a partial file review."""
     review_action = _coerce_review_action(action)
     review_state = read_last_file_review_state()
@@ -721,9 +650,9 @@ def refuse_ambiguous_bare_action_after_partial_file_review(action: FileReviewAct
 
 
 def resolve_review_file_for_bare_whole_file_action(
-    action: FileReviewAction | str,
+    action: _records.FileReviewAction | str,
     *,
-    source: ReviewSource | str,
+    source: _records.ReviewSource | str,
     batch_name: str | None = None,
 ) -> str | None:
     """Return the reviewed file for a fresh full-file review, or refuse if partial."""
@@ -744,10 +673,10 @@ def resolve_review_file_for_bare_whole_file_action(
 
 
 def validate_implicit_live_to_batch_file_action(
-    action: FileReviewAction | str,
+    action: _records.FileReviewAction | str,
     action_command: str,
     line_id_specification: str | None,
-) -> ImplicitLiveToBatchFileActionResult:
+) -> _records.ImplicitLiveToBatchFileActionResult:
     """Validate `--to --file` with no path against the current live review.
 
     Returns the reviewed file for a full live-file review when the caller should
@@ -763,20 +692,20 @@ def validate_implicit_live_to_batch_file_action(
     refuse_bare_action_after_file_list(action_command)
     refuse_bare_action_after_auto_advance_disabled(action_command)
     if line_id_specification is None:
-        return ImplicitLiveToBatchFileActionResult(
+        return _records.ImplicitLiveToBatchFileActionResult(
             reviewed_file=resolve_review_file_for_bare_whole_file_action(
                 review_action,
-                source=ReviewSource.FILE_VS_HEAD,
+                source=_records.ReviewSource.FILE_VS_HEAD,
             ),
         )
     if refuse_live_action_for_batch_selection(review_action):
-        return ImplicitLiveToBatchFileActionResult(should_stop=True)
+        return _records.ImplicitLiveToBatchFileActionResult(should_stop=True)
     review_state = validate_pathless_review_line_action(
         review_action,
         line_id_specification,
-        source=ReviewSource.FILE_VS_HEAD,
+        source=_records.ReviewSource.FILE_VS_HEAD,
     )
-    return ImplicitLiveToBatchFileActionResult(review_state=review_state)
+    return _records.ImplicitLiveToBatchFileActionResult(review_state=review_state)
 
 
 def _live_to_batch_action_command(
@@ -795,13 +724,13 @@ def _live_to_batch_action_command(
 
 
 def resolve_live_to_batch_action_scope(
-    action: FileReviewAction | str,
+    action: _records.FileReviewAction | str,
     *,
     command_name: str,
     batch_name: str,
     line_ids: str | None,
     file: str | None,
-) -> ActionScopeResolution:
+) -> _records.ActionScopeResolution:
     """Resolve pathless and implicit-file live-to-batch actions against live reviews."""
     from ..selected_change.store import (
         refuse_bare_action_after_auto_advance_disabled,
@@ -819,19 +748,19 @@ def resolve_live_to_batch_action_scope(
         refuse_bare_action_after_file_list(action_command)
         refuse_bare_action_after_auto_advance_disabled(action_command)
         if refuse_live_action_for_batch_selection(review_action):
-            return ActionScopeResolution(file=file, should_stop=True)
+            return _records.ActionScopeResolution(file=file, should_stop=True)
         if line_ids is None:
             reviewed_file = resolve_review_file_for_bare_whole_file_action(
                 review_action,
-                source=ReviewSource.FILE_VS_HEAD,
+                source=_records.ReviewSource.FILE_VS_HEAD,
             )
-            return ActionScopeResolution(file=reviewed_file if reviewed_file is not None else file)
+            return _records.ActionScopeResolution(file=reviewed_file if reviewed_file is not None else file)
         review_state = validate_pathless_review_line_action(
             review_action,
             line_ids,
-            source=ReviewSource.FILE_VS_HEAD,
+            source=_records.ReviewSource.FILE_VS_HEAD,
         )
-        return ActionScopeResolution(file=file, review_state=review_state)
+        return _records.ActionScopeResolution(file=file, review_state=review_state)
 
     if file == "":
         action_command = _live_to_batch_action_command(
@@ -846,25 +775,25 @@ def resolve_live_to_batch_action_scope(
             line_ids,
         )
         if action_result.should_stop:
-            return ActionScopeResolution(file=file, should_stop=True)
-        return ActionScopeResolution(
+            return _records.ActionScopeResolution(file=file, should_stop=True)
+        return _records.ActionScopeResolution(
             file=action_result.reviewed_file if action_result.reviewed_file is not None else file,
             review_state=action_result.review_state,
         )
 
-    return ActionScopeResolution(file=file)
+    return _records.ActionScopeResolution(file=file)
 
 
 def resolve_live_line_action_scope(
-    action: FileReviewAction | str,
+    action: _records.FileReviewAction | str,
     *,
     action_command: str,
     line_id_specification: str,
     file: str | None,
-    source: ReviewSource | str | None = None,
+    source: _records.ReviewSource | str | None = None,
     batch_name: str | None = None,
     validate_pathless_before_live_guard: bool = False,
-) -> ActionScopeResolution:
+) -> _records.ActionScopeResolution:
     """Validate a pathless or implicit-file live line action against review state."""
     from ..selected_change.store import (
         refuse_bare_action_after_auto_advance_disabled,
@@ -872,7 +801,7 @@ def resolve_live_line_action_scope(
     )
 
     if file not in (None, ""):
-        return ActionScopeResolution(file=file)
+        return _records.ActionScopeResolution(file=file)
 
     review_action = _coerce_review_action(action)
     refuse_bare_action_after_file_list(action_command)
@@ -886,11 +815,11 @@ def resolve_live_line_action_scope(
             batch_name=batch_name,
         )
         if refuse_live_action_for_batch_selection(review_action):
-            return ActionScopeResolution(file=file, review_state=review_state, should_stop=True)
-        return ActionScopeResolution(file=file, review_state=review_state)
+            return _records.ActionScopeResolution(file=file, review_state=review_state, should_stop=True)
+        return _records.ActionScopeResolution(file=file, review_state=review_state)
 
     if refuse_live_action_for_batch_selection(review_action):
-        return ActionScopeResolution(file=file, should_stop=True)
+        return _records.ActionScopeResolution(file=file, should_stop=True)
 
     review_state = validate_pathless_review_line_action(
         review_action,
@@ -898,12 +827,12 @@ def resolve_live_line_action_scope(
         source=source,
         batch_name=batch_name,
     )
-    return ActionScopeResolution(file=file, review_state=review_state)
+    return _records.ActionScopeResolution(file=file, review_state=review_state)
 
 
 def validate_review_scoped_line_selection(
     requested_ids: LineSelection | Iterable[int],
-    valid_selections: Iterable[FileReviewSelectionState],
+    valid_selections: Iterable[_records.FileReviewSelectionState],
 ) -> None:
     """Validate a union of complete actionable review selections."""
     requested_ranges = _coerce_line_ranges(requested_ids)
@@ -970,12 +899,12 @@ def validate_review_scoped_line_selection(
 
 
 def validate_pathless_review_line_action(
-    action: FileReviewAction | str,
+    action: _records.FileReviewAction | str,
     line_id_specification: str,
     *,
-    source: ReviewSource | str | None = None,
+    source: _records.ReviewSource | str | None = None,
     batch_name: str | None = None,
-) -> FileReviewState | None:
+) -> _records.FileReviewState | None:
     """Validate pathless --line against the last file review."""
     review_action = _coerce_review_action(action)
     review_state = read_last_file_review_state()
@@ -988,13 +917,13 @@ def validate_pathless_review_line_action(
     if not _review_state_matches_action(review_state, review_action):
         _print_stale_or_mismatched_file_review_help(review_action.value, review_state)
     if (
-        review_state.source == ReviewSource.BATCH
+        review_state.source == _records.ReviewSource.BATCH
         and review_action in (
-            FileReviewAction.INCLUDE,
-            FileReviewAction.SKIP,
-            FileReviewAction.DISCARD,
-            FileReviewAction.INCLUDE_TO_BATCH,
-            FileReviewAction.DISCARD_TO_BATCH,
+            _records.FileReviewAction.INCLUDE,
+            _records.FileReviewAction.SKIP,
+            _records.FileReviewAction.DISCARD,
+            _records.FileReviewAction.INCLUDE_TO_BATCH,
+            _records.FileReviewAction.DISCARD_TO_BATCH,
         )
         and not any(review_action in selection.actions for selection in review_state.selections)
     ):

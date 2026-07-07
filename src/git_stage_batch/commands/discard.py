@@ -78,15 +78,14 @@ from ..data.file_hunk_display import (
     build_file_hunk_from_buffer,
     cache_unstaged_file_as_single_hunk,
 )
+from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
-    FileReviewAction,
     clear_last_file_review_state_if_file_matches,
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
     resolve_live_line_action_scope,
     resolve_live_to_batch_action_scope,
-    ReviewSource,
 )
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state

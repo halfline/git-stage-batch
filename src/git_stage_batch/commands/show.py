@@ -39,9 +39,9 @@ from ..data.file_change_display import (
     render_rename_change,
     render_text_deletion_change,
 )
+from ..data.file_review.records import ReviewSource
 from ..data.file_review.state import (
     clear_last_file_review_state,
-    ReviewSource,
     write_last_file_review_state,
 )
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state

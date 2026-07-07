@@ -16,7 +16,7 @@ from git_stage_batch.batch.ownership import (
     AbsenceClaim,
     ReplacementUnit,
     ReplacementUnitOrigin,
-    _AbsenceContentBuilder,
+    AbsenceContentBuilder,
     _absence_signature,
     acquire_detached_batch_ownership,
     merge_batch_ownership,
@@ -284,7 +284,7 @@ def test_absence_content_builder_closes_editor_on_finish(monkeypatch):
 
     monkeypatch.setattr(ownership_module.Editor, "close", count_close)
 
-    with _AbsenceContentBuilder() as builder:
+    with AbsenceContentBuilder() as builder:
         builder.append_line_range([b"old\n"], 0, 1)
         content = builder.finish()
 
@@ -308,7 +308,7 @@ def test_absence_content_builder_closes_editor_on_exception(monkeypatch):
     monkeypatch.setattr(ownership_module.Editor, "close", count_close)
 
     with pytest.raises(RuntimeError, match="boom"):
-        with _AbsenceContentBuilder() as builder:
+        with AbsenceContentBuilder() as builder:
             builder.append_line_range([b"old\n"], 0, 1)
             raise RuntimeError("boom")
 

@@ -200,7 +200,7 @@ class TestHandleCurrentFileReview:
                             return_value="q",
                         ):
                             with patch(
-                                "git_stage_batch.commands.suggest_fixup._reset_suggest_fixup_state"
+                                "git_stage_batch.data.suggest_fixup_state.clear_suggest_fixup_state"
                             ) as mock_reset:
                                 with patch("builtins.input", side_effect=["x", "1,3", "q"]):
                                     with pytest.raises(BypassRefresh):

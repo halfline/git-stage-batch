@@ -18,7 +18,7 @@ from git_stage_batch.commands.suggest_fixup import (
 )
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
-from git_stage_batch.data.hunk_tracking import render_file_as_single_hunk
+from git_stage_batch.data.file_hunk_display import render_file_as_single_hunk
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_suggest_fixup_state_file_path
 

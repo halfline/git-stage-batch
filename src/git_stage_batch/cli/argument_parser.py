@@ -1156,7 +1156,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
         if args.from_batch:
             resolved_batch_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-            _run_for_each_file(
+            run_for_each_resolved_file(
                 resolved_batch_scope,
                 lambda file: commands.command_discard_from_batch(args.from_batch, args.line_ids, file),
                 line_ids=args.line_ids,
@@ -1172,7 +1172,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     auto_advance=args.auto_advance,
                 )
             else:
-                _run_for_each_file(
+                run_for_each_resolved_file(
                     resolved_live_scope,
                     lambda file: commands.command_discard_to_batch(
                         args.to_batch,
@@ -1195,7 +1195,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         else:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
             if not resolved_live_scope.is_implicit:
-                _run_for_each_file(
+                run_for_each_resolved_file(
                     resolved_live_scope,
                     lambda file: commands.command_discard_file(
                         file,

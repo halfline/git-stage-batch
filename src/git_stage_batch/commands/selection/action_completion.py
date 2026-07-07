@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from ...data.hunk_tracking import (
+    advance_to_next_change,
     select_next_change_after_action,
     show_selected_change,
 )
@@ -23,6 +24,17 @@ def finish_selected_change_action(
 
     if quiet:
         return
+
+    if read_selected_change_kind() is None:
+        print(_("No more hunks to process."), file=sys.stderr)
+        return
+
+    show_selected_change()
+
+
+def advance_to_and_show_next_change() -> None:
+    """Advance to the next selected change and display it."""
+    advance_to_next_change()
 
     if read_selected_change_kind() is None:
         print(_("No more hunks to process."), file=sys.stderr)

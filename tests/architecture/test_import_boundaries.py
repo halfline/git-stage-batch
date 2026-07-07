@@ -264,6 +264,19 @@ def test_argument_parser_delegates_multi_file_action_flow():
     )
 
 
+def test_cli_dispatch_does_not_import_command_facade():
+    """CLI dispatch should import exact command modules for fallback paths."""
+    dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(dispatch_path)
+    }
+
+    assert "git_stage_batch.commands" not in imported_modules
+    assert "git_stage_batch.commands.show" in imported_modules
+    assert "git_stage_batch.commands.interactive" in imported_modules
+
+
 def test_hunk_tracking_does_not_reexport_live_change_helpers():
     """Moved live-change helpers should not stay available from hunk tracking."""
     hunk_tracking = __import__(

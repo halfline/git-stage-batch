@@ -22,19 +22,19 @@ from ..data.batch_selected_changes import (
     selected_batch_binary_batch_name,
     selected_batch_binary_file_for_batch,
 )
+from ..data.change_freshness import (
+    binary_file_change_is_stale,
+    gitlink_change_is_stale,
+    rename_change_is_stale,
+    text_deletion_change_is_batched,
+    text_deletion_change_is_stale,
+)
 from ..data.file_review.state import (
     FileReviewAction,
     ReviewSource,
     read_last_file_review_state,
     selected_change_matches_review_state,
     shown_review_selections_for_action,
-)
-from ..data.hunk_tracking import (
-    binary_file_change_is_stale,
-    gitlink_change_is_stale,
-    rename_change_is_stale,
-    text_deletion_change_is_batched,
-    text_deletion_change_is_stale,
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff

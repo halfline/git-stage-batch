@@ -110,6 +110,39 @@ def test_diff_parser_uses_core_buffer_boundary():
     assert "git_stage_batch.editor" not in imported_modules
 
 
+def test_core_modules_do_not_import_editor():
+    """Core modules should not depend on editor or Git-loading helpers."""
+    violations = []
+
+    for path in (SRC_ROOT / "core").rglob("*.py"):
+        imports = _import_from_nodes(path)
+        for imported_module, node in imports:
+            if imported_module is None:
+                continue
+            if imported_module == "git_stage_batch.editor" or imported_module.startswith(
+                "git_stage_batch.editor."
+            ):
+                relative_path = path.relative_to(REPO_ROOT)
+                violations.append(f"{relative_path}:{node.lineno} imports {imported_module}")
+
+    assert violations == []
+
+
+def test_live_text_lifecycle_detection_stays_out_of_core():
+    """Repository-bound lifecycle detection should live under data."""
+    text_lifecycle = __import__(
+        "git_stage_batch.core.text_lifecycle",
+        fromlist=["text_lifecycle"],
+    )
+    detector = __import__(
+        "git_stage_batch.data.text_lifecycle_detection",
+        fromlist=["text_lifecycle_detection"],
+    )
+
+    assert "detect_empty_text_lifecycle_change" not in vars(text_lifecycle)
+    assert "detect_empty_text_lifecycle_change" in vars(detector)
+
+
 def test_editor_package_does_not_reexport_buffer_primitives():
     """Buffer primitives should be imported from core, not the editor package."""
     editor = __import__("git_stage_batch.editor", fromlist=["editor"])

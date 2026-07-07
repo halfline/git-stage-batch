@@ -35,6 +35,7 @@ def test_resolve_text_change_type_detects_empty_line_sequence():
         batch_source_content=b"",
         realized_content=[],
         requested_change_type=TextFileChangeType.DELETED,
+        working_exists=False,
     )
 
     assert change_type == TextFileChangeType.DELETED

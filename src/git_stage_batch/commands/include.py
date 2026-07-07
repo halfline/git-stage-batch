@@ -73,7 +73,6 @@ from ..data.hunk_tracking import (
     restore_selected_change_state,
     snapshot_selected_change_state,
     snapshots_are_stale,
-    stream_live_git_diff,
 )
 from ..data.file_change_display import (
     render_binary_file_change,
@@ -93,6 +92,7 @@ from ..data.consumed_selections import record_consumed_selection
 from ..data.batch_sources import create_batch_source_commit
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
+from ..data.live_diff import stream_live_git_diff
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..editor import (

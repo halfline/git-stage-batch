@@ -69,14 +69,6 @@ class RecalculateSelectedHunkResult(str, Enum):
     NO_PENDING_HUNKS = "no-pending-hunks"
 
 
-_BATCH_MERGE_REVIEW_ACTIONS = (
-    "include-from-batch",
-    "discard-from-batch",
-    "apply-from-batch",
-)
-_BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
-
-
 def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]:
     """Find the next hunk or binary file that isn't blocked and cache it as selected.
 

@@ -23,6 +23,7 @@ from ..batch.query import read_batch_metadata
 from ..commands.file_scope.multi_file_actions import (
     discard_to_batch_each_resolved_file,
     include_each_resolved_file,
+    run_for_each_resolved_file,
     skip_each_resolved_file,
 )
 from ..data.file_tracking import list_untracked_files
@@ -958,7 +959,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             raise CommandError(_("`--no-edge-overlap` requires `include --line --as`."))
         if args.from_batch:
             resolved_batch_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-            _run_for_each_file(
+            run_for_each_resolved_file(
                 resolved_batch_scope,
                 lambda file: commands.command_include_from_batch(args.from_batch, args.line_ids, file),
                 line_ids=args.line_ids,
@@ -967,7 +968,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             )
         elif args.to_batch:
             resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-            _run_for_each_file(
+            run_for_each_resolved_file(
                 resolved_live_scope,
                 lambda file: commands.command_include_to_batch(
                     args.to_batch,

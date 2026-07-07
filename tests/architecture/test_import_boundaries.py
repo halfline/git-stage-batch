@@ -225,6 +225,45 @@ def test_cli_package_does_not_reexport_cli_apis():
     assert violations == []
 
 
+def test_tui_package_does_not_reexport_tui_apis():
+    """TUI callers should import concrete modules instead of the package."""
+    tui_path = SRC_ROOT / "tui" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(tui_path)
+    }
+    tui = __import__("git_stage_batch.tui", fromlist=["tui"])
+    facade_names = {
+        "FileReviewSessionState",
+        "FlowLocation",
+        "FlowState",
+        "ReviewFileEntry",
+        "handle_current_file_review",
+        "handle_file_browser",
+        "list_review_file_entries",
+        "run_interactive",
+    }
+    violations = []
+
+    assert imported_modules <= {"__future__"}
+    assert "__all__" not in vars(tui)
+    assert facade_names.isdisjoint(vars(tui))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.tui":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_data_package_does_not_reexport_data_apis():
     """Data callers should import concrete modules instead of the package."""
     data_path = SRC_ROOT / "data" / "__init__.py"

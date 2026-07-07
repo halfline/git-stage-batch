@@ -52,6 +52,7 @@ from ..output import (
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
 from ..batch.file_display import render_batch_file_display as render_batch_file_display
+from . import live_diff as _live_diff
 from .file_tracking import auto_add_untracked_files
 from .progress import (
     format_id_range as format_id_range,
@@ -77,7 +78,6 @@ from ..utils.file_io import (
 )
 from ..utils.git import (
     stream_git_command,
-    stream_git_diff,
 )
 from ..utils.text import bytes_to_lines
 from ..utils.paths import (
@@ -151,11 +151,6 @@ _BATCH_MERGE_REVIEW_ACTIONS = (
 )
 _BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
 
-
-def stream_live_git_diff(**kwargs):
-    """Stream actionable live changes with rename detection enabled."""
-    kwargs.setdefault("find_renames", True)
-    return stream_git_diff(**kwargs)
 
 
 def binary_file_change_is_stale(binary_change: BinaryFileChange) -> bool:
@@ -616,7 +611,7 @@ def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     """Render all changes for a file as a single hunk without caching state."""
     auto_add_untracked_files([file_path])
     with acquire_unified_diff(
-        stream_live_git_diff(
+        _live_diff.stream_live_git_diff(
             base="HEAD",
             context_lines=get_context_lines(),
             full_index=True,
@@ -636,7 +631,7 @@ def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
     auto_add_untracked_files([file_path])
     try:
         with acquire_unified_diff(
-            stream_live_git_diff(
+            _live_diff.stream_live_git_diff(
                 base="HEAD",
                 full_index=True,
                 ignore_submodules="none",
@@ -657,7 +652,7 @@ def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
     auto_add_untracked_files([file_path])
     try:
         with acquire_unified_diff(
-            stream_live_git_diff(
+            _live_diff.stream_live_git_diff(
                 base="HEAD",
                 full_index=True,
                 ignore_submodules="none",
@@ -678,7 +673,7 @@ def render_rename_change(file_path: str) -> Optional[RenameChange]:
     auto_add_untracked_files([file_path])
     try:
         with acquire_unified_diff(
-            stream_live_git_diff(
+            _live_diff.stream_live_git_diff(
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
@@ -699,7 +694,7 @@ def render_text_deletion_change(file_path: str) -> Optional[TextFileDeletionChan
     """Render a whole-text-file deletion for file-scoped display without caching state."""
     try:
         with acquire_unified_diff(
-            stream_live_git_diff(
+            _live_diff.stream_live_git_diff(
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
@@ -718,7 +713,7 @@ def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelCha
     """Render the remaining unstaged changes for a file as a single hunk."""
     auto_add_untracked_files([file_path])
     with acquire_unified_diff(
-        stream_live_git_diff(
+        _live_diff.stream_live_git_diff(
             context_lines=get_context_lines(),
             full_index=True,
             ignore_submodules="none",
@@ -928,7 +923,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
     # Stream git diff and parse incrementally - stops after first unblocked item found
     try:
         with acquire_unified_diff(
-            stream_live_git_diff(
+            _live_diff.stream_live_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
@@ -1230,7 +1225,7 @@ def recalculate_selected_hunk_for_file(
     # Stream git diff and parse incrementally - stops after first matching hunk found
     try:
         with acquire_unified_diff(
-            stream_live_git_diff(
+            _live_diff.stream_live_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",

@@ -39,7 +39,11 @@ from ..editor.line_endings import (
     choose_line_ending,
     restore_line_endings_in_chunks,
 )
-from ..exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
+from ..exceptions import (
+    AmbiguousAnchorError as _AmbiguousAnchorError,
+    MergeError as _MergeError,
+    MissingAnchorError as _MissingAnchorError,
+)
 from ..i18n import _
 from ..utils.text import (
     AcquirableLineSequence,
@@ -234,7 +238,7 @@ def _check_structural_validity(
     if present_count == 0 and len(target_lines) > 0:
         if claimed_lines:
             first_claimed = _first_selected_line(claimed_lines)
-            raise MergeError(
+            raise _MergeError(
                 _("Cannot reliably place claimed line {line}: file completely rewritten").format(
                     line=first_claimed
                 )
@@ -242,7 +246,7 @@ def _check_structural_validity(
 
     for claimed_line in claimed_lines:
         if claimed_line < 1 or claimed_line > len(source_lines):
-            raise MergeError(
+            raise _MergeError(
                 _("Claimed line {line} is out of range (batch source has {count} lines)").format(
                     line=claimed_line,
                     count=len(source_lines)
@@ -264,7 +268,7 @@ def _check_structural_validity(
                     break
 
             if not has_context_before and not has_context_after:
-                raise MergeError(
+                raise _MergeError(
                     _("Cannot reliably place claimed line {line}: surrounding context lost").format(
                         line=claimed_line
                     )
@@ -275,7 +279,7 @@ def _check_structural_validity(
 
         if after_line is not None:
             if after_line < 1 or after_line > len(source_lines):
-                raise MergeError(
+                raise _MergeError(
                     _("Deletion after line {line} is out of range").format(line=after_line)
                 )
 
@@ -287,7 +291,7 @@ def _check_structural_validity(
                         break
 
                 if not has_context and after_line != len(source_lines):
-                    raise MergeError(
+                    raise _MergeError(
                         _("Cannot determine deletion position after line {line}: anchor and neighbors missing").format(
                             line=after_line
                         )
@@ -356,7 +360,7 @@ def _check_claimed_region_compatibility(
         )
 
         if not _is_claimed_run_structurally_coherent(facts):
-            raise MergeError(
+            raise _MergeError(
                 _("Batch was created from a different version of the file")
             )
 
@@ -819,7 +823,7 @@ def _apply_presence_constraints_with_mapping(
                         presence_line_set,
                     )
                     return result
-            raise MergeError(_("Selected merge resolution is no longer valid"))
+            raise _MergeError(_("Selected merge resolution is no longer valid"))
 
     result = _RealizedEntries()
     working_idx = 0
@@ -959,7 +963,7 @@ def _apply_absence_constraints(
         # Find boundary (fails if ambiguous or missing - appropriate for both modes)
         try:
             boundary = _find_boundary_after_source_line(result, claim.anchor_line)
-        except MissingAnchorError:
+        except _MissingAnchorError:
             if strict:
                 raise
             boundary = _find_realization_fallback_boundary(result, claim.anchor_line)
@@ -1062,7 +1066,7 @@ def satisfy_constraints(
             if not strict:
                 return realized_entries
             first_missing = missing_claimed.first()
-            raise MergeError(
+            raise _MergeError(
                 _("Cannot satisfy claimed line {line}: removed by absence constraints").format(
                     line=first_missing
                 )
@@ -1165,7 +1169,7 @@ def _find_boundary_after_source_line(
                     claimed_indices.append(i)
 
     if not matching_indices:
-        raise MissingAnchorError(
+        raise _MissingAnchorError(
             _("Cannot locate anchor boundary after source line {line}: "
               "anchor not present in realized content").format(line=source_line)
         )
@@ -1174,13 +1178,13 @@ def _find_boundary_after_source_line(
         if len(claimed_indices) == 1:
             return claimed_indices[0] + 1
         elif len(claimed_indices) == 0:
-            raise AmbiguousAnchorError(
+            raise _AmbiguousAnchorError(
                 _("Anchor ambiguity: source line {line} appears {count} times "
                   "in realized content but none are claimed").format(
                     line=source_line, count=len(matching_indices))
             )
         else:
-            raise AmbiguousAnchorError(
+            raise _AmbiguousAnchorError(
                 _("Anchor ambiguity: source line {line} claimed {count} times").format(
                     line=source_line, count=len(claimed_indices))
             )
@@ -1211,7 +1215,7 @@ def _boundary_choices_after_source_line(
                 matching_indices.append(index)
 
     if not matching_indices:
-        raise MissingAnchorError(
+        raise _MissingAnchorError(
             _("Cannot locate anchor boundary after source line {line}: "
               "anchor not present in realized content").format(line=source_line)
         )
@@ -1491,7 +1495,7 @@ def _suppress_absence_with_resolution(
 ) -> _RealizedEntries:
     choice_index = resolution.decisions.get(ambiguity_key)
     if choice_index is None:
-        raise MergeError(_("Missing merge resolution for {key}").format(key=ambiguity_key))
+        raise _MergeError(_("Missing merge resolution for {key}").format(key=ambiguity_key))
     choices = _absence_choices_for_claim(
         entries,
         anchor_line,
@@ -1501,7 +1505,7 @@ def _suppress_absence_with_resolution(
     for choice in choices:
         if choice.choice_index == choice_index:
             return _remove_sequence_at_position(entries, choice.position, forbidden_sequence)
-    raise MergeError(_("Selected merge resolution is no longer valid"))
+    raise _MergeError(_("Selected merge resolution is no longer valid"))
 
 
 def _sequence_matches_at_position(
@@ -1675,7 +1679,7 @@ def _suppress_at_boundary_strict(
     # Phase 2: Check for nearby displacement (conservative safety check)
     nearby_pos = _find_sequence_nearby(entries, position, forbidden_sequence, window=20)
     if nearby_pos is not None:
-        raise MergeError(
+        raise _MergeError(
             _("Batch was created from a different version of the file")
         )
 
@@ -2059,7 +2063,7 @@ def _replacement_edit_from_origin_resolution(
                 [],
             )
 
-    raise MergeError(_("Selected merge resolution is no longer valid"))
+    raise _MergeError(_("Selected merge resolution is no longer valid"))
 
 
 def _replacement_baseline_edit(
@@ -2302,11 +2306,11 @@ def _replacement_origin_candidate_set(
             ):
                 continue
             if len(unit.deletion_indices) != 1:
-                raise MergeError(_("Batch was created from a different version of the file"))
+                raise _MergeError(_("Batch was created from a different version of the file"))
 
             deletion_index = unit.deletion_indices[0]
             if deletion_index < 0 or deletion_index >= len(deletion_claims):
-                raise MergeError(_("Batch was created from a different version of the file"))
+                raise _MergeError(_("Batch was created from a different version of the file"))
             key, choices = _replacement_origin_choices_for_unit(
                 deletion_claims[deletion_index],
                 unit_index,
@@ -2324,11 +2328,11 @@ def _replacement_origin_candidate_set(
     if not unresolved:
         return _MergeCandidateSet(())
     if len(unresolved) > 1:
-        raise MergeError(_("Multiple split replacement placements need review"))
+        raise _MergeError(_("Multiple split replacement placements need review"))
 
     claimed_lines, deletion_index, key, choices = unresolved[0]
     if len(choices) > max_candidates:
-        raise MergeError(_("Too many merge candidates to preview safely"))
+        raise _MergeError(_("Too many merge candidates to preview safely"))
 
     valid_choices: list[_ReplacementOriginChoice] = []
     for choice in choices:
@@ -2341,7 +2345,7 @@ def _replacement_origin_candidate_set(
                 resolution=resolution,
             ):
                 pass
-        except MergeError:
+        except _MergeError:
             continue
         valid_choices.append(choice)
 
@@ -2448,7 +2452,7 @@ def can_merge_batch_from_line_sequences(
             resolution=resolution,
         ):
             pass
-    except MergeError:
+    except _MergeError:
         return False
     return True
 
@@ -2512,7 +2516,7 @@ def _merge_batch_acquired_line_chunks(
             source_lines,
             mapping,
         ):
-            raise MergeError(
+            raise _MergeError(
                 _(
                     "Cannot reliably place split replacement: original replacement "
                     "boundary is not present"
@@ -2527,7 +2531,7 @@ def _merge_batch_acquired_line_chunks(
                 source_lines,
                 working_lines
             )
-        except MergeError:
+        except _MergeError:
             if resolution is None:
                 raise
 
@@ -2539,7 +2543,7 @@ def _merge_batch_acquired_line_chunks(
             source_to_working_mapping=mapping,
             resolution=resolution,
         )
-    except MergeError:
+    except _MergeError:
         fallback_chunks = _try_apply_baseline_replacement_units(
             source_lines,
             working_lines,
@@ -2589,7 +2593,7 @@ def enumerate_merge_batch_candidates_from_line_sequences(
             ):
                 pass
             return _MergeCandidateSet(())
-        except MergeError:
+        except _MergeError:
             pass
 
         return _enumerate_merge_batch_candidates_acquired(
@@ -2635,7 +2639,7 @@ def _enumerate_merge_batch_candidates_acquired(
         presence_mapping.close()
 
     if presence_key is not None and len(presence_choices) > max_candidates:
-        raise MergeError(_("Too many merge candidates to preview safely"))
+        raise _MergeError(_("Too many merge candidates to preview safely"))
     if presence_key is not None and len(presence_choices) > 1:
         valid_choices: list[_PresenceChoice] = []
         for choice in presence_choices:
@@ -2648,7 +2652,7 @@ def _enumerate_merge_batch_candidates_acquired(
                     resolution=resolution,
                 ):
                     pass
-            except MergeError:
+            except _MergeError:
                 continue
             valid_choices.append(choice)
         if len(valid_choices) > 1:
@@ -2692,7 +2696,7 @@ def _enumerate_merge_batch_candidates_acquired(
         return _MergeCandidateSet(())
 
     if len([claim for claim in deletion_claims if claim.content_lines]) != 1:
-        raise MergeError(_("Batch was created from a different version of the file"))
+        raise _MergeError(_("Batch was created from a different version of the file"))
 
     owned_mapping = match_lines(source_lines, working_lines)
     try:
@@ -2735,7 +2739,7 @@ def _enumerate_merge_batch_candidates_acquired(
             max_results=max_candidates + 1,
         )
         if len(choices) > max_candidates:
-            raise MergeError(_("Too many merge candidates to preview safely"))
+            raise _MergeError(_("Too many merge candidates to preview safely"))
         if len(choices) <= 1:
             return _MergeCandidateSet(())
 
@@ -2750,7 +2754,7 @@ def _enumerate_merge_batch_candidates_acquired(
                     resolution=resolution,
                 ):
                     pass
-            except MergeError:
+            except _MergeError:
                 continue
             valid_choices.append(choice)
 
@@ -3254,7 +3258,7 @@ def _reverse_presence_constraints(
         region = correspondence.get_region_for_source_line(source_line)
 
         if region is None:
-            raise MergeError(
+            raise _MergeError(
                 _("Cannot discard source line {line}: no baseline restoration region found").format(
                     line=source_line
                 )
@@ -3271,7 +3275,7 @@ def _reverse_presence_constraints(
                     is_claimed=False,
                 )
             else:
-                raise MergeError(
+                raise _MergeError(
                     _("Source line {line} offset {offset} outside region bounds").format(
                         line=source_line, offset=offset
                     )
@@ -3292,7 +3296,7 @@ def _reverse_presence_constraints(
                 )
 
                 if claimed_line_count != total_lines_in_region:
-                    raise MergeError(
+                    raise _MergeError(
                         _("Cannot discard partial ownership of by-hunk replace region "
                           "(source lines {start}-{end}): batch owns {owned} of {total} lines").format(
                             start=region.source_start_line,
@@ -3312,7 +3316,7 @@ def _reverse_presence_constraints(
                 processed_replace_regions.add(region.region_id)
 
         else:
-            raise MergeError(
+            raise _MergeError(
                 _("Unknown region kind: {kind}").format(kind=region.kind)
             )
 
@@ -3401,9 +3405,9 @@ def _restore_absence_constraints(
     for claim in deletion_claims:
         try:
             boundary = _find_boundary_after_source_line(result, claim.anchor_line)
-        except MissingAnchorError:
+        except _MissingAnchorError:
             continue
-        except AmbiguousAnchorError:
+        except _AmbiguousAnchorError:
             raise
 
         if _sequence_present_at_boundary(result, boundary, claim.content_lines):

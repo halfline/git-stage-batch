@@ -385,7 +385,7 @@ def test_parse_command_line_start():
 
 def test_parse_command_line_start_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_start", mock_command)
+    monkeypatch.setattr(argument_parser, "command_start", mock_command)
 
     args = parse_command_line(["start", "--no-auto-advance"], quiet=True)
 
@@ -397,7 +397,7 @@ def test_parse_command_line_start_passes_auto_advance(monkeypatch):
 def test_parse_command_line_check_unstaged(monkeypatch):
     """check-unstaged dispatches to the unstaged-only index guard."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_check_unstaged", mock_command)
+    monkeypatch.setattr(argument_parser, "command_check_unstaged", mock_command)
 
     args = parse_command_line(["check-unstaged"], quiet=True)
 
@@ -436,7 +436,7 @@ def test_parse_command_line_again_alias():
 
 def test_parse_command_line_again_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_again", mock_command)
+    monkeypatch.setattr(argument_parser, "command_again", mock_command)
 
     args = parse_command_line(["again", "--auto-advance"], quiet=True)
 
@@ -456,7 +456,7 @@ def test_parse_command_line_show():
 
 def test_parse_command_line_show_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show", mock_command)
 
     args = parse_command_line(["show", "--no-advance"], quiet=True)
 
@@ -467,7 +467,7 @@ def test_parse_command_line_show_no_advance_peeks_without_selecting(monkeypatch)
 
 def test_parse_command_line_show_no_auto_advance_is_show_local(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show", mock_command)
 
     args = parse_command_line(["show", "--no-auto-advance"], quiet=True)
 
@@ -494,7 +494,7 @@ def test_show_pages_alias_requires_file():
 
 def test_show_page_accepts_single_files_match(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/parser.py", "notes.txt"])
 
     args = parse_command_line(["show", "--files", "*.py", "--page", "2"], quiet=True)
@@ -506,7 +506,7 @@ def test_show_page_accepts_single_files_match(monkeypatch):
 
 def test_show_file_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(["show", "--file", "src/parser.py", "--no-advance"], quiet=True)
@@ -523,7 +523,7 @@ def test_show_file_no_advance_peeks_without_selecting(monkeypatch):
 
 def test_show_from_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(
@@ -544,7 +544,7 @@ def test_show_from_no_advance_peeks_without_selecting(monkeypatch):
 
 def test_show_page_accepts_single_file_pattern_match(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/parser.py", "notes.txt"])
 
     args = parse_command_line(["show", "--file", "*.py", "--page", "2"], quiet=True)
@@ -592,7 +592,7 @@ def test_show_page_rejects_porcelain(monkeypatch):
 
 def test_show_from_page_accepts_single_file_batch_without_file(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(["show", "--from", "batch", "--page", "2"], quiet=True)
@@ -604,7 +604,7 @@ def test_show_from_page_accepts_single_file_batch_without_file(monkeypatch):
 
 def test_show_from_page_rejects_multi_file_batch_without_file(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["src/parser.py", "src/render.py"])
 
     args = parse_command_line(["show", "--from", "batch", "--page", "2"], quiet=True)
@@ -617,7 +617,7 @@ def test_show_from_page_rejects_multi_file_batch_without_file(monkeypatch):
 
 def test_show_from_page_missing_batch_reports_missing_batch(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
     monkeypatch.setattr(argument_parser, "batch_exists", lambda name: False)
     monkeypatch.setattr(
         argument_parser,
@@ -690,7 +690,7 @@ def test_parse_command_line_include_alias():
 
 def test_parse_command_line_include_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_include", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include", mock_command)
 
     args = parse_command_line(["include", "--no-auto-advance"], quiet=True)
 
@@ -744,7 +744,7 @@ def test_parse_command_line_include_with_file_and_as():
 def test_parse_command_line_include_with_file_and_as_dispatches_file_replacement(monkeypatch):
     """Include --file --as without --line should dispatch file replacement staging."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_include_file_as", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_file_as", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -764,7 +764,7 @@ def test_parse_command_line_include_with_file_and_as_dispatches_file_replacement
 def test_parse_command_line_include_with_file_and_as_stdin_dispatches_file_replacement(monkeypatch):
     """Include --file --as-stdin should preserve trailing newlines."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_include_file_as", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_file_as", mock_command)
     monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -785,7 +785,7 @@ def test_parse_command_line_include_with_file_and_as_stdin_dispatches_file_repla
 def test_parse_command_line_include_file_as_can_resolve_staged_file(monkeypatch):
     """Include --file --as should accept already-staged paths."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_include_file_as", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_file_as", mock_command)
     _mock_live_file_candidates(monkeypatch, [], staged=["path.txt"])
 
     args = parse_command_line(
@@ -805,7 +805,7 @@ def test_parse_command_line_include_file_as_can_resolve_staged_file(monkeypatch)
 def test_parse_command_line_include_with_line_range_and_as_stdin_dispatches_line_replacement(monkeypatch):
     """Include --line range --as-stdin should forward exact replacement text."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_include_line_as", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_line_as", mock_command)
     monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -828,7 +828,7 @@ def test_parse_command_line_include_with_line_range_and_as_stdin_dispatches_line
 def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(monkeypatch):
     """Include --file --line should dispatch to file-scoped line staging."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_include_line", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_line", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -894,7 +894,7 @@ def test_parse_command_line_include_with_file_pattern_dispatches_per_file(monkey
 def test_parse_command_line_include_with_file_pattern_honors_exclusions(monkeypatch):
     """Include --file should accept multiple gitignore-style patterns."""
     mock_command = Mock(return_value=1)
-    monkeypatch.setattr(argument_parser.commands, "command_include_file", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "baz.txt"])
 
     args = parse_command_line(["include", "--file", "*.py", "!bar.py"], quiet=True)
@@ -907,7 +907,7 @@ def test_parse_command_line_include_with_file_pattern_honors_exclusions(monkeypa
 def test_parse_command_line_include_with_file_preserves_exact_metachar_path(monkeypatch):
     """Include --file PATH should still handle exact paths that look like patterns."""
     mock_command = Mock(return_value=1)
-    monkeypatch.setattr(argument_parser.commands, "command_include_file", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/[parser].py", "src/p.py"])
 
     args = parse_command_line(["include", "--file", "src/[parser].py"], quiet=True)
@@ -931,7 +931,7 @@ def test_parse_command_line_include_line_rejects_multiple_file_pattern_matches(m
 def test_parse_command_line_include_with_files_and_as_dispatches_single_match(monkeypatch):
     """Include --files --as should work when patterns resolve to one file."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_include_file_as", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_file_as", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt", "notes.md"])
 
     args = parse_command_line(["include", "--files", "*.txt", "--as", "replacement"], quiet=True)
@@ -959,7 +959,7 @@ def test_parse_command_line_include_with_files_and_as_rejects_multiple_matches(m
 def test_parse_command_line_include_from_with_files_resolves_batch_scope_only(monkeypatch):
     """include --from --files should match batch files, not current live changes."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_include_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
     monkeypatch.setattr(
         file_scope,
@@ -1007,7 +1007,7 @@ def test_parse_command_line_include_rejects_as_and_as_stdin_together(monkeypatch
 def test_parse_command_line_include_with_no_edge_overlap_dispatches_line_replacement(monkeypatch):
     """Include --line --as --no-edge-overlap should forward the no-edge-overlap flag."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_include_line_as", mock_command)
+    monkeypatch.setattr(argument_parser, "command_include_line_as", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1068,7 +1068,7 @@ def test_parse_command_line_skip_alias():
 
 def test_parse_command_line_skip_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_skip", mock_command)
+    monkeypatch.setattr(argument_parser, "command_skip", mock_command)
 
     args = parse_command_line(["skip", "--no-auto-advance"], quiet=True)
 
@@ -1187,7 +1187,7 @@ def test_parse_command_line_skip_combines_file_and_files_patterns(monkeypatch):
 def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
     """Discard should dispatch once per file resolved from --files."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard_file", mock_command)
+    monkeypatch.setattr(argument_parser, "command_discard_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["discard", "--files", "*.py"], quiet=True)
@@ -1203,7 +1203,7 @@ def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
 def test_parse_command_line_discard_with_file_pattern_dispatches_per_file(monkeypatch):
     """Discard --file with a pattern should dispatch like --files."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard_file", mock_command)
+    monkeypatch.setattr(argument_parser, "command_discard_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["discard", "--file", "*.py"], quiet=True)
@@ -1219,7 +1219,7 @@ def test_parse_command_line_discard_with_file_pattern_dispatches_per_file(monkey
 def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(monkeypatch):
     """discard --from --files should match batch files, not current live changes."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "command_discard_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
     monkeypatch.setattr(
         file_scope,
@@ -1261,7 +1261,7 @@ def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkey
 def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
     """Apply should dispatch once per file resolved from --files."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_apply_from_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "command_apply_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(
@@ -1280,7 +1280,7 @@ def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
 def test_parse_command_line_show_with_files_uses_file_list(monkeypatch):
     """Show should route multi-file matches to a navigational file list."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_show_file_list", mock_command)
+    monkeypatch.setattr(argument_parser, "command_show_file_list", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["show", "--files", "*.py"], quiet=True)
@@ -1419,7 +1419,7 @@ def test_parse_command_line_discard_to_with_file_and_as():
 def test_parse_command_line_discard_with_file_and_as_dispatches_file_replacement(monkeypatch):
     """Discard --file --as without --line should dispatch file replacement."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard_file_as", mock_command)
+    monkeypatch.setattr(argument_parser, "command_discard_file_as", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1439,7 +1439,7 @@ def test_parse_command_line_discard_with_file_and_as_dispatches_file_replacement
 def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_replacement(monkeypatch):
     """Discard --file --as-stdin should preserve trailing newlines."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard_file_as", mock_command)
+    monkeypatch.setattr(argument_parser, "command_discard_file_as", mock_command)
     monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -1460,7 +1460,7 @@ def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_repla
 def test_parse_command_line_discard_to_line_range_and_as_stdin_dispatches_replacement(monkeypatch):
     """Discard --to --line range --as-stdin should forward exact replacement text."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard_line_as_to_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "command_discard_line_as_to_batch", mock_command)
     monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -1497,7 +1497,7 @@ def test_parse_command_line_discard_rejects_as_and_as_stdin_together(monkeypatch
 def test_parse_command_line_discard_with_no_edge_overlap_dispatches_line_replacement(monkeypatch):
     """Discard --to --line --as --no-edge-overlap should forward the no-edge-overlap flag."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard_line_as_to_batch", mock_command)
+    monkeypatch.setattr(argument_parser, "command_discard_line_as_to_batch", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1542,7 +1542,7 @@ def test_parse_command_line_discard_invalid_as_stdin_shape_does_not_read(monkeyp
 def test_parse_command_line_discard_with_file_and_line_dispatches_file_scope(monkeypatch):
     """Discard --file --line should dispatch to file-scoped line discard."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard_line", mock_command)
+    monkeypatch.setattr(argument_parser, "command_discard_line", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1570,7 +1570,7 @@ def test_parse_command_line_discard_alias():
 
 def test_parse_command_line_discard_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard", mock_command)
+    monkeypatch.setattr(argument_parser, "command_discard", mock_command)
 
     args = parse_command_line(["discard", "--no-auto-advance"], quiet=True)
 

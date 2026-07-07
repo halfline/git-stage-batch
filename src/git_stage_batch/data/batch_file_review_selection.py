@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ..batch.file_display import render_batch_file_display
+from ..batch.selection import (
+    require_single_file_context_for_line_selection_ranges,
+    resolve_batch_file_scope,
+)
+from ..batch.submodule_pointer import (
+    is_batch_submodule_pointer,
+    refuse_batch_submodule_pointer_lines,
+)
+from ..core.line_selection import LineRanges
 from ..exceptions import exit_with_error
 from ..i18n import _
+from .file_review.records import FileReviewAction
 from .file_review.state import (
     fresh_batch_review_selections_for_action,
     validate_review_scoped_line_selection,
@@ -15,7 +26,21 @@ from .file_review.state import (
 
 if TYPE_CHECKING:
     from ..core.models import RenderedBatchDisplay
-    from .file_review.records import FileReviewAction
+
+
+def _selection_ids_from_gutter_ids(
+    selected_ids: Iterable[int],
+    display_id_map: Mapping[int, int],
+) -> Iterator[int]:
+    for gutter_id in selected_ids:
+        if gutter_id in display_id_map:
+            yield display_id_map[gutter_id]
+        else:
+            exit_with_error(
+                _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
+                    id=gutter_id
+                )
+            )
 
 
 def translate_batch_file_gutter_ids_to_selection_ids(
@@ -63,15 +88,59 @@ def translate_batch_file_gutter_ids_to_selection_ids(
         if review_selections is not None else
         rendered
     )
-    selection_ids: set[int] = set()
-    for gutter_id in selected_ids:
-        if gutter_id in display_id_map:
-            selection_ids.add(display_id_map[gutter_id])
-        else:
-            exit_with_error(
-                _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
-                    id=gutter_id
-                )
-            )
-
+    selection_ids = set(_selection_ids_from_gutter_ids(selected_ids, display_id_map))
     return selection_ids, rendered_for_messages
+
+
+def translate_reset_batch_file_gutter_ids_to_selection_ranges(
+    batch_name: str,
+    all_files: dict[str, dict],
+    file: str | None,
+    patterns: list[str] | None,
+    line_id_specification: str,
+) -> LineRanges:
+    """Translate fresh reset file-review gutter IDs to batch selection IDs.
+
+    Reset is a metadata operation, so explicit reset line IDs must keep working
+    even when a batch change is not currently mergeable into the worktree. Only
+    translate through the mergeability-filtered gutter map when a fresh batch
+    file review is in scope; otherwise leave the batch display IDs untouched.
+    """
+    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
+    selected_ids = require_single_file_context_for_line_selection_ranges(
+        batch_name,
+        files,
+        line_id_specification,
+        "reset",
+    )
+    if selected_ids is None:
+        return LineRanges.empty()
+
+    file_path = list(files.keys())[0]
+    if files[file_path].get("file_type") == "binary":
+        exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
+    if is_batch_submodule_pointer(files[file_path]):
+        refuse_batch_submodule_pointer_lines(_("Reset"))
+
+    review_selections = fresh_batch_review_selections_for_action(
+        batch_name,
+        file_path,
+        FileReviewAction.RESET_FROM_BATCH,
+    )
+    if review_selections is None:
+        return selected_ids
+    validate_review_scoped_line_selection(selected_ids, review_selections)
+
+    rendered = render_batch_file_display(batch_name, file_path)
+    if rendered is None:
+        exit_with_error(
+            _("No changes for file '{file}' in batch '{name}'.").format(
+                file=file_path,
+                name=batch_name,
+            )
+        )
+
+    display_id_map = rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
+    return LineRanges.from_lines(
+        _selection_ids_from_gutter_ids(selected_ids, display_id_map)
+    )

@@ -29,7 +29,6 @@ from ..data.hunk_tracking import (
     render_file_as_single_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
-    stream_live_git_diff,
     write_selected_hunk_patch_lines,
     write_selected_change_kind,
 )
@@ -46,6 +45,7 @@ from ..data.file_review.state import (
     write_last_file_review_state,
 )
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from ..data.live_diff import stream_live_git_diff
 from ..data.session import require_session_started
 from ..data.selected_change.snapshots import write_snapshots_for_selected_file_path
 from ..exceptions import exit_with_error

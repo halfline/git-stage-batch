@@ -476,6 +476,54 @@ def test_batch_lineage_uses_public_data_types():
     assert violations == []
 
 
+def test_batch_ownership_uses_public_lineage_helpers():
+    """Cross-module ownership callers should import public lineage helpers."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    public_names = {
+        "advance_source_lines_preserving_existing_presence",
+        "remap_batch_ownership_with_lineage",
+    }
+    private_names = {
+        "_advance_source_lines_preserving_existing_presence",
+        "_remap_batch_ownership_with_lineage",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "discard.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(ownership)
+    assert private_names.isdisjoint(vars(ownership))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "ownership.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.ownership":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_merge_uses_public_entry_helpers():
     """Batch callers should import public merge entry helpers."""
     merge = __import__(

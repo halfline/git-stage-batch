@@ -15,6 +15,12 @@ from ...i18n import _
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
 from ...utils.paths import get_last_file_review_state_file_path
 from . import records as _records
+from .action_commands import (
+    batch_source_action_command as _batch_source_action_command,
+    line_action_command as _line_action_command,
+    live_to_batch_action_command as _live_to_batch_action_command,
+    show_command_for_review_state as _show_command_for_review_state,
+)
 from .fingerprints import (
     compute_current_file_review_diff_fingerprint as _compute_current_file_review_diff_fingerprint,
     fingerprint_selected_file_view as _fingerprint_selected_file_view,
@@ -118,23 +124,6 @@ def finish_review_scoped_line_action(
         clear_last_file_review_state_if_file_matches(file_path)
 
 
-def _batch_from_action_command(
-    command_name: str,
-    batch_name: str,
-    *,
-    file_scope: bool,
-    line_ids: str | None,
-    extra_action_parts: tuple[str, ...] = (),
-) -> str:
-    parts = [command_name, "--from", shlex.quote(batch_name)]
-    if file_scope:
-        parts.append("--file")
-    parts.extend(extra_action_parts)
-    if line_ids is not None:
-        parts.extend(["--line", line_ids])
-    return " ".join(parts)
-
-
 def resolve_batch_source_action_scope(
     action: _records.FileReviewAction | str,
     *,
@@ -156,7 +145,7 @@ def resolve_batch_source_action_scope(
         return _records.ActionScopeResolution(file=file)
 
     if file is None:
-        action_command = _batch_from_action_command(
+        action_command = _batch_source_action_command(
             command_name,
             batch_name,
             file_scope=False,
@@ -191,7 +180,7 @@ def resolve_batch_source_action_scope(
         )
 
     if file == "":
-        action_command = _batch_from_action_command(
+        action_command = _batch_source_action_command(
             command_name,
             batch_name,
             file_scope=True,
@@ -455,58 +444,6 @@ def _print_stale_or_mismatched_file_review_help(action: str, review_state: _reco
     )
 
 
-def _quote(value: str) -> str:
-    return shlex.quote(value)
-
-
-def _show_command_for_review_state(review_state: _records.FileReviewState, *, page: str | None = None) -> str:
-    command = "git-stage-batch show"
-    if review_state.source == _records.ReviewSource.BATCH and review_state.batch_name is not None:
-        command += f" --from {_quote(review_state.batch_name)}"
-    command += f" --file {_quote(review_state.file_path)}"
-    if page is not None:
-        command += f" --page {page}"
-    return command
-
-
-def line_action_command(
-    action: _records.FileReviewAction | str,
-    review_state: _records.FileReviewState,
-    *,
-    line_spec: str | None = None,
-    whole_file: bool = False,
-    pathless_line: bool = False,
-) -> str | None:
-    review_action = _coerce_review_action(action)
-    action_value = review_action.value
-    if review_action in (_records.FileReviewAction.INCLUDE_TO_BATCH, _records.FileReviewAction.DISCARD_TO_BATCH):
-        return None
-    if review_state.source == _records.ReviewSource.BATCH:
-        if review_action in (_records.FileReviewAction.INCLUDE, _records.FileReviewAction.INCLUDE_FROM_BATCH):
-            action_value = _records.FileReviewAction.INCLUDE.value
-        elif review_action in (_records.FileReviewAction.DISCARD, _records.FileReviewAction.DISCARD_FROM_BATCH):
-            action_value = _records.FileReviewAction.DISCARD.value
-        elif review_action == _records.FileReviewAction.APPLY_FROM_BATCH:
-            action_value = "apply"
-        elif review_action == _records.FileReviewAction.RESET_FROM_BATCH:
-            action_value = "reset"
-        else:
-            return None
-        command = f"git-stage-batch {action_value} --from {_quote(review_state.batch_name or '')}"
-        file_args = f" --file {_quote(review_state.file_path)}"
-    else:
-        command = f"git-stage-batch {action_value}"
-        file_args = f" --file {_quote(review_state.file_path)}"
-
-    if line_spec is not None:
-        if pathless_line:
-            return f"{command} --line {line_spec}"
-        return f"{command}{file_args} --line {line_spec}"
-    if whole_file:
-        return f"{command}{file_args}"
-    return command
-
-
 def refuse_live_action_for_batch_selection(action: _records.FileReviewAction | str) -> bool:
     """Refuse bare live actions when the current selection came from a batch view."""
     review_action = _coerce_review_action(action)
@@ -539,7 +476,7 @@ def refuse_live_action_for_batch_selection(action: _records.FileReviewAction | s
                 ]
             )
 
-        whole_file_command = line_action_command(review_action, review_state, whole_file=True)
+        whole_file_command = _line_action_command(review_action, review_state, whole_file=True)
         if whole_file_command is not None:
             lines.extend(
                 [
@@ -554,7 +491,7 @@ def refuse_live_action_for_batch_selection(action: _records.FileReviewAction | s
                     "",
                     _("Batch reviews do not support this action."),
                     _("If you meant to act on live working-tree changes, open a live file review:"),
-                    f"  git-stage-batch show --file {_quote(review_state.file_path)}",
+                    f"  git-stage-batch show --file {shlex.quote(review_state.file_path)}",
                 ]
             )
         raise CommandError("\n".join(lines))
@@ -618,7 +555,7 @@ def refuse_ambiguous_bare_action_after_partial_file_review(action: _records.File
     if missing:
         lines.append(_("Pages {pages} were not shown.").format(pages=_format_pages(missing)))
     if selection_specs:
-        line_command = line_action_command(
+        line_command = _line_action_command(
             review_action, review_state, line_spec=",".join(selection_specs)
         )
         if line_command is not None:
@@ -637,7 +574,7 @@ def refuse_ambiguous_bare_action_after_partial_file_review(action: _records.File
         ]
     )
 
-    whole_file_command = line_action_command(review_action, review_state, whole_file=True)
+    whole_file_command = _line_action_command(review_action, review_state, whole_file=True)
     if whole_file_command is not None:
         lines.extend(
             [
@@ -706,21 +643,6 @@ def validate_implicit_live_to_batch_file_action(
         source=_records.ReviewSource.FILE_VS_HEAD,
     )
     return _records.ImplicitLiveToBatchFileActionResult(review_state=review_state)
-
-
-def _live_to_batch_action_command(
-    command_name: str,
-    batch_name: str,
-    *,
-    file_scope: bool,
-    line_ids: str | None,
-) -> str:
-    parts = [command_name, "--to", batch_name]
-    if file_scope:
-        parts.append("--file")
-    if line_ids is not None:
-        parts.extend(["--line", line_ids])
-    return " ".join(parts)
 
 
 def resolve_live_to_batch_action_scope(
@@ -933,7 +855,7 @@ def validate_pathless_review_line_action(
                 batch=review_state.batch_name,
             )
         ]
-        line_command = line_action_command(review_action, review_state, line_spec=line_id_specification)
+        line_command = _line_action_command(review_action, review_state, line_spec=line_id_specification)
         if line_command is not None:
             lines.extend(["", _("To act on the batch file:"), f"  {line_command}"])
         else:
@@ -942,7 +864,7 @@ def validate_pathless_review_line_action(
                     "",
                     _("Batch reviews do not support this action."),
                     _("If you meant to act on live working-tree changes, open a live file review:"),
-                    f"  git-stage-batch show --file {_quote(review_state.file_path)}",
+                    f"  git-stage-batch show --file {shlex.quote(review_state.file_path)}",
                 ]
             )
         raise CommandError("\n".join(lines))

@@ -21,7 +21,7 @@ from ..data.file_review.records import (
     FileReviewSelectionState,
     ReviewSource,
 )
-from ..data.file_review.state import line_action_command
+from ..data.file_review.action_commands import line_action_command
 from ..data.file_review.fingerprints import (
     compute_current_file_review_diff_fingerprint,
     fingerprint_selected_file_view,

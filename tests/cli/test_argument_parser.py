@@ -383,6 +383,16 @@ def test_parse_command_line_start():
     assert callable(args.func)
 
 
+def test_parse_command_line_interactive_marks_launch_intent():
+    """Interactive parsing should describe intent without importing the TUI."""
+    args = parse_command_line(["interactive"], quiet=True)
+
+    assert args is not None
+    assert args.command == "interactive"
+    assert args.interactive_command is True
+    assert not hasattr(args, "func")
+
+
 def test_parse_command_line_start_passes_auto_advance(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(argument_parser, "command_start", mock_command)

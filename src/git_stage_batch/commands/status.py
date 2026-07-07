@@ -29,10 +29,10 @@ from ..data.change_freshness import (
     text_deletion_change_is_batched,
     text_deletion_change_is_stale,
 )
+from ..data.file_review.freshness import selected_change_matches_review_state
 from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
     read_last_file_review_state,
-    selected_change_matches_review_state,
     shown_review_selections_for_action,
 )
 from ..data.line_state import load_line_changes_from_state

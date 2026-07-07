@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from typing import Any
 
 from ..core.line_selection import parse_line_selection
 from ..data.file_review.state import compute_current_file_review_diff_fingerprint
@@ -14,39 +13,20 @@ from ..data.file_hunk_display import render_file_as_single_hunk
 from ..data.line_state import load_line_changes_from_state
 from ..data.selected_change.store import get_selected_change_file_path
 from ..data.session import require_session_started
+from ..data.suggest_fixup_state import (
+    clear_suggest_fixup_state,
+    read_suggest_fixup_state,
+    suggest_fixup_state_should_reset,
+    write_suggest_fixup_state,
+)
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.file_io import read_text_file_contents, write_text_file_contents
+from ..utils.file_io import read_text_file_contents
 from ..utils.git import require_git_repository, run_git_command
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_selected_hunk_hash_file_path,
-    get_suggest_fixup_state_file_path,
 )
-
-
-def _load_suggest_fixup_state() -> dict[str, Any] | None:
-    """Load suggest-fixup state from disk, or None if doesn't exist."""
-    state_path = get_suggest_fixup_state_file_path()
-    if not state_path.exists():
-        return None
-    try:
-        return json.loads(read_text_file_contents(state_path))
-    except (json.JSONDecodeError, KeyError):
-        return None
-
-
-def _save_suggest_fixup_state(state: dict[str, Any]) -> None:
-    """Save suggest-fixup state to disk."""
-    write_text_file_contents(
-        get_suggest_fixup_state_file_path(),
-        json.dumps(state, indent=2)
-    )
-
-
-def _reset_suggest_fixup_state() -> None:
-    """Clear suggest-fixup state."""
-    get_suggest_fixup_state_file_path().unlink(missing_ok=True)
 
 
 def _get_commit_details(commit_hash: str) -> dict[str, str]:
@@ -87,30 +67,6 @@ def _get_commit_details(commit_hash: str) -> dict[str, str]:
         "date": "",
         "relative_date": ""
     }
-
-
-def _should_reset_suggest_fixup_state(
-    selected_hunk_hash: str,
-    line_ids: list[int] | None,
-    boundary: str,
-    file_path: str,
-    min_line: int,
-    max_line: int
-) -> bool:
-    """Check if suggest-fixup state should be reset due to context change."""
-    state = _load_suggest_fixup_state()
-    if state is None:
-        return True
-
-    # Check if any search parameters changed
-    return (
-        state.get("hunk_hash") != selected_hunk_hash or
-        state.get("line_ids") != line_ids or
-        state.get("boundary") != boundary or
-        state.get("file_path") != file_path or
-        state.get("min_line") != min_line or
-        state.get("max_line") != max_line
-    )
 
 
 def _find_next_fixup_candidate(
@@ -192,13 +148,13 @@ def command_suggest_fixup(
 
     # Handle abort flag
     if abort:
-        _reset_suggest_fixup_state()
+        clear_suggest_fixup_state()
         if not porcelain:
             print(_("Suggest-fixup iteration cleared."), file=sys.stderr)
         return
 
     # Load selected state early to determine effective boundary
-    state = _load_suggest_fixup_state()
+    state = read_suggest_fixup_state()
 
     # Determine effective boundary
     if boundary is None:
@@ -209,12 +165,12 @@ def command_suggest_fixup(
         effective_boundary = boundary
         # If state exists and boundary changed, auto-reset
         if state and state.get("boundary") != boundary:
-            _reset_suggest_fixup_state()
+            clear_suggest_fixup_state()
             state = None
 
     # Handle reset flag
     if reset:
-        _reset_suggest_fixup_state()
+        clear_suggest_fixup_state()
         state = None
 
     require_selected_hunk()
@@ -264,10 +220,10 @@ def command_suggest_fixup(
         exit_with_error(_("No commits found in range {boundary}..HEAD").format(boundary=effective_boundary))
 
     # Check if we should reset state due to context change
-    if state and _should_reset_suggest_fixup_state(
+    if state and suggest_fixup_state_should_reset(
         hunk_hash, None, effective_boundary, line_changes.path, min_line, max_line
     ):
-        _reset_suggest_fixup_state()
+        clear_suggest_fixup_state()
         state = None
 
     # Handle show_last flag
@@ -328,11 +284,11 @@ def command_suggest_fixup(
                 "The changes may be fixing code from before the boundary."
             )
         else:
-            _reset_suggest_fixup_state()
+            clear_suggest_fixup_state()
             exit_with_error(_("No more candidates found."))
 
     # Save state for next invocation
-    _save_suggest_fixup_state({
+    write_suggest_fixup_state({
         "hunk_hash": hunk_hash,
         "line_ids": None,
         "boundary": effective_boundary,
@@ -404,13 +360,13 @@ def command_suggest_fixup_line(
 
     # Handle abort flag
     if abort:
-        _reset_suggest_fixup_state()
+        clear_suggest_fixup_state()
         if not porcelain:
             print(_("Suggest-fixup iteration cleared."), file=sys.stderr)
         return
 
     # Load selected state early to determine effective boundary
-    state = _load_suggest_fixup_state()
+    state = read_suggest_fixup_state()
 
     # Determine effective boundary
     if boundary is None:
@@ -421,12 +377,12 @@ def command_suggest_fixup_line(
         effective_boundary = boundary
         # If state exists and boundary changed, auto-reset
         if state and state.get("boundary") != boundary:
-            _reset_suggest_fixup_state()
+            clear_suggest_fixup_state()
             state = None
 
     # Handle reset flag
     if reset:
-        _reset_suggest_fixup_state()
+        clear_suggest_fixup_state()
         state = None
 
     if file is None:
@@ -491,10 +447,10 @@ def command_suggest_fixup_line(
         exit_with_error(_("No commits found in range {boundary}..HEAD").format(boundary=effective_boundary))
 
     # Check if we should reset state due to context change
-    if state and _should_reset_suggest_fixup_state(
+    if state and suggest_fixup_state_should_reset(
         hunk_hash, requested_ids_sorted, effective_boundary, line_changes.path, min_line, max_line
     ):
-        _reset_suggest_fixup_state()
+        clear_suggest_fixup_state()
         state = None
 
     # Handle show_last flag
@@ -555,11 +511,11 @@ def command_suggest_fixup_line(
                 "The changes may be fixing code from before the boundary."
             )
         else:
-            _reset_suggest_fixup_state()
+            clear_suggest_fixup_state()
             exit_with_error(_("No more candidates found."))
 
     # Save state for next invocation
-    _save_suggest_fixup_state({
+    write_suggest_fixup_state({
         "hunk_hash": hunk_hash,
         "line_ids": requested_ids_sorted,
         "boundary": effective_boundary,

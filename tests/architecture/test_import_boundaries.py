@@ -185,6 +185,42 @@ def test_data_package_does_not_reexport_data_apis():
     assert facade_names.isdisjoint(vars(data))
 
 
+def test_repository_buffer_helpers_stay_in_utils_layer():
+    """Repository buffer readers should live below workflow data."""
+    editor = __import__("git_stage_batch.editor", fromlist=["editor"])
+    repository_buffers = __import__(
+        "git_stage_batch.utils.repository_buffers",
+        fromlist=["repository_buffers"],
+    )
+    repository_buffer_names = {
+        "load_git_blob_as_buffer",
+        "load_git_object_as_buffer",
+        "load_git_object_as_buffer_or_empty",
+        "load_git_tree_files_as_buffers",
+        "load_working_tree_file_as_buffer",
+    }
+    violations = []
+
+    assert not (SRC_ROOT / "data" / "repository_buffers.py").exists()
+    assert not (SRC_ROOT / "editor" / "git.py").exists()
+    assert repository_buffer_names <= vars(repository_buffers).keys()
+    assert repository_buffer_names.isdisjoint(vars(editor))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.editor":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & repository_buffer_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_selected_change_store_stays_below_orchestration_state():
     """Selected-change persistence should stay below orchestration state."""
     store_path = SRC_ROOT / "data" / "selected_change" / "store.py"

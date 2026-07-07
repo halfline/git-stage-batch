@@ -1114,6 +1114,59 @@ def test_batch_ownership_units_bridge_keeps_display_out_of_ownership():
     assert violations == []
 
 
+def test_batch_realized_entries_uses_public_entry_helpers():
+    """Batch callers should import public realized-entry helpers."""
+    realized_entries = __import__(
+        "git_stage_batch.batch.realized_entries",
+        fromlist=["realized_entries"],
+    )
+    public_names = {
+        "RealizedEntry",
+        "realized_entry_content_chunks",
+    }
+    private_names = {
+        "_realized_entry_content_chunks",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "merge.py": public_names,
+        SRC_ROOT / "batch" / "source_advancement.py": {
+            "realized_entry_content_chunks",
+        },
+        SRC_ROOT / "batch" / "storage.py": {
+            "realized_entry_content_chunks",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(realized_entries)
+    assert private_names.isdisjoint(vars(realized_entries))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "realized_entries.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.realized_entries":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_merge_uses_public_entry_helpers():
     """Batch callers should import public merge entry helpers."""
     merge = __import__(
@@ -1122,21 +1175,21 @@ def test_batch_merge_uses_public_entry_helpers():
     )
     public_names = {
         "apply_presence_constraints",
-        "realized_entry_content_chunks",
         "satisfy_constraints",
     }
     private_names = {
         "_apply_presence_constraints",
-        "_realized_entry_content_chunks",
         "_satisfy_constraints",
+    }
+    moved_names = {
+        "RealizedEntry",
+        "realized_entry_content_chunks",
     }
     expected_imports = {
         SRC_ROOT / "batch" / "source_advancement.py": {
             "apply_presence_constraints",
-            "realized_entry_content_chunks",
         },
         SRC_ROOT / "batch" / "storage.py": {
-            "realized_entry_content_chunks",
             "satisfy_constraints",
         },
     }
@@ -1145,6 +1198,7 @@ def test_batch_merge_uses_public_entry_helpers():
     for public_name in public_names:
         assert public_name in vars(merge)
     assert private_names.isdisjoint(vars(merge))
+    assert moved_names.isdisjoint(vars(merge))
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == SRC_ROOT / "batch" / "merge.py":

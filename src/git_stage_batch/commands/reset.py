@@ -45,9 +45,8 @@ from ..data.batch_selected_changes import (
     selected_batch_binary_matches_batch,
     selected_batch_gitlink_matches_batch,
 )
+from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
-    FileReviewAction,
-    ReviewSource,
     fresh_batch_review_selections_for_action,
     read_last_file_review_state,
     resolve_batch_source_action_scope,

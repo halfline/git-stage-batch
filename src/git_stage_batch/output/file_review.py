@@ -15,13 +15,13 @@ from ..core.actionable_changes import (
 )
 from ..core.line_selection import format_line_ids, parse_positive_selection
 from ..core.models import HunkHeader, LineEntry, LineLevelChange, ReviewActionGroup
-from ..data.file_review.state import (
+from ..data.file_review.records import (
     FileReviewAction,
     FileReviewState,
     FileReviewSelectionState,
     ReviewSource,
-    line_action_command,
 )
+from ..data.file_review.state import line_action_command
 from ..data.file_review.fingerprints import (
     compute_current_file_review_diff_fingerprint,
     fingerprint_selected_file_view,

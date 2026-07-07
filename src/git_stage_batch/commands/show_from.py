@@ -51,9 +51,8 @@ from ..data.selected_change.store import (
     cache_gitlink_change,
     mark_selected_change_cleared_by_file_list,
 )
+from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
-    FileReviewAction,
-    ReviewSource,
     clear_last_file_review_state,
     write_last_file_review_state,
 )

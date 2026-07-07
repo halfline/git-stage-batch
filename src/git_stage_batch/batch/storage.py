@@ -49,7 +49,7 @@ from ..utils.git import (
 )
 from ..utils.paths import get_batch_metadata_file_path
 from ..utils.text import normalize_line_sequence_endings
-from .merge import _realized_entry_content_chunks, _satisfy_constraints
+from .merge import realized_entry_content_chunks, satisfy_constraints
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership, AbsenceClaim
@@ -457,7 +457,7 @@ def _stream_realized_content_chunks_from_lines(
 
     # Apply constraints using same model as merge, with lenient absence
     # enforcement because baseline may not have deletion content at that boundary.
-    realized_entries = _satisfy_constraints(
+    realized_entries = satisfy_constraints(
         batch_source_lines,
         base_lines,
         presence_line_set,
@@ -466,7 +466,7 @@ def _stream_realized_content_chunks_from_lines(
     )
 
     try:
-        yield from _realized_entry_content_chunks(realized_entries)
+        yield from realized_entry_content_chunks(realized_entries)
     finally:
         realized_entries.close()
 

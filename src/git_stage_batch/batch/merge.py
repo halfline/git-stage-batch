@@ -777,7 +777,7 @@ def _backing_content_sequence(lines: Sequence[bytes]) -> Sequence[Any]:
     return lines
 
 
-def _realized_entry_content_chunks(
+def realized_entry_content_chunks(
     entries: Iterable[RealizedEntry],
 ) -> Iterator[bytes]:
     """Yield content bytes from realized entries."""
@@ -1304,7 +1304,7 @@ def _is_claimed_run_structurally_coherent(
     return False
 
 
-def _apply_presence_constraints(
+def apply_presence_constraints(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
@@ -1709,7 +1709,7 @@ def _missing_claimed_lines(
     )
 
 
-def _satisfy_constraints(
+def satisfy_constraints(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
@@ -1720,7 +1720,7 @@ def _satisfy_constraints(
     resolution: MergeResolution | None = None,
 ) -> _RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
-    realized_entries = _apply_presence_constraints(
+    realized_entries = apply_presence_constraints(
         source_lines,
         working_lines,
         presence_line_set,
@@ -1745,7 +1745,7 @@ def _satisfy_constraints(
         previous_entries = realized_entries
         current_lines = _RealizedEntryContentSequence(previous_entries)
         try:
-            updated_entries = _apply_presence_constraints(
+            updated_entries = apply_presence_constraints(
                 source_lines,
                 current_lines,
                 presence_line_set,
@@ -3239,7 +3239,7 @@ def _merge_batch_acquired_line_chunks(
             if resolution is None:
                 raise
 
-        realized_entries = _satisfy_constraints(
+        realized_entries = satisfy_constraints(
             source_lines,
             working_lines,
             presence_line_set,
@@ -3265,7 +3265,7 @@ def _merge_batch_acquired_line_chunks(
             owned_mapping.close()
 
     try:
-        yield from _realized_entry_content_chunks(realized_entries)
+        yield from realized_entry_content_chunks(realized_entries)
     finally:
         realized_entries.close()
 
@@ -3411,7 +3411,7 @@ def _enumerate_merge_batch_candidates_acquired(
             source_lines,
             working_lines,
         )
-        realized_entries = _apply_presence_constraints(
+        realized_entries = apply_presence_constraints(
             source_lines,
             working_lines,
             presence_line_set,
@@ -3599,7 +3599,7 @@ def _discard_batch_acquired_line_chunks(
             realized_entries.close()
         realized_entries = updated_entries
 
-        yield from _realized_entry_content_chunks(realized_entries)
+        yield from realized_entry_content_chunks(realized_entries)
     finally:
         realized_entries.close()
 

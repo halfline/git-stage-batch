@@ -32,8 +32,8 @@ from .comparison import SemanticChangeKind, derive_semantic_change_runs
 from .lineage import BatchSourceLineage, LineageRun
 from .match import LineMapping, match_lines
 from .merge import (
-    _apply_presence_constraints,
-    _realized_entry_content_chunks,
+    apply_presence_constraints,
+    realized_entry_content_chunks,
 )
 
 
@@ -2473,7 +2473,7 @@ def _advance_source_lines_preserving_existing_presence(
     """Build source content with provenance from line sequences."""
     presence_lines = ownership.presence_line_set()
 
-    entries = _apply_presence_constraints(
+    entries = apply_presence_constraints(
         old_lines,
         working_lines,
         presence_lines,
@@ -2503,7 +2503,7 @@ def _advance_source_lines_preserving_existing_presence(
 
         return SourceContentWithLineProvenance(
             source_buffer=EditorBuffer.from_chunks(
-                _realized_entry_content_chunks(entries)
+                realized_entry_content_chunks(entries)
             ),
             lineage=lineage,
         )

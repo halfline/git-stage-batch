@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 import os
 from pathlib import Path
-import stat
 import sys
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -80,6 +79,7 @@ from ..data.file_hunk_display import (
     build_file_hunk_from_buffer,
     cache_unstaged_file_as_single_hunk,
 )
+from ..data.file_modes import detect_file_mode, detect_file_mode_from_root
 from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
     clear_last_file_review_state_if_file_matches,
@@ -1251,7 +1251,7 @@ def _command_discard_lines_to_batch_as(
                           "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
                     )
 
-                file_mode = _detect_file_mode(line_changes.path)
+                file_mode = detect_file_mode(line_changes.path)
 
                 if batch_source_commit is None:
                     batch_source_commit = create_batch_source_commit(
@@ -1338,28 +1338,6 @@ def _select_rewritten_replacement_lines(
     exit_with_error(_("Replacement selection could not be located after rewriting the file."))
 
 
-def _detect_file_mode(file_path: str) -> str:
-    """Return the current git file mode for a path, defaulting to a regular file."""
-    return _detect_file_mode_from_root(get_git_repository_root_path(), file_path)
-
-
-def _detect_file_mode_from_root(repo_root: Path, file_path: str) -> str:
-    """Return the current git file mode using a known repository root."""
-    absolute_path = repo_root / file_path
-    if os.path.lexists(absolute_path):
-        file_status = absolute_path.lstat()
-        if stat.S_ISLNK(file_status.st_mode):
-            return "120000"
-        return "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
-
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False, requires_index_lock=False)
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            return parts[0]
-    return "100644"
-
-
 def _discard_binary_change_from_working_tree(binary_change: BinaryFileChange) -> None:
     """Discard one live binary change from the working tree."""
     file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
@@ -1392,7 +1370,7 @@ def _command_discard_binary_to_batch(
     add_binary_file_to_batch(
         batch_name,
         binary_change,
-        file_mode=_detect_file_mode(file_path),
+        file_mode=detect_file_mode(file_path),
     )
     _discard_binary_change_from_working_tree(binary_change)
 
@@ -1430,7 +1408,7 @@ def _command_discard_text_deletion_to_batch(
         batch_name,
         file_path,
         BatchOwnership([], []),
-        _detect_file_mode(file_path),
+        detect_file_mode(file_path),
         change_type=TextFileChangeType.DELETED.value,
     )
     _discard_text_deletion_change(deletion_change)
@@ -1541,7 +1519,7 @@ def _collect_text_file_discard_inputs(
             if discard_input is None:
                 discard_input = _TextFileDiscardInput(
                     file_path=file_path,
-                    file_mode=_detect_file_mode_from_root(repo_root, file_path),
+                    file_mode=detect_file_mode_from_root(repo_root, file_path),
                     all_lines_to_batch=[],
                     patches_to_discard=[],
                 )
@@ -1768,7 +1746,7 @@ def _command_discard_file_to_batch(
     blocked_hashes = read_text_file_line_set(blocklist_path)
 
     # Detect file mode
-    file_mode = _detect_file_mode(file_path)
+    file_mode = detect_file_mode(file_path)
 
     with ExitStack() as patch_stack:
         # Collect ALL hunks from this file (live working tree state)
@@ -1956,7 +1934,7 @@ def _command_discard_file_lines_to_batch(
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
-    file_mode = _detect_file_mode(file_path)
+    file_mode = detect_file_mode(file_path)
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
@@ -2060,7 +2038,7 @@ def _command_discard_lines_to_batch(
     file_metadata = metadata.get("files", {}).get(line_changes.path)
     replacement_line_runs = _derive_live_replacement_line_runs(line_changes.path)
 
-    file_mode = _detect_file_mode(line_changes.path)
+    file_mode = detect_file_mode(line_changes.path)
 
     with ExitStack() as ownership_stack:
         try:
@@ -2205,7 +2183,7 @@ def _command_discard_text_hunk_to_batch(
     blocklist_path = get_block_list_file_path()
     blocked_hashes = read_text_file_line_set(blocklist_path)
 
-    file_mode = _detect_file_mode(file_path)
+    file_mode = detect_file_mode(file_path)
 
     with ExitStack() as patch_stack:
         # Collect all lines to batch (either selected hunk or all hunks from file)

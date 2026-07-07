@@ -52,6 +52,7 @@ from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
 from ..batch.file_display import render_batch_file_display as render_batch_file_display
 from . import change_freshness as _change_freshness
+from . import file_hunk_display as _file_hunk_display
 from . import live_diff as _live_diff
 from .file_tracking import auto_add_untracked_files
 from .progress import (
@@ -1054,7 +1055,7 @@ def recalculate_selected_hunk_for_file(
     write_line_ids_file(get_processed_skip_ids_file_path(), set())
 
     if selected_kind == SelectedChangeKind.FILE:
-        line_changes = cache_unstaged_file_as_single_hunk(file_path)
+        line_changes = _file_hunk_display.cache_unstaged_file_as_single_hunk(file_path)
         if line_changes is None:
             clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):

@@ -349,6 +349,25 @@ def test_cli_dispatch_does_not_import_command_facade():
     assert "git_stage_batch.commands.interactive" in imported_modules
 
 
+def test_commands_package_does_not_reexport_command_apis():
+    """The commands package should not act as a command facade."""
+    commands_path = SRC_ROOT / "commands" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(commands_path)
+    }
+    commands = __import__("git_stage_batch.commands", fromlist=["commands"])
+    command_exports = {
+        name
+        for name in vars(commands)
+        if name.startswith("command_")
+        or name in {"DEFAULT_PROMPT_FORMAT", "DiscardFilesToBatchResult"}
+    }
+
+    assert imported_modules <= {"__future__"}
+    assert command_exports == set()
+
+
 def test_argument_parser_does_not_import_command_facade():
     """Argument parsing should import exact command modules for dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"

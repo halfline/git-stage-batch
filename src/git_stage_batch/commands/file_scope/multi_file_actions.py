@@ -2,17 +2,34 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager, nullcontext
 import shlex
 import sys
+from typing import Protocol
 
 from ...data.hunk_tracking import select_next_change_after_action, show_selected_change
 from ...data.undo import undo_checkpoint
+from ...exceptions import CommandError
 from ...i18n import _, ngettext
 from ..discard import command_discard_files_to_batch
 from ..include import command_include_file
 from ..skip import command_skip_file
+
+
+class ResolvedFileScope(Protocol):
+    """Resolved file scope interface needed by command action dispatch."""
+
+    @property
+    def is_multiple(self) -> bool:
+        """Return whether the scope contains more than one concrete file."""
+
+    @property
+    def files(self) -> Sequence[str]:
+        """Return the concrete resolved files for a pattern scope."""
+
+    def optional_file(self) -> str | None:
+        """Return the optional single-file path for command callbacks."""
 
 
 def _format_multi_file_operation(command: str, files: Sequence[str]) -> str:
@@ -32,6 +49,34 @@ def _multi_file_undo_checkpoint(
         _format_multi_file_operation(command, files),
         worktree_paths=paths,
     )
+
+
+def run_for_each_resolved_file(
+    file_scope: ResolvedFileScope,
+    callback: Callable[[str | None], None],
+    *,
+    line_ids: str | None = None,
+    undo_operation: str | None = None,
+    worktree_paths: Sequence[str] | None = None,
+) -> None:
+    """Run a command callback once per resolved file argument."""
+    if file_scope.is_multiple and line_ids is not None:
+        raise CommandError(_("Cannot use --lines with multiple files."))
+    if file_scope.is_multiple:
+        checkpoint = (
+            _multi_file_undo_checkpoint(
+                undo_operation,
+                file_scope.files,
+                worktree_paths=worktree_paths,
+            )
+            if undo_operation is not None else
+            nullcontext()
+        )
+        with checkpoint:
+            for file_path in file_scope.files:
+                callback(file_path)
+        return
+    callback(file_scope.optional_file())
 
 
 def _format_file_summary(files: Sequence[str]) -> str:

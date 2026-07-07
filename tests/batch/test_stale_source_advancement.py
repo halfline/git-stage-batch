@@ -16,7 +16,7 @@ from git_stage_batch.batch.ownership import (
     remap_batch_ownership_to_new_source_lines,
     translate_lines_to_batch_ownership,
 )
-from git_stage_batch.batch.lineage import _BatchSourceLineage, _LineageRun
+from git_stage_batch.batch.lineage import BatchSourceLineage, LineageRun
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.models import LineEntry
 from git_stage_batch.editor import EditorBuffer
@@ -348,19 +348,19 @@ def test_remap_preserves_explicit_replacement_units():
 
 def test_batch_source_lineage_translates_ranges():
     """Batch source lineage should translate selections without per-line storage."""
-    with _BatchSourceLineage.from_runs(
+    with BatchSourceLineage.from_runs(
         source_runs=[
-            _LineageRun(old_start=1, old_end=2, new_start=10),
-            _LineageRun(old_start=3, old_end=4, new_start=12),
-            _LineageRun(old_start=8, old_end=9, new_start=20),
+            LineageRun(old_start=1, old_end=2, new_start=10),
+            LineageRun(old_start=3, old_end=4, new_start=12),
+            LineageRun(old_start=8, old_end=9, new_start=20),
         ],
         working_runs=[
-            _LineageRun(old_start=20, old_end=21, new_start=30),
+            LineageRun(old_start=20, old_end=21, new_start=30),
         ],
     ) as lineage:
         assert tuple(lineage.source_runs()) == (
-            _LineageRun(old_start=1, old_end=4, new_start=10),
-            _LineageRun(old_start=8, old_end=9, new_start=20),
+            LineageRun(old_start=1, old_end=4, new_start=10),
+            LineageRun(old_start=8, old_end=9, new_start=20),
         )
         assert lineage.translate_source_line(3) == 12
         assert lineage.translate_source_line(7) is None
@@ -375,10 +375,10 @@ def test_batch_source_lineage_translates_ranges():
 
 def test_batch_source_lineage_finds_unmapped_source_ranges():
     """Unmapped-source lookup should scan runs without expanding selections."""
-    with _BatchSourceLineage.from_runs(
+    with BatchSourceLineage.from_runs(
         source_runs=[
-            _LineageRun(old_start=1, old_end=20, new_start=100),
-            _LineageRun(old_start=30, old_end=40, new_start=200),
+            LineageRun(old_start=1, old_end=20, new_start=100),
+            LineageRun(old_start=30, old_end=40, new_start=200),
         ],
     ) as lineage:
         assert lineage.first_unmapped_source_line(
@@ -391,28 +391,28 @@ def test_batch_source_lineage_finds_unmapped_source_ranges():
 
 def test_batch_source_lineage_rejects_overlapping_appends():
     """Lineage appends should require monotonic old-coordinate runs."""
-    with _BatchSourceLineage() as lineage:
+    with BatchSourceLineage() as lineage:
         lineage.append_source_run(
-            _LineageRun(old_start=10, old_end=20, new_start=100)
+            LineageRun(old_start=10, old_end=20, new_start=100)
         )
 
         with pytest.raises(ValueError, match="lineage runs must not overlap"):
             lineage.append_source_run(
-                _LineageRun(old_start=5, old_end=9, new_start=200)
+                LineageRun(old_start=5, old_end=9, new_start=200)
             )
 
         with pytest.raises(ValueError, match="lineage runs must not overlap"):
             lineage.append_source_run(
-                _LineageRun(old_start=20, old_end=25, new_start=300)
+                LineageRun(old_start=20, old_end=25, new_start=300)
             )
 
 
 def test_batch_source_lineage_closes_mapped_storage():
     """Batch source lineage should close mapped run storage."""
-    lineage = _BatchSourceLineage.from_runs(
+    lineage = BatchSourceLineage.from_runs(
         source_runs=[
-            _LineageRun(old_start=1, old_end=1000, new_start=1),
-            _LineageRun(old_start=2000, old_end=2000, new_start=5000),
+            LineageRun(old_start=1, old_end=1000, new_start=1),
+            LineageRun(old_start=2000, old_end=2000, new_start=5000),
         ],
     )
 
@@ -431,10 +431,10 @@ def test_source_lineage_remaps_guarded_presence_ranges():
     ownership = _PresenceLineGuardedOwnership(
         _IterationGuardedLineSelection(((1, 1000), (2000, 2001)))
     )
-    with _BatchSourceLineage.from_runs(
+    with BatchSourceLineage.from_runs(
         source_runs=[
-            _LineageRun(old_start=1, old_end=1000, new_start=10),
-            _LineageRun(old_start=2000, old_end=2001, new_start=5000),
+            LineageRun(old_start=1, old_end=1000, new_start=10),
+            LineageRun(old_start=2000, old_end=2001, new_start=5000),
         ],
     ) as lineage:
         remapped = _remap_batch_ownership_with_lineage(
@@ -567,11 +567,11 @@ def test_advance_source_tracks_working_line_provenance_for_ambiguous_duplicates(
             b"owned before\nowned after\nsame\nsame\n"
         )
         assert tuple(source_with_provenance.lineage.source_runs()) == (
-            _LineageRun(old_start=1, old_end=1, new_start=1),
-            _LineageRun(old_start=4, old_end=4, new_start=2),
+            LineageRun(old_start=1, old_end=1, new_start=1),
+            LineageRun(old_start=4, old_end=4, new_start=2),
         )
         assert tuple(source_with_provenance.lineage.working_runs()) == (
-            _LineageRun(old_start=1, old_end=2, new_start=3),
+            LineageRun(old_start=1, old_end=2, new_start=3),
         )
 
 
@@ -589,10 +589,10 @@ def test_advance_source_tracks_contiguous_lineage_as_runs():
         ownership=ownership,
     ) as source_with_provenance:
         assert tuple(source_with_provenance.lineage.source_runs()) == (
-            _LineageRun(old_start=1, old_end=1000, new_start=1),
+            LineageRun(old_start=1, old_end=1000, new_start=1),
         )
         assert tuple(source_with_provenance.lineage.working_runs()) == (
-            _LineageRun(old_start=1, old_end=1000, new_start=1),
+            LineageRun(old_start=1, old_end=1000, new_start=1),
         )
 
 
@@ -633,9 +633,9 @@ def test_advance_source_lines_accepts_non_list_line_sequences(line_sequence):
             b"owned before\nowned after\nsame\nsame\n"
         )
         assert tuple(source_with_provenance.lineage.source_runs()) == (
-            _LineageRun(old_start=1, old_end=1, new_start=1),
-            _LineageRun(old_start=4, old_end=4, new_start=2),
+            LineageRun(old_start=1, old_end=1, new_start=1),
+            LineageRun(old_start=4, old_end=4, new_start=2),
         )
         assert tuple(source_with_provenance.lineage.working_runs()) == (
-            _LineageRun(old_start=1, old_end=2, new_start=3),
+            LineageRun(old_start=1, old_end=2, new_start=3),
         )

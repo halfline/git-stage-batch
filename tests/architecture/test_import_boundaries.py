@@ -798,7 +798,10 @@ def test_batch_lineage_uses_public_data_types():
         "_LineageRun",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership.py": public_names,
+        SRC_ROOT / "batch" / "ownership.py": {
+            "BatchSourceLineage",
+        },
+        SRC_ROOT / "batch" / "source_advancement.py": public_names,
         SRC_ROOT / "batch" / "source_refresh.py": {
             "BatchSourceLineage",
         },
@@ -834,28 +837,42 @@ def test_batch_lineage_uses_public_data_types():
     assert violations == []
 
 
-def test_batch_ownership_uses_public_lineage_helpers():
-    """Cross-module ownership callers should import public lineage helpers."""
+def test_batch_ownership_uses_public_lineage_remapping():
+    """Cross-module ownership callers should import public lineage remapping."""
     ownership = __import__(
         "git_stage_batch.batch.ownership",
         fromlist=["ownership"],
     )
     public_names = {
-        "advance_source_lines_preserving_existing_presence",
         "remap_batch_ownership_with_lineage",
     }
     private_names = {
-        "_advance_source_lines_preserving_existing_presence",
         "_remap_batch_ownership_with_lineage",
+    }
+    moved_names = {
+        "advance_source_lines_preserving_existing_presence",
+        "advance_batch_source_for_file_with_provenance",
+        "SourceContentWithLineProvenance",
+        "BatchSourceAdvanceResult",
     }
     expected_imports = {
         SRC_ROOT / "commands" / "discard.py": public_names,
+        SRC_ROOT / "batch" / "source_advancement.py": public_names,
     }
     violations = []
 
     for public_name in public_names:
         assert public_name in vars(ownership)
     assert private_names.isdisjoint(vars(ownership))
+    assert moved_names.isdisjoint(vars(ownership))
+
+    ownership_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            SRC_ROOT / "batch" / "ownership.py"
+        )
+    }
+    assert "git_stage_batch.batch.merge" not in ownership_imports
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == SRC_ROOT / "batch" / "ownership.py":
@@ -866,6 +883,62 @@ def test_batch_ownership_uses_public_lineage_helpers():
 
         for imported_module, node in imports:
             if imported_module != "git_stage_batch.batch.ownership":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_source_advancement_uses_public_entry_helpers():
+    """Source advancement callers should import public advancement helpers."""
+    source_advancement = __import__(
+        "git_stage_batch.batch.source_advancement",
+        fromlist=["source_advancement"],
+    )
+    public_names = {
+        "advance_source_lines_preserving_existing_presence",
+        "advance_batch_source_for_file_with_provenance",
+    }
+    private_names = {
+        "_advance_source_lines_preserving_existing_presence",
+        "_advance_batch_source_for_file_with_provenance",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "discard.py": {
+            "advance_source_lines_preserving_existing_presence",
+        },
+        SRC_ROOT / "batch" / "source_refresh.py": {
+            "advance_batch_source_for_file_with_provenance",
+        },
+        SRC_ROOT / "data" / "consumed_selections.py": {
+            "advance_batch_source_for_file_with_provenance",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(source_advancement)
+    assert private_names.isdisjoint(vars(source_advancement))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "source_advancement.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.source_advancement":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -1058,7 +1131,7 @@ def test_batch_merge_uses_public_entry_helpers():
         "_satisfy_constraints",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership.py": {
+        SRC_ROOT / "batch" / "source_advancement.py": {
             "apply_presence_constraints",
             "realized_entry_content_chunks",
         },

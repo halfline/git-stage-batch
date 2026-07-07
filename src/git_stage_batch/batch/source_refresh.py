@@ -18,7 +18,7 @@ from ..data.batch_sources import (
     save_session_batch_sources,
 )
 from ..editor import load_git_object_as_buffer, load_working_tree_file_as_buffer
-from .lineage import _BatchSourceLineage
+from .lineage import BatchSourceLineage
 from .match import match_lines
 from .ownership import (
     BatchOwnership,
@@ -323,7 +323,7 @@ def refresh_selected_lines_against_source_lines(
     *,
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
-    lineage: _BatchSourceLineage | None = None,
+    lineage: BatchSourceLineage | None = None,
 ) -> list:
     """Re-annotate selected lines against source and working-tree line sequences."""
     mapping = None

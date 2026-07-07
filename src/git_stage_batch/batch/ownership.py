@@ -29,7 +29,7 @@ from ..utils.git import (
     read_git_blobs_as_bytes,
 )
 from .comparison import SemanticChangeKind, derive_semantic_change_runs
-from .lineage import _BatchSourceLineage, _LineageRun
+from .lineage import BatchSourceLineage, LineageRun
 from .match import LineMapping, match_lines
 from .merge import (
     _apply_presence_constraints,
@@ -648,7 +648,7 @@ class SourceContentWithLineProvenance:
     """Synthesized source buffer with line provenance from its inputs."""
 
     source_buffer: EditorBuffer
-    lineage: _BatchSourceLineage
+    lineage: BatchSourceLineage
 
     def close(self) -> None:
         """Release the synthesized buffer and line lineage."""
@@ -669,7 +669,7 @@ class BatchSourceAdvanceResult:
     batch_source_commit: str
     ownership: BatchOwnership
     source_buffer: EditorBuffer
-    lineage: _BatchSourceLineage
+    lineage: BatchSourceLineage
 
     def close(self) -> None:
         """Release the refreshed source buffer and line lineage."""
@@ -2350,7 +2350,7 @@ def _remap_replacement_units(
 
 def _first_unmapped_line(
     line_selection: LineSelection,
-    lineage: _BatchSourceLineage,
+    lineage: BatchSourceLineage,
 ) -> int | None:
     return lineage.first_unmapped_source_line(line_selection)
 
@@ -2358,7 +2358,7 @@ def _first_unmapped_line(
 def _remap_replacement_units_with_lineage(
     replacement_units: list[ReplacementUnit],
     *,
-    lineage: _BatchSourceLineage,
+    lineage: BatchSourceLineage,
     deletion_count: int,
 ) -> list[ReplacementUnit]:
     """Remap replacement-unit presence lines with refreshed source lineage."""
@@ -2479,14 +2479,14 @@ def _advance_source_lines_preserving_existing_presence(
         presence_lines,
     )
 
-    lineage = _BatchSourceLineage()
+    lineage = BatchSourceLineage()
     try:
         for run in entries.provenance_runs():
             line_count = run.dest_end - run.dest_start
             new_start = run.dest_start + 1
             if run.source_start != 0:
                 lineage.append_source_run(
-                    _LineageRun(
+                    LineageRun(
                         old_start=run.source_start,
                         old_end=run.source_start + line_count - 1,
                         new_start=new_start,
@@ -2494,7 +2494,7 @@ def _advance_source_lines_preserving_existing_presence(
                 )
             if run.target_start != 0:
                 lineage.append_working_run(
-                    _LineageRun(
+                    LineageRun(
                         old_start=run.target_start,
                         old_end=run.target_start + line_count - 1,
                         new_start=new_start,
@@ -2516,7 +2516,7 @@ def _advance_source_lines_preserving_existing_presence(
 
 def _remap_batch_ownership_with_lineage(
     ownership: BatchOwnership,
-    lineage: _BatchSourceLineage,
+    lineage: BatchSourceLineage,
 ) -> BatchOwnership:
     """Remap ownership using provenance from source refresh construction."""
     old_presence = ownership.presence_line_set()

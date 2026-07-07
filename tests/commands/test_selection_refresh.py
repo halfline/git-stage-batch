@@ -2,8 +2,9 @@ import git_stage_batch.commands.selection.selected_hunk_refresh as selected_hunk
 from git_stage_batch.data.hunk_tracking import RecalculateSelectedHunkResult
 
 
-def test_recalculate_selected_hunk_for_command_delegates_without_show(monkeypatch):
+def test_recalculate_selected_hunk_for_command_displays_refreshed_change(monkeypatch):
     calls = []
+    display_calls = []
     show_calls = []
 
     def fake_recalculate(file_path, *, auto_advance=None):
@@ -16,6 +17,11 @@ def test_recalculate_selected_hunk_for_command_delegates_without_show(monkeypatc
         fake_recalculate,
     )
     monkeypatch.setattr(
+        selected_hunk_refresh,
+        "show_selected_change",
+        lambda: display_calls.append(True),
+    )
+    monkeypatch.setattr(
         "git_stage_batch.commands.show.command_show",
         lambda: show_calls.append(True),
     )
@@ -26,6 +32,7 @@ def test_recalculate_selected_hunk_for_command_delegates_without_show(monkeypatc
     )
 
     assert calls == [("file.txt", False)]
+    assert display_calls == [True]
     assert show_calls == []
 
 
@@ -53,6 +60,40 @@ def test_recalculate_selected_hunk_for_command_shows_next_change(monkeypatch):
     )
 
     assert show_calls == [True]
+
+
+def test_recalculate_selected_hunk_for_command_reports_empty_hunk(
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setattr(
+        selected_hunk_refresh,
+        "recalculate_selected_hunk_for_file",
+        lambda _file_path, *, auto_advance=None: (
+            RecalculateSelectedHunkResult.NO_MORE_LINES
+        ),
+    )
+
+    selected_hunk_refresh.recalculate_selected_hunk_for_command("file.txt")
+
+    assert "No more lines in this hunk." in capsys.readouterr().err
+
+
+def test_recalculate_selected_hunk_for_command_reports_pending_diff_failure(
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setattr(
+        selected_hunk_refresh,
+        "recalculate_selected_hunk_for_file",
+        lambda _file_path, *, auto_advance=None: (
+            RecalculateSelectedHunkResult.NO_PENDING_HUNKS
+        ),
+    )
+
+    selected_hunk_refresh.recalculate_selected_hunk_for_command("file.txt")
+
+    assert "No pending hunks." in capsys.readouterr().err
 
 
 def test_refresh_selected_hunk_after_line_action_prints_header_before_refresh(

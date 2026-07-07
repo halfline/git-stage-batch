@@ -155,6 +155,47 @@ def test_file_review_output_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_file_review_output_uses_public_action_command_formatter():
+    """File-review output should import the public command formatter."""
+    review_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+    public_names = {"line_action_command"}
+    private_names = {"_line_action_command"}
+    expected_imports = {
+        SRC_ROOT / "output" / "file_review.py": public_names,
+    }
+    violations = []
+
+    assert "line_action_command" in vars(review_state)
+    assert private_names.isdisjoint(vars(review_state))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "state.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.data.file_review.state":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_selection_does_not_import_hunk_navigation():
     """Batch selection should use focused data helpers instead of hunk navigation."""
     selection_path = SRC_ROOT / "batch" / "selection.py"

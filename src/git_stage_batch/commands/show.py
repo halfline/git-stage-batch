@@ -30,10 +30,10 @@ from ..data.hunk_tracking import (
     restore_selected_change_state,
     snapshot_selected_change_state,
     stream_live_git_diff,
-    text_deletion_change_is_batched,
     write_selected_hunk_patch_lines,
     write_selected_change_kind,
 )
+from ..data.change_freshness import text_deletion_change_is_batched
 from ..data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,

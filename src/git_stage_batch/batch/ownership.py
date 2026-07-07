@@ -2465,7 +2465,7 @@ def _remap_batch_ownership_with_mapping(
     )
 
 
-def _advance_source_lines_preserving_existing_presence(
+def advance_source_lines_preserving_existing_presence(
     old_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
@@ -2514,7 +2514,7 @@ def _advance_source_lines_preserving_existing_presence(
         entries.close()
 
 
-def _remap_batch_ownership_with_lineage(
+def remap_batch_ownership_with_lineage(
     ownership: BatchOwnership,
     lineage: BatchSourceLineage,
 ) -> BatchOwnership:
@@ -2601,7 +2601,7 @@ def advance_batch_source_for_file_with_provenance(
             old_source_buffer as old_source_lines,
             load_working_tree_file_as_buffer(file_path) as working_lines,
         ):
-            source_with_provenance = _advance_source_lines_preserving_existing_presence(
+            source_with_provenance = advance_source_lines_preserving_existing_presence(
                 old_lines=old_source_lines,
                 working_lines=working_lines,
                 ownership=existing_ownership,
@@ -2618,7 +2618,7 @@ def advance_batch_source_for_file_with_provenance(
         # Remap ownership using lineage produced while constructing the refreshed
         # source. This preserves already-owned lines that no longer exist in the
         # working tree after earlier discard operations.
-        remapped_ownership = _remap_batch_ownership_with_lineage(
+        remapped_ownership = remap_batch_ownership_with_lineage(
             ownership=existing_ownership,
             lineage=source_with_provenance.lineage,
         )

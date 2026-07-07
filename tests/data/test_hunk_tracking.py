@@ -23,11 +23,9 @@ from git_stage_batch.data.hunk_tracking import (
     RecalculateSelectedHunkResult,
     advance_to_next_change,
     apply_line_level_batch_filter_to_cached_hunk,
-    clear_selected_change_state_files,
     fetch_next_change,
     recalculate_selected_hunk_for_file,
     require_selected_hunk,
-    snapshots_are_stale,
 )
 from git_stage_batch.utils.file_io import append_lines_to_file
 from git_stage_batch.utils.paths import (
@@ -36,10 +34,8 @@ from git_stage_batch.utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
-    get_index_snapshot_file_path,
     get_processed_batch_ids_file_path,
     get_processed_include_ids_file_path,
-    get_working_tree_snapshot_file_path,
 )
 
 
@@ -63,40 +59,6 @@ def temp_git_repo(tmp_path, monkeypatch):
 
     return repo
 
-
-class TestClearCurrentHunkStateFiles:
-    """Tests for clear_selected_change_state_files()."""
-
-    def test_clears_all_state_files(self, temp_git_repo):
-        """Test that all selected hunk state files are cleared."""
-
-        # Create state files
-        get_selected_hunk_patch_file_path().write_text("patch")
-        get_selected_hunk_hash_file_path().write_text("hash")
-        get_line_changes_json_file_path().write_text("{}")
-        get_index_snapshot_file_path().write_text("index")
-        get_working_tree_snapshot_file_path().write_text("tree")
-        get_processed_include_ids_file_path().write_text("1\n2\n")
-        # processed.batch uses JSON format now and is global state (not per-hunk)
-        get_processed_batch_ids_file_path().write_text(json.dumps({"test.py": {"presence_claims": [{"source_lines": ["1", "2"]}]}}))
-
-        # Clear state
-        clear_selected_change_state_files()
-
-        # Verify per-hunk files are removed
-        assert not get_selected_hunk_patch_file_path().exists()
-        assert not get_selected_hunk_hash_file_path().exists()
-        assert not get_line_changes_json_file_path().exists()
-        assert not get_index_snapshot_file_path().exists()
-        assert not get_working_tree_snapshot_file_path().exists()
-        assert not get_processed_include_ids_file_path().exists()
-        # processed.batch is global state, so per-hunk reset leaves it intact.
-        assert get_processed_batch_ids_file_path().exists()
-
-    def test_handles_missing_files(self, temp_git_repo):
-        """Test that clearing works even when files don't exist."""
-        # Should not raise error when files don't exist
-        clear_selected_change_state_files()
 
 class TestFindAndCacheNextUnblockedHunk:
     """Tests for fetch_next_change()."""
@@ -333,70 +295,6 @@ class TestAdvanceToNextHunk:
         # State files should be cleared
         assert not get_selected_hunk_patch_file_path().exists()
         assert not get_selected_hunk_hash_file_path().exists()
-
-
-class TestSnapshotsAreStale:
-    """Tests for snapshots_are_stale()."""
-
-    def test_detects_missing_snapshots(self, temp_git_repo):
-        """Test that missing snapshots are detected as stale."""
-        # No snapshots exist yet
-        assert snapshots_are_stale("test.txt") is True
-
-    def test_detects_fresh_snapshots(self, temp_git_repo):
-        """Test that fresh snapshots are not stale."""
-        # Create a file and cache it
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("content\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("modified\n")
-
-        # Cache the hunk with snapshots
-        fetch_next_change()
-
-        # Snapshots should be fresh
-        assert snapshots_are_stale("test.txt") is False
-
-    def test_detects_index_change(self, temp_git_repo):
-        """Test that index changes make snapshots stale."""
-        # Create a file and cache it
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("content\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("modified\n")
-
-        # Cache the hunk with snapshots
-        fetch_next_change()
-
-        # Change the index
-        test_file.write_text("changed again\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Snapshots should now be stale
-        assert snapshots_are_stale("test.txt") is True
-
-    def test_detects_working_tree_change(self, temp_git_repo):
-        """Test that working tree changes make snapshots stale."""
-        # Create a file and cache it
-        test_file = temp_git_repo / "test.txt"
-        test_file.write_text("content\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("modified\n")
-
-        # Cache the hunk with snapshots
-        fetch_next_change()
-
-        # Change the working tree
-        test_file.write_text("different content\n")
-
-        # Snapshots should now be stale
-        assert snapshots_are_stale("test.txt") is True
 
 
 class TestRequireCurrentHunkAndCheckStale:

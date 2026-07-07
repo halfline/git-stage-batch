@@ -19,20 +19,19 @@ from ..data.hunk_tracking import (
     SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
     cache_binary_file_change,
-    cache_file_as_single_hunk,
     cache_gitlink_change,
     cache_rename_change,
     cache_text_deletion_change,
     clear_selected_change_state_files,
     get_selected_change_file_path,
     mark_selected_change_cleared_by_file_list,
-    render_file_as_single_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
     write_selected_hunk_patch_lines,
     write_selected_change_kind,
 )
 from ..data.change_freshness import text_deletion_change_is_batched
+from ..data.file_hunk_display import cache_file_as_single_hunk, render_file_as_single_hunk
 from ..data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,

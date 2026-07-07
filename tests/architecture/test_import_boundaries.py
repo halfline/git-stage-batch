@@ -1070,6 +1070,29 @@ def test_selected_change_display_stays_in_command_helper():
     assert violations == []
 
 
+def test_hunk_tracking_does_not_import_output():
+    """Hunk tracking should return state outcomes instead of rendering output."""
+    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
+    }
+    output_names = {
+        "print_binary_file_change",
+        "print_gitlink_change",
+        "print_line_level_changes",
+        "print_rename_change",
+        "print_text_file_deletion_change",
+    }
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+
+    assert "git_stage_batch.output" not in imported_modules
+    assert output_names.isdisjoint(vars(hunk_tracking))
+
+
 def test_advance_display_stays_in_command_helper():
     """Block and unblock should use the command flow helper."""
     hunk_tracking = __import__(

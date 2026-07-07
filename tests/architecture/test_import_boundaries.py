@@ -51,6 +51,55 @@ def _import_from_nodes(path: Path) -> list[tuple[str | None, ast.ImportFrom]]:
     return nodes
 
 
+def _package_path_for_module(module: str) -> Path | None:
+    if not module.startswith("git_stage_batch."):
+        return None
+
+    package_path = SRC_ROOT.joinpath(*module.split(".")[1:])
+    if not (package_path / "__init__.py").exists():
+        return None
+
+    return package_path
+
+
+def _external_package_child_module_import_violations(
+    disallowed_children: dict[str, set[str]],
+) -> list[str]:
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module not in disallowed_children:
+                continue
+
+            package_path = _package_path_for_module(imported_module)
+            if package_path is not None and package_path in path.parents:
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = (
+                imported_names & disallowed_children[imported_module]
+            )
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    return violations
+
+
+def test_selected_change_display_names_data_modules_at_import_sites():
+    """Selected-change display should not import data modules through the package."""
+    assert _external_package_child_module_import_violations(
+        {
+            "git_stage_batch.data": {
+                "line_state",
+                "selected_change_store",
+            },
+        }
+    ) == []
+
+
 def test_replacement_payload_imports_use_core_boundary():
     """Non-batch code should not depend on batch replacement for neutral payloads."""
     neutral_names = {

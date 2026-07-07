@@ -45,17 +45,6 @@ from .auto_advance import resolve_auto_advance
 from . import change_freshness as _change_freshness
 from . import file_hunk_display as _file_hunk_display
 from . import live_diff as _live_diff
-from .progress import (
-    format_id_range as format_id_range,
-    record_binary_hunk_skipped as record_binary_hunk_skipped,
-    record_gitlink_hunk_skipped as record_gitlink_hunk_skipped,
-    record_hunk_discarded as record_hunk_discarded,
-    record_hunk_included as record_hunk_included,
-    record_hunk_skipped as record_hunk_skipped,
-    record_hunks_discarded as record_hunks_discarded,
-    record_rename_hunk_skipped as record_rename_hunk_skipped,
-    record_text_deletion_hunk_skipped as record_text_deletion_hunk_skipped,
-)
 from .selected_change.snapshots import (
     snapshots_are_stale as snapshots_are_stale,
     write_snapshots_for_selected_file_path,

@@ -7,7 +7,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Callable
-from ..batch import query as batch_query
+from ..batch.query import list_batch_names, read_batch_metadata
 from ..data.selected_change.batch_file_cache import cache_batch_as_single_hunk
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.hunk_tracking import fetch_next_change
@@ -231,7 +231,7 @@ def _handle_batch(flow_state: FlowState) -> None:
     # Loop until user presses Ctrl-C to exit submenu
     while True:
         # Show list of existing batches
-        batch_names = batch_query.list_batch_names()
+        batch_names = list_batch_names()
 
         # If no batches exist, jump straight to create
         if not batch_names:
@@ -245,7 +245,7 @@ def _handle_batch(flow_state: FlowState) -> None:
         print()
         print(_("Existing batches:"))
         for name in batch_names:
-            metadata = batch_query.read_batch_metadata(name)
+            metadata = read_batch_metadata(name)
             note = metadata.get("note", "")
             if note:
                 if use_color:
@@ -455,7 +455,7 @@ def _prompt_select_batch(purpose: str, skip_if_single: bool = False) -> str:
         Selected batch name, or empty string if cancelled
     """
 
-    batch_names = batch_query.list_batch_names()
+    batch_names = list_batch_names()
     if not batch_names:
         print()
         print(_("No batches found."), file=sys.stderr)
@@ -468,7 +468,7 @@ def _prompt_select_batch(purpose: str, skip_if_single: bool = False) -> str:
     print()
     print(_("Select batch to {purpose}:").format(purpose=purpose))
     for idx, name in enumerate(batch_names, 1):
-        metadata = batch_query.read_batch_metadata(name)
+        metadata = read_batch_metadata(name)
         note = metadata.get("note", "")
         note_display = f" - {note}" if note else ""
         print(f"  [{idx}] {name}{note_display}")
@@ -495,7 +495,7 @@ def _handle_from(flow_state: FlowState) -> None:
     """Handle [<]from action to set source."""
 
     use_color = Colors.enabled()
-    batches = batch_query.list_batch_names()
+    batches = list_batch_names()
 
     print()
     print(_("Pull changes from:"))
@@ -517,7 +517,7 @@ def _handle_from(flow_state: FlowState) -> None:
 
     # Options 2+: Batches
     for idx, name in enumerate(batches, 2):
-        metadata = batch_query.read_batch_metadata(name)
+        metadata = read_batch_metadata(name)
         note = metadata.get("note", "")
         is_selected = flow_state.source.role is LocationRole.BATCH and flow_state.source.batch_name == name
         marker = selected_marker if is_selected else ""
@@ -556,7 +556,7 @@ def _handle_to(flow_state: FlowState) -> None:
     """Handle [>]to action to set target."""
 
     use_color = Colors.enabled()
-    batches = batch_query.list_batch_names()
+    batches = list_batch_names()
 
     print()
     print(_("Push changes to:"))
@@ -578,7 +578,7 @@ def _handle_to(flow_state: FlowState) -> None:
 
     # Options 2+: Existing batches
     for idx, name in enumerate(batches, 2):
-        metadata = batch_query.read_batch_metadata(name)
+        metadata = read_batch_metadata(name)
         note = metadata.get("note", "")
         is_selected = flow_state.target.role is LocationRole.BATCH and flow_state.target.batch_name == name
         marker = selected_marker if is_selected else ""

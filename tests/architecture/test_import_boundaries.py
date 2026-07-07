@@ -309,6 +309,21 @@ def test_hunk_tracking_does_not_reexport_progress_helpers():
     assert progress_names.isdisjoint(vars(hunk_tracking))
 
 
+def test_hunk_tracking_does_not_reexport_selected_state_helpers():
+    """Selected-state helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    selected_state_names = {
+        "clear_selected_change_state_files",
+        "snapshots_are_stale",
+        "write_snapshots_for_selected_file_path",
+    }
+
+    assert selected_state_names.isdisjoint(vars(hunk_tracking))
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

@@ -243,6 +243,23 @@ def test_hunk_tracking_does_not_reexport_live_change_helpers():
     assert moved_names.isdisjoint(vars(hunk_tracking))
 
 
+def test_hunk_tracking_does_not_reexport_file_hunk_helpers():
+    """Moved file-scoped hunk helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    moved_names = {
+        "build_file_hunk_from_buffer",
+        "cache_file_as_single_hunk",
+        "cache_unstaged_file_as_single_hunk",
+        "render_file_as_single_hunk",
+        "render_unstaged_file_as_single_hunk",
+    }
+
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

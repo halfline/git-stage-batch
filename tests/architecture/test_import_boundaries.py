@@ -821,12 +821,24 @@ def test_batch_review_selection_translation_stays_in_file_review_package():
     )
     public_names = {
         "translate_batch_file_gutter_ids_to_selection_ids",
+        "translate_reset_batch_file_gutter_ids_to_selection_ranges",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "apply_from.py": public_names,
-        SRC_ROOT / "commands" / "discard_from.py": public_names,
-        SRC_ROOT / "commands" / "include_from.py": public_names,
-        SRC_ROOT / "commands" / "show_from.py": public_names,
+        SRC_ROOT / "commands" / "apply_from.py": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
+        SRC_ROOT / "commands" / "discard_from.py": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
+        SRC_ROOT / "commands" / "include_from.py": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
+        SRC_ROOT / "commands" / "reset.py": {
+            "translate_reset_batch_file_gutter_ids_to_selection_ranges",
+        },
+        SRC_ROOT / "commands" / "show_from.py": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
     }
     violations = []
 

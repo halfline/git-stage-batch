@@ -384,6 +384,20 @@ def test_hunk_tracking_does_not_reexport_selected_change_store_helpers():
     assert selected_store_names.isdisjoint(vars(hunk_tracking))
 
 
+def test_hunk_tracking_does_not_reexport_line_state_helpers():
+    """Line-state helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    line_state_names = {
+        "convert_line_changes_to_serializable_dict",
+        "load_line_changes_from_state",
+    }
+
+    assert line_state_names.isdisjoint(vars(hunk_tracking))
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

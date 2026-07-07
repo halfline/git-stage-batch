@@ -122,6 +122,17 @@ def test_batch_file_display_stays_below_hunk_navigation():
     assert "git_stage_batch.data.file_review.state" not in imported_modules
 
 
+def test_batch_hunk_display_does_not_import_hunk_navigation():
+    """Batch display caching should not depend on hunk navigation."""
+    cache_path = SRC_ROOT / "data" / "batch_hunk_display.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(cache_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
 def test_file_review_state_does_not_import_hunk_navigation():
     """File-review safety state should not depend on hunk navigation."""
     review_state_path = SRC_ROOT / "data" / "file_review" / "state.py"
@@ -258,6 +269,23 @@ def test_hunk_tracking_does_not_reexport_file_hunk_helpers():
     }
 
     assert moved_names.isdisjoint(vars(hunk_tracking))
+
+
+def test_hunk_tracking_does_not_reexport_batch_hunk_helpers():
+    """Batch display helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    moved_or_removed_names = {
+        "cache_batch_as_single_hunk",
+        "cache_batch_files_generator",
+        "cache_rendered_batch_file_display",
+        "get_batch_file_for_line_operation",
+        "render_batch_file_display",
+    }
+
+    assert moved_or_removed_names.isdisjoint(vars(hunk_tracking))
 
 
 def test_recalc_handoff_stays_in_command_helper():

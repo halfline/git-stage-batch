@@ -161,6 +161,30 @@ def test_editor_package_does_not_reexport_buffer_primitives():
     assert buffer_names.isdisjoint(vars(editor))
 
 
+def test_data_package_does_not_reexport_data_apis():
+    """Data callers should import concrete modules instead of the package."""
+    data_path = SRC_ROOT / "data" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(data_path)
+    }
+    data = __import__("git_stage_batch.data", fromlist=["data"])
+    facade_names = {
+        "auto_add_untracked_files",
+        "format_id_range",
+        "get_file_progress",
+        "get_hunk_counts",
+        "record_hunk_discarded",
+        "record_hunk_included",
+        "record_hunk_skipped",
+        "restore_batch_refs",
+        "snapshot_batch_refs",
+    }
+
+    assert imported_modules <= {"__future__"}
+    assert facade_names.isdisjoint(vars(data))
+
+
 def test_selected_change_store_stays_below_orchestration_state():
     """Selected-change persistence should stay below orchestration state."""
     store_path = SRC_ROOT / "data" / "selected_change" / "store.py"

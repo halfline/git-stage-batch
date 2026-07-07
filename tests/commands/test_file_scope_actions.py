@@ -1,6 +1,20 @@
 from types import SimpleNamespace
 
 import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
+from git_stage_batch.exceptions import CommandError
+
+
+class _FileScope:
+    def __init__(self, files=(), optional_file=None):
+        self.files = tuple(files)
+        self._optional_file = optional_file
+
+    @property
+    def is_multiple(self):
+        return len(self.files) > 1
+
+    def optional_file(self):
+        return self._optional_file
 
 
 class _Checkpoint:
@@ -25,6 +39,59 @@ def _capture_undo_checkpoints(monkeypatch):
 
     monkeypatch.setattr(multi_file_actions, "undo_checkpoint", fake_undo_checkpoint)
     return calls
+
+
+def test_run_for_each_resolved_file_wraps_multiple_files(monkeypatch):
+    checkpoint_calls = _capture_undo_checkpoints(monkeypatch)
+    callback_calls = []
+
+    multi_file_actions.run_for_each_resolved_file(
+        _FileScope(files=("alpha.txt", "beta.txt")),
+        callback_calls.append,
+        undo_operation="include --from scratch",
+        worktree_paths=("alpha.txt", "beta.txt"),
+    )
+
+    assert checkpoint_calls == [
+        (
+            "enter",
+            "include --from scratch --files alpha.txt beta.txt",
+            ["alpha.txt", "beta.txt"],
+        ),
+        ("exit",),
+    ]
+    assert callback_calls == ["alpha.txt", "beta.txt"]
+
+
+def test_run_for_each_resolved_file_dispatches_optional_file(monkeypatch):
+    checkpoint_calls = _capture_undo_checkpoints(monkeypatch)
+    callback_calls = []
+
+    multi_file_actions.run_for_each_resolved_file(
+        _FileScope(optional_file="alpha.txt"),
+        callback_calls.append,
+        undo_operation="include --from scratch",
+    )
+
+    assert checkpoint_calls == []
+    assert callback_calls == ["alpha.txt"]
+
+
+def test_run_for_each_resolved_file_rejects_line_ids_for_multiple_files():
+    callback_calls = []
+
+    try:
+        multi_file_actions.run_for_each_resolved_file(
+            _FileScope(files=("alpha.txt", "beta.txt")),
+            callback_calls.append,
+            line_ids="1",
+        )
+    except CommandError as error:
+        assert "Cannot use --lines with multiple files" in error.message
+    else:
+        raise AssertionError("expected CommandError")
+
+    assert callback_calls == []
 
 
 def test_include_each_resolved_file_reports_aggregate_result(

@@ -589,6 +589,88 @@ def test_file_review_fingerprints_stay_out_of_state_module():
     assert violations == []
 
 
+def test_file_review_records_stay_out_of_state_module():
+    """File-review record types should live beside validation state."""
+    review_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+    records = __import__(
+        "git_stage_batch.data.file_review.records",
+        fromlist=["records"],
+    )
+    public_names = {
+        "ActionScopeResolution",
+        "FileReviewAction",
+        "FileReviewSelectionState",
+        "FileReviewState",
+        "ImplicitLiveToBatchFileActionResult",
+        "ReviewSource",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "selection.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "apply_from.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "discard.py": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        SRC_ROOT / "commands" / "discard_from.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "include.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "include_from.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "reset.py": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        SRC_ROOT / "commands" / "show.py": {"ReviewSource"},
+        SRC_ROOT / "commands" / "show_from.py": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        SRC_ROOT / "commands" / "skip.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "status.py": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        SRC_ROOT / "output" / "file_review.py": {
+            "FileReviewAction",
+            "FileReviewSelectionState",
+            "FileReviewState",
+            "ReviewSource",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(records)
+    assert public_names.isdisjoint(vars(review_state))
+
+    state_text = (SRC_ROOT / "data" / "file_review" / "state.py").read_text()
+    assert "from . import records as _records" in state_text
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "records.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.records":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_file_review_output_does_not_import_hunk_navigation():
     """File-review output should not depend on hunk navigation."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
@@ -830,6 +912,10 @@ def test_tui_file_review_state_name_does_not_shadow_persisted_state():
         if isinstance(node, ast.ClassDef)
     }
     imported_state_names = set()
+    records = __import__(
+        "git_stage_batch.data.file_review.records",
+        fromlist=["records"],
+    )
     persisted_state = __import__(
         "git_stage_batch.data.file_review.state",
         fromlist=["state"],
@@ -840,7 +926,8 @@ def test_tui_file_review_state_name_does_not_shadow_persisted_state():
             continue
         imported_state_names |= {alias.name for alias in node.names}
 
-    assert "FileReviewState" in vars(persisted_state)
+    assert "FileReviewState" in vars(records)
+    assert "FileReviewState" not in vars(persisted_state)
     assert "FileReviewSessionState" in class_names
     assert "FileReviewState" not in class_names
     assert "FileReviewState" not in imported_state_names

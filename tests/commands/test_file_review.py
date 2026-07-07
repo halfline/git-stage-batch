@@ -28,9 +28,8 @@ from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
 from git_stage_batch.core.actionable_changes import ActionableSelectionReason
 import git_stage_batch.batch.file_display as file_display_module
+from git_stage_batch.data.file_review.records import FileReviewAction, ReviewSource
 from git_stage_batch.data.file_review.state import (
-    FileReviewAction,
-    ReviewSource,
     read_last_file_review_state,
     shown_review_selections_for_action,
     validate_pathless_review_line_action,

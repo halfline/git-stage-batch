@@ -288,6 +288,27 @@ def test_hunk_tracking_does_not_reexport_batch_hunk_helpers():
     assert moved_or_removed_names.isdisjoint(vars(hunk_tracking))
 
 
+def test_hunk_tracking_does_not_reexport_progress_helpers():
+    """Progress helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    progress_names = {
+        "format_id_range",
+        "record_binary_hunk_skipped",
+        "record_gitlink_hunk_skipped",
+        "record_hunk_discarded",
+        "record_hunk_included",
+        "record_hunk_skipped",
+        "record_hunks_discarded",
+        "record_rename_hunk_skipped",
+        "record_text_deletion_hunk_skipped",
+    }
+
+    assert progress_names.isdisjoint(vars(hunk_tracking))
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

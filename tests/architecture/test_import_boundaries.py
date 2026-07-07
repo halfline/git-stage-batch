@@ -721,6 +721,32 @@ def test_tui_cli_escape_does_not_import_dispatch():
     assert "git_stage_batch.tui.interactive" in dispatch_imports
 
 
+def test_tui_file_review_state_name_does_not_shadow_persisted_state():
+    """TUI review state should not reuse the persisted file-review state name."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    tree = ast.parse(review_path.read_text(), filename=str(review_path))
+    class_names = {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+    imported_state_names = set()
+    persisted_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+
+    for imported_module, node in _import_from_nodes(review_path):
+        if imported_module != "git_stage_batch.data.file_review.state":
+            continue
+        imported_state_names |= {alias.name for alias in node.names}
+
+    assert "FileReviewState" in vars(persisted_state)
+    assert "FileReviewSessionState" in class_names
+    assert "FileReviewState" not in class_names
+    assert "FileReviewState" not in imported_state_names
+
+
 def test_commands_do_not_import_tui():
     """Command modules should not launch or depend on TUI modules."""
     violations = []

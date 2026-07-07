@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ...data.hunk_tracking import (
+from ...data.selected_change.hunk_recalculation import (
     RecalculateSelectedHunkResult,
     recalculate_selected_hunk_for_file,
 )

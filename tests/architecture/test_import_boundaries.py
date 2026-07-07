@@ -324,6 +324,27 @@ def test_hunk_tracking_does_not_reexport_selected_state_helpers():
     assert selected_state_names.isdisjoint(vars(hunk_tracking))
 
 
+def test_hunk_tracking_does_not_reexport_batch_selection_helpers():
+    """Batch selection helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    batch_selection_names = {
+        "compute_batch_binary_fingerprint",
+        "compute_batch_gitlink_fingerprint",
+        "require_current_selected_batch_binary_file_for_batch",
+        "require_current_selected_batch_gitlink_file_for_batch",
+        "selected_batch_binary_batch_name",
+        "selected_batch_binary_file_for_batch",
+        "selected_batch_binary_matches_batch",
+        "selected_batch_gitlink_file_for_batch",
+        "selected_batch_gitlink_matches_batch",
+    }
+
+    assert batch_selection_names.isdisjoint(vars(hunk_tracking))
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

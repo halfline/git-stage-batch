@@ -13,8 +13,8 @@ from git_stage_batch.batch.merge import (
     merge_batch_from_line_sequences_as_buffer,
     _sequence_present_at_boundary,
     _find_boundary_after_source_line,
-    RealizedEntry,
 )
+from git_stage_batch.batch.realized_entries import RealizedEntry
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError

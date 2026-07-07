@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from ..batch.ref_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
-from ..editor import (
-    EditorBuffer,
-    load_git_blob_as_buffer,
+from ..core.buffer import (
+    LineBuffer,
     write_buffer_to_path,
     write_buffer_to_working_tree_path,
 )
+from ..editor import load_git_blob_as_buffer
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
@@ -211,7 +211,7 @@ def _snapshot_worktree_paths(paths: list[str]) -> list[dict[str, Any]]:
 
 
 def _create_blob_from_path(path: Path) -> str:
-    with EditorBuffer.from_path(path) as buffer:
+    with LineBuffer.from_path(path) as buffer:
         return create_git_blob(buffer.byte_chunks())
 
 

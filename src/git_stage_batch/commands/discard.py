@@ -94,12 +94,14 @@ from ..data.progress import record_hunk_discarded, record_hunks_discarded
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
 from ..data.session import require_session_started, snapshot_file_if_untracked, snapshot_files_if_untracked
 from ..data.undo import undo_checkpoint
+from ..core.buffer import (
+    LineBuffer,
+    write_buffer_to_path,
+)
 from ..editor import (
-    EditorBuffer,
     load_git_object_as_buffer,
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
-    write_buffer_to_path,
 )
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
@@ -285,7 +287,7 @@ class DiscardFilesToBatchResult:
     discarded_files: list[str]
 
 
-def _buffer_ends_with_lf(buffer: EditorBuffer) -> bool:
+def _buffer_ends_with_lf(buffer: LineBuffer) -> bool:
     last_chunk = b""
     for chunk in buffer.byte_chunks():
         if chunk:
@@ -465,7 +467,7 @@ def command_discard(
             return
 
         # Text hunk - use git apply -R
-        with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
+        with LineBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
             # Extract filename for user feedback and snapshotting
             line_changes = build_line_changes_from_patch_lines(patch_buffer)
             filename = line_changes.path
@@ -1156,7 +1158,7 @@ def _command_discard_lines_to_batch_as(
     except ValueError as e:
         exit_with_error(str(e))
 
-    target_working_buffer: EditorBuffer | None = None
+    target_working_buffer: LineBuffer | None = None
     try:
         with rewritten_working_buffer as rewritten_working_lines:
             rewritten_cached_lines = build_file_hunk_from_buffer(
@@ -1546,7 +1548,7 @@ def _collect_text_file_discard_inputs(
             discard_input.patches_to_discard.append(
                 _PreparedPatchDiscard(
                     patch_lines=patch_stack.enter_context(
-                        EditorBuffer.from_chunks(patch.lines)
+                        LineBuffer.from_chunks(patch.lines)
                     ),
                     patch_hash=patch_hash,
                 )
@@ -1802,7 +1804,7 @@ def _command_discard_file_to_batch(
                 )
                 all_lines_to_batch.extend(hunk_lines.lines)
                 patches_to_discard.append((
-                    patch_stack.enter_context(EditorBuffer.from_chunks(patch.lines)),
+                    patch_stack.enter_context(LineBuffer.from_chunks(patch.lines)),
                     patch_hash,
                 ))
 
@@ -2170,7 +2172,7 @@ def _command_discard_hunk_to_batch(
 
     # Get the file path and hash from currently cached hunk
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-    with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as selected_patch_lines:
+    with LineBuffer.from_path(get_selected_hunk_patch_file_path()) as selected_patch_lines:
         return _command_discard_text_hunk_to_batch(
             batch_name=batch_name,
             selected_patch_lines=selected_patch_lines,
@@ -2240,7 +2242,7 @@ def _command_discard_text_hunk_to_batch(
                     )
                     all_lines_to_batch.extend(hunk_lines.lines)
                     patches_to_discard.append((
-                        patch_stack.enter_context(EditorBuffer.from_chunks(patch.lines)),
+                        patch_stack.enter_context(LineBuffer.from_chunks(patch.lines)),
                         patch_hash,
                     ))
         else:

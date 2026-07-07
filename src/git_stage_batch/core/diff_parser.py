@@ -16,7 +16,7 @@ from .models import (
     SingleHunkPatch,
     TextFileDeletionChange,
 )
-from ..editor import EditorBuffer
+from .buffer import LineBuffer
 from ..exceptions import exit_with_error
 from ..i18n import _
 
@@ -174,7 +174,7 @@ class _UnifiedDiffParserBuildContext:
 
     def __init__(self, lines: Iterable[bytes]) -> None:
         self._lines = lines
-        self._buffers: list[EditorBuffer] = []
+        self._buffers: list[LineBuffer] = []
         self._parser: Iterator[UnifiedDiffItem] | None = None
         self._closed = False
 
@@ -202,11 +202,11 @@ class _UnifiedDiffParserBuildContext:
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
 
-    def _own_buffer(self, buffer: EditorBuffer) -> EditorBuffer:
+    def _own_buffer(self, buffer: LineBuffer) -> LineBuffer:
         self._buffers.append(buffer)
         return buffer
 
-    def _release_buffer(self, buffer: EditorBuffer) -> None:
+    def _release_buffer(self, buffer: LineBuffer) -> None:
         try:
             self._buffers.remove(buffer)
         except ValueError:
@@ -214,7 +214,7 @@ class _UnifiedDiffParserBuildContext:
         buffer.close()
 
     def _release_item(self, item: UnifiedDiffItem | None) -> None:
-        if isinstance(item, SingleHunkPatch) and isinstance(item.lines, EditorBuffer):
+        if isinstance(item, SingleHunkPatch) and isinstance(item.lines, LineBuffer):
             self._release_buffer(item.lines)
 
     def _iter_owned(self) -> Iterator[UnifiedDiffItem]:
@@ -243,7 +243,7 @@ class _UnifiedDiffParserBuildContext:
         return SingleHunkPatch(
             old_path=old_path,
             new_path=new_path,
-            lines=self._own_buffer(EditorBuffer.from_chunks(lines)),
+            lines=self._own_buffer(LineBuffer.from_chunks(lines)),
         )
 
     def _parse(self) -> Iterator[UnifiedDiffItem]:

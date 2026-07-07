@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 
-from ...editor import (
-    EditorBuffer,
+from ...core.buffer import (
+    LineBuffer,
     buffer_matches,
     buffer_byte_count,
     buffer_preview,
-    load_git_object_as_buffer,
     write_buffer_to_path,
 )
+from ...editor import load_git_object_as_buffer
 from ...utils.git import get_git_repository_root_path
 from ...utils.journal import log_journal
 from ...utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
@@ -22,15 +22,15 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
     with ExitStack() as stack:
         index_version = load_git_object_as_buffer(f":{file_path}")
         if index_version is None:
-            index_version = EditorBuffer.from_bytes(b"")
+            index_version = LineBuffer.from_bytes(b"")
         stack.enter_context(index_version)
 
         repo_root = get_git_repository_root_path()
         file_full_path = repo_root / file_path
         if file_full_path.exists():
-            working_tree_version = EditorBuffer.from_path(file_full_path)
+            working_tree_version = LineBuffer.from_path(file_full_path)
         else:
-            working_tree_version = EditorBuffer.from_bytes(b"")
+            working_tree_version = LineBuffer.from_bytes(b"")
         stack.enter_context(working_tree_version)
 
         # When index is empty but working tree has content, check if file exists in HEAD.
@@ -62,7 +62,7 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
         )
 
 
-def _buffer_line_count(buffer: EditorBuffer) -> int:
+def _buffer_line_count(buffer: LineBuffer) -> int:
     """Return a line count for journal metadata without materializing content."""
     line_breaks = 0
     seen_data = False
@@ -109,23 +109,23 @@ def snapshots_are_stale(file_path: str) -> bool:
     try:
         with ExitStack() as stack:
             cached_index_content = stack.enter_context(
-                EditorBuffer.from_path(snapshot_base_path)
+                LineBuffer.from_path(snapshot_base_path)
             )
             cached_worktree_content = stack.enter_context(
-                EditorBuffer.from_path(snapshot_new_path)
+                LineBuffer.from_path(snapshot_new_path)
             )
 
             selected_index_content = load_git_object_as_buffer(f":{file_path}")
             if selected_index_content is None:
-                selected_index_content = EditorBuffer.from_bytes(b"")
+                selected_index_content = LineBuffer.from_bytes(b"")
             stack.enter_context(selected_index_content)
 
             repo_root = get_git_repository_root_path()
             file_full_path = repo_root / file_path
             if file_full_path.exists():
-                selected_worktree_content = EditorBuffer.from_path(file_full_path)
+                selected_worktree_content = LineBuffer.from_path(file_full_path)
             else:
-                selected_worktree_content = EditorBuffer.from_bytes(b"")
+                selected_worktree_content = LineBuffer.from_bytes(b"")
             stack.enter_context(selected_worktree_content)
 
             return (

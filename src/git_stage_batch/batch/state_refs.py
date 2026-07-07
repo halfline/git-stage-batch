@@ -9,7 +9,8 @@ from typing import Any
 
 from .ref_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from .validation import validate_batch_name
-from ..editor import EditorBuffer, load_git_object_as_buffer
+from ..core.buffer import LineBuffer
+from ..editor import load_git_object_as_buffer
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import (
     create_git_blob,
@@ -24,7 +25,7 @@ from ..utils.git import (
 from ..utils.paths import get_batch_metadata_file_path
 
 
-_StateBufferData = bytes | EditorBuffer
+_StateBufferData = bytes | LineBuffer
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,7 @@ class _StateBufferUpdate:
 
 
 def _buffer_chunks(buffer: _StateBufferData):
-    if isinstance(buffer, EditorBuffer):
+    if isinstance(buffer, LineBuffer):
         yield from buffer.byte_chunks()
     else:
         yield buffer
@@ -143,7 +144,7 @@ def sync_batch_state_refs(
     batch_name: str,
     *,
     content_commit: str | None = None,
-    source_buffers: dict[str, EditorBuffer] | None = None,
+    source_buffers: dict[str, LineBuffer] | None = None,
 ) -> None:
     """Publish batch metadata and source snapshots into authoritative Git refs."""
     validate_batch_name(batch_name)
@@ -166,7 +167,7 @@ def sync_batch_state_refs(
 
     source_buffers = source_buffers or {}
     buffer_updates: list[_StateBufferUpdate] = []
-    managed_buffers: list[EditorBuffer] = []
+    managed_buffers: list[LineBuffer] = []
 
     try:
         with temp_git_index() as env:

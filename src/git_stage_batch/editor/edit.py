@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import SupportsBytes, overload
 
-from .buffer import EditorBuffer
+from ..core.buffer import LineBuffer
 from .line_endings import detect_line_ending, restore_line_endings_in_chunks
 from ..utils.text import normalize_line_ending
 
@@ -280,7 +280,7 @@ class Editor(Sequence[_LineLike]):
         self._selection: _Selection | None = None
         self._cursor_positions: dict[int, int] = {}
         self._next_cursor_id = 0
-        self._owned_buffers: list[EditorBuffer] = []
+        self._owned_buffers: list[LineBuffer] = []
         self._incoming_editor_leases: dict[Editor, _EditorLease] = {}
         self._outgoing_editor_leases: set[_EditorLease] = set()
         self._closed = False
@@ -542,7 +542,7 @@ class Editor(Sequence[_LineLike]):
         if not isinstance(data, bytes):
             raise TypeError(f"expected bytes object, got {type(data).__name__}")
 
-        buffer = EditorBuffer.from_bytes(data)
+        buffer = LineBuffer.from_bytes(data)
         line_count = _count_lines_in_bytes(data)
         self._owned_buffers.append(buffer)
         self._commit_edit(
@@ -593,7 +593,7 @@ class Editor(Sequence[_LineLike]):
         has_trailing_newline: bool = True,
         add_trailing_newline_when_nonempty: bool = False,
         line_endings_from: Sequence[bytes] | None = None,
-    ) -> EditorBuffer:
+    ) -> LineBuffer:
         """Materialize final buffer and freeze the editor."""
         self._require_open()
         self._require_no_editor_borrowers()
@@ -610,7 +610,7 @@ class Editor(Sequence[_LineLike]):
                     chunks,
                     detect_line_ending(line_endings_from),
                 )
-            return EditorBuffer.from_chunks(
+            return LineBuffer.from_chunks(
                 chunks
             )
         finally:
@@ -914,7 +914,7 @@ class Editor(Sequence[_LineLike]):
 class _InsertedLines:
     ranges: Sequence[_LineRange]
     line_count: int
-    owned_buffer: EditorBuffer | None = None
+    owned_buffer: LineBuffer | None = None
 
 
 class _EditorLease:
@@ -1032,7 +1032,7 @@ def edit_lines_as_buffer(
     selection_end: int,
     has_trailing_newline: bool,
     add_trailing_newline_when_nonempty: bool = False,
-) -> EditorBuffer:
+) -> LineBuffer:
     """Apply edited lines to an indexed selection and return a buffer."""
     if selection_start < 0 or selection_end < selection_start:
         raise ValueError("invalid line selection")
@@ -1063,7 +1063,7 @@ def export_lines_as_buffer(
     has_trailing_newline: bool = True,
     add_trailing_newline_when_nonempty: bool = False,
     line_endings_from: Sequence[bytes] | None = None,
-) -> EditorBuffer:
+) -> LineBuffer:
     """Export generated lines to a buffer without editor state."""
     chunks = _line_body_chunks(
         (_line_body(line) for line in lines),
@@ -1077,7 +1077,7 @@ def export_lines_as_buffer(
             chunks,
             detect_line_ending(line_endings_from),
         )
-    return EditorBuffer.from_chunks(chunks)
+    return LineBuffer.from_chunks(chunks)
 
 
 def _line_range_bounds(
@@ -1193,7 +1193,7 @@ def _spool_inserted_lines(
             line_count += 1
             yield _line_body(line) + b"\n"
 
-    buffer = EditorBuffer.from_chunks(chunks())
+    buffer = LineBuffer.from_chunks(chunks())
     return _InsertedLines(
         ranges=(
             _LineRange(buffer, 0, line_count, owner),

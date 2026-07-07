@@ -6,12 +6,12 @@ from collections.abc import Iterable, Sequence
 from contextlib import ExitStack
 from enum import Enum
 
-from ..editor import (
+from .buffer import (
     EditorBuffer,
     buffer_byte_count,
     buffer_matches,
-    load_git_object_as_buffer,
 )
+from ..editor import load_git_object_as_buffer
 from ..utils.git import get_git_repository_root_path
 
 

@@ -10,12 +10,12 @@ from ..core.replacement import (
     coerce_replacement_payload,
     replacement_line_bodies,
 )
-from ..editor import (
-    EditorBuffer,
+from ..core.buffer import (
+    LineBuffer,
     buffer_byte_count,
     buffer_preview,
-    edit_lines_as_buffer,
 )
+from ..editor import edit_lines_as_buffer
 from ..utils.git import create_git_blob, git_update_index, run_git_command
 from ..utils.journal import log_journal
 
@@ -168,10 +168,10 @@ def build_target_index_buffer_from_lines(
     base_lines: Sequence[bytes],
     *,
     base_has_trailing_newline: bool,
-) -> EditorBuffer:
+) -> LineBuffer:
     """Build target index content from indexed base content lines."""
     base_line_count = len(base_lines)
-    return EditorBuffer.from_chunks(
+    return LineBuffer.from_chunks(
         _target_index_line_contents(
             line_changes,
             include_ids,
@@ -189,7 +189,7 @@ def build_target_index_buffer_with_replaced_lines(
     *,
     base_has_trailing_newline: bool,
     trim_unchanged_edge_anchors: bool = True,
-) -> EditorBuffer:
+) -> LineBuffer:
     """Build target index content by replacing a span in indexed base lines."""
     def longest_prefix_context_match(
         candidate_lines: list[bytes],
@@ -411,10 +411,10 @@ def build_target_working_tree_buffer_from_lines(
     working_lines: Sequence[bytes],
     *,
     working_has_trailing_newline: bool,
-) -> EditorBuffer:
+) -> LineBuffer:
     """Build target working tree content from indexed working tree lines."""
     working_line_count = len(working_lines)
-    return EditorBuffer.from_chunks(
+    return LineBuffer.from_chunks(
         _target_working_tree_line_contents(
             line_changes,
             discard_ids,
@@ -432,7 +432,7 @@ def build_target_working_tree_buffer_with_replaced_lines(
     *,
     working_has_trailing_newline: bool,
     trim_unchanged_edge_anchors: bool = True,
-) -> EditorBuffer:
+) -> LineBuffer:
     """Build working tree content by replacing a span in indexed lines."""
     def longest_prefix_context_match(
         candidate_lines: list[bytes],
@@ -579,7 +579,7 @@ def build_target_working_tree_buffer_with_replaced_lines(
     )
 
 
-def update_index_with_blob_buffer(path: str, buffer: EditorBuffer) -> None:
+def update_index_with_blob_buffer(path: str, buffer: LineBuffer) -> None:
     """
     Update the git index with a new buffer for a file.
 

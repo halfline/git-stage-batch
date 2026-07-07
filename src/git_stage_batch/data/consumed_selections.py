@@ -17,7 +17,7 @@ from ..batch.source_refresh import (
     refresh_selected_lines_against_source_lines,
 )
 from .batch_sources import create_batch_source_commit
-from ..editor import EditorBuffer
+from ..core.buffer import LineBuffer
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.paths import get_session_consumed_selections_file_path
 
@@ -49,7 +49,7 @@ def read_consumed_file_metadata(file_path: str) -> dict[str, Any] | None:
 def record_consumed_selection(
     file_path: str,
     *,
-    source_buffer: EditorBuffer,
+    source_buffer: LineBuffer,
     selected_lines: list,
     replacement_mask: dict[str, list[str]] | None = None,
 ) -> None:

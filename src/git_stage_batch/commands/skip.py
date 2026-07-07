@@ -36,7 +36,6 @@ from ..data.hunk_tracking import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     require_selected_hunk,
-    stream_live_git_diff,
 )
 from ..data.file_review.state import (
     FileReviewAction,
@@ -47,6 +46,7 @@ from ..data.file_review.state import (
 )
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from ..data.live_diff import stream_live_git_diff
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error

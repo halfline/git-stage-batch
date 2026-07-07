@@ -1035,6 +1035,41 @@ def test_action_completion_stays_in_command_helper():
     assert violations == []
 
 
+def test_selected_change_display_stays_in_command_helper():
+    """Command flows should not render selected changes from data helpers."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    assert "show_selected_change" not in vars(hunk_tracking)
+
+    command_paths = (
+        SRC_ROOT / "commands" / "start.py",
+        SRC_ROOT / "commands" / "file_scope" / "multi_file_actions.py",
+        SRC_ROOT / "commands" / "selection" / "action_completion.py",
+        SRC_ROOT / "commands" / "session" / "iteration.py",
+    )
+    violations = []
+
+    for command_path in command_paths:
+        imports = _import_from_nodes(command_path)
+        imported_modules = {imported_module for imported_module, _node in imports}
+        assert "git_stage_batch.commands.selection.selected_change_display" in imported_modules
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.data.hunk_tracking":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            if "show_selected_change" in imported_names:
+                relative_path = command_path.relative_to(REPO_ROOT)
+                violations.append(
+                    f"{relative_path}:{node.lineno} imports show_selected_change"
+                )
+
+    assert violations == []
+
+
 def test_advance_display_stays_in_command_helper():
     """Block and unblock should use the command flow helper."""
     hunk_tracking = __import__(

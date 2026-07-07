@@ -569,6 +569,56 @@ def test_batch_ownership_uses_public_absence_builder():
     assert violations == []
 
 
+def test_batch_storage_uses_public_content_helpers():
+    """Cross-module storage callers should import public content helpers."""
+    storage = __import__(
+        "git_stage_batch.batch.storage",
+        fromlist=["storage"],
+    )
+    public_names = {
+        "build_realized_buffer_from_lines",
+        "remove_file_from_batch_commit",
+        "update_batch_commit",
+    }
+    private_names = {
+        "_build_realized_buffer_from_lines",
+        "_remove_file_from_batch_commit",
+        "_update_batch_commit",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "sift.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(storage)
+    assert private_names.isdisjoint(vars(storage))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "storage.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.storage":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_merge_uses_public_entry_helpers():
     """Batch callers should import public merge entry helpers."""
     merge = __import__(

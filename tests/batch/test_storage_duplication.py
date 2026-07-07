@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.storage import (
-    _build_realized_buffer_from_lines,
+    build_realized_buffer_from_lines,
 )
 from git_stage_batch.editor import EditorBuffer
 
@@ -17,7 +17,7 @@ def _build_realized_content_from_bytes(
     with (
         EditorBuffer.from_bytes(base_content) as base_lines,
         EditorBuffer.from_bytes(batch_source_content) as batch_source_lines,
-        _build_realized_buffer_from_lines(
+        build_realized_buffer_from_lines(
             base_lines,
             batch_source_lines,
             ownership,
@@ -95,7 +95,7 @@ def test_build_realized_content_from_lines_accepts_non_list_sequences(line_seque
     batch_source_lines = line_sequence([b"A\n", b"NEW\n", b"B\n"])
     ownership = BatchOwnership.from_presence_lines(["2"], [])
 
-    with _build_realized_buffer_from_lines(
+    with build_realized_buffer_from_lines(
         base_lines,
         batch_source_lines,
         ownership,
@@ -111,7 +111,7 @@ def test_build_realized_buffer_from_lines_returns_buffer():
     batch_source_content = b"A\r\nNEW\r\nB\r\n"
     ownership = BatchOwnership.from_presence_lines(["2"], [])
 
-    with _build_realized_buffer_from_lines(
+    with build_realized_buffer_from_lines(
         base_content.splitlines(keepends=True),
         batch_source_content.splitlines(keepends=True),
         ownership,

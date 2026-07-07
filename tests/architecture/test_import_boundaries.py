@@ -425,6 +425,57 @@ def test_selected_line_source_refresh_uses_public_api():
     assert violations == []
 
 
+def test_batch_lineage_uses_public_data_types():
+    """Batch modules should import public lineage data types."""
+    lineage = __import__(
+        "git_stage_batch.batch.lineage",
+        fromlist=["lineage"],
+    )
+    public_names = {
+        "BatchSourceLineage",
+        "LineageRun",
+    }
+    private_names = {
+        "_BatchSourceLineage",
+        "_LineageRun",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "ownership.py": public_names,
+        SRC_ROOT / "batch" / "source_refresh.py": {
+            "BatchSourceLineage",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(lineage)
+    assert private_names.isdisjoint(vars(lineage))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "lineage.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.lineage":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_hunk_tracking_does_not_reexport_live_change_helpers():
     """Moved live-change helpers should not stay available from hunk tracking."""
     hunk_tracking = __import__(

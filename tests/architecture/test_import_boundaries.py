@@ -549,8 +549,8 @@ def test_argument_parser_uses_file_scope_resolver_module():
     assert parser_local_names.isdisjoint(vars(parser))
 
 
-def test_cli_dispatch_does_not_import_command_facade():
-    """CLI dispatch should import exact modules for fallback and TUI paths."""
+def test_cli_dispatch_delegates_noninteractive_execution():
+    """CLI dispatch should launch TUI or delegate parsed command execution."""
     dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
     imported_modules = {
         imported_module
@@ -558,9 +558,34 @@ def test_cli_dispatch_does_not_import_command_facade():
     }
 
     assert "git_stage_batch.commands" not in imported_modules
-    assert "git_stage_batch.commands.show" in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
+    assert "git_stage_batch.cli.execution" in imported_modules
     assert "git_stage_batch.tui.interactive" in imported_modules
+
+
+def test_tui_cli_escape_does_not_import_dispatch():
+    """TUI command escape should execute parsed args without importing launcher dispatch."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    execution_path = SRC_ROOT / "cli" / "execution.py"
+    dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    execution_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(execution_path)
+    }
+    dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(dispatch_path)
+    }
+
+    assert "git_stage_batch.cli.argument_parser" in interactive_imports
+    assert "git_stage_batch.cli.execution" in interactive_imports
+    assert "git_stage_batch.cli.dispatch" not in interactive_imports
+    assert "git_stage_batch.tui.interactive" not in execution_imports
+    assert "git_stage_batch.tui.interactive" in dispatch_imports
 
 
 def test_commands_do_not_import_tui():

@@ -524,6 +524,51 @@ def test_batch_ownership_uses_public_lineage_helpers():
     assert violations == []
 
 
+def test_batch_ownership_uses_public_absence_builder():
+    """Cross-module ownership callers should import the public absence builder."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    public_names = {
+        "AbsenceContentBuilder",
+    }
+    private_names = {
+        "_AbsenceContentBuilder",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "sift.py": public_names,
+    }
+    violations = []
+
+    assert "AbsenceContentBuilder" in vars(ownership)
+    assert private_names.isdisjoint(vars(ownership))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "ownership.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.ownership":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_merge_uses_public_entry_helpers():
     """Batch callers should import public merge entry helpers."""
     merge = __import__(

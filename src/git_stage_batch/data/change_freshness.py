@@ -9,7 +9,7 @@ from ..core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
-from ..core.text_lifecycle import detect_empty_text_lifecycle_change
+from .text_lifecycle_detection import detect_empty_text_lifecycle_change
 from .file_change_display import (
     render_binary_file_change,
     render_gitlink_change,

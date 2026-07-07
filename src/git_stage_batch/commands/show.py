@@ -16,8 +16,10 @@ from ..core.hashing import (
 )
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
-    SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
+)
+from ..data.selected_change.store import (
+    SelectedChangeKind,
     cache_binary_file_change,
     cache_gitlink_change,
     cache_rename_change,

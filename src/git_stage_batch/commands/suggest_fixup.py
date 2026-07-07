@@ -9,12 +9,10 @@ from typing import Any
 
 from ..core.line_selection import parse_line_selection
 from ..data.file_review.state import compute_current_file_review_diff_fingerprint
-from ..data.hunk_tracking import (
-    get_selected_change_file_path,
-    require_selected_hunk,
-)
+from ..data.hunk_tracking import require_selected_hunk
 from ..data.file_hunk_display import render_file_as_single_hunk
 from ..data.line_state import load_line_changes_from_state
+from ..data.selected_change.store import get_selected_change_file_path
 from ..data.session import require_session_started
 from ..exceptions import exit_with_error
 from ..i18n import _

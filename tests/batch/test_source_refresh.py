@@ -13,10 +13,10 @@ from git_stage_batch.commands import include, discard
 from git_stage_batch.batch.source_refresh import (
     RefreshedBatchSelection,
     PreparedBatchUpdate,
-    _refresh_selected_lines_against_source_lines,
     acquire_batch_ownership_update_for_selection,
     ensure_batch_source_current_for_selection,
     prepare_batch_ownership_update_for_selection,
+    refresh_selected_lines_against_source_lines,
 )
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
@@ -304,7 +304,7 @@ def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
             ),
         ]
 
-        refreshed = _refresh_selected_lines_against_source_lines(
+        refreshed = refresh_selected_lines_against_source_lines(
             selected_lines,
             source_lines=source_with_provenance.source_buffer,
             working_lines=(),
@@ -323,7 +323,7 @@ def test_refresh_selected_lines_accepts_non_list_source_sequences(line_sequence)
         ),
     ]
 
-    refreshed = _refresh_selected_lines_against_source_lines(
+    refreshed = refresh_selected_lines_against_source_lines(
         selected_lines,
         source_lines=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
         working_lines=line_sequence([b"line1\n", b"line3\n"]),
@@ -341,7 +341,7 @@ def test_refresh_selected_lines_accepts_non_list_line_sequences(line_sequence):
         ),
     ]
 
-    refreshed = _refresh_selected_lines_against_source_lines(
+    refreshed = refresh_selected_lines_against_source_lines(
         selected_lines,
         source_lines=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
         working_lines=line_sequence([b"line1\n", b"line3\n"]),

@@ -22,7 +22,6 @@ from ..data.hunk_tracking import (
     cache_gitlink_change,
     cache_rename_change,
     cache_text_deletion_change,
-    clear_selected_change_state_files,
     get_selected_change_file_path,
     mark_selected_change_cleared_by_file_list,
     restore_selected_change_state,
@@ -46,6 +45,7 @@ from ..data.file_review.state import (
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
 from ..data.session import require_session_started
+from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.snapshots import write_snapshots_for_selected_file_path
 from ..exceptions import exit_with_error
 from ..i18n import _

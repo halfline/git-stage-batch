@@ -834,6 +834,69 @@ def test_line_action_refresh_header_stays_in_command_helper():
     assert violations == []
 
 
+def test_replacement_selection_stays_in_command_helper():
+    """Include and discard should use the replacement-selection helper module."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper = __import__(
+        "git_stage_batch.commands.selection.replacement_selection",
+        fromlist=["replacement_selection"],
+    )
+    include = __import__(
+        "git_stage_batch.commands.include",
+        fromlist=["include"],
+    )
+    public_names = {
+        "build_leading_replacement_addition_selection_error",
+        "build_partial_structural_run_selection_error",
+        "derive_replacement_line_runs",
+        "expand_replacement_selection_ids",
+    }
+    old_include_names = {
+        "_build_leading_replacement_addition_selection_error",
+        "_build_partial_structural_run_selection_error",
+        "_derive_replacement_line_runs",
+        "_expand_replacement_selection_ids",
+    }
+    command_paths = (
+        include_path,
+        discard_path,
+    )
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(helper)
+    assert old_include_names.isdisjoint(vars(include))
+    for old_name in old_include_names:
+        assert f"def {old_name}" not in include_path.read_text()
+
+    for command_path in command_paths:
+        imports = _import_from_nodes(command_path)
+        imports_helper_namespace = False
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.selection"
+                and "replacement_selection" in imported_names
+            ):
+                imports_helper_namespace = True
+
+            if imported_module == "git_stage_batch.commands.selection.replacement_selection":
+                relative_path = command_path.relative_to(REPO_ROOT)
+                violations.append(
+                    f"{relative_path}:{node.lineno} imports replacement names directly"
+                )
+
+            if command_path == discard_path and imported_module == "git_stage_batch.commands.include":
+                relative_path = command_path.relative_to(REPO_ROOT)
+                violations.append(f"{relative_path}:{node.lineno} imports include")
+
+        assert imports_helper_namespace
+
+    assert violations == []
+
+
 def test_hunk_tracking_does_not_import_show_command():
     """Hunk navigation state should not depend on the show command."""
     hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"

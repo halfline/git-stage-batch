@@ -641,13 +641,19 @@ def _handle_cli_command(action: str) -> None:
     """Handle arbitrary CLI command as escape hatch."""
     try:
         from ..cli.argument_parser import parse_command_line
-        from ..cli.dispatch import dispatch_args
+        from ..cli.execution import execute_non_interactive_args
 
         args_list = shlex.split(action)
         args = parse_command_line(args_list, quiet=False)
 
         if args is not None:
-            dispatch_args(args)
+            if (
+                getattr(args, "interactive_flag", False)
+                or getattr(args, "interactive_command", False)
+            ):
+                print(_("\nAlready in interactive mode."))
+            else:
+                execute_non_interactive_args(args)
         else:
             print(_("\nUnknown command: '{cmd}'").format(cmd=action))
             print_help()

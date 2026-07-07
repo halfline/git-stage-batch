@@ -431,6 +431,41 @@ def test_recalc_handoff_stays_in_command_helper():
     assert violations == []
 
 
+def test_action_completion_stays_in_command_helper():
+    """Include, discard, and skip should use the command flow helper."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    assert "finish_selected_change_action" not in vars(hunk_tracking)
+
+    command_paths = (
+        SRC_ROOT / "commands" / "include.py",
+        SRC_ROOT / "commands" / "discard.py",
+        SRC_ROOT / "commands" / "skip.py",
+    )
+    violations = []
+
+    for command_path in command_paths:
+        imports = _import_from_nodes(command_path)
+        imported_modules = {imported_module for imported_module, _node in imports}
+        assert "git_stage_batch.commands.selection.action_completion" in imported_modules
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.data.hunk_tracking":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            if "finish_selected_change_action" in imported_names:
+                relative_path = command_path.relative_to(REPO_ROOT)
+                violations.append(
+                    f"{relative_path}:{node.lineno} imports "
+                    "finish_selected_change_action"
+                )
+
+    assert violations == []
+
+
 def test_line_action_refresh_header_stays_in_command_helper():
     """Include and discard line actions should use the command refresh helper."""
     command_paths = (

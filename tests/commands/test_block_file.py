@@ -5,9 +5,9 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands.block_file import command_block_file
+from git_stage_batch.data.ignore_files import get_gitignore_path, get_local_exclude_path
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_file_paths_file
-from git_stage_batch.utils.git import get_gitignore_path, get_local_exclude_path
 from git_stage_batch.utils.paths import get_blocked_files_file_path
 
 

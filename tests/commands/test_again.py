@@ -6,9 +6,9 @@ from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.show import command_show, command_show_file_list
 from git_stage_batch.data.file_review.state import read_last_file_review_state
-from git_stage_batch.data.hunk_tracking import (
+from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
-    fetch_next_change,
     get_selected_change_file_path,
     read_selected_change_kind,
 )

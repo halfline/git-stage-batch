@@ -26,7 +26,7 @@ from git_stage_batch.commands.skip import command_skip
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.status import command_status
 from git_stage_batch.commands.undo import command_undo
-from git_stage_batch.data.hunk_tracking import (
+from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
     get_selected_change_file_path,
     read_selected_change_kind,

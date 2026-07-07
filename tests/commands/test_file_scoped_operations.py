@@ -15,7 +15,7 @@ from git_stage_batch.utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
-from git_stage_batch.data.hunk_tracking import read_selected_change_kind
+from git_stage_batch.data.selected_change.store import read_selected_change_kind
 from git_stage_batch.data.file_hunk_display import render_unstaged_file_as_single_hunk
 from git_stage_batch.commands.skip import command_skip, command_skip_line
 from git_stage_batch.cli.argument_parser import parse_command_line

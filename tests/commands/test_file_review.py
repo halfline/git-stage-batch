@@ -35,7 +35,7 @@ from git_stage_batch.data.file_review.state import (
     shown_review_selections_for_action,
     validate_pathless_review_line_action,
 )
-from git_stage_batch.data.hunk_tracking import (
+from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
     get_selected_change_file_path,
     read_selected_change_kind,

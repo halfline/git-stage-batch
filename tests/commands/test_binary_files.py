@@ -25,9 +25,9 @@ from git_stage_batch.commands.skip import command_skip, command_skip_file
 from git_stage_batch.commands.status import command_status
 from git_stage_batch.core.models import BinaryFileChange, LineLevelChange
 from git_stage_batch.data.file_tracking import auto_add_untracked_files
-from git_stage_batch.data.hunk_tracking import (
+from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
-    fetch_next_change,
     get_selected_change_file_path,
     read_selected_change_kind,
 )

@@ -21,9 +21,11 @@ from git_stage_batch.core.models import TextFileDeletionChange
 from git_stage_batch.data.hunk_tracking import (
     fetch_next_change,
     load_selected_change,
-    selected_change_was_cleared_by_auto_advance_disabled,
 )
 from git_stage_batch.data.line_state import load_line_changes_from_state
+from git_stage_batch.data.selected_change.store import (
+    selected_change_was_cleared_by_auto_advance_disabled,
+)
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
 from git_stage_batch.commands.again import command_again
 

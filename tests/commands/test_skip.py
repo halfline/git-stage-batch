@@ -9,9 +9,11 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import (
     fetch_next_change,
     load_selected_change,
-    selected_change_was_cleared_by_auto_advance_disabled,
 )
 from git_stage_batch.data.line_state import load_line_changes_from_state
+from git_stage_batch.data.selected_change.store import (
+    selected_change_was_cleared_by_auto_advance_disabled,
+)
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import get_processed_skip_ids_file_path

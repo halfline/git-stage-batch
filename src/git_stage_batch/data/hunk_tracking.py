@@ -7,7 +7,6 @@ import subprocess
 from enum import Enum
 from typing import Union
 
-from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
 from ..batch.display import annotate_with_batch_source
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -32,10 +31,10 @@ from ..core.line_identity import preserve_line_ids_from_previous_view
 from ..exceptions import NoMoreHunks
 from .auto_advance import resolve_auto_advance
 from . import change_freshness as _change_freshness
-from . import consumed_replacement_masks as _consumed_replacement_masks
 from . import file_hunk_display as _file_hunk_display
 from . import live_diff as _live_diff
 from .selected_change import store as _selected_store
+from .selected_change import hunk_filtering as _selected_hunk_filtering
 from .selected_change.snapshots import (
     write_snapshots_for_selected_file_path as _write_snapshots_for_selected_file_path,
 )
@@ -77,60 +76,6 @@ _BATCH_MERGE_REVIEW_ACTIONS = (
 )
 _BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
 
-
-def apply_line_level_batch_filter_to_cached_hunk() -> bool:
-    """Filter cached hunk using file-centric ownership attribution.
-
-    File-centric blame-like approach:
-    1. Build complete file attribution (all ownership-relevant units + batch owners)
-    2. Project attribution onto diff fragments
-    3. Filter owned fragments
-
-    Returns:
-        True if hunk should be skipped (all lines filtered), False otherwise
-    """
-    line_changes = _line_state.load_line_changes_from_state()
-    if line_changes is None:
-        return True
-
-    file_path = line_changes.path
-
-    if (
-        not line_changes.lines
-        and _change_freshness.empty_text_lifecycle_change_is_batched(file_path)
-    ):
-        return True
-
-    # Step 1: Build file attribution (file-centric, not diff-centric)
-    attribution = build_file_attribution(file_path)
-
-    # Step 2 & 3: Project to diff and filter owned fragments
-    should_skip, filtered_line_changes = filter_owned_diff_fragments(
-        line_changes, attribution
-    )
-
-    if should_skip:
-        return True
-
-    filtered_line_changes = _consumed_replacement_masks.filter_consumed_replacement_masks(
-        filtered_line_changes
-    )
-    if filtered_line_changes is None:
-        return True
-
-    # Update cached hunk with filtered version
-    write_text_file_contents(
-        get_line_changes_json_file_path(),
-        json.dumps(
-            _line_state.convert_line_changes_to_serializable_dict(
-                filtered_line_changes
-            ),
-            ensure_ascii=False,
-            indent=0,
-        ),
-    )
-
-    return False
 
 def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]:
     """Find the next hunk or binary file that isn't blocked and cache it as selected.
@@ -252,7 +197,9 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                 _write_snapshots_for_selected_file_path(line_changes.path)
 
                 # Apply line-level batch filtering
-                if apply_line_level_batch_filter_to_cached_hunk():
+                if (
+                    _selected_hunk_filtering.apply_line_level_batch_filter_to_cached_hunk()
+                ):
                     # All lines were batched, skip this hunk and continue
                     _clear_selected_change_state_files()
                     continue
@@ -331,7 +278,9 @@ def recalculate_selected_hunk_for_file(
         )
         _selected_store.write_line_changes_state(line_changes)
 
-        if apply_line_level_batch_filter_to_cached_hunk():
+        if (
+            _selected_hunk_filtering.apply_line_level_batch_filter_to_cached_hunk()
+        ):
             _clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
                 return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
@@ -419,7 +368,9 @@ def recalculate_selected_hunk_for_file(
                 _write_snapshots_for_selected_file_path(line_changes.path)
 
                 # Apply batch filter to exclude batched lines
-                if apply_line_level_batch_filter_to_cached_hunk():
+                if (
+                    _selected_hunk_filtering.apply_line_level_batch_filter_to_cached_hunk()
+                ):
                     # All lines were batched, clear the hunk
                     _clear_selected_change_state_files()
                     return RecalculateSelectedHunkResult.NO_MORE_LINES

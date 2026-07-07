@@ -15,7 +15,7 @@ from ..core.hashing import (
     compute_text_file_deletion_hash,
 )
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..data.hunk_tracking import (
+from ..data.selected_change.hunk_filtering import (
     apply_line_level_batch_filter_to_cached_hunk,
 )
 from ..data.selected_change.store import (

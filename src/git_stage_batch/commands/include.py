@@ -69,14 +69,16 @@ from ..data.hunk_tracking import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     render_unstaged_file_as_single_hunk,
-    render_binary_file_change,
-    render_gitlink_change,
-    render_text_deletion_change,
     require_selected_hunk,
     restore_selected_change_state,
     snapshot_selected_change_state,
     snapshots_are_stale,
     stream_live_git_diff,
+)
+from ..data.file_change_display import (
+    render_binary_file_change,
+    render_gitlink_change,
+    render_text_deletion_change,
 )
 from ..data.file_review.state import (
     FileReviewAction,

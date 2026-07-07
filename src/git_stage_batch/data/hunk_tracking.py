@@ -456,47 +456,6 @@ def show_selected_change() -> None:
         print_line_level_changes(line_changes)
 
 
-def advance_to_and_show_next_change() -> None:
-    """Advance to next hunk/binary file and display it (CLI workflow helper).
-
-    This is a convenience wrapper for CLI commands that combines advancing
-    to the next hunk/binary file with displaying it. If no more items exist,
-    prints a message to stderr.
-    """
-    advance_to_next_change()
-
-    rename_change = _selected_store.load_selected_rename_change()
-    if rename_change is not None:
-        print_rename_change(rename_change)
-        return
-
-    deletion_change = _selected_store.load_selected_text_deletion_change()
-    if deletion_change is not None:
-        print_text_file_deletion_change(deletion_change)
-        return
-
-    gitlink_change = _selected_store.load_selected_gitlink_change()
-    if gitlink_change is not None:
-        print_gitlink_change(gitlink_change)
-        return
-
-    # Check if a binary file was cached
-    binary_file = _selected_store.load_selected_binary_file()
-    if binary_file is not None:
-        print_binary_file_change(binary_file)
-        return
-
-    # Check if a text hunk was cached
-    patch_path = get_selected_hunk_patch_file_path()
-    if patch_path.exists():
-        line_changes = _selected_store.load_line_changes_from_patch_path(
-            patch_path
-        )
-        print_line_level_changes(line_changes)
-    else:
-        print(_("No more hunks to process."), file=sys.stderr)
-
-
 def select_next_change_after_action(
     *,
     auto_advance: bool | None = None,

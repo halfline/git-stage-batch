@@ -99,7 +99,7 @@ from ..core.buffer import (
     LineBuffer,
     write_buffer_to_path,
 )
-from ..editor import (
+from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,

@@ -17,7 +17,7 @@ from ..core.buffer import (
     write_buffer_to_path,
     write_buffer_to_working_tree_path,
 )
-from ..editor import load_git_blob_as_buffer
+from ..utils.repository_buffers import load_git_blob_as_buffer
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file

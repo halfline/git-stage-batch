@@ -78,7 +78,7 @@ from ..output.file_review_list import (
     print_file_review_list,
 )
 from ..core.buffer import LineBuffer
-from ..editor import (
+from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )

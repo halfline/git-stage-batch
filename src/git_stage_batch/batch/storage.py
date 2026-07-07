@@ -27,9 +27,11 @@ from ..data.batch_sources import (
     save_session_batch_sources,
 )
 from ..core.buffer import LineBuffer
-from ..editor import (
+from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_git_tree_files_as_buffers,
+)
+from ..editor import (
     restore_line_endings_in_chunks,
     detect_line_ending,
 )

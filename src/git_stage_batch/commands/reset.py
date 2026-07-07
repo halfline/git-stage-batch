@@ -61,7 +61,7 @@ from ..data.selected_change.store import (
     read_selected_change_kind,
 )
 from ..data.undo import undo_checkpoint
-from ..editor import load_git_object_as_buffer
+from ..utils.repository_buffers import load_git_object_as_buffer
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import require_git_repository
 from ..utils.paths import (

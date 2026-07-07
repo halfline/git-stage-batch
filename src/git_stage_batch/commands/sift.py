@@ -60,7 +60,7 @@ from ..core.buffer import (
     buffer_byte_count,
     buffer_matches,
 )
-from ..editor import (
+from ..utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )

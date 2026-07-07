@@ -327,6 +327,56 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.status" in imported_modules
 
 
+def test_suggest_fixup_state_stays_in_data_layer():
+    """Suggest-fixup state persistence should stay below command and TUI flows."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    data_path = SRC_ROOT / "data" / "suggest_fixup_state.py"
+    tui_paths = (
+        SRC_ROOT / "tui" / "interactive.py",
+        SRC_ROOT / "tui" / "file_review" / "__init__.py",
+    )
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    data_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(data_path)
+    }
+    suggest_fixup = __import__(
+        "git_stage_batch.commands.suggest_fixup",
+        fromlist=["suggest_fixup"],
+    )
+    command_state_names = {
+        "_load_suggest_fixup_state",
+        "_save_suggest_fixup_state",
+        "_reset_suggest_fixup_state",
+        "_should_reset_suggest_fixup_state",
+    }
+    violations = []
+
+    for tui_path in tui_paths:
+        imports = _import_from_nodes(tui_path)
+        imported_modules = {imported_module for imported_module, _node in imports}
+        assert "git_stage_batch.data.suggest_fixup_state" in imported_modules
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.commands.suggest_fixup":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & command_state_names
+            if disallowed_names:
+                relative_path = tui_path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert "git_stage_batch.data.suggest_fixup_state" in command_imports
+    assert "git_stage_batch.utils.paths" in data_imports
+    assert command_state_names.isdisjoint(vars(suggest_fixup))
+    assert violations == []
+
+
 def test_hunk_tracking_does_not_reexport_live_change_helpers():
     """Moved live-change helpers should not stay available from hunk tracking."""
     hunk_tracking = __import__(

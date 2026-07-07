@@ -100,6 +100,17 @@ def test_selected_change_display_names_data_modules_at_import_sites():
     ) == []
 
 
+def test_tui_batch_menus_name_query_module_at_import_sites():
+    """TUI batch menus should not import query through the batch package."""
+    assert _external_package_child_module_import_violations(
+        {
+            "git_stage_batch.batch": {
+                "query",
+            },
+        }
+    ) == []
+
+
 def test_replacement_payload_imports_use_core_boundary():
     """Non-batch code should not depend on batch replacement for neutral payloads."""
     neutral_names = {

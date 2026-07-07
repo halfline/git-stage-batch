@@ -52,7 +52,8 @@ from ..core.hashing import (
 )
 from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
+from ..core.text_lifecycle import TextFileChangeType
+from ..data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     fetch_next_change,
     load_selected_change,

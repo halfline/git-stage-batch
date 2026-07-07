@@ -212,6 +212,9 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                     ),
                     realized_content=realized_buffer,
                     requested_change_type=update.change_type,
+                    working_exists=(
+                        get_git_repository_root_path() / file_path
+                    ).exists(),
                 )
 
                 file_metadata = {

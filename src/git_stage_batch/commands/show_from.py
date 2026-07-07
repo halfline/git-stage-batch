@@ -11,7 +11,6 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import Optional
 
-from ..batch.merge import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     OperationCandidatePreview,
@@ -82,7 +81,12 @@ from ..data.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
-from ..exceptions import exit_with_error, BatchMetadataError, CommandError
+from ..exceptions import (
+    exit_with_error,
+    BatchMetadataError,
+    CommandError,
+    MergeError,
+)
 from ..i18n import _
 from ..core.models import BinaryFileChange, GitlinkChange, LineLevelChange
 from ..utils.git import get_git_repository_root_path, require_git_repository

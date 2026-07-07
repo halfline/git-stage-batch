@@ -56,6 +56,8 @@ from ..core.text_lifecycle import TextFileChangeType
 from ..data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     fetch_next_change,
+)
+from ..data.selected_change.loading import (
     load_selected_change,
     require_selected_hunk,
 )

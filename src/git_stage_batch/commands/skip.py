@@ -23,6 +23,8 @@ from ..batch.selection import require_line_selection_in_view
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
     fetch_next_change,
+)
+from ..data.selected_change.loading import (
     load_selected_change,
     require_selected_hunk,
 )

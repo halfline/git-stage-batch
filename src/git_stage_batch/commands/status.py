@@ -31,10 +31,8 @@ from ..data.change_freshness import (
 )
 from ..data.file_review.freshness import selected_change_matches_review_state
 from ..data.file_review.records import FileReviewAction, ReviewSource
-from ..data.file_review.state import (
-    read_last_file_review_state,
-    shown_review_selections_for_action,
-)
+from ..data.file_review.selection_validation import shown_review_selections_for_action
+from ..data.file_review.state import read_last_file_review_state
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
 from ..data.progress import format_id_range

@@ -19,10 +19,8 @@ from ..core.line_selection import LineRanges
 from ..exceptions import exit_with_error
 from ..i18n import _
 from .file_review.records import FileReviewAction
-from .file_review.state import (
-    fresh_batch_review_selections_for_action,
-    validate_review_scoped_line_selection,
-)
+from .file_review.selection_validation import validate_review_scoped_line_selection
+from .file_review.state import fresh_batch_review_selections_for_action
 
 if TYPE_CHECKING:
     from ..core.models import RenderedBatchDisplay

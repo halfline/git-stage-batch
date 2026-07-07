@@ -20,9 +20,11 @@ from ..data.file_review.state import (
     FileReviewState,
     FileReviewSelectionState,
     ReviewSource,
+    line_action_command,
+)
+from ..data.file_review.fingerprints import (
     compute_current_file_review_diff_fingerprint,
     fingerprint_selected_file_view,
-    line_action_command,
 )
 from ..data.selected_change.store import SelectedChangeKind
 from ..exceptions import CommandError

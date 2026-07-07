@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 from ..core.line_selection import parse_line_selection
-from ..data.file_review.state import compute_current_file_review_diff_fingerprint
+from ..data.file_review.fingerprints import compute_current_file_review_diff_fingerprint
 from ..data.hunk_tracking import require_selected_hunk
 from ..data.file_hunk_display import render_file_as_single_hunk
 from ..data.line_state import load_line_changes_from_state

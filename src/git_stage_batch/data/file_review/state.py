@@ -7,24 +7,18 @@ import shlex
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from enum import Enum
-from hashlib import sha256
-from pathlib import Path
-from typing import Any
 
 from ...core.actionable_changes import ActionableSelectionReason
 from ...core.line_selection import LineRanges, LineSelection, parse_line_selection_ranges
-from ...core.models import ReviewActionGroup
-from ..line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
-from ...core.buffer import LineBuffer
+from ...batch import file_display
 from ...exceptions import CommandError
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
-from ...utils.paths import (
-    get_index_snapshot_file_path,
-    get_last_file_review_state_file_path,
-    get_working_tree_snapshot_file_path,
+from ...utils.paths import get_last_file_review_state_file_path
+from .fingerprints import (
+    compute_current_file_review_diff_fingerprint as _compute_current_file_review_diff_fingerprint,
+    fingerprint_selected_file_view as _fingerprint_selected_file_view,
 )
-from ...batch import file_display
 from ..selected_change.store import SelectedChangeKind, read_selected_change_kind
 from ..selected_change.snapshots import snapshots_are_stale
 
@@ -112,87 +106,10 @@ def _coerce_review_action(action: FileReviewAction | str) -> FileReviewAction:
     return action if isinstance(action, FileReviewAction) else FileReviewAction(action)
 
 
-def _json_hash(payload: Any) -> str:
-    data = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return sha256(data.encode("utf-8", errors="surrogateescape")).hexdigest()
-
-
-def _hash_file(path: Path) -> str | None:
-    if not path.exists():
-        return None
-
-    digest = sha256()
-    with LineBuffer.from_path(path) as buffer:
-        for chunk in buffer.byte_chunks():
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _get_selected_change_file_path() -> str | None:
     from ..selected_change.store import get_selected_change_file_path
 
     return get_selected_change_file_path()
-
-
-def fingerprint_selected_file_view(
-    *,
-    source: ReviewSource,
-    batch_name: str | None,
-    file_path: str,
-    selected_change_kind: SelectedChangeKind,
-    gutter_to_selection_id: dict[int, int] | None = None,
-    actionable_selection_groups: tuple[tuple[int, ...], ...] | None = None,
-    review_action_groups: tuple[ReviewActionGroup, ...] | None = None,
-    line_changes=None,
-) -> str:
-    """Fingerprint the selected file view and its current line ID space."""
-    if line_changes is None:
-        line_changes = load_line_changes_from_state()
-    snapshots = {}
-    for name, path in (
-        ("index", get_index_snapshot_file_path()),
-        ("working_tree", get_working_tree_snapshot_file_path()),
-    ):
-        snapshots[name] = _hash_file(path)
-    return _json_hash(
-        {
-            "source": source,
-            "batch_name": batch_name,
-            "file_path": file_path,
-            "selected_change_kind": selected_change_kind.value,
-            "snapshots": snapshots,
-            "line_changes": (
-                convert_line_changes_to_serializable_dict(line_changes)
-                if line_changes is not None else None
-            ),
-            "gutter_to_selection_id": gutter_to_selection_id,
-            "actionable_selection_groups": actionable_selection_groups,
-            "review_action_groups": [
-                {
-                    "display_ids": group.display_ids,
-                    "selection_ids": group.selection_ids,
-                    "actions": group.actions,
-                    "reason": group.reason,
-                }
-                for group in (review_action_groups or ())
-            ],
-        }
-    )
-
-
-def compute_current_file_review_diff_fingerprint(file_path: str, line_changes=None) -> str:
-    """Fingerprint the cached selected file diff for freshness checks."""
-    if line_changes is None:
-        line_changes = load_line_changes_from_state()
-    return _json_hash(
-        {
-            "file_path": file_path,
-            "line_changes": (
-                convert_line_changes_to_serializable_dict(line_changes)
-                if line_changes is not None else None
-            ),
-        }
-    )
 
 
 def write_last_file_review_state(review_state: FileReviewState) -> None:
@@ -429,7 +346,7 @@ def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
         actionable_selection_groups = None
         review_action_groups = None
 
-    current_selected_fingerprint = fingerprint_selected_file_view(
+    current_selected_fingerprint = _fingerprint_selected_file_view(
         source=review_state.source,
         batch_name=review_state.batch_name,
         file_path=review_state.file_path,
@@ -442,7 +359,10 @@ def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
     if current_selected_fingerprint != review_state.selected_file_fingerprint:
         return False
     return (
-        compute_current_file_review_diff_fingerprint(review_state.file_path, line_changes=line_changes)
+        _compute_current_file_review_diff_fingerprint(
+            review_state.file_path,
+            line_changes=line_changes,
+        )
         == review_state.diff_fingerprint
     )
 
@@ -464,7 +384,7 @@ def selected_batch_review_matches_reset_state(review_state: FileReviewState) -> 
     if rendered is None:
         return False
     if (
-        compute_current_file_review_diff_fingerprint(
+        _compute_current_file_review_diff_fingerprint(
             review_state.file_path,
             line_changes=rendered.line_changes,
         )

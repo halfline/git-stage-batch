@@ -18,7 +18,7 @@ _LINEAGE_NEW_START = 2
 
 
 @dataclass(frozen=True, slots=True)
-class _LineageRun:
+class LineageRun:
     """Contiguous line translation from one coordinate space to another."""
 
     old_start: int
@@ -47,8 +47,8 @@ class _LineageRun:
         return new_start, new_start + (old_end - old_start)
 
 
-def _lineage_run_from_record(record: tuple[int, ...]) -> _LineageRun:
-    return _LineageRun(
+def _lineage_run_from_record(record: tuple[int, ...]) -> LineageRun:
+    return LineageRun(
         record[_LINEAGE_OLD_START],
         record[_LINEAGE_OLD_END],
         record[_LINEAGE_NEW_START],
@@ -64,7 +64,7 @@ def _selection_ranges(
     return LineRanges.from_lines(selection).ranges()
 
 
-def _lineage_runs_can_merge(left: _LineageRun, right: _LineageRun) -> bool:
+def _lineage_runs_can_merge(left: LineageRun, right: LineageRun) -> bool:
     return (
         right.old_start == left.old_end + 1
         and right.new_start == left.new_end + 1
@@ -76,7 +76,7 @@ class _LineageRunTable:
 
     def __init__(
         self,
-        runs: Iterable[_LineageRun] = (),
+        runs: Iterable[LineageRun] = (),
         *,
         spool_dir: str | Path | None = None,
     ) -> None:
@@ -85,7 +85,7 @@ class _LineageRunTable:
             chunk_capacity=_LINEAGE_CHUNK_CAPACITY,
             spool_dir=spool_dir,
         )
-        self._pending_run: _LineageRun | None = None
+        self._pending_run: LineageRun | None = None
         self._closed = False
 
         for run in sorted(runs, key=lambda item: (item.old_start, item.old_end)):
@@ -105,7 +105,7 @@ class _LineageRunTable:
         self._require_open()
         return len(self._runs) + (1 if self._pending_run is not None else 0)
 
-    def append(self, run: _LineageRun) -> None:
+    def append(self, run: LineageRun) -> None:
         self._require_open()
         pending = self._pending_run
         if pending is None:
@@ -116,7 +116,7 @@ class _LineageRunTable:
             raise ValueError("lineage runs must not overlap")
 
         if _lineage_runs_can_merge(pending, run):
-            self._pending_run = _LineageRun(
+            self._pending_run = LineageRun(
                 old_start=pending.old_start,
                 old_end=run.old_end,
                 new_start=pending.new_start,
@@ -126,7 +126,7 @@ class _LineageRunTable:
         self._flush_pending()
         self._pending_run = run
 
-    def run_at(self, old_line: int) -> _LineageRun | None:
+    def run_at(self, old_line: int) -> LineageRun | None:
         self._require_open()
         if type(old_line) is not int:
             return None
@@ -151,7 +151,7 @@ class _LineageRunTable:
                 return _lineage_run_from_record(record)
         return None
 
-    def runs(self) -> Iterator[_LineageRun]:
+    def runs(self) -> Iterator[LineageRun]:
         self._require_open()
         for index in range(len(self._runs)):
             yield _lineage_run_from_record(self._runs[index])
@@ -253,7 +253,7 @@ class _LineageRunTable:
         ))
         self._pending_run = None
 
-    def _run_at_index(self, index: int) -> _LineageRun:
+    def _run_at_index(self, index: int) -> LineageRun:
         flushed_count = len(self._runs)
         if 0 <= index < flushed_count:
             return _lineage_run_from_record(self._runs[index])
@@ -266,13 +266,13 @@ class _LineageRunTable:
             raise ValueError("lineage run table is closed")
 
 
-class _BatchSourceLineage:
+class BatchSourceLineage:
     """Lineage from old source and working lines to refreshed source lines."""
 
     def __init__(
         self,
-        source_runs: Iterable[_LineageRun] = (),
-        working_runs: Iterable[_LineageRun] = (),
+        source_runs: Iterable[LineageRun] = (),
+        working_runs: Iterable[LineageRun] = (),
         *,
         spool_dir: str | Path | None = None,
     ) -> None:
@@ -290,10 +290,10 @@ class _BatchSourceLineage:
     def from_runs(
         cls,
         *,
-        source_runs: Iterable[_LineageRun] = (),
-        working_runs: Iterable[_LineageRun] = (),
+        source_runs: Iterable[LineageRun] = (),
+        working_runs: Iterable[LineageRun] = (),
         spool_dir: str | Path | None = None,
-    ) -> _BatchSourceLineage:
+    ) -> BatchSourceLineage:
         return cls(source_runs, working_runs, spool_dir=spool_dir)
 
     @property
@@ -306,19 +306,19 @@ class _BatchSourceLineage:
     def closed(self) -> bool:
         return self._closed
 
-    def source_runs(self) -> Iterator[_LineageRun]:
+    def source_runs(self) -> Iterator[LineageRun]:
         self._require_open()
         return self._source_runs.runs()
 
-    def working_runs(self) -> Iterator[_LineageRun]:
+    def working_runs(self) -> Iterator[LineageRun]:
         self._require_open()
         return self._working_runs.runs()
 
-    def append_source_run(self, run: _LineageRun) -> None:
+    def append_source_run(self, run: LineageRun) -> None:
         self._require_open()
         self._source_runs.append(run)
 
-    def append_working_run(self, run: _LineageRun) -> None:
+    def append_working_run(self, run: LineageRun) -> None:
         self._require_open()
         self._working_runs.append(run)
 
@@ -358,7 +358,7 @@ class _BatchSourceLineage:
         self._working_runs.close()
         self._closed = True
 
-    def __enter__(self) -> _BatchSourceLineage:
+    def __enter__(self) -> BatchSourceLineage:
         self._require_open()
         return self
 

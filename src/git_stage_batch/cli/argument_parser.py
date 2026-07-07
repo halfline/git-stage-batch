@@ -1384,7 +1384,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     def dispatch_apply(args: argparse.Namespace) -> None:
         resolved_file_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-        _run_for_each_file(
+        run_for_each_resolved_file(
             resolved_file_scope,
             lambda file: commands.command_apply_from_batch(
                 args.from_batch,

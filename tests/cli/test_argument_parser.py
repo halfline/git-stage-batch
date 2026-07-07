@@ -6,7 +6,7 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from git_stage_batch.cli import argument_parser
+from git_stage_batch.cli import argument_parser, file_scope
 from git_stage_batch.cli.argument_parser import parse_command_line
 
 
@@ -27,9 +27,19 @@ class _UnreadableStdin:
 
 def _mock_live_file_candidates(monkeypatch, changed, untracked=(), staged=()):
     """Provide deterministic live file candidates for parser scope resolution."""
-    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: list(changed))
-    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: list(untracked))
-    monkeypatch.setattr(argument_parser, "list_staged_files", lambda: list(staged))
+    monkeypatch.setattr(file_scope, "list_changed_files", lambda: list(changed))
+    monkeypatch.setattr(file_scope, "list_untracked_files", lambda: list(untracked))
+    monkeypatch.setattr(file_scope, "list_staged_files", lambda: list(staged))
+
+
+def _mock_batch_files(monkeypatch, files, *, exists=True):
+    """Provide deterministic batch file candidates for parser scope resolution."""
+    metadata = {"files": {path: {} for path in files}}
+
+    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: exists)
+    monkeypatch.setattr(argument_parser, "read_batch_metadata", lambda name: metadata)
+    monkeypatch.setattr(file_scope, "batch_exists", lambda name: exists)
+    monkeypatch.setattr(file_scope, "read_batch_metadata", lambda name: metadata)
 
 
 def test_build_manpath_with_existing_environment(monkeypatch):
@@ -205,17 +215,17 @@ def test_show_git_stage_batch_help_materializes_editable_manpage(monkeypatch, tm
 
 
 def test_resolve_live_file_scope_marks_implicit_scope():
-    scope = argument_parser._resolve_live_file_scope(None, None)
+    scope = file_scope.resolve_live_file_scope(None, None)
 
-    assert scope.kind is argument_parser.FileScopeKind.IMPLICIT
+    assert scope.kind is file_scope.FileScopeKind.IMPLICIT
     assert scope.files == ()
     assert scope.optional_file() is None
 
 
 def test_resolve_live_file_scope_marks_pathless_file_scope():
-    scope = argument_parser._resolve_live_file_scope("", None)
+    scope = file_scope.resolve_live_file_scope("", None)
 
-    assert scope.kind is argument_parser.FileScopeKind.EXPLICIT
+    assert scope.kind is file_scope.FileScopeKind.EXPLICIT
     assert scope.files == ("",)
     assert scope.optional_file() == ""
 
@@ -223,76 +233,66 @@ def test_resolve_live_file_scope_marks_pathless_file_scope():
 def test_resolve_live_file_scope_resolves_file_argument_as_pattern(monkeypatch):
     _mock_live_file_candidates(monkeypatch, ["src/parser.py", "notes.txt"])
 
-    scope = argument_parser._resolve_live_file_scope("src/parser.py", None)
+    scope = file_scope.resolve_live_file_scope("src/parser.py", None)
 
-    assert scope.kind is argument_parser.FileScopeKind.PATTERN
+    assert scope.kind is file_scope.FileScopeKind.PATTERN
     assert scope.files == ("src/parser.py",)
     assert scope.optional_file() == "src/parser.py"
 
 
 def test_resolve_live_file_scope_keeps_single_pattern_scope_kind(monkeypatch):
-    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["src/parser.py", "notes.txt"])
-    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: [])
+    monkeypatch.setattr(file_scope, "list_changed_files", lambda: ["src/parser.py", "notes.txt"])
+    monkeypatch.setattr(file_scope, "list_untracked_files", lambda: [])
 
-    scope = argument_parser._resolve_live_file_scope(None, ["*.py"])
+    scope = file_scope.resolve_live_file_scope(None, ["*.py"])
 
-    assert scope.kind is argument_parser.FileScopeKind.PATTERN
+    assert scope.kind is file_scope.FileScopeKind.PATTERN
     assert scope.files == ("src/parser.py",)
     assert scope.optional_file() == "src/parser.py"
 
 
 def test_resolve_live_file_scope_matches_untracked_pattern_candidates(monkeypatch):
-    monkeypatch.setattr(argument_parser, "list_changed_files", lambda: ["src/parser.py"])
-    monkeypatch.setattr(argument_parser, "list_untracked_files", lambda: ["notes.txt"])
+    monkeypatch.setattr(file_scope, "list_changed_files", lambda: ["src/parser.py"])
+    monkeypatch.setattr(file_scope, "list_untracked_files", lambda: ["notes.txt"])
 
-    scope = argument_parser._resolve_live_file_scope(None, ["*.txt"])
+    scope = file_scope.resolve_live_file_scope(None, ["*.txt"])
 
-    assert scope.kind is argument_parser.FileScopeKind.PATTERN
+    assert scope.kind is file_scope.FileScopeKind.PATTERN
     assert scope.files == ("notes.txt",)
 
 
 def test_resolve_batch_file_scope_marks_implicit_scope():
-    scope = argument_parser._resolve_batch_file_scope("batch", None, None)
+    scope = file_scope.resolve_batch_file_scope("batch", None, None)
 
-    assert scope.kind is argument_parser.FileScopeKind.IMPLICIT
+    assert scope.kind is file_scope.FileScopeKind.IMPLICIT
     assert scope.files == ()
     assert scope.optional_file() is None
 
 
 def test_resolve_batch_file_scope_marks_pathless_file_scope():
-    scope = argument_parser._resolve_batch_file_scope("batch", "", None)
+    scope = file_scope.resolve_batch_file_scope("batch", "", None)
 
-    assert scope.kind is argument_parser.FileScopeKind.EXPLICIT
+    assert scope.kind is file_scope.FileScopeKind.EXPLICIT
     assert scope.files == ("",)
     assert scope.optional_file() == ""
 
 
 def test_resolve_batch_file_scope_resolves_file_argument_as_pattern(monkeypatch):
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
-    monkeypatch.setattr(
-        argument_parser,
-        "read_batch_metadata",
-        lambda name: {"files": {"src/parser.py": {}, "notes.txt": {}}},
-    )
+    _mock_batch_files(monkeypatch, ["src/parser.py", "notes.txt"])
 
-    scope = argument_parser._resolve_batch_file_scope("batch", "src/parser.py", None)
+    scope = file_scope.resolve_batch_file_scope("batch", "src/parser.py", None)
 
-    assert scope.kind is argument_parser.FileScopeKind.PATTERN
+    assert scope.kind is file_scope.FileScopeKind.PATTERN
     assert scope.files == ("src/parser.py",)
     assert scope.optional_file() == "src/parser.py"
 
 
 def test_resolve_batch_file_scope_keeps_pattern_scope_kind(monkeypatch):
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
-    monkeypatch.setattr(
-        argument_parser,
-        "read_batch_metadata",
-        lambda name: {"files": {"src/parser.py": {}, "src/render.py": {}, "notes.txt": {}}},
-    )
+    _mock_batch_files(monkeypatch, ["src/parser.py", "src/render.py", "notes.txt"])
 
-    scope = argument_parser._resolve_batch_file_scope("batch", None, ["*.py"])
+    scope = file_scope.resolve_batch_file_scope("batch", None, ["*.py"])
 
-    assert scope.kind is argument_parser.FileScopeKind.PATTERN
+    assert scope.kind is file_scope.FileScopeKind.PATTERN
     assert scope.files == ("src/parser.py", "src/render.py")
 
 
@@ -524,12 +524,7 @@ def test_show_file_no_advance_peeks_without_selecting(monkeypatch):
 def test_show_from_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_show_from_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
-    monkeypatch.setattr(
-        argument_parser,
-        "read_batch_metadata",
-        lambda name: {"files": {"src/parser.py": {}}},
-    )
+    _mock_batch_files(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(
         ["show", "--from", "batch", "--file", "src/parser.py", "--no-advance"],
@@ -598,12 +593,7 @@ def test_show_page_rejects_porcelain(monkeypatch):
 def test_show_from_page_accepts_single_file_batch_without_file(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_show_from_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
-    monkeypatch.setattr(
-        argument_parser,
-        "read_batch_metadata",
-        lambda name: {"files": {"src/parser.py": {}}},
-    )
+    _mock_batch_files(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(["show", "--from", "batch", "--page", "2"], quiet=True)
 
@@ -615,12 +605,7 @@ def test_show_from_page_accepts_single_file_batch_without_file(monkeypatch):
 def test_show_from_page_rejects_multi_file_batch_without_file(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_show_from_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
-    monkeypatch.setattr(
-        argument_parser,
-        "read_batch_metadata",
-        lambda name: {"files": {"src/parser.py": {}, "src/render.py": {}}},
-    )
+    _mock_batch_files(monkeypatch, ["src/parser.py", "src/render.py"])
 
     args = parse_command_line(["show", "--from", "batch", "--page", "2"], quiet=True)
 
@@ -975,14 +960,9 @@ def test_parse_command_line_include_from_with_files_resolves_batch_scope_only(mo
     """include --from --files should match batch files, not current live changes."""
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_include_from_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
+    _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
     monkeypatch.setattr(
-        argument_parser,
-        "read_batch_metadata",
-        lambda name: {"files": {"foo.py": {}, "bar.py": {}, "notes.txt": {}}},
-    )
-    monkeypatch.setattr(
-        argument_parser,
+        file_scope,
         "list_changed_files",
         Mock(side_effect=AssertionError("live scope should not be resolved")),
     )
@@ -1240,14 +1220,9 @@ def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(mo
     """discard --from --files should match batch files, not current live changes."""
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_discard_from_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
+    _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
     monkeypatch.setattr(
-        argument_parser,
-        "read_batch_metadata",
-        lambda name: {"files": {"foo.py": {}, "bar.py": {}, "notes.txt": {}}},
-    )
-    monkeypatch.setattr(
-        argument_parser,
+        file_scope,
         "list_changed_files",
         Mock(side_effect=AssertionError("live scope should not be resolved")),
     )
@@ -1287,8 +1262,7 @@ def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
     """Apply should dispatch once per file resolved from --files."""
     mock_command = Mock()
     monkeypatch.setattr(argument_parser.commands, "command_apply_from_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: True)
-    monkeypatch.setattr(argument_parser, "read_batch_metadata", lambda name: {"files": {"foo.py": {}, "bar.py": {}, "notes.txt": {}}})
+    _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(
         ["apply", "--from", "batch", "--files", "*.py"],

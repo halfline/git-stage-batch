@@ -2098,6 +2098,62 @@ def test_hunk_tracking_does_not_reexport_line_state_helpers():
     assert line_state_names.isdisjoint(vars(hunk_tracking))
 
 
+def test_selected_change_loading_stays_out_of_hunk_tracking():
+    """Selected-change readers should live outside hunk navigation."""
+    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
+    moved_names = {
+        "load_selected_change",
+        "require_selected_hunk",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "include.py": moved_names,
+        SRC_ROOT / "commands" / "discard.py": moved_names,
+        SRC_ROOT / "commands" / "skip.py": moved_names,
+        SRC_ROOT / "commands" / "suggest_fixup.py": {"require_selected_hunk"},
+    }
+    violations = []
+
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    selected_loading = __import__(
+        "git_stage_batch.data.selected_change.loading",
+        fromlist=["loading"],
+    )
+    hunk_tracking_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
+    }
+
+    assert moved_names <= vars(selected_loading).keys()
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+    assert "git_stage_batch.data.selected_change.loading" not in hunk_tracking_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "selected_change" / "loading.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_loading_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.selected_change.loading":
+                imported_loading_names |= imported_names & moved_names
+            if imported_module == "git_stage_batch.data.hunk_tracking":
+                moved_imports = imported_names & moved_names
+                if moved_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_loading_names
+
+    assert violations == []
+
+
 def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     """Consumed replacement metadata should stay outside hunk navigation."""
     hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"

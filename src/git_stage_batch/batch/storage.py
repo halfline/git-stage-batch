@@ -187,7 +187,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                 base_buffer = baseline_buffers.get(file_path, empty_buffer)
                 batch_source_buffer = batch_source_buffers.get(file_path, empty_buffer)
 
-                realized_buffer = _build_realized_buffer_from_lines(
+                realized_buffer = build_realized_buffer_from_lines(
                     base_buffer,
                     batch_source_buffer,
                     update.ownership,
@@ -369,7 +369,7 @@ def add_binary_file_to_batch(
         # Update batch commit tree
         if blob_sha:
             # Added or modified: add file to batch commit tree
-            _update_batch_commit(
+            update_batch_commit(
                 batch_name,
                 file_path,
                 blob_sha,
@@ -378,7 +378,7 @@ def add_binary_file_to_batch(
             )
         else:
             # Deleted: remove file from batch commit tree
-            _remove_file_from_batch_commit(
+            remove_file_from_batch_commit(
                 batch_name,
                 file_path,
                 source_buffers=source_buffers,
@@ -415,7 +415,7 @@ def add_gitlink_to_batch(
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
     if gitlink_change.is_deleted_file():
-        _remove_file_from_batch_commit(batch_name, file_path)
+        remove_file_from_batch_commit(batch_name, file_path)
         return
 
     if gitlink_change.new_oid is None:
@@ -426,7 +426,7 @@ def add_gitlink_to_batch(
     _update_batch_gitlink_commit(batch_name, file_path, gitlink_change.new_oid)
 
 
-def _build_realized_buffer_from_lines(
+def build_realized_buffer_from_lines(
     base_lines: Sequence[bytes],
     batch_source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
@@ -564,7 +564,7 @@ def remove_file_from_batch(batch_name: str, file_path: str) -> None:
     metadata.get("files", {}).pop(file_path, None)
     metadata_path = get_batch_metadata_file_path(batch_name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
-    _remove_file_from_batch_commit(batch_name, file_path)
+    remove_file_from_batch_commit(batch_name, file_path)
 
 
 def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path: str) -> None:
@@ -584,16 +584,16 @@ def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path:
 
     source_commit = get_batch_commit_sha(source_batch)
     if not source_commit:
-        _remove_file_from_batch_commit(dest_batch, file_path)
+        remove_file_from_batch_commit(dest_batch, file_path)
         return
 
     if file_meta.get("file_type") == "gitlink":
         if file_meta.get("change_type") == "deleted":
-            _remove_file_from_batch_commit(dest_batch, file_path)
+            remove_file_from_batch_commit(dest_batch, file_path)
             return
         oid = file_meta.get("new_oid")
         if not oid:
-            _remove_file_from_batch_commit(dest_batch, file_path)
+            remove_file_from_batch_commit(dest_batch, file_path)
             return
         _update_batch_gitlink_commit(dest_batch, file_path, oid)
         return
@@ -603,9 +603,9 @@ def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path:
         with source_buffer:
             blob_sha = create_git_blob(source_buffer.byte_chunks())
         file_mode = file_meta.get("mode", "100644")
-        _update_batch_commit(dest_batch, file_path, blob_sha, file_mode)
+        update_batch_commit(dest_batch, file_path, blob_sha, file_mode)
     else:
-        _remove_file_from_batch_commit(dest_batch, file_path)
+        remove_file_from_batch_commit(dest_batch, file_path)
 
 
 def _batch_commit_parents(batch_name: str) -> list[str]:
@@ -625,7 +625,7 @@ def _batch_commit_parents(batch_name: str) -> list[str]:
     return parents
 
 
-def _remove_file_from_batch_commit(
+def remove_file_from_batch_commit(
     batch_name: str,
     file_path: str,
     *,
@@ -666,7 +666,7 @@ def _remove_file_from_batch_commit(
     )
 
 
-def _update_batch_commit(
+def update_batch_commit(
     batch_name: str,
     file_path: str,
     blob_sha: str,

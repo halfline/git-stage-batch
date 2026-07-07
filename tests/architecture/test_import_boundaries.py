@@ -897,6 +897,31 @@ def test_replacement_selection_stays_in_command_helper():
     assert violations == []
 
 
+def test_start_again_use_session_iteration_helper():
+    """Start and again should share iteration flow through session support."""
+    start_path = SRC_ROOT / "commands" / "start.py"
+    again_path = SRC_ROOT / "commands" / "again.py"
+    iteration = __import__(
+        "git_stage_batch.commands.session.iteration",
+        fromlist=["iteration"],
+    )
+
+    assert "restart_iteration_pass" in vars(iteration)
+
+    for command_path in (start_path, again_path):
+        imported_modules = {
+            imported_module
+            for imported_module, _node in _import_from_nodes(command_path)
+        }
+        assert "git_stage_batch.commands.session.iteration" in imported_modules
+
+    start_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(start_path)
+    }
+    assert "git_stage_batch.commands.again" not in start_imports
+
+
 def test_hunk_tracking_does_not_import_show_command():
     """Hunk navigation state should not depend on the show command."""
     hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"

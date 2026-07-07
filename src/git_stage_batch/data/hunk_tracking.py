@@ -45,6 +45,7 @@ from .auto_advance import resolve_auto_advance
 from . import change_freshness as _change_freshness
 from . import file_hunk_display as _file_hunk_display
 from . import live_diff as _live_diff
+from .selected_change import store as _selected_store
 from .selected_change.snapshots import (
     snapshots_are_stale as _snapshots_are_stale,
     write_snapshots_for_selected_file_path as _write_snapshots_for_selected_file_path,
@@ -70,35 +71,6 @@ from .line_state import convert_line_changes_to_serializable_dict, load_line_cha
 from .selected_change.lifecycle import (
     clear_selected_change_state_files as _clear_selected_change_state_files,
 )
-from .selected_change.store import (
-    SelectedChangeClearReason as SelectedChangeClearReason,
-    SelectedChangeKind,
-    SelectedChangeStateSnapshot as SelectedChangeStateSnapshot,
-    cache_binary_file_change,
-    cache_gitlink_change,
-    cache_rename_change,
-    cache_text_deletion_change,
-    get_selected_change_file_path as get_selected_change_file_path,
-    load_line_changes_from_patch_path as _load_line_changes_from_patch_path,
-    load_selected_binary_file,
-    load_selected_gitlink_change,
-    load_selected_rename_change,
-    load_selected_text_deletion_change,
-    mark_selected_change_cleared_by_auto_advance_disabled,
-    mark_selected_change_cleared_by_file_list as mark_selected_change_cleared_by_file_list,
-    read_selected_change_kind,
-    refuse_bare_action_after_auto_advance_disabled as refuse_bare_action_after_auto_advance_disabled,
-    refuse_bare_action_after_file_list as refuse_bare_action_after_file_list,
-    refuse_bare_action_after_stale_batch_selection as refuse_bare_action_after_stale_batch_selection,
-    restore_selected_change_state as restore_selected_change_state,
-    selected_change_was_cleared_by_auto_advance_disabled as selected_change_was_cleared_by_auto_advance_disabled,
-    selected_change_was_cleared_by_file_list as selected_change_was_cleared_by_file_list,
-    selected_change_was_cleared_by_stale_batch_selection as selected_change_was_cleared_by_stale_batch_selection,
-    snapshot_selected_change_state as snapshot_selected_change_state,
-    write_line_changes_state as _write_line_changes_state,
-    write_selected_change_kind,
-    write_selected_hunk_patch_lines,
-)
 
 
 class RecalculateSelectedHunkResult(str, Enum):
@@ -119,11 +91,11 @@ _BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
 
 def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]]:
     """Load the currently cached selected change, if any."""
-    selected_kind = read_selected_change_kind()
-    rename_change = load_selected_rename_change()
+    selected_kind = _selected_store.read_selected_change_kind()
+    rename_change = _selected_store.load_selected_rename_change()
     if rename_change is not None:
         if (
-            selected_kind == SelectedChangeKind.RENAME
+            selected_kind == _selected_store.SelectedChangeKind.RENAME
             and _change_freshness.rename_change_is_stale(rename_change)
         ):
             raise CommandError(
@@ -134,10 +106,10 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
             )
         return rename_change
 
-    deletion_change = load_selected_text_deletion_change()
+    deletion_change = _selected_store.load_selected_text_deletion_change()
     if deletion_change is not None:
         if (
-            selected_kind == SelectedChangeKind.DELETION
+            selected_kind == _selected_store.SelectedChangeKind.DELETION
             and _change_freshness.text_deletion_change_is_stale(deletion_change)
         ):
             raise CommandError(
@@ -148,10 +120,10 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
             )
         return deletion_change
 
-    gitlink_change = load_selected_gitlink_change()
+    gitlink_change = _selected_store.load_selected_gitlink_change()
     if gitlink_change is not None:
         if (
-            selected_kind == SelectedChangeKind.GITLINK
+            selected_kind == _selected_store.SelectedChangeKind.GITLINK
             and _change_freshness.gitlink_change_is_stale(gitlink_change)
         ):
             raise CommandError(
@@ -162,10 +134,10 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
             )
         return gitlink_change
 
-    binary_file = load_selected_binary_file()
+    binary_file = _selected_store.load_selected_binary_file()
     if binary_file is not None:
         if (
-            selected_kind == SelectedChangeKind.BINARY
+            selected_kind == _selected_store.SelectedChangeKind.BINARY
             and _change_freshness.binary_file_change_is_stale(binary_file)
         ):
             file_path = binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
@@ -187,7 +159,7 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
     if line_changes is not None:
         return line_changes
 
-    return _load_line_changes_from_patch_path(patch_path)
+    return _selected_store.load_line_changes_from_patch_path(patch_path)
 
 
 def apply_line_level_batch_filter_to_cached_hunk() -> bool:
@@ -332,7 +304,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     ):
                         continue
 
-                    cache_rename_change(item)
+                    _selected_store.cache_rename_change(item)
                     return item
 
                 if isinstance(item, TextFileDeletionChange):
@@ -346,7 +318,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     if is_path_blocked(item.path(), blocked_files):
                         continue
 
-                    cache_text_deletion_change(item)
+                    _selected_store.cache_text_deletion_change(item)
                     return item
 
                 if isinstance(item, GitlinkChange):
@@ -357,7 +329,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     if is_path_blocked(item.path(), blocked_files):
                         continue
 
-                    cache_gitlink_change(item)
+                    _selected_store.cache_gitlink_change(item)
                     return item
 
                 # Handle binary files
@@ -371,7 +343,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     if is_path_blocked(file_path, blocked_files):
                         continue
 
-                    cache_binary_file_change(item)
+                    _selected_store.cache_binary_file_change(item)
 
                     # Return the BinaryFileChange object directly
                     return item
@@ -396,9 +368,11 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                 if is_path_blocked(line_changes.path, blocked_files):
                     continue
 
-                write_selected_hunk_patch_lines(item.lines)
+                _selected_store.write_selected_hunk_patch_lines(item.lines)
                 write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
-                write_selected_change_kind(SelectedChangeKind.HUNK)
+                _selected_store.write_selected_change_kind(
+                    _selected_store.SelectedChangeKind.HUNK
+                )
 
                 write_text_file_contents(get_line_changes_json_file_path(),
                                          json.dumps(convert_line_changes_to_serializable_dict(line_changes),
@@ -440,23 +414,23 @@ def show_selected_change() -> None:
     This is a helper for commands that need to display the cached hunk
     without advancing (e.g., start, again).
     """
-    rename_change = load_selected_rename_change()
+    rename_change = _selected_store.load_selected_rename_change()
     if rename_change is not None:
         print_rename_change(rename_change)
         return
 
-    deletion_change = load_selected_text_deletion_change()
+    deletion_change = _selected_store.load_selected_text_deletion_change()
     if deletion_change is not None:
         print_text_file_deletion_change(deletion_change)
         return
 
-    gitlink_change = load_selected_gitlink_change()
+    gitlink_change = _selected_store.load_selected_gitlink_change()
     if gitlink_change is not None:
         print_gitlink_change(gitlink_change)
         return
 
     # Check if selected item is a binary file
-    binary_file = load_selected_binary_file()
+    binary_file = _selected_store.load_selected_binary_file()
     if binary_file is not None:
         print_binary_file_change(binary_file)
         return
@@ -464,7 +438,9 @@ def show_selected_change() -> None:
     # Otherwise, show text hunk
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
-        line_changes = _load_line_changes_from_patch_path(patch_path)
+        line_changes = _selected_store.load_line_changes_from_patch_path(
+            patch_path
+        )
         print_line_level_changes(line_changes)
 
 
@@ -477,23 +453,23 @@ def advance_to_and_show_next_change() -> None:
     """
     advance_to_next_change()
 
-    rename_change = load_selected_rename_change()
+    rename_change = _selected_store.load_selected_rename_change()
     if rename_change is not None:
         print_rename_change(rename_change)
         return
 
-    deletion_change = load_selected_text_deletion_change()
+    deletion_change = _selected_store.load_selected_text_deletion_change()
     if deletion_change is not None:
         print_text_file_deletion_change(deletion_change)
         return
 
-    gitlink_change = load_selected_gitlink_change()
+    gitlink_change = _selected_store.load_selected_gitlink_change()
     if gitlink_change is not None:
         print_gitlink_change(gitlink_change)
         return
 
     # Check if a binary file was cached
-    binary_file = load_selected_binary_file()
+    binary_file = _selected_store.load_selected_binary_file()
     if binary_file is not None:
         print_binary_file_change(binary_file)
         return
@@ -501,7 +477,9 @@ def advance_to_and_show_next_change() -> None:
     # Check if a text hunk was cached
     patch_path = get_selected_hunk_patch_file_path()
     if patch_path.exists():
-        line_changes = _load_line_changes_from_patch_path(patch_path)
+        line_changes = _selected_store.load_line_changes_from_patch_path(
+            patch_path
+        )
         print_line_level_changes(line_changes)
     else:
         print(_("No more hunks to process."), file=sys.stderr)
@@ -519,7 +497,7 @@ def finish_selected_change_action(
     if quiet:
         return
 
-    if read_selected_change_kind() is None:
+    if _selected_store.read_selected_change_kind() is None:
         print(_("No more hunks to process."), file=sys.stderr)
         return
 
@@ -536,7 +514,7 @@ def select_next_change_after_action(
         return True
 
     _clear_selected_change_state_files()
-    mark_selected_change_cleared_by_auto_advance_disabled()
+    _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
     return False
 
 
@@ -544,7 +522,10 @@ def select_next_change_after_action(
 
 def require_selected_hunk() -> None:
     """Ensure selected hunk exists and is not stale, exit with error otherwise."""
-    if read_selected_change_kind() in (SelectedChangeKind.BATCH_FILE, SelectedChangeKind.BATCH_BINARY):
+    if _selected_store.read_selected_change_kind() in (
+        _selected_store.SelectedChangeKind.BATCH_FILE,
+        _selected_store.SelectedChangeKind.BATCH_BINARY,
+    ):
         exit_with_error(
             _(
                 "Selected file came from a batch, not a live hunk. "
@@ -576,7 +557,7 @@ def recalculate_selected_hunk_for_file(
     Args:
         file_path: Repository-relative path to recalculate hunk for
     """
-    selected_kind = read_selected_change_kind()
+    selected_kind = _selected_store.read_selected_change_kind()
     previous_line_changes = load_line_changes_from_state()
     if previous_line_changes is not None and previous_line_changes.path != file_path:
         previous_line_changes = None
@@ -585,26 +566,26 @@ def recalculate_selected_hunk_for_file(
     write_line_ids_file(get_processed_include_ids_file_path(), set())
     write_line_ids_file(get_processed_skip_ids_file_path(), set())
 
-    if selected_kind == SelectedChangeKind.FILE:
+    if selected_kind == _selected_store.SelectedChangeKind.FILE:
         line_changes = _file_hunk_display.cache_unstaged_file_as_single_hunk(file_path)
         if line_changes is None:
             _clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
                 return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
-            mark_selected_change_cleared_by_auto_advance_disabled()
+            _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
             return RecalculateSelectedHunkResult.CLEARED
 
         line_changes = preserve_line_ids_from_previous_view(
             previous_line_changes,
             line_changes,
         )
-        _write_line_changes_state(line_changes)
+        _selected_store.write_line_changes_state(line_changes)
 
         if apply_line_level_batch_filter_to_cached_hunk():
             _clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
                 return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
-            mark_selected_change_cleared_by_auto_advance_disabled()
+            _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
             return RecalculateSelectedHunkResult.CLEARED
 
         line_changes = load_line_changes_from_state()
@@ -633,7 +614,7 @@ def recalculate_selected_hunk_for_file(
                     rename_hash = compute_rename_change_hash(single_hunk)
                     if rename_hash in blocked_hashes:
                         continue
-                    cache_rename_change(single_hunk)
+                    _selected_store.cache_rename_change(single_hunk)
                     print_rename_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
@@ -646,7 +627,7 @@ def recalculate_selected_hunk_for_file(
                         )
                     ):
                         continue
-                    cache_text_deletion_change(single_hunk)
+                    _selected_store.cache_text_deletion_change(single_hunk)
                     print_text_file_deletion_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
@@ -654,7 +635,7 @@ def recalculate_selected_hunk_for_file(
                     gitlink_hash = compute_gitlink_change_hash(single_hunk)
                     if gitlink_hash in blocked_hashes:
                         continue
-                    cache_gitlink_change(single_hunk)
+                    _selected_store.cache_gitlink_change(single_hunk)
                     print_gitlink_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
@@ -676,9 +657,11 @@ def recalculate_selected_hunk_for_file(
                 if hunk_hash in blocked_hashes:
                     continue
 
-                write_selected_hunk_patch_lines(single_hunk.lines)
+                _selected_store.write_selected_hunk_patch_lines(single_hunk.lines)
                 write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
-                write_selected_change_kind(SelectedChangeKind.HUNK)
+                _selected_store.write_selected_change_kind(
+                    _selected_store.SelectedChangeKind.HUNK
+                )
 
                 line_changes = build_line_changes_from_patch_lines(
                     single_hunk.lines,
@@ -688,7 +671,7 @@ def recalculate_selected_hunk_for_file(
                     previous_line_changes,
                     line_changes,
                 )
-                _write_line_changes_state(line_changes)
+                _selected_store.write_line_changes_state(line_changes)
                 _write_snapshots_for_selected_file_path(line_changes.path)
 
                 # Apply batch filter to exclude batched lines
@@ -713,5 +696,5 @@ def recalculate_selected_hunk_for_file(
     _clear_selected_change_state_files()
     if resolve_auto_advance(auto_advance):
         return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
-    mark_selected_change_cleared_by_auto_advance_disabled()
+    _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
     return RecalculateSelectedHunkResult.CLEARED

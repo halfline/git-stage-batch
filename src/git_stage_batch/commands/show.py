@@ -51,10 +51,10 @@ from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.snapshots import write_snapshots_for_selected_file_path
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..output import (
+from ..output.hunk import print_line_level_changes
+from ..output.patch import (
     print_binary_file_change,
     print_gitlink_change,
-    print_line_level_changes,
     print_rename_change,
     print_text_file_deletion_change,
 )

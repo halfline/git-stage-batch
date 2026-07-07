@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..output import Colors
+from ..output.colors import Colors
 from ..i18n import _
 
 if TYPE_CHECKING:

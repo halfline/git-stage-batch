@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from ...data import line_state as _line_state
 from ...data.selected_change import store as _selected_store
-from ...output import (
+from ...output.hunk import print_line_level_changes
+from ...output.patch import (
     print_binary_file_change,
     print_gitlink_change,
-    print_line_level_changes,
     print_rename_change,
     print_text_file_deletion_change,
 )

@@ -25,7 +25,7 @@ from ..core.models import (
     TextFileDeletionChange,
 )
 from ..core.buffer import LineBuffer
-from ..editor import load_git_object_as_buffer
+from .repository_buffers import load_git_object_as_buffer
 from ..i18n import ngettext
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import stream_git_command

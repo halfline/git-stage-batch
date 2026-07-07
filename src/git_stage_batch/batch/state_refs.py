@@ -10,7 +10,7 @@ from typing import Any
 from .ref_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from .validation import validate_batch_name
 from ..core.buffer import LineBuffer
-from ..editor import load_git_object_as_buffer
+from ..data.repository_buffers import load_git_object_as_buffer
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import (
     create_git_blob,

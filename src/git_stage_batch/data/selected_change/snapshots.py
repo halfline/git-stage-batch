@@ -11,7 +11,7 @@ from ...core.buffer import (
     buffer_preview,
     write_buffer_to_path,
 )
-from ...editor import load_git_object_as_buffer
+from ..repository_buffers import load_git_object_as_buffer
 from ...utils.git import get_git_repository_root_path
 from ...utils.journal import log_journal
 from ...utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path

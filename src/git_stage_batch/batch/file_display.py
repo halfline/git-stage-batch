@@ -22,7 +22,10 @@ from ..core.models import (
     RenderedBatchDisplay,
     ReviewActionGroup,
 )
-from ..editor import load_git_object_as_buffer, load_working_tree_file_as_buffer
+from ..data.repository_buffers import (
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+)
 from ..exceptions import MergeError
 from ..utils.paths import get_context_lines
 from ..utils.text import normalize_line_sequence_endings

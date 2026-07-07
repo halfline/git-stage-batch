@@ -50,7 +50,7 @@ from ..core.buffer import (
     LineBuffer,
     write_buffer_to_working_tree_path,
 )
-from ..editor import (
+from ..data.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )

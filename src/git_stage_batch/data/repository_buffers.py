@@ -1,4 +1,4 @@
-"""Git loading helpers for line buffers."""
+"""Repository-backed line buffer loading helpers."""
 
 from __future__ import annotations
 

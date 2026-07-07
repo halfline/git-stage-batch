@@ -1235,13 +1235,13 @@ class _LineEntryContentSequence(Sequence[bytes]):
         return _line_entry_content(self._lines[index])
 
 
-class _AbsenceContentBuilder:
+class AbsenceContentBuilder:
     """Build absence content as an EditorBuffer from appended line ranges."""
 
     def __init__(self) -> None:
         self._editor: Editor | None = Editor(())
 
-    def __enter__(self) -> _AbsenceContentBuilder:
+    def __enter__(self) -> AbsenceContentBuilder:
         self._check_open()
         return self
 
@@ -1291,7 +1291,7 @@ def _build_absence_content_from_range(
     start: int,
     end: int,
 ) -> EditorBuffer:
-    with _AbsenceContentBuilder() as builder:
+    with AbsenceContentBuilder() as builder:
         builder.append_line_range(content_lines, start, end)
         return builder.finish()
 
@@ -1484,7 +1484,7 @@ def translate_hunk_selection_to_batch_ownership(
         old_line_seen = False
         selected_source_lines = _LineRangeBuilder()
         consumed_ids: list[int] = []
-        with _AbsenceContentBuilder() as builder:
+        with AbsenceContentBuilder() as builder:
             for range_start, range_stop in selected_old_ranges:
                 if not old_line_seen:
                     deletion_anchor = hunk_lines[range_start].source_line

@@ -7,11 +7,11 @@ from typing import Any
 
 from ..batch.ownership import (
     BatchOwnership,
-    advance_batch_source_for_file_with_provenance,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
 )
+from ..batch.source_advancement import advance_batch_source_for_file_with_provenance
 from ..batch.source_refresh import (
     refresh_selected_lines_against_new_source,
     refresh_selected_lines_against_source_lines,

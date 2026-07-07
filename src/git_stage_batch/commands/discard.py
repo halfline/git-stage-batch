@@ -23,12 +23,12 @@ from ..batch.display import (
 )
 from ..batch.ownership import (
     BatchOwnership,
-    advance_source_lines_preserving_existing_presence,
     remap_batch_ownership_with_lineage,
     derive_replacement_line_runs_from_lines,
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
 )
+from ..batch.source_advancement import advance_source_lines_preserving_existing_presence
 from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,

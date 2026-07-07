@@ -24,13 +24,12 @@ from ...core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
-from ...utils.file_io import read_text_file_line_set, write_text_file_contents
+from ...utils.file_io import read_text_file_line_set
 from ...utils.paths import (
     get_block_list_file_path,
     get_context_lines,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
-    get_selected_hunk_hash_file_path,
 )
 from ..auto_advance import resolve_auto_advance
 from .. import change_freshness as _change_freshness
@@ -41,9 +40,6 @@ from . import store as _selected_store
 from . import hunk_filtering as _selected_hunk_filtering
 from .lifecycle import (
     clear_selected_change_state_files as _clear_selected_change_state_files,
-)
-from .snapshots import (
-    write_snapshots_for_selected_file_path as _write_snapshots_for_selected_file_path,
 )
 
 
@@ -163,12 +159,6 @@ def recalculate_selected_hunk_for_file(
                 if hunk_hash in blocked_hashes:
                     continue
 
-                _selected_store.write_selected_hunk_patch_lines(single_hunk.lines)
-                write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
-                _selected_store.write_selected_change_kind(
-                    _selected_store.SelectedChangeKind.HUNK
-                )
-
                 line_changes = build_line_changes_from_patch_lines(
                     single_hunk.lines,
                     annotator=annotate_with_batch_source,
@@ -177,8 +167,11 @@ def recalculate_selected_hunk_for_file(
                     previous_line_changes,
                     line_changes,
                 )
-                _selected_store.write_line_changes_state(line_changes)
-                _write_snapshots_for_selected_file_path(line_changes.path)
+                _selected_store.cache_hunk_change(
+                    single_hunk.lines,
+                    hunk_hash,
+                    line_changes,
+                )
 
                 if (
                     _selected_hunk_filtering.apply_line_level_batch_filter_to_cached_hunk()

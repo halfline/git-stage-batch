@@ -11,8 +11,9 @@ from ..utils.paths import get_abort_head_file_path
 
 
 def _run_interactive_command() -> None:
-    from ..commands.interactive import command_interactive
-    command_interactive()
+    from ..tui.interactive import start_interactive_mode
+
+    start_interactive_mode()
 
 
 def dispatch_args(args: argparse.Namespace) -> None:

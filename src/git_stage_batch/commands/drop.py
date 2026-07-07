@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..batch import delete_batch
+from ..batch.operations import delete_batch
 from ..batch.source_selector import require_plain_batch_name
 import sys
 from ..data.undo import undo_checkpoint

@@ -11,7 +11,12 @@ import stat
 import sys
 import uuid
 
-from ..batch import add_binary_file_to_batch, add_file_to_batch, add_gitlink_to_batch, create_batch, delete_batch
+from ..batch.operations import create_batch, delete_batch
+from ..batch.storage import (
+    add_binary_file_to_batch,
+    add_file_to_batch,
+    add_gitlink_to_batch,
+)
 from ..batch.display import annotate_with_batch_source
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.ownership import (

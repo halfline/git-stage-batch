@@ -10,12 +10,12 @@ import sys
 from contextlib import ExitStack
 from dataclasses import dataclass
 
-from ..batch import (
+from ..batch.operations import create_batch
+from ..batch.storage import (
     BatchFileUpdate,
     add_binary_file_to_batch,
     add_file_to_batch,
     add_files_to_batch,
-    create_batch,
 )
 from ..batch.display import (
     annotate_with_batch_source,

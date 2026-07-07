@@ -35,7 +35,6 @@ from ..exceptions import CommandError, NoMoreHunks, exit_with_error
 from ..i18n import _
 from ..output import (
     print_line_level_changes,
-    print_binary_file_change,
     print_gitlink_change,
     print_rename_change,
     print_text_file_deletion_change,
@@ -418,42 +417,6 @@ def advance_to_next_change() -> None:
     except NoMoreHunks:
         # No more items - state is already cleared
         pass
-
-
-def show_selected_change() -> None:
-    """Display the currently cached hunk or binary file.
-
-    This is a helper for commands that need to display the cached hunk
-    without advancing (e.g., start, again).
-    """
-    rename_change = _selected_store.load_selected_rename_change()
-    if rename_change is not None:
-        print_rename_change(rename_change)
-        return
-
-    deletion_change = _selected_store.load_selected_text_deletion_change()
-    if deletion_change is not None:
-        print_text_file_deletion_change(deletion_change)
-        return
-
-    gitlink_change = _selected_store.load_selected_gitlink_change()
-    if gitlink_change is not None:
-        print_gitlink_change(gitlink_change)
-        return
-
-    # Check if selected item is a binary file
-    binary_file = _selected_store.load_selected_binary_file()
-    if binary_file is not None:
-        print_binary_file_change(binary_file)
-        return
-
-    # Otherwise, show text hunk
-    patch_path = get_selected_hunk_patch_file_path()
-    if patch_path.exists():
-        line_changes = _selected_store.load_line_changes_from_patch_path(
-            patch_path
-        )
-        print_line_level_changes(line_changes)
 
 
 def select_next_change_after_action(

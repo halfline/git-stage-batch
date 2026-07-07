@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from ..data.auto_advance import DEFAULT_AUTO_ADVANCE, write_auto_advance_default
-from ..data.hunk_tracking import fetch_next_change, show_selected_change
+from ..data.hunk_tracking import fetch_next_change
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.session import initialize_abort_state
@@ -15,6 +15,7 @@ from ..i18n import _
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import require_git_repository
 from ..utils.paths import ensure_state_directory_exists, get_context_lines_file_path, get_abort_head_file_path
+from .selection.selected_change_display import show_selected_change
 from .session.iteration import restart_iteration_pass
 
 

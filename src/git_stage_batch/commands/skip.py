@@ -23,7 +23,6 @@ from ..batch.selection import require_line_selection_in_view
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
     fetch_next_change,
-    finish_selected_change_action,
     load_selected_change,
     require_selected_hunk,
 )
@@ -76,6 +75,7 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_processed_skip_ids_file_path,
 )
+from .selection.action_completion import finish_selected_change_action
 
 
 def command_skip(

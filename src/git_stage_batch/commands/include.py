@@ -54,7 +54,6 @@ from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycl
 from ..data.hunk_tracking import (
     apply_line_level_batch_filter_to_cached_hunk,
     fetch_next_change,
-    finish_selected_change_action,
     load_selected_change,
     require_selected_hunk,
 )
@@ -147,6 +146,7 @@ from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
 )
+from .selection.action_completion import finish_selected_change_action
 
 
 def _update_index_for_gitlink_change(gitlink_change: GitlinkChange):

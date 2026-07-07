@@ -23,8 +23,8 @@ from ..batch.display import (
 )
 from ..batch.ownership import (
     BatchOwnership,
-    _advance_source_lines_preserving_existing_presence,
-    _remap_batch_ownership_with_lineage,
+    advance_source_lines_preserving_existing_presence,
+    remap_batch_ownership_with_lineage,
     derive_replacement_line_runs_from_lines,
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
@@ -1209,13 +1209,13 @@ def _command_discard_lines_to_batch_as(
 
                         with (
                             old_source_buffer as old_source_lines,
-                            _advance_source_lines_preserving_existing_presence(
+                            advance_source_lines_preserving_existing_presence(
                                 old_lines=old_source_lines,
                                 working_lines=rewritten_working_lines,
                                 ownership=existing_ownership,
                             ) as source_with_provenance,
                         ):
-                            remapped_existing_ownership = _remap_batch_ownership_with_lineage(
+                            remapped_existing_ownership = remap_batch_ownership_with_lineage(
                                 ownership=existing_ownership,
                                 lineage=source_with_provenance.lineage,
                             )

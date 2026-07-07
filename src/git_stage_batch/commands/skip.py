@@ -28,11 +28,6 @@ from ..data.hunk_tracking import (
     get_selected_change_file_path,
     load_selected_change,
     read_selected_change_kind,
-    record_binary_hunk_skipped,
-    record_gitlink_hunk_skipped,
-    record_hunk_skipped,
-    record_rename_hunk_skipped,
-    record_text_deletion_hunk_skipped,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
     require_selected_hunk,
@@ -51,6 +46,13 @@ from ..data.file_hunk_display import (
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
+from ..data.progress import (
+    record_binary_hunk_skipped,
+    record_gitlink_hunk_skipped,
+    record_hunk_skipped,
+    record_rename_hunk_skipped,
+    record_text_deletion_hunk_skipped,
+)
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error

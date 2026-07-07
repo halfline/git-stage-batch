@@ -7,8 +7,8 @@ import os
 import shlex
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from enum import Enum
 from importlib import resources
@@ -27,7 +27,6 @@ from ..commands.file_scope.multi_file_actions import (
     skip_each_resolved_file,
 )
 from ..data.file_tracking import list_untracked_files
-from ..data.undo import undo_checkpoint
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.command import run_command
@@ -384,53 +383,6 @@ def _resolve_file_argument_patterns(
     )
     resolved_files = list(dict.fromkeys([*exact_files, *resolved_patterns]))
     return resolved_files, display_patterns
-
-
-def _run_for_each_file(
-    file_scope: FileScope,
-    callback: Callable[[str | None], None],
-    *,
-    line_ids: str | None = None,
-    undo_operation: str | None = None,
-    worktree_paths: Sequence[str] | None = None,
-) -> None:
-    """Run a callback once per resolved file argument."""
-    if file_scope.is_multiple and line_ids is not None:
-        raise CommandError(_("Cannot use --lines with multiple files."))
-    if file_scope.is_multiple:
-        checkpoint = (
-            _multi_file_undo_checkpoint(
-                undo_operation,
-                file_scope.files,
-                worktree_paths=worktree_paths,
-            )
-            if undo_operation is not None else
-            nullcontext()
-        )
-        with checkpoint:
-            for file in file_scope.files:
-                callback(file)
-        return
-    callback(file_scope.optional_file())
-
-
-def _format_multi_file_operation(command: str, files: Sequence[str]) -> str:
-    """Return a readable undo operation for a resolved multi-file command."""
-    return f"{command} --files {' '.join(shlex.quote(file) for file in files)}"
-
-
-def _multi_file_undo_checkpoint(
-    command: str,
-    files: Sequence[str],
-    *,
-    worktree_paths: Sequence[str] | None = None,
-) -> AbstractContextManager[None]:
-    """Create one undo checkpoint for a resolved multi-file command."""
-    paths = list(worktree_paths) if worktree_paths is not None else None
-    return undo_checkpoint(
-        _format_multi_file_operation(command, files),
-        worktree_paths=paths,
-    )
 
 
 def _resolve_live_file_scope(

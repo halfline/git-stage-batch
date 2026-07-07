@@ -365,6 +365,7 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.show" in imported_modules
     assert "git_stage_batch.commands.include" in imported_modules
     assert "git_stage_batch.commands.discard" in imported_modules
+    assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.commands.status" in imported_modules
 
 

@@ -20,6 +20,7 @@ from ..utils.paths import (
     get_staged_deletions_file_path,
     get_staged_renames_file_path,
 )
+from .index_entries import read_index_entry
 
 
 @dataclass(frozen=True)
@@ -94,16 +95,15 @@ def list_normalizable_staged_renames() -> list[StagedRename]:
         if not record.status.startswith("R") or len(record.paths) != 2:
             continue
         old_path, new_path = record.paths
-        entry = _index_entry_for_path(new_path)
+        entry = read_index_entry(new_path)
         if entry is None:
             continue
-        new_mode, new_blob = entry
         staged_renames.append(
             StagedRename(
                 old_path=old_path,
                 new_path=new_path,
-                new_mode=new_mode,
-                new_blob=new_blob,
+                new_mode=entry.mode,
+                new_blob=entry.object_id,
             )
         )
 
@@ -207,35 +207,6 @@ def staged_changes_are_only_normalizable_renames() -> bool:
     if len(rename_records) != len(records):
         return False
     return len(list_normalizable_staged_renames()) == len(rename_records)
-
-
-def _index_entry_for_path(file_path: str) -> tuple[str, str] | None:
-    result = run_git_command(
-        ["ls-files", "--stage", "-z", "--", file_path],
-        check=False,
-        text_output=False,
-        requires_index_lock=False,
-    )
-    if result.returncode != 0:
-        return None
-
-    for record in result.stdout.split(b"\0"):
-        if not record:
-            continue
-        try:
-            metadata, path_bytes = record.split(b"\t", 1)
-        except ValueError:
-            continue
-        if path_bytes.decode("utf-8", errors="surrogateescape") != file_path:
-            continue
-        parts = metadata.split()
-        if len(parts) < 3 or parts[2] != b"0":
-            continue
-        return (
-            parts[0].decode("ascii", errors="replace"),
-            parts[1].decode("ascii", errors="replace"),
-        )
-    return None
 
 
 def _serialize_renames(renames: list[StagedRename]) -> str:

@@ -199,6 +199,17 @@ def test_change_freshness_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_status_does_not_import_hunk_navigation():
+    """Status should read focused data helpers instead of hunk navigation."""
+    status_path = SRC_ROOT / "commands" / "status.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(status_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

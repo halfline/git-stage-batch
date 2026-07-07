@@ -143,22 +143,51 @@ def test_live_text_lifecycle_detection_stays_out_of_core():
     assert "detect_empty_text_lifecycle_change" in vars(detector)
 
 
-def test_editor_package_does_not_reexport_buffer_primitives():
-    """Buffer primitives should be imported from core, not the editor package."""
+def test_editor_package_does_not_reexport_editor_apis():
+    """Editor callers should import concrete modules instead of the package."""
+    editor_path = SRC_ROOT / "editor" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(editor_path)
+    }
     editor = __import__("git_stage_batch.editor", fromlist=["editor"])
-    buffer_names = {
+    facade_names = {
         "BufferInput",
+        "Cursor",
+        "Editor",
         "LineBuffer",
         "buffer_byte_chunks",
         "buffer_byte_count",
         "buffer_has_data",
         "buffer_matches",
         "buffer_preview",
+        "choose_line_ending",
+        "detect_line_ending",
+        "edit_lines_as_buffer",
+        "export_lines_as_buffer",
+        "restore_line_endings",
+        "restore_line_endings_in_chunks",
         "write_buffer_to_path",
         "write_buffer_to_working_tree_path",
     }
+    violations = []
 
-    assert buffer_names.isdisjoint(vars(editor))
+    assert imported_modules <= {"__future__"}
+    assert facade_names.isdisjoint(vars(editor))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.editor":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
 
 
 def test_data_package_does_not_reexport_data_apis():

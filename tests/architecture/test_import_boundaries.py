@@ -681,40 +681,49 @@ def test_file_review_output_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
-def test_file_review_output_uses_public_action_command_formatter():
-    """File-review output should import the public command formatter."""
+def test_file_review_action_commands_stay_out_of_state_module():
+    """File-review command text should live beside validation state."""
+    action_commands = __import__(
+        "git_stage_batch.data.file_review.action_commands",
+        fromlist=["action_commands"],
+    )
     review_state = __import__(
         "git_stage_batch.data.file_review.state",
         fromlist=["state"],
     )
-    public_names = {"line_action_command"}
-    private_names = {"_line_action_command"}
+    public_names = {
+        "batch_source_action_command",
+        "line_action_command",
+        "live_to_batch_action_command",
+        "show_command_for_review_state",
+    }
     expected_imports = {
-        SRC_ROOT / "output" / "file_review.py": public_names,
+        SRC_ROOT / "data" / "file_review" / "state.py": public_names,
+        SRC_ROOT / "output" / "file_review.py": {"line_action_command"},
     }
     violations = []
 
-    assert "line_action_command" in vars(review_state)
-    assert private_names.isdisjoint(vars(review_state))
+    for public_name in public_names:
+        assert public_name in vars(action_commands)
+    assert public_names.isdisjoint(vars(review_state))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "data" / "file_review" / "state.py":
+        if path == SRC_ROOT / "data" / "file_review" / "action_commands.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.data.file_review.state":
-                continue
-
             imported_names = {alias.name for alias in node.names}
-            imported_public_names |= imported_names & public_names
-            disallowed_names = imported_names & private_names
-            if disallowed_names:
-                relative_path = path.relative_to(REPO_ROOT)
-                names = ", ".join(sorted(disallowed_names))
-                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+            if imported_module == "git_stage_batch.data.file_review.action_commands":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
         if path in expected_imports:
             assert expected_imports[path] <= imported_public_names

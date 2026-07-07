@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 from typing import Union
 
@@ -31,21 +30,15 @@ from . import change_freshness as _change_freshness
 from . import live_diff as _live_diff
 from .selected_change import store as _selected_store
 from .selected_change import hunk_filtering as _selected_hunk_filtering
-from .selected_change.snapshots import (
-    write_snapshots_for_selected_file_path as _write_snapshots_for_selected_file_path,
-)
 from ..utils.file_io import (
     is_path_blocked,
     read_file_paths_file,
     read_text_file_line_set,
-    write_text_file_contents,
 )
 from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
     get_context_lines,
-    get_selected_hunk_hash_file_path,
-    get_line_changes_json_file_path,
 )
 from . import line_state as _line_state
 from .selected_change.lifecycle import (
@@ -154,23 +147,11 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                 if is_path_blocked(line_changes.path, blocked_files):
                     continue
 
-                _selected_store.write_selected_hunk_patch_lines(item.lines)
-                write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
-                _selected_store.write_selected_change_kind(
-                    _selected_store.SelectedChangeKind.HUNK
+                _selected_store.cache_hunk_change(
+                    item.lines,
+                    hunk_hash,
+                    line_changes,
                 )
-
-                write_text_file_contents(
-                    get_line_changes_json_file_path(),
-                    json.dumps(
-                        _line_state.convert_line_changes_to_serializable_dict(
-                            line_changes
-                        ),
-                        ensure_ascii=False,
-                        indent=0,
-                    ),
-                )
-                _write_snapshots_for_selected_file_path(line_changes.path)
 
                 # Apply line-level batch filtering
                 if (

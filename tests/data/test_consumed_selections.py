@@ -13,7 +13,7 @@ from git_stage_batch.data.consumed_selections import (
     read_consumed_file_metadata,
     record_consumed_selection,
 )
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def test_record_consumed_selection_refreshes_stale_first_selection(temp_git_repo
     test_file.write_text("header\nline1\n")
 
     command_start()
-    with EditorBuffer.from_bytes(b"header\nline1\n") as source_buffer:
+    with LineBuffer.from_bytes(b"header\nline1\n") as source_buffer:
         record_consumed_selection(
             "test.txt",
             source_buffer=source_buffer,
@@ -82,7 +82,7 @@ def test_record_consumed_selection_accepts_buffer(temp_git_repo):
     test_file.write_text("header\nline1\n")
 
     command_start()
-    source_buffer = EditorBuffer.from_bytes(b"header\nline1\n")
+    source_buffer = LineBuffer.from_bytes(b"header\nline1\n")
     try:
         record_consumed_selection(
             "test.txt",
@@ -127,7 +127,7 @@ def test_record_consumed_selection_rewrites_existing_deletions(temp_git_repo):
     test_file.write_text("keep\n")
 
     command_start()
-    with EditorBuffer.from_bytes(b"keep\n") as source_buffer:
+    with LineBuffer.from_bytes(b"keep\n") as source_buffer:
         record_consumed_selection(
             "test.txt",
             source_buffer=source_buffer,
@@ -143,7 +143,7 @@ def test_record_consumed_selection_rewrites_existing_deletions(temp_git_repo):
                 )
             ],
         )
-    with EditorBuffer.from_bytes(b"keep\n") as source_buffer:
+    with LineBuffer.from_bytes(b"keep\n") as source_buffer:
         record_consumed_selection(
             "test.txt",
             source_buffer=source_buffer,

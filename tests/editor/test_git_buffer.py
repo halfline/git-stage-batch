@@ -5,8 +5,8 @@ from __future__ import annotations
 import subprocess
 
 import git_stage_batch.editor.git as editor_git
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.editor import (
-    EditorBuffer,
     load_git_blob_as_buffer,
     load_git_object_as_buffer,
     load_git_object_as_buffer_or_empty,
@@ -44,7 +44,7 @@ def test_load_git_tree_files_as_buffers_loads_tree_blobs(monkeypatch):
         }
 
     def fake_load_git_blob_as_buffer(blob_sha):
-        return EditorBuffer.from_bytes(blob_sha.encode("ascii") + b"\n")
+        return LineBuffer.from_bytes(blob_sha.encode("ascii") + b"\n")
 
     monkeypatch.setattr(editor_git, "list_git_tree_blobs", fake_list_git_tree_blobs)
     monkeypatch.setattr(editor_git, "load_git_blob_as_buffer", fake_load_git_blob_as_buffer)

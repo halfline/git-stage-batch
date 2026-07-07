@@ -23,7 +23,7 @@ from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.data.session import initialize_abort_state
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -518,7 +518,7 @@ def test_apply_candidate_rejects_changed_materialized_result(
             changed = result.to_bytes().replace(b"insert\n", b"drifted\n", 1)
         finally:
             result.close()
-        return EditorBuffer.from_bytes(changed)
+        return LineBuffer.from_bytes(changed)
 
     monkeypatch.setattr(
         operation_candidates,
@@ -619,7 +619,7 @@ def test_include_candidate_rejects_changed_materialized_result(
             changed = result.to_bytes().replace(b"mid\n", b"drifted\n", 1)
         finally:
             result.close()
-        return EditorBuffer.from_bytes(changed)
+        return LineBuffer.from_bytes(changed)
 
     monkeypatch.setattr(
         operation_candidates,

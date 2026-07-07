@@ -21,7 +21,7 @@ from git_stage_batch.batch.merge import (
     merge_batch_from_line_sequences_as_buffer,
     satisfy_constraints,
 )
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import MergeError
 from git_stage_batch.batch.ownership import (
     BaselineReference,
@@ -33,8 +33,8 @@ from git_stage_batch.batch.ownership import (
 from git_stage_batch.utils.text import normalize_line_sequence_endings
 
 
-class _IndexGuardedEditorBuffer(EditorBuffer):
-    """EditorBuffer variant that rejects public line indexing in tests."""
+class _IndexGuardedLineBuffer(LineBuffer):
+    """LineBuffer variant that rejects public line indexing in tests."""
 
     def __getitem__(self, index):
         raise AssertionError("public line indexing should not be used")
@@ -89,8 +89,8 @@ def merge_batch(
 ) -> bytes:
     """Return merged bytes through the buffer-returning production API."""
     with (
-        EditorBuffer.from_bytes(batch_source_content) as source_lines,
-        EditorBuffer.from_bytes(working_content) as working_lines,
+        LineBuffer.from_bytes(batch_source_content) as source_lines,
+        LineBuffer.from_bytes(working_content) as working_lines,
         merge_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
@@ -110,9 +110,9 @@ def discard_batch(
 ) -> bytes:
     """Return discarded bytes through the buffer-returning production API."""
     with (
-        EditorBuffer.from_bytes(batch_source_content) as source_lines,
-        EditorBuffer.from_bytes(working_content) as working_lines,
-        EditorBuffer.from_bytes(baseline_content) as baseline_lines,
+        LineBuffer.from_bytes(batch_source_content) as source_lines,
+        LineBuffer.from_bytes(working_content) as working_lines,
+        LineBuffer.from_bytes(baseline_content) as baseline_lines,
         discard_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
@@ -195,12 +195,12 @@ class TestMatchLines:
         assert mapping.get_source_line_from_target_line(2) is None
 
     def test_acquires_editor_buffer_lines(self):
-        """EditorBuffer inputs are matched through scoped line acquisition."""
+        """LineBuffer inputs are matched through scoped line acquisition."""
         with (
-            _IndexGuardedEditorBuffer.from_bytes(
+            _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nline2\nline3\n"
             ) as source,
-            _IndexGuardedEditorBuffer.from_bytes(
+            _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nextra\nline2\nline3\n"
             ) as target,
         ):
@@ -212,12 +212,12 @@ class TestMatchLines:
         assert mapping.get_source_line_from_target_line(2) is None
 
     def test_acquires_normalized_editor_buffer_lines(self):
-        """Normalized EditorBuffer inputs forward scoped acquisition."""
+        """Normalized LineBuffer inputs forward scoped acquisition."""
         with (
-            _IndexGuardedEditorBuffer.from_bytes(
+            _IndexGuardedLineBuffer.from_bytes(
                 b"line1\r\nline2\nline3\n"
             ) as source_buffer,
-            _IndexGuardedEditorBuffer.from_bytes(
+            _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nextra\nline2\nline3\n"
             ) as target_buffer,
         ):
@@ -770,10 +770,10 @@ class TestMergeLineSequences:
     def test_merge_chunks_acquire_normalized_editor_buffer_lines(self):
         """Merge realization uses scoped normalized line acquisition."""
         with (
-            _IndexGuardedEditorBuffer.from_bytes(
+            _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nline2\nline3\n"
             ) as source_buffer,
-            _IndexGuardedEditorBuffer.from_bytes(
+            _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nline3\n"
             ) as working_buffer,
         ):
@@ -793,13 +793,13 @@ class TestMergeLineSequences:
     def test_discard_chunks_acquire_normalized_editor_buffer_lines(self):
         """Discard realization uses scoped normalized line acquisition."""
         with (
-            _IndexGuardedEditorBuffer.from_bytes(
+            _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nnew\nline3\n"
             ) as source_buffer,
-            _IndexGuardedEditorBuffer.from_bytes(
+            _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nnew\nline3\n"
             ) as working_buffer,
-            _IndexGuardedEditorBuffer.from_bytes(
+            _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nold\nline3\n"
             ) as baseline_buffer,
         ):

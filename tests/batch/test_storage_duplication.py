@@ -6,7 +6,7 @@ from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.storage import (
     build_realized_buffer_from_lines,
 )
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 
 
 def _build_realized_content_from_bytes(
@@ -15,8 +15,8 @@ def _build_realized_content_from_bytes(
     ownership: BatchOwnership,
 ) -> bytes:
     with (
-        EditorBuffer.from_bytes(base_content) as base_lines,
-        EditorBuffer.from_bytes(batch_source_content) as batch_source_lines,
+        LineBuffer.from_bytes(base_content) as base_lines,
+        LineBuffer.from_bytes(batch_source_content) as batch_source_lines,
         build_realized_buffer_from_lines(
             base_lines,
             batch_source_lines,

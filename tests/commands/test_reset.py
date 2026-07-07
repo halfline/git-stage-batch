@@ -7,6 +7,7 @@ import pytest
 import git_stage_batch.commands.reset as reset_module
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.batch.file_display as file_display_module
+import git_stage_batch.data.file_review.freshness as file_review_freshness_module
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
@@ -300,6 +301,7 @@ class TestResetFromBatch:
         monkeypatch.setattr(reset_module, "render_batch_file_display", render_with_shifted_gutter)
         monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_shifted_gutter)
         monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(file_review_freshness_module, "render_batch_file_display", render_with_shifted_gutter)
 
         command_show_from_batch("mybatch", file="test.py", page="all")
 
@@ -347,6 +349,7 @@ class TestResetFromBatch:
         monkeypatch.setattr(reset_module, "render_batch_file_display", render_with_shifted_gutter)
         monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_shifted_gutter)
         monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(file_review_freshness_module, "render_batch_file_display", render_with_shifted_gutter)
 
         command_show_from_batch("mybatch", file="test.py", page="all")
 
@@ -410,10 +413,12 @@ class TestResetFromBatch:
         monkeypatch.setattr(reset_module, "render_batch_file_display", render_with_shifted_gutter)
         monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_shifted_gutter)
         monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_shifted_gutter)
+        monkeypatch.setattr(file_review_freshness_module, "render_batch_file_display", render_with_shifted_gutter)
 
         command_show_from_batch("mybatch", file="test.py", page="all")
 
         monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_raw_gutter)
+        monkeypatch.setattr(file_review_freshness_module, "render_batch_file_display", render_with_raw_gutter)
 
         with pytest.raises(CommandError, match="no longer matches"):
             command_reset_from_batch("mybatch", line_ids="1", file="test.py")

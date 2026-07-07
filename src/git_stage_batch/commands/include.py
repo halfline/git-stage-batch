@@ -93,6 +93,7 @@ from ..data.file_review.state import (
 from ..data.consumed_selections import record_consumed_selection
 from ..data.batch_sources import create_batch_source_commit
 from ..data.file_tracking import auto_add_untracked_files
+from ..data.index_entries import read_index_entry
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
 from ..data.progress import (
@@ -180,27 +181,9 @@ def _update_index_for_gitlink_change(gitlink_change: GitlinkChange):
     )
 
 
-def _index_entry_for_path(file_path: str) -> tuple[str, str] | None:
-    """Return mode and object id for the current index entry at file_path."""
-    result = run_git_command(
-        ["ls-files", "-s", "--", file_path],
-        check=False,
-        text_output=False,
-        requires_index_lock=False,
-    )
-    if result.returncode != 0 or not result.stdout.strip():
-        return None
-
-    header = result.stdout.split(b"\n", 1)[0].split(b"\t", 1)[0]
-    parts = header.split()
-    if len(parts) < 2:
-        return None
-    return parts[0].decode("ascii"), parts[1].decode("ascii")
-
-
 def _stage_rename_change(rename_change: RenameChange) -> None:
     """Stage only the structural rename, leaving destination content edits unstaged."""
-    index_entry = _index_entry_for_path(rename_change.old_path)
+    index_entry = read_index_entry(rename_change.old_path)
     if index_entry is None:
         exit_with_error(
             _("Cannot stage rename {old} -> {new}: missing baseline index entry.").format(
@@ -209,14 +192,13 @@ def _stage_rename_change(rename_change: RenameChange) -> None:
             )
         )
 
-    mode, blob_sha = index_entry
     git_update_index_entries(
         [
             GitIndexEntryUpdate(file_path=rename_change.old_path, force_remove=True),
             GitIndexEntryUpdate(
                 file_path=rename_change.new_path,
-                mode=mode,
-                blob_sha=blob_sha,
+                mode=index_entry.mode,
+                blob_sha=index_entry.object_id,
             ),
         ]
     )

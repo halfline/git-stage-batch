@@ -28,7 +28,6 @@ from ..batch.selection import (
     acquire_batch_ownership_for_display_ids_from_lines,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
-    translate_batch_file_gutter_ids_to_selection_ids,
 )
 from ..batch.source_selector import parse_batch_source_selector
 from ..batch.submodule_pointer import is_batch_submodule_pointer
@@ -44,6 +43,7 @@ from ..data.batch_selected_changes import (
     compute_batch_gitlink_fingerprint,
 )
 from ..data.batch_hunk_display import cache_rendered_batch_file_display
+from ..data.batch_file_review_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
     SelectedChangeKind,

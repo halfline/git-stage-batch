@@ -1,4 +1,4 @@
-"""Editor buffers with random access over bytes or mmap-backed files."""
+"""Line-addressable byte buffers with optional mmap-backed storage."""
 
 from __future__ import annotations
 
@@ -45,8 +45,8 @@ class _LineSpanVector:
         self._records.close()
 
 
-class EditorBuffer(Sequence[bytes]):
-    """Random-access editor buffer with explicit resource cleanup."""
+class LineBuffer(Sequence[bytes]):
+    """Random-access line buffer with explicit resource cleanup."""
 
     def __init__(
         self,
@@ -62,12 +62,12 @@ class EditorBuffer(Sequence[bytes]):
         self._closed = False
 
     @classmethod
-    def from_bytes(cls, data: _BytesLike) -> EditorBuffer:
+    def from_bytes(cls, data: _BytesLike) -> LineBuffer:
         """Create a buffer from in-memory bytes."""
         return cls(bytes(data))
 
     @classmethod
-    def from_path(cls, path: str | Path) -> EditorBuffer:
+    def from_path(cls, path: str | Path) -> LineBuffer:
         """Create a buffer from a file using mmap when possible."""
         data, file_handle = byte_storage_from_path(path)
         return cls(data, file_handle=file_handle)
@@ -78,7 +78,7 @@ class EditorBuffer(Sequence[bytes]):
         chunks: Iterable[_BytesLike],
         *,
         spool_dir: str | Path | None = None,
-    ) -> EditorBuffer:
+    ) -> LineBuffer:
         """Create a buffer from generated chunks."""
         data, file_handle = byte_storage_from_chunks(
             chunks,
@@ -132,7 +132,7 @@ class EditorBuffer(Sequence[bytes]):
         for start in range(0, len(self._data), chunk_size):
             yield self._data[start:start + chunk_size]
 
-    def __enter__(self) -> EditorBuffer:
+    def __enter__(self) -> LineBuffer:
         self._require_open()
         return self
 
@@ -222,7 +222,7 @@ class EditorBuffer(Sequence[bytes]):
 
 
 class _BufferLineView:
-    """Scoped no-copy view over one editor buffer line."""
+    """Scoped no-copy view over one line buffer line."""
 
     __slots__ = ("_owner", "_start", "_end", "_hash")
 
@@ -294,8 +294,8 @@ class _BufferLineView:
 
     def __repr__(self) -> str:
         if not self._owner.is_active:
-            return "<EditorBufferLineView closed>"
-        return f"<EditorBufferLineView {bytes(self)!r}>"
+            return "<LineBufferLineView closed>"
+        return f"<LineBufferLineView {bytes(self)!r}>"
 
     def endswith(self, suffix: _BytesLike | tuple[_BytesLike, ...]) -> bool:
         """Return whether the line ends with the given bytes-like suffix."""
@@ -345,7 +345,7 @@ class _BufferLineView:
 class _AcquiredBufferLineSequence(Sequence[_BufferLineView]):
     """Context-managed sequence of scoped no-copy editor line views."""
 
-    def __init__(self, buffer: EditorBuffer) -> None:
+    def __init__(self, buffer: LineBuffer) -> None:
         self._buffer = buffer
         self._active = False
 
@@ -405,7 +405,7 @@ class _AcquiredBufferLineSequence(Sequence[_BufferLineView]):
 class _AcquiredBufferLineContext:
     """Context manager for a single scoped editor line view."""
 
-    def __init__(self, buffer: EditorBuffer, index: int) -> None:
+    def __init__(self, buffer: LineBuffer, index: int) -> None:
         self._lines_context = _AcquiredBufferLineSequence(buffer)
         self._index = index
 
@@ -418,7 +418,7 @@ class _AcquiredBufferLineContext:
 
 
 class _BufferLineSliceSequence(Sequence[_LineT], Generic[_LineT]):
-    """Lazy slice view over editor buffer lines."""
+    """Lazy slice view over line buffer lines."""
 
     def __init__(
         self,
@@ -533,7 +533,7 @@ def buffer_byte_chunks(
     chunk_size: int = _DEFAULT_CHUNK_SIZE,
 ) -> Iterator[bytes]:
     """Yield bytes for in-memory, line-sequence, or buffer input."""
-    if isinstance(buffer, EditorBuffer):
+    if isinstance(buffer, LineBuffer):
         yield from buffer.byte_chunks(chunk_size)
         return
     if isinstance(buffer, (bytes, bytearray, memoryview)):
@@ -566,7 +566,7 @@ def buffer_matches(left: BufferInput, right: BufferInput) -> bool:
 
 
 def _known_byte_count(buffer: BufferInput) -> int | None:
-    if isinstance(buffer, EditorBuffer):
+    if isinstance(buffer, LineBuffer):
         return buffer.byte_count
     if isinstance(buffer, (bytes, bytearray, memoryview)):
         return len(buffer)

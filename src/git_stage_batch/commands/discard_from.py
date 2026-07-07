@@ -34,11 +34,13 @@ from ..data.file_review.state import (
     FileReviewAction,
     resolve_batch_source_action_scope,
 )
+from ..core.buffer import (
+    LineBuffer,
+    write_buffer_to_path,
+)
 from ..editor import (
-    EditorBuffer,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
-    write_buffer_to_path,
 )
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
@@ -246,7 +248,7 @@ def command_discard_from_batch(
                 )
                 baseline_exists = baseline_buffer is not None
                 if baseline_buffer is None:
-                    baseline_buffer = EditorBuffer.from_bytes(b"")
+                    baseline_buffer = LineBuffer.from_bytes(b"")
 
                 full_path = repo_root / file_path
                 working_exists = full_path.exists()

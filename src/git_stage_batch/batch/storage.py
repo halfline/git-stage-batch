@@ -26,8 +26,8 @@ from ..data.batch_sources import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
+from ..core.buffer import LineBuffer
 from ..editor import (
-    EditorBuffer,
     load_git_object_as_buffer,
     load_git_tree_files_as_buffers,
     restore_line_endings_in_chunks,
@@ -123,13 +123,13 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
     batch_sources = load_session_batch_sources()
     batch_sources_changed = False
     batch_source_commits: dict[str, str] = {}
-    batch_source_buffers: dict[str, EditorBuffer] = {}
+    batch_source_buffers: dict[str, LineBuffer] = {}
     missing_source_paths: list[str] = []
-    managed_buffers: list[EditorBuffer] = []
+    managed_buffers: list[LineBuffer] = []
 
     def manage_buffers(
-        buffers: dict[str, EditorBuffer],
-    ) -> dict[str, EditorBuffer]:
+        buffers: dict[str, LineBuffer],
+    ) -> dict[str, LineBuffer]:
         managed_buffers.extend(buffers.values())
         return buffers
 
@@ -169,7 +169,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                 manage_buffers(load_git_tree_files_as_buffers(source_commit, source_paths))
             )
 
-        empty_buffer = EditorBuffer.from_bytes(b"")
+        empty_buffer = LineBuffer.from_bytes(b"")
         managed_buffers.append(empty_buffer)
 
         with temp_git_index() as env:
@@ -178,7 +178,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                 git_read_tree(existing_commit, env=env)
 
             index_updates: list[GitIndexEntryUpdate] = []
-            realized_buffers: list[EditorBuffer] = []
+            realized_buffers: list[LineBuffer] = []
             realized_buffer_indexes: list[int] = []
             for update in updates:
                 file_path = update.file_path
@@ -282,7 +282,7 @@ def add_binary_file_to_batch(
     batch_name: str,
     binary_change: BinaryFileChange,
     file_mode: str = "100644",
-    file_buffer_override: EditorBuffer | None = None,
+    file_buffer_override: LineBuffer | None = None,
 ) -> None:
     """Add a binary file change to a batch as an atomic unit.
 
@@ -305,7 +305,7 @@ def add_binary_file_to_batch(
     # Determine file path
     file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
 
-    current_binary_buffer: EditorBuffer | None = None
+    current_binary_buffer: LineBuffer | None = None
     close_current_binary_buffer = False
     try:
         if binary_change.is_deleted_file():
@@ -326,7 +326,7 @@ def add_binary_file_to_batch(
                 full_path = get_git_repository_root_path() / file_path
                 if not full_path.exists():
                     raise FileNotFoundError(file_path)
-                current_binary_buffer = EditorBuffer.from_path(full_path)
+                current_binary_buffer = LineBuffer.from_path(full_path)
                 close_current_binary_buffer = True
             else:
                 current_binary_buffer = file_buffer_override
@@ -430,9 +430,9 @@ def build_realized_buffer_from_lines(
     base_lines: Sequence[bytes],
     batch_source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
-) -> EditorBuffer:
-    """Build realized batch content as an editor buffer."""
-    return EditorBuffer.from_chunks(
+) -> LineBuffer:
+    """Build realized batch content as a line buffer."""
+    return LineBuffer.from_chunks(
         restore_line_endings_in_chunks(
             _stream_realized_content_chunks_from_lines(
                 normalize_line_sequence_endings(base_lines),
@@ -629,7 +629,7 @@ def remove_file_from_batch_commit(
     batch_name: str,
     file_path: str,
     *,
-    source_buffers: dict[str, EditorBuffer] | None = None,
+    source_buffers: dict[str, LineBuffer] | None = None,
 ) -> None:
     """Remove a file from batch commit tree (for deletions).
 
@@ -672,7 +672,7 @@ def update_batch_commit(
     blob_sha: str,
     file_mode: str,
     *,
-    source_buffers: dict[str, EditorBuffer] | None = None,
+    source_buffers: dict[str, LineBuffer] | None = None,
 ) -> None:
     """Update batch commit tree with new/updated file.
 

@@ -13,7 +13,7 @@ from ..core.replacement import (
     replacement_line_bodies,
     replacement_line_chunks,
 )
-from ..editor import EditorBuffer
+from ..core.buffer import LineBuffer
 from .ownership import BatchOwnership, AbsenceClaim, ReplacementUnit
 
 
@@ -32,7 +32,7 @@ __all__ = [
 class ReplacementBatchView:
     """Batch source buffer and ownership produced for replacement text."""
 
-    source_buffer: EditorBuffer
+    source_buffer: LineBuffer
     ownership: BatchOwnership
 
     def close(self) -> None:
@@ -96,7 +96,7 @@ def build_replacement_batch_view_from_lines(
             ))
 
         return ReplacementBatchView(
-            source_buffer=EditorBuffer.from_chunks(
+            source_buffer=LineBuffer.from_chunks(
                 _replacement_source_chunks(
                     source_lines=source_lines,
                     prefix_end=start_line - 1,
@@ -148,7 +148,7 @@ def build_replacement_batch_view_from_lines(
         ))
 
     return ReplacementBatchView(
-        source_buffer=EditorBuffer.from_chunks(
+        source_buffer=LineBuffer.from_chunks(
             _replacement_source_chunks(
                 source_lines=source_lines,
                 prefix_end=insert_at,

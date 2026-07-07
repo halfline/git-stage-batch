@@ -13,10 +13,12 @@ from ..core.line_selection import (
 )
 from ..core.models import LineEntry
 from ..data.batch_sources import create_batch_source_commit
+from ..core.buffer import (
+    LineBuffer,
+    buffer_byte_chunks,
+)
 from ..editor import (
     Editor,
-    EditorBuffer,
-    buffer_byte_chunks,
     load_git_blob_as_buffer,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -128,7 +130,7 @@ class AbsenceClaim:
         cls,
         data: dict,
         blob_contents: dict[str, bytes] | None = None,
-        blob_buffers: dict[str, EditorBuffer] | None = None,
+        blob_buffers: dict[str, LineBuffer] | None = None,
     ) -> AbsenceClaim:
         """Deserialize from metadata dictionary."""
         anchor_line = data.get("after_source_line")
@@ -492,8 +494,8 @@ class BatchOwnership:
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
         replacement_metadata = data.get("replacement_units", [])
-        blob_buffers: dict[str, EditorBuffer] = {}
-        buffers: list[EditorBuffer] = []
+        blob_buffers: dict[str, LineBuffer] = {}
+        buffers: list[LineBuffer] = []
         try:
             for blob_sha in _deletion_content_blob_ids(deletion_metadata):
                 if blob_sha in blob_buffers:
@@ -530,7 +532,7 @@ class BatchOwnership:
         data: dict,
         *,
         blob_contents: dict[str, bytes],
-        deletion_blob_buffers: dict[str, EditorBuffer] | None = None,
+        deletion_blob_buffers: dict[str, LineBuffer] | None = None,
     ) -> BatchOwnership:
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
@@ -571,7 +573,7 @@ class _AcquiredBatchOwnership:
     """Own buffers used by a scoped BatchOwnership value."""
 
     ownership: BatchOwnership
-    buffers: list[EditorBuffer]
+    buffers: list[LineBuffer]
 
     def close(self) -> None:
         for buffer in self.buffers:
@@ -602,7 +604,7 @@ def acquire_detached_batch_ownership(
     ownership: BatchOwnership,
 ) -> _AcquiredBatchOwnership:
     """Acquire an ownership copy with independent absence content buffers."""
-    buffers: list[EditorBuffer] = []
+    buffers: list[LineBuffer] = []
     deletions: list[AbsenceClaim] = []
     try:
         for deletion in ownership.deletions:
@@ -647,7 +649,7 @@ def acquire_detached_batch_ownership(
 class SourceContentWithLineProvenance:
     """Synthesized source buffer with line provenance from its inputs."""
 
-    source_buffer: EditorBuffer
+    source_buffer: LineBuffer
     lineage: BatchSourceLineage
 
     def close(self) -> None:
@@ -668,7 +670,7 @@ class BatchSourceAdvanceResult:
 
     batch_source_commit: str
     ownership: BatchOwnership
-    source_buffer: EditorBuffer
+    source_buffer: LineBuffer
     lineage: BatchSourceLineage
 
     def close(self) -> None:
@@ -1236,7 +1238,7 @@ class _LineEntryContentSequence(Sequence[bytes]):
 
 
 class AbsenceContentBuilder:
-    """Build absence content as an EditorBuffer from appended line ranges."""
+    """Build absence content as an LineBuffer from appended line ranges."""
 
     def __init__(self) -> None:
         self._editor: Editor | None = Editor(())
@@ -1257,10 +1259,10 @@ class AbsenceContentBuilder:
         editor = self._check_open()
         editor.append_line_range(lines, start, end)
 
-    def finish(self) -> EditorBuffer:
+    def finish(self) -> LineBuffer:
         editor = self._check_open()
         try:
-            return EditorBuffer.from_chunks(editor.line_chunks())
+            return LineBuffer.from_chunks(editor.line_chunks())
         finally:
             self.close()
 
@@ -1280,9 +1282,9 @@ class AbsenceContentBuilder:
         return editor
 
 
-def _copy_absence_content(content_lines: Sequence[bytes]) -> EditorBuffer:
-    if isinstance(content_lines, EditorBuffer):
-        return EditorBuffer.from_chunks(buffer_byte_chunks(content_lines))
+def _copy_absence_content(content_lines: Sequence[bytes]) -> LineBuffer:
+    if isinstance(content_lines, LineBuffer):
+        return LineBuffer.from_chunks(buffer_byte_chunks(content_lines))
     return _build_absence_content_from_range(content_lines, 0, len(content_lines))
 
 
@@ -1290,7 +1292,7 @@ def _build_absence_content_from_range(
     content_lines: Sequence[bytes],
     start: int,
     end: int,
-) -> EditorBuffer:
+) -> LineBuffer:
     with AbsenceContentBuilder() as builder:
         builder.append_line_range(content_lines, start, end)
         return builder.finish()
@@ -2466,7 +2468,7 @@ def advance_source_lines_preserving_existing_presence(
                 )
 
         return SourceContentWithLineProvenance(
-            source_buffer=EditorBuffer.from_chunks(
+            source_buffer=LineBuffer.from_chunks(
                 realized_entry_content_chunks(entries)
             ),
             lineage=lineage,

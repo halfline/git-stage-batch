@@ -15,7 +15,7 @@ from ...core.actionable_changes import ActionableSelectionReason
 from ...core.line_selection import LineRanges, LineSelection, parse_line_selection_ranges
 from ...core.models import ReviewActionGroup
 from ..line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
-from ...editor import EditorBuffer
+from ...core.buffer import LineBuffer
 from ...exceptions import CommandError
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
@@ -122,7 +122,7 @@ def _hash_file(path: Path) -> str | None:
         return None
 
     digest = sha256()
-    with EditorBuffer.from_path(path) as buffer:
+    with LineBuffer.from_path(path) as buffer:
         for chunk in buffer.byte_chunks():
             digest.update(chunk)
     return digest.hexdigest()

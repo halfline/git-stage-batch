@@ -24,7 +24,8 @@ from ..core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
-from ..editor import EditorBuffer, load_git_object_as_buffer
+from ..core.buffer import LineBuffer
+from ..editor import load_git_object_as_buffer
 from ..i18n import ngettext
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import stream_git_command
@@ -160,7 +161,7 @@ def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelCha
 
 def build_file_hunk_from_buffer(
     file_path: str,
-    file_buffer: EditorBuffer,
+    file_buffer: LineBuffer,
 ) -> Optional[LineLevelChange]:
     """Build a file-scoped line view for a hypothetical file buffer without writing it."""
     head_buffer = load_git_object_as_buffer(f"HEAD:{file_path}")

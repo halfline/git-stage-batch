@@ -12,11 +12,13 @@ from typing import TYPE_CHECKING, Any
 
 from .match import LineMapping, iter_exact_context_gaps, match_lines
 from ..core.line_selection import LineRanges, LineSelection
+from ..core.buffer import (
+    LineBuffer,
+    buffer_has_data,
+)
 from ..editor import (
     Editor,
-    EditorBuffer,
     choose_line_ending,
-    buffer_has_data,
     restore_line_endings_in_chunks,
 )
 from ..exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
@@ -3114,7 +3116,7 @@ def merge_batch_from_line_sequences_as_buffer(
     *,
     source_to_working_mapping: LineMapping | None = None,
     resolution: MergeResolution | None = None,
-) -> EditorBuffer:
+) -> LineBuffer:
     """Merge line sequences and return a buffer with destination line endings."""
     result_line_ending = _merge_result_line_ending_from_lines(
         working_lines,
@@ -3122,7 +3124,7 @@ def merge_batch_from_line_sequences_as_buffer(
     )
     normalized_source_lines = normalize_line_sequence_endings(source_lines)
     normalized_working_lines = normalize_line_sequence_endings(working_lines)
-    return EditorBuffer.from_chunks(
+    return LineBuffer.from_chunks(
         restore_line_endings_in_chunks(
             _merge_batch_line_chunks(
                 normalized_source_lines,
@@ -3515,7 +3517,7 @@ def discard_batch_from_line_sequences_as_buffer(
     ownership: 'BatchOwnership',
     working_lines: Sequence[bytes],
     baseline_lines: Sequence[bytes],
-) -> EditorBuffer:
+) -> LineBuffer:
     """Discard ownership and return a buffer with destination line endings."""
     result_line_ending = _discard_result_line_ending_from_lines(
         working_lines,
@@ -3525,7 +3527,7 @@ def discard_batch_from_line_sequences_as_buffer(
     normalized_source_lines = normalize_line_sequence_endings(source_lines)
     normalized_working_lines = normalize_line_sequence_endings(working_lines)
     normalized_baseline_lines = normalize_line_sequence_endings(baseline_lines)
-    return EditorBuffer.from_chunks(
+    return LineBuffer.from_chunks(
         restore_line_endings_in_chunks(
             _discard_batch_line_chunks(
                 normalized_source_lines,

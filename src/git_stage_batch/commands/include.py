@@ -97,9 +97,11 @@ from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.snapshots import snapshots_are_stale
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
-from ..editor import (
-    EditorBuffer,
+from ..core.buffer import (
+    LineBuffer,
     buffer_matches,
+)
+from ..editor import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
@@ -245,12 +247,12 @@ class TransientIncludeFailureReason(Enum):
 class TransientIncludeResult:
     """Result of staging a live line selection through transient batch ownership."""
 
-    buffer: EditorBuffer | None
+    buffer: LineBuffer | None
     failure_reason: TransientIncludeFailureReason | None = None
     failure_detail: str | None = None
 
     @classmethod
-    def success(cls, buffer: EditorBuffer) -> TransientIncludeResult:
+    def success(cls, buffer: LineBuffer) -> TransientIncludeResult:
         return cls(buffer=buffer)
 
     @classmethod
@@ -383,7 +385,7 @@ def _try_build_index_content_via_transient_batch(
     batch_name = f"include-line-{uuid.uuid4().hex}"
     session_sources_existed, session_sources_content = _snapshot_session_batch_sources_file()
     created_batch = False
-    target_index_buffer: EditorBuffer | None = None
+    target_index_buffer: LineBuffer | None = None
 
     try:
         create_batch(batch_name, "Transient include-line selection")
@@ -490,7 +492,7 @@ def _try_build_index_content_via_transient_batch(
         _restore_session_batch_sources_file(session_sources_existed, session_sources_content)
 
 
-def _stage_live_line_target_buffer(file_path: str, target_buffer: EditorBuffer) -> None:
+def _stage_live_line_target_buffer(file_path: str, target_buffer: LineBuffer) -> None:
     """Stage the result of live line-level include."""
     update_index_with_blob_buffer(file_path, target_buffer)
 
@@ -665,9 +667,9 @@ def command_include(
         # Extract filename for user feedback (we already have LineLevelChange in item)
         filename = item.path
 
-        with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
+        with LineBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
             if _patch_is_text_file_path_deletion(patch_buffer):
-                with EditorBuffer.from_bytes(b"") as empty_buffer:
+                with LineBuffer.from_bytes(b"") as empty_buffer:
                     update_index_with_blob_buffer(filename, empty_buffer)
                 apply_result = None
             else:
@@ -844,7 +846,7 @@ def command_include_file(
                     continue
 
                 if _patch_is_text_file_path_deletion(patch.lines):
-                    with EditorBuffer.from_bytes(b"") as empty_buffer:
+                    with LineBuffer.from_bytes(b"") as empty_buffer:
                         update_index_with_blob_buffer(target_file, empty_buffer)
                     apply_result = None
                 else:
@@ -980,7 +982,7 @@ def command_include_file_as(
                 if line_changes is None:
                     exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
-        with EditorBuffer.from_bytes(replacement_payload.data) as replacement_buffer:
+        with LineBuffer.from_bytes(replacement_payload.data) as replacement_buffer:
             update_index_with_blob_buffer(target_file, replacement_buffer)
 
         if preserve_selected_state:
@@ -1076,11 +1078,11 @@ def command_include_line(
 
         current_index_buffer = load_git_object_as_buffer(f":{line_changes.path}")
         if current_index_buffer is None:
-            current_index_buffer = EditorBuffer.from_bytes(b"")
+            current_index_buffer = LineBuffer.from_bytes(b"")
 
         with (
-            EditorBuffer.from_path(get_index_snapshot_file_path()) as hunk_base_lines,
-            EditorBuffer.from_path(get_working_tree_snapshot_file_path()) as hunk_source_lines,
+            LineBuffer.from_path(get_index_snapshot_file_path()) as hunk_base_lines,
+            LineBuffer.from_path(get_working_tree_snapshot_file_path()) as hunk_source_lines,
             current_index_buffer as current_index_lines,
         ):
             selected_change_kind = read_selected_change_kind()
@@ -1192,7 +1194,7 @@ def _apply_include_line_replacement(
     line_id_specification: str,
     replacement_text: str | ReplacementPayload,
     hunk_base_lines: Sequence[bytes],
-    hunk_source_lines: EditorBuffer,
+    hunk_source_lines: LineBuffer,
     trim_unchanged_edge_anchors: bool,
 ) -> None:
     """Stage replacement text for selected lines and record session masking."""
@@ -1365,16 +1367,16 @@ def command_include_line_as(
                         f":{line_changes.path}"
                     )
                     if replacement_base_buffer is None:
-                        replacement_base_buffer = EditorBuffer.from_bytes(b"")
+                        replacement_base_buffer = LineBuffer.from_bytes(b"")
                     replacement_source_buffer = load_working_tree_file_as_buffer(
                         line_changes.path
                     )
             if replacement_base_buffer is None:
-                replacement_base_buffer = EditorBuffer.from_path(
+                replacement_base_buffer = LineBuffer.from_path(
                     get_index_snapshot_file_path()
                 )
             if replacement_source_buffer is None:
-                replacement_source_buffer = EditorBuffer.from_path(
+                replacement_source_buffer = LineBuffer.from_path(
                     get_working_tree_snapshot_file_path()
                 )
 
@@ -1434,7 +1436,7 @@ def command_include_line_as(
                 annotated_changes = annotate_with_batch_source(target_file, cached_lines)
             hunk_base_buffer = load_git_object_as_buffer(f":{target_file}")
             if hunk_base_buffer is None:
-                hunk_base_buffer = EditorBuffer.from_bytes(b"")
+                hunk_base_buffer = LineBuffer.from_bytes(b"")
 
             with (
                 hunk_base_buffer as hunk_base_lines,

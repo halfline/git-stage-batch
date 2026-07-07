@@ -377,6 +377,54 @@ def test_suggest_fixup_state_stays_in_data_layer():
     assert violations == []
 
 
+def test_selected_line_source_refresh_uses_public_api():
+    """Cross-module source refresh callers should import public helpers."""
+    source_refresh = __import__(
+        "git_stage_batch.batch.source_refresh",
+        fromlist=["source_refresh"],
+    )
+    public_names = {
+        "refresh_selected_lines_against_new_source",
+        "refresh_selected_lines_against_source_lines",
+    }
+    private_names = {
+        "_refresh_selected_lines_against_new_source",
+        "_refresh_selected_lines_against_source_lines",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "discard.py": {
+            "refresh_selected_lines_against_source_lines",
+        },
+        SRC_ROOT / "data" / "consumed_selections.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(source_refresh)
+    assert private_names.isdisjoint(vars(source_refresh))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.source_refresh":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_hunk_tracking_does_not_reexport_live_change_helpers():
     """Moved live-change helpers should not stay available from hunk tracking."""
     hunk_tracking = __import__(

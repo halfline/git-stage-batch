@@ -8,8 +8,9 @@ import sys
 from dataclasses import dataclass
 from typing import Callable
 from ..batch import query as batch_query
+from ..data.selected_change.batch_file_cache import cache_batch_as_single_hunk
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.hunk_tracking import cache_batch_as_single_hunk, format_id_range
+from ..data.hunk_tracking import format_id_range
 from ..data.hunk_tracking import fetch_next_change
 from ..data.progress import get_hunk_counts
 from ..data.line_state import load_line_changes_from_state

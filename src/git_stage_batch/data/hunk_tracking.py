@@ -6,11 +6,10 @@ import json
 import subprocess
 import sys
 from enum import Enum
-from typing import Generator, Optional, Union
+from typing import Optional, Union
 
 from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
 from ..batch.display import annotate_with_batch_source
-from ..batch.query import read_batch_metadata
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
@@ -24,7 +23,6 @@ from ..core.models import (
     LineLevelChange,
     LineEntry,
     RenameChange,
-    RenderedBatchDisplay,
     TextFileDeletionChange,
 )
 from ..core.diff_parser import (
@@ -44,7 +42,6 @@ from ..output import (
 )
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
-from ..batch.file_display import render_batch_file_display as render_batch_file_display
 from . import change_freshness as _change_freshness
 from . import file_hunk_display as _file_hunk_display
 from . import live_diff as _live_diff
@@ -77,10 +74,8 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
-    get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
-    get_working_tree_snapshot_file_path,
 )
 from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from .batch_selected_changes import (
@@ -318,149 +313,6 @@ def _filter_consumed_replacement_masks(
         header=line_changes.header,
         lines=filtered_lines,
     )
-
-
-
-
-def cache_batch_as_single_hunk(
-    batch_name: str,
-    file_path: str | None = None,
-    metadata: dict | None = None,
-) -> Optional['RenderedBatchDisplay']:
-    """Load file from batch and cache it as a single hunk using batch source model.
-
-    Args:
-        batch_name: Name of the batch to load
-        file_path: Specific file to cache, or None for first file
-
-    Returns:
-        RenderedBatchDisplay with line changes and gutter ID translation, or None if batch is empty or file not found.
-        The gutter_to_selection_id mapping translates user-visible filtered gutter IDs (1, 2, 3...)
-        to original selection IDs for ownership selection commands.
-    """
-    # Read batch metadata
-    if metadata is None:
-        metadata = read_batch_metadata(batch_name)
-    files = metadata.get("files", {})
-
-    if not files:
-        return None
-
-    # Determine which file to use
-    if file_path is None:
-        # Default to first file (sorted order for consistency)
-        file_path = sorted(files.keys())[0]
-    elif file_path not in files:
-        # Requested file not in batch
-        raise CommandError(f"File '{file_path}' not found in batch '{batch_name}'")
-
-    # Use pure render helper (side-effect free)
-    rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
-    if rendered is None:
-        return None
-
-    cache_rendered_batch_file_display(file_path, rendered)
-    return rendered
-
-
-def cache_rendered_batch_file_display(
-    file_path: str,
-    rendered: 'RenderedBatchDisplay',
-) -> None:
-    """Cache an already rendered batch file as the selected hunk."""
-    line_changes = rendered.line_changes
-    line_entries = line_changes.lines
-    header = line_changes.header
-
-    # Compute counts for patch synthesis
-    addition_count = sum(1 for e in line_entries if e.kind == "+")
-    deletion_count = sum(1 for e in line_entries if e.kind == "-")
-
-    # Synthesize a patch for hashing and caching (preserving original bytes)
-    old_path = "/dev/null" if deletion_count == 0 and addition_count > 0 else f"a/{file_path}"
-    new_path = "/dev/null" if addition_count == 0 and deletion_count > 0 else f"b/{file_path}"
-
-    patch_lines = [
-        f"--- {old_path}\n".encode('utf-8'),
-        f"+++ {new_path}\n".encode('utf-8'),
-        f"@@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@\n".encode('utf-8')
-    ]
-    for entry in line_entries:
-        patch_lines.append(entry.kind.encode('utf-8') + entry.text_bytes + b'\n')
-        if not entry.has_trailing_newline:
-            patch_lines.append(b"\\ No newline at end of file\n")
-
-    patch_hash = compute_stable_hunk_hash_from_lines(patch_lines)
-
-    # Cache the hunk bytes exactly; display strings are derived elsewhere.
-    write_selected_hunk_patch_lines(patch_lines)
-    write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
-    write_selected_change_kind(SelectedChangeKind.BATCH_FILE)
-
-    # Save LineLevelChange for line-level operations
-    write_text_file_contents(get_line_changes_json_file_path(),
-                            json.dumps(convert_line_changes_to_serializable_dict(line_changes),
-                                      ensure_ascii=False, indent=0))
-
-    # No snapshots for batch hunks (they don't track staleness)
-    get_index_snapshot_file_path().unlink(missing_ok=True)
-    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
-
-
-def cache_batch_files_generator(
-    batch_name: str,
-    metadata: dict | None = None,
-) -> Generator['RenderedBatchDisplay', None, None]:
-    """Yield RenderedBatchDisplay for each file in batch.
-
-    Files are yielded in sorted order. Each file has line IDs
-    from original display IDs. Batch content comes from batch storage (not working tree).
-
-    Args:
-        batch_name: Name of the batch
-
-    Yields:
-        RenderedBatchDisplay for each file in batch with gutter ID translation.
-    """
-    # Read batch metadata
-    if metadata is None:
-        metadata = read_batch_metadata(batch_name)
-    files = sorted(metadata.get("files", {}).keys())
-
-    for file_path in files:
-        # Use pure render helper (side-effect free)
-        rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
-        if rendered is not None:
-            yield rendered
-
-
-def get_batch_file_for_line_operation(batch_name: str, file: str | None) -> str:
-    """Determine which file in batch to operate on.
-
-    Args:
-        batch_name: Name of batch
-        file: User-specified file path, or None for default
-
-    Returns:
-        File path to use
-
-    Raises:
-        CommandError: If batch empty or file not in batch
-    """
-    metadata = read_batch_metadata(batch_name)
-    files = sorted(metadata.get("files", {}).keys())
-
-    if not files:
-        raise CommandError(f"Batch '{batch_name}' is empty")
-
-    if file is None:
-        # Default to first file (sorted order)
-        return files[0]
-
-    if file not in files:
-        raise CommandError(f"File '{file}' not found in batch '{batch_name}'")
-
-    return file
 
 
 def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]:

@@ -44,9 +44,7 @@ from ..data.batch_selected_changes import (
     compute_batch_binary_fingerprint,
     compute_batch_gitlink_fingerprint,
 )
-from ..data.hunk_tracking import (
-    cache_rendered_batch_file_display,
-)
+from ..data.selected_change.batch_file_cache import cache_rendered_batch_file_display
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
     SelectedChangeKind,

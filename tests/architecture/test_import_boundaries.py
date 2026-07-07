@@ -476,6 +476,63 @@ def test_batch_lineage_uses_public_data_types():
     assert violations == []
 
 
+def test_batch_merge_uses_public_entry_helpers():
+    """Batch callers should import public merge entry helpers."""
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    public_names = {
+        "apply_presence_constraints",
+        "realized_entry_content_chunks",
+        "satisfy_constraints",
+    }
+    private_names = {
+        "_apply_presence_constraints",
+        "_realized_entry_content_chunks",
+        "_satisfy_constraints",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "ownership.py": {
+            "apply_presence_constraints",
+            "realized_entry_content_chunks",
+        },
+        SRC_ROOT / "batch" / "storage.py": {
+            "realized_entry_content_chunks",
+            "satisfy_constraints",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(merge)
+    assert private_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "merge.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.merge":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_hunk_tracking_does_not_reexport_live_change_helpers():
     """Moved live-change helpers should not stay available from hunk tracking."""
     hunk_tracking = __import__(

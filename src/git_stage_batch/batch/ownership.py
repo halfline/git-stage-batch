@@ -1809,42 +1809,6 @@ class OwnershipUnit:
     replacement_origin: ReplacementUnitOrigin | None = None
 
 
-def build_ownership_units_from_batch_source_lines(
-    ownership: BatchOwnership,
-    batch_source_lines: Sequence[bytes],
-) -> list[OwnershipUnit]:
-    """Build semantic ownership units from indexed batch-source lines.
-
-    Persisted replacement metadata is honored first, so captured replacements
-    remain whole atomic units even if their lines are no longer display-adjacent.
-    Remaining lines fall back to display-adjacency grouping in reconstructed
-    display order, not source-line proximity. This reflects what the user
-    actually sees in the batch display.
-
-    Grouping rules:
-    - Deletion block immediately followed by claimed line -> REPLACEMENT unit (atomic)
-    - Claimed line immediately followed by deletion block -> REPLACEMENT unit (atomic)
-    - Deletion block with no adjacent claimed line -> DELETION_ONLY unit (atomic)
-    - Claimed line with no adjacent deletion -> PRESENCE_ONLY unit (non-atomic)
-
-    For fallback display-adjacent grouping, claimed lines are processed
-    individually (not as blocks) to preserve fine-grained reset capability.
-    When a deletion block is followed by multiple claimed lines, only the first
-    claimed line couples with the deletion to form a REPLACEMENT unit.
-    Subsequent claimed lines remain independent PRESENCE_ONLY units.
-
-    "Adjacent" means consecutive in the display_lines sequence with no intervening
-    entries of a different type. Source-line proximity is not considered.
-    """
-    from ..batch.display import build_display_lines_from_batch_source_lines
-
-    display_lines = build_display_lines_from_batch_source_lines(
-        batch_source_lines,
-        ownership,
-    )
-    return build_ownership_units_from_display_lines(ownership, display_lines)
-
-
 def build_ownership_units_from_display_lines(
     ownership: BatchOwnership,
     display_lines: list[dict],

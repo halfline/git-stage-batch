@@ -33,7 +33,6 @@ from ..data.hunk_tracking import (
     binary_file_change_is_stale,
     gitlink_change_is_stale,
     rename_change_is_stale,
-    snapshots_are_stale,
     stream_live_git_diff,
     text_deletion_change_is_batched,
     text_deletion_change_is_stale,
@@ -50,6 +49,7 @@ from ..data.selected_change.store import (
     mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_change_kind,
 )
+from ..data.selected_change.snapshots import snapshots_are_stale
 from ..data.session import get_iteration_count
 from ..exceptions import CommandError
 from ..i18n import _

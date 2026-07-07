@@ -11,7 +11,7 @@ from typing import Generator, Optional, Union
 
 from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
 from ..batch.display import annotate_with_batch_source
-from ..batch.query import list_batch_names, read_batch_metadata
+from ..batch.query import read_batch_metadata
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
@@ -29,7 +29,6 @@ from ..core.models import (
     RenderedBatchDisplay,
     TextFileDeletionChange,
 )
-from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
@@ -52,6 +51,7 @@ from ..output import (
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
 from ..batch.file_display import render_batch_file_display as render_batch_file_display
+from . import change_freshness as _change_freshness
 from . import live_diff as _live_diff
 from .file_tracking import auto_add_untracked_files
 from .progress import (
@@ -153,67 +153,16 @@ _BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
 
 
 
-def binary_file_change_is_stale(binary_change: BinaryFileChange) -> bool:
-    """Return whether a cached binary selection no longer matches repository state."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-    if snapshots_are_stale(file_path):
-        return True
-    current_change = render_binary_file_change(file_path)
-    if current_change is None:
-        return True
-    return (
-        current_change.old_path != binary_change.old_path
-        or current_change.new_path != binary_change.new_path
-        or current_change.change_type != binary_change.change_type
-    )
-
-
-def gitlink_change_is_stale(gitlink_change: GitlinkChange) -> bool:
-    """Return whether a cached gitlink selection no longer matches Git state."""
-    current_change = render_gitlink_change(gitlink_change.path())
-    if current_change is None:
-        return True
-    return (
-        current_change.old_path != gitlink_change.old_path
-        or current_change.new_path != gitlink_change.new_path
-        or current_change.old_oid != gitlink_change.old_oid
-        or current_change.new_oid != gitlink_change.new_oid
-        or current_change.change_type != gitlink_change.change_type
-    )
-
-
-def rename_change_is_stale(rename_change: RenameChange) -> bool:
-    """Return whether a cached rename selection no longer matches Git state."""
-    current_change = render_rename_change(rename_change.new_path)
-    if current_change is None:
-        current_change = render_rename_change(rename_change.old_path)
-    if current_change is None:
-        return True
-    return (
-        current_change.old_path != rename_change.old_path
-        or current_change.new_path != rename_change.new_path
-    )
-
-
-def text_deletion_change_is_stale(deletion_change: TextFileDeletionChange) -> bool:
-    """Return whether a cached text deletion selection no longer matches Git state."""
-    if snapshots_are_stale(deletion_change.path()):
-        return True
-    current_change = render_text_deletion_change(deletion_change.path())
-    if current_change is None:
-        return True
-    return (
-        current_change.old_path != deletion_change.old_path
-        or current_change.new_path != deletion_change.new_path
-    )
-
 
 def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]]:
     """Load the currently cached selected change, if any."""
     selected_kind = read_selected_change_kind()
     rename_change = load_selected_rename_change()
     if rename_change is not None:
-        if selected_kind == SelectedChangeKind.RENAME and rename_change_is_stale(rename_change):
+        if (
+            selected_kind == SelectedChangeKind.RENAME
+            and _change_freshness.rename_change_is_stale(rename_change)
+        ):
             raise CommandError(
                 _(
                     "Selected rename no longer matches the working tree: {old} -> {new}.\n"
@@ -224,7 +173,10 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
 
     deletion_change = load_selected_text_deletion_change()
     if deletion_change is not None:
-        if selected_kind == SelectedChangeKind.DELETION and text_deletion_change_is_stale(deletion_change):
+        if (
+            selected_kind == SelectedChangeKind.DELETION
+            and _change_freshness.text_deletion_change_is_stale(deletion_change)
+        ):
             raise CommandError(
                 _(
                     "Selected text file deletion no longer matches the working tree: {file}.\n"
@@ -235,7 +187,10 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
 
     gitlink_change = load_selected_gitlink_change()
     if gitlink_change is not None:
-        if selected_kind == SelectedChangeKind.GITLINK and gitlink_change_is_stale(gitlink_change):
+        if (
+            selected_kind == SelectedChangeKind.GITLINK
+            and _change_freshness.gitlink_change_is_stale(gitlink_change)
+        ):
             raise CommandError(
                 _(
                     "Selected submodule pointer no longer matches the working tree: {file}.\n"
@@ -246,7 +201,10 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
 
     binary_file = load_selected_binary_file()
     if binary_file is not None:
-        if selected_kind == SelectedChangeKind.BINARY and binary_file_change_is_stale(binary_file):
+        if (
+            selected_kind == SelectedChangeKind.BINARY
+            and _change_freshness.binary_file_change_is_stale(binary_file)
+        ):
             file_path = binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
             raise CommandError(
                 _(
@@ -286,7 +244,10 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
 
     file_path = line_changes.path
 
-    if not line_changes.lines and _empty_text_lifecycle_change_is_batched(file_path):
+    if (
+        not line_changes.lines
+        and _change_freshness.empty_text_lifecycle_change_is_batched(file_path)
+    ):
         return True
 
     # Step 1: Build file attribution (file-centric, not diff-centric)
@@ -313,23 +274,6 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
 
     return False
 
-
-def _empty_text_lifecycle_change_is_batched(file_path: str) -> bool:
-    """Return whether the current empty text lifecycle diff is already batched."""
-    change_type = detect_empty_text_lifecycle_change(file_path)
-    if change_type is None:
-        return False
-
-    for batch_name in list_batch_names():
-        file_meta = read_batch_metadata(batch_name).get("files", {}).get(file_path)
-        if file_meta is not None and file_meta.get("change_type") == change_type:
-            return True
-    return False
-
-
-def text_deletion_change_is_batched(deletion_change: TextFileDeletionChange) -> bool:
-    """Return whether a whole-text-file deletion is already represented in a batch."""
-    return _empty_text_lifecycle_change_is_batched(deletion_change.path())
 
 
 def _filter_consumed_replacement_masks(
@@ -947,7 +891,10 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
 
                 if isinstance(item, TextFileDeletionChange):
                     deletion_hash = compute_text_file_deletion_hash(item)
-                    if deletion_hash in blocked_hashes or text_deletion_change_is_batched(item):
+                    if (
+                        deletion_hash in blocked_hashes
+                        or _change_freshness.text_deletion_change_is_batched(item)
+                    ):
                         continue
 
                     if is_path_blocked(item.path(), blocked_files):
@@ -1246,7 +1193,12 @@ def recalculate_selected_hunk_for_file(
 
                 if isinstance(single_hunk, TextFileDeletionChange):
                     deletion_hash = compute_text_file_deletion_hash(single_hunk)
-                    if deletion_hash in blocked_hashes or text_deletion_change_is_batched(single_hunk):
+                    if (
+                        deletion_hash in blocked_hashes
+                        or _change_freshness.text_deletion_change_is_batched(
+                            single_hunk
+                        )
+                    ):
                         continue
                     cache_text_deletion_change(single_hunk)
                     print_text_file_deletion_change(single_hunk)

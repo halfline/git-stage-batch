@@ -48,7 +48,6 @@ from ..commands.include import (
 )
 from ..commands.include_from import command_include_from_batch
 from ..commands.install_assets import command_install_assets
-from ..commands.interactive import command_interactive
 from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
 from ..commands.redo import command_redo
@@ -414,7 +413,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "interactive",
         help=_("Start interactive hunk-by-hunk mode"),
     )
-    parser_interactive.set_defaults(func=lambda _: command_interactive())
+    parser_interactive.set_defaults(interactive_command=True)
 
     # stop - Stop the selected session and clear state
     parser_stop = _add_subcommand_parser(

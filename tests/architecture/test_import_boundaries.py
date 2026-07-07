@@ -190,6 +190,41 @@ def test_editor_package_does_not_reexport_editor_apis():
     assert violations == []
 
 
+def test_cli_package_does_not_reexport_cli_apis():
+    """CLI callers should import concrete modules instead of the package."""
+    cli_path = SRC_ROOT / "cli" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(cli_path)
+    }
+    cli = __import__("git_stage_batch.cli", fromlist=["cli"])
+    facade_names = {
+        "main",
+    }
+    violations = []
+
+    assert imported_modules <= {"__future__"}
+    if "main" in vars(cli):
+        assert (
+            getattr(vars(cli)["main"], "__name__", None)
+            == "git_stage_batch.cli.main"
+        )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.cli":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_data_package_does_not_reexport_data_apis():
     """Data callers should import concrete modules instead of the package."""
     data_path = SRC_ROOT / "data" / "__init__.py"

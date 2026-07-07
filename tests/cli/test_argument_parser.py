@@ -862,12 +862,12 @@ def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(mon
 
 def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     """Include should dispatch once per file resolved from --files."""
-    mock_command = Mock(return_value=1)
-    monkeypatch.setattr(argument_parser.commands, "command_include_file", mock_command)
-    mock_select_next = Mock(return_value=True)
-    monkeypatch.setattr(argument_parser, "select_next_change_after_action", mock_select_next)
-    mock_show_selected_change = Mock()
-    monkeypatch.setattr(argument_parser, "show_selected_change", mock_show_selected_change)
+    mock_command = Mock()
+    monkeypatch.setattr(
+        argument_parser,
+        "include_each_resolved_file",
+        mock_command,
+    )
     _mock_live_file_candidates(monkeypatch, ["foo.py", "dir/bar.py", "baz.txt"])
 
     args = parse_command_line(["include", "--files", "*.py"], quiet=True)
@@ -875,12 +875,10 @@ def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     assert args is not None
     assert args.file_patterns == ["*.py"]
     args.func(args)
-    assert mock_command.call_args_list == [
-        call("foo.py", quiet=True, advance=False),
-        call("dir/bar.py", quiet=True, advance=False),
-    ]
-    mock_select_next.assert_called_once_with(auto_advance=None)
-    mock_show_selected_change.assert_called_once_with()
+    mock_command.assert_called_once_with(
+        ["foo.py", "dir/bar.py"],
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_include_rejects_files_without_patterns():
@@ -890,32 +888,28 @@ def test_parse_command_line_include_rejects_files_without_patterns():
 
 def test_parse_command_line_include_with_file_pattern_dispatches_per_file(monkeypatch):
     """Include --file with a pattern should dispatch like --files."""
-    mock_command = Mock(return_value=1)
-    monkeypatch.setattr(argument_parser.commands, "command_include_file", mock_command)
-    mock_select_next = Mock(return_value=True)
-    monkeypatch.setattr(argument_parser, "select_next_change_after_action", mock_select_next)
-    mock_show_selected_change = Mock()
-    monkeypatch.setattr(argument_parser, "show_selected_change", mock_show_selected_change)
+    mock_command = Mock()
+    monkeypatch.setattr(
+        argument_parser,
+        "include_each_resolved_file",
+        mock_command,
+    )
     _mock_live_file_candidates(monkeypatch, ["foo.py", "dir/bar.py", "baz.txt"])
 
     args = parse_command_line(["include", "--file", "*.py"], quiet=True)
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [
-        call("foo.py", quiet=True, advance=False),
-        call("dir/bar.py", quiet=True, advance=False),
-    ]
-    mock_select_next.assert_called_once_with(auto_advance=None)
-    mock_show_selected_change.assert_called_once_with()
+    mock_command.assert_called_once_with(
+        ["foo.py", "dir/bar.py"],
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_include_with_file_pattern_honors_exclusions(monkeypatch):
     """Include --file should accept multiple gitignore-style patterns."""
     mock_command = Mock(return_value=1)
     monkeypatch.setattr(argument_parser.commands, "command_include_file", mock_command)
-    monkeypatch.setattr(argument_parser, "select_next_change_after_action", Mock(return_value=False))
-    monkeypatch.setattr(argument_parser, "show_selected_change", Mock())
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "baz.txt"])
 
     args = parse_command_line(["include", "--file", "*.py", "!bar.py"], quiet=True)
@@ -1153,24 +1147,22 @@ def test_parse_command_line_skip_with_files():
 
 def test_parse_command_line_skip_files_dispatches_per_file(monkeypatch):
     """Skip should dispatch once per file resolved from --files."""
-    mock_command = Mock(side_effect=[1, 2])
-    monkeypatch.setattr(argument_parser.commands, "command_skip_file", mock_command)
-    mock_select_next = Mock(return_value=True)
-    monkeypatch.setattr(argument_parser, "select_next_change_after_action", mock_select_next)
-    mock_show_selected_change = Mock()
-    monkeypatch.setattr(argument_parser, "show_selected_change", mock_show_selected_change)
+    mock_command = Mock()
+    monkeypatch.setattr(
+        argument_parser,
+        "skip_each_resolved_file",
+        mock_command,
+    )
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["skip", "--files", "*.py"], quiet=True)
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [
-        call("foo.py", quiet=True, advance=False),
-        call("bar.py", quiet=True, advance=False),
-    ]
-    mock_select_next.assert_called_once_with(auto_advance=None)
-    mock_show_selected_change.assert_called_once_with()
+    mock_command.assert_called_once_with(
+        ["foo.py", "bar.py"],
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_skip_rejects_lines_with_multiple_files(monkeypatch):
@@ -1194,20 +1186,22 @@ def test_parse_command_line_skip_rejects_pathless_file_with_files():
 
 def test_parse_command_line_skip_combines_file_and_files_patterns(monkeypatch):
     """Argument-bearing --file and --files should resolve together."""
-    mock_command = Mock(side_effect=[1, 2])
-    monkeypatch.setattr(argument_parser.commands, "command_skip_file", mock_command)
-    monkeypatch.setattr(argument_parser, "select_next_change_after_action", Mock(return_value=False))
-    monkeypatch.setattr(argument_parser, "show_selected_change", Mock())
+    mock_command = Mock()
+    monkeypatch.setattr(
+        argument_parser,
+        "skip_each_resolved_file",
+        mock_command,
+    )
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["skip", "--file", "foo.py", "--files", "bar.py"], quiet=True)
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [
-        call("foo.py", quiet=True, advance=False),
-        call("bar.py", quiet=True, advance=False),
-    ]
+    mock_command.assert_called_once_with(
+        ["foo.py", "bar.py"],
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
@@ -1270,28 +1264,23 @@ def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(mo
 
 def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkeypatch):
     """discard --to --files should suppress per-file selected-change display."""
-    mock_command = Mock(
-        return_value=argument_parser.commands.DiscardFilesToBatchResult(
-            discarded_hunks=2,
-            discarded_files=["foo.py", "bar.py"],
-        )
+    mock_command = Mock()
+    monkeypatch.setattr(
+        argument_parser,
+        "discard_to_batch_each_resolved_file",
+        mock_command,
     )
-    mock_select_next = Mock(return_value=True)
-    mock_show = Mock()
-    monkeypatch.setattr(argument_parser.commands, "command_discard_files_to_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "select_next_change_after_action", mock_select_next)
-    monkeypatch.setattr(argument_parser, "show_selected_change", mock_show)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["discard", "--to", "batch", "--files", "*.py"], quiet=True)
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [
-        call("batch", ["foo.py", "bar.py"], quiet=True, advance=False, auto_advance=None),
-    ]
-    mock_select_next.assert_called_once_with(auto_advance=None)
-    mock_show.assert_called_once_with()
+    mock_command.assert_called_once_with(
+        "batch",
+        ["foo.py", "bar.py"],
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):

@@ -67,17 +67,6 @@ from ..utils.paths import (
     get_processed_skip_ids_file_path,
 )
 from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
-from .batch_selected_changes import (
-    compute_batch_binary_fingerprint as compute_batch_binary_fingerprint,
-    compute_batch_gitlink_fingerprint as compute_batch_gitlink_fingerprint,
-    require_current_selected_batch_binary_file_for_batch as require_current_selected_batch_binary_file_for_batch,
-    require_current_selected_batch_gitlink_file_for_batch as require_current_selected_batch_gitlink_file_for_batch,
-    selected_batch_binary_batch_name as selected_batch_binary_batch_name,
-    selected_batch_binary_file_for_batch as selected_batch_binary_file_for_batch,
-    selected_batch_binary_matches_batch as selected_batch_binary_matches_batch,
-    selected_batch_gitlink_file_for_batch as selected_batch_gitlink_file_for_batch,
-    selected_batch_gitlink_matches_batch as selected_batch_gitlink_matches_batch,
-)
 from .selected_change.lifecycle import (
     clear_selected_change_state_files as _clear_selected_change_state_files,
 )

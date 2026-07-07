@@ -248,11 +248,20 @@ def test_argument_parser_delegates_multi_file_action_flow():
     }
 
     assert "git_stage_batch.data.hunk_tracking" not in parser_imports
+    assert "git_stage_batch.data.undo" not in parser_imports
     assert (
         "git_stage_batch.commands.file_scope.multi_file_actions"
         in parser_imports
     )
     assert "git_stage_batch.data.hunk_tracking" in helper_imports
+    assert "git_stage_batch.data.undo" in helper_imports
+    assert not hasattr(
+        __import__(
+            "git_stage_batch.cli.argument_parser",
+            fromlist=["argument_parser"],
+        ),
+        "_run_for_each_file",
+    )
 
 
 def test_hunk_tracking_does_not_reexport_live_change_helpers():

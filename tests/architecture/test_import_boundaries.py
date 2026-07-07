@@ -2368,6 +2368,42 @@ def test_selected_hunk_cache_writes_stay_in_selected_change_store():
     assert violations == []
 
 
+def test_batch_file_mode_detection_stays_in_data_module():
+    """Include and discard should use the shared file-mode detector."""
+    file_modes = __import__(
+        "git_stage_batch.data.file_modes",
+        fromlist=["file_modes"],
+    )
+    expected_imports = {
+        SRC_ROOT / "commands" / "include.py": {"detect_file_mode"},
+        SRC_ROOT / "commands" / "discard.py": {
+            "detect_file_mode",
+            "detect_file_mode_from_root",
+        },
+    }
+    forbidden_helpers = {
+        "_detect_file_mode",
+        "_detect_file_mode_from_root",
+    }
+
+    assert {"detect_file_mode", "detect_file_mode_from_root"} <= vars(file_modes).keys()
+
+    for path, expected_names in expected_imports.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        helper_names = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+        }
+        imported_file_mode_names = set()
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.file_modes":
+                continue
+            imported_file_mode_names |= {alias.name for alias in node.names}
+
+        assert forbidden_helpers.isdisjoint(helper_names)
+        assert expected_names <= imported_file_mode_names
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

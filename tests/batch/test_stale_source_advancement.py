@@ -9,8 +9,8 @@ from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
-    _advance_source_lines_preserving_existing_presence,
-    _remap_batch_ownership_with_lineage,
+    advance_source_lines_preserving_existing_presence,
+    remap_batch_ownership_with_lineage,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
     remap_batch_ownership_to_new_source_lines,
@@ -81,7 +81,7 @@ def _advance_source_from_content(
         EditorBuffer.from_bytes(old_source_buffer) as old_source_lines,
         EditorBuffer.from_bytes(working_buffer) as working_lines,
     ):
-        return _advance_source_lines_preserving_existing_presence(
+        return advance_source_lines_preserving_existing_presence(
             old_lines=old_source_lines,
             working_lines=working_lines,
             ownership=ownership,
@@ -437,7 +437,7 @@ def test_source_lineage_remaps_guarded_presence_ranges():
             LineageRun(old_start=2000, old_end=2001, new_start=5000),
         ],
     ) as lineage:
-        remapped = _remap_batch_ownership_with_lineage(
+        remapped = remap_batch_ownership_with_lineage(
             ownership,
             lineage,
         )
@@ -541,7 +541,7 @@ def test_advance_source_preserves_claimed_lines_missing_from_working_tree():
         working_buffer=working_tree,
         ownership=ownership,
     ) as source_with_provenance:
-        remapped = _remap_batch_ownership_with_lineage(
+        remapped = remap_batch_ownership_with_lineage(
             ownership,
             source_with_provenance.lineage,
         )
@@ -624,7 +624,7 @@ def test_advance_source_lines_accepts_non_list_line_sequences(line_sequence):
     working_lines = line_sequence([b"same\n", b"same\n"])
     ownership = BatchOwnership.from_presence_lines(["1,4"], [])
 
-    with _advance_source_lines_preserving_existing_presence(
+    with advance_source_lines_preserving_existing_presence(
         old_lines=old_lines,
         working_lines=working_lines,
         ownership=ownership,

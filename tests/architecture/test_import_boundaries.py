@@ -3818,8 +3818,11 @@ def test_operation_candidates_owns_candidate_preview_count():
         "_IncludeCandidateCount",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "apply_from.py": public_names,
-        SRC_ROOT / "commands" / "include_from.py": public_names,
+        SRC_ROOT
+        / "commands"
+        / "batch_source"
+        / "candidate_preview_counts.py": public_names,
+        SRC_ROOT / "commands" / "batch_source" / "candidate_refusals.py": public_names,
     }
 
     assert public_names <= vars(operation_candidates).keys()
@@ -4145,6 +4148,71 @@ def test_batch_source_candidate_preview_builders_own_show_candidate_construction
     assert imports_candidate_preview_builders
     assert old_function_names.isdisjoint(show_from_helpers)
     assert direct_operation_builder_imports == set()
+
+
+def test_batch_source_candidate_preview_counts_own_failure_enumeration():
+    """Apply/include candidate count enumeration should live in batch-source support."""
+    candidate_preview_counts = __import__(
+        "git_stage_batch.commands.batch_source.candidate_preview_counts",
+        fromlist=["candidate_preview_counts"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "count_apply_candidate_previews_for_file",
+        "count_include_candidate_previews_for_file",
+    }
+    old_function_names = {
+        apply_from_path: {
+            "_apply_candidate_count_for_file",
+        },
+        include_from_path: {
+            "_include_candidate_count_for_file",
+        },
+    }
+    old_import_names = {
+        "CandidateEnumerationLimitError",
+        "CandidatePreviewCount",
+    }
+    command_paths = set(old_function_names)
+    imports_candidate_preview_counts = {
+        path: False
+        for path in command_paths
+    }
+    direct_count_imports = {
+        path: set()
+        for path in command_paths
+    }
+    helper_names = {}
+
+    for path in command_paths:
+        tree = ast.parse(path.read_text(), filename=str(path))
+        helper_names[path] = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+        }
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_preview_counts" in imported_names
+            ):
+                imports_candidate_preview_counts[path] = True
+            if imported_module == "git_stage_batch.batch.operation_candidates":
+                direct_count_imports[path] |= imported_names & old_import_names
+
+    assert public_names <= vars(candidate_preview_counts).keys()
+    assert imports_candidate_preview_counts == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_count_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+    for path, old_names in old_function_names.items():
+        assert old_names.isdisjoint(helper_names[path])
 
 
 def test_batch_source_replacement_previews_own_show_replacement_preview():

@@ -1417,7 +1417,7 @@ def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
     )
     public_names = {
         "DiscardFilesToBatchResult",
-        "command_discard_files_to_batch",
+        "discard_files_to_batch",
     }
     moved_names = {
         "CollectedTextFileDiscards",
@@ -1429,7 +1429,7 @@ def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
         "_discard_prepared_text_files_to_batch",
         "_prepare_text_file_discard_to_batch",
         "_run_reverse_apply_for_prepared_discards",
-        "command_discard_files_to_batch",
+        "discard_files_to_batch",
     }
     helper_imports = {
         "BatchFileUpdate",

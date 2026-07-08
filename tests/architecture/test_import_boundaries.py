@@ -2362,6 +2362,48 @@ def test_tui_file_review_prompts_own_action_vocabulary():
     assert "Review action:" in prompt_text
 
 
+def test_tui_file_review_action_router_owns_standard_actions():
+    """TUI file review action router should own standard action gates."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    router_path = SRC_ROOT / "tui" / "file_review" / "action_router.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    router = __import__(
+        "git_stage_batch.tui.file_review.action_router",
+        fromlist=["action_router"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    router_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(router_path)
+    }
+    old_review_names = {
+        "_apply_file_action",
+        "_apply_line_action",
+        "_apply_replacement_action",
+        "_prompt_replacement_text",
+    }
+    review_text = review_path.read_text()
+    router_text = router_path.read_text()
+
+    assert {
+        "apply_file_action",
+        "apply_line_action",
+        "apply_replacement_action",
+    } <= vars(router).keys()
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.action_router" in review_imports
+    assert "git_stage_batch.tui.file_review.batch_actions" in router_imports
+    assert "git_stage_batch.tui.file_review.live_actions" in router_imports
+    assert "Replacement text (empty cancels):" not in review_text
+    assert "Replacement text (empty cancels):" in router_text
+
+
 def test_commands_do_not_import_tui():
     """Command modules should not launch or depend on TUI modules."""
     violations = []

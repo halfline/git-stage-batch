@@ -20,6 +20,11 @@ from .batch_actions import (
 from .block_actions import block_review_file, unblock_review_file
 from .candidates import browse_candidates
 from .display import render_file_review
+from .fixup_actions import (
+    clear_file_review_fixup_state,
+    read_last_fixup_commit_hash,
+    suggest_fixup_for_lines,
+)
 from .live_actions import (
     apply_live_file_action,
     apply_live_line_action,
@@ -556,16 +561,10 @@ def _apply_fixup_action(state: FileReviewSessionState) -> None:
     if not line_ids:
         return
 
-    from ...commands.suggest_fixup import command_suggest_fixup_line
-    from ...data.suggest_fixup_state import (
-        clear_suggest_fixup_state,
-        read_suggest_fixup_state,
-    )
-
     use_color = sys.stdout.isatty()
 
     try:
-        command_suggest_fixup_line(line_ids, file=state.file_path)
+        suggest_fixup_for_lines(line_ids, file_path=state.file_path)
     except CommandError as e:
         print(e.message, file=sys.stderr)
         return
@@ -575,9 +574,8 @@ def _apply_fixup_action(state: FileReviewSessionState) -> None:
         action = prompt_fixup_action(use_color=use_color)
 
         if action == "y":
-            fixup_state = read_suggest_fixup_state()
-            if fixup_state and fixup_state.get("last_shown_commit"):
-                commit_hash = fixup_state["last_shown_commit"][:7]
+            commit_hash = read_last_fixup_commit_hash()
+            if commit_hash is not None:
                 print()
                 print(_("Create fixup commit with:"))
                 print(f"  git commit --fixup={commit_hash}")
@@ -585,20 +583,24 @@ def _apply_fixup_action(state: FileReviewSessionState) -> None:
             return
         if action == "n":
             try:
-                command_suggest_fixup_line(line_ids, file=state.file_path)
+                suggest_fixup_for_lines(line_ids, file_path=state.file_path)
             except CommandError as e:
                 print(e.message, file=sys.stderr)
                 return
             continue
         if action == "r":
             try:
-                command_suggest_fixup_line(line_ids, file=state.file_path, reset=True)
+                suggest_fixup_for_lines(
+                    line_ids,
+                    file_path=state.file_path,
+                    reset=True,
+                )
             except CommandError as e:
                 print(e.message, file=sys.stderr)
                 return
             continue
         if action == "q":
-            clear_suggest_fixup_state()
+            clear_file_review_fixup_state()
             print(_("\nCanceled."))
             return
 

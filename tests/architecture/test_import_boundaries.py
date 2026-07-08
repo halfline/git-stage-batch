@@ -1717,6 +1717,54 @@ def test_tui_shell_command_owns_shell_escape():
     assert shell_command_names <= shell_command_imported_names
 
 
+def test_tui_cli_escape_owns_command_fallback():
+    """TUI CLI command fallback should live in the CLI escape adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    cli_escape_path = SRC_ROOT / "tui" / "cli_escape.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    cli_escape = __import__(
+        "git_stage_batch.tui.cli_escape",
+        fromlist=["cli_escape"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    cli_escape_imported_names = set()
+    interactive_plain_imports = set()
+    cli_escape_plain_imports = set()
+    cli_escape_names = {
+        "execute_non_interactive_args",
+        "parse_command_line",
+    }
+
+    for node in ast.walk(ast.parse(interactive_path.read_text())):
+        if isinstance(node, ast.Import):
+            interactive_plain_imports |= {alias.name for alias in node.names}
+
+    for node in ast.walk(ast.parse(cli_escape_path.read_text())):
+        if isinstance(node, ast.Import):
+            cli_escape_plain_imports |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(cli_escape_path):
+        cli_escape_imported_names |= {alias.name for alias in node.names}
+
+    assert "handle_cli_escape" in vars(cli_escape)
+    assert "_handle_cli_command" not in vars(interactive)
+    assert "git_stage_batch.tui.cli_escape" in interactive_imports
+    assert "shlex" not in interactive_plain_imports
+    assert "shlex" in cli_escape_plain_imports
+    assert cli_escape_names.isdisjoint(interactive_imported_names)
+    assert cli_escape_names <= cli_escape_imported_names
+
+
 def test_tui_file_selection_menu_owns_whole_file_actions():
     """TUI whole-file selection should live in the file selection menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import shlex
-import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Callable
@@ -18,7 +17,7 @@ from ..i18n import _
 from ..output.colors import Colors
 from ..output.hunk import print_line_level_changes
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
-from ..utils.git import get_git_repository_root_path, run_git_command
+from ..utils.git import run_git_command
 from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_start_head_file_path,
@@ -41,8 +40,8 @@ from .line_selection_menu import handle_line_selection_menu
 from .prompts import (
     prompt_action,
     prompt_quit_session,
-    prompt_shell_command,
 )
+from .shell_command import handle_shell_command
 
 
 @dataclass
@@ -126,30 +125,6 @@ def _handle_quit(flow_state: FlowState) -> None:
     raise QuitInteractive()
 
 
-def _handle_shell(action: str) -> None:
-    """Handle shell command execution."""
-    if len(action) > 1:
-        command = action[1:].strip()
-    else:
-        command = prompt_shell_command()
-
-    if command:
-        result = subprocess.run(
-            command,
-            shell=True,
-            cwd=get_git_repository_root_path(),
-        )
-        if result.returncode != 0:
-            print(_("Command exited with status {}").format(result.returncode))
-
-        try:
-            input(_("\nPress Enter to continue..."))
-        except (KeyboardInterrupt, EOFError):
-            pass
-    else:
-        print(_("No command entered"))
-
-
 def _handle_batch(flow_state: FlowState) -> None:
     """Handle batch management submenu."""
     handle_batch_menu()
@@ -219,7 +194,7 @@ def _dispatch_action(
     Raises QuitInteractive to exit or BypassRefresh to skip display update.
     """
     if action.startswith("!"):
-        _handle_shell(action)
+        handle_shell_command(action)
         return
 
     if action == "":

@@ -4103,17 +4103,23 @@ def test_batch_source_candidate_refusals_own_candidate_count_refusals():
         fromlist=["candidate_refusals"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "refuse_candidate_conflicts",
     }
-    old_snippets = {
-        "too many apply candidates",
-        "Cannot enumerate apply candidates",
-        "multiple files need apply decisions",
+    old_snippets_by_path = {
+        apply_from_path: {
+            "too many apply candidates",
+            "Cannot enumerate apply candidates",
+            "multiple files need apply decisions",
+        },
+        include_from_path: {
+            "too many include candidates",
+            "Cannot enumerate include candidates",
+            "multiple files need include decisions",
+        },
     }
-    command_paths = {
-        apply_from_path,
-    }
+    command_paths = set(old_snippets_by_path)
     imports_candidate_refusals = {
         path: False
         for path in command_paths
@@ -4131,9 +4137,12 @@ def test_batch_source_candidate_refusals_own_candidate_count_refusals():
     assert public_names <= vars(candidate_refusals).keys()
     assert imports_candidate_refusals == {
         apply_from_path: True,
+        include_from_path: True,
     }
-    for snippet in old_snippets:
-        assert snippet not in apply_from_path.read_text()
+    for path, old_snippets in old_snippets_by_path.items():
+        command_text = path.read_text()
+        for snippet in old_snippets:
+            assert snippet not in command_text
 
 
 def test_batch_source_text_actions_own_text_file_mutations():

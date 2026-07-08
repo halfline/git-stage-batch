@@ -3589,7 +3589,7 @@ def test_batch_storage_uses_public_content_helpers():
         SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
             "build_realized_buffer_from_lines",
         },
-        SRC_ROOT / "commands" / "sift.py": {
+        SRC_ROOT / "commands" / "batch_transform" / "sift_persistence.py": {
             "remove_file_from_batch_commit",
             "update_batch_commit",
         },
@@ -3705,6 +3705,73 @@ def test_batch_transform_sift_results_own_result_planning():
     assert public_names <= vars(sift_results).keys()
     assert imports_sift_results
     assert direct_result_imports == set()
+    assert old_helper_names.isdisjoint(sift_helpers)
+
+
+def test_batch_transform_sift_persistence_owns_text_writes():
+    """Sift text persistence should live outside the command entry point."""
+    sift_persistence = __import__(
+        "git_stage_batch.commands.batch_transform.sift_persistence",
+        fromlist=["sift_persistence"],
+    )
+    sift_path = SRC_ROOT / "commands" / "sift.py"
+    public_names = {
+        "add_sifted_text_file_to_batch",
+        "create_synthetic_batch_source_commit",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.ownership": {
+            "BatchOwnership",
+        },
+        "git_stage_batch.batch.query": {
+            "get_batch_baseline_commit",
+        },
+        "git_stage_batch.batch.storage": {
+            "remove_file_from_batch_commit",
+            "update_batch_commit",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "TextFileChangeType",
+            "normalized_text_change_type",
+        },
+        "git_stage_batch.utils.git": {
+            "create_git_blob",
+            "git_commit_tree",
+            "git_read_tree",
+            "git_update_index",
+            "git_write_tree",
+            "temp_git_index",
+        },
+    }
+    old_helper_names = {
+        "add_sifted_text_file_to_batch",
+        "create_synthetic_batch_source_commit",
+    }
+    imports_sift_persistence = False
+    direct_persistence_imports = set()
+
+    for imported_module, node in _import_from_nodes(sift_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_transform"
+            and "sift_persistence" in imported_names
+        ):
+            imports_sift_persistence = True
+        direct_persistence_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    sift_tree = ast.parse(sift_path.read_text(), filename=str(sift_path))
+    sift_helpers = {
+        node.name
+        for node in ast.walk(sift_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+
+    assert public_names <= vars(sift_persistence).keys()
+    assert imports_sift_persistence
+    assert direct_persistence_imports == set()
     assert old_helper_names.isdisjoint(sift_helpers)
 
 

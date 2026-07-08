@@ -3978,13 +3978,14 @@ def test_batch_owns_binary_file_content_loading():
     assert old_names.isdisjoint(include_from_helpers)
 
 
-def test_batch_source_action_plans_own_apply_resource_plans():
-    """Shared batch-source action plans should live outside apply-from."""
+def test_batch_source_action_plans_own_resource_plans():
+    """Shared batch-source action plans should live outside command entries."""
     action_plans = __import__(
         "git_stage_batch.commands.batch_source.action_plans",
         fromlist=["action_plans"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "BatchSourceActionPlan",
         "BinaryFileActionPlan",
@@ -3996,25 +3997,45 @@ def test_batch_source_action_plans_own_apply_resource_plans():
         "_ApplySubmodulePlan",
         "_close_apply_plans",
     }
+    old_include_names = {
+        "_IncludeBinaryPlan",
+        "_IncludeSubmodulePlan",
+        "_close_include_plans",
+    }
     apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
     apply_from_helpers = {
         node.name
         for node in ast.walk(apply_from_tree)
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
-    imports_action_plans = False
+    include_from_tree = ast.parse(
+        include_from_path.read_text(),
+        filename=str(include_from_path),
+    )
+    include_from_helpers = {
+        node.name
+        for node in ast.walk(include_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_action_plans = {
+        apply_from_path: False,
+        include_from_path: False,
+    }
 
-    for imported_module, node in _import_from_nodes(apply_from_path):
-        imported_names = {alias.name for alias in node.names}
-        if (
-            imported_module == "git_stage_batch.commands.batch_source"
-            and "action_plans" in imported_names
-        ):
-            imports_action_plans = True
+    for path in imports_action_plans:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "action_plans" in imported_names
+            ):
+                imports_action_plans[path] = True
 
     assert public_names <= vars(action_plans).keys()
-    assert imports_action_plans
+    assert imports_action_plans[apply_from_path]
+    assert imports_action_plans[include_from_path]
     assert old_apply_names.isdisjoint(apply_from_helpers)
+    assert old_include_names.isdisjoint(include_from_helpers)
 
 
 def test_batch_merge_does_not_reexport_merge_exceptions():

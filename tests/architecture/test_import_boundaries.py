@@ -2583,6 +2583,45 @@ def test_batch_file_mode_detection_stays_in_data_module():
         assert expected_names <= imported_file_mode_names
 
 
+def test_file_change_status_queries_stay_in_data_module():
+    """Include should use data helpers for file change status probes."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    status_path = SRC_ROOT / "data" / "file_change_status.py"
+    file_change_status = __import__(
+        "git_stage_batch.data.file_change_status",
+        fromlist=["file_change_status"],
+    )
+    public_names = {
+        "file_has_staged_changes",
+        "file_has_unstaged_changes",
+    }
+    old_include_names = {
+        "_file_has_staged_changes",
+        "_file_has_unstaged_changes",
+    }
+
+    assert public_names <= vars(file_change_status).keys()
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_helpers = {
+        node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
+    }
+    imported_status_names = set()
+
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module != "git_stage_batch.data.file_change_status":
+            continue
+        imported_status_names |= {alias.name for alias in node.names}
+
+    status_imported_names = set()
+    for _imported_module, node in _import_from_nodes(status_path):
+        status_imported_names |= {alias.name for alias in node.names}
+
+    assert old_include_names.isdisjoint(include_helpers)
+    assert public_names <= imported_status_names
+    assert "run_git_command" in status_imported_names
+
+
 def test_index_entry_lookup_stays_in_data_module():
     """Index-entry parsing should stay behind the shared data helper."""
     index_entries = __import__(

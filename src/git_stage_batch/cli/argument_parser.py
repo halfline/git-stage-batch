@@ -57,7 +57,7 @@ from ..commands.show_from import command_show_from_batch
 from ..commands.sift import command_sift_batch
 from ..commands.skip import command_skip, command_skip_file, command_skip_line
 from ..commands.start import command_start
-from ..commands.status import DEFAULT_PROMPT_FORMAT, command_status
+from ..commands.status import command_status
 from ..commands.stop import command_stop
 from ..commands.suggest_fixup import (
     command_suggest_fixup,
@@ -67,6 +67,7 @@ from ..commands.unblock_file import command_unblock_file
 from ..commands.undo import command_undo
 from ..exceptions import CommandError
 from ..i18n import _
+from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from ..utils.command import run_command
 from ..utils.git import run_git_command
 from .completion import command_complete_files

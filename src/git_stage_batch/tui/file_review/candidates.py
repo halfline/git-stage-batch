@@ -3,22 +3,15 @@
 from __future__ import annotations
 
 import sys
-from typing import Protocol
 
 from ...exceptions import CommandError
 from ...i18n import _
-from ..flow import FlowState, LocationRole
+from .session import FileReviewSessionState
+from ..flow import LocationRole
 from ..prompts import wrap_prompt_for_readline
 
 
-class FileReviewCandidateState(Protocol):
-    """State needed to browse candidates for one reviewed file."""
-
-    flow_state: FlowState
-    file_path: str
-
-
-def browse_candidates(state: FileReviewCandidateState) -> None:
+def browse_candidates(state: FileReviewSessionState) -> None:
     """Preview or execute candidate operations for a reviewed batch file."""
     if state.flow_state.source.role is not LocationRole.BATCH:
         print(

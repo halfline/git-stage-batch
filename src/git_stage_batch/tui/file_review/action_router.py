@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from typing import Protocol
 
 from ...exceptions import CommandError
 from ...i18n import _
@@ -17,7 +16,8 @@ from .live_actions import (
     apply_live_line_action,
     apply_live_replacement_action,
 )
-from ..flow import FlowState, LocationRole
+from .session import FileReviewSessionState
+from ..flow import LocationRole
 from ..prompts import (
     confirm_destructive_operation,
     prompt_line_ids,
@@ -25,14 +25,7 @@ from ..prompts import (
 )
 
 
-class FileReviewActionState(Protocol):
-    """State needed to route standard reviewed-file actions."""
-
-    flow_state: FlowState
-    file_path: str
-
-
-def apply_replacement_action(state: FileReviewActionState) -> None:
+def apply_replacement_action(state: FileReviewSessionState) -> None:
     """Prompt for replacement text and route the replacement action."""
     line_ids = prompt_line_ids()
     if not line_ids:
@@ -51,7 +44,7 @@ def apply_replacement_action(state: FileReviewActionState) -> None:
         print(e.message, file=sys.stderr)
 
 
-def apply_line_action(state: FileReviewActionState, action: str) -> None:
+def apply_line_action(state: FileReviewSessionState, action: str) -> None:
     """Prompt for line IDs and route the line action."""
     if action == "s" and state.flow_state.source.role is LocationRole.BATCH:
         print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
@@ -77,7 +70,7 @@ def apply_line_action(state: FileReviewActionState, action: str) -> None:
         print(e.message, file=sys.stderr)
 
 
-def apply_file_action(state: FileReviewActionState, action: str) -> None:
+def apply_file_action(state: FileReviewSessionState, action: str) -> None:
     """Route a whole-file action for the reviewed file."""
     if action == "S" and state.flow_state.source.role is LocationRole.BATCH:
         print(_("Skip is not available when pulling from a batch."), file=sys.stderr)

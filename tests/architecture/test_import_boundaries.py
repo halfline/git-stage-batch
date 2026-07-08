@@ -4207,6 +4207,58 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
             assert snippet not in command_text
 
 
+def test_batch_source_merge_refusals_own_merge_failure_refusals():
+    """Shared merge failure refusals should live outside command entries."""
+    merge_refusals = __import__(
+        "git_stage_batch.commands.batch_source.merge_refusals",
+        fromlist=["merge_refusals"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    public_names = {
+        "refuse_batch_source_merge_failures",
+    }
+    old_snippets_by_path = {
+        apply_from_path: {
+            "gutter_to_selection_id",
+            "Failed for: {files}",
+        },
+    }
+    command_paths = set(old_snippets_by_path)
+    imports_merge_refusals = {
+        path: False
+        for path in command_paths
+    }
+    direct_display_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "merge_refusals" in imported_names
+            ):
+                imports_merge_refusals[path] = True
+            if imported_module == "git_stage_batch.batch.file_display":
+                direct_display_imports[path] |= (
+                    imported_names & {"render_batch_file_display"}
+                )
+
+    assert public_names <= vars(merge_refusals).keys()
+    assert imports_merge_refusals == {
+        apply_from_path: True,
+    }
+    assert direct_display_imports == {
+        apply_from_path: set(),
+    }
+    for path, old_snippets in old_snippets_by_path.items():
+        command_text = path.read_text()
+        for snippet in old_snippets:
+            assert snippet not in command_text
+
+
 def test_batch_source_text_actions_own_text_file_mutations():
     """Shared text file actions should live outside command entries."""
     text_file_actions = __import__(

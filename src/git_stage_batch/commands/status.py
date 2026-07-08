@@ -50,7 +50,7 @@ from ..data.selected_change.file_changes import (
     load_selected_text_deletion_change,
 )
 from ..data.selected_change.snapshots import snapshots_are_stale
-from ..data.session import get_iteration_count
+from ..data.session import get_iteration_count, session_is_active
 from ..exceptions import CommandError
 from ..i18n import _
 from ..output.status_prompt import prompt_needs_status_summary, render_prompt_status
@@ -71,7 +71,6 @@ from ..utils.paths import (
     get_discarded_hunks_file_path,
     get_included_hunks_file_path,
     get_skipped_hunks_jsonl_file_path,
-    get_state_directory_path,
 )
 
 
@@ -355,12 +354,6 @@ def _read_file_review_summary() -> dict | None:
     }
 
 
-def _session_marker_path(git_dir: Path | None = None) -> Path:
-    """Return the active-session marker path without creating state directories."""
-    state_dir = git_dir / "git-stage-batch" if git_dir is not None else get_state_directory_path()
-    return state_dir / "session" / "abort" / "head.txt"
-
-
 def _git_directory_for_prompt() -> Path | None:
     """Return the git directory for prompt rendering, or None outside a repo."""
     try:
@@ -427,14 +420,14 @@ def command_status(*, porcelain: bool = False, prompt_format: str | None = None)
 
     if prompt_format is not None:
         git_dir = _git_directory_for_prompt()
-        if git_dir is None or not _session_marker_path(git_dir).exists():
+        if git_dir is None or not session_is_active(git_dir):
             return
     else:
         require_git_repository()
 
     # Only treat an active abort marker as a live session. The state directory
     # can persist after cleanup because batch metadata is intentionally kept.
-    if prompt_format is None and not _session_marker_path().exists():
+    if prompt_format is None and not session_is_active():
         if porcelain:
             print(json.dumps({"session": {"active": False}}))
         else:

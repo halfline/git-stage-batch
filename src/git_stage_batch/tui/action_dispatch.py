@@ -6,11 +6,9 @@ import sys
 from dataclasses import dataclass
 from typing import Callable
 
-from ..data.file_tracking import auto_add_untracked_files
-from ..data.hunk_tracking import fetch_next_change
 from ..exceptions import BypassRefresh, QuitInteractive
 from ..i18n import _
-from ..utils.paths import get_selected_hunk_hash_file_path
+from .again_action import handle_again
 from .asset_menu import handle_asset_menu
 from .batch_menu import handle_batch_menu
 from .cli_escape import handle_cli_escape
@@ -38,16 +36,6 @@ class ActionHandler:
 
     needs_hunk: bool
     handler: Callable[[FlowState], None]
-
-
-def _handle_again(flow_state: FlowState) -> None:
-    """Handle again action - restart from first hunk."""
-    hunk_hash_file = get_selected_hunk_hash_file_path()
-    if hunk_hash_file.exists():
-        hunk_hash_file.unlink()
-
-    auto_add_untracked_files()
-    fetch_next_change()
 
 
 def _handle_assets(flow_state: FlowState) -> None:
@@ -113,7 +101,7 @@ ACTION_HANDLERS = {
     "v": ActionHandler(needs_hunk=True, handler=_handle_file_review),
     "o": ActionHandler(needs_hunk=False, handler=_handle_file_browser),
     "x": ActionHandler(needs_hunk=True, handler=_handle_fixup),
-    "a": ActionHandler(needs_hunk=False, handler=_handle_again),
+    "a": ActionHandler(needs_hunk=False, handler=handle_again),
     "u": ActionHandler(needs_hunk=False, handler=handle_undo),
     "U": ActionHandler(needs_hunk=False, handler=handle_redo),
     "S": ActionHandler(needs_hunk=False, handler=handle_status),

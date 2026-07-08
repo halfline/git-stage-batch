@@ -3889,6 +3889,48 @@ def test_output_owns_operation_candidate_preview_rendering():
     assert "git_stage_batch.core.diff_parser" in candidate_preview_imports
 
 
+def test_batch_owns_atomic_file_change_metadata_conversion():
+    """Stored atomic file metadata conversion should live in batch."""
+    atomic_file_changes = __import__(
+        "git_stage_batch.batch.atomic_file_changes",
+        fromlist=["atomic_file_changes"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    public_names = {
+        "binary_change_from_batch_file_metadata",
+        "gitlink_change_from_batch_file_metadata",
+    }
+    old_names = {
+        "_render_batch_binary_file_change",
+        "_render_batch_gitlink_change",
+    }
+    model_names = {
+        "BinaryFileChange",
+        "GitlinkChange",
+    }
+    show_from_tree = ast.parse(show_from_path.read_text(), filename=str(show_from_path))
+    show_from_helpers = {
+        node.name
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    show_from_atomic_imports = set()
+    show_from_model_imports = set()
+
+    for imported_module, node in _import_from_nodes(show_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if imported_module == "git_stage_batch.batch.atomic_file_changes":
+            show_from_atomic_imports |= imported_names
+        if imported_module == "git_stage_batch.core.models":
+            show_from_model_imports |= imported_names & model_names
+
+    assert public_names <= vars(atomic_file_changes).keys()
+    assert model_names <= vars(atomic_file_changes).keys()
+    assert public_names <= show_from_atomic_imports
+    assert old_names.isdisjoint(show_from_helpers)
+    assert show_from_model_imports == set()
+
+
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(

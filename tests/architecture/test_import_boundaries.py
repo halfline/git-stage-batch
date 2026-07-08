@@ -2760,6 +2760,50 @@ def test_discard_selected_change_discarding_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_discard_file_selection_stays_in_command_helper():
+    """Discard file selection should stay out of the command entrypoint."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_file_selection.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.discard_file_selection",
+        fromlist=["discard_file_selection"],
+    )
+    public_names = {"load_explicit_file_selection"}
+    old_discard_names = {"_load_explicit_file_selection"}
+    helper_imports = {
+        "auto_add_untracked_files",
+        "cache_unstaged_file_as_single_hunk",
+        "get_selected_change_file_path",
+        "load_line_changes_from_state",
+        "read_selected_change_kind",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_helpers = {
+        node.name for node in ast.walk(discard_tree) if isinstance(node, ast.FunctionDef)
+    }
+    discard_imports_helper = False
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "discard_file_selection" in imported_names:
+            discard_imports_helper = True
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert old_discard_names.isdisjoint(discard_helpers)
+    assert discard_imports_helper
+    assert helper_imports <= helper_imported_names
+
+
 def test_discard_uses_file_io_path_empty_helper():
     """Discard should use file I/O utilities for generic path byte checks."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

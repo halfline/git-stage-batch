@@ -21,19 +21,12 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Sequence
-from pathlib import Path
 from typing import Optional
 
-from ..batch.comparison import (
-    SemanticChangeKind,
-    derive_semantic_change_runs,
-)
-from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
-from ..batch.ownership import BatchOwnership, AbsenceClaim, AbsenceContentBuilder
+from ..batch.ownership import BatchOwnership
 from ..batch.query import get_batch_baseline_commit, read_batch_metadata
 from ..batch.state_refs import (
     delete_batch_state_refs,
@@ -42,31 +35,19 @@ from ..batch.state_refs import (
 )
 from ..batch.storage import (
     add_binary_file_to_batch,
-    build_realized_buffer_from_lines,
     remove_file_from_batch_commit,
     update_batch_commit,
 )
 from ..batch.validation import batch_exists, validate_batch_name
 from ..batch.source_selector import require_plain_batch_name
 from .batch_transform import sift_results as _sift_results
-from ..core.line_selection import LineRanges
 from ..core.text_lifecycle import (
     TextFileChangeType,
     normalized_text_change_type,
-    sifted_empty_text_path_change_type,
 )
-from ..core.buffer import (
-    LineBuffer,
-    buffer_byte_count,
-    buffer_matches,
-)
-from ..data.repository_buffers import (
-    load_git_object_as_buffer_or_empty,
-    load_working_tree_file_as_buffer,
-)
+from ..core.buffer import LineBuffer
 from ..exceptions import BatchMetadataError, exit_with_error
 from ..i18n import _
-from ..utils.text import normalize_line_sequence_endings
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
     create_git_blob,
@@ -245,7 +226,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                     repo_root,
                 )
             else:
-                result = _compute_sifted_text_file(
+                result = _sift_results.compute_sifted_text_file(
                     source_batch,
                     file_path,
                     file_meta,
@@ -447,133 +428,3 @@ def _handle_empty_source_batch(source_batch: str, dest_batch: str) -> None:
         ),
         file=sys.stderr,
     )
-
-
-
-def _compute_sifted_text_file(
-    source_batch: str,
-    file_path: str,
-    file_meta: dict,
-    repo_root: Path,
-) -> Optional[dict]:
-    """Compute a sifted text file result."""
-    return _sift_results.compute_sifted_text_file(
-        source_batch,
-        file_path,
-        file_meta,
-        repo_root,
-    )
-
-
-
-def build_ownership_from_working_and_target_lines(
-    working_lines: Sequence[bytes],
-    target_lines: Sequence[bytes],
-) -> Optional[BatchOwnership]:
-    """Build ownership from normalized working and target byte-line sequences."""
-
-    semantic_runs = derive_semantic_change_runs(
-        source_lines=working_lines,
-        target_lines=target_lines,
-    )
-
-    claimed_ranges: list[tuple[int, int]] = []
-    deletion_claims = []
-
-    def build_absence_claim(
-        *,
-        anchor_line: int | None,
-        source_start: int,
-        source_end: int,
-    ) -> AbsenceClaim:
-        with AbsenceContentBuilder() as builder:
-            builder.append_line_range(
-                working_lines,
-                source_start - 1,
-                source_end,
-            )
-            content_lines = builder.finish()
-        return AbsenceClaim(
-            anchor_line=anchor_line,
-            content_lines=content_lines,
-        )
-
-    for run in semantic_runs:
-        if run.kind == SemanticChangeKind.PRESENCE:
-            if run.target_start is not None and run.target_end is not None:
-                claimed_ranges.append((run.target_start, run.target_end))
-        elif run.kind == SemanticChangeKind.DELETION:
-            if run.source_start is not None and run.source_end is not None:
-                deletion_claims.append(
-                    build_absence_claim(
-                        anchor_line=run.target_anchor,
-                        source_start=run.source_start,
-                        source_end=run.source_end,
-                    )
-                )
-        elif run.kind == SemanticChangeKind.REPLACEMENT:
-            if run.source_start is not None and run.source_end is not None:
-                deletion_claims.append(
-                    build_absence_claim(
-                        anchor_line=run.target_anchor,
-                        source_start=run.source_start,
-                        source_end=run.source_end,
-                    )
-                )
-            if run.target_start is not None and run.target_end is not None:
-                claimed_ranges.append((run.target_start, run.target_end))
-
-    claimed_line_ranges = LineRanges.from_ranges(claimed_ranges)
-    if not claimed_line_ranges and not deletion_claims:
-        return None
-
-    return BatchOwnership.from_presence_lines(
-        claimed_line_ranges.to_range_strings(),
-        deletion_claims,
-    )
-
-
-def validate_sifted_text_file_result_from_lines(
-    target_lines: Sequence[bytes],
-    dest_ownership: BatchOwnership,
-    working_lines: Sequence[bytes],
-) -> None:
-    """Validate a sifted representation against normalized byte-line sequences."""
-    resolved = dest_ownership.resolve()
-
-    for claimed_line in resolved.presence_line_set:
-        if claimed_line < 1 or claimed_line > len(target_lines):
-            raise MergeError(
-                f"Sift validation failed: claimed line {claimed_line} is out of bounds "
-                f"(target content has {len(target_lines)} lines)"
-            )
-
-    for deletion_claim in resolved.deletion_claims:
-        if deletion_claim.anchor_line is not None:
-            if deletion_claim.anchor_line < 1 or deletion_claim.anchor_line > len(target_lines):
-                raise MergeError(
-                    f"Sift validation failed: deletion anchor {deletion_claim.anchor_line} "
-                    f"is out of bounds (target content has {len(target_lines)} lines)"
-                )
-        if not deletion_claim.content_lines:
-            raise MergeError("Sift validation failed: absence claim has empty content")
-
-    try:
-        reconstructed_buffer = merge_batch_from_line_sequences_as_buffer(
-            target_lines,
-            dest_ownership,
-            working_lines,
-        )
-    except MergeError as e:
-        raise MergeError(
-            f"Sift validation failed: destination representation cannot be merged: {e}"
-        ) from e
-
-    with reconstructed_buffer as reconstructed:
-        if not buffer_matches(reconstructed, target_lines):
-            target_byte_count = buffer_byte_count(target_lines)
-            raise MergeError(
-                f"Sift validation failed: applying destination representation does not produce "
-                f"the expected target content. Expected {target_byte_count} bytes, got "
-                f"{reconstructed.byte_count} bytes."
-            )

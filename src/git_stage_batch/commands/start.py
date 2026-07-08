@@ -8,13 +8,13 @@ from ..data.auto_advance import DEFAULT_AUTO_ADVANCE, write_auto_advance_default
 from ..data.hunk_tracking import fetch_next_change
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.session import initialize_abort_state
+from ..data.session import initialize_abort_state, session_is_active
 from ..data.staged_renames import normalize_start_time_staged_deletions, normalize_start_time_staged_renames
 from ..exceptions import CommandError, NoMoreHunks
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import require_git_repository
-from ..utils.paths import ensure_state_directory_exists, get_context_lines_file_path, get_abort_head_file_path
+from ..utils.paths import ensure_state_directory_exists, get_context_lines_file_path
 from .selection.selected_change_display import show_selected_change
 from .session.iteration import restart_iteration_pass
 
@@ -36,7 +36,7 @@ def command_start(
     ensure_state_directory_exists()
 
     # If session already exists, run again logic instead
-    if get_abort_head_file_path().exists():
+    if session_is_active():
         if auto_advance is not None:
             write_auto_advance_default(auto_advance)
         restart_iteration_pass(quiet=quiet)

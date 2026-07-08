@@ -4125,13 +4125,14 @@ def test_batch_source_binary_actions_own_index_mutation():
     assert old_names.isdisjoint(include_from_helpers)
 
 
-def test_batch_source_binary_actions_own_apply_worktree_mutation():
-    """Shared binary working-tree actions should live outside apply-from."""
+def test_batch_source_binary_actions_own_worktree_mutation():
+    """Shared binary working-tree actions should live outside command entries."""
     binary_file_actions = __import__(
         "git_stage_batch.commands.batch_source.binary_file_actions",
         fromlist=["binary_file_actions"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "BinaryWorktreeAction",
         "write_binary_file_to_worktree",
@@ -4139,25 +4140,39 @@ def test_batch_source_binary_actions_own_apply_worktree_mutation():
     old_names = {
         "_write_binary_file_from_batch",
     }
-    apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
-    apply_from_helpers = {
-        node.name
-        for node in ast.walk(apply_from_tree)
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    command_paths = {
+        apply_from_path,
+        include_from_path,
     }
-    imports_binary_file_actions = False
+    helpers_by_path = {
+        path: {
+            node.name
+            for node in ast.walk(ast.parse(path.read_text(), filename=str(path)))
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        }
+        for path in command_paths
+    }
+    imports_binary_file_actions = {
+        path: False
+        for path in command_paths
+    }
 
-    for imported_module, node in _import_from_nodes(apply_from_path):
-        imported_names = {alias.name for alias in node.names}
-        if (
-            imported_module == "git_stage_batch.commands.batch_source"
-            and "binary_file_actions" in imported_names
-        ):
-            imports_binary_file_actions = True
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "binary_file_actions" in imported_names
+            ):
+                imports_binary_file_actions[path] = True
 
     assert public_names <= vars(binary_file_actions).keys()
-    assert imports_binary_file_actions
-    assert old_names.isdisjoint(apply_from_helpers)
+    assert imports_binary_file_actions == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    for helpers in helpers_by_path.values():
+        assert old_names.isdisjoint(helpers)
 
 
 def test_batch_merge_does_not_reexport_merge_exceptions():

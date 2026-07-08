@@ -326,7 +326,7 @@ def clear_session_state() -> None:
     """
     state_dir = get_state_directory_path()
 
-    from .undo import clear_undo_history
+    from .undo_refs import clear_undo_history
     clear_undo_history()
 
     # Clear session state files

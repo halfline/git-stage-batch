@@ -14,10 +14,7 @@ from ..batch.atomic_file_changes import (
     gitlink_change_from_batch_file_metadata,
 )
 from ..batch.metadata_validation import read_validated_batch_metadata
-from ..batch.operation_candidates import (
-    OperationCandidatePreview,
-    save_candidate_preview_state,
-)
+from ..batch.operation_candidates import save_candidate_preview_state
 from ..core.replacement import ReplacementPayload
 from ..batch.selection import (
     resolve_batch_file_scope,
@@ -73,7 +70,6 @@ from ..output.candidate_preview import (
 from ..exceptions import (
     exit_with_error,
     BatchMetadataError,
-    CommandError,
     MergeError,
 )
 from ..i18n import _
@@ -94,33 +90,6 @@ def _shown_pages_for_display_ids(review_model, display_ids: set[int]) -> tuple[i
                 for change in review_model.changes
                 if set(change.display_ids) & display_ids
             }
-        )
-    )
-
-
-def _resolve_candidate_ordinal(
-    previews: tuple[OperationCandidatePreview, ...],
-    *,
-    explicit_ordinal: int,
-) -> OperationCandidatePreview:
-    preview = _candidate_previews.candidate_preview_for_ordinal(
-        previews,
-        explicit_ordinal,
-    )
-    if preview is not None:
-        return preview
-    if not previews:
-        raise CommandError(_("No candidates available."))
-    if explicit_ordinal < 1:
-        raise CommandError(_("Candidate ordinal must be at least 1."))
-    first = previews[0]
-    raise CommandError(
-        _("Batch '{batch}' has {count} {operation} candidates for {file}; candidate {ordinal} does not exist.").format(
-            batch=first.batch_name,
-            count=len(previews),
-            operation=first.operation,
-            file=first.file_path,
-            ordinal=explicit_ordinal,
         )
     )
 
@@ -215,8 +184,14 @@ def command_show_from_batch(
                 _candidate_previews.close_candidate_previews(previews)
             return
 
-        preview = _resolve_candidate_ordinal(previews, explicit_ordinal=selector.candidate_ordinal)
         try:
+            preview = _candidate_previews.require_candidate_preview_for_ordinal(
+                previews,
+                selector.candidate_ordinal,
+                batch_name=batch_name,
+                operation=selector.candidate_operation,
+                file_path=file_path,
+            )
             render_operation_candidate(
                 preview,
                 porcelain=porcelain,

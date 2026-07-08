@@ -4045,6 +4045,66 @@ def test_batch_source_action_plans_own_resource_plans():
     assert old_include_names.isdisjoint(include_from_helpers)
 
 
+def test_batch_source_text_plan_builders_own_apply_text_planning():
+    """Regular apply-from text plan construction should live in batch-source support."""
+    text_plan_builders = __import__(
+        "git_stage_batch.commands.batch_source.text_plan_builders",
+        fromlist=["text_plan_builders"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    public_names = {
+        "ApplyTextPlanBuildResult",
+        "build_apply_text_file_action_plan",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.merge": {
+            "merge_batch_from_line_sequences_as_buffer",
+        },
+        "git_stage_batch.batch.selection": {
+            "acquire_batch_ownership_for_display_ids_from_lines",
+        },
+        "git_stage_batch.core.buffer": {
+            "LineBuffer",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "TextFileChangeType",
+            "mode_for_text_materialization",
+            "normalized_text_change_type",
+            "selected_text_target_change_type",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_git_object_as_buffer",
+            "load_working_tree_file_as_buffer",
+        },
+        "git_stage_batch.utils.git": {
+            "get_git_repository_root_path",
+        },
+    }
+    imports_text_plan_builders = False
+    direct_plan_imports = set()
+
+    for imported_module, node in _import_from_nodes(apply_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "text_plan_builders" in imported_names
+        ):
+            imports_text_plan_builders = True
+        direct_plan_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    command_text = apply_from_path.read_text()
+
+    assert public_names <= vars(text_plan_builders).keys()
+    assert imports_text_plan_builders
+    assert direct_plan_imports == set()
+    assert "build_apply_text_file_action_plan(" in command_text
+    assert "merge_batch_from_line_sequences_as_buffer(" not in command_text
+    assert "selected_text_target_change_type(" not in command_text
+
+
 def test_batch_source_candidate_previews_own_candidate_preview_checks():
     """Shared candidate preview checks should live outside command entries."""
     candidate_previews = __import__(

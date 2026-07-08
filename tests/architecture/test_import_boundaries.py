@@ -1433,6 +1433,9 @@ def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
         "_PreparedTextFileDiscardToBatch",
         "_TextFileDiscardInput",
     }
+    internal_state_names = {
+        "_DiscardFilesToBatchSession",
+    }
     old_public_record_names = {
         "CollectedTextFileDiscards",
         "PreparedPatchDiscard",
@@ -1449,13 +1452,25 @@ def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
 
     assert public_names <= vars(helper).keys()
     assert internal_record_names <= vars(helper).keys()
+    assert internal_state_names <= vars(helper).keys()
     assert old_public_record_names.isdisjoint(vars(helper).keys())
 
     discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    helper_tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
     discard_names = {
         node.name
         for node in ast.walk(discard_tree)
         if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    discard_files_to_batch_def = next(
+        node
+        for node in ast.walk(helper_tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "discard_files_to_batch"
+    )
+    nested_helper_names = {
+        node.name
+        for node in ast.walk(discard_files_to_batch_def)
+        if isinstance(node, ast.FunctionDef) and node is not discard_files_to_batch_def
     }
     multi_file_action_imports = {
         imported_module
@@ -1466,6 +1481,7 @@ def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
         helper_imported_names |= {alias.name for alias in node.names}
 
     assert moved_names.isdisjoint(discard_names)
+    assert nested_helper_names == set()
     assert (
         "git_stage_batch.commands.file_scope.discard_to_batch"
         in multi_file_action_imports

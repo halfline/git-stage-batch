@@ -128,6 +128,7 @@ from .selection import discard_file_selection as _discard_file_selection
 from .selection import discard_line_selection as _discard_line_selection
 from .selection import discard_line_replacement as _discard_line_replacement
 from .selection import batch_line_selection as _batch_line_selection
+from .selection import batch_line_updates as _batch_line_updates
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -1649,51 +1650,19 @@ def _command_discard_file_lines_to_batch(
             print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
         return 0
 
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    file_mode = detect_file_mode(file_path)
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(file_path)
     replacement_line_runs = (
         _discard_line_replacement.derive_live_replacement_line_runs(file_path)
     )
 
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    file_metadata=file_metadata,
-                    selected_lines=selection.selected_lines,
-                    hunk_lines=line_changes.lines,
-                    replacement_line_runs=replacement_line_runs,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\n"
-                  "Batch: {batch}\n"
-                  "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
-            )
-
-        # Snapshot file before modifying
-        snapshot_file_if_untracked(file_path)
-
-        # Save to batch
-        add_file_to_batch(
-            batch_name,
-            file_path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
-        )
+    _batch_line_updates.add_selected_lines_to_batch(
+        batch_name=batch_name,
+        file_path=file_path,
+        selected_lines=selection.selected_lines,
+        stale_source_action=_("Cannot discard lines to batch"),
+        hunk_lines=line_changes.lines,
+        replacement_line_runs=replacement_line_runs,
+        snapshot_untracked=True,
+    )
 
     # Now discard selected lines from working tree
     working_file_path = get_git_repository_root_path() / file_path
@@ -1746,55 +1715,26 @@ def _command_discard_lines_to_batch(
     if not selection.selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(line_changes.path)
     replacement_line_runs = (
         _discard_line_replacement.derive_live_replacement_line_runs(
             line_changes.path
         )
     )
 
-    file_mode = detect_file_mode(line_changes.path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=line_changes.path,
-                    file_metadata=file_metadata,
-                    selected_lines=selection.selected_lines,
-                    hunk_lines=line_changes.lines,
-                    replacement_line_runs=replacement_line_runs,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\n"
-                  "Batch: {batch}\n"
-                  "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
-            )
-
-        # add_file_to_batch creates the batch source commit from this snapshot.
-        snapshot_file_if_untracked(line_changes.path)
-
-        log_journal("discard_lines_to_batch_before_add", batch_name=batch_name, file_path=line_changes.path)
-
-        # Save to batch using batch source model
-        add_file_to_batch(
-            batch_name,
-            line_changes.path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
-        )
+    _batch_line_updates.add_selected_lines_to_batch(
+        batch_name=batch_name,
+        file_path=line_changes.path,
+        selected_lines=selection.selected_lines,
+        stale_source_action=_("Cannot discard lines to batch"),
+        hunk_lines=line_changes.lines,
+        replacement_line_runs=replacement_line_runs,
+        snapshot_untracked=True,
+        before_add=lambda: log_journal(
+            "discard_lines_to_batch_before_add",
+            batch_name=batch_name,
+            file_path=line_changes.path,
+        ),
+    )
 
     log_journal("discard_lines_to_batch_after_add", batch_name=batch_name, file_path=line_changes.path)
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass
 from typing import Optional
 
 from .batch_source import action_plans as _action_plans
@@ -60,18 +59,6 @@ from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError, BatchMetadataError
 from ..i18n import _
 from ..utils.git import get_git_repository_root_path, require_git_repository
-
-
-@dataclass
-class _ApplyTextPlan:
-    file_path: str
-    buffer: LineBuffer | None
-    file_mode: str | None
-    change_type: str
-
-    def close(self) -> None:
-        if self.buffer is not None:
-            self.buffer.close()
 
 
 def _print_binary_worktree_result(
@@ -428,7 +415,12 @@ def command_apply_from_batch(
             )
             if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
                 apply_plans.append(
-                    _ApplyTextPlan(file_path, None, file_mode, text_change_type)
+                    _action_plans.ApplyTextFileActionPlan(
+                        file_path,
+                        None,
+                        file_mode,
+                        text_change_type,
+                    )
                 )
                 continue
 
@@ -476,7 +468,12 @@ def command_apply_from_batch(
                 merged_buffer,
             )
             apply_plans.append(
-                _ApplyTextPlan(file_path, merged_buffer, file_mode, effective_change_type)
+                _action_plans.ApplyTextFileActionPlan(
+                    file_path,
+                    merged_buffer,
+                    file_mode,
+                    effective_change_type,
+                )
             )
 
         except MergeError:
@@ -626,7 +623,7 @@ def command_apply_from_batch(
             with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
                 for plan in apply_plans:
                     snapshot_file_if_untracked(plan.file_path)
-                    if isinstance(plan, _ApplyTextPlan):
+                    if isinstance(plan, _action_plans.ApplyTextFileActionPlan):
                         _text_file_actions.write_text_file_to_worktree(
                             plan.file_path,
                             plan.buffer,

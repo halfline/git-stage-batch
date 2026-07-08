@@ -4037,8 +4037,8 @@ def test_batch_source_action_plans_own_resource_plans():
     assert old_include_names.isdisjoint(include_from_helpers)
 
 
-def test_batch_source_text_actions_own_worktree_writes():
-    """Shared text working-tree actions should live outside command entries."""
+def test_batch_source_text_actions_own_text_file_mutations():
+    """Shared text file actions should live outside command entries."""
     text_file_actions = __import__(
         "git_stage_batch.commands.batch_source.text_file_actions",
         fromlist=["text_file_actions"],
@@ -4046,9 +4046,11 @@ def test_batch_source_text_actions_own_worktree_writes():
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
+        "stage_text_file_to_index",
         "write_text_file_to_worktree",
     }
     old_names = {
+        "_stage_text_file_from_batch",
         "_write_text_file_from_batch",
     }
     command_paths = {

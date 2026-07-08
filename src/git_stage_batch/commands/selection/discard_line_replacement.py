@@ -3,26 +3,47 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 import os
 from pathlib import Path
 
 from ...batch.display import annotate_with_batch_source_working_lines
+from ...batch.operations import create_batch
 from ...batch.ownership import (
+    BatchOwnership,
     ReplacementLineRun,
     derive_replacement_line_runs_from_lines,
+    merge_batch_ownership,
+    remap_batch_ownership_with_lineage,
+    translate_lines_to_batch_ownership,
 )
+from ...batch.query import read_batch_metadata
 from ...batch.selection import require_line_selection_in_view
+from ...batch.source_advancement import advance_source_lines_preserving_existing_presence
+from ...batch.source_refresh import (
+    acquire_batch_ownership_update_for_selection,
+    refresh_selected_lines_against_source_lines,
+)
+from ...batch.storage import add_file_to_batch
+from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
 from ...core.line_selection import parse_line_selection
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
+from ...data.batch_sources import (
+    create_batch_source_commit,
+    load_session_batch_sources,
+    save_session_batch_sources,
+)
+from ...data.file_modes import detect_file_mode
 from ...data.file_hunk_display import build_file_hunk_from_buffer
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import (
+    load_git_object_as_buffer,
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )
+from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.operations import (
@@ -158,6 +179,122 @@ def build_discard_line_replacement_target_buffer(
             selection.rewritten_working_lines
         ),
     )
+
+
+def add_discard_line_replacement_to_batch(
+    batch_name: str,
+    selection: DiscardLineReplacementSelection,
+) -> None:
+    """Persist a rewritten discard replacement selection to a batch."""
+    if not batch_exists(batch_name):
+        create_batch(batch_name, "Auto-created")
+
+    metadata = read_batch_metadata(batch_name)
+    file_metadata = metadata.get("files", {}).get(selection.file_path)
+    batch_source_commit = None
+
+    with ExitStack() as ownership_stack:
+        try:
+            if file_metadata is None:
+                update = ownership_stack.enter_context(
+                    acquire_batch_ownership_update_for_selection(
+                        batch_name=batch_name,
+                        file_path=selection.file_path,
+                        file_metadata=None,
+                        selected_lines=selection.rewritten_selected_lines,
+                    )
+                )
+                ownership = update.ownership_after
+                batch_source_commit = update.batch_source_commit
+            else:
+                ownership, batch_source_commit = _merge_replacement_with_batch(
+                    selection,
+                    file_metadata=file_metadata,
+                    ownership_stack=ownership_stack,
+                )
+        except ValueError as e:
+            exit_with_error(
+                _(
+                    "Cannot discard lines to batch: batch source is stale and remapping failed.\n"
+                    "File: {file}\n"
+                    "Batch: {batch}\n"
+                    "Error: {error}"
+                ).format(file=selection.file_path, batch=batch_name, error=str(e))
+            )
+
+        if batch_source_commit is None:
+            batch_source_commit = create_batch_source_commit(
+                selection.file_path,
+                file_buffer_override=selection.rewritten_working_lines,
+            )
+            _record_session_batch_source(selection.file_path, batch_source_commit)
+
+        snapshot_file_if_untracked(selection.file_path)
+        add_file_to_batch(
+            batch_name,
+            selection.file_path,
+            ownership,
+            detect_file_mode(selection.file_path),
+            batch_source_commit=batch_source_commit,
+        )
+
+
+def _merge_replacement_with_batch(
+    selection: DiscardLineReplacementSelection,
+    *,
+    file_metadata: dict,
+    ownership_stack: ExitStack,
+):
+    current_batch_source = file_metadata.get("batch_source_commit")
+    existing_ownership = ownership_stack.enter_context(
+        BatchOwnership.acquire_for_metadata_dict(file_metadata)
+    )
+    old_source_buffer = load_git_object_as_buffer(
+        f"{current_batch_source}:{selection.file_path}"
+    )
+    if old_source_buffer is None:
+        exit_with_error(
+            _(
+                "Cannot discard lines to batch: failed to read batch source for '{file}'."
+            ).format(file=selection.file_path)
+        )
+
+    with (
+        old_source_buffer as old_source_lines,
+        advance_source_lines_preserving_existing_presence(
+            old_lines=old_source_lines,
+            working_lines=selection.rewritten_working_lines,
+            ownership=existing_ownership,
+        ) as source_with_provenance,
+    ):
+        remapped_existing_ownership = remap_batch_ownership_with_lineage(
+            ownership=existing_ownership,
+            lineage=source_with_provenance.lineage,
+        )
+        refreshed_selected_lines = refresh_selected_lines_against_source_lines(
+            selection.rewritten_selected_lines,
+            source_lines=source_with_provenance.source_buffer,
+            working_lines=(),
+            lineage=source_with_provenance.lineage,
+        )
+        new_ownership = translate_lines_to_batch_ownership(
+            refreshed_selected_lines
+        )
+        batch_source_commit = create_batch_source_commit(
+            selection.file_path,
+            file_buffer_override=source_with_provenance.source_buffer,
+        )
+        _record_session_batch_source(selection.file_path, batch_source_commit)
+        return (
+            merge_batch_ownership(remapped_existing_ownership, new_ownership),
+            batch_source_commit,
+        )
+
+
+def _record_session_batch_source(file_path: str, batch_source_commit: str) -> None:
+    batch_sources = load_session_batch_sources()
+    batch_sources[file_path] = batch_source_commit
+    save_session_batch_sources(batch_sources)
 
 
 def _select_rewritten_replacement_lines(

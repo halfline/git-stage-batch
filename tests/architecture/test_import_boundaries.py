@@ -2184,6 +2184,45 @@ def test_tui_file_review_candidates_own_candidate_browser():
     assert "git_stage_batch.commands.show_from" in candidate_imports
 
 
+def test_tui_file_review_batch_actions_own_batch_transfers():
+    """TUI file review batch actions should own batch transfer commands."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    batch_actions_path = SRC_ROOT / "tui" / "file_review" / "batch_actions.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    batch_actions = __import__(
+        "git_stage_batch.tui.file_review.batch_actions",
+        fromlist=["batch_actions"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    batch_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_actions_path)
+    }
+    old_review_names = {
+        "_apply_batch_file_action",
+        "_apply_batch_line_action",
+        "_apply_batch_replacement_action",
+    }
+
+    assert {
+        "apply_batch_file_action",
+        "apply_batch_line_action",
+        "apply_batch_replacement_action",
+    } <= vars(batch_actions).keys()
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.batch_actions" in review_imports
+    assert "git_stage_batch.commands.discard_from" not in review_imports
+    assert "git_stage_batch.commands.include_from" not in review_imports
+    assert "git_stage_batch.commands.discard_from" in batch_action_imports
+    assert "git_stage_batch.commands.include_from" in batch_action_imports
+
+
 def test_commands_do_not_import_tui():
     """Command modules should not launch or depend on TUI modules."""
     violations = []

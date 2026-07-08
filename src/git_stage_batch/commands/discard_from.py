@@ -19,6 +19,7 @@ from ..batch.submodule_pointer import (
     refuse_batch_submodule_pointer_lines,
 )
 from ..batch.validation import batch_exists
+from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import text_file_actions as _text_file_actions
 from .batch_source import text_plan_builders as _text_plan_builders
 from ..data.file_review.records import FileReviewAction
@@ -26,55 +27,12 @@ from ..data.file_review.state import (
     resolve_batch_source_action_scope,
 )
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
-from ..core.buffer import (
-    write_buffer_to_path,
-)
-from ..data.file_modes import apply_git_file_mode, detect_file_mode_in_commit
-from ..utils.repository_buffers import (
-    load_git_object_as_buffer,
-)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, AtomicUnitError, CommandError, MergeError, BatchMetadataError
 from ..i18n import _
-from ..utils.git import get_git_repository_root_path, require_git_repository
+from ..utils.git import require_git_repository
 
-
-def _discard_binary_file_from_batch(file_path: str, baseline_commit: str) -> None:
-    """Discard binary file by restoring it to baseline state.
-
-    Binary files are atomic units. Discarding means restoring the entire file
-    to its state at the batch baseline commit.
-
-    Args:
-        file_path: Path to binary file
-        baseline_commit: Baseline commit SHA to restore from
-
-    Raises:
-        RuntimeError: If file operations fail
-    """
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-
-    # Read file from baseline commit
-    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
-    if baseline_buffer is not None:
-        # File exists in baseline - restore it
-        with baseline_buffer:
-            write_buffer_to_path(full_path, baseline_buffer)
-        apply_git_file_mode(
-            full_path,
-            detect_file_mode_in_commit(baseline_commit, file_path),
-        )
-        print(_("✓ Restored binary file to baseline: {file}").format(file=file_path), file=sys.stderr)
-    else:
-        # File doesn't exist in baseline - delete from working tree
-        if full_path.exists():
-            full_path.unlink()
-            print(_("✓ Removed binary file (not in baseline): {file}").format(file=file_path), file=sys.stderr)
-        else:
-            # File already doesn't exist - no-op
-            pass
 
 def command_discard_from_batch(
     batch_name: str,
@@ -167,7 +125,32 @@ def command_discard_from_batch(
                 # Binary files are atomic units - handle separately without ownership/merge logic
                 if file_meta.get("file_type") == "binary":
                     snapshot_file_if_untracked(file_path)
-                    _discard_binary_file_from_batch(file_path, baseline_commit)
+                    binary_action = (
+                        _binary_file_actions.discard_binary_file_to_worktree(
+                            file_path,
+                            baseline_commit,
+                        )
+                    )
+                    if (
+                        binary_action
+                        is _binary_file_actions.BinaryWorktreeAction.REPLACED
+                    ):
+                        print(
+                            _("✓ Restored binary file to baseline: {file}").format(
+                                file=file_path,
+                            ),
+                            file=sys.stderr,
+                        )
+                    elif (
+                        binary_action
+                        is _binary_file_actions.BinaryWorktreeAction.DELETED
+                    ):
+                        print(
+                            _(
+                                "✓ Removed binary file (not in baseline): {file}"
+                            ).format(file=file_path),
+                            file=sys.stderr,
+                        )
                     continue
                 if is_batch_submodule_pointer(file_meta):
                     discard_submodule_pointer_from_batch(file_path, file_meta)

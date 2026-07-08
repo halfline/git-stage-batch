@@ -20,13 +20,13 @@ from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
     ACTION_HANDLERS,
     _dispatch_action,
-    handle_install_assets,
     handle_file_selection,
     handle_line_selection,
     handle_quit,
     print_help,
     start_interactive_mode,
 )
+from git_stage_batch.tui.asset_menu import handle_asset_menu
 
 
 @pytest.fixture
@@ -128,7 +128,7 @@ class TestActionHandlers:
         )
 
         with patch("builtins.input", side_effect=["codex-skills", "commit-*", "yes"]):
-            with patch("git_stage_batch.commands.install_assets.command_install_assets") as mock_install:
+            with patch("git_stage_batch.tui.asset_menu.command_install_assets") as mock_install:
                 with pytest.raises(BypassRefresh):
                     _dispatch_action(
                         "A",
@@ -146,8 +146,8 @@ class TestActionHandlers:
     def test_handle_install_assets_cancels_on_bad_filter_syntax(self, capsys):
         """Test invalid filter syntax does not call the installer."""
         with patch("builtins.input", side_effect=["claude-skills", "'unterminated"]):
-            with patch("git_stage_batch.commands.install_assets.command_install_assets") as mock_install:
-                handle_install_assets()
+            with patch("git_stage_batch.tui.asset_menu.command_install_assets") as mock_install:
+                handle_asset_menu()
 
         mock_install.assert_not_called()
         captured = capsys.readouterr()

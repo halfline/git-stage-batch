@@ -493,6 +493,45 @@ def test_build_discard_text_file_action_plan_skips_empty_ownership(
     assert result.plan is None
 
 
+def test_build_discard_text_file_action_plan_closes_empty_deleted_buffer(
+    monkeypatch,
+    tmp_path,
+):
+    """Partial discard planning should not retain unused empty delete buffers."""
+    _patch_discard_text_plan_io(
+        monkeypatch,
+        tmp_path,
+        _Ownership(),
+        baseline_exists=False,
+    )
+    discarded_buffer = LineBuffer.from_bytes(b"")
+    monkeypatch.setattr(
+        builders,
+        "discard_batch_from_line_sequences_as_buffer",
+        lambda source_lines, line_ownership, working_lines, baseline_lines: (
+            discarded_buffer
+        ),
+    )
+
+    result = builders.build_discard_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "added",
+            "mode": "100644",
+        },
+        baseline_commit="baseline",
+        selected_ids={1},
+        selection_ids_to_discard={7},
+    )
+
+    assert result.plan is not None
+    assert result.plan.buffer is None
+    assert result.plan.change_type == TextFileChangeType.DELETED
+    with pytest.raises(ValueError, match="buffer is closed"):
+        discarded_buffer.to_bytes()
+
+
 def test_build_include_text_file_action_plan_uses_replacement_view(
     monkeypatch,
     tmp_path,

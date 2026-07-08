@@ -3939,7 +3939,11 @@ def test_selected_change_loading_stays_out_of_hunk_tracking():
         "require_selected_hunk",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": moved_names,
+        SRC_ROOT / "commands" / "include.py": {"load_selected_change"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "include_line_batching.py": {"require_selected_hunk"},
         SRC_ROOT / "commands" / "discard.py": moved_names,
         SRC_ROOT / "commands" / "skip.py": moved_names,
         SRC_ROOT / "commands" / "suggest_fixup.py": {"require_selected_hunk"},
@@ -3994,7 +3998,6 @@ def test_selected_hunk_filtering_stays_out_of_hunk_tracking():
         "apply_line_level_batch_filter_to_cached_hunk",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": moved_names,
         SRC_ROOT / "commands" / "show.py": moved_names,
     }
     violations = []
@@ -4663,7 +4666,9 @@ def test_discard_file_selection_stays_in_command_helper():
 
 def test_include_file_selection_stays_in_command_helper():
     """Include file selection should stay out of the command entrypoint."""
-    include_path = SRC_ROOT / "commands" / "include.py"
+    line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py"
+    )
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "include_file_selection.py"
     )
@@ -4681,38 +4686,91 @@ def test_include_file_selection_stays_in_command_helper():
 
     assert public_names <= vars(helper).keys()
 
-    tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    tree = ast.parse(line_batching_path.read_text(), filename=str(line_batching_path))
     functions = {
         node.name: node
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef)
     }
-    include_imports_helper = False
+    line_batching_imports_helper = False
 
-    for imported_module, node in _import_from_nodes(include_path):
+    for imported_module, node in _import_from_nodes(line_batching_path):
         if imported_module != "git_stage_batch.commands.selection":
             continue
         imported_names = {alias.name for alias in node.names}
         if "include_file_selection" in imported_names:
-            include_imports_helper = True
+            line_batching_imports_helper = True
 
     line_function_names = {
         node.id
-        for node in ast.walk(functions["_command_include_file_lines_to_batch"])
+        for node in ast.walk(functions["include_file_lines_to_batch"])
         if isinstance(node, ast.Name)
     }
     line_function_attributes = {
         node.attr
-        for node in ast.walk(functions["_command_include_file_lines_to_batch"])
+        for node in ast.walk(functions["include_file_lines_to_batch"])
         if isinstance(node, ast.Attribute)
     }
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
 
-    assert include_imports_helper
+    assert line_batching_imports_helper
     assert "load_explicit_file_selection" in line_function_attributes
     assert helper_imports.isdisjoint(line_function_names)
+    assert helper_imports <= helper_imported_names
+
+
+def test_include_line_batching_stays_in_command_helper():
+    """Include line-to-batch support should stay out of the command entrypoint."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.include_line_batching",
+        fromlist=["include_line_batching"],
+    )
+    public_names = {
+        "include_file_lines_to_batch",
+        "include_selected_lines_to_batch",
+    }
+    old_include_names = {
+        "_command_include_file_lines_to_batch",
+        "_command_include_lines_to_batch",
+        "_filter_selected_hunk_excluding_batched_lines",
+    }
+    helper_imports = {
+        "annotate_with_batch_source",
+        "batch_line_selection",
+        "batch_line_updates",
+        "include_file_selection",
+        "include_line_selection",
+        "load_line_changes_from_state",
+        "recalculate_selected_hunk_for_command",
+        "require_selected_hunk",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_names = {
+        node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
+    }
+    include_imports_helper = False
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "include_line_batching" in imported_names:
+            include_imports_helper = True
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert old_include_names.isdisjoint(include_names)
+    assert old_include_names.isdisjoint(vars(helper).keys())
+    assert include_imports_helper
     assert helper_imports <= helper_imported_names
 
 
@@ -4902,7 +4960,9 @@ def test_discard_line_replacement_stays_in_command_helper():
 
 def test_batch_line_selection_stays_in_command_helper():
     """Batch line-selection validation should live in command selection support."""
-    include_path = SRC_ROOT / "commands" / "include.py"
+    include_line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py"
+    )
     discard_line_batching_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
     )
@@ -4922,9 +4982,9 @@ def test_batch_line_selection_stays_in_command_helper():
         "require_line_selection_in_view",
     }
     guarded_functions = {
-        include_path: {
-            "_command_include_file_lines_to_batch",
-            "_command_include_lines_to_batch",
+        include_line_batching_path: {
+            "include_file_lines_to_batch",
+            "include_selected_lines_to_batch",
         },
         discard_line_batching_path: {
             "discard_file_lines_to_batch",
@@ -4967,7 +5027,9 @@ def test_batch_line_selection_stays_in_command_helper():
 
 def test_batch_line_updates_stays_in_command_helper():
     """Batch line updates should live in command selection support."""
-    include_path = SRC_ROOT / "commands" / "include.py"
+    include_line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py"
+    )
     discard_line_batching_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
     )
@@ -4991,9 +5053,9 @@ def test_batch_line_updates_stays_in_command_helper():
         "snapshot_file_if_untracked",
     }
     guarded_functions = {
-        include_path: {
-            "_command_include_file_lines_to_batch",
-            "_command_include_lines_to_batch",
+        include_line_batching_path: {
+            "include_file_lines_to_batch",
+            "include_selected_lines_to_batch",
         },
         discard_line_batching_path: {
             "discard_file_lines_to_batch",

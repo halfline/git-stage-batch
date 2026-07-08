@@ -170,7 +170,7 @@ def require_session_started() -> None:
     Raises:
         CommandError: If no session is active
     """
-    if not get_abort_head_file_path().exists():
+    if not session_is_active():
         raise CommandError(_("No session in progress. Run 'git-stage-batch start' first."))
 
 

@@ -3938,6 +3938,7 @@ def test_batch_owns_binary_file_content_loading():
         fromlist=["binary_file_content"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "read_binary_file_from_batch",
     }
@@ -3950,16 +3951,31 @@ def test_batch_owns_binary_file_content_loading():
         for node in ast.walk(apply_from_tree)
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
-    apply_from_loader_imports = set()
+    include_from_tree = ast.parse(
+        include_from_path.read_text(),
+        filename=str(include_from_path),
+    )
+    include_from_helpers = {
+        node.name
+        for node in ast.walk(include_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    loader_imports_by_path = {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
 
-    for imported_module, node in _import_from_nodes(apply_from_path):
-        if imported_module != "git_stage_batch.batch.binary_file_content":
-            continue
-        apply_from_loader_imports |= {alias.name for alias in node.names}
+    for path in loader_imports_by_path:
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.batch.binary_file_content":
+                continue
+            loader_imports_by_path[path] |= {alias.name for alias in node.names}
 
     assert public_names <= vars(binary_file_content).keys()
-    assert public_names <= apply_from_loader_imports
+    assert public_names <= loader_imports_by_path[apply_from_path]
+    assert public_names <= loader_imports_by_path[include_from_path]
     assert old_names.isdisjoint(apply_from_helpers)
+    assert old_names.isdisjoint(include_from_helpers)
 
 
 def test_batch_merge_does_not_reexport_merge_exceptions():

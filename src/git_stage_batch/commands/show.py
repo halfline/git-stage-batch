@@ -20,14 +20,16 @@ from ..data.selected_change.hunk_filtering import (
 from ..data.selected_change.store import (
     SelectedChangeKind,
     cache_hunk_change,
-    cache_binary_file_change,
-    cache_gitlink_change,
-    cache_rename_change,
-    cache_text_deletion_change,
     get_selected_change_file_path,
     mark_selected_change_cleared_by_file_list,
     restore_selected_change_state,
     snapshot_selected_change_state,
+)
+from ..data.selected_change.file_changes import (
+    cache_binary_file_change,
+    cache_gitlink_change,
+    cache_rename_change,
+    cache_text_deletion_change,
 )
 from ..data.change_freshness import text_deletion_change_is_batched
 from ..data.file_hunk_display import cache_file_as_single_hunk, render_file_as_single_hunk

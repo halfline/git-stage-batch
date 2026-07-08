@@ -11,14 +11,16 @@ from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.git import run_git_command
 from .selected_change.lifecycle import clear_selected_change_state_files
-from .selected_change.store import (
-    SelectedChangeKind,
+from .selected_change.file_changes import (
     load_selected_binary_file,
     load_selected_gitlink_change,
-    mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_binary_data,
-    read_selected_change_kind,
     read_selected_gitlink_data,
+)
+from .selected_change.store import (
+    SelectedChangeKind,
+    mark_selected_change_cleared_by_stale_batch_selection,
+    read_selected_change_kind,
 )
 
 

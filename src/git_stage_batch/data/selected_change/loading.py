@@ -21,6 +21,7 @@ from ...utils.paths import (
 )
 from .. import change_freshness as _change_freshness
 from .. import line_state as _line_state
+from . import file_changes as _selected_file_changes
 from . import store as _selected_store
 from .lifecycle import (
     clear_selected_change_state_files as _clear_selected_change_state_files,
@@ -42,7 +43,7 @@ SelectedChange = Union[
 def load_selected_change() -> Optional[SelectedChange]:
     """Load the currently cached selected change, if any."""
     selected_kind = _selected_store.read_selected_change_kind()
-    rename_change = _selected_store.load_selected_rename_change()
+    rename_change = _selected_file_changes.load_selected_rename_change()
     if rename_change is not None:
         if (
             selected_kind == _selected_store.SelectedChangeKind.RENAME
@@ -56,7 +57,7 @@ def load_selected_change() -> Optional[SelectedChange]:
             )
         return rename_change
 
-    deletion_change = _selected_store.load_selected_text_deletion_change()
+    deletion_change = _selected_file_changes.load_selected_text_deletion_change()
     if deletion_change is not None:
         if (
             selected_kind == _selected_store.SelectedChangeKind.DELETION
@@ -70,7 +71,7 @@ def load_selected_change() -> Optional[SelectedChange]:
             )
         return deletion_change
 
-    gitlink_change = _selected_store.load_selected_gitlink_change()
+    gitlink_change = _selected_file_changes.load_selected_gitlink_change()
     if gitlink_change is not None:
         if (
             selected_kind == _selected_store.SelectedChangeKind.GITLINK
@@ -84,7 +85,7 @@ def load_selected_change() -> Optional[SelectedChange]:
             )
         return gitlink_change
 
-    binary_file = _selected_store.load_selected_binary_file()
+    binary_file = _selected_file_changes.load_selected_binary_file()
     if binary_file is not None:
         if (
             selected_kind == _selected_store.SelectedChangeKind.BINARY

@@ -36,6 +36,7 @@ from .. import change_freshness as _change_freshness
 from .. import file_hunk_display as _file_hunk_display
 from .. import line_state as _line_state
 from .. import live_diff as _live_diff
+from . import file_changes as _selected_file_changes
 from . import store as _selected_store
 from . import hunk_filtering as _selected_hunk_filtering
 from .lifecycle import (
@@ -119,7 +120,7 @@ def recalculate_selected_hunk_for_file(
                     rename_hash = compute_rename_change_hash(single_hunk)
                     if rename_hash in blocked_hashes:
                         continue
-                    _selected_store.cache_rename_change(single_hunk)
+                    _selected_file_changes.cache_rename_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, TextFileDeletionChange):
@@ -131,14 +132,14 @@ def recalculate_selected_hunk_for_file(
                         )
                     ):
                         continue
-                    _selected_store.cache_text_deletion_change(single_hunk)
+                    _selected_file_changes.cache_text_deletion_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, GitlinkChange):
                     gitlink_hash = compute_gitlink_change_hash(single_hunk)
                     if gitlink_hash in blocked_hashes:
                         continue
-                    _selected_store.cache_gitlink_change(single_hunk)
+                    _selected_file_changes.cache_gitlink_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, BinaryFileChange):

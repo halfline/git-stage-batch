@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from ...data.line_state import load_line_changes_from_state
-from ...data.selected_change.store import (
-    load_line_changes_from_patch_path,
+from ...data.selected_change.store import load_line_changes_from_patch_path
+from ...data.selected_change.file_changes import (
     load_selected_binary_file,
     load_selected_gitlink_change,
     load_selected_rename_change,

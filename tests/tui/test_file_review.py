@@ -46,7 +46,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch(
@@ -74,7 +74,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show") as mock_show:
@@ -101,7 +101,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show") as mock_show:
@@ -128,7 +128,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show") as mock_show:
@@ -159,7 +159,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -188,7 +188,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -221,7 +221,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -254,7 +254,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -279,7 +279,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -314,7 +314,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -344,7 +344,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -373,7 +373,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -402,7 +402,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -431,7 +431,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
@@ -456,7 +456,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch(
@@ -485,7 +485,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show_from.command_show_from_batch"):
@@ -507,7 +507,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show_from.command_show_from_batch"):
@@ -533,7 +533,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show_from.command_show_from_batch"):
@@ -566,7 +566,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show_from.command_show_from_batch") as mock_show:
@@ -603,7 +603,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show_from.command_show_from_batch") as mock_show:
@@ -637,7 +637,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("test.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show_from.command_show_from_batch"):
@@ -666,7 +666,7 @@ class TestHandleCurrentFileReview:
             return_value=_line_changes("first.txt"),
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch(
@@ -703,7 +703,7 @@ class TestHandleFileBrowser:
             ],
         ):
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show") as mock_show:
@@ -740,7 +740,7 @@ class TestHandleFileBrowser:
             side_effect=list_entries,
         ) as mock_list:
             with patch(
-                "git_stage_batch.tui.file_review.get_hunk_counts",
+                "git_stage_batch.tui.file_review.display.get_hunk_counts",
                 return_value={},
             ):
                 with patch("git_stage_batch.commands.show.command_show") as mock_show:

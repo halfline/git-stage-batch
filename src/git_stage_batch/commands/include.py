@@ -4,22 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass, replace
-from enum import Enum
 import sys
-import uuid
 
-from ..batch.operations import create_batch, delete_batch
+from ..batch.operations import create_batch
 from ..batch.storage import (
     add_binary_file_to_batch,
     add_file_to_batch,
     add_gitlink_to_batch,
 )
 from ..batch.display import annotate_with_batch_source
-from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.ownership import (
     BatchOwnership,
-    translate_hunk_selection_to_batch_ownership,
 )
 from ..core.replacement import (
     ReplacementPayload,
@@ -27,7 +22,6 @@ from ..core.replacement import (
 )
 from ..batch.query import read_batch_metadata
 from ..batch.selection import (
-    line_selection_not_valid_message,
     require_line_selection_in_view,
 )
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
@@ -93,7 +87,6 @@ from ..data.file_review.state import (
     resolve_live_to_batch_action_scope,
 )
 from ..data.consumed_selections import record_consumed_selection
-from ..data.batch_sources import create_batch_source_commit
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
@@ -105,7 +98,6 @@ from ..data.progress import (
     record_text_deletion_hunk_skipped,
 )
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
-from ..data.selected_change.snapshots import snapshots_are_stale
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..core.buffer import (
@@ -144,9 +136,9 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_processed_include_ids_file_path,
-    get_session_batch_sources_file_path,
     get_working_tree_snapshot_file_path,
 )
+from .selection import include_line_selection as _include_line_selection
 from .selection import replacement_selection
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
@@ -160,317 +152,9 @@ from .selection.selected_change_staging import (
 from .selection.action_completion import finish_selected_change_action
 
 
-class TransientIncludeFailureReason(Enum):
-    """Why transient batch staging could not safely realize a line selection."""
-
-    NO_SELECTED_LINES = "no_selected_lines"
-    EMPTY_OWNERSHIP = "empty_ownership"
-    PREPARATION_FAILED = "preparation_failed"
-    MISSING_BATCH_METADATA = "missing_batch_metadata"
-    MISSING_BATCH_SOURCE = "missing_batch_source"
-    INDEX_MERGE_FAILED = "index_merge_failed"
-    WORKING_TREE_MERGE_FAILED = "working_tree_merge_failed"
-    WORKING_TREE_WOULD_CHANGE = "working_tree_would_change"
-
-
-@dataclass(frozen=True)
-class TransientIncludeResult:
-    """Result of staging a live line selection through transient batch ownership."""
-
-    buffer: LineBuffer | None
-    failure_reason: TransientIncludeFailureReason | None = None
-    failure_detail: str | None = None
-
-    @classmethod
-    def success(cls, buffer: LineBuffer) -> TransientIncludeResult:
-        return cls(buffer=buffer)
-
-    @classmethod
-    def failure(
-        cls,
-        reason: TransientIncludeFailureReason,
-        *,
-        detail: str | None = None,
-    ) -> TransientIncludeResult:
-        return cls(buffer=None, failure_reason=reason, failure_detail=detail)
-
-
-def _record_baseline_references_for_additions(line_changes) -> None:
-    """Attach old-file insertion references to addition lines for batch round trips."""
-    last_old_line: int | None = None
-    last_old_text_bytes: bytes | None = None
-    index = 0
-
-    while index < len(line_changes.lines):
-        line = line_changes.lines[index]
-        if line.kind == "+":
-            next_old_line: int | None = None
-            next_old_text_bytes: bytes | None = None
-            scan_index = index + 1
-            while scan_index < len(line_changes.lines):
-                next_line = line_changes.lines[scan_index]
-                if next_line.kind in {" ", "-"} and next_line.old_line_number is not None:
-                    next_old_line = next_line.old_line_number
-                    next_old_text_bytes = next_line.text_bytes
-                    break
-                scan_index += 1
-
-            while index < len(line_changes.lines) and line_changes.lines[index].kind == "+":
-                addition_line = line_changes.lines[index]
-                addition_line.baseline_reference_after_line = last_old_line
-                addition_line.baseline_reference_after_text_bytes = last_old_text_bytes
-                addition_line.has_baseline_reference_after = True
-                addition_line.baseline_reference_before_line = next_old_line
-                addition_line.baseline_reference_before_text_bytes = next_old_text_bytes
-                addition_line.has_baseline_reference_before = next_old_line is not None
-                index += 1
-            continue
-
-        if line.kind in {" ", "-"} and line.old_line_number is not None:
-            last_old_line = line.old_line_number
-            last_old_text_bytes = line.text_bytes
-        index += 1
-
-
-def _snapshot_session_batch_sources_file() -> tuple[bool, bytes | None]:
-    path = get_session_batch_sources_file_path()
-    if not path.exists():
-        return False, None
-    return True, path.read_bytes()
-
-
-def _restore_session_batch_sources_file(existed: bool, content: bytes | None) -> None:
-    path = get_session_batch_sources_file_path()
-    if existed:
-        assert content is not None
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
-        return
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
-
-
-def _selected_file_view_targets(target_file: str) -> bool:
-    return (
-        read_selected_change_kind() == SelectedChangeKind.FILE
-        and get_selected_change_file_path() == target_file
-    )
-
-
-def _selected_file_view_is_fresh_for(target_file: str) -> bool:
-    return (
-        _selected_file_view_targets(target_file)
-        and not snapshots_are_stale(target_file)
-    )
-
-
-def _line_sequence_ends_with_lf(lines: Sequence[bytes]) -> bool:
-    line_count = len(lines)
-    return line_count > 0 and lines[line_count - 1].endswith(b"\n")
-
-
-def _annotate_line_changes_with_working_tree_source(line_changes):
-    if line_changes is None:
-        return None
-
-    last_source_line: int | None = None
-    new_lines = []
-    for line in line_changes.lines:
-        source_line = None
-        if line.kind in {" ", "+"}:
-            source_line = line.new_line_number
-            if source_line is not None:
-                last_source_line = source_line
-        elif line.kind == "-":
-            source_line = last_source_line
-            if source_line is None and line.old_line_number is not None and line.old_line_number > 1:
-                source_line = line.old_line_number - 1
-
-        new_lines.append(replace(line, source_line=source_line))
-
-    return replace(line_changes, lines=new_lines)
-
-
-def _try_build_index_content_via_transient_batch(
-    *,
-    line_changes,
-    selected_display_ids: set[int],
-    current_index_lines: Sequence[bytes],
-    hunk_base_lines: Sequence[bytes],
-    hunk_source_lines: Sequence[bytes],
-) -> TransientIncludeResult:
-    """Try staging live lines through transient batch ownership."""
-    selected_lines = [
-        line
-        for line in line_changes.lines
-        if line.id in selected_display_ids
-    ]
-    if not selected_lines:
-        return TransientIncludeResult.failure(
-            TransientIncludeFailureReason.NO_SELECTED_LINES
-        )
-
-    batch_name = f"include-line-{uuid.uuid4().hex}"
-    session_sources_existed, session_sources_content = _snapshot_session_batch_sources_file()
-    created_batch = False
-    target_index_buffer: LineBuffer | None = None
-
-    try:
-        create_batch(batch_name, "Transient include-line selection")
-        created_batch = True
-
-        _record_baseline_references_for_additions(line_changes)
-        ownership = translate_hunk_selection_to_batch_ownership(
-            line_changes.lines,
-            selected_display_ids,
-            replacement_line_runs=replacement_selection.derive_replacement_line_runs(
-                hunk_base_lines=hunk_base_lines,
-                hunk_source_lines=hunk_source_lines,
-            ),
-        )
-        if ownership.is_empty():
-            return TransientIncludeResult.failure(
-                TransientIncludeFailureReason.EMPTY_OWNERSHIP
-            )
-
-        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
-            batch_source_commit = create_batch_source_commit(
-                line_changes.path,
-                file_buffer_override=working_lines,
-            )
-            add_file_to_batch(
-                batch_name,
-                line_changes.path,
-                ownership,
-                detect_file_mode(line_changes.path),
-                batch_source_commit=batch_source_commit,
-            )
-
-            metadata = read_batch_metadata(batch_name)
-            file_metadata = metadata.get("files", {}).get(line_changes.path)
-            if file_metadata is None:
-                return TransientIncludeResult.failure(
-                    TransientIncludeFailureReason.MISSING_BATCH_METADATA
-                )
-
-            batch_source_commit = file_metadata.get("batch_source_commit")
-            if not batch_source_commit:
-                return TransientIncludeResult.failure(
-                    TransientIncludeFailureReason.MISSING_BATCH_METADATA
-                )
-
-            source_buffer = load_git_object_as_buffer(
-                f"{batch_source_commit}:{line_changes.path}"
-            )
-            if source_buffer is None:
-                return TransientIncludeResult.failure(
-                    TransientIncludeFailureReason.MISSING_BATCH_SOURCE
-                )
-
-            with (
-                BatchOwnership.acquire_for_metadata_dict(file_metadata) as ownership,
-                source_buffer as source_lines,
-            ):
-                try:
-                    target_index_buffer = merge_batch_from_line_sequences_as_buffer(
-                        source_lines,
-                        ownership,
-                        current_index_lines,
-                    )
-                except Exception as error:
-                    return TransientIncludeResult.failure(
-                        TransientIncludeFailureReason.INDEX_MERGE_FAILED,
-                        detail=error.__class__.__name__,
-                    )
-
-                try:
-                    target_working_buffer = merge_batch_from_line_sequences_as_buffer(
-                        source_lines,
-                        ownership,
-                        working_lines,
-                    )
-                except Exception as error:
-                    target_index_buffer.close()
-                    target_index_buffer = None
-                    return TransientIncludeResult.failure(
-                        TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
-                        detail=error.__class__.__name__,
-                    )
-
-                with target_working_buffer:
-                    if not buffer_matches(working_lines, target_working_buffer):
-                        target_index_buffer.close()
-                        target_index_buffer = None
-                        return TransientIncludeResult.failure(
-                            TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE
-                        )
-
-        assert target_index_buffer is not None
-        return TransientIncludeResult.success(target_index_buffer)
-    except Exception as error:
-        if target_index_buffer is not None:
-            target_index_buffer.close()
-        return TransientIncludeResult.failure(
-            TransientIncludeFailureReason.PREPARATION_FAILED,
-            detail=error.__class__.__name__,
-        )
-    finally:
-        if created_batch and batch_exists(batch_name):
-            delete_batch(batch_name)
-        _restore_session_batch_sources_file(session_sources_existed, session_sources_content)
-
-
-def _stage_live_line_target_buffer(file_path: str, target_buffer: LineBuffer) -> None:
-    """Stage the result of live line-level include."""
-    update_index_with_blob_buffer(file_path, target_buffer)
-
-
 def _patch_is_text_file_path_deletion(patch_lines: Sequence[bytes]) -> bool:
     """Return whether patch lines describe deletion of the file path itself."""
     return any(line.rstrip(b"\n") == b"+++ /dev/null" for line in patch_lines)
-
-
-def _transient_include_failure_message(
-    *,
-    reason: TransientIncludeFailureReason,
-    line_id_specification: str,
-    file_path: str,
-) -> str:
-    if reason in (
-        TransientIncludeFailureReason.NO_SELECTED_LINES,
-        TransientIncludeFailureReason.EMPTY_OWNERSHIP,
-    ):
-        return line_selection_not_valid_message(
-            line_id_specification=line_id_specification,
-            file_path=file_path,
-        )
-
-    if reason in (
-        TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
-        TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE,
-    ):
-        return _(
-            "Cannot safely include line(s) {lines} from {file} because applying "
-            "that selection would also change the working tree.\n"
-            "Run 'git-stage-batch show --file {file}' and choose line IDs from "
-            "the current file view."
-        ).format(lines=line_id_specification, file=file_path)
-
-    if reason == TransientIncludeFailureReason.INDEX_MERGE_FAILED:
-        return _(
-            "Cannot safely include line(s) {lines} from {file} because the "
-            "selection no longer fits the current staged content.\n"
-            "Run 'git-stage-batch show --file {file}' and choose line IDs from "
-            "the current file view."
-        ).format(lines=line_id_specification, file=file_path)
-
-    return _(
-        "Cannot safely include line(s) {lines} from {file}.\n"
-        "Run 'git-stage-batch show --file {file}' and choose line IDs from "
-        "the current file view."
-    ).format(lines=line_id_specification, file=file_path)
 
 
 def command_include(
@@ -968,7 +652,11 @@ def command_include_line(
         if file is None:
             require_selected_hunk()
             line_changes = load_line_changes_from_state()
-            line_changes = _annotate_line_changes_with_working_tree_source(line_changes)
+            line_changes = (
+                _include_line_selection.annotate_line_changes_with_working_tree_source(
+                    line_changes
+                )
+            )
         else:
             if file == "":
                 target_file = get_selected_change_file_path()
@@ -977,11 +665,19 @@ def command_include_line(
             else:
                 target_file = file
             auto_add_untracked_files([target_file])
-            selected_file_view_targets_file = _selected_file_view_targets(target_file)
-            reuse_selected_file_view = _selected_file_view_is_fresh_for(target_file)
+            selected_file_view_targets_file = (
+                _include_line_selection.selected_file_view_targets(target_file)
+            )
+            reuse_selected_file_view = (
+                _include_line_selection.selected_file_view_is_fresh_for(target_file)
+            )
             if reuse_selected_file_view:
                 line_changes = load_line_changes_from_state()
-                line_changes = _annotate_line_changes_with_working_tree_source(line_changes)
+                line_changes = (
+                    _include_line_selection.annotate_line_changes_with_working_tree_source(
+                        line_changes
+                    )
+                )
             else:
                 if file != "" and not selected_file_view_targets_file:
                     preserve_selected_state = True
@@ -992,7 +688,11 @@ def command_include_line(
                 line_changes = cache_unstaged_file_as_single_hunk(target_file)
                 if line_changes is None:
                     exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-                line_changes = _annotate_line_changes_with_working_tree_source(line_changes)
+                line_changes = (
+                    _include_line_selection.annotate_line_changes_with_working_tree_source(
+                        line_changes
+                    )
+                )
 
         requested_ids = parse_line_selection(line_id_specification)
         require_line_selection_in_view(
@@ -1037,25 +737,30 @@ def command_include_line(
                 if partial_structural_run_error is not None:
                     exit_with_error(partial_structural_run_error)
 
-            transient_result = _try_build_index_content_via_transient_batch(
-                line_changes=line_changes,
-                selected_display_ids=set(combined_include_ids),
-                current_index_lines=current_index_lines,
-                hunk_base_lines=hunk_base_lines,
-                hunk_source_lines=hunk_source_lines,
+            transient_result = (
+                _include_line_selection.try_build_index_content_via_transient_batch(
+                    line_changes=line_changes,
+                    selected_display_ids=set(combined_include_ids),
+                    current_index_lines=current_index_lines,
+                    hunk_base_lines=hunk_base_lines,
+                    hunk_source_lines=hunk_source_lines,
+                )
             )
             if (
                 transient_result.buffer is None
-                and transient_result.failure_reason == TransientIncludeFailureReason.INDEX_MERGE_FAILED
+                and transient_result.failure_reason
+                == _include_line_selection.TransientIncludeFailureReason.INDEX_MERGE_FAILED
                 and buffer_matches(current_index_lines, hunk_base_lines)
             ):
-                transient_result = TransientIncludeResult.success(
+                transient_result = _include_line_selection.TransientIncludeResult.success(
                     build_target_index_buffer_from_lines(
                         line_changes,
                         set(combined_include_ids),
                         hunk_base_lines,
                         base_has_trailing_newline=(
-                            _line_sequence_ends_with_lf(hunk_base_lines)
+                            _include_line_selection.line_sequence_ends_with_lf(
+                                hunk_base_lines
+                            )
                         ),
                     )
                 )
@@ -1069,7 +774,7 @@ def command_include_line(
         else:
             failure_reason = (
                 transient_result.failure_reason
-                or TransientIncludeFailureReason.PREPARATION_FAILED
+                or _include_line_selection.TransientIncludeFailureReason.PREPARATION_FAILED
             )
             log_journal(
                 "include_line_transient_batch_staging_declined",
@@ -1079,7 +784,7 @@ def command_include_line(
                 detail=transient_result.failure_detail,
             )
             exit_with_error(
-                _transient_include_failure_message(
+                _include_line_selection.transient_include_failure_message(
                     reason=failure_reason,
                     line_id_specification=line_id_specification,
                     file_path=line_changes.path,
@@ -1087,7 +792,10 @@ def command_include_line(
             )
 
         with target_index_buffer_context as target_index_buffer:
-            _stage_live_line_target_buffer(line_changes.path, target_index_buffer)
+            _include_line_selection.stage_live_line_target_buffer(
+                line_changes.path,
+                target_index_buffer,
+            )
 
         if preserve_selected_state:
             assert saved_selected_state is not None
@@ -1150,7 +858,9 @@ def _apply_include_line_replacement(
             effective_ids,
             replacement_payload,
             hunk_base_lines,
-            base_has_trailing_newline=_line_sequence_ends_with_lf(hunk_base_lines),
+            base_has_trailing_newline=(
+                _include_line_selection.line_sequence_ends_with_lf(hunk_base_lines)
+            ),
             trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
         )
     except ValueError as error:
@@ -1196,9 +906,15 @@ def _translate_file_view_replacement_to_unstaged_diff(
     if unstaged_line_changes is None:
         return None
 
-    annotated_selected_changes = _annotate_line_changes_with_working_tree_source(line_changes)
-    annotated_unstaged_changes = _annotate_line_changes_with_working_tree_source(
-        unstaged_line_changes
+    annotated_selected_changes = (
+        _include_line_selection.annotate_line_changes_with_working_tree_source(
+            line_changes
+        )
+    )
+    annotated_unstaged_changes = (
+        _include_line_selection.annotate_line_changes_with_working_tree_source(
+            unstaged_line_changes
+        )
     )
     if annotated_selected_changes is None or annotated_unstaged_changes is None:
         return None
@@ -1344,8 +1060,12 @@ def command_include_line_as(
                 preserve_selected_state = False
             else:
                 target_file = file
-            selected_file_view_targets_file = _selected_file_view_targets(target_file)
-            reuse_selected_file_view = _selected_file_view_is_fresh_for(target_file)
+            selected_file_view_targets_file = (
+                _include_line_selection.selected_file_view_targets(target_file)
+            )
+            reuse_selected_file_view = (
+                _include_line_selection.selected_file_view_is_fresh_for(target_file)
+            )
             if reuse_selected_file_view:
                 cached_lines = load_line_changes_from_state()
                 if cached_lines is None:
@@ -1836,7 +1556,7 @@ def _command_include_file_lines_to_batch(
 
     # Annotate with batch source line numbers
     line_changes = annotate_with_batch_source(file_path, cached_lines)
-    _record_baseline_references_for_additions(line_changes)
+    _include_line_selection.record_baseline_references_for_additions(line_changes)
 
     # Parse line IDs and filter to selected lines
     requested_ids = set(parse_line_selection(line_id_specification))
@@ -1915,7 +1635,7 @@ def _command_include_lines_to_batch(
 
     requested_ids = set(parse_line_selection(line_id_specification))
     line_changes = load_line_changes_from_state()
-    _record_baseline_references_for_additions(line_changes)
+    _include_line_selection.record_baseline_references_for_additions(line_changes)
     require_line_selection_in_view(
         line_changes,
         requested_ids,

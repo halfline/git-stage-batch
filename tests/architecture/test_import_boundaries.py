@@ -4089,6 +4089,43 @@ def test_batch_source_text_actions_own_text_file_mutations():
         assert old_names.isdisjoint(helpers)
 
 
+def test_batch_source_binary_actions_own_index_mutation():
+    """Shared binary index actions should live outside include-from."""
+    binary_file_actions = __import__(
+        "git_stage_batch.commands.batch_source.binary_file_actions",
+        fromlist=["binary_file_actions"],
+    )
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "stage_binary_file_to_index",
+    }
+    old_names = {
+        "_stage_binary_file_from_batch",
+    }
+    include_from_tree = ast.parse(
+        include_from_path.read_text(),
+        filename=str(include_from_path),
+    )
+    include_from_helpers = {
+        node.name
+        for node in ast.walk(include_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_binary_file_actions = False
+
+    for imported_module, node in _import_from_nodes(include_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "binary_file_actions" in imported_names
+        ):
+            imports_binary_file_actions = True
+
+    assert public_names <= vars(binary_file_actions).keys()
+    assert imports_binary_file_actions
+    assert old_names.isdisjoint(include_from_helpers)
+
+
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(

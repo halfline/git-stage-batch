@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .batch_source import action_plans as _action_plans
+from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import text_file_actions as _text_file_actions
 from .selection import replacement_selection
 from ..batch.binary_file_content import read_binary_file_from_batch
@@ -75,10 +76,8 @@ from ..exceptions import (
 )
 from ..i18n import _
 from ..utils.git import (
-    create_git_blob,
     get_git_repository_root_path,
     git_refresh_index,
-    git_update_index,
     require_git_repository,
 )
 
@@ -98,27 +97,6 @@ class _IncludeTextPlan:
             self.index_buffer.close()
         if self.working_buffer is not None and self.working_buffer is not self.index_buffer:
             self.working_buffer.close()
-
-
-def _stage_binary_file_from_batch(
-    file_path: str,
-    file_meta: dict,
-    buffer: LineBuffer | None,
-) -> None:
-    """Stage one binary batch target into the index."""
-    change_type = file_meta.get("change_type", "modified")
-    if change_type == "deleted":
-        result = git_update_index(file_path=file_path, force_remove=True, check=False)
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to stage binary deletion for {file_path}: {result.stderr}")
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
-
-    blob_hash = create_git_blob(buffer.byte_chunks())
-    file_mode = file_meta.get("mode", "100644")
-    git_update_index(file_path=file_path, mode=str(file_mode), blob_sha=blob_hash)
 
 
 def _execute_include_candidate(
@@ -858,7 +836,11 @@ def command_include_from_batch(
                             plan.working_change_type,
                         )
                     elif isinstance(plan, _action_plans.BinaryFileActionPlan):
-                        _stage_binary_file_from_batch(plan.file_path, plan.file_meta, plan.buffer)
+                        _binary_file_actions.stage_binary_file_to_index(
+                            plan.file_path,
+                            plan.file_meta,
+                            plan.buffer,
+                        )
                         _write_binary_file_from_batch(plan.file_path, plan.file_meta, plan.buffer)
                     else:
                         stage_submodule_pointer_from_batch(plan.file_path, plan.file_meta)

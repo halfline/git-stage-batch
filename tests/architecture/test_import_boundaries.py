@@ -4096,6 +4096,51 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
     }
 
 
+def test_batch_source_candidate_preview_builders_own_show_candidate_construction():
+    """Show-from candidate construction should live in batch-source support."""
+    candidate_preview_builders = __import__(
+        "git_stage_batch.commands.batch_source.candidate_preview_builders",
+        fromlist=["candidate_preview_builders"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    public_names = {
+        "build_batch_source_candidate_previews",
+    }
+    old_function_names = {
+        "_build_candidate_previews",
+    }
+    old_import_names = {
+        "build_apply_candidate_previews",
+        "build_include_candidate_previews",
+    }
+    show_from_tree = ast.parse(
+        show_from_path.read_text(),
+        filename=str(show_from_path),
+    )
+    show_from_helpers = {
+        node.name
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    imports_candidate_preview_builders = False
+    direct_operation_builder_imports = set()
+
+    for imported_module, node in _import_from_nodes(show_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "candidate_preview_builders" in imported_names
+        ):
+            imports_candidate_preview_builders = True
+        if imported_module == "git_stage_batch.batch.operation_candidates":
+            direct_operation_builder_imports |= imported_names & old_import_names
+
+    assert public_names <= vars(candidate_preview_builders).keys()
+    assert imports_candidate_preview_builders
+    assert old_function_names.isdisjoint(show_from_helpers)
+    assert direct_operation_builder_imports == set()
+
+
 def test_batch_source_candidate_refusals_own_candidate_count_refusals():
     """Shared candidate count refusals should live outside command entries."""
     candidate_refusals = __import__(

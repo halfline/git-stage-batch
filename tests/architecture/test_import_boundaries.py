@@ -104,6 +104,9 @@ def test_patch_header_queries_stay_in_diff_parser():
     selected_change_batch_path = (
         SRC_ROOT / "commands" / "selection" / "selected_change_batch_discarding.py"
     )
+    selected_change_discarding_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_discarding.py"
+    )
     diff_parser = __import__(
         "git_stage_batch.core.diff_parser",
         fromlist=["diff_parser"],
@@ -120,29 +123,31 @@ def test_patch_header_queries_stay_in_diff_parser():
         node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
     }
     imported_diff_names = set()
-    discard_imported_diff_names = set()
     selected_change_batch_imported_diff_names = set()
+    selected_change_discarding_imported_diff_names = set()
 
     for imported_module, node in _import_from_nodes(include_path):
         if imported_module != "git_stage_batch.core.diff_parser":
             continue
         imported_diff_names |= {alias.name for alias in node.names}
 
-    for imported_module, node in _import_from_nodes(discard_path):
-        if imported_module != "git_stage_batch.core.diff_parser":
-            continue
-        discard_imported_diff_names |= {alias.name for alias in node.names}
-
     for imported_module, node in _import_from_nodes(selected_change_batch_path):
         if imported_module != "git_stage_batch.core.diff_parser":
             continue
         selected_change_batch_imported_diff_names |= {alias.name for alias in node.names}
 
+    for imported_module, node in _import_from_nodes(selected_change_discarding_path):
+        if imported_module != "git_stage_batch.core.diff_parser":
+            continue
+        selected_change_discarding_imported_diff_names |= {
+            alias.name for alias in node.names
+        }
+
     assert "_patch_is_text_file_path_deletion" not in include_helpers
     assert "patch_is_file_deletion" in imported_diff_names
     assert "_patch_lines_contain_line" not in discard_path.read_text()
     assert "patch_is_empty_file_change" in selected_change_batch_imported_diff_names
-    assert "patch_is_new_file" in discard_imported_diff_names
+    assert "patch_is_new_file" in selected_change_discarding_imported_diff_names
     assert "patch_is_new_file" in selected_change_batch_imported_diff_names
     assert "@@ -0,0 +0,0 @@" not in discard_path.read_text()
     assert "--- /dev/null" not in discard_path.read_text()
@@ -4670,8 +4675,8 @@ def test_include_line_replacement_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
-def test_discard_selected_change_discarding_stays_in_command_helper():
-    """Discard should use the selected-change discarding helper module."""
+def test_selected_change_discarding_owns_discard_pipeline():
+    """Selected change discard support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "selected_change_discarding.py"
@@ -4681,43 +4686,78 @@ def test_discard_selected_change_discarding_stays_in_command_helper():
         fromlist=["selected_change_discarding"],
     )
     public_names = {
+        "discard_selected_change",
         "discard_gitlink_change",
         "discard_rename_change",
         "discard_text_deletion_change",
+    }
+    internal_names = {
+        "_discard_binary_change",
+        "_discard_loaded_selected_change",
+        "_discard_text_hunk",
     }
     old_discard_names = {
         "_discard_gitlink_change",
         "_discard_rename_change",
         "_discard_text_deletion_change",
     }
-    helper_imports = {
+    moved_names = {
+        "CommandError",
+        "NoMoreHunks",
+        "append_lines_to_file",
+        "build_line_changes_from_patch_lines",
+        "fetch_next_change",
+        "get_block_list_file_path",
+        "get_git_repository_root_path",
+        "get_selected_hunk_hash_file_path",
+        "get_selected_hunk_patch_file_path",
+        "git_apply_to_worktree",
+        "git_checkout_paths",
+        "path_is_empty",
+        "patch_is_new_file",
+        "read_text_file_contents",
+        "record_hunk_discarded",
+        "snapshot_file_if_untracked",
+    }
+    helper_imports = moved_names | {
+        "BinaryFileChange",
+        "LineBuffer",
         "discard_submodule_pointer_from_batch",
+        "finish_selected_change_action",
         "git_update_gitlink",
         "git_update_index",
+        "load_selected_change",
+        "undo_checkpoint",
     }
 
     assert public_names <= vars(helper).keys()
+    assert internal_names <= vars(helper).keys()
 
     discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
-    discard_helpers = {
-        node.name for node in ast.walk(discard_tree) if isinstance(node, ast.FunctionDef)
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
     }
-    imported_discarding_names = set()
+    command_discard_names = {
+        node.id
+        for node in ast.walk(discard_functions["command_discard"])
+        if isinstance(node, ast.Name)
+    }
+    discard_selection_imports = set()
 
     for imported_module, node in _import_from_nodes(discard_path):
-        if (
-            imported_module
-            != "git_stage_batch.commands.selection.selected_change_discarding"
-        ):
+        if imported_module != "git_stage_batch.commands.selection":
             continue
-        imported_discarding_names |= {alias.name for alias in node.names}
+        discard_selection_imports |= {alias.name for alias in node.names}
 
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
 
-    assert old_discard_names.isdisjoint(discard_helpers)
-    assert public_names <= imported_discarding_names
+    assert old_discard_names.isdisjoint(discard_functions)
+    assert "selected_change_discarding" in discard_selection_imports
+    assert moved_names.isdisjoint(command_discard_names)
     assert helper_imports <= helper_imported_names
 
 
@@ -5204,6 +5244,9 @@ def test_batch_line_updates_stays_in_command_helper():
 def test_discard_uses_file_io_path_empty_helper():
     """Discard should use file I/O utilities for generic path byte checks."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_discarding.py"
+    )
     file_io = __import__(
         "git_stage_batch.utils.file_io",
         fromlist=["file_io"],
@@ -5212,12 +5255,12 @@ def test_discard_uses_file_io_path_empty_helper():
 
     assert "path_is_empty" in vars(file_io)
 
-    tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
     discard_helpers = {
         node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
     }
 
-    for imported_module, node in _import_from_nodes(discard_path):
+    for imported_module, node in _import_from_nodes(helper_path):
         if imported_module != "git_stage_batch.utils.file_io":
             continue
         imported_file_io_names |= {alias.name for alias in node.names}

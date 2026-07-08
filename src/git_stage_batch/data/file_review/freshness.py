@@ -10,9 +10,9 @@ from .fingerprints import (
 )
 from ..selected_change.store import (
     SelectedChangeKind,
-    get_selected_change_file_path,
     read_selected_change_kind,
 )
+from ..selected_change.paths import get_selected_change_file_path
 from ..selected_change.snapshots import snapshots_are_stale
 
 

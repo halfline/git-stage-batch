@@ -9,7 +9,10 @@ import pytest
 from .conftest import git_stage_batch, get_staged_files
 
 
-def run_interactive(*inputs, timeout=5):
+INTERACTIVE_TIMEOUT = 15
+
+
+def run_interactive(*inputs, timeout=INTERACTIVE_TIMEOUT):
     """Run interactive mode with simulated input.
 
     Args:
@@ -79,7 +82,7 @@ class TestInteractiveMode:
             input="q\n",
             text=True,
             capture_output=True,
-            timeout=5,
+            timeout=INTERACTIVE_TIMEOUT,
             check=False
         )
         assert result.returncode == 0

@@ -1679,6 +1679,66 @@ def test_file_scope_discard_replacement_owns_file_pipeline():
     assert moved_names <= helper_imported_names
 
 
+def test_file_scope_include_replacement_owns_file_pipeline():
+    """File-scope include replacement support should stay out of include.py."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "file_scope" / "include_file_replacement.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.include_file_replacement",
+        fromlist=["include_file_replacement"],
+    )
+    public_names = {
+        "include_file_as_replacement",
+    }
+    moved_names = {
+        "clear_last_file_review_state_if_file_matches",
+        "coerce_replacement_payload",
+        "file_has_staged_changes",
+        "file_has_unstaged_changes",
+        "load_line_changes_from_state",
+        "restore_selected_change_state",
+        "snapshot_selected_change_state",
+        "update_index_with_blob_buffer",
+        "write_line_ids_file",
+    }
+    moved_attributes = {
+        "from_bytes",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_include_file_as_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_file_as"])
+        if isinstance(node, ast.Name)
+    }
+    command_include_file_as_attributes = {
+        node.attr
+        for node in ast.walk(include_functions["command_include_file_as"])
+        if isinstance(node, ast.Attribute)
+    }
+    include_imported_names = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            include_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "include_file_replacement" in include_imported_names
+    assert moved_names.isdisjoint(command_include_file_as_names)
+    assert moved_attributes.isdisjoint(command_include_file_as_attributes)
+    assert moved_names <= helper_imported_names
+
+
 def test_selected_change_batch_discarding_owns_hunk_pipeline():
     """Selected change batch support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
@@ -4072,6 +4132,9 @@ def test_batch_file_mode_detection_stays_in_data_module():
 def test_file_change_status_queries_stay_in_data_module():
     """Include should use data helpers for file change status probes."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    replacement_path = (
+        SRC_ROOT / "commands" / "file_scope" / "include_file_replacement.py"
+    )
     status_path = SRC_ROOT / "data" / "file_change_status.py"
     file_change_status = __import__(
         "git_stage_batch.data.file_change_status",
@@ -4092,9 +4155,13 @@ def test_file_change_status_queries_stay_in_data_module():
     include_helpers = {
         node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
     }
+    include_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(include_path)
+    }
     imported_status_names = set()
 
-    for imported_module, node in _import_from_nodes(include_path):
+    for imported_module, node in _import_from_nodes(replacement_path):
         if imported_module != "git_stage_batch.data.file_change_status":
             continue
         imported_status_names |= {alias.name for alias in node.names}
@@ -4104,6 +4171,7 @@ def test_file_change_status_queries_stay_in_data_module():
         status_imported_names |= {alias.name for alias in node.names}
 
     assert old_include_names.isdisjoint(include_helpers)
+    assert "git_stage_batch.data.file_change_status" not in include_imports
     assert public_names <= imported_status_names
     assert "run_git_command" in status_imported_names
 

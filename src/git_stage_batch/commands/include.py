@@ -143,6 +143,7 @@ from .selection import include_line_selection as _include_line_selection
 from .selection import include_line_replacement as _include_line_replacement
 from .selection import replacement_selection
 from .selection import batch_line_selection as _batch_line_selection
+from .selection import batch_line_updates as _batch_line_updates
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -1417,45 +1418,13 @@ def _command_include_file_lines_to_batch(
             print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
         return
 
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    file_mode = detect_file_mode(file_path)
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(file_path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    file_metadata=file_metadata,
-                    selected_lines=selection.selected_lines,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\nBatch: {batch}\nError: {error}").format(
-                    file=file_path, batch=batch_name, error=str(e))
-            )
-
-        # Snapshot file before modifying
-        snapshot_file_if_untracked(file_path)
-
-        # Save to batch
-        add_file_to_batch(
-            batch_name,
-            file_path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
-        )
+    _batch_line_updates.add_selected_lines_to_batch(
+        batch_name=batch_name,
+        file_path=file_path,
+        selected_lines=selection.selected_lines,
+        stale_source_action=_("Cannot include lines to batch"),
+        snapshot_untracked=True,
+    )
 
     if not quiet:
         print(_("Included line(s) from file '{file}' to batch '{batch}': {lines}").format(
@@ -1489,42 +1458,12 @@ def _command_include_lines_to_batch(
     if not selection.selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(line_changes.path)
-
-    file_mode = detect_file_mode(line_changes.path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=line_changes.path,
-                    file_metadata=file_metadata,
-                    selected_lines=selection.selected_lines,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\nBatch: {batch}\nError: {error}").format(
-                    file=line_changes.path, batch=batch_name, error=str(e))
-            )
-
-        # Save to batch using batch source model
-        add_file_to_batch(
-            batch_name,
-            line_changes.path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
-        )
+    _batch_line_updates.add_selected_lines_to_batch(
+        batch_name=batch_name,
+        file_path=line_changes.path,
+        selected_lines=selection.selected_lines,
+        stale_source_action=_("Cannot include lines to batch"),
+    )
 
     if not quiet:
         print(_("✓ Included line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)

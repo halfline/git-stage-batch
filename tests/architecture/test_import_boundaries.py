@@ -97,8 +97,8 @@ def test_diff_parser_uses_core_buffer_boundary():
     assert "git_stage_batch.editor" not in imported_modules
 
 
-def test_patch_path_queries_stay_in_diff_parser():
-    """Include and discard should use core patch path queries."""
+def test_patch_header_queries_stay_in_diff_parser():
+    """Include and discard should use core patch header queries."""
     include_path = SRC_ROOT / "commands" / "include.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
     diff_parser = __import__(
@@ -106,8 +106,11 @@ def test_patch_path_queries_stay_in_diff_parser():
         fromlist=["diff_parser"],
     )
 
-    assert "patch_is_file_deletion" in vars(diff_parser)
-    assert "patch_is_new_file" in vars(diff_parser)
+    assert {
+        "patch_is_empty_file_change",
+        "patch_is_file_deletion",
+        "patch_is_new_file",
+    } <= vars(diff_parser).keys()
 
     include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
     include_helpers = {
@@ -128,7 +131,10 @@ def test_patch_path_queries_stay_in_diff_parser():
 
     assert "_patch_is_text_file_path_deletion" not in include_helpers
     assert "patch_is_file_deletion" in imported_diff_names
+    assert "_patch_lines_contain_line" not in discard_path.read_text()
+    assert "patch_is_empty_file_change" in discard_imported_diff_names
     assert "patch_is_new_file" in discard_imported_diff_names
+    assert "@@ -0,0 +0,0 @@" not in discard_path.read_text()
     assert "--- /dev/null" not in discard_path.read_text()
 
 

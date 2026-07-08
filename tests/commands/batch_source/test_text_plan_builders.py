@@ -439,6 +439,60 @@ def test_build_discard_text_file_action_plan_deletes_lifecycle_without_baseline(
     assert result.plan.change_type == TextFileChangeType.DELETED
 
 
+def test_build_discard_text_file_action_plan_reports_missing_source(
+    monkeypatch,
+):
+    """Missing batch source content should stay visible to the command."""
+    monkeypatch.setattr(
+        builders,
+        "load_git_object_as_buffer",
+        lambda spec: None,
+    )
+
+    result = builders.build_discard_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100644",
+        },
+        baseline_commit="baseline",
+        selected_ids=None,
+        selection_ids_to_discard=None,
+    )
+
+    assert result.missing_source
+    assert result.plan is None
+
+
+def test_build_discard_text_file_action_plan_skips_empty_ownership(
+    monkeypatch,
+    tmp_path,
+):
+    """Empty ownership should produce no discard action plan."""
+    _patch_discard_text_plan_io(monkeypatch, tmp_path, _Ownership(empty=True))
+    monkeypatch.setattr(
+        builders,
+        "discard_batch_from_line_sequences_as_buffer",
+        lambda *args: (_ for _ in ()).throw(AssertionError("unexpected merge")),
+    )
+
+    result = builders.build_discard_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100644",
+        },
+        baseline_commit="baseline",
+        selected_ids={1},
+        selection_ids_to_discard=set(),
+    )
+
+    assert not result.missing_source
+    assert result.plan is None
+
+
 def test_build_include_text_file_action_plan_uses_replacement_view(
     monkeypatch,
     tmp_path,

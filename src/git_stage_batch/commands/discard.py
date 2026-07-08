@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from contextlib import ExitStack
 
 from ..core.replacement import (
     ReplacementPayload,
@@ -35,7 +34,6 @@ from ..data.selected_change.clear_reasons import (
 from ..data.file_hunk_display import cache_unstaged_file_as_single_hunk
 from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
-    clear_last_file_review_state_if_file_matches,
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
@@ -47,7 +45,6 @@ from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..core.buffer import (
     LineBuffer,
-    write_buffer_to_path,
 )
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _
@@ -76,6 +73,7 @@ from .selection import discard_line_selection as _discard_line_selection
 from .selection import selected_change_batch_discarding as _selected_change_batch_discarding
 from .selection import selected_file_discarding as _selected_file_discarding
 from .file_scope import discard_file as _file_scope_discard_file
+from .file_scope import discard_file_replacement as _file_scope_discard_file_replacement
 from .file_scope.discard_file_to_batch import discard_file_to_batch
 from .selection.whole_file_batch_discarding import (
     discard_binary_to_batch,
@@ -341,45 +339,11 @@ def command_discard_file_as(
         refuse_bare_action_after_file_list("discard --file --as")
         refuse_bare_action_after_auto_advance_disabled("discard --file --as")
 
-    replacement_payload = coerce_replacement_payload(replacement_text)
-    operation_parts = ["discard", "--as", replacement_payload.display_text or "<stdin>"]
-    if file is not None:
-        operation_parts.extend(["--file", file])
-
-    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
-        preserve_selected_state = False
-        saved_selected_state = None
-
-        if file is None or file == "":
-            target_file = get_selected_change_file_path()
-            if target_file is None:
-                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-        else:
-            target_file = file
-            preserve_selected_state = True
-            saved_selected_state = selected_state_stack.enter_context(
-                snapshot_selected_change_state()
-            )
-
-        line_changes = _discard_file_selection.load_explicit_file_selection(target_file)
-        snapshot_file_if_untracked(target_file)
-
-        absolute_path = get_git_repository_root_path() / target_file
-        absolute_path.parent.mkdir(parents=True, exist_ok=True)
-        absolute_path.parent.mkdir(parents=True, exist_ok=True)
-        absolute_path.write_bytes(replacement_payload.data)
-
-        if preserve_selected_state:
-            assert saved_selected_state is not None
-            restore_selected_change_state(saved_selected_state)
-        else:
-            recalculate_selected_hunk_for_command(
-                line_changes.path,
-                auto_advance=auto_advance,
-            )
-        clear_last_file_review_state_if_file_matches(target_file)
-
-    print(_("✓ Discarded file as replacement: {file}").format(file=target_file), file=sys.stderr)
+    _file_scope_discard_file_replacement.discard_file_as_replacement(
+        replacement_text,
+        file,
+        auto_advance=auto_advance,
+    )
 
 
 def command_discard_line(

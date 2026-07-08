@@ -3977,6 +3977,45 @@ def test_batch_owns_binary_file_content_loading():
     assert old_names.isdisjoint(include_from_helpers)
 
 
+def test_batch_source_action_plans_own_apply_resource_plans():
+    """Shared batch-source action plans should live outside apply-from."""
+    action_plans = __import__(
+        "git_stage_batch.commands.batch_source.action_plans",
+        fromlist=["action_plans"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    public_names = {
+        "BatchSourceActionPlan",
+        "BinaryFileActionPlan",
+        "SubmodulePointerActionPlan",
+        "close_action_plans",
+    }
+    old_apply_names = {
+        "_ApplyBinaryPlan",
+        "_ApplySubmodulePlan",
+        "_close_apply_plans",
+    }
+    apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
+    apply_from_helpers = {
+        node.name
+        for node in ast.walk(apply_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_action_plans = False
+
+    for imported_module, node in _import_from_nodes(apply_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "action_plans" in imported_names
+        ):
+            imports_action_plans = True
+
+    assert public_names <= vars(action_plans).keys()
+    assert imports_action_plans
+    assert old_apply_names.isdisjoint(apply_from_helpers)
+
+
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(

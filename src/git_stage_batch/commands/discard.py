@@ -40,6 +40,7 @@ from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
+    patch_is_empty_file_change,
     patch_is_new_file,
 )
 from ..core.hashing import (
@@ -168,13 +169,6 @@ class _TextFileDiscardInput:
 class _CollectedTextFileDiscards:
     inputs_by_file: dict[str, _TextFileDiscardInput]
     files_with_text_patches: set[str]
-
-
-def _patch_lines_contain_line(
-    patch_lines: Sequence[bytes],
-    line_content: bytes,
-) -> bool:
-    return any(line.rstrip(b"\n") == line_content for line in patch_lines)
 
 
 @dataclass(frozen=True)
@@ -2145,12 +2139,8 @@ def _command_discard_text_hunk_to_batch(
 
         # Apply reverse patches to discard from working tree
         for patch_lines_item, patch_hash in patches_to_discard:
-            # Check if this is an empty file patch (@@ -0,0 +0,0 @@)
             # Empty file patches are synthetic and cannot be reversed with git apply
-            is_empty_file_patch = _patch_lines_contain_line(
-                patch_lines_item,
-                b"@@ -0,0 +0,0 @@",
-            )
+            is_empty_file_patch = patch_is_empty_file_change(patch_lines_item)
 
             if not is_empty_file_patch:
                 log_journal(

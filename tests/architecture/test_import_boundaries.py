@@ -1489,6 +1489,56 @@ def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
     assert helper_imports <= helper_imported_names
 
 
+def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
+    """File-scope fallback support should not depend on discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    multi_file_helper_path = (
+        SRC_ROOT / "commands" / "file_scope" / "discard_to_batch.py"
+    )
+    single_file_helper = __import__(
+        "git_stage_batch.commands.file_scope.discard_file_to_batch",
+        fromlist=["discard_file_to_batch"],
+    )
+    support_names = {
+        "discard_binary_to_batch",
+        "discard_file_to_batch",
+        "discard_text_deletion_to_batch",
+    }
+    old_command_helper_names = {
+        "_command_discard_binary_to_batch",
+        "_command_discard_file_to_batch",
+        "_command_discard_text_deletion_to_batch",
+    }
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_names = {
+        node.name
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    discard_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(discard_path)
+    }
+    multi_file_helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(multi_file_helper_path)
+    }
+
+    assert support_names <= vars(single_file_helper).keys()
+    assert old_command_helper_names.isdisjoint(vars(single_file_helper).keys())
+    assert old_command_helper_names.isdisjoint(discard_names)
+    assert (
+        "git_stage_batch.commands.file_scope.discard_file_to_batch"
+        in discard_imports
+    )
+    assert (
+        "git_stage_batch.commands.file_scope.discard_file_to_batch"
+        in multi_file_helper_imports
+    )
+    assert "git_stage_batch.commands.discard" not in multi_file_helper_imports
+
+
 def test_argument_parser_uses_file_scope_resolver_module():
     """Parser branches should not own repository file-scope resolution."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"

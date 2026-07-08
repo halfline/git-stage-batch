@@ -578,6 +578,44 @@ def test_undo_ref_bookkeeping_stays_in_undo_refs():
     assert session_imports_undo_refs
 
 
+def test_undo_worktree_capture_stays_in_worktree_module():
+    """Undo worktree capture should stay out of checkpoint orchestration."""
+    undo = __import__(
+        "git_stage_batch.data.undo",
+        fromlist=["undo"],
+    )
+    undo_worktree = __import__(
+        "git_stage_batch.data.undo_worktree",
+        fromlist=["undo_worktree"],
+    )
+    worktree_names = {
+        "changed_worktree_paths",
+        "create_blob_from_worktree_path",
+        "file_mode_for_path",
+        "index_update_from_path",
+        "snapshot_worktree_paths",
+    }
+    old_undo_names = {
+        "_changed_worktree_paths",
+        "_create_blob_from_path",
+        "_create_blob_from_worktree_path",
+        "_file_mode_for_path",
+        "_gitlink_oid_from_head",
+        "_gitlink_oid_from_index",
+        "_index_update_from_path",
+        "_is_gitlink_path",
+        "_snapshot_embedded_repo_path",
+        "_snapshot_gitlink_path",
+        "_snapshot_worktree_paths",
+        "_worktree_commit_oid",
+        "_worktree_is_dirty",
+    }
+
+    assert worktree_names <= vars(undo_worktree).keys()
+    assert worktree_names.isdisjoint(vars(undo))
+    assert old_undo_names.isdisjoint(vars(undo))
+
+
 def test_batch_file_display_stays_below_hunk_navigation():
     """Batch file rendering should not depend on selected-change orchestration."""
     renderer_path = SRC_ROOT / "batch" / "file_display.py"

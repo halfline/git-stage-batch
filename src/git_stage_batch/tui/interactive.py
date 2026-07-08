@@ -31,9 +31,13 @@ from .file_selection_menu import handle_file_selection_menu
 from .file_review import handle_current_file_review, handle_file_browser
 from .flow import FlowLocation, LocationRole, FlowState
 from .flow_menu import handle_from_menu, handle_to_menu
+from .hunk_actions import (
+    handle_hunk_discard,
+    handle_hunk_include,
+    handle_hunk_skip,
+)
 from .line_selection_menu import handle_line_selection_menu
 from .prompts import (
-    confirm_destructive_operation,
     prompt_action,
     prompt_fixup_action,
     prompt_quit_session,
@@ -46,85 +50,6 @@ class ActionHandler:
     """Configuration for an interactive action."""
     needs_hunk: bool
     handler: Callable[[FlowState], None]
-
-
-def _handle_include(flow_state: FlowState) -> None:
-    """Handle include action based on source and target."""
-    if flow_state.source.role is LocationRole.WORKING_TREE:
-        if flow_state.target.role is LocationRole.STAGING_AREA:
-            from ..commands.include import command_include
-            command_include(quiet=True, auto_advance=True)
-        elif flow_state.target.role is LocationRole.BATCH:
-            # Include to batch (via skip-to-batch)
-            from ..commands.include import command_include_to_batch
-            command_include_to_batch(
-                flow_state.target.batch_name,
-                quiet=True,
-                auto_advance=True,
-            )
-        else:
-            raise ValueError(f"Unknown target role: {flow_state.target.role}")
-    elif flow_state.source.role is LocationRole.BATCH:
-        # Include from batch
-        if flow_state.target.role is not LocationRole.STAGING_AREA:
-            print(_("Batch-to-batch transfers not yet supported. Target must be staging."), file=sys.stderr)
-            raise BypassRefresh()
-        from ..commands.include_from import command_include_from_batch
-        command_include_from_batch(flow_state.source.batch_name)
-    else:
-        raise ValueError(f"Unknown source role: {flow_state.source.role}")
-
-
-def _handle_skip(flow_state: FlowState) -> None:
-    """Handle skip action based on source and target."""
-    if flow_state.source.role is LocationRole.WORKING_TREE:
-        if flow_state.target.role is LocationRole.STAGING_AREA:
-            from ..commands.skip import command_skip
-            command_skip(quiet=True, auto_advance=True)
-        elif flow_state.target.role is LocationRole.BATCH:
-            # Skip to batch
-            from ..commands.include import command_include_to_batch
-            command_include_to_batch(
-                flow_state.target.batch_name,
-                quiet=True,
-                auto_advance=True,
-            )
-        else:
-            raise ValueError(f"Unknown target role: {flow_state.target.role}")
-    elif flow_state.source.role is LocationRole.BATCH:
-        # Skip doesn't make sense when pulling from batch
-        print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
-        raise BypassRefresh()
-    else:
-        raise ValueError(f"Unknown source role: {flow_state.source.role}")
-
-
-def _handle_discard(flow_state: FlowState) -> None:
-    """Handle discard action based on source and target."""
-    if flow_state.source.role is LocationRole.WORKING_TREE:
-        if flow_state.target.role is LocationRole.STAGING_AREA:
-            from ..commands.discard import command_discard
-            if confirm_destructive_operation("discard", _("This will remove the hunk from your working tree.")):
-                command_discard(quiet=True, auto_advance=True)
-        elif flow_state.target.role is LocationRole.BATCH:
-            # Discard to batch (save for later)
-            from ..commands.discard import command_discard_to_batch
-            command_discard_to_batch(
-                flow_state.target.batch_name,
-                quiet=True,
-                auto_advance=True,
-            )
-        else:
-            raise ValueError(f"Unknown target role: {flow_state.target.role}")
-    elif flow_state.source.role is LocationRole.BATCH:
-        # Discard from batch
-        if flow_state.target.role is not LocationRole.STAGING_AREA:
-            print(_("Batch-to-batch transfers not yet supported. Target must be staging."), file=sys.stderr)
-            raise BypassRefresh()
-        from ..commands.discard_from import command_discard_from_batch
-        command_discard_from_batch(flow_state.source.batch_name)
-    else:
-        raise ValueError(f"Unknown source role: {flow_state.source.role}")
 
 
 def _handle_again(flow_state: FlowState) -> None:
@@ -263,9 +188,9 @@ def _handle_cli_command(action: str) -> None:
 
 # Map of actions to their handlers
 ACTION_HANDLERS = {
-    "i": ActionHandler(needs_hunk=True, handler=_handle_include),
-    "s": ActionHandler(needs_hunk=True, handler=_handle_skip),
-    "d": ActionHandler(needs_hunk=True, handler=_handle_discard),
+    "i": ActionHandler(needs_hunk=True, handler=handle_hunk_include),
+    "s": ActionHandler(needs_hunk=True, handler=handle_hunk_skip),
+    "d": ActionHandler(needs_hunk=True, handler=handle_hunk_discard),
     "l": ActionHandler(needs_hunk=True, handler=_handle_line_selection),
     "f": ActionHandler(needs_hunk=True, handler=_handle_file_selection),
     "v": ActionHandler(needs_hunk=True, handler=_handle_file_review),

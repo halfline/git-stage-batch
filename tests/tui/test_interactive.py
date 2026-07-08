@@ -95,6 +95,23 @@ class TestActionHandlers:
 
         assert handler.needs_hunk is False
 
+    def test_again_action_dispatches_again_action(self):
+        """Test again action routes through the again action adapter."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("git_stage_batch.tui.again_action.command_again") as mock_again:
+            dispatch_action(
+                "a",
+                has_hunk=False,
+                use_color=False,
+                flow_state=flow_state,
+            )
+
+        mock_again.assert_called_once_with(quiet=True)
+
     def test_undo_action_dispatches_history_action(self):
         """Test undo action routes through the history action adapter."""
         flow_state = FlowState(

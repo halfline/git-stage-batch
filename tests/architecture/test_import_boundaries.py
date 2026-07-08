@@ -100,6 +100,7 @@ def test_diff_parser_uses_core_buffer_boundary():
 def test_patch_header_queries_stay_in_diff_parser():
     """Include and discard should use core patch header queries."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    include_file_path = SRC_ROOT / "commands" / "file_scope" / "include_file.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
     selected_change_batch_path = (
         SRC_ROOT / "commands" / "selection" / "selected_change_batch_discarding.py"
@@ -122,14 +123,14 @@ def test_patch_header_queries_stay_in_diff_parser():
     include_helpers = {
         node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
     }
-    imported_diff_names = set()
+    include_file_imported_diff_names = set()
     selected_change_batch_imported_diff_names = set()
     selected_change_discarding_imported_diff_names = set()
 
-    for imported_module, node in _import_from_nodes(include_path):
+    for imported_module, node in _import_from_nodes(include_file_path):
         if imported_module != "git_stage_batch.core.diff_parser":
             continue
-        imported_diff_names |= {alias.name for alias in node.names}
+        include_file_imported_diff_names |= {alias.name for alias in node.names}
 
     for imported_module, node in _import_from_nodes(selected_change_batch_path):
         if imported_module != "git_stage_batch.core.diff_parser":
@@ -144,7 +145,7 @@ def test_patch_header_queries_stay_in_diff_parser():
         }
 
     assert "_patch_is_text_file_path_deletion" not in include_helpers
-    assert "patch_is_file_deletion" in imported_diff_names
+    assert "patch_is_file_deletion" in include_file_imported_diff_names
     assert "_patch_lines_contain_line" not in discard_path.read_text()
     assert "patch_is_empty_file_change" in selected_change_batch_imported_diff_names
     assert "patch_is_new_file" in selected_change_discarding_imported_diff_names
@@ -1697,6 +1698,74 @@ def test_selected_change_batch_staging_owns_include_pipeline():
     assert old_command_helper_names.isdisjoint(vars(helper).keys())
     assert "selected_change_batch_staging" in include_selection_imports
     assert moved_import_names.isdisjoint(include_imported_names)
+    assert helper_imports <= helper_imported_names
+
+
+def test_file_scope_include_file_owns_file_pipeline():
+    """Explicit file-scope include support should stay out of include.py."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "include_file.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.include_file",
+        fromlist=["include_file"],
+    )
+    public_names = {
+        "include_file_changes",
+    }
+    moved_names = {
+        "acquire_unified_diff",
+        "auto_add_untracked_files",
+        "compute_binary_file_hash",
+        "compute_gitlink_change_hash",
+        "compute_rename_change_hash",
+        "compute_stable_hunk_hash_from_lines",
+        "compute_text_file_deletion_hash",
+        "git_add_paths",
+        "git_apply_to_index",
+        "ngettext",
+        "patch_is_file_deletion",
+        "record_hunk_included",
+        "run_git_command",
+        "stream_live_git_diff",
+        "update_index_with_blob_buffer",
+    }
+    helper_imports = moved_names | {
+        "LineBuffer",
+        "finish_selected_change_action",
+        "get_selected_change_file_path",
+        "selected_change_staging",
+        "undo_checkpoint",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_include_file_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_file"])
+        if isinstance(node, ast.Name)
+    }
+    command_include_file_attributes = {
+        node.attr
+        for node in ast.walk(include_functions["command_include_file"])
+        if isinstance(node, ast.Attribute)
+    }
+    include_file_scope_imports = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            include_file_scope_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "include_file" in include_file_scope_imports
+    assert "include_file_changes" in command_include_file_attributes
+    assert moved_names.isdisjoint(command_include_file_names)
     assert helper_imports <= helper_imported_names
 
 

@@ -4096,6 +4096,46 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
     }
 
 
+def test_batch_source_candidate_refusals_own_candidate_count_refusals():
+    """Shared candidate count refusals should live outside command entries."""
+    candidate_refusals = __import__(
+        "git_stage_batch.commands.batch_source.candidate_refusals",
+        fromlist=["candidate_refusals"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    public_names = {
+        "refuse_candidate_conflicts",
+    }
+    old_snippets = {
+        "too many apply candidates",
+        "Cannot enumerate apply candidates",
+        "multiple files need apply decisions",
+    }
+    command_paths = {
+        apply_from_path,
+    }
+    imports_candidate_refusals = {
+        path: False
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_refusals" in imported_names
+            ):
+                imports_candidate_refusals[path] = True
+
+    assert public_names <= vars(candidate_refusals).keys()
+    assert imports_candidate_refusals == {
+        apply_from_path: True,
+    }
+    for snippet in old_snippets:
+        assert snippet not in apply_from_path.read_text()
+
+
 def test_batch_source_text_actions_own_text_file_mutations():
     """Shared text file actions should live outside command entries."""
     text_file_actions = __import__(

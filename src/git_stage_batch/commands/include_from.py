@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .selection import replacement_selection
+from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
@@ -18,7 +19,6 @@ from ..batch.operation_candidates import (
     clear_candidate_preview_state_for_file,
     load_candidate_preview_state,
 )
-from ..batch.query import get_batch_commit_sha
 from ..batch.replacement import build_replacement_batch_view_from_lines
 from ..core.replacement import (
     ReplacementPayload,
@@ -122,27 +122,6 @@ class _IncludeSubmodulePlan:
 def _close_include_plans(plans) -> None:
     for plan in plans:
         plan.close()
-
-
-def _read_binary_file_from_batch(
-    batch_name: str,
-    file_path: str,
-    file_meta: dict,
-) -> LineBuffer | None:
-    """Read one binary batch target, or return None for a stored deletion."""
-    batch_commit = get_batch_commit_sha(batch_name)
-    if not batch_commit:
-        raise RuntimeError(f"Batch commit not found for batch '{batch_name}'")
-
-    change_type = file_meta.get("change_type", "modified")
-    if change_type == "deleted":
-        return None
-
-    buffer = load_git_object_as_buffer(f"{batch_commit}:{file_path}")
-    if buffer is None:
-        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
-
-    return buffer
 
 
 def _stage_binary_file_from_batch(
@@ -631,7 +610,14 @@ def command_include_from_batch(
         merged_working_buffer = None
         try:
             if file_meta.get("file_type") == "binary":
-                batch_buffer = _read_binary_file_from_batch(batch_name, file_path, file_meta)
+                batch_buffer = read_binary_file_from_batch(
+                    batch_name,
+                    file_path,
+                    file_meta,
+                    missing_content_message=(
+                        f"Binary file not found in batch commit: {file_path}"
+                    ),
+                )
                 include_plans.append(_IncludeBinaryPlan(file_path, file_meta, batch_buffer))
                 continue
             if is_batch_submodule_pointer(file_meta):

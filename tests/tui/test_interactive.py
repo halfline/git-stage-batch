@@ -21,11 +21,11 @@ from git_stage_batch.tui.interactive import (
     ACTION_HANDLERS,
     _dispatch_action,
     handle_quit,
-    print_help,
     start_interactive_mode,
 )
 from git_stage_batch.tui.asset_menu import handle_asset_menu
 from git_stage_batch.tui.file_selection_menu import handle_file_selection_menu
+from git_stage_batch.tui.help_display import print_help
 from git_stage_batch.tui.line_selection_menu import handle_line_selection_menu
 
 

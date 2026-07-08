@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-import git_stage_batch.commands.apply_from as apply_from_module
+import git_stage_batch.batch.binary_file_content as binary_file_content
 import git_stage_batch.commands.include_from as include_from_module
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_binary_file_to_batch
@@ -182,7 +182,7 @@ def test_binary_apply_from_batch_refuses_missing_non_deleted_content(
     auto_add_untracked_files()
     command_include_to_batch("bin-batch", file="new.bin", quiet=True)
     head_commit = run_git_command(["rev-parse", "HEAD"]).stdout.strip()
-    monkeypatch.setattr(apply_from_module, "get_batch_commit_sha", lambda name: head_commit)
+    monkeypatch.setattr(binary_file_content, "get_batch_commit_sha", lambda name: head_commit)
 
     with pytest.raises(CommandError, match="incompatible"):
         command_apply_from_batch("bin-batch", file="new.bin")

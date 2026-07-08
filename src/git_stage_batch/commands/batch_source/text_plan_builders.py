@@ -7,7 +7,10 @@ from dataclasses import dataclass
 import os
 
 from . import action_plans as _action_plans
-from ...batch.merge import merge_batch_from_line_sequences_as_buffer
+from ...batch.merge import (
+    discard_batch_from_line_sequences_as_buffer,
+    merge_batch_from_line_sequences_as_buffer,
+)
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...core.buffer import LineBuffer
@@ -16,8 +19,10 @@ from ...core.text_lifecycle import (
     TextFileChangeType,
     mode_for_text_materialization,
     normalized_text_change_type,
+    selected_text_discard_change_type,
     selected_text_target_change_type,
 )
+from ...data.file_modes import detect_file_mode_in_commit
 from ...utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -38,6 +43,14 @@ class IncludeTextPlanBuildResult:
     """Result of building one include-from text action plan."""
 
     plan: _action_plans.IncludeTextFileActionPlan | None = None
+    missing_source: bool = False
+
+
+@dataclass(frozen=True)
+class DiscardTextPlanBuildResult:
+    """Result of building one discard-from text action plan."""
+
+    plan: _action_plans.DiscardTextFileActionPlan | None = None
     missing_source: bool = False
 
 
@@ -248,3 +261,111 @@ def build_include_text_file_action_plan(
     except Exception:
         _close_include_merge_buffers(merged_index_buffer, merged_working_buffer)
         raise
+
+
+def build_discard_text_file_action_plan(
+    *,
+    file_path: str,
+    file_meta: dict,
+    baseline_commit: str,
+    selected_ids: set[int] | None,
+    selection_ids_to_discard: set[int] | None,
+) -> DiscardTextPlanBuildResult:
+    """Build one deferred discard-from text action plan."""
+    text_change_type = normalized_text_change_type(file_meta.get("change_type"))
+    if selected_ids is None and text_change_type in {
+        TextFileChangeType.ADDED,
+        TextFileChangeType.DELETED,
+    }:
+        return DiscardTextPlanBuildResult(
+            plan=_build_baseline_restore_text_plan(
+                file_path=file_path,
+                baseline_commit=baseline_commit,
+            )
+        )
+
+    batch_source_commit = file_meta["batch_source_commit"]
+    batch_source_buffer = load_git_object_as_buffer(
+        f"{batch_source_commit}:{file_path}"
+    )
+    if batch_source_buffer is None:
+        return DiscardTextPlanBuildResult(missing_source=True)
+
+    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    baseline_exists = baseline_buffer is not None
+    if baseline_buffer is None:
+        baseline_buffer = LineBuffer.from_bytes(b"")
+
+    repo_root = get_git_repository_root_path()
+    working_exists = (repo_root / file_path).exists()
+    baseline_mode = detect_file_mode_in_commit(baseline_commit, file_path)
+    restore_mode = mode_for_text_materialization(
+        baseline_mode,
+        selected_ids,
+        destination_exists=working_exists,
+    )
+
+    discarded_buffer = None
+    try:
+        with (
+            batch_source_buffer as batch_source_lines,
+            baseline_buffer as baseline_lines,
+            load_working_tree_file_as_buffer(file_path) as working_lines,
+        ):
+            with acquire_batch_ownership_for_display_ids_from_lines(
+                file_meta,
+                batch_source_lines,
+                selection_ids_to_discard,
+            ) as ownership:
+                if ownership.is_empty():
+                    return DiscardTextPlanBuildResult()
+
+                discarded_buffer = discard_batch_from_line_sequences_as_buffer(
+                    batch_source_lines,
+                    ownership,
+                    working_lines,
+                    baseline_lines,
+                )
+
+        effective_change_type = selected_text_discard_change_type(
+            text_change_type,
+            selected_ids,
+            discarded_buffer,
+            baseline_exists=baseline_exists,
+        )
+        if effective_change_type == TextFileChangeType.DELETED:
+            discarded_buffer.close()
+            discarded_buffer = None
+        plan = _action_plans.DiscardTextFileActionPlan(
+            file_path,
+            discarded_buffer,
+            restore_mode,
+            effective_change_type,
+        )
+        discarded_buffer = None
+        return DiscardTextPlanBuildResult(plan=plan)
+    except Exception:
+        if discarded_buffer is not None:
+            discarded_buffer.close()
+        raise
+
+
+def _build_baseline_restore_text_plan(
+    *,
+    file_path: str,
+    baseline_commit: str,
+) -> _action_plans.DiscardTextFileActionPlan:
+    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    if baseline_buffer is None:
+        return _action_plans.DiscardTextFileActionPlan(
+            file_path,
+            None,
+            None,
+            TextFileChangeType.DELETED,
+        )
+    return _action_plans.DiscardTextFileActionPlan(
+        file_path,
+        baseline_buffer,
+        detect_file_mode_in_commit(baseline_commit, file_path),
+        TextFileChangeType.MODIFIED,
+    )

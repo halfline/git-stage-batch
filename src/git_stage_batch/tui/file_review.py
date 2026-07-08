@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass
 
 from ..batch.query import read_batch_metadata
-from ..data.file_review_state import read_last_file_review_state
+from ..data.file_review.state import read_last_file_review_state
 from ..data.line_state import load_line_changes_from_state
 from ..data.file_tracking import list_untracked_files
 from ..data.progress import get_hunk_counts

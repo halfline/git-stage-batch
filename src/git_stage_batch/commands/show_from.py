@@ -50,7 +50,7 @@ from ..data.hunk_tracking import (
     mark_selected_change_cleared_by_file_list,
     render_batch_file_display,
 )
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     FileReviewAction,
     ReviewSource,
     clear_last_file_review_state,

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from ..exceptions import AtomicUnitError
     from ..core.models import LineLevelChange
     from ..core.models import RenderedBatchDisplay
-    from ..data.file_review_state import FileReviewAction
+    from ..data.file_review.state import FileReviewAction
 
 
 def _default_live_file_review_command(file_path: str) -> str:
@@ -358,7 +358,7 @@ def translate_batch_file_gutter_ids_to_selection_ids(
     if selected_ids is None:
         return None, None
 
-    from ..data.file_review_state import (
+    from ..data.file_review.state import (
         fresh_batch_review_selections_for_action,
         validate_review_scoped_line_selection,
     )

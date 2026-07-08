@@ -39,7 +39,7 @@ from ..data.hunk_tracking import (
     write_selected_hunk_patch_lines,
     write_selected_change_kind,
 )
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     clear_last_file_review_state,
     ReviewSource,
     write_last_file_review_state,

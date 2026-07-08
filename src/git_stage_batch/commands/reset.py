@@ -40,7 +40,7 @@ from ..batch.source_selector import require_plain_batch_name
 from ..batch.validation import batch_exists, validate_batch_name
 from ..exceptions import MergeError, exit_with_error
 from ..i18n import _
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     FileReviewAction,
     ReviewSource,
     fresh_batch_review_selections_for_action,

@@ -15,7 +15,7 @@ from ..core.actionable_changes import (
 )
 from ..core.line_selection import format_line_ids, parse_positive_selection
 from ..core.models import HunkHeader, LineEntry, LineLevelChange, ReviewActionGroup
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     FileReviewAction,
     FileReviewState,
     FileReviewSelectionState,

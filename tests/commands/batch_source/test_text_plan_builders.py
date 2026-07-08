@@ -361,6 +361,84 @@ def test_build_discard_text_file_action_plan_returns_discarded_plan(
 
     result.plan.close()
 
+
+def test_build_discard_text_file_action_plan_restores_lifecycle_baseline(
+    monkeypatch,
+):
+    """Whole-path discard planning should restore baseline content."""
+    baseline_buffer = LineBuffer.from_bytes(b"baseline\n")
+
+    def load_git_object_as_buffer(spec):
+        if spec == "baseline:notes.txt":
+            return baseline_buffer
+        raise AssertionError("unexpected load")
+
+    monkeypatch.setattr(
+        builders,
+        "load_git_object_as_buffer",
+        load_git_object_as_buffer,
+    )
+    monkeypatch.setattr(
+        builders,
+        "detect_file_mode_in_commit",
+        lambda commit, file_path: "100755",
+    )
+
+    result = builders.build_discard_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "deleted",
+            "mode": "100644",
+        },
+        baseline_commit="baseline",
+        selected_ids=None,
+        selection_ids_to_discard=None,
+    )
+
+    assert not result.missing_source
+    assert result.plan is not None
+    assert result.plan.buffer is baseline_buffer
+    assert result.plan.file_mode == "100755"
+    assert result.plan.change_type == TextFileChangeType.MODIFIED
+
+    result.plan.close()
+
+
+def test_build_discard_text_file_action_plan_deletes_lifecycle_without_baseline(
+    monkeypatch,
+):
+    """Whole-path discard planning should delete paths absent from baseline."""
+    monkeypatch.setattr(
+        builders,
+        "load_git_object_as_buffer",
+        lambda spec: None,
+    )
+    monkeypatch.setattr(
+        builders,
+        "detect_file_mode_in_commit",
+        lambda commit, file_path: None,
+    )
+
+    result = builders.build_discard_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "added",
+            "mode": "100644",
+        },
+        baseline_commit="baseline",
+        selected_ids=None,
+        selection_ids_to_discard=None,
+    )
+
+    assert not result.missing_source
+    assert result.plan is not None
+    assert result.plan.buffer is None
+    assert result.plan.file_mode is None
+    assert result.plan.change_type == TextFileChangeType.DELETED
+
+
 def test_build_include_text_file_action_plan_uses_replacement_view(
     monkeypatch,
     tmp_path,

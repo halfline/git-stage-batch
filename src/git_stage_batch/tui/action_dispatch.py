@@ -20,6 +20,7 @@ from .fixup_menu import handle_fixup_menu
 from .flow import FlowState, LocationRole
 from .flow_actions import handle_flow_action
 from .help_display import print_help
+from .history_actions import handle_redo, handle_undo
 from .hunk_actions import (
     handle_hunk_discard,
     handle_hunk_include,
@@ -46,20 +47,6 @@ def _handle_again(flow_state: FlowState) -> None:
 
     auto_add_untracked_files()
     fetch_next_change()
-
-
-def _handle_undo(flow_state: FlowState) -> None:
-    """Handle undo action."""
-    from ..commands.undo import command_undo
-
-    command_undo()
-
-
-def _handle_redo(flow_state: FlowState) -> None:
-    """Handle redo action."""
-    from ..commands.redo import command_redo
-
-    command_redo()
 
 
 def _handle_status(flow_state: FlowState) -> None:
@@ -134,8 +121,8 @@ ACTION_HANDLERS = {
     "o": ActionHandler(needs_hunk=False, handler=_handle_file_browser),
     "x": ActionHandler(needs_hunk=True, handler=_handle_fixup),
     "a": ActionHandler(needs_hunk=False, handler=_handle_again),
-    "u": ActionHandler(needs_hunk=False, handler=_handle_undo),
-    "U": ActionHandler(needs_hunk=False, handler=_handle_redo),
+    "u": ActionHandler(needs_hunk=False, handler=handle_undo),
+    "U": ActionHandler(needs_hunk=False, handler=handle_redo),
     "S": ActionHandler(needs_hunk=False, handler=_handle_status),
     "A": ActionHandler(needs_hunk=False, handler=_handle_assets),
     "b": ActionHandler(needs_hunk=False, handler=_handle_batch),

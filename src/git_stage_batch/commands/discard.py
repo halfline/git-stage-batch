@@ -114,6 +114,7 @@ from ..staging.operations import (
 )
 from ..utils.file_io import (
     append_lines_to_file,
+    path_is_empty,
     read_text_file_line_set,
     read_text_file_contents,
 )
@@ -194,14 +195,6 @@ def _buffer_ends_with_lf(buffer: LineBuffer) -> bool:
         if chunk:
             last_chunk = chunk
     return bool(last_chunk) and last_chunk.endswith(b"\n")
-
-
-def _path_is_empty(path: Path) -> bool:
-    with path.open("rb") as file_handle:
-        while chunk := file_handle.read(1024 * 1024):
-            if chunk:
-                return False
-    return True
 
 
 def _load_explicit_file_selection(file_path: str):
@@ -402,7 +395,7 @@ def command_discard(
         if is_new_file:
             absolute_path = get_git_repository_root_path() / filename
             if absolute_path.exists():
-                if _path_is_empty(absolute_path):
+                if path_is_empty(absolute_path):
                     absolute_path.unlink()
 
         # Add hash to blocklist
@@ -2232,7 +2225,7 @@ def _command_discard_text_hunk_to_batch(
                 git_remove_paths([file_path], cached=True, quiet=True, check=False)
             elif is_new_file:
                 # New file: only remove if it's empty after reverse patches
-                if _path_is_empty(absolute_path):
+                if path_is_empty(absolute_path):
                     absolute_path.unlink()
                     git_remove_paths([file_path], cached=True, quiet=True, check=False)
             # else: file still exists with content (reverted to HEAD state), leave it alone

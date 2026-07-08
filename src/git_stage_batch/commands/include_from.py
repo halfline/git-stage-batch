@@ -74,7 +74,6 @@ from ..exceptions import (
     exit_with_error,
 )
 from ..i18n import _
-from ..staging.operations import update_index_with_blob_buffer
 from ..utils.git import (
     create_git_blob,
     get_git_repository_root_path,
@@ -120,30 +119,6 @@ def _stage_binary_file_from_batch(
     blob_hash = create_git_blob(buffer.byte_chunks())
     file_mode = file_meta.get("mode", "100644")
     git_update_index(file_path=file_path, mode=str(file_mode), blob_sha=blob_hash)
-
-
-def _stage_text_file_from_batch(
-    file_path: str,
-    buffer: LineBuffer | None,
-    file_mode: str | None,
-    change_type: str = "modified",
-) -> None:
-    """Stage a text buffer, optionally forcing the batch target mode."""
-    if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        result = git_update_index(file_path=file_path, force_remove=True, check=False)
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to stage text deletion for {file_path}: {result.stderr}")
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Text file not found in batch content: {file_path}")
-
-    if file_mode is None:
-        update_index_with_blob_buffer(file_path, buffer)
-        return
-
-    blob_hash = create_git_blob(buffer.byte_chunks())
-    git_update_index(file_path=file_path, mode=file_mode, blob_sha=blob_hash)
 
 
 def _execute_include_candidate(
@@ -292,7 +267,7 @@ def _execute_include_candidate(
                 operation_parts = ["include", "--from", raw_selector, "--file", file_path]
                 with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
                     snapshot_file_if_untracked(file_path)
-                    _stage_text_file_from_batch(
+                    _text_file_actions.stage_text_file_to_index(
                         file_path,
                         index_target.after_buffer,
                         index_file_mode,
@@ -870,7 +845,7 @@ def command_include_from_batch(
                 for plan in include_plans:
                     snapshot_file_if_untracked(plan.file_path)
                     if isinstance(plan, _IncludeTextPlan):
-                        _stage_text_file_from_batch(
+                        _text_file_actions.stage_text_file_to_index(
                             plan.file_path,
                             plan.index_buffer,
                             plan.index_file_mode,

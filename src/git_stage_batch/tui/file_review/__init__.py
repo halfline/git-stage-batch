@@ -17,6 +17,7 @@ from .batch_actions import (
     apply_batch_line_action,
     apply_batch_replacement_action,
 )
+from .block_actions import block_review_file, unblock_review_file
 from .candidates import browse_candidates
 from .display import render_file_review
 from .live_actions import (
@@ -432,9 +433,7 @@ def _apply_marked_file_action(
     for path in sorted(marked_paths):
         try:
             if action == "B":
-                from ...commands.block_file import command_block_file
-
-                command_block_file(path, local_only=local_only)
+                block_review_file(path, local_only=local_only)
                 continue
 
             state = FileReviewSessionState(flow_state=flow_state, file_path=path)
@@ -537,17 +536,13 @@ def _apply_block_action(state: FileReviewSessionState, action: str) -> None:
             return
 
         try:
-            from ...commands.block_file import command_block_file
-
-            command_block_file(state.file_path, local_only=local_only)
+            block_review_file(state.file_path, local_only=local_only)
         except CommandError as e:
             print(e.message, file=sys.stderr)
         return
 
     try:
-        from ...commands.unblock_file import command_unblock_file
-
-        command_unblock_file(state.file_path)
+        unblock_review_file(state.file_path)
     except CommandError as e:
         print(e.message, file=sys.stderr)
 

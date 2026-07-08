@@ -11,6 +11,7 @@ from git_stage_batch.core.buffer import (
     LineBuffer,
     buffer_byte_chunks,
     buffer_byte_count,
+    buffer_ends_with_lf,
     buffer_has_data,
     buffer_matches,
     buffer_preview,
@@ -193,6 +194,17 @@ def test_buffer_helpers_accept_line_sequences(line_sequence):
     assert list(buffer_byte_chunks(buffer)) == [b"alpha\n", b"beta\n"]
     assert buffer_byte_count(buffer) == 11
     assert buffer_preview(buffer, 8) == b"alpha\nbe"
+
+
+def test_buffer_ends_with_lf_accepts_buffer_inputs(line_sequence):
+    """Trailing newline checks should use buffer bytes instead of line indexing."""
+    assert buffer_ends_with_lf(b"alpha\n") is True
+    assert buffer_ends_with_lf(b"alpha") is False
+    assert buffer_ends_with_lf(b"") is False
+    assert buffer_ends_with_lf(line_sequence([b"alpha", b"\n"])) is True
+
+    with LineBuffer.from_chunks([b"alpha", b"\nbeta"]) as buffer:
+        assert buffer_ends_with_lf(buffer) is False
 
 
 def test_buffer_helpers_accept_buffers(tmp_path):

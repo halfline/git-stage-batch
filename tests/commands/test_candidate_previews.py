@@ -586,7 +586,7 @@ def test_include_from_reports_candidate_limit(temp_git_repo, monkeypatch):
         )
 
     monkeypatch.setattr(
-        include_from_module,
+        candidate_preview_counts,
         "build_include_candidate_previews",
         fail_count,
     )

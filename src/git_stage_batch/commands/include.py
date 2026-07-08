@@ -86,7 +86,6 @@ from ..data.file_review.state import (
     resolve_live_line_action_scope,
     resolve_live_to_batch_action_scope,
 )
-from ..data.consumed_selections import record_consumed_selection
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
@@ -113,7 +112,6 @@ from ..i18n import _, ngettext
 from ..output.hunk import print_line_level_changes
 from ..staging.operations import (
     build_target_index_buffer_from_lines,
-    build_target_index_buffer_with_replaced_lines,
     update_index_with_blob_buffer,
 )
 from ..utils.file_io import (
@@ -139,6 +137,7 @@ from ..utils.paths import (
     get_working_tree_snapshot_file_path,
 )
 from .selection import include_line_selection as _include_line_selection
+from .selection import include_line_replacement as _include_line_replacement
 from .selection import replacement_selection
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
@@ -826,59 +825,6 @@ def command_include_line(
         )
 
 
-def _apply_include_line_replacement(
-    line_changes,
-    *,
-    line_id_specification: str,
-    replacement_text: str | ReplacementPayload,
-    hunk_base_lines: Sequence[bytes],
-    hunk_source_lines: LineBuffer,
-    trim_unchanged_edge_anchors: bool,
-) -> None:
-    """Stage replacement text for selected lines and record session masking."""
-    requested_ids = set(parse_line_selection(line_id_specification))
-    require_line_selection_in_view(
-        line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
-    )
-    effective_ids = replacement_selection.expand_replacement_selection_ids(
-        line_changes,
-        requested_ids,
-    )
-
-    selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
-    if not selected_lines:
-        exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
-
-    replacement_payload = coerce_replacement_payload(replacement_text)
-    try:
-        target_index_buffer = build_target_index_buffer_with_replaced_lines(
-            line_changes,
-            effective_ids,
-            replacement_payload,
-            hunk_base_lines,
-            base_has_trailing_newline=(
-                _include_line_selection.line_sequence_ends_with_lf(hunk_base_lines)
-            ),
-            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
-        )
-    except ValueError as error:
-        exit_with_error(str(error))
-
-    with target_index_buffer:
-        update_index_with_blob_buffer(line_changes.path, target_index_buffer)
-    record_consumed_selection(
-        line_changes.path,
-        source_buffer=hunk_source_lines,
-        selected_lines=selected_lines,
-        replacement_mask={
-            "deleted_lines": replacement_payload.as_text().splitlines(),
-            "added_lines": [line.display_text() for line in selected_lines if line.kind == "+"],
-        },
-    )
-
-
 def _line_identity_for_live_replacement(line) -> tuple[str, int | None, bytes, bool]:
     """Return a stable identity for a changed line in a live file view."""
     return (
@@ -1030,7 +976,7 @@ def command_include_line_as(
                 replacement_base_buffer as hunk_base_lines,
                 replacement_source_buffer as hunk_source_lines,
             ):
-                _apply_include_line_replacement(
+                _include_line_replacement.apply_include_line_replacement(
                     replacement_line_changes,
                     line_id_specification=replacement_line_id_specification,
                     replacement_text=replacement_text,
@@ -1092,7 +1038,7 @@ def command_include_line_as(
                 hunk_base_buffer as hunk_base_lines,
                 load_working_tree_file_as_buffer(target_file) as hunk_source_lines,
             ):
-                _apply_include_line_replacement(
+                _include_line_replacement.apply_include_line_replacement(
                     annotated_changes,
                     line_id_specification=line_id_specification,
                     replacement_text=replacement_text,

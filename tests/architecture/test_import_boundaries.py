@@ -4055,6 +4055,65 @@ def test_discard_line_selection_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_discard_line_replacement_stays_in_command_helper():
+    """Discard line-replacement support should stay out of the command entrypoint."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.discard_line_replacement",
+        fromlist=["discard_line_replacement"],
+    )
+    public_names = {
+        "DiscardLineReplacementSelection",
+        "build_discard_line_replacement_target_buffer",
+        "derive_live_replacement_line_runs",
+        "prepare_discard_line_replacement_selection",
+    }
+    old_discard_names = {
+        "_derive_live_replacement_line_runs",
+        "_select_rewritten_replacement_lines",
+    }
+    helper_imports = {
+        "annotate_with_batch_source_working_lines",
+        "build_file_hunk_from_buffer",
+        "build_target_working_tree_buffer_from_lines",
+        "build_target_working_tree_buffer_with_replaced_lines",
+        "coerce_replacement_payload",
+        "derive_replacement_line_runs_from_lines",
+        "load_git_object_as_buffer_or_empty",
+        "load_line_changes_from_state",
+        "load_working_tree_file_as_buffer",
+        "parse_line_selection",
+        "replacement_selection",
+        "require_line_selection_in_view",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_helpers = {
+        node.name for node in ast.walk(discard_tree) if isinstance(node, ast.FunctionDef)
+    }
+    discard_imports_helper = False
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "discard_line_replacement" in imported_names:
+            discard_imports_helper = True
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert old_discard_names.isdisjoint(discard_helpers)
+    assert discard_imports_helper
+    assert helper_imports <= helper_imported_names
+
+
 def test_discard_uses_file_io_path_empty_helper():
     """Discard should use file I/O utilities for generic path byte checks."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
@@ -4302,6 +4361,9 @@ def test_replacement_selection_stays_in_command_helper():
     """Include and discard should use the replacement-selection helper module."""
     include_path = SRC_ROOT / "commands" / "include.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    discard_replacement_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
+    )
     helper = __import__(
         "git_stage_batch.commands.selection.replacement_selection",
         fromlist=["replacement_selection"],
@@ -4322,9 +4384,9 @@ def test_replacement_selection_stays_in_command_helper():
         "_derive_replacement_line_runs",
         "_expand_replacement_selection_ids",
     }
-    command_paths = (
+    helper_user_paths = (
         include_path,
-        discard_path,
+        discard_replacement_path,
     )
     violations = []
 
@@ -4334,7 +4396,7 @@ def test_replacement_selection_stays_in_command_helper():
     for old_name in old_include_names:
         assert f"def {old_name}" not in include_path.read_text()
 
-    for command_path in command_paths:
+    for command_path in helper_user_paths:
         imports = _import_from_nodes(command_path)
         imports_helper_namespace = False
 
@@ -4352,11 +4414,12 @@ def test_replacement_selection_stays_in_command_helper():
                     f"{relative_path}:{node.lineno} imports replacement names directly"
                 )
 
-            if command_path == discard_path and imported_module == "git_stage_batch.commands.include":
-                relative_path = command_path.relative_to(REPO_ROOT)
-                violations.append(f"{relative_path}:{node.lineno} imports include")
-
         assert imports_helper_namespace
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.include":
+            relative_path = discard_path.relative_to(REPO_ROOT)
+            violations.append(f"{relative_path}:{node.lineno} imports include")
 
     assert violations == []
 

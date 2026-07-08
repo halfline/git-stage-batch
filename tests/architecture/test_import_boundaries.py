@@ -1499,9 +1499,15 @@ def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
         "git_stage_batch.commands.file_scope.discard_file_to_batch",
         fromlist=["discard_file_to_batch"],
     )
-    support_names = {
-        "discard_binary_to_batch",
+    whole_file_helper = __import__(
+        "git_stage_batch.commands.selection.whole_file_batch_discarding",
+        fromlist=["whole_file_batch_discarding"],
+    )
+    file_scope_support_names = {
         "discard_file_to_batch",
+    }
+    whole_file_support_names = {
+        "discard_binary_to_batch",
         "discard_text_deletion_to_batch",
     }
     old_command_helper_names = {
@@ -1524,18 +1530,39 @@ def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
         imported_module
         for imported_module, _node in _import_from_nodes(multi_file_helper_path)
     }
+    single_file_helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            SRC_ROOT / "commands" / "file_scope" / "discard_file_to_batch.py"
+        )
+    }
+    single_file_helper_imported_names = set()
+    for imported_module, node in _import_from_nodes(
+        SRC_ROOT / "commands" / "file_scope" / "discard_file_to_batch.py"
+    ):
+        if imported_module == "git_stage_batch.commands.selection":
+            single_file_helper_imported_names |= {alias.name for alias in node.names}
 
-    assert support_names <= vars(single_file_helper).keys()
+    assert file_scope_support_names <= vars(single_file_helper).keys()
+    assert whole_file_support_names <= vars(whole_file_helper).keys()
+    assert whole_file_support_names.isdisjoint(vars(single_file_helper).keys())
     assert old_command_helper_names.isdisjoint(vars(single_file_helper).keys())
+    assert old_command_helper_names.isdisjoint(vars(whole_file_helper).keys())
     assert old_command_helper_names.isdisjoint(discard_names)
     assert (
         "git_stage_batch.commands.file_scope.discard_file_to_batch"
         in discard_imports
     )
     assert (
+        "git_stage_batch.commands.selection.whole_file_batch_discarding"
+        in discard_imports
+    )
+    assert (
         "git_stage_batch.commands.file_scope.discard_file_to_batch"
         in multi_file_helper_imports
     )
+    assert "git_stage_batch.commands.selection" in single_file_helper_imports
+    assert "whole_file_batch_discarding" in single_file_helper_imported_names
     assert "git_stage_batch.commands.discard" not in multi_file_helper_imports
 
 

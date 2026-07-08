@@ -139,6 +139,7 @@ from ..utils.paths import (
 )
 from .selection import replacement_selection
 from .selection import discard_file_selection as _discard_file_selection
+from .selection import discard_line_selection as _discard_line_selection
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -676,52 +677,19 @@ def command_discard_line(
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
-        if file is None:
-            require_selected_hunk()
-            line_changes = load_line_changes_from_state()
-        else:
-            if file == "":
-                target_file = get_selected_change_file_path()
-                if target_file is None:
-                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-            else:
-                target_file = file
-
-            line_changes = _discard_file_selection.load_explicit_file_selection(target_file)
-
-        requested_ids = parse_line_selection(line_id_specification)
-        require_line_selection_in_view(
-            line_changes,
-            set(requested_ids),
-            line_id_specification=line_id_specification,
+        file_path = _discard_line_selection.discard_worktree_line_selection(
+            line_id_specification,
+            file=file,
         )
-
-        working_file_path = get_git_repository_root_path() / line_changes.path
-        if not os.path.lexists(working_file_path):
-            exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
-
-        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
-            target_working_buffer = build_target_working_tree_buffer_from_lines(
-                line_changes,
-                set(requested_ids),
-                working_lines,
-                working_has_trailing_newline=buffer_ends_with_lf(working_lines),
-            )
-
-        # Write back to working tree
-        with target_working_buffer:
-            write_buffer_to_path(working_file_path, target_working_buffer)
-
-        # After modifying working tree, recalculate hunk for the SAME file
         print(
             _("✓ Discarded line(s): {lines} from {file}").format(
                 lines=line_id_specification,
-                file=line_changes.path,
+                file=file_path,
             ),
             file=sys.stderr,
         )
         refresh_selected_hunk_after_line_action(
-            line_changes.path,
+            file_path,
             auto_advance=auto_advance,
         )
         finish_review_scoped_line_action(review_state)

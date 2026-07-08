@@ -1635,6 +1635,64 @@ def test_whole_file_batch_staging_owns_include_pipeline():
     assert moved_import_names <= helper_imported_names
 
 
+def test_file_scope_include_to_batch_owns_file_pipeline():
+    """Explicit file-scope include-to-batch support should stay out of include.py."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "include_file_to_batch.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.include_file_to_batch",
+        fromlist=["include_file_to_batch"],
+    )
+    public_names = {
+        "include_file_to_batch",
+    }
+    old_command_helper_names = {
+        "_command_include_file_to_batch",
+    }
+    moved_names = {
+        "acquire_batch_ownership_update_for_selection",
+        "add_file_to_batch",
+        "read_batch_metadata",
+        "render_binary_file_change",
+        "render_gitlink_change",
+        "render_text_deletion_change",
+        "snapshot_file_if_untracked",
+    }
+    helper_imports = moved_names | {
+        "annotate_with_batch_source",
+        "auto_add_untracked_files",
+        "stream_live_git_diff",
+        "whole_file_batch_staging",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_include_to_batch_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_to_batch"])
+        if isinstance(node, ast.Name)
+    }
+    include_names = set(include_functions)
+    include_file_scope_imports = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            include_file_scope_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert old_command_helper_names.isdisjoint(include_names)
+    assert "include_file_to_batch" in include_file_scope_imports
+    assert moved_names.isdisjoint(command_include_to_batch_names)
+    assert helper_imports <= helper_imported_names
+
+
 def test_file_scope_discard_owns_file_pipeline():
     """Explicit file-scope discard support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

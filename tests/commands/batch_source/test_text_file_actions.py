@@ -231,3 +231,81 @@ def test_write_text_file_to_worktree_requires_buffer(tmp_path, monkeypatch):
         )
 
     assert "Text file not found in batch content: notes.txt" in str(exc_info.value)
+
+
+def test_write_discarded_text_file_to_worktree_writes_buffer_and_mode(
+    tmp_path,
+    monkeypatch,
+):
+    """Discarded text content should be written with Git mode semantics."""
+    monkeypatch.setattr(
+        text_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    mode_calls = []
+    monkeypatch.setattr(
+        text_file_actions,
+        "apply_git_file_mode",
+        lambda path, file_mode: mode_calls.append((path, file_mode)),
+    )
+    buffer = LineBuffer.from_bytes(b"restored\n")
+
+    try:
+        text_file_actions.write_discarded_text_file_to_worktree(
+            "notes.txt",
+            buffer,
+            "100755",
+        )
+    finally:
+        buffer.close()
+
+    target = tmp_path / "notes.txt"
+    assert target.read_bytes() == b"restored\n"
+    assert mode_calls == [(target, "100755")]
+
+
+def test_write_discarded_text_file_to_worktree_deletes_existing_file(
+    tmp_path,
+    monkeypatch,
+):
+    """Discard deletion plans should remove existing working-tree files."""
+    monkeypatch.setattr(
+        text_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    target = tmp_path / "old.txt"
+    target.write_text("old\n")
+
+    text_file_actions.write_discarded_text_file_to_worktree(
+        "old.txt",
+        None,
+        None,
+        change_type="deleted",
+    )
+
+    assert not target.exists()
+
+
+def test_write_discarded_text_file_to_worktree_requires_buffer(
+    tmp_path,
+    monkeypatch,
+):
+    """Non-deleted discard targets should require materialized content."""
+    monkeypatch.setattr(
+        text_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        text_file_actions.write_discarded_text_file_to_worktree(
+            "notes.txt",
+            None,
+            "100644",
+        )
+
+    assert "Text file not found in discarded content: notes.txt" in str(
+        exc_info.value
+    )

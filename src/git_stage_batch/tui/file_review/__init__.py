@@ -19,6 +19,11 @@ from .batch_actions import (
 )
 from .candidates import browse_candidates
 from .display import render_file_review
+from .live_actions import (
+    apply_live_file_action,
+    apply_live_line_action,
+    apply_live_replacement_action,
+)
 from ..flow import FlowState, LocationRole
 from ..prompts import (
     confirm_destructive_operation,
@@ -436,7 +441,7 @@ def _apply_marked_file_action(
             if flow_state.source.role is LocationRole.BATCH:
                 apply_batch_file_action(state, action)
             else:
-                _apply_live_file_action(state, action)
+                apply_live_file_action(state, action)
         except CommandError as e:
             print(e.message, file=sys.stderr)
 
@@ -468,7 +473,7 @@ def _apply_replacement_action(state: FileReviewSessionState) -> None:
         if state.flow_state.source.role is LocationRole.BATCH:
             apply_batch_replacement_action(state, line_ids, replacement_text)
         else:
-            _apply_live_replacement_action(state, line_ids, replacement_text)
+            apply_live_replacement_action(state, line_ids, replacement_text)
     except CommandError as e:
         print(e.message, file=sys.stderr)
 
@@ -493,7 +498,7 @@ def _apply_line_action(state: FileReviewSessionState, action: str) -> None:
         if state.flow_state.source.role is LocationRole.BATCH:
             apply_batch_line_action(state, action, line_ids)
         else:
-            _apply_live_line_action(state, action, line_ids)
+            apply_live_line_action(state, action, line_ids)
     except CommandError as e:
         print(e.message, file=sys.stderr)
 
@@ -514,7 +519,7 @@ def _apply_file_action(state: FileReviewSessionState, action: str) -> None:
         if state.flow_state.source.role is LocationRole.BATCH:
             apply_batch_file_action(state, action)
         else:
-            _apply_live_file_action(state, action)
+            apply_live_file_action(state, action)
     except CommandError as e:
         print(e.message, file=sys.stderr)
 
@@ -603,154 +608,6 @@ def _apply_fixup_action(state: FileReviewSessionState) -> None:
             return
 
         print(_("Unknown action: {action}").format(action=action))
-
-
-def _apply_live_line_action(
-    state: FileReviewSessionState,
-    action: str,
-    line_ids: str,
-) -> None:
-    if action == "i":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                line_ids=line_ids,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
-        from ...commands.include import command_include_line
-
-        command_include_line(line_ids, file=state.file_path, auto_advance=False)
-        return
-
-    if action == "s":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                line_ids=line_ids,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
-        from ...commands.skip import command_skip_line
-
-        command_skip_line(line_ids, file=state.file_path, auto_advance=False)
-        return
-
-    if state.flow_state.target.role is LocationRole.BATCH:
-        from ...commands.discard import command_discard_to_batch
-
-        command_discard_to_batch(
-            state.flow_state.target.batch_name,
-            line_ids=line_ids,
-            file=state.file_path,
-            quiet=True,
-            auto_advance=False,
-        )
-        return
-
-    from ...commands.discard import command_discard_line
-
-    command_discard_line(line_ids, file=state.file_path, auto_advance=False)
-
-
-def _apply_live_replacement_action(
-    state: FileReviewSessionState,
-    line_ids: str,
-    replacement_text: str,
-) -> None:
-    if state.flow_state.target.role is LocationRole.BATCH:
-        from ...commands.discard import command_discard_line_as_to_batch
-
-        command_discard_line_as_to_batch(
-            state.flow_state.target.batch_name,
-            line_ids,
-            replacement_text,
-            file=state.file_path,
-            quiet=True,
-            auto_advance=False,
-        )
-        return
-
-    from ...commands.include import command_include_line_as
-
-    command_include_line_as(
-        line_ids,
-        replacement_text,
-        file=state.file_path,
-        auto_advance=False,
-    )
-
-
-def _apply_live_file_action(state: FileReviewSessionState, action: str) -> None:
-    if action == "I":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
-        from ...commands.include import command_include_file
-
-        command_include_file(
-            state.file_path,
-            quiet=True,
-            advance=False,
-            auto_advance=False,
-        )
-        return
-
-    if action == "S":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
-        from ...commands.skip import command_skip_file
-
-        command_skip_file(
-            state.file_path,
-            quiet=True,
-            advance=False,
-            auto_advance=False,
-        )
-        return
-
-    if state.flow_state.target.role is LocationRole.BATCH:
-        from ...commands.discard import command_discard_to_batch
-
-        command_discard_to_batch(
-            state.flow_state.target.batch_name,
-            file=state.file_path,
-            quiet=True,
-            advance=False,
-            auto_advance=False,
-        )
-        return
-
-    from ...commands.discard import command_discard_file
-
-    command_discard_file(state.file_path, auto_advance=False)
 
 
 def _print_review_help(flow_state: FlowState) -> None:

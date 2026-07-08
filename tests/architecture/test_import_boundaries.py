@@ -4000,6 +4000,61 @@ def test_discard_file_selection_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_discard_line_selection_stays_in_command_helper():
+    """Discard line-selection editing should stay out of the command entrypoint."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_selection.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.discard_line_selection",
+        fromlist=["discard_line_selection"],
+    )
+    public_names = {"discard_worktree_line_selection"}
+    command_level_names = {
+        "build_target_working_tree_buffer_from_lines",
+        "load_working_tree_file_as_buffer",
+        "parse_line_selection",
+        "require_line_selection_in_view",
+        "write_buffer_to_path",
+    }
+    helper_imports = command_level_names | {
+        "buffer_ends_with_lf",
+        "get_git_repository_root_path",
+        "get_selected_change_file_path",
+        "load_line_changes_from_state",
+        "require_selected_hunk",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    command_discard_line = next(
+        node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "command_discard_line"
+    )
+    command_names = {
+        node.id for node in ast.walk(command_discard_line) if isinstance(node, ast.Name)
+    }
+    discard_imports_helper = False
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "discard_line_selection" in imported_names:
+            discard_imports_helper = True
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert command_level_names.isdisjoint(command_names)
+    assert discard_imports_helper
+    assert helper_imports <= helper_imported_names
+
+
 def test_discard_uses_file_io_path_empty_helper():
     """Discard should use file I/O utilities for generic path byte checks."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

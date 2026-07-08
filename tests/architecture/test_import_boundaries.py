@@ -1270,6 +1270,42 @@ def test_status_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_active_session_query_stays_in_session_data():
+    """Status should ask session data whether a session is active."""
+    status_path = SRC_ROOT / "commands" / "status.py"
+    session = __import__(
+        "git_stage_batch.data.session",
+        fromlist=["session"],
+    )
+    public_names = {
+        "active_session_marker_path",
+        "session_is_active",
+    }
+
+    assert public_names <= vars(session).keys()
+
+    status_tree = ast.parse(status_path.read_text(), filename=str(status_path))
+    status_names = {
+        node.name
+        for node in ast.walk(status_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    status_imported_session_names = set()
+    status_imported_path_names = set()
+
+    for imported_module, node in _import_from_nodes(status_path):
+        imported_names = {alias.name for alias in node.names}
+        if imported_module == "git_stage_batch.data.session":
+            status_imported_session_names |= imported_names
+        if imported_module == "git_stage_batch.utils.paths":
+            status_imported_path_names |= imported_names
+
+    assert "_session_marker_path" not in status_names
+    assert "session_is_active" in status_imported_session_names
+    assert "get_state_directory_path" not in status_imported_path_names
+    assert "session/abort/head.txt" not in status_path.read_text()
+
+
 def test_status_prompt_rendering_stays_in_output_module():
     """Status prompt formatting should stay out of the command module."""
     status_path = SRC_ROOT / "commands" / "status.py"

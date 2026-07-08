@@ -1270,6 +1270,62 @@ def test_status_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_status_prompt_rendering_stays_in_output_module():
+    """Status prompt formatting should stay out of the command module."""
+    status_path = SRC_ROOT / "commands" / "status.py"
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    prompt = __import__(
+        "git_stage_batch.output.status_prompt",
+        fromlist=["status_prompt"],
+    )
+    public_names = {
+        "DEFAULT_PROMPT_FORMAT",
+        "prompt_needs_status_summary",
+        "render_prompt_status",
+    }
+    old_status_names = {
+        "DEFAULT_PROMPT_FORMAT",
+        "_LIGHT_PROMPT_FIELDS",
+        "_PROMPT_FIELDS",
+        "_prompt_field_names",
+        "_prompt_values",
+        "_render_prompt_status",
+    }
+    status_module = __import__(
+        "git_stage_batch.commands.status",
+        fromlist=["status"],
+    )
+
+    assert public_names <= vars(prompt).keys()
+
+    status_tree = ast.parse(status_path.read_text(), filename=str(status_path))
+    status_names = {
+        node.name
+        for node in ast.walk(status_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    status_imported_prompt_names = set()
+    parser_imported_prompt_names = set()
+
+    for imported_module, node in _import_from_nodes(status_path):
+        if imported_module != "git_stage_batch.output.status_prompt":
+            continue
+        status_imported_prompt_names |= {alias.name for alias in node.names}
+
+    for imported_module, node in _import_from_nodes(parser_path):
+        if imported_module != "git_stage_batch.output.status_prompt":
+            continue
+        parser_imported_prompt_names |= {alias.name for alias in node.names}
+
+    assert old_status_names.isdisjoint(vars(status_module))
+    assert old_status_names.isdisjoint(status_names)
+    assert {
+        "prompt_needs_status_summary",
+        "render_prompt_status",
+    } <= status_imported_prompt_names
+    assert "DEFAULT_PROMPT_FORMAT" in parser_imported_prompt_names
+
+
 def test_argument_parser_delegates_multi_file_action_flow():
     """Parser branches should not own selected-change follow-up display."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"

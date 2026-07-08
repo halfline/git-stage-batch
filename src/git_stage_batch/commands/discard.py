@@ -93,6 +93,7 @@ from .selection import discard_file_selection as _discard_file_selection
 from .selection import discard_line_batching as _discard_line_batching
 from .selection import discard_line_selection as _discard_line_selection
 from .selection import selected_change_batch_discarding as _selected_change_batch_discarding
+from .selection import selected_file_discarding as _selected_file_discarding
 from .file_scope.discard_file_to_batch import discard_file_to_batch
 from .selection.whole_file_batch_discarding import (
     discard_binary_to_batch,
@@ -131,7 +132,7 @@ def command_discard(
     refuse_bare_action_after_auto_advance_disabled("discard")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
-        _command_discard_selected_file(
+        _selected_file_discarding.discard_selected_file(
             quiet=quiet,
             auto_advance=auto_advance,
         )
@@ -307,45 +308,6 @@ def command_discard(
             quiet=quiet,
             auto_advance=auto_advance,
         )
-
-
-def _command_discard_selected_file(
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Discard all changes from the currently selected file-scoped view."""
-    target_file = get_selected_change_file_path()
-    if target_file is None:
-        if not quiet:
-            print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
-        return
-
-    with undo_checkpoint("discard"):
-        snapshot_file_if_untracked(target_file)
-
-        head_result = run_git_command(
-            ["show", f"HEAD:{target_file}"],
-            check=False,
-            text_output=False,
-            requires_index_lock=False,
-        )
-        if head_result.returncode == 0:
-            result = git_checkout_paths("HEAD", [target_file], check=False)
-            if result.returncode != 0:
-                if not quiet:
-                    print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
-                return
-        else:
-            absolute_path = get_git_repository_root_path() / target_file
-            if absolute_path.exists():
-                absolute_path.unlink()
-
-        if quiet:
-            finish_selected_change_action(quiet=True, auto_advance=auto_advance)
-        else:
-            print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
-            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
 
 
 def command_discard_file(

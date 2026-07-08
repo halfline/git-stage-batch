@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-import os
 from pathlib import Path
 import sys
 from contextlib import ExitStack
@@ -69,22 +68,16 @@ from ..data.file_review.state import (
     resolve_live_to_batch_action_scope,
 )
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
 from ..data.progress import record_hunk_discarded
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..core.buffer import (
     LineBuffer,
-    buffer_ends_with_lf,
     write_buffer_to_path,
-)
-from ..utils.repository_buffers import (
-    load_working_tree_file_as_buffer,
 )
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
-from ..staging.operations import build_target_working_tree_buffer_from_lines
 from ..utils.file_io import (
     append_lines_to_file,
     path_is_empty,
@@ -108,10 +101,8 @@ from ..utils.paths import (
     get_selected_hunk_patch_file_path,
 )
 from .selection import discard_file_selection as _discard_file_selection
+from .selection import discard_line_batching as _discard_line_batching
 from .selection import discard_line_selection as _discard_line_selection
-from .selection import discard_line_replacement as _discard_line_replacement
-from .selection import batch_line_selection as _batch_line_selection
-from .selection import batch_line_updates as _batch_line_updates
 from .file_scope.discard_file_to_batch import discard_file_to_batch
 from .selection.whole_file_batch_discarding import (
     discard_binary_to_batch,
@@ -766,7 +757,7 @@ def command_discard_to_batch(
                 )
             else:
                 # --file with --line: discard specific lines from file
-                saved_hunks = _command_discard_file_lines_to_batch(
+                saved_hunks = _discard_line_batching.discard_file_lines_to_batch(
                     batch_name,
                     target_file,
                     line_ids,
@@ -776,7 +767,7 @@ def command_discard_to_batch(
         else:
             # Hunk-scoped operation (selected behavior)
             if line_ids is not None:
-                saved_hunks = _command_discard_lines_to_batch(
+                saved_hunks = _discard_line_batching.discard_selected_lines_to_batch(
                     batch_name,
                     line_ids,
                     quiet=quiet,
@@ -850,7 +841,7 @@ def command_discard_line_as_to_batch(
 
                 _discard_file_selection.load_explicit_file_selection(target_file)
 
-            _command_discard_lines_to_batch_as(
+            _discard_line_batching.discard_lines_as_to_batch(
                 batch_name,
                 line_id_specification,
                 replacement_text,
@@ -868,203 +859,6 @@ def command_discard_line_as_to_batch(
         finish_review_scoped_line_action(review_state)
     else:
         finish_review_scoped_line_action(review_state, file_path=target_file)
-
-
-def _command_discard_lines_to_batch_as(
-    batch_name: str,
-    line_id_specification: str,
-    replacement_text: str | ReplacementPayload,
-    *,
-    no_edge_overlap: bool = False,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Persist replacement text to batch and discard original selected lines."""
-    target_working_buffer: LineBuffer | None = None
-    replacement = None
-    try:
-        with _discard_line_replacement.prepare_discard_line_replacement_selection(
-            line_id_specification,
-            replacement_text,
-            no_edge_overlap=no_edge_overlap,
-        ) as replacement:
-            _discard_line_replacement.add_discard_line_replacement_to_batch(
-                batch_name,
-                replacement,
-            )
-
-            target_working_buffer = (
-                _discard_line_replacement.build_discard_line_replacement_target_buffer(
-                    replacement
-                )
-            )
-
-    except Exception:
-        if target_working_buffer is not None:
-            target_working_buffer.close()
-        raise
-
-    assert target_working_buffer is not None
-    assert replacement is not None
-    with target_working_buffer:
-        write_buffer_to_path(replacement.working_file_path, target_working_buffer)
-
-    if not quiet:
-        print(
-            _("✓ Discarded line(s) as replacement to batch '{name}': {lines}").format(
-                name=batch_name,
-                lines=line_id_specification,
-            ),
-            file=sys.stderr,
-        )
-
-    recalculate_selected_hunk_for_command(
-        replacement.file_path,
-        auto_advance=auto_advance,
-    )
-
-
-def _command_discard_file_lines_to_batch(
-    batch_name: str,
-    file_path: str,
-    line_id_specification: str,
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> int:
-    """Discard specific lines from a file to batch (file-scoped with line IDs)."""
-
-    cached_lines = _discard_file_selection.load_explicit_file_selection(file_path)
-
-    # Annotate with batch source line numbers
-    line_changes = annotate_with_batch_source(file_path, cached_lines)
-
-    # Parse line IDs and filter to selected lines
-    selection = _batch_line_selection.select_lines_for_batch_action(
-        line_changes,
-        line_id_specification,
-    )
-
-    if not selection.selected_lines:
-        if not quiet:
-            print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
-        return 0
-
-    replacement_line_runs = (
-        _discard_line_replacement.derive_live_replacement_line_runs(file_path)
-    )
-
-    _batch_line_updates.add_selected_lines_to_batch(
-        batch_name=batch_name,
-        file_path=file_path,
-        selected_lines=selection.selected_lines,
-        stale_source_action=_("Cannot discard lines to batch"),
-        hunk_lines=line_changes.lines,
-        replacement_line_runs=replacement_line_runs,
-        snapshot_untracked=True,
-    )
-
-    # Now discard selected lines from working tree
-    working_file_path = get_git_repository_root_path() / file_path
-    if not os.path.lexists(working_file_path):
-        exit_with_error(_("File not found in working tree: {file}").format(file=file_path))
-
-    with load_working_tree_file_as_buffer(file_path) as working_lines:
-        target_working_buffer = build_target_working_tree_buffer_from_lines(
-            line_changes,
-            selection.requested_ids,
-            working_lines,
-            working_has_trailing_newline=buffer_ends_with_lf(working_lines),
-        )
-
-    # Write back to working tree
-    with target_working_buffer:
-        write_buffer_to_path(working_file_path, target_working_buffer)
-
-    if not quiet:
-        print(_("Discarded line(s) from file '{file}' to batch '{batch}': {lines}").format(
-            file=file_path,
-            batch=batch_name,
-            lines=line_id_specification
-        ), file=sys.stderr)
-
-    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-    return 1
-
-
-def _command_discard_lines_to_batch(
-    batch_name: str,
-    line_id_specification: str,
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> int:
-    """Save specific lines to batch and discard them from working tree (internal helper)."""
-
-    log_journal("discard_lines_to_batch_start", batch_name=batch_name, line_ids=line_id_specification, quiet=quiet)
-
-    require_selected_hunk()
-
-    line_changes = load_line_changes_from_state()
-    selection = _batch_line_selection.select_lines_for_batch_action(
-        line_changes,
-        line_id_specification,
-    )
-
-    # Filter to requested display line IDs
-    if not selection.selected_lines:
-        exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
-
-    replacement_line_runs = (
-        _discard_line_replacement.derive_live_replacement_line_runs(
-            line_changes.path
-        )
-    )
-
-    _batch_line_updates.add_selected_lines_to_batch(
-        batch_name=batch_name,
-        file_path=line_changes.path,
-        selected_lines=selection.selected_lines,
-        stale_source_action=_("Cannot discard lines to batch"),
-        hunk_lines=line_changes.lines,
-        replacement_line_runs=replacement_line_runs,
-        snapshot_untracked=True,
-        before_add=lambda: log_journal(
-            "discard_lines_to_batch_before_add",
-            batch_name=batch_name,
-            file_path=line_changes.path,
-        ),
-    )
-
-    log_journal("discard_lines_to_batch_after_add", batch_name=batch_name, file_path=line_changes.path)
-
-    # Now discard those lines from working tree
-    working_file_path = get_git_repository_root_path() / line_changes.path
-    if not os.path.lexists(working_file_path):
-        exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
-
-    with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
-        target_working_buffer = build_target_working_tree_buffer_from_lines(
-            line_changes,
-            selection.requested_ids,
-            working_lines,
-            working_has_trailing_newline=buffer_ends_with_lf(working_lines),
-        )
-
-    # Write back to working tree
-    log_journal("discard_lines_to_batch_before_write", file_path=str(working_file_path))
-    with target_working_buffer:
-        write_buffer_to_path(working_file_path, target_working_buffer)
-    log_journal("discard_lines_to_batch_after_write", file_path=str(working_file_path))
-
-    if not quiet:
-        print(_("✓ Discarded line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)
-
-    # After modifying working tree, recalculate and show the updated hunk for this file
-    recalculate_selected_hunk_for_command(line_changes.path, auto_advance=auto_advance)
-
-    log_journal("discard_lines_to_batch_success", batch_name=batch_name, line_ids=line_id_specification, file_path=line_changes.path)
-    return 1
 
 
 def _command_discard_hunk_to_batch(

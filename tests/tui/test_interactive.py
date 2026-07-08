@@ -16,10 +16,9 @@ from unittest.mock import patch
 import pytest
 
 from git_stage_batch.exceptions import BypassRefresh
+from git_stage_batch.tui.action_dispatch import ACTION_HANDLERS, dispatch_action
 from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
-    ACTION_HANDLERS,
-    _dispatch_action,
     start_interactive_mode,
 )
 from git_stage_batch.tui.asset_menu import handle_asset_menu
@@ -110,7 +109,7 @@ class TestActionHandlers:
         )
 
         with patch("git_stage_batch.tui.hunk_actions.command_include") as mock_include:
-            _dispatch_action(
+            dispatch_action(
                 "i",
                 has_hunk=True,
                 use_color=False,
@@ -127,7 +126,7 @@ class TestActionHandlers:
         )
 
         with patch("git_stage_batch.tui.hunk_actions.command_skip") as mock_skip:
-            _dispatch_action(
+            dispatch_action(
                 "s",
                 has_hunk=True,
                 use_color=False,
@@ -150,7 +149,7 @@ class TestActionHandlers:
             with patch(
                 "git_stage_batch.tui.hunk_actions.command_discard"
             ) as mock_discard:
-                _dispatch_action(
+                dispatch_action(
                     "d",
                     has_hunk=True,
                     use_color=False,
@@ -172,7 +171,7 @@ class TestActionHandlers:
 
         with patch("git_stage_batch.commands.status.command_status") as mock_status:
             with pytest.raises(BypassRefresh):
-                _dispatch_action(
+                dispatch_action(
                     "S",
                     has_hunk=False,
                     use_color=False,
@@ -191,7 +190,7 @@ class TestActionHandlers:
         with patch("builtins.input", side_effect=["codex-skills", "commit-*", "yes"]):
             with patch("git_stage_batch.tui.asset_menu.command_install_assets") as mock_install:
                 with pytest.raises(BypassRefresh):
-                    _dispatch_action(
+                    dispatch_action(
                         "A",
                         has_hunk=False,
                         use_color=False,

@@ -93,7 +93,6 @@ from ..data.file_review.state import (
 from ..data.consumed_selections import record_consumed_selection
 from ..data.batch_sources import create_batch_source_commit
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.index_entries import read_index_entry
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
 from ..data.progress import (
@@ -129,12 +128,8 @@ from ..utils.file_io import (
     read_text_file_contents,
 )
 from ..utils.git import (
-    GitIndexEntryUpdate,
     git_add_paths,
     git_apply_to_index,
-    git_update_index,
-    git_update_index_entries,
-    git_update_gitlink,
     require_git_repository,
     run_git_command,
 )
@@ -155,69 +150,12 @@ from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
 )
+from .selection.selected_change_staging import (
+    stage_gitlink_change,
+    stage_rename_change,
+    stage_text_deletion_change,
+)
 from .selection.action_completion import finish_selected_change_action
-
-
-def _update_index_for_gitlink_change(gitlink_change: GitlinkChange):
-    """Stage a submodule pointer change in the index."""
-    file_path = gitlink_change.path()
-    if gitlink_change.is_deleted_file():
-        return git_update_gitlink(
-            file_path=file_path,
-            oid=None,
-            remove=True,
-            check=False,
-        )
-    if gitlink_change.new_oid is None:
-        exit_with_error(
-            _("Cannot stage submodule pointer for {file}: missing target commit.").format(
-                file=file_path,
-            )
-        )
-    return git_update_gitlink(
-        file_path=file_path,
-        oid=gitlink_change.new_oid,
-        check=False,
-    )
-
-
-def _stage_rename_change(rename_change: RenameChange) -> None:
-    """Stage only the structural rename, leaving destination content edits unstaged."""
-    index_entry = read_index_entry(rename_change.old_path)
-    if index_entry is None:
-        exit_with_error(
-            _("Cannot stage rename {old} -> {new}: missing baseline index entry.").format(
-                old=rename_change.old_path,
-                new=rename_change.new_path,
-            )
-        )
-
-    git_update_index_entries(
-        [
-            GitIndexEntryUpdate(file_path=rename_change.old_path, force_remove=True),
-            GitIndexEntryUpdate(
-                file_path=rename_change.new_path,
-                mode=index_entry.mode,
-                blob_sha=index_entry.object_id,
-            ),
-        ]
-    )
-
-
-def _stage_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
-    """Stage a whole-text-file deletion in the index."""
-    result = git_update_index(
-        file_path=deletion_change.path(),
-        force_remove=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        exit_with_error(
-            _("Failed to stage deletion for {file}: {error}").format(
-                file=deletion_change.path(),
-                error=result.stderr,
-            )
-        )
 
 
 class TransientIncludeFailureReason(Enum):
@@ -571,7 +509,7 @@ def command_include(
 
         # Handle based on item type
         if isinstance(item, RenameChange):
-            _stage_rename_change(item)
+            stage_rename_change(item)
             record_hunk_included(patch_hash)
 
             if not quiet:
@@ -590,7 +528,7 @@ def command_include(
             return
 
         if isinstance(item, TextFileDeletionChange):
-            _stage_text_deletion_change(item)
+            stage_text_deletion_change(item)
             record_hunk_included(patch_hash)
 
             if not quiet:
@@ -606,7 +544,7 @@ def command_include(
             return
 
         if isinstance(item, GitlinkChange):
-            result = _update_index_for_gitlink_change(item)
+            result = stage_gitlink_change(item)
             if result.returncode != 0:
                 print(
                     _("Failed to stage submodule pointer: {error}").format(error=result.stderr),
@@ -763,7 +701,7 @@ def command_include_file(
                     if target_file not in (patch.old_path, patch.new_path):
                         continue
 
-                    _stage_rename_change(patch)
+                    stage_rename_change(patch)
                     result = git_add_paths([patch.new_path], check=False)
                     if result.returncode != 0:
                         print(_("Failed to stage renamed file: {error}").format(error=result.stderr), file=sys.stderr)
@@ -778,14 +716,14 @@ def command_include_file(
                     if patch.path() != target_file:
                         continue
 
-                    _stage_text_deletion_change(patch)
+                    stage_text_deletion_change(patch)
                     record_hunk_included(compute_text_file_deletion_hash(patch))
                     hunks_staged += 1
                     continue
 
                 if isinstance(patch, GitlinkChange):
                     if patch.path() == target_file:
-                        result = _update_index_for_gitlink_change(patch)
+                        result = stage_gitlink_change(patch)
                         if result.returncode != 0:
                             print(
                                 _("Failed to stage submodule pointer: {error}").format(

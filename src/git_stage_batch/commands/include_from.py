@@ -165,34 +165,20 @@ def _execute_include_candidate(
                 except (MergeError, ValueError) as e:
                     exit_with_error(str(e))
 
-            preview = _candidate_previews.candidate_preview_for_ordinal(
-                previews,
-                ordinal,
-            )
-            if preview is None:
-                _candidate_previews.close_candidate_previews(previews)
-                exit_with_error(
-                    _("Batch '{batch}' has {count} include candidates for {file}; candidate {ordinal} does not exist.").format(
-                        batch=batch_name,
-                        count=len(previews),
-                        file=file_path,
-                        ordinal=ordinal,
-                    )
-                )
-
             try:
-                if not _candidate_previews.candidate_preview_state_matches(
+                preview = _candidate_previews.require_candidate_preview_for_ordinal(
+                    previews,
+                    ordinal,
+                    batch_name=batch_name,
+                    operation="include",
+                    file_path=file_path,
+                )
+                _candidate_previews.require_candidate_preview_state(
                     preview,
                     ordinal,
-                ):
-                    exit_with_error(
-                        _(
-                            "Candidate selector '{selector}' has not been previewed for {file}.\n"
-                            "No changes applied.\n\n"
-                            "Preview it first with:\n"
-                            "  git-stage-batch show --from {selector} --file {file}"
-                        ).format(selector=raw_selector, file=file_path)
-                    )
+                    selector=raw_selector,
+                    file_path=file_path,
+                )
 
                 index_target = next(target for target in preview.targets if target.target == "index")
                 worktree_target = next(target for target in preview.targets if target.target == "worktree")

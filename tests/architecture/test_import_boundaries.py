@@ -1474,6 +1474,50 @@ def test_tui_cli_escape_does_not_import_dispatch():
     assert "git_stage_batch.tui.interactive" in dispatch_imports
 
 
+def test_tui_batch_menu_owns_batch_management_actions():
+    """TUI batch management should live in the batch menu adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    batch_menu_path = SRC_ROOT / "tui" / "batch_menu.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    batch_menu = __import__(
+        "git_stage_batch.tui.batch_menu",
+        fromlist=["batch_menu"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    batch_menu_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_menu_path)
+    }
+    moved_names = {
+        "_batch_apply",
+        "_batch_create",
+        "_batch_drop",
+        "_batch_edit",
+        "_batch_sift",
+        "_prompt_select_batch",
+    }
+    menu_command_modules = {
+        "git_stage_batch.commands.annotate",
+        "git_stage_batch.commands.apply_from",
+        "git_stage_batch.commands.drop",
+        "git_stage_batch.commands.sift",
+    }
+
+    assert "handle_batch_menu" in vars(batch_menu)
+    assert moved_names.isdisjoint(vars(interactive))
+    assert "git_stage_batch.tui.batch_menu" in interactive_imports
+
+    for imported_module in menu_command_modules:
+        assert imported_module not in interactive_imports
+        assert imported_module in batch_menu_imports
+
+
 def test_tui_file_review_state_name_does_not_shadow_persisted_state():
     """TUI review state should not reuse the persisted file-review state name."""
     review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"

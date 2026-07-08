@@ -2293,6 +2293,35 @@ def test_tui_file_review_block_actions_own_block_commands():
     assert "git_stage_batch.commands.unblock_file" in block_action_imports
 
 
+def test_tui_file_review_fixup_actions_own_line_fixups():
+    """TUI file review fixup actions should own line-fixup command calls."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    fixup_actions_path = SRC_ROOT / "tui" / "file_review" / "fixup_actions.py"
+    fixup_actions = __import__(
+        "git_stage_batch.tui.file_review.fixup_actions",
+        fromlist=["fixup_actions"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    fixup_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(fixup_actions_path)
+    }
+
+    assert {
+        "clear_file_review_fixup_state",
+        "read_last_fixup_commit_hash",
+        "suggest_fixup_for_lines",
+    } <= vars(fixup_actions).keys()
+    assert "git_stage_batch.tui.file_review.fixup_actions" in review_imports
+    assert "git_stage_batch.commands.suggest_fixup" not in review_imports
+    assert "git_stage_batch.data.suggest_fixup_state" not in review_imports
+    assert "git_stage_batch.commands.suggest_fixup" in fixup_action_imports
+    assert "git_stage_batch.data.suggest_fixup_state" in fixup_action_imports
+
+
 def test_commands_do_not_import_tui():
     """Command modules should not launch or depend on TUI modules."""
     violations = []

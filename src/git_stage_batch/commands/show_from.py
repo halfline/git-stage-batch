@@ -8,6 +8,10 @@ import sys
 from contextlib import ExitStack
 from typing import Optional
 
+from ..batch.atomic_file_changes import (
+    binary_change_from_batch_file_metadata,
+    gitlink_change_from_batch_file_metadata,
+)
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     OperationCandidatePreview,
@@ -90,43 +94,13 @@ from ..exceptions import (
     MergeError,
 )
 from ..i18n import _
-from ..core.models import BinaryFileChange, GitlinkChange, LineLevelChange
+from ..core.models import LineLevelChange
 from ..utils.git import get_git_repository_root_path, require_git_repository
 from ..utils.paths import get_context_lines
 
 
 def _batch_source_args(batch_name: str) -> str:
     return f" --from {shlex.quote(batch_name)}"
-
-
-def _render_batch_binary_file_change(file_path: str, file_meta: dict) -> BinaryFileChange | None:
-    """Return an atomic binary batch change for display, if the entry is binary."""
-    if file_meta.get("file_type") != "binary":
-        return None
-    change_type = file_meta.get("change_type")
-    if change_type not in ("added", "modified", "deleted"):
-        return None
-    return BinaryFileChange(
-        old_path="/dev/null" if change_type == "added" else file_path,
-        new_path="/dev/null" if change_type == "deleted" else file_path,
-        change_type=change_type,
-    )
-
-
-def _render_batch_gitlink_change(file_path: str, file_meta: dict) -> GitlinkChange | None:
-    """Return an atomic submodule pointer batch change, if the entry is one."""
-    if file_meta.get("file_type") != "gitlink":
-        return None
-    change_type = file_meta.get("change_type")
-    if change_type not in ("added", "modified", "deleted"):
-        return None
-    return GitlinkChange(
-        old_path="/dev/null" if change_type == "added" else file_path,
-        new_path="/dev/null" if change_type == "deleted" else file_path,
-        old_oid=file_meta.get("old_oid"),
-        new_oid=file_meta.get("new_oid"),
-        change_type=change_type,
-    )
 
 
 def _shown_pages_for_display_ids(review_model, display_ids: set[int]) -> tuple[int, ...]:
@@ -486,7 +460,10 @@ def command_show_from_batch(
         # Show specific file from batch
         # Get the resolved file path
         file_path = list(files.keys())[0]
-        binary_change = _render_batch_binary_file_change(file_path, files[file_path])
+        binary_change = binary_change_from_batch_file_metadata(
+            file_path,
+            files[file_path],
+        )
         if binary_change is not None:
             if selected_ids:
                 exit_with_error(
@@ -509,7 +486,10 @@ def command_show_from_batch(
             print_binary_file_change(binary_change)
             return
 
-        gitlink_change = _render_batch_gitlink_change(file_path, files[file_path])
+        gitlink_change = gitlink_change_from_batch_file_metadata(
+            file_path,
+            files[file_path],
+        )
         if gitlink_change is not None:
             if selected_ids:
                 exit_with_error(
@@ -669,11 +649,11 @@ def command_show_from_batch(
 
     entries = []
     for file_path, file_meta in files.items():
-        binary_change = _render_batch_binary_file_change(file_path, file_meta)
+        binary_change = binary_change_from_batch_file_metadata(file_path, file_meta)
         if binary_change is not None:
             entries.append(make_binary_file_review_list_entry(binary_change))
             continue
-        gitlink_change = _render_batch_gitlink_change(file_path, file_meta)
+        gitlink_change = gitlink_change_from_batch_file_metadata(file_path, file_meta)
         if gitlink_change is not None:
             entries.append(make_gitlink_file_review_list_entry(gitlink_change))
             continue

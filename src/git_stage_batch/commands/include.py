@@ -59,11 +59,6 @@ from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
 )
-from ..data.file_change_display import (
-    render_binary_file_change,
-    render_gitlink_change,
-    render_text_deletion_change,
-)
 from ..data.file_hunk_display import (
     cache_unstaged_file_as_single_hunk,
 )
@@ -84,7 +79,7 @@ from ..data.progress import (
     record_hunk_skipped,
 )
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
-from ..data.session import require_session_started, snapshot_file_if_untracked
+from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
 from ..core.buffer import (
     LineBuffer,
@@ -130,6 +125,7 @@ from .selection import batch_line_selection as _batch_line_selection
 from .selection import batch_line_updates as _batch_line_updates
 from .selection import whole_file_batch_staging as _whole_file_batch_staging
 from .file_scope import include_file_replacement as _file_scope_include_file_replacement
+from .file_scope import include_file_to_batch as _file_scope_include_file_to_batch
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -953,7 +949,7 @@ def command_include_to_batch(
 
             if line_ids is None:
                 # --file without --line: include entire file
-                _command_include_file_to_batch(
+                _file_scope_include_file_to_batch.include_file_to_batch(
                     batch_name,
                     target_file,
                     quiet=quiet,
@@ -987,129 +983,6 @@ def command_include_to_batch(
                 )
     if original_file_scope in (None, "") and line_ids is not None:
         finish_review_scoped_line_action(review_state)
-
-
-def _command_include_file_to_batch(
-    batch_name: str,
-    file_path: str,
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Include entire file to batch (internal helper for file-scoped operations)."""
-    auto_add_untracked_files([file_path])
-
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    deletion_change = render_text_deletion_change(file_path)
-    if deletion_change is not None:
-        _whole_file_batch_staging.include_text_deletion_to_batch(
-            batch_name,
-            deletion_change,
-            quiet=quiet,
-            auto_advance=auto_advance,
-        )
-        return
-
-    binary_change = render_binary_file_change(file_path)
-    if binary_change is not None:
-        _whole_file_batch_staging.include_binary_to_batch(
-            batch_name,
-            binary_change,
-            quiet=quiet,
-            auto_advance=auto_advance,
-        )
-        return
-    gitlink_change = render_gitlink_change(file_path)
-    if gitlink_change is not None:
-        _whole_file_batch_staging.include_gitlink_to_batch(
-            batch_name,
-            gitlink_change,
-            quiet=quiet,
-            auto_advance=auto_advance,
-        )
-        return
-
-    # Detect file mode
-    file_mode = detect_file_mode(file_path)
-
-    # Collect ALL hunks from this file (live working tree state)
-    all_lines_to_batch = []
-
-    with acquire_unified_diff(
-        stream_live_git_diff(
-            base="HEAD",
-            context_lines=get_context_lines(),
-            paths=[file_path],
-        )
-    ) as patches:
-        for patch in patches:
-            if isinstance(patch, (RenameChange, TextFileDeletionChange)):
-                continue
-            hunk_lines = build_line_changes_from_patch_lines(
-                patch.lines,
-                annotator=annotate_with_batch_source,
-            )
-            all_lines_to_batch.extend(hunk_lines.lines)
-
-    if not all_lines_to_batch:
-        if (
-            _whole_file_batch_staging.save_empty_text_lifecycle_to_batch(
-                batch_name,
-                file_path,
-                file_mode,
-            )
-            is not None
-        ):
-            if not quiet:
-                print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
-            finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-            return
-
-        if not quiet:
-            print(_("No changes in file '{file}' to include.").format(file=file_path), file=sys.stderr)
-        return
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(file_path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    file_metadata=file_metadata,
-                    selected_lines=all_lines_to_batch,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot include file to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\nBatch: {batch}\nError: {error}").format(
-                    file=file_path, batch=batch_name, error=str(e))
-            )
-
-        # Snapshot file before modifying
-        snapshot_file_if_untracked(file_path)
-
-        # Save to batch
-        add_file_to_batch(
-            batch_name,
-            file_path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
-        )
-
-    if not quiet:
-        print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
-
-    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
 
 
 def _command_include_file_lines_to_batch(

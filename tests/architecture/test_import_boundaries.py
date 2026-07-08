@@ -1420,16 +1420,24 @@ def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
         "discard_files_to_batch",
     }
     moved_names = {
-        "CollectedTextFileDiscards",
         "DiscardFilesToBatchResult",
-        "PreparedPatchDiscard",
-        "PreparedTextFileDiscardToBatch",
-        "TextFileDiscardInput",
         "_collect_text_file_discard_inputs",
         "_discard_prepared_text_files_to_batch",
         "_prepare_text_file_discard_to_batch",
         "_run_reverse_apply_for_prepared_discards",
         "discard_files_to_batch",
+    }
+    internal_record_names = {
+        "_CollectedTextFileDiscards",
+        "_PreparedPatchDiscard",
+        "_PreparedTextFileDiscardToBatch",
+        "_TextFileDiscardInput",
+    }
+    old_public_record_names = {
+        "CollectedTextFileDiscards",
+        "PreparedPatchDiscard",
+        "PreparedTextFileDiscardToBatch",
+        "TextFileDiscardInput",
     }
     helper_imports = {
         "BatchFileUpdate",
@@ -1440,6 +1448,8 @@ def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
     }
 
     assert public_names <= vars(helper).keys()
+    assert internal_record_names <= vars(helper).keys()
+    assert old_public_record_names.isdisjoint(vars(helper).keys())
 
     discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
     discard_names = {

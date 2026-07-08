@@ -4000,6 +4000,61 @@ def test_discard_file_selection_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_include_file_selection_stays_in_command_helper():
+    """Include file selection should stay out of the command entrypoint."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "include_file_selection.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.include_file_selection",
+        fromlist=["include_file_selection"],
+    )
+    public_names = {"load_explicit_file_selection"}
+    helper_imports = {
+        "cache_unstaged_file_as_single_hunk",
+        "load_line_changes_from_state",
+        "render_gitlink_change",
+        "selected_file_view_targets",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    include_imports_helper = False
+
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "include_file_selection" in imported_names:
+            include_imports_helper = True
+
+    line_function_names = {
+        node.id
+        for node in ast.walk(functions["_command_include_file_lines_to_batch"])
+        if isinstance(node, ast.Name)
+    }
+    line_function_attributes = {
+        node.attr
+        for node in ast.walk(functions["_command_include_file_lines_to_batch"])
+        if isinstance(node, ast.Attribute)
+    }
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert include_imports_helper
+    assert "load_explicit_file_selection" in line_function_attributes
+    assert helper_imports.isdisjoint(line_function_names)
+    assert helper_imports <= helper_imported_names
+
+
 def test_discard_line_selection_stays_in_command_helper():
     """Discard line-selection editing should stay out of the command entrypoint."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

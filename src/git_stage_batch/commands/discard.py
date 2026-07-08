@@ -19,18 +19,13 @@ from ..batch.storage import (
 from ..batch.display import annotate_with_batch_source
 from ..batch.ownership import (
     BatchOwnership,
-    remap_batch_ownership_with_lineage,
-    merge_batch_ownership,
-    translate_lines_to_batch_ownership,
 )
-from ..batch.source_advancement import advance_source_lines_preserving_existing_presence
 from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
 )
 from ..batch.query import read_batch_metadata
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
-from ..batch.source_refresh import refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     acquire_unified_diff,
@@ -87,7 +82,6 @@ from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
 from ..data.progress import record_hunk_discarded, record_hunks_discarded
-from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
 from ..data.session import require_session_started, snapshot_file_if_untracked, snapshot_files_if_untracked
 from ..data.undo import undo_checkpoint
 from ..core.buffer import (
@@ -96,7 +90,6 @@ from ..core.buffer import (
     write_buffer_to_path,
 )
 from ..data.repository_buffers import (
-    load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
@@ -935,100 +928,10 @@ def _command_discard_lines_to_batch_as(
             replacement_text,
             no_edge_overlap=no_edge_overlap,
         ) as replacement:
-            if not batch_exists(batch_name):
-                create_batch(batch_name, "Auto-created")
-
-            metadata = read_batch_metadata(batch_name)
-            file_metadata = metadata.get("files", {}).get(replacement.file_path)
-            batch_source_commit = None
-
-            with ExitStack() as ownership_stack:
-                try:
-                    if file_metadata is None:
-                        update = ownership_stack.enter_context(
-                            acquire_batch_ownership_update_for_selection(
-                                batch_name=batch_name,
-                                file_path=replacement.file_path,
-                                file_metadata=None,
-                                selected_lines=replacement.rewritten_selected_lines,
-                            )
-                        )
-                        ownership = update.ownership_after
-                        batch_source_commit = update.batch_source_commit
-                    else:
-                        current_batch_source = file_metadata.get("batch_source_commit")
-                        existing_ownership = ownership_stack.enter_context(
-                            BatchOwnership.acquire_for_metadata_dict(file_metadata)
-                        )
-                        old_source_buffer = load_git_object_as_buffer(
-                            f"{current_batch_source}:{replacement.file_path}"
-                        )
-                        if old_source_buffer is None:
-                            exit_with_error(
-                                _("Cannot discard lines to batch: failed to read batch source for '{file}'.").format(
-                                    file=replacement.file_path
-                                )
-                            )
-
-                        with (
-                            old_source_buffer as old_source_lines,
-                            advance_source_lines_preserving_existing_presence(
-                                old_lines=old_source_lines,
-                                working_lines=replacement.rewritten_working_lines,
-                                ownership=existing_ownership,
-                            ) as source_with_provenance,
-                        ):
-                            remapped_existing_ownership = remap_batch_ownership_with_lineage(
-                                ownership=existing_ownership,
-                                lineage=source_with_provenance.lineage,
-                            )
-                            refreshed_selected_lines = refresh_selected_lines_against_source_lines(
-                                replacement.rewritten_selected_lines,
-                                source_lines=source_with_provenance.source_buffer,
-                                working_lines=(),
-                                lineage=source_with_provenance.lineage,
-                            )
-                            new_ownership = translate_lines_to_batch_ownership(
-                                refreshed_selected_lines
-                            )
-                            ownership = merge_batch_ownership(
-                                remapped_existing_ownership,
-                                new_ownership,
-                            )
-                            batch_source_commit = create_batch_source_commit(
-                                replacement.file_path,
-                                file_buffer_override=source_with_provenance.source_buffer,
-                            )
-                            batch_sources = load_session_batch_sources()
-                            batch_sources[replacement.file_path] = batch_source_commit
-                            save_session_batch_sources(batch_sources)
-                except ValueError as e:
-                    exit_with_error(
-                        _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-                          "File: {file}\n"
-                          "Batch: {batch}\n"
-                          "Error: {error}").format(file=replacement.file_path, batch=batch_name, error=str(e))
-                    )
-
-                file_mode = detect_file_mode(replacement.file_path)
-
-                if batch_source_commit is None:
-                    batch_source_commit = create_batch_source_commit(
-                        replacement.file_path,
-                        file_buffer_override=replacement.rewritten_working_lines,
-                    )
-                    batch_sources = load_session_batch_sources()
-                    batch_sources[replacement.file_path] = batch_source_commit
-                    save_session_batch_sources(batch_sources)
-
-                snapshot_file_if_untracked(replacement.file_path)
-                add_file_to_batch(
-                    batch_name,
-                    replacement.file_path,
-                    ownership,
-                    file_mode,
-                    batch_source_commit=batch_source_commit,
-                )
+            _discard_line_replacement.add_discard_line_replacement_to_batch(
+                batch_name,
+                replacement,
+            )
 
             target_working_buffer = (
                 _discard_line_replacement.build_discard_line_replacement_target_buffer(

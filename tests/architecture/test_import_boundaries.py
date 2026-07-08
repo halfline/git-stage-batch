@@ -3990,6 +3990,7 @@ def test_batch_source_action_plans_own_resource_plans():
         "ApplyTextFileActionPlan",
         "BatchSourceActionPlan",
         "BinaryFileActionPlan",
+        "IncludeTextFileActionPlan",
         "SubmodulePointerActionPlan",
         "close_action_plans",
     }
@@ -4001,6 +4002,7 @@ def test_batch_source_action_plans_own_resource_plans():
     }
     old_include_names = {
         "_IncludeBinaryPlan",
+        "_IncludeTextPlan",
         "_IncludeSubmodulePlan",
         "_close_include_plans",
     }

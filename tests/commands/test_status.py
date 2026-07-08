@@ -24,7 +24,7 @@ from git_stage_batch.commands.skip import command_skip, command_skip_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.status import command_status
 from git_stage_batch.core.line_selection import format_line_ids
-from git_stage_batch.data.file_review_state import read_last_file_review_state
+from git_stage_batch.data.file_review.state import read_last_file_review_state
 from git_stage_batch.exceptions import CommandError
 
 

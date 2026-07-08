@@ -28,7 +28,7 @@ from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
 from git_stage_batch.core.actionable_changes import ActionableSelectionReason
 import git_stage_batch.data.hunk_tracking as hunk_tracking_module
-from git_stage_batch.data.file_review_state import (
+from git_stage_batch.data.file_review.state import (
     FileReviewAction,
     ReviewSource,
     read_last_file_review_state,

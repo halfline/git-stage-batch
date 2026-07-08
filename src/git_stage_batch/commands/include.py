@@ -79,7 +79,7 @@ from ..data.hunk_tracking import (
     snapshots_are_stale,
     stream_live_git_diff,
 )
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     FileReviewAction,
     clear_last_file_review_state_if_file_matches,
     finish_review_scoped_line_action,

@@ -18,7 +18,7 @@ from ..core.hashing import (
 )
 from ..core.diff_parser import acquire_unified_diff
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     FileReviewAction,
     ReviewSource,
     read_last_file_review_state,

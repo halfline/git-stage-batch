@@ -237,7 +237,7 @@ def restore_selected_change_state(snapshot: SelectedChangeStateSnapshot) -> None
 
 def clear_selected_change_state_files() -> None:
     """Clear all cached selected hunk state files."""
-    from .file_review_state import clear_last_file_review_state
+    from .file_review.state import clear_last_file_review_state
 
     for path in _selected_change_state_paths().values():
         path.unlink(missing_ok=True)

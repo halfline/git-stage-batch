@@ -38,7 +38,7 @@ from ..data.hunk_tracking import (
     require_selected_hunk,
     stream_live_git_diff,
 )
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     FileReviewAction,
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,

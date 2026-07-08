@@ -99,6 +99,7 @@ from ..data.session import require_session_started, snapshot_file_if_untracked, 
 from ..data.undo import undo_checkpoint
 from ..core.buffer import (
     LineBuffer,
+    buffer_ends_with_lf,
     write_buffer_to_path,
 )
 from ..data.repository_buffers import (
@@ -187,14 +188,6 @@ class _PreparedTextFileDiscardToBatch:
 class DiscardFilesToBatchResult:
     discarded_hunks: int
     discarded_files: list[str]
-
-
-def _buffer_ends_with_lf(buffer: LineBuffer) -> bool:
-    last_chunk = b""
-    for chunk in buffer.byte_chunks():
-        if chunk:
-            last_chunk = chunk
-    return bool(last_chunk) and last_chunk.endswith(b"\n")
 
 
 def _load_explicit_file_selection(file_path: str):
@@ -736,7 +729,7 @@ def command_discard_line(
                 line_changes,
                 set(requested_ids),
                 working_lines,
-                working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+                working_has_trailing_newline=buffer_ends_with_lf(working_lines),
             )
 
         # Write back to working tree
@@ -1045,7 +1038,7 @@ def _command_discard_lines_to_batch_as(
                     effective_ids,
                     replacement_payload,
                     working_lines,
-                    working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+                    working_has_trailing_newline=buffer_ends_with_lf(working_lines),
                     trim_unchanged_edge_anchors=not no_edge_overlap,
                 )
             )
@@ -1170,7 +1163,7 @@ def _command_discard_lines_to_batch_as(
                 rewritten_line_changes,
                 rewritten_selected_ids,
                 rewritten_working_lines,
-                working_has_trailing_newline=_buffer_ends_with_lf(rewritten_working_lines),
+                working_has_trailing_newline=buffer_ends_with_lf(rewritten_working_lines),
             )
 
     except Exception:
@@ -1876,7 +1869,7 @@ def _command_discard_file_lines_to_batch(
             line_changes,
             requested_ids,
             working_lines,
-            working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+            working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
 
     # Write back to working tree
@@ -1978,7 +1971,7 @@ def _command_discard_lines_to_batch(
             line_changes,
             requested_ids,
             working_lines,
-            working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+            working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
 
     # Write back to working tree

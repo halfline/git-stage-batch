@@ -18,7 +18,7 @@ import pytest
 import git_stage_batch.commands.show as show_module
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.data.selected_change.store import get_selected_change_file_path
+from git_stage_batch.data.selected_change.paths import get_selected_change_file_path
 from git_stage_batch.data.line_state import load_line_changes_from_state
 
 

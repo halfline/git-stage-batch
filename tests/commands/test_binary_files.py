@@ -28,9 +28,9 @@ from git_stage_batch.data.file_tracking import auto_add_untracked_files
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
-    get_selected_change_file_path,
     read_selected_change_kind,
 )
+from git_stage_batch.data.selected_change.paths import get_selected_change_file_path
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git import run_git_command

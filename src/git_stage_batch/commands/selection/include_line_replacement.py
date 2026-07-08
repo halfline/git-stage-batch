@@ -9,6 +9,7 @@ from ...core.buffer import LineBuffer
 from ...core.line_selection import parse_line_selection
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.consumed_selections import record_consumed_selection
+from ...data.file_hunk_display import render_unstaged_file_as_single_hunk
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.operations import (
@@ -78,3 +79,69 @@ def apply_include_line_replacement(
             ],
         },
     )
+
+
+def _line_identity_for_live_replacement(line) -> tuple[str, int | None, bytes, bool]:
+    """Return a stable identity for a changed line in a live file view."""
+    return (
+        line.kind,
+        line.source_line,
+        line.text_bytes,
+        line.has_trailing_newline,
+    )
+
+
+def translate_file_view_replacement_to_unstaged_diff(
+    line_changes,
+    requested_ids: set[int],
+):
+    """Map file-vs-HEAD review IDs to the current unstaged diff, if possible."""
+    effective_ids = replacement_selection.expand_replacement_selection_ids(
+        line_changes,
+        requested_ids,
+    )
+    selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
+    if not selected_lines:
+        return None
+
+    unstaged_line_changes = render_unstaged_file_as_single_hunk(line_changes.path)
+    if unstaged_line_changes is None:
+        return None
+
+    annotated_selected_changes = (
+        _include_line_selection.annotate_line_changes_with_working_tree_source(
+            line_changes
+        )
+    )
+    annotated_unstaged_changes = (
+        _include_line_selection.annotate_line_changes_with_working_tree_source(
+            unstaged_line_changes
+        )
+    )
+    if annotated_selected_changes is None or annotated_unstaged_changes is None:
+        return None
+
+    unstaged_ids_by_identity: dict[tuple[str, int | None, bytes, bool], list[int]] = {}
+    for line in annotated_unstaged_changes.lines:
+        if line.id is None:
+            continue
+        unstaged_ids_by_identity.setdefault(
+            _line_identity_for_live_replacement(line),
+            [],
+        ).append(line.id)
+
+    translated_ids: list[int] = []
+    for line in annotated_selected_changes.lines:
+        if line.id not in effective_ids:
+            continue
+        candidate_ids = unstaged_ids_by_identity.get(
+            _line_identity_for_live_replacement(line),
+        )
+        if not candidate_ids:
+            return None
+        translated_ids.append(candidate_ids.pop(0))
+
+    if not translated_ids:
+        return None
+
+    return annotated_unstaged_changes, set(translated_ids)

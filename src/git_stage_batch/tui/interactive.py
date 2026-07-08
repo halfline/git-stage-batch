@@ -15,7 +15,7 @@ from ..exceptions import BypassRefresh, CommandError, QuitInteractive
 from ..i18n import _
 from ..output.colors import Colors
 from ..output.hunk import print_line_level_changes
-from ..utils.file_io import read_text_file_contents, write_text_file_contents
+from ..utils.file_io import write_text_file_contents
 from ..utils.git import run_git_command
 from ..utils.paths import (
     get_selected_hunk_hash_file_path,
@@ -40,8 +40,8 @@ from .hunk_actions import (
 from .line_selection_menu import handle_line_selection_menu
 from .prompts import (
     prompt_action,
-    prompt_quit_session,
 )
+from .session_quit import handle_quit
 from .shell_command import handle_shell_command
 
 
@@ -296,55 +296,3 @@ def start_interactive_mode() -> None:
             should_refresh = False
         except QuitInteractive:
             break
-
-
-def handle_quit(*, stop_session: bool = True) -> None:
-    """
-    Handle quit action with smart quit logic.
-
-    Checks if any changes were made (HEAD, index tree, or discards).
-    If no changes, silently stops. If changes exist, prompts user.
-    """
-    from ..commands.stop import command_stop
-    from ..commands.abort import command_abort
-
-    print()  # Move to new line after Action: prompt
-
-    # Check if any changes were made
-    start_head_file = get_start_head_file_path()
-    start_index_tree_file = get_start_index_tree_file_path()
-
-    if not start_head_file.exists() or not start_index_tree_file.exists():
-        # No start state recorded, just stop
-        if stop_session:
-            command_stop()
-        return
-
-    start_head = read_text_file_contents(start_head_file).strip()
-    start_index_tree = read_text_file_contents(start_index_tree_file).strip()
-
-    # Check selected state
-    selected_head = run_git_command(["rev-parse", "HEAD"], requires_index_lock=False).stdout.strip()
-    selected_index_tree = run_git_command(["write-tree"], requires_index_lock=False).stdout.strip()
-
-    # Check if any discards happened
-    stats = get_hunk_counts()
-    has_discards = stats.get("discarded", 0) > 0
-
-    # If nothing changed, silently stop
-    if selected_head == start_head and selected_index_tree == start_index_tree and not has_discards:
-        if stop_session:
-            command_stop()
-        return
-
-    # Changes exist, prompt user
-    choice = prompt_quit_session()
-
-    if choice == "keep":
-        if stop_session:
-            command_stop()
-    elif choice == "undo":
-        command_abort()
-    else:  # cancel
-        # Return to main loop (don't exit)
-        return

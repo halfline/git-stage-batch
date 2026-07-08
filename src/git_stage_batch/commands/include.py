@@ -41,12 +41,8 @@ from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFil
 from ..data.hunk_tracking import (
     fetch_next_change,
 )
-from ..data.selected_change.hunk_filtering import (
-    apply_line_level_batch_filter_to_cached_hunk,
-)
 from ..data.selected_change.loading import (
     load_selected_change,
-    require_selected_hunk,
 )
 from ..data.selected_change.store import (
     SelectedChangeKind,
@@ -72,13 +68,11 @@ from ..data.file_review.state import (
     resolve_live_to_batch_action_scope,
 )
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
 from ..data.progress import (
     record_hunk_included,
     record_hunk_skipped,
 )
-from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
 from ..core.buffer import (
@@ -90,7 +84,6 @@ from ..data.repository_buffers import (
 )
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output.hunk import print_line_level_changes
 from ..staging.operations import (
     build_target_index_buffer_from_lines,
     update_index_with_blob_buffer,
@@ -118,11 +111,9 @@ from ..utils.paths import (
     get_working_tree_snapshot_file_path,
 )
 from .selection import include_line_selection as _include_line_selection
-from .selection import include_file_selection as _include_file_selection
+from .selection import include_line_batching as _include_line_batching
 from .selection import include_line_replacement as _include_line_replacement
 from .selection import replacement_selection
-from .selection import batch_line_selection as _batch_line_selection
-from .selection import batch_line_updates as _batch_line_updates
 from .selection import whole_file_batch_staging as _whole_file_batch_staging
 from .file_scope import include_file_replacement as _file_scope_include_file_replacement
 from .file_scope import include_file_to_batch as _file_scope_include_file_to_batch
@@ -957,7 +948,7 @@ def command_include_to_batch(
                 )
             else:
                 # --file with --line: include specific lines from file
-                _command_include_file_lines_to_batch(
+                _include_line_batching.include_file_lines_to_batch(
                     batch_name,
                     target_file,
                     line_ids,
@@ -967,7 +958,7 @@ def command_include_to_batch(
         else:
             # Hunk-scoped operation (selected behavior)
             if line_ids is not None:
-                _command_include_lines_to_batch(
+                _include_line_batching.include_selected_lines_to_batch(
                     batch_name,
                     line_ids,
                     quiet=quiet,
@@ -983,109 +974,6 @@ def command_include_to_batch(
                 )
     if original_file_scope in (None, "") and line_ids is not None:
         finish_review_scoped_line_action(review_state)
-
-
-def _command_include_file_lines_to_batch(
-    batch_name: str,
-    file_path: str,
-    line_id_specification: str,
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Include specific lines from a file to batch (file-scoped with line IDs)."""
-    cached_lines = _include_file_selection.load_explicit_file_selection(file_path)
-    # Annotate with batch source line numbers
-    line_changes = annotate_with_batch_source(file_path, cached_lines)
-    _include_line_selection.record_baseline_references_for_additions(line_changes)
-
-    # Parse line IDs and filter to selected lines
-    selection = _batch_line_selection.select_lines_for_batch_action(
-        line_changes,
-        line_id_specification,
-    )
-
-    if not selection.selected_lines:
-        if not quiet:
-            print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
-        return
-
-    _batch_line_updates.add_selected_lines_to_batch(
-        batch_name=batch_name,
-        file_path=file_path,
-        selected_lines=selection.selected_lines,
-        stale_source_action=_("Cannot include lines to batch"),
-        snapshot_untracked=True,
-    )
-
-    if not quiet:
-        print(_("Included line(s) from file '{file}' to batch '{batch}': {lines}").format(
-            file=file_path,
-            batch=batch_name,
-            lines=line_id_specification
-        ), file=sys.stderr)
-
-    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-
-
-def _command_include_lines_to_batch(
-    batch_name: str,
-    line_id_specification: str,
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Save specific lines to batch (internal helper)."""
-
-    require_selected_hunk()
-
-    line_changes = load_line_changes_from_state()
-    _include_line_selection.record_baseline_references_for_additions(line_changes)
-    selection = _batch_line_selection.select_lines_for_batch_action(
-        line_changes,
-        line_id_specification,
-    )
-
-    # Filter to requested display line IDs
-    if not selection.selected_lines:
-        exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
-
-    _batch_line_updates.add_selected_lines_to_batch(
-        batch_name=batch_name,
-        file_path=line_changes.path,
-        selected_lines=selection.selected_lines,
-        stale_source_action=_("Cannot include lines to batch"),
-    )
-
-    if not quiet:
-        print(_("✓ Included line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)
-
-    # Recalculate and show the updated hunk for this file with batched lines filtered out
-    recalculate_selected_hunk_for_command(line_changes.path, auto_advance=auto_advance)
-
-
-def _filter_selected_hunk_excluding_batched_lines(
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Filter the selected hunk to exclude lines that have been batched and display it."""
-
-    # Apply filtering
-    if apply_line_level_batch_filter_to_cached_hunk():
-        # All lines were batched, advance to next hunk
-        clear_selected_change_state_files()
-        if not quiet:
-            print(_("No more lines in this hunk."), file=sys.stderr)
-
-        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-        return
-
-    # Display filtered hunk
-    if not quiet:
-        line_changes = load_line_changes_from_state()
-        if line_changes is not None:
-            print_line_level_changes(line_changes)
 
 
 def _command_include_hunk_to_batch(

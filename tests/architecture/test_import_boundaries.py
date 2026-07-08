@@ -2628,9 +2628,10 @@ def test_selected_line_source_refresh_uses_public_api():
         "_refresh_selected_lines_against_source_lines",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "discard.py": {
-            "refresh_selected_lines_against_source_lines",
-        },
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "discard_line_replacement.py": {"refresh_selected_lines_against_source_lines"},
         SRC_ROOT / "data" / "consumed_selections.py": public_names,
     }
     violations = []
@@ -2734,7 +2735,10 @@ def test_batch_ownership_uses_public_lineage_remapping():
         "BatchSourceAdvanceResult",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "discard.py": public_names,
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "discard_line_replacement.py": public_names,
         SRC_ROOT / "batch" / "source_advancement.py": public_names,
     }
     violations = []
@@ -2792,7 +2796,10 @@ def test_batch_source_advancement_uses_public_entry_helpers():
         "_advance_batch_source_for_file_with_provenance",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "discard.py": {
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "discard_line_replacement.py": {
             "advance_source_lines_preserving_existing_presence",
         },
         SRC_ROOT / "batch" / "source_refresh.py": {
@@ -4215,27 +4222,57 @@ def test_discard_line_replacement_stays_in_command_helper():
     )
     public_names = {
         "DiscardLineReplacementSelection",
+        "add_discard_line_replacement_to_batch",
         "build_discard_line_replacement_target_buffer",
         "derive_live_replacement_line_runs",
         "prepare_discard_line_replacement_selection",
     }
     old_discard_names = {
+        "_add_discard_line_replacement_to_batch",
         "_derive_live_replacement_line_runs",
         "_select_rewritten_replacement_lines",
     }
     helper_imports = {
+        "BatchOwnership",
+        "acquire_batch_ownership_update_for_selection",
+        "add_file_to_batch",
+        "advance_source_lines_preserving_existing_presence",
         "annotate_with_batch_source_working_lines",
+        "batch_exists",
         "build_file_hunk_from_buffer",
         "build_target_working_tree_buffer_from_lines",
         "build_target_working_tree_buffer_with_replaced_lines",
         "coerce_replacement_payload",
+        "create_batch",
+        "create_batch_source_commit",
+        "detect_file_mode",
         "derive_replacement_line_runs_from_lines",
+        "load_git_object_as_buffer",
         "load_git_object_as_buffer_or_empty",
         "load_line_changes_from_state",
+        "load_session_batch_sources",
         "load_working_tree_file_as_buffer",
+        "merge_batch_ownership",
         "parse_line_selection",
+        "read_batch_metadata",
+        "refresh_selected_lines_against_source_lines",
         "replacement_selection",
+        "remap_batch_ownership_with_lineage",
         "require_line_selection_in_view",
+        "save_session_batch_sources",
+        "snapshot_file_if_untracked",
+        "translate_lines_to_batch_ownership",
+    }
+    moved_batch_update_names = {
+        "advance_source_lines_preserving_existing_presence",
+        "create_batch_source_commit",
+        "load_git_object_as_buffer",
+        "load_session_batch_sources",
+        "merge_batch_ownership",
+        "refresh_selected_lines_against_source_lines",
+        "remap_batch_ownership_with_lineage",
+        "save_session_batch_sources",
+        "translate_lines_to_batch_ownership",
     }
 
     assert public_names <= vars(helper).keys()
@@ -4243,6 +4280,11 @@ def test_discard_line_replacement_stays_in_command_helper():
     discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
     discard_helpers = {
         node.name for node in ast.walk(discard_tree) if isinstance(node, ast.FunctionDef)
+    }
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
     }
     discard_imports_helper = False
 
@@ -4256,8 +4298,14 @@ def test_discard_line_replacement_stays_in_command_helper():
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
+    command_update_names = {
+        node.id
+        for node in ast.walk(discard_functions["_command_discard_lines_to_batch_as"])
+        if isinstance(node, ast.Name)
+    }
 
     assert old_discard_names.isdisjoint(discard_helpers)
+    assert moved_batch_update_names.isdisjoint(command_update_names)
     assert discard_imports_helper
     assert helper_imports <= helper_imported_names
 

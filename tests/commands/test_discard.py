@@ -832,7 +832,10 @@ class TestCommandDiscardToBatch:
         command_start()
         fetch_next_change()
 
-        with patch("git_stage_batch.commands.discard.add_file_to_batch", side_effect=RuntimeError("boom")):
+        with patch(
+            "git_stage_batch.commands.selection.discard_line_replacement.add_file_to_batch",
+            side_effect=RuntimeError("boom"),
+        ):
             with pytest.raises(RuntimeError, match="boom"):
                 command_discard_line_as_to_batch(
                     "feature-batch",

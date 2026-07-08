@@ -142,6 +142,7 @@ from ..utils.paths import (
 from .selection import include_line_selection as _include_line_selection
 from .selection import include_line_replacement as _include_line_replacement
 from .selection import replacement_selection
+from .selection import batch_line_selection as _batch_line_selection
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -1406,15 +1407,12 @@ def _command_include_file_lines_to_batch(
     _include_line_selection.record_baseline_references_for_additions(line_changes)
 
     # Parse line IDs and filter to selected lines
-    requested_ids = set(parse_line_selection(line_id_specification))
-    require_line_selection_in_view(
+    selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
+        line_id_specification,
     )
-    selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
 
-    if not selected_lines:
+    if not selection.selected_lines:
         if not quiet:
             print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
         return
@@ -1437,7 +1435,7 @@ def _command_include_file_lines_to_batch(
                     batch_name=batch_name,
                     file_path=file_path,
                     file_metadata=file_metadata,
-                    selected_lines=selected_lines,
+                    selected_lines=selection.selected_lines,
                 )
             )
         except ValueError as e:
@@ -1480,18 +1478,15 @@ def _command_include_lines_to_batch(
 
     require_selected_hunk()
 
-    requested_ids = set(parse_line_selection(line_id_specification))
     line_changes = load_line_changes_from_state()
     _include_line_selection.record_baseline_references_for_additions(line_changes)
-    require_line_selection_in_view(
+    selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
+        line_id_specification,
     )
 
     # Filter to requested display line IDs
-    selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
-    if not selected_lines:
+    if not selection.selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
     # Auto-create batch if it doesn't exist
@@ -1512,7 +1507,7 @@ def _command_include_lines_to_batch(
                     batch_name=batch_name,
                     file_path=line_changes.path,
                     file_metadata=file_metadata,
-                    selected_lines=selected_lines,
+                    selected_lines=selection.selected_lines,
                 )
             )
         except ValueError as e:

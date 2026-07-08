@@ -7,14 +7,9 @@ import sys
 
 from ..batch.operations import create_batch
 from ..batch.storage import (
-    add_binary_file_to_batch,
     add_file_to_batch,
-    add_gitlink_to_batch,
 )
 from ..batch.display import annotate_with_batch_source
-from ..batch.ownership import (
-    BatchOwnership,
-)
 from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
@@ -43,8 +38,6 @@ from ..core.line_selection import (
     write_line_ids_file,
 )
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..core.text_lifecycle import TextFileChangeType
-from ..data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     fetch_next_change,
 )
@@ -87,11 +80,8 @@ from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
 from ..data.progress import (
-    record_binary_hunk_skipped,
-    record_gitlink_hunk_skipped,
     record_hunk_included,
     record_hunk_skipped,
-    record_text_deletion_hunk_skipped,
 )
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.session import require_session_started, snapshot_file_if_untracked
@@ -138,6 +128,7 @@ from .selection import include_line_replacement as _include_line_replacement
 from .selection import replacement_selection
 from .selection import batch_line_selection as _batch_line_selection
 from .selection import batch_line_updates as _batch_line_updates
+from .selection import whole_file_batch_staging as _whole_file_batch_staging
 from .file_scope import include_file_replacement as _file_scope_include_file_replacement
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
@@ -889,7 +880,7 @@ def command_include_to_batch(
         ):
             selected_change = load_selected_change()
             if isinstance(selected_change, GitlinkChange):
-                _command_include_gitlink_to_batch(
+                _whole_file_batch_staging.include_gitlink_to_batch(
                     batch_name,
                     selected_change,
                     quiet=quiet,
@@ -911,7 +902,7 @@ def command_include_to_batch(
         ):
             selected_change = load_selected_change()
             if isinstance(selected_change, TextFileDeletionChange):
-                _command_include_text_deletion_to_batch(
+                _whole_file_batch_staging.include_text_deletion_to_batch(
                     batch_name,
                     selected_change,
                     quiet=quiet,
@@ -933,7 +924,7 @@ def command_include_to_batch(
         ):
             selected_change = load_selected_change()
             if isinstance(selected_change, BinaryFileChange):
-                _command_include_binary_to_batch(
+                _whole_file_batch_staging.include_binary_to_batch(
                     batch_name,
                     selected_change,
                     quiet=quiet,
@@ -998,118 +989,6 @@ def command_include_to_batch(
         finish_review_scoped_line_action(review_state)
 
 
-def _save_empty_text_lifecycle_to_batch(
-    batch_name: str,
-    file_path: str,
-    file_mode: str,
-) -> str | None:
-    """Persist an empty added/deleted text path, returning its lifecycle type."""
-    change_type = detect_empty_text_lifecycle_change(file_path)
-    if change_type is None:
-        return None
-
-    snapshot_file_if_untracked(file_path)
-    add_file_to_batch(
-        batch_name,
-        file_path,
-        BatchOwnership([], []),
-        file_mode,
-        change_type=change_type,
-    )
-    return change_type.value
-
-
-def _command_include_text_deletion_to_batch(
-    batch_name: str,
-    deletion_change: TextFileDeletionChange,
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Save one whole-text-file deletion to a batch and mark it processed."""
-    file_path = deletion_change.path()
-    patch_hash = compute_text_file_deletion_hash(deletion_change)
-
-    add_file_to_batch(
-        batch_name,
-        file_path,
-        BatchOwnership([], []),
-        detect_file_mode(file_path),
-        change_type=TextFileChangeType.DELETED.value,
-    )
-    append_lines_to_file(get_block_list_file_path(), [patch_hash])
-    record_text_deletion_hunk_skipped(deletion_change, patch_hash)
-
-    if not quiet:
-        print(
-            _("Included text file deletion '{file}' to batch '{batch}'").format(
-                file=file_path,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
-        )
-
-    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-
-
-def _command_include_binary_to_batch(
-    batch_name: str,
-    binary_change: BinaryFileChange,
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Save one binary change to a batch and mark it processed."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-    patch_hash = compute_binary_file_hash(binary_change)
-
-    add_binary_file_to_batch(
-        batch_name,
-        binary_change,
-        file_mode=detect_file_mode(file_path),
-    )
-    append_lines_to_file(get_block_list_file_path(), [patch_hash])
-    record_binary_hunk_skipped(binary_change, patch_hash)
-
-    if not quiet:
-        print(
-            _("Included binary file '{file}' to batch '{batch}'").format(
-                file=file_path,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
-        )
-
-    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-
-
-def _command_include_gitlink_to_batch(
-    batch_name: str,
-    gitlink_change: GitlinkChange,
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Save one submodule pointer change to a batch and mark it processed."""
-    file_path = gitlink_change.path()
-    patch_hash = compute_gitlink_change_hash(gitlink_change)
-
-    add_gitlink_to_batch(batch_name, gitlink_change)
-    append_lines_to_file(get_block_list_file_path(), [patch_hash])
-    record_gitlink_hunk_skipped(gitlink_change, patch_hash)
-
-    if not quiet:
-        print(
-            _("Included submodule pointer '{file}' to batch '{batch}'").format(
-                file=file_path,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
-        )
-
-    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-
-
 def _command_include_file_to_batch(
     batch_name: str,
     file_path: str,
@@ -1126,7 +1005,7 @@ def _command_include_file_to_batch(
 
     deletion_change = render_text_deletion_change(file_path)
     if deletion_change is not None:
-        _command_include_text_deletion_to_batch(
+        _whole_file_batch_staging.include_text_deletion_to_batch(
             batch_name,
             deletion_change,
             quiet=quiet,
@@ -1136,7 +1015,7 @@ def _command_include_file_to_batch(
 
     binary_change = render_binary_file_change(file_path)
     if binary_change is not None:
-        _command_include_binary_to_batch(
+        _whole_file_batch_staging.include_binary_to_batch(
             batch_name,
             binary_change,
             quiet=quiet,
@@ -1145,7 +1024,7 @@ def _command_include_file_to_batch(
         return
     gitlink_change = render_gitlink_change(file_path)
     if gitlink_change is not None:
-        _command_include_gitlink_to_batch(
+        _whole_file_batch_staging.include_gitlink_to_batch(
             batch_name,
             gitlink_change,
             quiet=quiet,
@@ -1176,7 +1055,14 @@ def _command_include_file_to_batch(
             all_lines_to_batch.extend(hunk_lines.lines)
 
     if not all_lines_to_batch:
-        if _save_empty_text_lifecycle_to_batch(batch_name, file_path, file_mode) is not None:
+        if (
+            _whole_file_batch_staging.save_empty_text_lifecycle_to_batch(
+                batch_name,
+                file_path,
+                file_mode,
+            )
+            is not None
+        ):
             if not quiet:
                 print(_("Included file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
             finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
@@ -1365,7 +1251,7 @@ def _command_include_hunk_to_batch(
             if isinstance(patch, TextFileDeletionChange):
                 patch_hash = compute_text_file_deletion_hash(patch)
                 if patch_hash not in blocked_hashes:
-                    _command_include_text_deletion_to_batch(
+                    _whole_file_batch_staging.include_text_deletion_to_batch(
                         batch_name,
                         patch,
                         quiet=quiet,
@@ -1377,7 +1263,7 @@ def _command_include_hunk_to_batch(
             if isinstance(patch, GitlinkChange):
                 patch_hash = compute_gitlink_change_hash(patch)
                 if patch_hash not in blocked_hashes:
-                    _command_include_gitlink_to_batch(
+                    _whole_file_batch_staging.include_gitlink_to_batch(
                         batch_name,
                         patch,
                         quiet=quiet,
@@ -1389,7 +1275,7 @@ def _command_include_hunk_to_batch(
             if isinstance(patch, BinaryFileChange):
                 patch_hash = compute_binary_file_hash(patch)
                 if patch_hash not in blocked_hashes:
-                    _command_include_binary_to_batch(
+                    _whole_file_batch_staging.include_binary_to_batch(
                         batch_name,
                         patch,
                         quiet=quiet,

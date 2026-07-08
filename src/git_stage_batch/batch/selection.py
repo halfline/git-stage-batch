@@ -26,9 +26,9 @@ from ..data.batch_selected_changes import (
 from ..data.progress import format_id_range
 from ..data.selected_change.store import (
     SelectedChangeKind,
-    get_selected_change_file_path,
     read_selected_change_kind,
 )
+from ..data.selected_change.paths import get_selected_change_file_path
 from ..exceptions import CommandError, exit_with_error
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns

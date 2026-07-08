@@ -161,34 +161,6 @@ def clear_selected_change_persistence_files() -> None:
     # processed_batch_ids is global state (union of all batches), not per-hunk state
 
 
-def get_selected_change_file_path() -> str | None:
-    """Return the file path for the currently cached selected change."""
-    from . import file_changes as _selected_file_changes
-
-    rename_change = _selected_file_changes.load_selected_rename_change()
-    if rename_change is not None:
-        return rename_change.path()
-
-    deletion_change = _selected_file_changes.load_selected_text_deletion_change()
-    if deletion_change is not None:
-        return deletion_change.path()
-
-    gitlink_change = _selected_file_changes.load_selected_gitlink_change()
-    if gitlink_change is not None:
-        return gitlink_change.path()
-
-    binary_file = _selected_file_changes.load_selected_binary_file()
-    if binary_file is not None:
-        return binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
-
-    patch_path = get_selected_hunk_patch_file_path()
-    if not patch_path.exists():
-        return None
-
-    line_changes = load_line_changes_from_patch_path(patch_path)
-    return line_changes.path
-
-
 def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     """Persist the kind of selected change cached in session state."""
     get_selected_change_clear_reason_file_path().unlink(missing_ok=True)

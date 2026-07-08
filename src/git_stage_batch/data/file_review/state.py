@@ -44,7 +44,7 @@ def _coerce_review_action(action: _records.FileReviewAction | str) -> _records.F
 
 
 def _get_selected_change_file_path() -> str | None:
-    from ..selected_change.store import get_selected_change_file_path
+    from ..selected_change.paths import get_selected_change_file_path
 
     return get_selected_change_file_path()
 

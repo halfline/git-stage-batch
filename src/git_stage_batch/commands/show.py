@@ -20,10 +20,10 @@ from ..data.selected_change.hunk_filtering import (
 from ..data.selected_change.store import (
     SelectedChangeKind,
     cache_hunk_change,
-    get_selected_change_file_path,
     restore_selected_change_state,
     snapshot_selected_change_state,
 )
+from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.selected_change.clear_reasons import (
     mark_selected_change_cleared_by_file_list,
 )

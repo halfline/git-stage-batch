@@ -5,7 +5,6 @@ from __future__ import annotations
 from contextlib import ExitStack
 import os
 import sys
-from dataclasses import dataclass
 from typing import Optional
 
 from .batch_source import action_plans as _action_plans
@@ -77,23 +76,6 @@ from ..utils.git import (
     git_refresh_index,
     require_git_repository,
 )
-
-
-@dataclass
-class _IncludeTextPlan:
-    file_path: str
-    index_buffer: LineBuffer | None
-    working_buffer: LineBuffer | None
-    index_file_mode: str | None
-    working_file_mode: str | None
-    index_change_type: str
-    working_change_type: str
-
-    def close(self) -> None:
-        if self.index_buffer is not None:
-            self.index_buffer.close()
-        if self.working_buffer is not None and self.working_buffer is not self.index_buffer:
-            self.working_buffer.close()
 
 
 def _execute_include_candidate(
@@ -537,7 +519,7 @@ def command_include_from_batch(
             if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
                 index_buffer.close()
                 include_plans.append(
-                    _IncludeTextPlan(
+                    _action_plans.IncludeTextFileActionPlan(
                         file_path,
                         None,
                         None,
@@ -629,7 +611,7 @@ def command_include_from_batch(
                 merged_working_buffer,
             )
             include_plans.append(
-                _IncludeTextPlan(
+                _action_plans.IncludeTextFileActionPlan(
                     file_path,
                     merged_index_buffer,
                     merged_working_buffer,
@@ -794,7 +776,7 @@ def command_include_from_batch(
             with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
                 for plan in include_plans:
                     snapshot_file_if_untracked(plan.file_path)
-                    if isinstance(plan, _IncludeTextPlan):
+                    if isinstance(plan, _action_plans.IncludeTextFileActionPlan):
                         _text_file_actions.stage_text_file_to_index(
                             plan.file_path,
                             plan.index_buffer,

@@ -114,6 +114,58 @@ def _patch_include_text_plan_io(monkeypatch, tmp_path, ownership: _Ownership):
     return index_buffer, batch_buffer, worktree_buffer
 
 
+def _patch_discard_text_plan_io(
+    monkeypatch,
+    tmp_path,
+    ownership: _Ownership,
+    *,
+    baseline_exists: bool = True,
+):
+    batch_buffer = LineBuffer.from_bytes(b"batch\n")
+    baseline_buffer = (
+        LineBuffer.from_bytes(b"baseline\n")
+        if baseline_exists
+        else None
+    )
+    worktree_buffer = LineBuffer.from_bytes(b"worktree\n")
+    (tmp_path / "notes.txt").write_bytes(b"worktree\n")
+
+    monkeypatch.setattr(
+        builders,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+
+    def load_git_object_as_buffer(spec):
+        if spec == "commit:notes.txt":
+            return batch_buffer
+        if spec == "baseline:notes.txt":
+            return baseline_buffer
+        return None
+
+    monkeypatch.setattr(
+        builders,
+        "load_git_object_as_buffer",
+        load_git_object_as_buffer,
+    )
+    monkeypatch.setattr(
+        builders,
+        "load_working_tree_file_as_buffer",
+        lambda file_path: worktree_buffer,
+    )
+    monkeypatch.setattr(
+        builders,
+        "detect_file_mode_in_commit",
+        lambda commit, file_path: "100755" if baseline_exists else None,
+    )
+    monkeypatch.setattr(
+        builders,
+        "acquire_batch_ownership_for_display_ids_from_lines",
+        lambda file_meta, source_lines, selection_ids: _OwnershipContext(ownership),
+    )
+    return batch_buffer, baseline_buffer, worktree_buffer
+
+
 def test_build_apply_text_file_action_plan_returns_merged_plan(
     monkeypatch,
     tmp_path,
@@ -247,6 +299,67 @@ def test_build_apply_text_file_action_plan_skips_empty_partial_ownership(
     assert not result.missing_source
     assert result.plan is None
 
+
+def test_build_discard_text_file_action_plan_returns_discarded_plan(
+    monkeypatch,
+    tmp_path,
+):
+    """Discard text planning should remove owned source lines from worktree."""
+    ownership = _Ownership()
+    batch_buffer, baseline_buffer, worktree_buffer = _patch_discard_text_plan_io(
+        monkeypatch,
+        tmp_path,
+        ownership,
+    )
+    calls = {}
+
+    def discard_batch_from_line_sequences_as_buffer(
+        source_lines,
+        line_ownership,
+        working_lines,
+        baseline_lines,
+    ):
+        calls["discard"] = (
+            source_lines,
+            line_ownership,
+            working_lines,
+            baseline_lines,
+        )
+        return LineBuffer.from_bytes(b"discarded\n")
+
+    monkeypatch.setattr(
+        builders,
+        "discard_batch_from_line_sequences_as_buffer",
+        discard_batch_from_line_sequences_as_buffer,
+    )
+
+    result = builders.build_discard_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100644",
+        },
+        baseline_commit="baseline",
+        selected_ids={1},
+        selection_ids_to_discard={7},
+    )
+
+    assert not result.missing_source
+    assert result.plan is not None
+    assert result.plan.file_path == "notes.txt"
+    assert result.plan.buffer is not None
+    assert result.plan.buffer.to_bytes() == b"discarded\n"
+    assert result.plan.file_mode is None
+    assert result.plan.change_type == TextFileChangeType.MODIFIED
+    assert calls["discard"] == (
+        batch_buffer,
+        ownership,
+        worktree_buffer,
+        baseline_buffer,
+    )
+
+    result.plan.close()
 
 def test_build_include_text_file_action_plan_uses_replacement_view(
     monkeypatch,

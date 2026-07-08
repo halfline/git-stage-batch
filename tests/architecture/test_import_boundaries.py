@@ -1517,6 +1517,34 @@ def test_tui_batch_menu_owns_batch_management_actions():
         assert imported_module in batch_menu_imports
 
 
+def test_tui_asset_menu_owns_install_assets_action():
+    """TUI asset installation should live in the asset menu adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    asset_menu_path = SRC_ROOT / "tui" / "asset_menu.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    asset_menu = __import__(
+        "git_stage_batch.tui.asset_menu",
+        fromlist=["asset_menu"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    asset_menu_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(asset_menu_path)
+    }
+
+    assert "handle_asset_menu" in vars(asset_menu)
+    assert "handle_install_assets" not in vars(interactive)
+    assert "git_stage_batch.tui.asset_menu" in interactive_imports
+    assert "git_stage_batch.commands.install_assets" not in interactive_imports
+    assert "git_stage_batch.commands.install_assets" in asset_menu_imports
+
+
 def test_tui_file_review_state_name_does_not_shadow_persisted_state():
     """TUI review state should not reuse the persisted file-review state name."""
     review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"

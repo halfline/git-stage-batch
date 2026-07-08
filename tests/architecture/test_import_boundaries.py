@@ -4037,6 +4037,40 @@ def test_batch_source_action_plans_own_resource_plans():
     assert old_include_names.isdisjoint(include_from_helpers)
 
 
+def test_batch_source_text_actions_own_apply_worktree_writes():
+    """Shared text working-tree actions should live outside apply-from."""
+    text_file_actions = __import__(
+        "git_stage_batch.commands.batch_source.text_file_actions",
+        fromlist=["text_file_actions"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    public_names = {
+        "write_text_file_to_worktree",
+    }
+    old_apply_names = {
+        "_write_text_file_from_batch",
+    }
+    apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
+    apply_from_helpers = {
+        node.name
+        for node in ast.walk(apply_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_text_file_actions = False
+
+    for imported_module, node in _import_from_nodes(apply_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "text_file_actions" in imported_names
+        ):
+            imports_text_file_actions = True
+
+    assert public_names <= vars(text_file_actions).keys()
+    assert imports_text_file_actions
+    assert old_apply_names.isdisjoint(apply_from_helpers)
+
+
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(

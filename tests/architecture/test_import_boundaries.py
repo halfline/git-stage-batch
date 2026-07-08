@@ -4038,38 +4038,53 @@ def test_batch_source_action_plans_own_resource_plans():
     assert old_include_names.isdisjoint(include_from_helpers)
 
 
-def test_batch_source_text_actions_own_apply_worktree_writes():
-    """Shared text working-tree actions should live outside apply-from."""
+def test_batch_source_text_actions_own_worktree_writes():
+    """Shared text working-tree actions should live outside command entries."""
     text_file_actions = __import__(
         "git_stage_batch.commands.batch_source.text_file_actions",
         fromlist=["text_file_actions"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "write_text_file_to_worktree",
     }
-    old_apply_names = {
+    old_names = {
         "_write_text_file_from_batch",
     }
-    apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
-    apply_from_helpers = {
-        node.name
-        for node in ast.walk(apply_from_tree)
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    command_paths = {
+        apply_from_path,
+        include_from_path,
     }
-    imports_text_file_actions = False
+    helpers_by_path = {
+        path: {
+            node.name
+            for node in ast.walk(ast.parse(path.read_text(), filename=str(path)))
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        }
+        for path in command_paths
+    }
+    imports_text_file_actions = {
+        path: False
+        for path in command_paths
+    }
 
-    for imported_module, node in _import_from_nodes(apply_from_path):
-        imported_names = {alias.name for alias in node.names}
-        if (
-            imported_module == "git_stage_batch.commands.batch_source"
-            and "text_file_actions" in imported_names
-        ):
-            imports_text_file_actions = True
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "text_file_actions" in imported_names
+            ):
+                imports_text_file_actions[path] = True
 
     assert public_names <= vars(text_file_actions).keys()
-    assert imports_text_file_actions
-    assert old_apply_names.isdisjoint(apply_from_helpers)
+    assert imports_text_file_actions == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    for helpers in helpers_by_path.values():
+        assert old_names.isdisjoint(helpers)
 
 
 def test_batch_merge_does_not_reexport_merge_exceptions():

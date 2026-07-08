@@ -12,7 +12,7 @@ from ...data.hunk_tracking import select_next_change_after_action
 from ...data.undo import undo_checkpoint
 from ...exceptions import CommandError
 from ...i18n import _, ngettext
-from ..discard import command_discard_files_to_batch
+from .discard_to_batch import command_discard_files_to_batch
 from ..include import command_include_file
 from ..selection.selected_change_display import show_selected_change
 from ..skip import command_skip_file

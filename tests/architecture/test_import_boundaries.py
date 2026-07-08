@@ -4169,6 +4169,63 @@ def test_batch_source_text_plan_builders_own_include_text_planning():
     assert "selected_text_target_change_type(" not in command_text
 
 
+def test_batch_source_text_plan_builders_own_discard_text_planning():
+    """Regular discard-from text plan construction should live in batch-source support."""
+    text_plan_builders = __import__(
+        "git_stage_batch.commands.batch_source.text_plan_builders",
+        fromlist=["text_plan_builders"],
+    )
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
+    public_names = {
+        "DiscardTextPlanBuildResult",
+        "build_discard_text_file_action_plan",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.merge": {
+            "discard_batch_from_line_sequences_as_buffer",
+        },
+        "git_stage_batch.batch.selection": {
+            "acquire_batch_ownership_for_display_ids_from_lines",
+        },
+        "git_stage_batch.core.buffer": {
+            "LineBuffer",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "TextFileChangeType",
+            "mode_for_text_materialization",
+            "normalized_text_change_type",
+            "selected_text_discard_change_type",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_working_tree_file_as_buffer",
+        },
+    }
+    imports_text_plan_builders = False
+    direct_plan_imports = set()
+
+    for imported_module, node in _import_from_nodes(discard_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "text_plan_builders" in imported_names
+        ):
+            imports_text_plan_builders = True
+        direct_plan_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    command_text = discard_from_path.read_text()
+
+    assert public_names <= vars(text_plan_builders).keys()
+    assert imports_text_plan_builders
+    assert direct_plan_imports == set()
+    assert "build_discard_text_file_action_plan(" in command_text
+    assert "_discard_text_file_lifecycle_from_batch" not in command_text
+    assert "discard_batch_from_line_sequences_as_buffer(" not in command_text
+    assert "selected_text_discard_change_type(" not in command_text
+
+
 def test_batch_source_candidate_previews_own_candidate_preview_checks():
     """Shared candidate preview checks should live outside command entries."""
     candidate_previews = __import__(

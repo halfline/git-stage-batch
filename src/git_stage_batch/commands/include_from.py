@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
+from .batch_source import action_plans as _action_plans
 from .selection import replacement_selection
 from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
@@ -97,31 +98,6 @@ class _IncludeTextPlan:
             self.index_buffer.close()
         if self.working_buffer is not None and self.working_buffer is not self.index_buffer:
             self.working_buffer.close()
-
-
-@dataclass
-class _IncludeBinaryPlan:
-    file_path: str
-    file_meta: dict
-    buffer: LineBuffer | None
-
-    def close(self) -> None:
-        if self.buffer is not None:
-            self.buffer.close()
-
-
-@dataclass(frozen=True)
-class _IncludeSubmodulePlan:
-    file_path: str
-    file_meta: dict
-
-    def close(self) -> None:
-        return None
-
-
-def _close_include_plans(plans) -> None:
-    for plan in plans:
-        plan.close()
 
 
 def _stage_binary_file_from_batch(
@@ -618,10 +594,18 @@ def command_include_from_batch(
                         f"Binary file not found in batch commit: {file_path}"
                     ),
                 )
-                include_plans.append(_IncludeBinaryPlan(file_path, file_meta, batch_buffer))
+                include_plans.append(
+                    _action_plans.BinaryFileActionPlan(
+                        file_path,
+                        file_meta,
+                        batch_buffer,
+                    )
+                )
                 continue
             if is_batch_submodule_pointer(file_meta):
-                include_plans.append(_IncludeSubmodulePlan(file_path, file_meta))
+                include_plans.append(
+                    _action_plans.SubmodulePointerActionPlan(file_path, file_meta)
+                )
                 continue
 
             text_change_type = normalized_text_change_type(file_meta.get("change_type"))
@@ -694,7 +678,7 @@ def command_include_from_batch(
                                     replacement_payload,
                                 )
                             except ValueError as e:
-                                _close_include_plans(include_plans)
+                                _action_plans.close_action_plans(include_plans)
                                 exit_with_error(str(e))
 
                             with replacement_view:
@@ -723,7 +707,7 @@ def command_include_from_batch(
                 except AtomicUnitError as e:
                     if rendered:
                         translate_atomic_unit_error_to_gutter_ids(e, rendered, "include from", batch_name)
-                    _close_include_plans(include_plans)
+                    _action_plans.close_action_plans(include_plans)
                     exit_with_error(_("Failed to include from batch '{name}': {error}").format(
                         name=batch_name,
                         error=str(e)
@@ -771,14 +755,14 @@ def command_include_from_batch(
             failed_files.append(file_path)
         except CommandError:
             # Re-raise user errors (e.g., partial atomic selection)
-            _close_include_plans(include_plans)
+            _action_plans.close_action_plans(include_plans)
             raise
         except Exception as e:
             print(_("Error staging {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
             failed_files.append(file_path)
 
     if failed_files:
-        _close_include_plans(include_plans)
+        _action_plans.close_action_plans(include_plans)
         candidate_limit_files = [
             file_path
             for file_path in failed_files
@@ -918,7 +902,7 @@ def command_include_from_batch(
                             plan.working_file_mode,
                             plan.working_change_type,
                         )
-                    elif isinstance(plan, _IncludeBinaryPlan):
+                    elif isinstance(plan, _action_plans.BinaryFileActionPlan):
                         _stage_binary_file_from_batch(plan.file_path, plan.file_meta, plan.buffer)
                         _write_binary_file_from_batch(plan.file_path, plan.file_meta, plan.buffer)
                     else:
@@ -942,7 +926,7 @@ def command_include_from_batch(
                 )
             )
     finally:
-        _close_include_plans(include_plans)
+        _action_plans.close_action_plans(include_plans)
 
     for file_path in files:
         finish_review_scoped_line_action(scope_resolution.review_state, file_path=file_path)

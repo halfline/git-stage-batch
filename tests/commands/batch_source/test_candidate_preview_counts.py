@@ -51,7 +51,11 @@ def _patch_apply_candidate_count_io(monkeypatch, tmp_path):
     worktree_buffer = LineBuffer.from_bytes(b"worktree\n")
     (tmp_path / "notes.txt").write_bytes(b"worktree\n")
 
-    monkeypatch.setattr(counts, "get_git_repository_root_path", lambda: tmp_path)
+    monkeypatch.setattr(
+        counts._candidate_inputs,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
     monkeypatch.setattr(
         counts,
         "load_git_object_as_buffer",
@@ -84,7 +88,11 @@ def _patch_include_candidate_count_io(monkeypatch, tmp_path):
             return index_buffer
         return None
 
-    monkeypatch.setattr(counts, "get_git_repository_root_path", lambda: tmp_path)
+    monkeypatch.setattr(
+        counts._candidate_inputs,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
     monkeypatch.setattr(counts, "load_git_object_as_buffer", load_git_object)
     monkeypatch.setattr(
         counts,

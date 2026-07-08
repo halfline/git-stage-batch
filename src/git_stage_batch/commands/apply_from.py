@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
+from .batch_source import action_plans as _action_plans
 from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
@@ -74,26 +75,6 @@ class _ApplyTextPlan:
             self.buffer.close()
 
 
-@dataclass
-class _ApplyBinaryPlan:
-    file_path: str
-    file_meta: dict
-    buffer: LineBuffer | None
-
-    def close(self) -> None:
-        if self.buffer is not None:
-            self.buffer.close()
-
-
-@dataclass(frozen=True)
-class _ApplySubmodulePlan:
-    file_path: str
-    file_meta: dict
-
-    def close(self) -> None:
-        return None
-
-
 def _write_binary_file_from_batch(
     file_path: str,
     file_meta: dict,
@@ -147,11 +128,6 @@ def _write_text_file_from_batch(
         raise RuntimeError(f"Text file not found in batch content: {file_path}")
 
     write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)
-
-
-def _close_apply_plans(plans) -> None:
-    for plan in plans:
-        plan.close()
 
 
 def _execute_apply_candidate(
@@ -463,10 +439,18 @@ def command_apply_from_batch(
                     file_path,
                     file_meta,
                 )
-                apply_plans.append(_ApplyBinaryPlan(file_path, file_meta, batch_buffer))
+                apply_plans.append(
+                    _action_plans.BinaryFileActionPlan(
+                        file_path,
+                        file_meta,
+                        batch_buffer,
+                    )
+                )
                 continue
             if is_batch_submodule_pointer(file_meta):
-                apply_plans.append(_ApplySubmodulePlan(file_path, file_meta))
+                apply_plans.append(
+                    _action_plans.SubmodulePointerActionPlan(file_path, file_meta)
+                )
                 continue
 
             text_change_type = normalized_text_change_type(file_meta.get("change_type"))
@@ -517,7 +501,7 @@ def command_apply_from_batch(
                 except AtomicUnitError as e:
                     if rendered:
                         translate_atomic_unit_error_to_gutter_ids(e, rendered, "apply", batch_name)
-                    _close_apply_plans(apply_plans)
+                    _action_plans.close_action_plans(apply_plans)
                     exit_with_error(_("Failed to apply batch '{name}': {error}").format(
                         name=batch_name,
                         error=str(e)
@@ -545,14 +529,14 @@ def command_apply_from_batch(
             failed_files.append(file_path)
         except CommandError:
             # Re-raise user errors (e.g., partial atomic selection)
-            _close_apply_plans(apply_plans)
+            _action_plans.close_action_plans(apply_plans)
             raise
         except Exception as e:
             print(_("Error applying {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
             failed_files.append(file_path)
 
     if failed_files:
-        _close_apply_plans(apply_plans)
+        _action_plans.close_action_plans(apply_plans)
         candidate_limit_files = [
             file_path
             for file_path in failed_files
@@ -686,7 +670,7 @@ def command_apply_from_batch(
                             plan.file_mode,
                             plan.change_type,
                         )
-                    elif isinstance(plan, _ApplyBinaryPlan):
+                    elif isinstance(plan, _action_plans.BinaryFileActionPlan):
                         _write_binary_file_from_batch(
                             plan.file_path,
                             plan.file_meta,
@@ -713,7 +697,7 @@ def command_apply_from_batch(
                 )
             )
     finally:
-        _close_apply_plans(apply_plans)
+        _action_plans.close_action_plans(apply_plans)
 
     for file_path in files:
         finish_review_scoped_line_action(scope_resolution.review_state, file_path=file_path)

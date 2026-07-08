@@ -1621,6 +1621,64 @@ def test_file_scope_discard_owns_file_pipeline():
     assert moved_names <= helper_imported_names
 
 
+def test_file_scope_discard_replacement_owns_file_pipeline():
+    """File-scope discard replacement support should stay out of discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "file_scope" / "discard_file_replacement.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.discard_file_replacement",
+        fromlist=["discard_file_replacement"],
+    )
+    public_names = {
+        "discard_file_as_replacement",
+    }
+    moved_names = {
+        "clear_last_file_review_state_if_file_matches",
+        "coerce_replacement_payload",
+        "get_git_repository_root_path",
+        "restore_selected_change_state",
+        "snapshot_file_if_untracked",
+        "snapshot_selected_change_state",
+    }
+    moved_attributes = {
+        "mkdir",
+        "write_bytes",
+    }
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_discard_file_as_names = {
+        node.id
+        for node in ast.walk(discard_functions["command_discard_file_as"])
+        if isinstance(node, ast.Name)
+    }
+    command_discard_file_as_attributes = {
+        node.attr
+        for node in ast.walk(discard_functions["command_discard_file_as"])
+        if isinstance(node, ast.Attribute)
+    }
+    discard_imported_names = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            discard_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "discard_file_replacement" in discard_imported_names
+    assert moved_names.isdisjoint(command_discard_file_as_names)
+    assert moved_attributes.isdisjoint(command_discard_file_as_attributes)
+    assert moved_names <= helper_imported_names
+
+
 def test_selected_change_batch_discarding_owns_hunk_pipeline():
     """Selected change batch support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

@@ -37,7 +37,6 @@ from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.source_refresh import refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
-from ..batch.submodule_pointer import discard_submodule_pointer_from_batch
 from ..core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
@@ -121,8 +120,6 @@ from ..utils.git import (
     git_apply_to_worktree,
     git_checkout_paths,
     git_remove_paths,
-    git_update_index,
-    git_update_gitlink,
     require_git_repository,
     run_git_command,
 )
@@ -139,6 +136,11 @@ from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
 )
+from .selection.selected_change_discarding import (
+    discard_gitlink_change,
+    discard_rename_change,
+    discard_text_deletion_change,
+)
 from .selection.action_completion import finish_selected_change_action
 
 
@@ -154,111 +156,6 @@ class _TextFileDiscardInput:
     file_mode: str
     all_lines_to_batch: list
     patches_to_discard: list[_PreparedPatchDiscard]
-
-
-def _discard_gitlink_change(gitlink_change: GitlinkChange) -> None:
-    """Restore one submodule pointer change to its baseline state."""
-    file_path = gitlink_change.path()
-    file_meta = {
-        "file_type": "gitlink",
-        "change_type": gitlink_change.change_type,
-        "old_oid": gitlink_change.old_oid,
-        "new_oid": gitlink_change.new_oid,
-    }
-    discard_submodule_pointer_from_batch(file_path, file_meta)
-
-    if gitlink_change.is_new_file():
-        return
-    if gitlink_change.old_oid is None:
-        exit_with_error(
-            _("Cannot discard submodule pointer for {file}: missing baseline commit.").format(
-                file=file_path,
-            )
-        )
-    index_result = git_update_gitlink(
-        file_path=file_path,
-        oid=gitlink_change.old_oid,
-        check=False,
-    )
-    if index_result.returncode != 0:
-        exit_with_error(
-            _("Failed to update submodule pointer in the index for {file}: {error}").format(
-                file=file_path,
-                error=index_result.stderr,
-            )
-        )
-
-
-def _remove_worktree_path(file_path: str) -> None:
-    """Remove a working-tree path if it still exists after index cleanup."""
-    absolute_path = get_git_repository_root_path() / file_path
-    if not os.path.lexists(absolute_path):
-        return
-    if absolute_path.is_dir() and not absolute_path.is_symlink():
-        # A rename diff is file-oriented, but avoid leaving an untracked directory
-        # behind if the destination path was replaced while the prompt was open.
-        for child in sorted(absolute_path.rglob("*"), reverse=True):
-            if child.is_dir() and not child.is_symlink():
-                child.rmdir()
-            else:
-                child.unlink()
-        absolute_path.rmdir()
-        return
-    absolute_path.unlink()
-
-
-def _discard_rename_change(rename_change: RenameChange) -> None:
-    """Restore the old path and remove the renamed destination."""
-    snapshot_files_if_untracked([rename_change.new_path])
-
-    remove_result = git_remove_paths(
-        [rename_change.new_path],
-        force=True,
-        ignore_unmatch=True,
-        check=False,
-    )
-    if remove_result.returncode != 0:
-        index_result = git_update_index(
-            file_path=rename_change.new_path,
-            force_remove=True,
-            check=False,
-        )
-        if index_result.returncode != 0:
-            exit_with_error(
-                _("Failed to remove renamed path {file}: {error}").format(
-                    file=rename_change.new_path,
-                    error=index_result.stderr,
-                )
-            )
-        _remove_worktree_path(rename_change.new_path)
-
-    restore_result = git_checkout_paths("HEAD", [rename_change.old_path], check=False)
-    if restore_result.returncode != 0:
-        exit_with_error(
-            _("Failed to restore renamed source {file}: {error}").format(
-                file=rename_change.old_path,
-                error=restore_result.stderr,
-            )
-        )
-
-
-def _discard_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
-    """Restore a whole-text-file path deletion from the current index."""
-    file_path = deletion_change.path()
-    snapshot_file_if_untracked(file_path)
-
-    restore_result = run_git_command(
-        ["checkout", "--", file_path],
-        check=False,
-        requires_index_lock=True,
-    )
-    if restore_result.returncode != 0:
-        exit_with_error(
-            _("Failed to restore deleted file {file}: {error}").format(
-                file=file_path,
-                error=restore_result.stderr,
-            )
-        )
 
 
 @dataclass(frozen=True)
@@ -370,7 +267,7 @@ def command_discard(
 
         # Handle based on item type
         if isinstance(item, RenameChange):
-            _discard_rename_change(item)
+            discard_rename_change(item)
             append_lines_to_file(get_block_list_file_path(), [patch_hash])
             record_hunk_discarded(patch_hash)
 
@@ -390,7 +287,7 @@ def command_discard(
             return
 
         if isinstance(item, TextFileDeletionChange):
-            _discard_text_deletion_change(item)
+            discard_text_deletion_change(item)
             append_lines_to_file(get_block_list_file_path(), [patch_hash])
             record_hunk_discarded(patch_hash)
 
@@ -404,7 +301,7 @@ def command_discard(
             return
 
         if isinstance(item, GitlinkChange):
-            _discard_gitlink_change(item)
+            discard_gitlink_change(item)
             append_lines_to_file(get_block_list_file_path(), [patch_hash])
             record_hunk_discarded(patch_hash)
 
@@ -620,7 +517,7 @@ def command_discard_file(
         deletion_change = render_text_deletion_change(target_file)
         if deletion_change is not None:
             patch_hash = compute_text_file_deletion_hash(deletion_change)
-            _discard_text_deletion_change(deletion_change)
+            discard_text_deletion_change(deletion_change)
             if patch_hash not in blocked_hashes:
                 append_lines_to_file(blocklist_path, [patch_hash])
                 record_hunk_discarded(patch_hash)
@@ -634,7 +531,7 @@ def command_discard_file(
         gitlink_change = render_gitlink_change(target_file)
         if gitlink_change is not None:
             patch_hash = compute_gitlink_change_hash(gitlink_change)
-            _discard_gitlink_change(gitlink_change)
+            discard_gitlink_change(gitlink_change)
             if patch_hash not in blocked_hashes:
                 append_lines_to_file(blocklist_path, [patch_hash])
                 record_hunk_discarded(patch_hash)
@@ -648,7 +545,7 @@ def command_discard_file(
         rename_change = render_rename_change(target_file)
         if rename_change is not None:
             patch_hash = compute_rename_change_hash(rename_change)
-            _discard_rename_change(rename_change)
+            discard_rename_change(rename_change)
             if patch_hash not in blocked_hashes:
                 append_lines_to_file(blocklist_path, [patch_hash])
                 record_hunk_discarded(patch_hash)
@@ -1411,7 +1308,7 @@ def _command_discard_text_deletion_to_batch(
         detect_file_mode(file_path),
         change_type=TextFileChangeType.DELETED.value,
     )
-    _discard_text_deletion_change(deletion_change)
+    discard_text_deletion_change(deletion_change)
 
     append_lines_to_file(get_block_list_file_path(), [patch_hash])
     record_hunk_discarded(patch_hash)

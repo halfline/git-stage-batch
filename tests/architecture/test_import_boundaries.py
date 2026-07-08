@@ -3931,6 +3931,37 @@ def test_batch_owns_atomic_file_change_metadata_conversion():
     assert show_from_model_imports == set()
 
 
+def test_batch_owns_binary_file_content_loading():
+    """Stored binary batch content loading should live in batch."""
+    binary_file_content = __import__(
+        "git_stage_batch.batch.binary_file_content",
+        fromlist=["binary_file_content"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    public_names = {
+        "read_binary_file_from_batch",
+    }
+    old_names = {
+        "_read_binary_file_from_batch",
+    }
+    apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
+    apply_from_helpers = {
+        node.name
+        for node in ast.walk(apply_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    apply_from_loader_imports = set()
+
+    for imported_module, node in _import_from_nodes(apply_from_path):
+        if imported_module != "git_stage_batch.batch.binary_file_content":
+            continue
+        apply_from_loader_imports |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(binary_file_content).keys()
+    assert public_names <= apply_from_loader_imports
+    assert old_names.isdisjoint(apply_from_helpers)
+
+
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(

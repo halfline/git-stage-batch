@@ -8,8 +8,10 @@ from __future__ import annotations
 
 
 import inspect
-from git_stage_batch.commands import include, discard
-from git_stage_batch.commands.selection import selected_change_batch_discarding
+from git_stage_batch.commands.selection import (
+    selected_change_batch_discarding,
+    selected_change_batch_staging,
+)
 
 from git_stage_batch.batch.source_refresh import (
     RefreshedBatchSelection,
@@ -360,11 +362,11 @@ def test_both_commands_use_same_helper_interface():
 
     # Read the source code of include and discard modules
 
-    include_source = inspect.getsource(include)
+    include_source = inspect.getsource(selected_change_batch_staging)
     discard_source = inspect.getsource(selected_change_batch_discarding)
 
     # Include and selected-change discard batching should import from batch.source_refresh.
-    assert "from ..batch.source_refresh import acquire_batch_ownership_update_for_selection" in include_source
+    assert "from ...batch.source_refresh import acquire_batch_ownership_update_for_selection" in include_source
     assert "from ...batch.source_refresh import acquire_batch_ownership_update_for_selection" in discard_source
 
     # Both paths should call acquire_batch_ownership_update_for_selection.

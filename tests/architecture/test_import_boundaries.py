@@ -1634,6 +1634,67 @@ def test_whole_file_batch_staging_owns_include_pipeline():
     assert moved_import_names <= helper_imported_names
 
 
+def test_selected_change_batch_staging_owns_include_pipeline():
+    """Selected change include-to-batch support should stay out of include.py."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_batch_staging.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.selected_change_batch_staging",
+        fromlist=["selected_change_batch_staging"],
+    )
+    public_names = {
+        "include_selected_change_to_batch",
+    }
+    old_command_helper_names = {
+        "_command_include_hunk_to_batch",
+    }
+    moved_import_names = {
+        "acquire_batch_ownership_update_for_selection",
+        "add_file_to_batch",
+        "annotate_with_batch_source",
+        "append_lines_to_file",
+        "batch_exists",
+        "build_line_changes_from_patch_lines",
+        "create_batch",
+        "detect_file_mode",
+        "get_block_list_file_path",
+        "read_batch_metadata",
+        "read_text_file_line_set",
+        "record_hunk_skipped",
+    }
+    helper_imports = moved_import_names | {
+        "stream_live_git_diff",
+        "whole_file_batch_staging",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_names = {
+        node.name
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    include_imported_names = set()
+    include_selection_imports = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        imported_names = {alias.name for alias in node.names}
+        include_imported_names |= imported_names
+        if imported_module == "git_stage_batch.commands.selection":
+            include_selection_imports |= imported_names
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert old_command_helper_names.isdisjoint(include_names)
+    assert old_command_helper_names.isdisjoint(vars(helper).keys())
+    assert "selected_change_batch_staging" in include_selection_imports
+    assert moved_import_names.isdisjoint(include_imported_names)
+    assert helper_imports <= helper_imported_names
+
+
 def test_file_scope_include_to_batch_owns_file_pipeline():
     """Explicit file-scope include-to-batch support should stay out of include.py."""
     include_path = SRC_ROOT / "commands" / "include.py"
@@ -4216,7 +4277,10 @@ def test_batch_file_mode_detection_stays_in_data_module():
         fromlist=["file_modes"],
     )
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": {"detect_file_mode"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "selected_change_batch_staging.py": {"detect_file_mode"},
         SRC_ROOT
         / "commands"
         / "selection"

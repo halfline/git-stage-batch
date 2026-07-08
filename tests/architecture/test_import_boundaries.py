@@ -1614,6 +1614,43 @@ def test_tui_file_selection_menu_owns_whole_file_actions():
     assert whole_file_command_names <= file_menu_imported_names
 
 
+def test_tui_line_selection_menu_owns_line_actions():
+    """TUI line selection should live in the line selection menu."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    line_menu_path = SRC_ROOT / "tui" / "line_selection_menu.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    line_menu = __import__(
+        "git_stage_batch.tui.line_selection_menu",
+        fromlist=["line_selection_menu"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    line_menu_imported_names = set()
+    line_command_names = {
+        "command_discard_line",
+        "command_include_line",
+        "command_skip_line",
+    }
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(line_menu_path):
+        line_menu_imported_names |= {alias.name for alias in node.names}
+
+    assert "handle_line_selection_menu" in vars(line_menu)
+    assert "handle_line_selection" not in vars(interactive)
+    assert "git_stage_batch.tui.line_selection_menu" in interactive_imports
+    assert line_command_names.isdisjoint(interactive_imported_names)
+    assert line_command_names <= line_menu_imported_names
+
+
 def test_tui_file_review_state_name_does_not_shadow_persisted_state():
     """TUI review state should not reuse the persisted file-review state name."""
     review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"

@@ -112,9 +112,9 @@ from .selection import discard_line_selection as _discard_line_selection
 from .selection import discard_line_replacement as _discard_line_replacement
 from .selection import batch_line_selection as _batch_line_selection
 from .selection import batch_line_updates as _batch_line_updates
-from .file_scope.discard_file_to_batch import (
+from .file_scope.discard_file_to_batch import discard_file_to_batch
+from .selection.whole_file_batch_discarding import (
     discard_binary_to_batch,
-    discard_file_to_batch,
     discard_text_deletion_to_batch,
 )
 from .selection.selected_hunk_refresh import (

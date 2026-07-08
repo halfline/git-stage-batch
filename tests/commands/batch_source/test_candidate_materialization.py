@@ -41,6 +41,9 @@ class _Preview:
     def close(self) -> None:
         self.closed = True
 
+    def require_target(self, name: str) -> _Target:
+        return next(target for target in self.targets if target.target == name)
+
 
 class _ReplacementView(AbstractContextManager):
     def __init__(self, source_buffer: LineBuffer, ownership: object) -> None:

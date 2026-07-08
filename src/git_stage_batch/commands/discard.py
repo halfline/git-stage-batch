@@ -29,7 +29,6 @@ from ..core.replacement import (
     coerce_replacement_payload,
 )
 from ..batch.query import read_batch_metadata
-from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.source_refresh import refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
@@ -46,7 +45,6 @@ from ..core.hashing import (
     compute_stable_hunk_hash_from_lines,
     compute_text_file_deletion_hash,
 )
-from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..core.text_lifecycle import TextFileChangeType
 from ..data.text_lifecycle_detection import detect_empty_text_lifecycle_change
@@ -129,6 +127,7 @@ from ..utils.paths import (
 from .selection import discard_file_selection as _discard_file_selection
 from .selection import discard_line_selection as _discard_line_selection
 from .selection import discard_line_replacement as _discard_line_replacement
+from .selection import batch_line_selection as _batch_line_selection
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -1640,15 +1639,12 @@ def _command_discard_file_lines_to_batch(
     line_changes = annotate_with_batch_source(file_path, cached_lines)
 
     # Parse line IDs and filter to selected lines
-    requested_ids = set(parse_line_selection(line_id_specification))
-    require_line_selection_in_view(
+    selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
+        line_id_specification,
     )
-    selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
 
-    if not selected_lines:
+    if not selection.selected_lines:
         if not quiet:
             print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
         return 0
@@ -1674,7 +1670,7 @@ def _command_discard_file_lines_to_batch(
                     batch_name=batch_name,
                     file_path=file_path,
                     file_metadata=file_metadata,
-                    selected_lines=selected_lines,
+                    selected_lines=selection.selected_lines,
                     hunk_lines=line_changes.lines,
                     replacement_line_runs=replacement_line_runs,
                 )
@@ -1707,7 +1703,7 @@ def _command_discard_file_lines_to_batch(
     with load_working_tree_file_as_buffer(file_path) as working_lines:
         target_working_buffer = build_target_working_tree_buffer_from_lines(
             line_changes,
-            requested_ids,
+            selection.requested_ids,
             working_lines,
             working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
@@ -1740,17 +1736,14 @@ def _command_discard_lines_to_batch(
 
     require_selected_hunk()
 
-    requested_ids = set(parse_line_selection(line_id_specification))
     line_changes = load_line_changes_from_state()
-    require_line_selection_in_view(
+    selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
+        line_id_specification,
     )
 
     # Filter to requested display line IDs
-    selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
-    if not selected_lines:
+    if not selection.selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
     # Auto-create batch if it doesn't exist
@@ -1776,7 +1769,7 @@ def _command_discard_lines_to_batch(
                     batch_name=batch_name,
                     file_path=line_changes.path,
                     file_metadata=file_metadata,
-                    selected_lines=selected_lines,
+                    selected_lines=selection.selected_lines,
                     hunk_lines=line_changes.lines,
                     replacement_line_runs=replacement_line_runs,
                 )
@@ -1813,7 +1806,7 @@ def _command_discard_lines_to_batch(
     with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
         target_working_buffer = build_target_working_tree_buffer_from_lines(
             line_changes,
-            requested_ids,
+            selection.requested_ids,
             working_lines,
             working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )

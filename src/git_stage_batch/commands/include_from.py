@@ -10,6 +10,7 @@ from typing import Optional
 from .batch_source import action_plans as _action_plans
 from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import candidate_previews as _candidate_previews
+from .batch_source import candidate_refusals as _candidate_refusals
 from .batch_source import text_file_actions as _text_file_actions
 from .selection import replacement_selection
 from ..batch.binary_file_content import read_binary_file_from_batch
@@ -646,96 +647,12 @@ def command_include_from_batch(
 
     if failed_files:
         _action_plans.close_action_plans(include_plans)
-        candidate_limit_files = [
-            file_path
-            for file_path in failed_files
-            if candidate_counts.get(file_path, CandidatePreviewCount()).too_many
-        ]
-        if len(candidate_limit_files) == 1:
-            file_path = candidate_limit_files[0]
-            exit_with_error(
-                _(
-                    "Cannot include batch '{batch}': {file} has too many include "
-                    "candidates to preview safely.\n"
-                    "No changes applied.\n\n"
-                    "Use --line with a narrower selection or split the batch "
-                    "before previewing candidates."
-                ).format(batch=batch_name, file=file_path)
-            )
-        if len(candidate_limit_files) > 1:
-            exit_with_error(
-                _(
-                    "Cannot include batch '{batch}': multiple files have too many "
-                    "include candidates to preview safely.\n"
-                    "No changes applied.\n\n"
-                    "Use --line with narrower selections or split the batch "
-                    "before previewing candidates."
-                ).format(batch=batch_name)
-            )
-
-        candidate_error_files = [
-            file_path
-            for file_path in failed_files
-            if (
-                candidate_counts.get(file_path, CandidatePreviewCount()).error
-                and not candidate_counts.get(file_path, CandidatePreviewCount()).too_many
-            )
-        ]
-        if len(candidate_error_files) == 1:
-            file_path = candidate_error_files[0]
-            error = candidate_counts[file_path].error
-            exit_with_error(
-                _(
-                    "Cannot enumerate include candidates for {file}: {error}\n"
-                    "No changes applied."
-                ).format(file=file_path, error=error)
-            )
-        if len(candidate_error_files) > 1:
-            examples = "\n".join(
-                f"  {file_path}: {candidate_counts[file_path].error}"
-                for file_path in candidate_error_files[:3]
-            )
-            exit_with_error(
-                _(
-                    "Cannot enumerate include candidates for multiple files.\n"
-                    "No changes applied.\n\n"
-                    "{examples}"
-                ).format(examples=examples)
-            )
-
-        ambiguous_files = [
-            file_path
-            for file_path in failed_files
-            if candidate_counts.get(file_path, CandidatePreviewCount()).count
-        ]
-        if len(ambiguous_files) == 1:
-            file_path = ambiguous_files[0]
-            exit_with_error(
-                _(
-                    "Cannot include batch '{batch}': {file} has {count} include candidates.\n"
-                    "No changes applied.\n\n"
-                    "Preview candidates:\n"
-                    "  git-stage-batch show --from {batch}:include --file {file}\n\n"
-                    "Include a reviewed candidate:\n"
-                    "  git-stage-batch include --from {batch}:include:N --file {file}"
-                ).format(
-                    batch=batch_name,
-                    file=file_path,
-                    count=candidate_counts[file_path].count,
-                )
-            )
-        if len(ambiguous_files) > 1:
-            examples = "\n".join(
-                f"  git-stage-batch show --from {batch_name}:include --file {file_path}"
-                for file_path in ambiguous_files[:3]
-            )
-            exit_with_error(
-                _(
-                    "Cannot include batch '{batch}': multiple files need include decisions.\n"
-                    "No changes applied.\n\n"
-                    "Resolve one file at a time:\n{examples}"
-                ).format(batch=batch_name, examples=examples)
-            )
+        _candidate_refusals.refuse_candidate_conflicts(
+            batch_name=batch_name,
+            operation="include",
+            failed_files=failed_files,
+            candidate_counts=candidate_counts,
+        )
         if len(failed_files) == 1:
             # Check if there are individually mergeable lines to suggest --lines
             file_path = failed_files[0]

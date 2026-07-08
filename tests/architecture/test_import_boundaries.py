@@ -2264,6 +2264,34 @@ def test_tui_file_review_live_actions_own_live_transfers():
     assert "git_stage_batch.commands.skip" in live_action_imports
 
 
+def test_tui_file_review_block_actions_own_block_commands():
+    """TUI file review block actions should own block command calls."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    block_actions_path = SRC_ROOT / "tui" / "file_review" / "block_actions.py"
+    block_actions = __import__(
+        "git_stage_batch.tui.file_review.block_actions",
+        fromlist=["block_actions"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    block_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(block_actions_path)
+    }
+
+    assert {
+        "block_review_file",
+        "unblock_review_file",
+    } <= vars(block_actions).keys()
+    assert "git_stage_batch.tui.file_review.block_actions" in review_imports
+    assert "git_stage_batch.commands.block_file" not in review_imports
+    assert "git_stage_batch.commands.unblock_file" not in review_imports
+    assert "git_stage_batch.commands.block_file" in block_action_imports
+    assert "git_stage_batch.commands.unblock_file" in block_action_imports
+
+
 def test_commands_do_not_import_tui():
     """Command modules should not launch or depend on TUI modules."""
     violations = []

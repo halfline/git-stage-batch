@@ -9,6 +9,99 @@ import git_stage_batch.commands.batch_source.binary_file_actions as binary_file_
 from git_stage_batch.core.buffer import LineBuffer
 
 
+def test_discard_binary_file_to_worktree_restores_baseline(
+    tmp_path,
+    monkeypatch,
+):
+    """Binary discard should restore baseline content and mode."""
+    monkeypatch.setattr(
+        binary_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    baseline_buffer = LineBuffer.from_bytes(b"baseline")
+    monkeypatch.setattr(
+        binary_file_actions,
+        "load_git_object_as_buffer",
+        lambda spec: baseline_buffer if spec == "base:image.png" else None,
+    )
+    monkeypatch.setattr(
+        binary_file_actions,
+        "detect_file_mode_in_commit",
+        lambda commit, file_path: "100755",
+    )
+    mode_calls = []
+    monkeypatch.setattr(
+        binary_file_actions,
+        "apply_git_file_mode",
+        lambda path, file_mode: mode_calls.append((path, file_mode)),
+    )
+
+    action = binary_file_actions.discard_binary_file_to_worktree(
+        "image.png",
+        "base",
+    )
+
+    target = tmp_path / "image.png"
+    assert action is binary_file_actions.BinaryWorktreeAction.REPLACED
+    assert target.read_bytes() == b"baseline"
+    assert mode_calls == [(target, "100755")]
+    with pytest.raises(ValueError, match="buffer is closed"):
+        baseline_buffer.to_bytes()
+
+
+def test_discard_binary_file_to_worktree_deletes_without_baseline(
+    tmp_path,
+    monkeypatch,
+):
+    """Binary discard should remove worktree paths absent from baseline."""
+    monkeypatch.setattr(
+        binary_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        binary_file_actions,
+        "load_git_object_as_buffer",
+        lambda spec: None,
+    )
+    target = tmp_path / "image.png"
+    target.write_bytes(b"current")
+
+    action = binary_file_actions.discard_binary_file_to_worktree(
+        "image.png",
+        "base",
+    )
+
+    assert action is binary_file_actions.BinaryWorktreeAction.DELETED
+    assert not target.exists()
+
+
+def test_discard_binary_file_to_worktree_ignores_missing_path_without_baseline(
+    tmp_path,
+    monkeypatch,
+):
+    """Binary discard should allow missing worktree paths absent from baseline."""
+    monkeypatch.setattr(
+        binary_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        binary_file_actions,
+        "load_git_object_as_buffer",
+        lambda spec: None,
+    )
+
+    action = binary_file_actions.discard_binary_file_to_worktree(
+        "image.png",
+        "base",
+    )
+
+    assert action is None
+    assert not (tmp_path / "image.png").exists()
+
+
 def test_write_binary_file_to_worktree_writes_buffer(tmp_path, monkeypatch):
     """Modified binary batch targets should be written relative to the repository root."""
     monkeypatch.setattr(

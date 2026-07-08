@@ -8,7 +8,7 @@ from typing import Optional
 
 from .batch_source import candidate_preview_builders as _candidate_preview_builders
 from .batch_source import candidate_previews as _candidate_previews
-from .selection import replacement_selection
+from .batch_source import replacement_previews as _replacement_previews
 from ..batch.atomic_file_changes import (
     binary_change_from_batch_file_metadata,
     gitlink_change_from_batch_file_metadata,
@@ -16,21 +16,14 @@ from ..batch.atomic_file_changes import (
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     OperationCandidatePreview,
-    render_candidate_buffer_diff,
     save_candidate_preview_state,
 )
-from ..batch.replacement import build_replacement_batch_view_from_lines
-from ..core.replacement import (
-    ReplacementPayload,
-    coerce_replacement_payload,
-)
+from ..core.replacement import ReplacementPayload
 from ..batch.selection import (
-    acquire_batch_ownership_for_display_ids_from_lines,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
 )
 from ..batch.source_selector import parse_batch_source_selector
-from ..batch.submodule_pointer import is_batch_submodule_pointer
 from ..batch.validation import batch_exists
 from ..batch.file_display import render_batch_file_display
 from ..data.batch_selected_changes import (
@@ -50,7 +43,7 @@ from ..data.selected_change.file_changes import (
     cache_binary_file_change,
     cache_gitlink_change,
 )
-from ..data.file_review.records import FileReviewAction, ReviewSource
+from ..data.file_review.records import ReviewSource
 from ..data.file_review.state import (
     clear_last_file_review_state,
     write_last_file_review_state,
@@ -77,8 +70,6 @@ from ..output.candidate_preview import (
     render_operation_candidate,
     render_operation_candidate_overview,
 )
-from ..core.buffer import LineBuffer
-from ..data.repository_buffers import load_git_object_as_buffer
 from ..exceptions import (
     exit_with_error,
     BatchMetadataError,
@@ -88,7 +79,6 @@ from ..exceptions import (
 from ..i18n import _
 from ..core.models import LineLevelChange
 from ..utils.git import require_git_repository
-from ..utils.paths import get_context_lines
 
 
 def _batch_source_args(batch_name: str) -> str:
@@ -133,65 +123,6 @@ def _resolve_candidate_ordinal(
             ordinal=explicit_ordinal,
         )
     )
-
-
-def _preview_replacement_batch_view(
-    batch_name: str,
-    metadata: dict,
-    files: dict,
-    line_ids: str,
-    file_path: str,
-    selected_ids: set[int],
-    replacement_text: str | ReplacementPayload,
-) -> None:
-    file_meta = files[file_path]
-    if file_meta.get("file_type") == "binary":
-        exit_with_error(_("Cannot preview replacement text for binary files."))
-    if is_batch_submodule_pointer(file_meta):
-        exit_with_error(_("Cannot preview replacement text for submodule pointers."))
-
-    replacement_selection.require_contiguous_display_selection(selected_ids)
-    batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
-    if batch_source_buffer is None:
-        exit_with_error(_("Batch source content is missing for {file}.").format(file=file_path))
-
-    with batch_source_buffer as batch_source_lines:
-        selection_ids, _rendered = translate_batch_file_gutter_ids_to_selection_ids(
-            batch_name,
-            file_path,
-            selected_ids,
-            # Replacement preview is include-shaped because it previews include --from --as.
-            FileReviewAction.INCLUDE_FROM_BATCH,
-        )
-        with acquire_batch_ownership_for_display_ids_from_lines(
-            file_meta,
-            batch_source_lines,
-            selection_ids,
-        ) as ownership:
-            try:
-                replacement_view = build_replacement_batch_view_from_lines(
-                    batch_source_lines,
-                    ownership,
-                    coerce_replacement_payload(replacement_text),
-                )
-            except ValueError as e:
-                exit_with_error(str(e))
-            with replacement_view:
-                before = LineBuffer.from_bytes(batch_source_buffer.to_bytes())
-                try:
-                    diff_text = render_candidate_buffer_diff(
-                        file_path,
-                        before,
-                        replacement_view.source_buffer,
-                        label_before="batch",
-                        label_after="replacement-preview",
-                        context_lines=get_context_lines(),
-                    )
-                    if diff_text:
-                        print(diff_text, end="" if diff_text.endswith("\n") else "\n")
-                finally:
-                    before.close()
 
 
 def command_show_from_batch(
@@ -304,14 +235,15 @@ def command_show_from_batch(
         if len(files) != 1:
             exit_with_error(_("`show --from --as` requires exactly one file."))
         file_path = list(files.keys())[0]
-        _preview_replacement_batch_view(
-            batch_name,
-            metadata,
-            files,
-            line_ids,
-            file_path,
-            selected_ids,
-            replacement_text,
+        _replacement_previews.print_batch_source_replacement_preview(
+            batch_name=batch_name,
+            files=files,
+            file_path=file_path,
+            selected_ids=selected_ids,
+            replacement_text=replacement_text,
+            translate_selection_ids=(
+                translate_batch_file_gutter_ids_to_selection_ids
+            ),
         )
         return
 

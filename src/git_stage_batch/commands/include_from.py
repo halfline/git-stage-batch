@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
+from .selection import replacement_selection
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
@@ -498,16 +499,6 @@ def _write_binary_file_from_batch(
     )
 
 
-def _require_contiguous_display_selection(selected_ids: set[int]) -> None:
-    """Require one contiguous selected display range for replacement text."""
-    if not selected_ids:
-        return
-
-    selected_range = list(range(min(selected_ids), max(selected_ids) + 1))
-    if sorted(selected_ids) != selected_range:
-        exit_with_error(_("Replacement selection must be one contiguous line range."))
-
-
 def command_include_from_batch(
     batch_name: str,
     line_ids: Optional[str] = None,
@@ -603,7 +594,7 @@ def command_include_from_batch(
     rendered = None  # Store for error translation
     if selected_ids:
         if replacement_payload is not None:
-            _require_contiguous_display_selection(selected_ids)
+            replacement_selection.require_contiguous_display_selection(selected_ids)
         file_path_for_render = list(files.keys())[0]  # Single file context enforced above
         selection_ids_to_include, rendered = translate_batch_file_gutter_ids_to_selection_ids(
             batch_name,

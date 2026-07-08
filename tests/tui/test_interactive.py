@@ -95,6 +95,40 @@ class TestActionHandlers:
 
         assert handler.needs_hunk is False
 
+    def test_undo_action_dispatches_history_action(self):
+        """Test undo action routes through the history action adapter."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("git_stage_batch.tui.history_actions.command_undo") as mock_undo:
+            dispatch_action(
+                "u",
+                has_hunk=False,
+                use_color=False,
+                flow_state=flow_state,
+            )
+
+        mock_undo.assert_called_once_with()
+
+    def test_redo_action_dispatches_history_action(self):
+        """Test redo action routes through the history action adapter."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("git_stage_batch.tui.history_actions.command_redo") as mock_redo:
+            dispatch_action(
+                "U",
+                has_hunk=False,
+                use_color=False,
+                flow_state=flow_state,
+            )
+
+        mock_redo.assert_called_once_with()
+
     def test_assets_action_registered(self):
         """Test asset installation is available without a selected hunk."""
         handler = ACTION_HANDLERS["A"]

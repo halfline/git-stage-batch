@@ -2223,6 +2223,47 @@ def test_tui_file_review_batch_actions_own_batch_transfers():
     assert "git_stage_batch.commands.include_from" in batch_action_imports
 
 
+def test_tui_file_review_live_actions_own_live_transfers():
+    """TUI file review live actions should own live transfer commands."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    live_actions_path = SRC_ROOT / "tui" / "file_review" / "live_actions.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    live_actions = __import__(
+        "git_stage_batch.tui.file_review.live_actions",
+        fromlist=["live_actions"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    live_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(live_actions_path)
+    }
+    old_review_names = {
+        "_apply_live_file_action",
+        "_apply_live_line_action",
+        "_apply_live_replacement_action",
+    }
+
+    assert {
+        "apply_live_file_action",
+        "apply_live_line_action",
+        "apply_live_replacement_action",
+    } <= vars(live_actions).keys()
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.live_actions" in review_imports
+    assert "git_stage_batch.commands.discard" not in review_imports
+    assert "git_stage_batch.commands.include" not in review_imports
+    assert "git_stage_batch.commands.skip" not in review_imports
+    assert "git_stage_batch.commands.discard" in live_action_imports
+    assert "git_stage_batch.commands.include" in live_action_imports
+    assert "git_stage_batch.commands.skip" in live_action_imports
+
+
 def test_commands_do_not_import_tui():
     """Command modules should not launch or depend on TUI modules."""
     violations = []

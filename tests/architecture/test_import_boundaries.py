@@ -4041,6 +4041,52 @@ def test_batch_source_action_plans_own_resource_plans():
     assert old_include_names.isdisjoint(include_from_helpers)
 
 
+def test_batch_source_candidate_previews_own_candidate_preview_checks():
+    """Shared candidate preview checks should live outside command entries."""
+    candidate_previews = __import__(
+        "git_stage_batch.commands.batch_source.candidate_previews",
+        fromlist=["candidate_previews"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    public_names = {
+        "candidate_preview_for_ordinal",
+        "candidate_preview_state_matches",
+        "close_candidate_previews",
+    }
+    command_paths = {
+        apply_from_path,
+    }
+    imports_candidate_previews = {
+        path: False
+        for path in command_paths
+    }
+    direct_state_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_previews" in imported_names
+            ):
+                imports_candidate_previews[path] = True
+            if imported_module == "git_stage_batch.batch.operation_candidates":
+                direct_state_imports[path] |= (
+                    imported_names & {"load_candidate_preview_state"}
+                )
+
+    assert public_names <= vars(candidate_previews).keys()
+    assert imports_candidate_previews == {
+        apply_from_path: True,
+    }
+    assert direct_state_imports == {
+        apply_from_path: set(),
+    }
+
+
 def test_batch_source_text_actions_own_text_file_mutations():
     """Shared text file actions should live outside command entries."""
     text_file_actions = __import__(

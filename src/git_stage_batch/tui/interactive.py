@@ -30,7 +30,7 @@ from .file_selection_menu import handle_file_selection_menu
 from .file_review import handle_current_file_review, handle_file_browser
 from .fixup_menu import handle_fixup_menu
 from .flow import FlowLocation, LocationRole, FlowState
-from .flow_menu import handle_from_menu, handle_to_menu
+from .flow_actions import handle_flow_action
 from .hunk_actions import (
     handle_hunk_discard,
     handle_hunk_include,
@@ -175,31 +175,8 @@ def _dispatch_action(
     if action == "":
         return
 
-    # Handle flow actions specially - they modify flow_state in place
-    if action.startswith("<"):
-        if len(action) > 1:
-            # Direct batch selection: <batch-name
-            batch_name = action[1:]
-            flow_state.source = FlowLocation.for_batch(batch_name)
-            # Prevent batch-to-batch state
-            if flow_state.target.role is LocationRole.BATCH:
-                flow_state.target = FlowLocation.STAGING_AREA
-        else:
-            # Show menu
-            handle_from_menu(flow_state)
-        return  # Refresh display after flow change
-    elif action.startswith(">"):
-        if len(action) > 1:
-            # Direct batch selection: >batch-name
-            batch_name = action[1:]
-            flow_state.target = FlowLocation.for_batch(batch_name)
-            # Prevent batch-to-batch state
-            if flow_state.source.role is LocationRole.BATCH:
-                flow_state.source = FlowLocation.WORKING_TREE
-        else:
-            # Show menu
-            handle_to_menu(flow_state)
-        return  # Refresh display after flow change
+    if handle_flow_action(action, flow_state):
+        return
 
     handler_config = ACTION_HANDLERS.get(action)
 

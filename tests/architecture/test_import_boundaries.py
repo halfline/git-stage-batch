@@ -1576,6 +1576,52 @@ def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
     assert "git_stage_batch.commands.discard" not in multi_file_helper_imports
 
 
+def test_file_scope_discard_owns_file_pipeline():
+    """Explicit file-scope discard support should stay out of discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "discard_file.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.discard_file",
+        fromlist=["discard_file"],
+    )
+    public_names = {
+        "discard_file_changes",
+    }
+    moved_names = {
+        "auto_add_untracked_files",
+        "git_remove_paths",
+        "render_gitlink_change",
+        "render_rename_change",
+        "render_text_deletion_change",
+        "stream_live_git_diff",
+    }
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_discard_file_names = {
+        node.id
+        for node in ast.walk(discard_functions["command_discard_file"])
+        if isinstance(node, ast.Name)
+    }
+    discard_imported_names = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            discard_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "discard_file" in discard_imported_names
+    assert moved_names.isdisjoint(command_discard_file_names)
+    assert moved_names <= helper_imported_names
+
+
 def test_selected_change_batch_discarding_owns_hunk_pipeline():
     """Selected change batch support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 
+import pytest
+
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.replacement import ReplacementPayload
 from git_stage_batch.core.text_lifecycle import TextFileChangeType
+from git_stage_batch.exceptions import MergeError
 import git_stage_batch.commands.batch_source.text_plan_builders as builders
 
 
@@ -310,6 +313,47 @@ def test_build_include_text_file_action_plan_uses_replacement_view(
     assert replacement_view.closed
 
     result.plan.close()
+
+
+def test_build_include_text_file_action_plan_closes_partial_merge_on_failure(
+    monkeypatch,
+    tmp_path,
+):
+    """A failed second merge should release the first merged target buffer."""
+    ownership = _Ownership()
+    index_buffer, _batch_buffer, _worktree_buffer = _patch_include_text_plan_io(
+        monkeypatch,
+        tmp_path,
+        ownership,
+    )
+    merged_index_buffer = LineBuffer.from_bytes(b"merged-index\n")
+
+    def merge_batch_from_line_sequences_as_buffer(source_lines, line_ownership, target):
+        if target is index_buffer:
+            return merged_index_buffer
+        raise MergeError("worktree conflict")
+
+    monkeypatch.setattr(
+        builders,
+        "merge_batch_from_line_sequences_as_buffer",
+        merge_batch_from_line_sequences_as_buffer,
+    )
+
+    with pytest.raises(MergeError, match="worktree conflict"):
+        builders.build_include_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            selected_ids={1},
+            selection_ids_to_include={7},
+            replacement_payload=None,
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        merged_index_buffer.to_bytes()
 
 
 def test_build_include_text_file_action_plan_returns_merged_plan(

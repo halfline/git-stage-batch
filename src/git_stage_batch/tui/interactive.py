@@ -13,6 +13,7 @@ from ..data.file_tracking import auto_add_untracked_files
 from ..data.hunk_tracking import fetch_next_change
 from ..data.progress import format_id_range, get_hunk_counts
 from ..data.line_state import load_line_changes_from_state
+from ..data.session import session_is_active
 from ..exceptions import BypassRefresh, CommandError, QuitInteractive
 from ..i18n import _
 from ..output.colors import Colors, format_hotkey
@@ -20,7 +21,6 @@ from ..output.hunk import print_line_level_changes
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git import get_git_repository_root_path, run_git_command
 from ..utils.paths import (
-    get_abort_head_file_path,
     get_selected_hunk_hash_file_path,
     get_start_head_file_path,
     get_start_index_tree_file_path,
@@ -753,7 +753,7 @@ def start_interactive_mode() -> None:
     # Import commands locally to avoid circular dependency
     from ..commands.start import command_start
 
-    session_was_active = get_abort_head_file_path().exists()
+    session_was_active = session_is_active()
 
     # Auto-initialize session (allow degraded mode if no changes)
     degraded_mode = False

@@ -2322,6 +2322,46 @@ def test_tui_file_review_fixup_actions_own_line_fixups():
     assert "git_stage_batch.data.suggest_fixup_state" in fixup_action_imports
 
 
+def test_tui_file_review_prompts_own_action_vocabulary():
+    """TUI file review prompts should own action text and parsing."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    prompts_path = SRC_ROOT / "tui" / "file_review" / "prompts.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    prompts = __import__(
+        "git_stage_batch.tui.file_review.prompts",
+        fromlist=["prompts"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    prompt_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(prompts_path)
+    }
+    old_review_names = {
+        "_normalize_review_action",
+        "_print_review_help",
+        "_prompt_review_action",
+    }
+    prompt_text = prompts_path.read_text()
+    review_text = review_path.read_text()
+
+    assert {
+        "normalize_review_action",
+        "print_review_help",
+        "prompt_review_action",
+    } <= vars(prompts).keys()
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.prompts" in review_imports
+    assert "git_stage_batch.tui.prompts" in prompt_imports
+    assert "Review action:" not in review_text
+    assert "Review action:" in prompt_text
+
+
 def test_commands_do_not_import_tui():
     """Command modules should not launch or depend on TUI modules."""
     violations = []

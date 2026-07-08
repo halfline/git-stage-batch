@@ -4151,6 +4151,7 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
         fromlist=["candidate_selectors"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "resolve_batch_source_action_selector",
     }
@@ -4161,6 +4162,10 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
     old_snippets_by_path = {
         apply_from_path: {
             "names the apply candidate preview set",
+            "requires --file in this implementation",
+        },
+        include_from_path: {
+            "names the include candidate preview set",
             "requires --file in this implementation",
         },
     }
@@ -4190,9 +4195,11 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
     assert public_names <= vars(candidate_selectors).keys()
     assert imports_candidate_selectors == {
         apply_from_path: True,
+        include_from_path: True,
     }
     assert direct_selector_imports == {
         apply_from_path: set(),
+        include_from_path: set(),
     }
     for path, old_snippets in old_snippets_by_path.items():
         command_text = path.read_text()

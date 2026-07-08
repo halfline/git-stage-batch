@@ -6,7 +6,34 @@ import os
 
 from ...core.buffer import LineBuffer, write_buffer_to_working_tree_path
 from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_type
-from ...utils.git import get_git_repository_root_path
+from ...staging.operations import update_index_with_blob_buffer
+from ...utils.git import create_git_blob, get_git_repository_root_path, git_update_index
+
+
+def stage_text_file_to_index(
+    file_path: str,
+    buffer: LineBuffer | None,
+    file_mode: str | None,
+    change_type: str = "modified",
+) -> None:
+    """Stage one text batch target into the index."""
+    if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
+        result = git_update_index(file_path=file_path, force_remove=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Failed to stage text deletion for {file_path}: {result.stderr}"
+            )
+        return
+
+    if buffer is None:
+        raise RuntimeError(f"Text file not found in batch content: {file_path}")
+
+    if file_mode is None:
+        update_index_with_blob_buffer(file_path, buffer)
+        return
+
+    blob_hash = create_git_blob(buffer.byte_chunks())
+    git_update_index(file_path=file_path, mode=file_mode, blob_sha=blob_hash)
 
 
 def write_text_file_to_worktree(

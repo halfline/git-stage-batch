@@ -67,7 +67,7 @@ def _patch_apply_materialization_io(monkeypatch, tmp_path):
     (tmp_path / "notes.txt").write_bytes(b"worktree\n")
 
     monkeypatch.setattr(
-        materialization,
+        materialization._candidate_inputs,
         "get_git_repository_root_path",
         lambda: tmp_path,
     )
@@ -255,7 +255,7 @@ def _patch_include_materialization_io(monkeypatch, tmp_path):
         return None
 
     monkeypatch.setattr(
-        materialization,
+        materialization._candidate_inputs,
         "get_git_repository_root_path",
         lambda: tmp_path,
     )

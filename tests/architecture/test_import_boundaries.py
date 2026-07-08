@@ -575,6 +575,54 @@ def test_selected_change_clear_reasons_stay_in_clear_reason_module():
     assert violations == []
 
 
+def test_undo_ref_bookkeeping_stays_in_undo_refs():
+    """Undo stack ref helpers should stay out of undo snapshot storage."""
+    undo = __import__(
+        "git_stage_batch.data.undo",
+        fromlist=["undo"],
+    )
+    undo_refs = __import__(
+        "git_stage_batch.data.undo_refs",
+        fromlist=["undo_refs"],
+    )
+    ref_names = {
+        "SESSION_REDO_STACK_REF",
+        "SESSION_UNDO_STACK_REF",
+        "checkpoint_parent",
+        "clear_redo_history",
+        "clear_undo_history",
+        "current_redo_commit",
+        "current_stack_commit",
+        "current_undo_commit",
+        "list_restorable_refs",
+    }
+    old_undo_names = {
+        "REF_PREFIXES",
+        "_checkpoint_parent",
+        "_clear_redo_history",
+        "_current_redo_commit",
+        "_current_stack_commit",
+        "_current_undo_commit",
+        "_list_refs",
+        "clear_undo_history",
+    }
+    session_path = SRC_ROOT / "data" / "session.py"
+    session_imports_undo_refs = False
+
+    assert ref_names <= vars(undo_refs).keys()
+    assert old_undo_names.isdisjoint(vars(undo))
+
+    for imported_module, node in _import_from_nodes(session_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.data.undo_refs"
+            and "clear_undo_history" in imported_names
+        ):
+            session_imports_undo_refs = True
+
+    assert session_imports_undo_refs
+
+
 def test_batch_file_display_stays_below_hunk_navigation():
     """Batch file rendering should not depend on selected-change orchestration."""
     renderer_path = SRC_ROOT / "batch" / "file_display.py"

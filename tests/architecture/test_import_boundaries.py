@@ -4177,6 +4177,77 @@ def test_batch_line_selection_stays_in_command_helper():
     assert command_level_names <= helper_imported_names
 
 
+def test_batch_line_updates_stays_in_command_helper():
+    """Batch line updates should live in command selection support."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "batch_line_updates.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.batch_line_updates",
+        fromlist=["batch_line_updates"],
+    )
+    public_names = {
+        "add_selected_lines_to_batch",
+    }
+    moved_names = {
+        "acquire_batch_ownership_update_for_selection",
+        "add_file_to_batch",
+        "batch_exists",
+        "create_batch",
+        "detect_file_mode",
+        "read_batch_metadata",
+        "snapshot_file_if_untracked",
+    }
+    guarded_functions = {
+        include_path: {
+            "_command_include_file_lines_to_batch",
+            "_command_include_lines_to_batch",
+        },
+        discard_path: {
+            "_command_discard_file_lines_to_batch",
+            "_command_discard_lines_to_batch",
+        },
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    for path, function_names in guarded_functions.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        functions = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+        }
+        imports_helper = False
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.commands.selection":
+                continue
+            imported_names = {alias.name for alias in node.names}
+            if "batch_line_updates" in imported_names:
+                imports_helper = True
+
+        assert imports_helper
+        for function_name in function_names:
+            function = functions[function_name]
+            function_names_used = {
+                node.id for node in ast.walk(function) if isinstance(node, ast.Name)
+            }
+            attribute_names_used = {
+                node.attr for node in ast.walk(function) if isinstance(node, ast.Attribute)
+            }
+            assert "add_selected_lines_to_batch" in attribute_names_used
+            assert moved_names.isdisjoint(function_names_used)
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert moved_names <= helper_imported_names
+
+
 def test_discard_uses_file_io_path_empty_helper():
     """Discard should use file I/O utilities for generic path byte checks."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

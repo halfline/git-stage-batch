@@ -12,6 +12,12 @@ from .conftest import git_stage_batch, get_staged_files
 INTERACTIVE_TIMEOUT = 15
 
 
+def decode_timeout_output(value):
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value or ""
+
+
 def run_interactive(*inputs, timeout=INTERACTIVE_TIMEOUT):
     """Run interactive mode with simulated input.
 
@@ -45,9 +51,12 @@ def run_interactive(*inputs, timeout=INTERACTIVE_TIMEOUT):
             check=False
         )
         return result
-    except subprocess.TimeoutExpired:
-        # Interactive mode might not exit cleanly with some inputs
-        pytest.fail("Interactive mode timed out")
+    except subprocess.TimeoutExpired as error:
+        output = (
+            decode_timeout_output(error.output)
+            + decode_timeout_output(error.stderr)
+        )
+        pytest.fail(f"Interactive mode timed out\n{output}")
 
 
 class TestInteractiveMode:

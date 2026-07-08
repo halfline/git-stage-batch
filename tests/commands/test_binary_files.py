@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import git_stage_batch.batch.binary_file_content as binary_file_content
+import git_stage_batch.commands.batch_source.binary_file_actions as binary_file_actions
 import git_stage_batch.commands.include_from as include_from_module
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_binary_file_to_batch
@@ -1024,14 +1025,16 @@ def test_binary_include_from_batch_reports_failed_binary_deletion_staging(
     command_include_to_batch("bin-batch", file="image.png", quiet=True)
     subprocess.run(["git", "checkout", "HEAD", "--", "image.png"], check=True, capture_output=True)
 
-    original_git_update_index = include_from_module.git_update_index
+    original_git_update_index = binary_file_actions.git_update_index
 
     def fail_force_remove(*args, **kwargs):
         if kwargs.get("force_remove"):
             return subprocess.CompletedProcess(["git", "update-index"], 1, stdout="", stderr="boom")
         return original_git_update_index(*args, **kwargs)
 
-    monkeypatch.setattr(include_from_module, "git_update_index", fail_force_remove)
+    monkeypatch.setattr(binary_file_actions, "git_update_index", fail_force_remove)
+    if hasattr(include_from_module, "git_update_index"):
+        monkeypatch.setattr(include_from_module, "git_update_index", fail_force_remove)
 
     with pytest.raises(CommandError, match="incompatible"):
         command_include_from_batch("bin-batch", file="image.png")

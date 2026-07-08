@@ -2,11 +2,14 @@
 
 import os
 import subprocess
+import stat
 
 import pytest
 
 from git_stage_batch.data.file_modes import (
+    apply_git_file_mode,
     detect_file_mode,
+    detect_file_mode_in_commit,
     detect_file_mode_from_root,
 )
 
@@ -89,3 +92,34 @@ def test_uses_index_mode_for_missing_worktree_path(temp_git_repo):
 
 def test_defaults_to_regular_file_mode_for_unknown_path(temp_git_repo):
     assert detect_file_mode_from_root(temp_git_repo, "missing.txt") == "100644"
+
+
+def test_detects_file_mode_in_commit_tree(temp_git_repo):
+    script_file = temp_git_repo / "script.sh"
+    script_file.write_text("#!/bin/sh\n")
+    script_file.chmod(0o755)
+    subprocess.run(["git", "add", "script.sh"], check=True, cwd=temp_git_repo)
+    subprocess.run(
+        ["git", "commit", "-m", "Add script"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+
+    assert detect_file_mode_in_commit("HEAD", "script.sh") == "100755"
+    assert detect_file_mode_in_commit("HEAD", "missing.txt") is None
+
+
+def test_applies_git_file_mode_to_worktree_path(temp_git_repo):
+    target_file = temp_git_repo / "target.txt"
+    target_file.write_text("content\n")
+    target_file.chmod(0o644)
+
+    apply_git_file_mode(target_file, "100755")
+
+    executable_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    assert target_file.stat().st_mode & executable_bits == executable_bits
+
+    apply_git_file_mode(target_file, "100644")
+
+    assert target_file.stat().st_mode & executable_bits == 0

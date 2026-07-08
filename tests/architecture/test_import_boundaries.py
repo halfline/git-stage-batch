@@ -3986,6 +3986,7 @@ def test_batch_source_action_plans_own_resource_plans():
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
+        "ApplyTextFileActionPlan",
         "BatchSourceActionPlan",
         "BinaryFileActionPlan",
         "SubmodulePointerActionPlan",
@@ -3993,6 +3994,7 @@ def test_batch_source_action_plans_own_resource_plans():
     }
     old_apply_names = {
         "_ApplyBinaryPlan",
+        "_ApplyTextPlan",
         "_ApplySubmodulePlan",
         "_close_apply_plans",
     }

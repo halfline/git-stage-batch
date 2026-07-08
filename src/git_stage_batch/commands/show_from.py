@@ -47,6 +47,8 @@ from ..data.batch_file_review_selection import translate_batch_file_gutter_ids_t
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
     SelectedChangeKind,
+)
+from ..data.selected_change.clear_reasons import (
     mark_selected_change_cleared_by_file_list,
 )
 from ..data.selected_change.file_changes import (

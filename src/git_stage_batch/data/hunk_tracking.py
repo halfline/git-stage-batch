@@ -28,6 +28,7 @@ from ..exceptions import NoMoreHunks
 from .auto_advance import resolve_auto_advance
 from . import change_freshness as _change_freshness
 from . import live_diff as _live_diff
+from .selected_change import clear_reasons as _selected_change_clear_reasons
 from .selected_change import file_changes as _selected_file_changes
 from .selected_change import store as _selected_store
 from .selected_change import hunk_filtering as _selected_hunk_filtering
@@ -195,5 +196,5 @@ def select_next_change_after_action(
         return True
 
     _clear_selected_change_state_files()
-    _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
+    _selected_change_clear_reasons.mark_selected_change_cleared_by_auto_advance_disabled()
     return False

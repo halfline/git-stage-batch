@@ -137,7 +137,7 @@ def resolve_batch_source_action_scope(
     extra_action_parts: tuple[str, ...] = (),
 ) -> _records.ActionScopeResolution:
     """Resolve pathless and implicit-file batch actions against the last batch review."""
-    from ..selected_change.store import (
+    from ..selected_change.clear_reasons import (
         refuse_bare_action_after_file_list,
         refuse_bare_action_after_stale_batch_selection,
     )
@@ -447,7 +447,7 @@ def validate_implicit_live_to_batch_file_action(
     use that explicit file path. The boolean is true when the caller should stop
     after a live-action guard handled the request.
     """
-    from ..selected_change.store import (
+    from ..selected_change.clear_reasons import (
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )
@@ -481,7 +481,7 @@ def resolve_live_to_batch_action_scope(
     file: str | None,
 ) -> _records.ActionScopeResolution:
     """Resolve pathless and implicit-file live-to-batch actions against live reviews."""
-    from ..selected_change.store import (
+    from ..selected_change.clear_reasons import (
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )
@@ -544,7 +544,7 @@ def resolve_live_line_action_scope(
     validate_pathless_before_live_guard: bool = False,
 ) -> _records.ActionScopeResolution:
     """Validate a pathless or implicit-file live line action against review state."""
-    from ..selected_change.store import (
+    from ..selected_change.clear_reasons import (
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )

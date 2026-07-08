@@ -36,6 +36,7 @@ from .. import change_freshness as _change_freshness
 from .. import file_hunk_display as _file_hunk_display
 from .. import line_state as _line_state
 from .. import live_diff as _live_diff
+from . import clear_reasons as _selected_change_clear_reasons
 from . import file_changes as _selected_file_changes
 from . import store as _selected_store
 from . import hunk_filtering as _selected_hunk_filtering
@@ -81,7 +82,7 @@ def recalculate_selected_hunk_for_file(
             _clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
                 return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
-            _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
+            _selected_change_clear_reasons.mark_selected_change_cleared_by_auto_advance_disabled()
             return RecalculateSelectedHunkResult.CLEARED
 
         line_changes = preserve_line_ids_from_previous_view(
@@ -96,7 +97,7 @@ def recalculate_selected_hunk_for_file(
             _clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
                 return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
-            _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
+            _selected_change_clear_reasons.mark_selected_change_cleared_by_auto_advance_disabled()
             return RecalculateSelectedHunkResult.CLEARED
 
         return RecalculateSelectedHunkResult.RECALCULATED
@@ -188,5 +189,5 @@ def recalculate_selected_hunk_for_file(
     _clear_selected_change_state_files()
     if resolve_auto_advance(auto_advance):
         return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
-    _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
+    _selected_change_clear_reasons.mark_selected_change_cleared_by_auto_advance_disabled()
     return RecalculateSelectedHunkResult.CLEARED

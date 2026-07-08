@@ -19,8 +19,10 @@ from .selected_change.file_changes import (
 )
 from .selected_change.store import (
     SelectedChangeKind,
-    mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_change_kind,
+)
+from .selected_change.clear_reasons import (
+    mark_selected_change_cleared_by_stale_batch_selection,
 )
 
 

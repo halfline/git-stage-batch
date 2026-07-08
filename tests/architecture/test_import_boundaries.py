@@ -3804,6 +3804,43 @@ def test_batch_merge_candidates_uses_public_data_types():
     assert violations == []
 
 
+def test_operation_candidates_owns_candidate_preview_count():
+    """Candidate preview count state should live with operation candidates."""
+    operation_candidates = __import__(
+        "git_stage_batch.batch.operation_candidates",
+        fromlist=["operation_candidates"],
+    )
+    public_names = {
+        "CandidatePreviewCount",
+    }
+    private_names = {
+        "_ApplyCandidateCount",
+        "_IncludeCandidateCount",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "apply_from.py": public_names,
+        SRC_ROOT / "commands" / "include_from.py": public_names,
+    }
+
+    assert public_names <= vars(operation_candidates).keys()
+    assert private_names.isdisjoint(vars(operation_candidates))
+
+    for path, expected_names in expected_imports.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        helper_names = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        }
+        imported_candidate_names = set()
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.batch.operation_candidates":
+                continue
+            imported_candidate_names |= {alias.name for alias in node.names}
+
+        assert private_names.isdisjoint(helper_names)
+        assert expected_names <= imported_candidate_names
+
+
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(

@@ -14,8 +14,10 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.include import command_include_to_batch
 import git_stage_batch.commands.batch_transform.sift_results as sift_results
-from git_stage_batch.commands.sift import (
+from git_stage_batch.commands.batch_transform.sift_persistence import (
     add_sifted_text_file_to_batch,
+)
+from git_stage_batch.commands.sift import (
     command_sift_batch,
 )
 from git_stage_batch.batch.query import read_batch_metadata

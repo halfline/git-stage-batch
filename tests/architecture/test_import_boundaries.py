@@ -1403,6 +1403,65 @@ def test_argument_parser_delegates_multi_file_action_flow():
     )
 
 
+def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
+    """Multi-file discard-to-batch support should stay out of discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    multi_file_actions_path = (
+        SRC_ROOT / "commands" / "file_scope" / "multi_file_actions.py"
+    )
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "discard_to_batch.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.discard_to_batch",
+        fromlist=["discard_to_batch"],
+    )
+    public_names = {
+        "DiscardFilesToBatchResult",
+        "command_discard_files_to_batch",
+    }
+    moved_names = {
+        "CollectedTextFileDiscards",
+        "DiscardFilesToBatchResult",
+        "PreparedPatchDiscard",
+        "PreparedTextFileDiscardToBatch",
+        "TextFileDiscardInput",
+        "_collect_text_file_discard_inputs",
+        "_discard_prepared_text_files_to_batch",
+        "_prepare_text_file_discard_to_batch",
+        "_run_reverse_apply_for_prepared_discards",
+        "command_discard_files_to_batch",
+    }
+    helper_imports = {
+        "BatchFileUpdate",
+        "add_files_to_batch",
+        "detect_file_mode_from_root",
+        "record_hunks_discarded",
+        "snapshot_files_if_untracked",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_names = {
+        node.name
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    multi_file_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(multi_file_actions_path)
+    }
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert moved_names.isdisjoint(discard_names)
+    assert (
+        "git_stage_batch.commands.file_scope.discard_to_batch"
+        in multi_file_action_imports
+    )
+    assert helper_imports <= helper_imported_names
+
+
 def test_argument_parser_uses_file_scope_resolver_module():
     """Parser branches should not own repository file-scope resolution."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -3665,10 +3724,11 @@ def test_batch_file_mode_detection_stays_in_data_module():
     )
     expected_imports = {
         SRC_ROOT / "commands" / "include.py": {"detect_file_mode"},
-        SRC_ROOT / "commands" / "discard.py": {
-            "detect_file_mode",
-            "detect_file_mode_from_root",
-        },
+        SRC_ROOT / "commands" / "discard.py": {"detect_file_mode"},
+        SRC_ROOT
+        / "commands"
+        / "file_scope"
+        / "discard_to_batch.py": {"detect_file_mode_from_root"},
     }
     forbidden_helpers = {
         "_detect_file_mode",

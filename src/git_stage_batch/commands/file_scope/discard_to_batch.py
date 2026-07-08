@@ -277,7 +277,7 @@ def _discard_prepared_text_files_to_batch(
     )
 
 
-def command_discard_files_to_batch(
+def discard_files_to_batch(
     batch_name: str,
     files: list[str],
     *,

@@ -20,13 +20,13 @@ from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
     ACTION_HANDLERS,
     _dispatch_action,
-    handle_line_selection,
     handle_quit,
     print_help,
     start_interactive_mode,
 )
 from git_stage_batch.tui.asset_menu import handle_asset_menu
 from git_stage_batch.tui.file_selection_menu import handle_file_selection_menu
+from git_stage_batch.tui.line_selection_menu import handle_line_selection_menu
 
 
 @pytest.fixture
@@ -402,7 +402,7 @@ class TestHandleFileSelection:
 
 
 class TestHandleLineSelection:
-    """Tests for handle_line_selection function."""
+    """Tests for handle_line_selection_menu function."""
 
     def test_handle_line_selection_include(self):
         """Test line selection with include action."""
@@ -417,11 +417,11 @@ class TestHandleLineSelection:
             ]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.include.command_include_line") as mock_include:
-                with patch("git_stage_batch.tui.interactive.prompt_line_ids", return_value="1"):
+        with patch("git_stage_batch.tui.line_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.line_selection_menu.command_include_line") as mock_include:
+                with patch("git_stage_batch.tui.line_selection_menu.prompt_line_ids", return_value="1"):
                     with patch("builtins.input", return_value="i"):
-                        handle_line_selection(FlowState(
+                        handle_line_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
@@ -437,8 +437,8 @@ class TestHandleLineSelection:
             lines=[LineEntry(id=None, kind=" ", old_line_number=1, new_line_number=1, text_bytes=b" unchanged\n", text=" unchanged\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            handle_line_selection(FlowState(
+        with patch("git_stage_batch.tui.line_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            handle_line_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
@@ -454,10 +454,10 @@ class TestHandleLineSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
+        with patch("git_stage_batch.tui.line_selection_menu.load_line_changes_from_state", return_value=line_changes):
             with patch("builtins.input", side_effect=KeyboardInterrupt):
                 # Should return without raising
-                handle_line_selection(FlowState(
+                handle_line_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))

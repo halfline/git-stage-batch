@@ -102,6 +102,67 @@ class TestActionHandlers:
 
         assert handler.needs_hunk is False
 
+    def test_include_action_dispatches_hunk_action(self):
+        """Test include action routes through the hunk action adapter."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("git_stage_batch.tui.hunk_actions.command_include") as mock_include:
+            _dispatch_action(
+                "i",
+                has_hunk=True,
+                use_color=False,
+                flow_state=flow_state,
+            )
+
+        mock_include.assert_called_once_with(quiet=True, auto_advance=True)
+
+    def test_skip_action_dispatches_hunk_action(self):
+        """Test skip action routes through the hunk action adapter."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("git_stage_batch.tui.hunk_actions.command_skip") as mock_skip:
+            _dispatch_action(
+                "s",
+                has_hunk=True,
+                use_color=False,
+                flow_state=flow_state,
+            )
+
+        mock_skip.assert_called_once_with(quiet=True, auto_advance=True)
+
+    def test_discard_action_dispatches_hunk_action(self):
+        """Test discard action routes through the hunk action adapter."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.hunk_actions.confirm_destructive_operation",
+            return_value=True,
+        ) as mock_confirm:
+            with patch(
+                "git_stage_batch.tui.hunk_actions.command_discard"
+            ) as mock_discard:
+                _dispatch_action(
+                    "d",
+                    has_hunk=True,
+                    use_color=False,
+                    flow_state=flow_state,
+                )
+
+        mock_confirm.assert_called_once_with(
+            "discard",
+            "This will remove the hunk from your working tree.",
+        )
+        mock_discard.assert_called_once_with(quiet=True, auto_advance=True)
+
     def test_status_action_dispatches_status_command(self):
         """Test status action routes through the status command."""
         flow_state = FlowState(

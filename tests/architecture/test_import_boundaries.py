@@ -94,6 +94,7 @@ def test_selected_change_display_names_data_modules_at_import_sites():
         {
             "git_stage_batch.data": {
                 "line_state",
+                "selected_file_changes",
                 "selected_change_store",
             },
         }
@@ -485,6 +486,50 @@ def test_selected_change_store_stays_below_orchestration_state():
 
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
     assert "git_stage_batch.data.file_review.state" not in imported_modules
+
+
+def test_selected_file_change_cache_stays_in_file_change_module():
+    """Atomic selected file-change payloads should stay out of the state store."""
+    selected_file_changes = __import__(
+        "git_stage_batch.data.selected_change.file_changes",
+        fromlist=["file_changes"],
+    )
+    selected_store = __import__(
+        "git_stage_batch.data.selected_change.store",
+        fromlist=["store"],
+    )
+    moved_names = {
+        "cache_binary_file_change",
+        "cache_gitlink_change",
+        "cache_rename_change",
+        "cache_text_deletion_change",
+        "load_selected_binary_file",
+        "load_selected_gitlink_change",
+        "load_selected_rename_change",
+        "load_selected_text_deletion_change",
+        "read_selected_binary_data",
+        "read_selected_gitlink_data",
+        "read_selected_rename_data",
+        "read_selected_text_deletion_data",
+    }
+    violations = []
+
+    assert moved_names <= vars(selected_file_changes).keys()
+    assert moved_names.isdisjoint(vars(selected_store))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.selected_change.store":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            stale_imports = imported_names & moved_names
+            if stale_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(stale_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
 
 
 def test_batch_file_display_stays_below_hunk_navigation():

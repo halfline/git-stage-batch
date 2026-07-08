@@ -63,10 +63,12 @@ from ..data.selected_change.store import (
     SelectedChangeKind,
     get_selected_change_file_path,
     read_selected_change_kind,
-    refuse_bare_action_after_auto_advance_disabled,
-    refuse_bare_action_after_file_list,
     restore_selected_change_state,
     snapshot_selected_change_state,
+)
+from ..data.selected_change.clear_reasons import (
+    refuse_bare_action_after_auto_advance_disabled,
+    refuse_bare_action_after_file_list,
 )
 from ..data.file_change_display import (
     render_binary_file_change,

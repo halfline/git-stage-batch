@@ -55,8 +55,10 @@ from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
     SelectedChangeKind,
     get_selected_change_file_path,
-    mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_change_kind,
+)
+from ..data.selected_change.clear_reasons import (
+    mark_selected_change_cleared_by_stale_batch_selection,
 )
 from ..data.undo import undo_checkpoint
 from ..utils.repository_buffers import load_git_object_as_buffer

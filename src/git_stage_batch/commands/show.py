@@ -21,9 +21,11 @@ from ..data.selected_change.store import (
     SelectedChangeKind,
     cache_hunk_change,
     get_selected_change_file_path,
-    mark_selected_change_cleared_by_file_list,
     restore_selected_change_state,
     snapshot_selected_change_state,
+)
+from ..data.selected_change.clear_reasons import (
+    mark_selected_change_cleared_by_file_list,
 )
 from ..data.selected_change.file_changes import (
     cache_binary_file_change,

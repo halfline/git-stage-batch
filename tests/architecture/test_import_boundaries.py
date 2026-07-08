@@ -1721,6 +1721,47 @@ def test_tui_history_actions_own_undo_redo_actions():
         assert imported_module in history_actions_imports
 
 
+def test_tui_again_action_owns_iteration_restart():
+    """TUI again action should live in the again action adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    again_action_path = SRC_ROOT / "tui" / "again_action.py"
+    action_dispatch = __import__(
+        "git_stage_batch.tui.action_dispatch",
+        fromlist=["action_dispatch"],
+    )
+    again_action = __import__(
+        "git_stage_batch.tui.again_action",
+        fromlist=["again_action"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    again_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(again_action_path)
+    }
+    old_dispatch_imports = {
+        "git_stage_batch.data.file_tracking",
+        "git_stage_batch.data.hunk_tracking",
+        "git_stage_batch.utils.paths",
+    }
+
+    assert "handle_again" in vars(again_action)
+    assert "_handle_again" not in vars(action_dispatch)
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.again_action" in action_dispatch_imports
+    assert "git_stage_batch.commands.again" not in interactive_imports
+    assert "git_stage_batch.commands.again" not in action_dispatch_imports
+    assert action_dispatch_imports.isdisjoint(old_dispatch_imports)
+    assert "git_stage_batch.commands.again" in again_action_imports
+
+
 def test_tui_status_action_owns_status_command():
     """TUI status action should live in the status action adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"

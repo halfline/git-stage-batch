@@ -4392,42 +4392,79 @@ def test_index_entry_lookup_stays_in_data_module():
         assert expected_names <= imported_index_names
 
 
-def test_include_selected_change_staging_stays_in_command_helper():
-    """Include should use the selected-change staging helper module."""
+def test_selected_change_staging_owns_include_pipeline():
+    """Selected change include support should stay out of include.py."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_staging.py"
+    )
     helper = __import__(
         "git_stage_batch.commands.selection.selected_change_staging",
         fromlist=["selected_change_staging"],
     )
     public_names = {
+        "include_selected_change",
         "stage_gitlink_change",
         "stage_rename_change",
         "stage_text_deletion_change",
+    }
+    internal_names = {
+        "_include_loaded_selected_change",
     }
     old_include_names = {
         "_stage_rename_change",
         "_stage_text_deletion_change",
         "_update_index_for_gitlink_change",
     }
+    moved_names = {
+        "NoMoreHunks",
+        "fetch_next_change",
+        "get_selected_hunk_hash_file_path",
+        "get_selected_hunk_patch_file_path",
+        "git_apply_to_index",
+        "git_add_paths",
+        "load_selected_change",
+        "patch_is_file_deletion",
+        "read_text_file_contents",
+        "record_hunk_included",
+        "update_index_with_blob_buffer",
+    }
+    helper_imports = moved_names | {
+        "BinaryFileChange",
+        "LineBuffer",
+        "finish_selected_change_action",
+        "undo_checkpoint",
+    }
 
     assert public_names <= vars(helper).keys()
+    assert internal_names <= vars(helper).keys()
 
     tree = ast.parse(include_path.read_text(), filename=str(include_path))
-    include_helpers = {
-        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+    include_functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
     }
-    imported_staging_names = set()
+    command_include_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include"])
+        if isinstance(node, ast.Name)
+    }
+    include_selection_imports = set()
 
     for imported_module, node in _import_from_nodes(include_path):
-        if (
-            imported_module
-            != "git_stage_batch.commands.selection.selected_change_staging"
-        ):
+        if imported_module != "git_stage_batch.commands.selection":
             continue
-        imported_staging_names |= {alias.name for alias in node.names}
+        include_selection_imports |= {alias.name for alias in node.names}
 
-    assert old_include_names.isdisjoint(include_helpers)
-    assert public_names <= imported_staging_names
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert old_include_names.isdisjoint(include_functions)
+    assert "selected_change_staging" in include_selection_imports
+    assert moved_names.isdisjoint(command_include_names)
+    assert helper_imports <= helper_imported_names
 
 
 def test_include_line_selection_stays_in_command_helper():

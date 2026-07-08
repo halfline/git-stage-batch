@@ -1451,11 +1451,16 @@ def test_cli_dispatch_delegates_noninteractive_execution():
 def test_tui_cli_escape_does_not_import_dispatch():
     """TUI command escape should execute parsed args without importing launcher dispatch."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    cli_escape_path = SRC_ROOT / "tui" / "cli_escape.py"
     execution_path = SRC_ROOT / "cli" / "execution.py"
     dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
     interactive_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    cli_escape_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(cli_escape_path)
     }
     execution_imports = {
         imported_module
@@ -1466,9 +1471,10 @@ def test_tui_cli_escape_does_not_import_dispatch():
         for imported_module, _node in _import_from_nodes(dispatch_path)
     }
 
-    assert "git_stage_batch.cli.argument_parser" in interactive_imports
-    assert "git_stage_batch.cli.execution" in interactive_imports
-    assert "git_stage_batch.cli.dispatch" not in interactive_imports
+    assert "git_stage_batch.tui.cli_escape" in interactive_imports
+    assert "git_stage_batch.cli.argument_parser" in cli_escape_imports
+    assert "git_stage_batch.cli.execution" in cli_escape_imports
+    assert "git_stage_batch.cli.dispatch" not in cli_escape_imports
     assert "git_stage_batch.tui.interactive" not in execution_imports
     assert "git_stage_batch.tui.interactive" in dispatch_imports
 

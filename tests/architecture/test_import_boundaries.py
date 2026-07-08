@@ -2481,6 +2481,57 @@ def test_include_selected_change_staging_stays_in_command_helper():
     assert public_names <= imported_staging_names
 
 
+def test_discard_selected_change_discarding_stays_in_command_helper():
+    """Discard should use the selected-change discarding helper module."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_discarding.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.selected_change_discarding",
+        fromlist=["selected_change_discarding"],
+    )
+    public_names = {
+        "discard_gitlink_change",
+        "discard_rename_change",
+        "discard_text_deletion_change",
+    }
+    old_discard_names = {
+        "_discard_gitlink_change",
+        "_discard_rename_change",
+        "_discard_text_deletion_change",
+    }
+    helper_imports = {
+        "discard_submodule_pointer_from_batch",
+        "git_update_gitlink",
+        "git_update_index",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_helpers = {
+        node.name for node in ast.walk(discard_tree) if isinstance(node, ast.FunctionDef)
+    }
+    imported_discarding_names = set()
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if (
+            imported_module
+            != "git_stage_batch.commands.selection.selected_change_discarding"
+        ):
+            continue
+        imported_discarding_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert old_discard_names.isdisjoint(discard_helpers)
+    assert public_names <= imported_discarding_names
+    assert helper_imports <= helper_imported_names
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

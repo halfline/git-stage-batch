@@ -4216,6 +4216,72 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
         assert old_names.isdisjoint(helper_names[path])
 
 
+def test_batch_source_candidate_inputs_own_text_candidate_metadata():
+    """Candidate input metadata should live in batch-source support."""
+    candidate_inputs = __import__(
+        "git_stage_batch.commands.batch_source.candidate_inputs",
+        fromlist=["candidate_inputs"],
+    )
+    support_paths = {
+        SRC_ROOT / "commands" / "batch_source" / "candidate_preview_builders.py",
+        SRC_ROOT / "commands" / "batch_source" / "candidate_preview_counts.py",
+        SRC_ROOT / "commands" / "batch_source" / "candidate_materialization.py",
+    }
+    public_names = {
+        "CandidateBatchSourceRef",
+        "CandidateIndexTarget",
+        "CandidateWorktreeTarget",
+        "candidate_batch_source_ref",
+        "candidate_index_text_target",
+        "candidate_worktree_text_target",
+        "is_text_candidate_entry",
+        "require_candidate_batch_source_ref",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.submodule_pointer": {
+            "is_batch_submodule_pointer",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "mode_for_text_materialization",
+            "normalized_text_change_type",
+        },
+        "git_stage_batch.utils.git": {
+            "get_git_repository_root_path",
+        },
+    }
+    imports_candidate_inputs = {
+        path: False
+        for path in support_paths
+    }
+    direct_metadata_imports = {
+        path: set()
+        for path in support_paths
+    }
+
+    for path in support_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_inputs" in imported_names
+            ):
+                imports_candidate_inputs[path] = True
+            direct_metadata_imports[path] |= imported_names & disallowed_imports.get(
+                imported_module,
+                set(),
+            )
+
+    assert public_names <= vars(candidate_inputs).keys()
+    assert imports_candidate_inputs == {
+        path: True
+        for path in support_paths
+    }
+    assert direct_metadata_imports == {
+        path: set()
+        for path in support_paths
+    }
+
+
 def test_batch_source_candidate_materialization_owns_reviewed_candidate_loading():
     """Apply/include reviewed candidate loading should live in batch-source support."""
     candidate_materialization = __import__(

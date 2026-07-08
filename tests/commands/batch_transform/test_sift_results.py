@@ -58,14 +58,14 @@ def test_compute_sifted_binary_file_retains_changed_content(
     )
 
     assert result is not None
-    assert result["type"] == "binary"
-    assert result["binary_change"].old_path == "data.bin"
-    assert result["binary_change"].new_path == "data.bin"
-    assert result["binary_change"].change_type == "modified"
-    assert result["target_buffer"] is batch_source_buffer
-    assert result["target_buffer"].to_bytes() == b"target"
+    assert isinstance(result, sift_results.SiftedBinaryFileResult)
+    assert result.binary_change.old_path == "data.bin"
+    assert result.binary_change.new_path == "data.bin"
+    assert result.binary_change.change_type == "modified"
+    assert result.target_buffer is batch_source_buffer
+    assert result.target_buffer.to_bytes() == b"target"
 
-    result["target_buffer"].close()
+    result.target_buffer.close()
 
 
 def test_compute_sifted_binary_file_removes_absent_deletion(
@@ -117,10 +117,10 @@ def test_compute_sifted_binary_file_retains_existing_deletion(
     )
 
     assert result is not None
-    assert result["type"] == "binary"
-    assert result["binary_change"].old_path == "data.bin"
-    assert result["binary_change"].new_path == "/dev/null"
-    assert result["binary_change"].change_type == "deleted"
-    assert "target_buffer" not in result
+    assert isinstance(result, sift_results.SiftedBinaryFileResult)
+    assert result.binary_change.old_path == "data.bin"
+    assert result.binary_change.new_path == "/dev/null"
+    assert result.binary_change.change_type == "deleted"
+    assert result.target_buffer is None
     with pytest.raises(ValueError, match="buffer is closed"):
         batch_source_buffer.to_bytes()

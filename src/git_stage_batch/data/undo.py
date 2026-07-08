@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from ..core.buffer import (
-    LineBuffer,
     write_buffer_to_path,
     write_buffer_to_working_tree_path,
 )
@@ -26,6 +25,7 @@ from .undo_refs import (
     current_undo_commit,
     list_restorable_refs,
 )
+from . import undo_worktree as _undo_worktree
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
@@ -54,174 +54,12 @@ from ..utils.paths import (
 _PENDING_CHECKPOINT: str | None = None
 
 
-def _changed_worktree_paths() -> list[str]:
-    """Return repository-relative paths whose worktree bytes may need undo."""
-    paths: set[str] = set()
-    commands = [
-        [
-            "-c",
-            "diff.ignoreSubmodules=none",
-            "diff",
-            "--ignore-submodules=none",
-            "--name-only",
-            "HEAD",
-        ],
-        [
-            "-c",
-            "diff.ignoreSubmodules=none",
-            "diff",
-            "--ignore-submodules=none",
-            "--cached",
-            "--name-only",
-        ],
-        ["ls-files", "--others", "--exclude-standard"],
-    ]
-    for args in commands:
-        result = run_git_command(args, check=False, requires_index_lock=False)
-        if result.returncode == 0:
-            paths.update(line for line in result.stdout.splitlines() if line)
-    return sorted(paths)
-
-
-def _gitlink_oid_from_index(path: str) -> str | None:
-    result = run_git_command(["ls-files", "--stage", "--", path], check=False, requires_index_lock=False)
-    if result.returncode != 0:
-        return None
-    for line in result.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 2 and parts[0] == "160000":
-            return parts[1]
-    return None
-
-
-def _gitlink_oid_from_head(path: str) -> str | None:
-    result = run_git_command(["ls-tree", "HEAD", "--", path], check=False, requires_index_lock=False)
-    if result.returncode != 0:
-        return None
-    for line in result.stdout.splitlines():
-        metadata, _separator, _entry_path = line.partition("\t")
-        parts = metadata.split()
-        if len(parts) >= 3 and parts[0] == "160000" and parts[1] == "commit":
-            return parts[2]
-    return None
-
-
-def _worktree_commit_oid(path: str) -> str | None:
-    result = run_git_command(
-        ["rev-parse", "--verify", "HEAD^{commit}"],
-        cwd=path,
-        check=False,
-        requires_index_lock=False,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
-
-
-def _worktree_is_dirty(path: str) -> bool:
-    result = run_git_command(["status", "--porcelain"], cwd=path, check=False, requires_index_lock=False)
-    return result.returncode != 0 or bool(result.stdout.strip())
-
-
-def _is_gitlink_path(path: str) -> bool:
-    return _gitlink_oid_from_index(path) is not None or _gitlink_oid_from_head(path) is not None
-
-
-def _snapshot_gitlink_path(path: str) -> dict[str, Any]:
-    index_oid = _gitlink_oid_from_index(path)
-    head_oid = _gitlink_oid_from_head(path)
-    worktree_oid = _worktree_commit_oid(path)
-    return {
-        "path": path,
-        "kind": "gitlink",
-        "exists": index_oid is not None or head_oid is not None or worktree_oid is not None,
-        "mode": "160000",
-        "index_oid": index_oid,
-        "head_oid": head_oid,
-        "worktree_oid": worktree_oid,
-        "dirty": _worktree_is_dirty(path) if worktree_oid is not None else False,
-        "blob": None,
-    }
-
-
-def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
-    worktree_oid = _worktree_commit_oid(path)
-    return {
-        "path": path,
-        "kind": "embedded-repo",
-        "exists": worktree_oid is not None,
-        "mode": "160000",
-        "index_oid": None,
-        "head_oid": None,
-        "worktree_oid": worktree_oid,
-        "dirty": _worktree_is_dirty(path) if worktree_oid is not None else False,
-        "blob": None,
-    }
-
-
-def _snapshot_worktree_paths(paths: list[str]) -> list[dict[str, Any]]:
-    repo_root = get_git_repository_root_path()
-    worktree_paths: list[dict[str, Any]] = []
-    for file_path in sorted(set(paths)):
-        full_path = repo_root / file_path
-        if _is_gitlink_path(file_path):
-            worktree_paths.append(_snapshot_gitlink_path(file_path))
-            continue
-        if full_path.is_dir() and (full_path / ".git").exists():
-            worktree_paths.append(_snapshot_embedded_repo_path(file_path))
-            continue
-        if os.path.lexists(full_path):
-            mode = _file_mode_for_path(full_path)
-            worktree_paths.append({
-                "path": file_path,
-                "exists": True,
-                "mode": mode,
-                "blob": _create_blob_from_worktree_path(
-                    full_path,
-                    mode=mode,
-                ),
-            })
-        else:
-            worktree_paths.append({
-                "path": file_path,
-                "exists": False,
-                "mode": "100644",
-                "blob": None,
-            })
-
-    return worktree_paths
-
-
-def _create_blob_from_path(path: Path) -> str:
-    with LineBuffer.from_path(path) as buffer:
-        return create_git_blob(buffer.byte_chunks())
-
-
-def _create_blob_from_worktree_path(path: Path, *, mode: str) -> str:
-    if mode == "120000":
-        return create_git_blob([os.readlink(os.fsencode(path))])
-    return _create_blob_from_path(path)
-
-
-def _index_update_from_path(
-    *,
-    index_path: str,
-    source_path: Path,
-    mode: str,
-) -> GitIndexEntryUpdate:
-    return GitIndexEntryUpdate(
-        file_path=index_path,
-        mode=mode,
-        blob_sha=_create_blob_from_worktree_path(source_path, mode=mode),
-    )
-
-
 def _snapshot_current_state(paths: list[str]) -> dict[str, Any]:
     index_result = run_git_command(["write-tree"], check=False, requires_index_lock=False)
     return {
         "index_tree": index_result.stdout.strip() if index_result.returncode == 0 else None,
         "refs": list_restorable_refs(),
-        "worktree_paths": _snapshot_worktree_paths(paths),
+        "worktree_paths": _undo_worktree.snapshot_worktree_paths(paths),
     }
 
 
@@ -236,16 +74,6 @@ def _add_blob_to_index(env: dict[str, str], path: str, data: bytes, mode: str = 
         ],
         env=env,
     )
-
-
-def _file_mode_for_path(path: Path) -> str:
-    try:
-        file_status = path.lstat()
-    except OSError:
-        return "100644"
-    if stat.S_ISLNK(file_status.st_mode):
-        return "120000"
-    return "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
 
 
 def _restore_file_mode(path: Path, mode: str) -> None:
@@ -266,10 +94,10 @@ def _add_directory_to_index(env: dict[str, str], *, source_dir: Path, tree_prefi
         relative_path = file_path.relative_to(source_dir).as_posix()
         tree_path = f"{tree_prefix}/{relative_path}"
         updates.append(
-            _index_update_from_path(
+            _undo_worktree.index_update_from_path(
                 index_path=tree_path,
                 source_path=file_path,
-                mode=_file_mode_for_path(file_path),
+                mode=_undo_worktree.file_mode_for_path(file_path),
             )
         )
     git_update_index_entries(updates, env=env)
@@ -285,7 +113,9 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
 
     global _PENDING_CHECKPOINT
 
-    tracked_worktree_paths = sorted(set(_changed_worktree_paths()) | set(worktree_paths or []))
+    tracked_worktree_paths = sorted(
+        set(_undo_worktree.changed_worktree_paths()) | set(worktree_paths or [])
+    )
     before = _snapshot_current_state(tracked_worktree_paths)
 
     manifest = {
@@ -363,7 +193,10 @@ def finalize_pending_checkpoint() -> None:
     except CommandError:
         return
 
-    paths = sorted(set(manifest.get("tracked_worktree_paths", [])) | set(_changed_worktree_paths()))
+    paths = sorted(
+        set(manifest.get("tracked_worktree_paths", []))
+        | set(_undo_worktree.changed_worktree_paths())
+    )
     manifest["after"] = _snapshot_current_state(paths)
     manifest["after"]["worktree_paths"] = manifest["after"]["worktree_paths"]
 
@@ -545,7 +378,7 @@ def _redo_relevant_paths(manifest: dict[str, Any]) -> list[str]:
     if isinstance(after, dict):
         for entry in after.get("worktree_paths", []):
             paths.add(entry["path"])
-    paths.update(_changed_worktree_paths())
+    paths.update(_undo_worktree.changed_worktree_paths())
     return sorted(paths)
 
 
@@ -583,12 +416,12 @@ def _write_snapshot_commit(
             else:
                 full_path = repo_root / entry["path"]
                 if os.path.lexists(full_path):
-                    mode = _file_mode_for_path(full_path)
+                    mode = _undo_worktree.file_mode_for_path(full_path)
                     index_updates.append(
                         GitIndexEntryUpdate(
                             file_path=f"worktree/{entry['path']}",
                             mode=mode,
-                            blob_sha=_create_blob_from_worktree_path(
+                            blob_sha=_undo_worktree.create_blob_from_worktree_path(
                                 full_path,
                                 mode=mode,
                             ),
@@ -666,7 +499,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
     operation = str(manifest.get("operation", "operation"))
     redo_paths = _redo_relevant_paths(manifest)
     redo_target = _snapshot_current_state(redo_paths)
-    redo_worktree_entries = _snapshot_worktree_paths(redo_paths)
+    redo_worktree_entries = _undo_worktree.snapshot_worktree_paths(redo_paths)
 
     redo_session_dir = tempfile.mkdtemp(prefix="gsb-redo-session-")
     redo_batches_dir = tempfile.mkdtemp(prefix="gsb-redo-batches-")

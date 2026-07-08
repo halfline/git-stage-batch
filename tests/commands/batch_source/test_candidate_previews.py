@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 import git_stage_batch.commands.batch_source.candidate_previews as candidate_previews
+from git_stage_batch.exceptions import CommandError
 
 
 class _Preview:
@@ -52,6 +53,56 @@ def test_candidate_preview_for_ordinal_returns_none_for_missing_ordinal(
     preview = candidate_previews.candidate_preview_for_ordinal(previews, ordinal)
 
     assert preview is None
+
+
+def test_require_candidate_preview_for_ordinal_returns_one_based_preview():
+    """Required ordinal lookup should return matching previews."""
+    previews = [_Preview(candidate_id="first"), _Preview(candidate_id="second")]
+
+    preview = candidate_previews.require_candidate_preview_for_ordinal(
+        previews,
+        2,
+        batch_name="cleanup",
+        operation="apply",
+        file_path="notes.txt",
+    )
+
+    assert preview is previews[1]
+
+
+def test_require_candidate_preview_for_ordinal_rejects_non_positive_ordinal():
+    """Required ordinal lookup should reject invalid selector numbering."""
+    previews = [_Preview(candidate_id="first")]
+
+    with pytest.raises(CommandError) as exc_info:
+        candidate_previews.require_candidate_preview_for_ordinal(
+            previews,
+            0,
+            batch_name="cleanup",
+            operation="apply",
+            file_path="notes.txt",
+        )
+
+    assert "Candidate ordinal must be at least 1." in exc_info.value.message
+
+
+def test_require_candidate_preview_for_ordinal_reports_missing_ordinal():
+    """Required ordinal lookup should report the candidate count."""
+    previews = [_Preview(candidate_id="first")]
+
+    with pytest.raises(CommandError) as exc_info:
+        candidate_previews.require_candidate_preview_for_ordinal(
+            previews,
+            2,
+            batch_name="cleanup",
+            operation="include",
+            file_path="notes.txt",
+        )
+
+    assert (
+        "Batch 'cleanup' has 1 include candidates for notes.txt; "
+        "candidate 2 does not exist."
+    ) in exc_info.value.message
 
 
 def test_candidate_preview_state_matches_stored_state(monkeypatch):
@@ -103,6 +154,45 @@ def test_candidate_preview_state_rejects_mismatched_state(
     )
 
     assert not candidate_previews.candidate_preview_state_matches(preview, 1)
+
+
+def test_require_candidate_preview_state_accepts_matching_state(monkeypatch):
+    """Required preview state should accept a matching stored preview."""
+    preview = _Preview()
+    monkeypatch.setattr(
+        candidate_previews,
+        "load_candidate_preview_state",
+        lambda loaded_preview: _matching_state(loaded_preview),
+    )
+
+    candidate_previews.require_candidate_preview_state(
+        preview,
+        1,
+        selector="cleanup:apply:1",
+        file_path="notes.txt",
+    )
+
+
+def test_require_candidate_preview_state_reports_stale_state(monkeypatch):
+    """Required preview state should report missing or stale preview state."""
+    preview = _Preview()
+    monkeypatch.setattr(
+        candidate_previews,
+        "load_candidate_preview_state",
+        lambda _preview: None,
+    )
+
+    with pytest.raises(CommandError) as exc_info:
+        candidate_previews.require_candidate_preview_state(
+            preview,
+            1,
+            selector="cleanup:apply:1",
+            file_path="notes.txt",
+        )
+
+    assert (
+        "Candidate selector 'cleanup:apply:1' has not been previewed for notes.txt."
+    ) in exc_info.value.message
 
 
 def test_close_candidate_previews_closes_every_preview():

@@ -9,6 +9,7 @@ from ...batch.ownership import (
     ReplacementLineRun,
     derive_replacement_line_runs_from_lines,
 )
+from ...exceptions import exit_with_error
 from ...i18n import _
 
 
@@ -22,6 +23,16 @@ def derive_replacement_line_runs(
         old_file_lines=hunk_base_lines,
         new_file_lines=hunk_source_lines,
     )
+
+
+def require_contiguous_display_selection(selected_ids: set[int]) -> None:
+    """Require one contiguous selected display range for replacement text."""
+    if not selected_ids:
+        return
+
+    selected_range = list(range(min(selected_ids), max(selected_ids) + 1))
+    if sorted(selected_ids) != selected_range:
+        exit_with_error(_("Replacement selection must be one contiguous line range."))
 
 
 def build_leading_replacement_addition_selection_error(

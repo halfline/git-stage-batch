@@ -8,6 +8,7 @@ import sys
 from contextlib import ExitStack
 from typing import Optional
 
+from .batch_source import candidate_previews as _candidate_previews
 from .selection import replacement_selection
 from ..batch.atomic_file_changes import (
     binary_change_from_batch_file_metadata,
@@ -122,24 +123,26 @@ def _resolve_candidate_ordinal(
     *,
     explicit_ordinal: int,
 ) -> OperationCandidatePreview:
+    preview = _candidate_previews.candidate_preview_for_ordinal(
+        previews,
+        explicit_ordinal,
+    )
+    if preview is not None:
+        return preview
     if not previews:
         raise CommandError(_("No candidates available."))
-    first = previews[0]
-    ordinal = explicit_ordinal
-
-    if ordinal > len(previews):
-        raise CommandError(
-            _("Batch '{batch}' has {count} {operation} candidates for {file}; candidate {ordinal} does not exist.").format(
-                batch=first.batch_name,
-                count=len(previews),
-                operation=first.operation,
-                file=first.file_path,
-                ordinal=ordinal,
-            )
-        )
-    if ordinal < 1:
+    if explicit_ordinal < 1:
         raise CommandError(_("Candidate ordinal must be at least 1."))
-    return previews[ordinal - 1]
+    first = previews[0]
+    raise CommandError(
+        _("Batch '{batch}' has {count} {operation} candidates for {file}; candidate {ordinal} does not exist.").format(
+            batch=first.batch_name,
+            count=len(previews),
+            operation=first.operation,
+            file=first.file_path,
+            ordinal=explicit_ordinal,
+        )
+    )
 
 
 def _preview_replacement_batch_view(
@@ -415,8 +418,7 @@ def command_show_from_batch(
                 for preview in reviewed_previews:
                     save_candidate_preview_state(preview)
             finally:
-                for candidate in previews:
-                    candidate.close()
+                _candidate_previews.close_candidate_previews(previews)
             return
 
         preview = _resolve_candidate_ordinal(previews, explicit_ordinal=selector.candidate_ordinal)
@@ -428,8 +430,7 @@ def command_show_from_batch(
             )
             save_candidate_preview_state(preview)
         finally:
-            for candidate in previews:
-                candidate.close()
+            _candidate_previews.close_candidate_previews(previews)
         return
 
     if porcelain:

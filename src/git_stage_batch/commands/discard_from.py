@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import stat
 import sys
-from pathlib import Path
 from typing import Optional
 
 from ..batch.merge import discard_batch_from_line_sequences_as_buffer
@@ -38,6 +36,7 @@ from ..core.buffer import (
     LineBuffer,
     write_buffer_to_path,
 )
+from ..data.file_modes import apply_git_file_mode, detect_file_mode_in_commit
 from ..data.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -46,30 +45,7 @@ from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, AtomicUnitError, CommandError, MergeError, BatchMetadataError
 from ..i18n import _
-from ..utils.git import get_git_repository_root_path, require_git_repository, run_git_command
-
-
-def _baseline_file_mode(baseline_commit: str, file_path: str) -> str | None:
-    """Return file mode for a path in the baseline tree, if present."""
-    result = run_git_command(
-        ["ls-tree", baseline_commit, "--", file_path],
-        check=False,
-        requires_index_lock=False,
-    )
-    if result.returncode != 0 or not result.stdout.strip():
-        return None
-    return result.stdout.split(maxsplit=1)[0]
-
-
-def _restore_working_tree_file_mode(file_path: Path, file_mode: str | None) -> None:
-    """Restore executable bits for a working-tree file from a Git file mode."""
-    if file_mode is None:
-        return
-    current_mode = file_path.stat().st_mode
-    if file_mode == "100755":
-        file_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    else:
-        file_path.chmod(current_mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+from ..utils.git import get_git_repository_root_path, require_git_repository
 
 
 def _discard_binary_file_from_batch(file_path: str, baseline_commit: str) -> None:
@@ -94,9 +70,9 @@ def _discard_binary_file_from_batch(file_path: str, baseline_commit: str) -> Non
         # File exists in baseline - restore it
         with baseline_buffer:
             write_buffer_to_path(full_path, baseline_buffer)
-        _restore_working_tree_file_mode(
+        apply_git_file_mode(
             full_path,
-            _baseline_file_mode(baseline_commit, file_path),
+            detect_file_mode_in_commit(baseline_commit, file_path),
         )
         print(_("✓ Restored binary file to baseline: {file}").format(file=file_path), file=sys.stderr)
     else:
@@ -118,9 +94,9 @@ def _discard_text_file_lifecycle_from_batch(file_path: str, baseline_commit: str
     if baseline_buffer is not None:
         with baseline_buffer:
             write_buffer_to_path(full_path, baseline_buffer)
-        _restore_working_tree_file_mode(
+        apply_git_file_mode(
             full_path,
-            _baseline_file_mode(baseline_commit, file_path),
+            detect_file_mode_in_commit(baseline_commit, file_path),
         )
     elif full_path.exists():
         full_path.unlink()
@@ -252,7 +228,7 @@ def command_discard_from_batch(
 
                 full_path = repo_root / file_path
                 working_exists = full_path.exists()
-                baseline_mode = _baseline_file_mode(baseline_commit, file_path)
+                baseline_mode = detect_file_mode_in_commit(baseline_commit, file_path)
                 restore_mode = mode_for_text_materialization(
                     baseline_mode,
                     selected_ids,
@@ -299,7 +275,7 @@ def command_discard_from_batch(
                             full_path.unlink()
                     else:
                         write_buffer_to_path(full_path, discarded_buffer)
-                        _restore_working_tree_file_mode(full_path, restore_mode)
+                        apply_git_file_mode(full_path, restore_mode)
 
             except CommandError:
                 raise

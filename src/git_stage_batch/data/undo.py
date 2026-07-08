@@ -11,13 +11,21 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-from ..batch.ref_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from ..core.buffer import (
     LineBuffer,
     write_buffer_to_path,
     write_buffer_to_working_tree_path,
 )
 from .repository_buffers import load_git_blob_as_buffer
+from .undo_refs import (
+    SESSION_REDO_STACK_REF,
+    SESSION_UNDO_STACK_REF,
+    checkpoint_parent,
+    clear_redo_history,
+    current_redo_commit,
+    current_undo_commit,
+    list_restorable_refs,
+)
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
@@ -43,33 +51,7 @@ from ..utils.paths import (
 )
 
 
-SESSION_UNDO_STACK_REF = "refs/git-stage-batch/session/undo-stack"
-SESSION_REDO_STACK_REF = "refs/git-stage-batch/session/redo-stack"
-REF_PREFIXES = (
-    LEGACY_BATCH_REF_PREFIX,
-    BATCH_CONTENT_REF_PREFIX,
-    BATCH_STATE_REF_PREFIX,
-)
 _PENDING_CHECKPOINT: str | None = None
-
-
-def _list_refs() -> dict[str, str]:
-    """List refs whose values are restored by undo."""
-    refs: dict[str, str] = {}
-    for prefix in REF_PREFIXES:
-        result = run_git_command(
-            ["for-each-ref", "--format=%(objectname) %(refname)", prefix],
-            check=False,
-            requires_index_lock=False,
-        )
-        if result.returncode != 0:
-            continue
-        for line in result.stdout.splitlines():
-            if not line.strip():
-                continue
-            object_name, ref_name = line.split(None, 1)
-            refs[ref_name] = object_name
-    return refs
 
 
 def _changed_worktree_paths() -> list[str]:
@@ -238,7 +220,7 @@ def _snapshot_current_state(paths: list[str]) -> dict[str, Any]:
     index_result = run_git_command(["write-tree"], check=False, requires_index_lock=False)
     return {
         "index_tree": index_result.stdout.strip() if index_result.returncode == 0 else None,
-        "refs": _list_refs(),
+        "refs": list_restorable_refs(),
         "worktree_paths": _snapshot_worktree_paths(paths),
     }
 
@@ -293,28 +275,13 @@ def _add_directory_to_index(env: dict[str, str], *, source_dir: Path, tree_prefi
     git_update_index_entries(updates, env=env)
 
 
-def _current_stack_commit(ref_name: str) -> str | None:
-    result = run_git_command(["rev-parse", "--verify", ref_name], check=False, requires_index_lock=False)
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
-
-
-def _current_undo_commit() -> str | None:
-    return _current_stack_commit(SESSION_UNDO_STACK_REF)
-
-
-def _current_redo_commit() -> str | None:
-    return _current_stack_commit(SESSION_REDO_STACK_REF)
-
-
 def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None = None) -> str | None:
     """Create a before-image checkpoint for an undoable operation."""
     session_dir = get_state_directory_path() / "session"
     if not session_dir.exists():
         return None
 
-    _clear_redo_history()
+    clear_redo_history()
 
     global _PENDING_CHECKPOINT
 
@@ -353,7 +320,7 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
 
         tree_sha = git_write_tree(env=env)
 
-    parent = _current_undo_commit()
+    parent = current_undo_commit()
     checkpoint_commit = git_commit_tree(
         tree_sha,
         parents=[parent] if parent else [],
@@ -387,7 +354,7 @@ def finalize_pending_checkpoint() -> None:
         return
     _PENDING_CHECKPOINT = None
 
-    current = _current_undo_commit()
+    current = current_undo_commit()
     if current != checkpoint:
         return
 
@@ -405,7 +372,7 @@ def finalize_pending_checkpoint() -> None:
         _add_blob_to_index(env, "manifest.json", json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"))
         tree_sha = git_write_tree(env=env)
 
-    parent = _checkpoint_parent(checkpoint)
+    parent = checkpoint_parent(checkpoint)
     checkpoint_commit = git_commit_tree(
         tree_sha,
         parents=[parent] if parent else [],
@@ -480,7 +447,7 @@ def _restore_tree_prefix(commit: str, *, prefix: str, target_dir: Path) -> None:
 
 
 def _restore_refs(saved_refs: dict[str, str]) -> None:
-    current_refs = _list_refs()
+    current_refs = list_restorable_refs()
     update_git_refs(
         updates=sorted(saved_refs.items()),
         deletes=sorted(ref_name for ref_name in current_refs if ref_name not in saved_refs),
@@ -567,13 +534,6 @@ def _detect_redo_conflicts(manifest: dict[str, Any]) -> list[str]:
     if not isinstance(after_undo, dict):
         return []
     return _detect_conflicts_against_state(after_undo)
-
-
-def _checkpoint_parent(commit: str) -> str | None:
-    result = run_git_command(["rev-parse", "--verify", f"{commit}^"], check=False, requires_index_lock=False)
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
 
 
 def _redo_relevant_paths(manifest: dict[str, Any]) -> list[str]:
@@ -673,7 +633,7 @@ def _push_redo_node(
         "after_undo": after_undo,
     }
 
-    parent = _current_redo_commit()
+    parent = current_redo_commit()
     return _write_snapshot_commit(
         ref_name=SESSION_REDO_STACK_REF,
         message=f"Redo node: {operation}",
@@ -688,7 +648,7 @@ def _push_redo_node(
 def undo_last_checkpoint(*, force: bool = False) -> str:
     """Restore the latest undo checkpoint and pop it from the undo stack."""
     finalize_pending_checkpoint()
-    checkpoint = _current_undo_commit()
+    checkpoint = current_undo_commit()
     if checkpoint is None:
         raise CommandError(_("Nothing to undo."))
 
@@ -744,7 +704,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
         shutil.rmtree(redo_session_dir, ignore_errors=True)
         shutil.rmtree(redo_batches_dir, ignore_errors=True)
 
-    parent = _checkpoint_parent(checkpoint)
+    parent = checkpoint_parent(checkpoint)
     if parent:
         update_git_refs(updates=[(SESSION_UNDO_STACK_REF, parent)])
     else:
@@ -756,7 +716,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
 def redo_last_checkpoint(*, force: bool = False) -> str:
     """Reapply the most recently undone operation from the redo stack."""
     finalize_pending_checkpoint()
-    redo_node = _current_redo_commit()
+    redo_node = current_redo_commit()
     if redo_node is None:
         raise CommandError(_("Nothing to redo."))
 
@@ -786,20 +746,10 @@ def redo_last_checkpoint(*, force: bool = False) -> str:
     if undo_checkpoint:
         update_git_refs(updates=[(SESSION_UNDO_STACK_REF, undo_checkpoint)])
 
-    parent = _checkpoint_parent(redo_node)
+    parent = checkpoint_parent(redo_node)
     if parent:
         update_git_refs(updates=[(SESSION_REDO_STACK_REF, parent)])
     else:
         update_git_refs(deletes=[SESSION_REDO_STACK_REF])
 
     return str(manifest.get("operation", "operation"))
-
-
-def _clear_redo_history() -> None:
-    update_git_refs(deletes=[SESSION_REDO_STACK_REF])
-
-
-def clear_undo_history() -> None:
-    """Clear all undo and redo checkpoints for the current session."""
-    update_git_refs(deletes=[SESSION_UNDO_STACK_REF])
-    _clear_redo_history()

@@ -74,3 +74,30 @@ def test_include_text_file_action_plan_closes_shared_buffer_once():
     plan.close()
 
     assert buffer.close_count == 1
+
+
+def test_discard_text_file_action_plan_closes_buffer():
+    """Discard text plans should close held worktree content."""
+    buffer = _CloseCountingBuffer()
+    plan = action_plans.DiscardTextFileActionPlan(
+        "notes.txt",
+        buffer,
+        "100644",
+        "modified",
+    )
+
+    plan.close()
+
+    assert buffer.close_count == 1
+
+
+def test_discard_text_file_action_plan_allows_missing_buffer():
+    """Discard text deletion plans should allow absent content buffers."""
+    plan = action_plans.DiscardTextFileActionPlan(
+        "notes.txt",
+        None,
+        None,
+        "deleted",
+    )
+
+    plan.close()

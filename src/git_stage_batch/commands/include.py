@@ -29,9 +29,6 @@ from ..core.line_selection import (
     write_line_ids_file,
 )
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..data.hunk_tracking import (
-    fetch_next_change,
-)
 from ..data.selected_change.loading import (
     load_selected_change,
 )
@@ -71,14 +68,11 @@ from ..core.buffer import (
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
 )
-from ..exceptions import NoMoreHunks, exit_with_error
+from ..exceptions import exit_with_error
 from ..i18n import _, ngettext
 from ..staging.operations import (
     build_target_index_buffer_from_lines,
     update_index_with_blob_buffer,
-)
-from ..utils.file_io import (
-    read_text_file_contents,
 )
 from ..utils.git import (
     git_add_paths,
@@ -91,8 +85,6 @@ from ..utils.paths import (
     ensure_state_directory_exists,
     get_context_lines,
     get_index_snapshot_file_path,
-    get_selected_hunk_hash_file_path,
-    get_selected_hunk_patch_file_path,
     get_processed_include_ids_file_path,
     get_working_tree_snapshot_file_path,
 )
@@ -101,17 +93,13 @@ from .selection import include_line_batching as _include_line_batching
 from .selection import include_line_replacement as _include_line_replacement
 from .selection import replacement_selection
 from .selection import selected_change_batch_staging as _selected_change_batch_staging
+from .selection import selected_change_staging as _selected_change_staging
 from .selection import whole_file_batch_staging as _whole_file_batch_staging
 from .file_scope import include_file_replacement as _file_scope_include_file_replacement
 from .file_scope import include_file_to_batch as _file_scope_include_file_to_batch
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
-)
-from .selection.selected_change_staging import (
-    stage_gitlink_change,
-    stage_rename_change,
-    stage_text_deletion_change,
 )
 from .selection.action_completion import finish_selected_change_action
 
@@ -140,131 +128,10 @@ def command_include(
         command_include_file("", auto_advance=auto_advance)
         return 0
 
-    item = load_selected_change()
-    if item is None:
-        try:
-            item = fetch_next_change()
-        except NoMoreHunks:
-            if not quiet:
-                print(_("No more hunks to process."), file=sys.stderr)
-            return 0
-    with undo_checkpoint("include"):
-        # Read cached hash
-        patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-
-        # Handle based on item type
-        if isinstance(item, RenameChange):
-            stage_rename_change(item)
-            record_hunk_included(patch_hash)
-
-            if not quiet:
-                print(
-                    _("✓ Rename staged: {old} -> {new}").format(
-                        old=item.old_path,
-                        new=item.new_path,
-                    ),
-                    file=sys.stderr,
-                )
-
-            finish_selected_change_action(
-                quiet=quiet,
-                auto_advance=auto_advance,
-            )
-            return
-
-        if isinstance(item, TextFileDeletionChange):
-            stage_text_deletion_change(item)
-            record_hunk_included(patch_hash)
-
-            if not quiet:
-                print(
-                    _("✓ Text file deletion staged: {file}").format(file=item.path()),
-                    file=sys.stderr,
-                )
-
-            finish_selected_change_action(
-                quiet=quiet,
-                auto_advance=auto_advance,
-            )
-            return
-
-        if isinstance(item, GitlinkChange):
-            result = stage_gitlink_change(item)
-            if result.returncode != 0:
-                print(
-                    _("Failed to stage submodule pointer: {error}").format(error=result.stderr),
-                    file=sys.stderr,
-                )
-                return
-
-            record_hunk_included(patch_hash)
-
-            if not quiet:
-                print(
-                    _("✓ Submodule pointer {desc}: {file}").format(
-                        desc=item.change_type,
-                        file=item.path(),
-                    ),
-                    file=sys.stderr,
-                )
-
-            finish_selected_change_action(
-                quiet=quiet,
-                auto_advance=auto_advance,
-            )
-            return
-
-        if isinstance(item, BinaryFileChange):
-            # Binary file - use git add
-            file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
-
-            # Stage the binary file using git add
-            result = git_add_paths([file_path], check=False)
-            if result.returncode != 0:
-                print(_("Failed to stage binary file: {error}").format(error=result.stderr), file=sys.stderr)
-                return
-
-            # Record for progress tracking
-            record_hunk_included(patch_hash)
-
-            if not quiet:
-                change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
-                print(_("✓ Binary file {desc}: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
-
-            finish_selected_change_action(
-                quiet=quiet,
-                auto_advance=auto_advance,
-            )
-            return
-
-        # Extract filename for user feedback (we already have LineLevelChange in item)
-        filename = item.path
-
-        with LineBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
-            if patch_is_file_deletion(patch_buffer):
-                with LineBuffer.from_bytes(b"") as empty_buffer:
-                    update_index_with_blob_buffer(filename, empty_buffer)
-                apply_result = None
-            else:
-                apply_result = git_apply_to_index(
-                    patch_buffer.byte_chunks(),
-                    check=False,
-                )
-
-        if apply_result is not None and apply_result.returncode != 0:
-            print(_("Failed to apply hunk: {error}").format(error=apply_result.stderr), file=sys.stderr)
-            return
-
-        # Record for progress tracking
-        record_hunk_included(patch_hash)
-
-        if not quiet:
-            print(_("✓ Hunk staged from {file}").format(file=filename), file=sys.stderr)
-
-        finish_selected_change_action(
-            quiet=quiet,
-            auto_advance=auto_advance,
-        )
+    return _selected_change_staging.include_selected_change(
+        quiet=quiet,
+        auto_advance=auto_advance,
+    )
 
 
 def command_include_file(
@@ -346,7 +213,7 @@ def command_include_file(
                     if target_file not in (patch.old_path, patch.new_path):
                         continue
 
-                    stage_rename_change(patch)
+                    _selected_change_staging.stage_rename_change(patch)
                     result = git_add_paths([patch.new_path], check=False)
                     if result.returncode != 0:
                         print(_("Failed to stage renamed file: {error}").format(error=result.stderr), file=sys.stderr)
@@ -361,14 +228,14 @@ def command_include_file(
                     if patch.path() != target_file:
                         continue
 
-                    stage_text_deletion_change(patch)
+                    _selected_change_staging.stage_text_deletion_change(patch)
                     record_hunk_included(compute_text_file_deletion_hash(patch))
                     hunks_staged += 1
                     continue
 
                 if isinstance(patch, GitlinkChange):
                     if patch.path() == target_file:
-                        result = stage_gitlink_change(patch)
+                        result = _selected_change_staging.stage_gitlink_change(patch)
                         if result.returncode != 0:
                             print(
                                 _("Failed to stage submodule pointer: {error}").format(

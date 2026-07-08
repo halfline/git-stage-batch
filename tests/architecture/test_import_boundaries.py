@@ -5690,6 +5690,7 @@ def test_replacement_selection_stays_in_command_helper():
     """Include and discard should use the replacement-selection helper module."""
     include_path = SRC_ROOT / "commands" / "include.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
     discard_replacement_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
     )
@@ -5706,6 +5707,7 @@ def test_replacement_selection_stays_in_command_helper():
         "build_partial_structural_run_selection_error",
         "derive_replacement_line_runs",
         "expand_replacement_selection_ids",
+        "require_contiguous_display_selection",
     }
     old_include_names = {
         "_build_leading_replacement_addition_selection_error",
@@ -5713,9 +5715,13 @@ def test_replacement_selection_stays_in_command_helper():
         "_derive_replacement_line_runs",
         "_expand_replacement_selection_ids",
     }
+    old_show_from_names = {
+        "_require_contiguous_display_selection",
+    }
     helper_user_paths = (
         include_path,
         discard_replacement_path,
+        show_from_path,
     )
     violations = []
 
@@ -5724,6 +5730,8 @@ def test_replacement_selection_stays_in_command_helper():
     assert old_include_names.isdisjoint(vars(include))
     for old_name in old_include_names:
         assert f"def {old_name}" not in include_path.read_text()
+    for old_name in old_show_from_names:
+        assert f"def {old_name}" not in show_from_path.read_text()
 
     for command_path in helper_user_paths:
         imports = _import_from_nodes(command_path)

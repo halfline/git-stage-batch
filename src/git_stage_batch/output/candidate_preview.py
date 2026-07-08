@@ -84,7 +84,7 @@ def _candidate_overview_subject(
         ]
 
     labels = [
-        _("working tree") if target_name == "worktree" else _("index")
+        _candidate_target_subject_label(target_name)
         for target_name in ambiguous_targets
     ]
     if len(labels) == 1:
@@ -95,6 +95,18 @@ def _candidate_overview_subject(
             second=labels[1],
         ), _("have")
     return _("target files"), _("have")
+
+
+def _candidate_target_label(target_name: str) -> str:
+    if target_name == "index":
+        return _("Index")
+    return _("Working tree")
+
+
+def _candidate_target_subject_label(target_name: str) -> str:
+    if target_name == "index":
+        return _("index")
+    return _("working tree")
 
 
 def _candidate_choice_count(count: int) -> str:
@@ -589,7 +601,7 @@ def _summarize_candidate_target(target) -> _CandidateTargetSummary:
     before_lines = _decode_overview_lines(target.before_buffer)
     after_lines = _decode_overview_lines(target.after_buffer)
     opcode = _first_changed_opcode(before_lines, after_lines)
-    label = _("Index") if target.target == "index" else _("Working tree")
+    label = _candidate_target_label(target.target)
     if opcode is None:
         return _CandidateTargetSummary(label=label, title=_("No text changes"), lines=())
 
@@ -688,7 +700,7 @@ def _print_common_candidate_target_blocks(
     for target_index in common_target_indexes:
         target = previews[0].targets[target_index]
         summary = first_summaries[target_index]
-        label = _("Index") if target.target == "index" else _("Working tree")
+        label = _candidate_target_label(target.target)
         print(
             _("{target} update, same for all candidates: {summary}").format(
                 target=label,
@@ -802,7 +814,7 @@ def render_operation_candidate_overview(
         else:
             print(candidate_header)
             for target, summary in visible_summaries:
-                label = _("Index") if target.target == "index" else _("Working tree")
+                label = _candidate_target_label(target.target)
                 print(f"   {label}: {summary.title}")
                 _print_candidate_summary_block(summary, indent="      ")
         action = _("Apply") if preview.operation == "apply" else _("Include")
@@ -871,7 +883,7 @@ def render_operation_candidate(
         if has_multiple_targets:
             if target_index > 0:
                 print()
-            target_label = _("Index") if target.target == "index" else _("Working tree")
+            target_label = _candidate_target_label(target.target)
             print(
                 _("{target} update: {summary}").format(
                     target=target_label,

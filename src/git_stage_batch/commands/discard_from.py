@@ -5,11 +5,9 @@ from __future__ import annotations
 import sys
 from typing import Optional
 
-from ..batch.merge import discard_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import get_validated_baseline_commit, read_validated_batch_metadata
 from ..batch.source_selector import require_plain_batch_name
 from ..batch.selection import (
-    acquire_batch_ownership_for_display_ids_from_lines,
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
@@ -21,25 +19,19 @@ from ..batch.submodule_pointer import (
     refuse_batch_submodule_pointer_lines,
 )
 from ..batch.validation import batch_exists
-from ..core.text_lifecycle import (
-    TextFileChangeType,
-    mode_for_text_materialization,
-    normalized_text_change_type,
-    selected_text_discard_change_type,
-)
+from .batch_source import text_file_actions as _text_file_actions
+from .batch_source import text_plan_builders as _text_plan_builders
 from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
     resolve_batch_source_action_scope,
 )
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..core.buffer import (
-    LineBuffer,
     write_buffer_to_path,
 )
 from ..data.file_modes import apply_git_file_mode, detect_file_mode_in_commit
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
-    load_working_tree_file_as_buffer,
 )
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
@@ -83,24 +75,6 @@ def _discard_binary_file_from_batch(file_path: str, baseline_commit: str) -> Non
         else:
             # File already doesn't exist - no-op
             pass
-
-
-def _discard_text_file_lifecycle_from_batch(file_path: str, baseline_commit: str) -> None:
-    """Discard a whole-path text add/delete by restoring baseline state."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-
-    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
-    if baseline_buffer is not None:
-        with baseline_buffer:
-            write_buffer_to_path(full_path, baseline_buffer)
-        apply_git_file_mode(
-            full_path,
-            detect_file_mode_in_commit(baseline_commit, file_path),
-        )
-    elif full_path.exists():
-        full_path.unlink()
-
 
 def command_discard_from_batch(
     batch_name: str,
@@ -186,7 +160,6 @@ def command_discard_from_batch(
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
         # Discard all files in batch
-        repo_root = get_git_repository_root_path()
         failed_files = []
 
         for file_path, file_meta in files.items():
@@ -203,79 +176,46 @@ def command_discard_from_batch(
                 # Snapshot file before modifying
                 snapshot_file_if_untracked(file_path)
 
-                text_change_type = normalized_text_change_type(file_meta.get("change_type"))
-                if selected_ids is None and text_change_type in {
-                    TextFileChangeType.ADDED,
-                    TextFileChangeType.DELETED,
-                }:
-                    _discard_text_file_lifecycle_from_batch(file_path, baseline_commit)
-                    continue
-
-                batch_source_commit = file_meta["batch_source_commit"]
-                batch_source_buffer = load_git_object_as_buffer(
-                    f"{batch_source_commit}:{file_path}"
-                )
-                if batch_source_buffer is None:
-                    failed_files.append(file_path)
-                    continue
-
-                baseline_buffer = load_git_object_as_buffer(
-                    f"{baseline_commit}:{file_path}"
-                )
-                baseline_exists = baseline_buffer is not None
-                if baseline_buffer is None:
-                    baseline_buffer = LineBuffer.from_bytes(b"")
-
-                full_path = repo_root / file_path
-                working_exists = full_path.exists()
-                baseline_mode = detect_file_mode_in_commit(baseline_commit, file_path)
-                restore_mode = mode_for_text_materialization(
-                    baseline_mode,
-                    selected_ids,
-                    destination_exists=working_exists,
-                )
-
-                with (
-                    batch_source_buffer as batch_source_lines,
-                    baseline_buffer as baseline_lines,
-                    load_working_tree_file_as_buffer(file_path) as working_lines,
-                ):
-                    try:
-                        with acquire_batch_ownership_for_display_ids_from_lines(
-                            file_meta,
-                            batch_source_lines,
-                            selection_ids_to_discard,
-                        ) as ownership:
-                            if ownership.is_empty():
-                                continue
-
-                            discarded_buffer = discard_batch_from_line_sequences_as_buffer(
-                                batch_source_lines,
-                                ownership,
-                                working_lines,
-                                baseline_lines,
-                            )
-                    except AtomicUnitError as e:
-                        if rendered:
-                            translate_atomic_unit_error_to_gutter_ids(e, rendered, "discard from", batch_name)
-                        exit_with_error(_("Failed to discard from batch '{name}': {error}").format(
+                try:
+                    text_plan_result = (
+                        _text_plan_builders.build_discard_text_file_action_plan(
+                            file_path=file_path,
+                            file_meta=file_meta,
+                            baseline_commit=baseline_commit,
+                            selected_ids=selected_ids,
+                            selection_ids_to_discard=selection_ids_to_discard,
+                        )
+                    )
+                except AtomicUnitError as e:
+                    if rendered:
+                        translate_atomic_unit_error_to_gutter_ids(
+                            e,
+                            rendered,
+                            "discard from",
+                            batch_name,
+                        )
+                    exit_with_error(
+                        _("Failed to discard from batch '{name}': {error}").format(
                             name=batch_name,
                             error=str(e),
-                        ))
-
-                with discarded_buffer:
-                    effective_change_type = selected_text_discard_change_type(
-                        text_change_type,
-                        selected_ids,
-                        discarded_buffer,
-                        baseline_exists=baseline_exists,
+                        )
                     )
-                    if effective_change_type == TextFileChangeType.DELETED:
-                        if full_path.exists():
-                            full_path.unlink()
-                    else:
-                        write_buffer_to_path(full_path, discarded_buffer)
-                        apply_git_file_mode(full_path, restore_mode)
+
+                if text_plan_result.missing_source:
+                    failed_files.append(file_path)
+                    continue
+                if text_plan_result.plan is None:
+                    continue
+
+                try:
+                    _text_file_actions.write_discarded_text_file_to_worktree(
+                        text_plan_result.plan.file_path,
+                        text_plan_result.plan.buffer,
+                        text_plan_result.plan.file_mode,
+                        text_plan_result.plan.change_type,
+                    )
+                finally:
+                    text_plan_result.plan.close()
 
             except CommandError:
                 raise

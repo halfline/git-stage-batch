@@ -2418,7 +2418,10 @@ def test_index_entry_lookup_stays_in_data_module():
         fromlist=["index_entries"],
     )
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": {"read_index_entry"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "selected_change_staging.py": {"read_index_entry"},
         SRC_ROOT / "data" / "staged_renames.py": {"read_index_entry"},
     }
 
@@ -2438,6 +2441,44 @@ def test_index_entry_lookup_stays_in_data_module():
 
         assert "_index_entry_for_path" not in helper_names
         assert expected_names <= imported_index_names
+
+
+def test_include_selected_change_staging_stays_in_command_helper():
+    """Include should use the selected-change staging helper module."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper = __import__(
+        "git_stage_batch.commands.selection.selected_change_staging",
+        fromlist=["selected_change_staging"],
+    )
+    public_names = {
+        "stage_gitlink_change",
+        "stage_rename_change",
+        "stage_text_deletion_change",
+    }
+    old_include_names = {
+        "_stage_rename_change",
+        "_stage_text_deletion_change",
+        "_update_index_for_gitlink_change",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_helpers = {
+        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+    }
+    imported_staging_names = set()
+
+    for imported_module, node in _import_from_nodes(include_path):
+        if (
+            imported_module
+            != "git_stage_batch.commands.selection.selected_change_staging"
+        ):
+            continue
+        imported_staging_names |= {alias.name for alias in node.names}
+
+    assert old_include_names.isdisjoint(include_helpers)
+    assert public_names <= imported_staging_names
 
 
 def test_recalc_handoff_stays_in_command_helper():

@@ -2785,6 +2785,31 @@ def test_discard_uses_file_io_path_empty_helper():
     assert "path_is_empty" in imported_file_io_names
 
 
+def test_discard_uses_core_buffer_newline_helper():
+    """Discard should use core buffer helpers for trailing newline checks."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    core_buffer = __import__(
+        "git_stage_batch.core.buffer",
+        fromlist=["buffer"],
+    )
+    imported_buffer_names = set()
+
+    assert "buffer_ends_with_lf" in vars(core_buffer)
+
+    tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_helpers = {
+        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+    }
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.core.buffer":
+            continue
+        imported_buffer_names |= {alias.name for alias in node.names}
+
+    assert "_buffer_ends_with_lf" not in discard_helpers
+    assert "buffer_ends_with_lf" in imported_buffer_names
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

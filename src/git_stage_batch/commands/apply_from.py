@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .batch_source import action_plans as _action_plans
+from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import text_file_actions as _text_file_actions
 from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
@@ -49,10 +50,7 @@ from ..data.file_review.state import (
 )
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..batch.file_display import render_batch_file_display
-from ..core.buffer import (
-    LineBuffer,
-    write_buffer_to_working_tree_path,
-)
+from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -76,38 +74,23 @@ class _ApplyTextPlan:
             self.buffer.close()
 
 
-def _write_binary_file_from_batch(
+def _print_binary_worktree_result(
     file_path: str,
-    file_meta: dict,
-    buffer: LineBuffer | None,
+    action: _binary_file_actions.BinaryWorktreeAction | None,
 ) -> None:
-    """Write one binary batch target into the working tree."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-    change_type = file_meta.get("change_type", "modified")
-
-    if change_type == "deleted":
-        if os.path.lexists(full_path):
-            full_path.unlink()
-            print(_("✓ Deleted binary file: {file}").format(file=file_path), file=sys.stderr)
+    """Print apply-from status for a binary working-tree action."""
+    if action is None:
         return
 
-    if buffer is None:
-        raise RuntimeError(
-            f"Binary file metadata for {file_path} says {change_type}, "
-            "but the batch content is missing"
-        )
-
-    write_buffer_to_working_tree_path(
-        full_path,
-        buffer,
-        mode=str(file_meta.get("mode", "100644")),
-    )
-
-    if change_type == "added":
+    if action is _binary_file_actions.BinaryWorktreeAction.DELETED:
+        print(_("✓ Deleted binary file: {file}").format(file=file_path), file=sys.stderr)
+    elif action is _binary_file_actions.BinaryWorktreeAction.ADDED:
         print(_("✓ Applied new binary file: {file}").format(file=file_path), file=sys.stderr)
     else:
-        print(_("✓ Replaced binary file: {file}").format(file=file_path), file=sys.stderr)
+        print(
+            _("✓ Replaced binary file: {file}").format(file=file_path),
+            file=sys.stderr,
+        )
 
 
 def _execute_apply_candidate(
@@ -651,11 +634,17 @@ def command_apply_from_batch(
                             plan.change_type,
                         )
                     elif isinstance(plan, _action_plans.BinaryFileActionPlan):
-                        _write_binary_file_from_batch(
+                        action = _binary_file_actions.write_binary_file_to_worktree(
                             plan.file_path,
                             plan.file_meta,
                             plan.buffer,
+                            missing_content_message=(
+                                f"Binary file metadata for {plan.file_path} "
+                                f"says {plan.file_meta.get('change_type', 'modified')}, "
+                                "but the batch content is missing"
+                            ),
                         )
+                        _print_binary_worktree_result(plan.file_path, action)
                     else:
                         apply_submodule_pointer_from_batch(plan.file_path, plan.file_meta)
         except CommandError:

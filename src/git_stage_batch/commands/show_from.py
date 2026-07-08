@@ -8,6 +8,7 @@ import sys
 from contextlib import ExitStack
 from typing import Optional
 
+from .selection import replacement_selection
 from ..batch.atomic_file_changes import (
     binary_change_from_batch_file_metadata,
     gitlink_change_from_batch_file_metadata,
@@ -116,14 +117,6 @@ def _shown_pages_for_display_ids(review_model, display_ids: set[int]) -> tuple[i
     )
 
 
-def _require_contiguous_display_selection(selected_ids: set[int]) -> None:
-    if not selected_ids:
-        return
-    selected_range = list(range(min(selected_ids), max(selected_ids) + 1))
-    if sorted(selected_ids) != selected_range:
-        exit_with_error(_("Replacement selection must be one contiguous line range."))
-
-
 def _resolve_candidate_ordinal(
     previews: tuple[OperationCandidatePreview, ...],
     *,
@@ -164,7 +157,7 @@ def _preview_replacement_batch_view(
     if is_batch_submodule_pointer(file_meta):
         exit_with_error(_("Cannot preview replacement text for submodule pointers."))
 
-    _require_contiguous_display_selection(selected_ids)
+    replacement_selection.require_contiguous_display_selection(selected_ids)
     batch_source_commit = file_meta["batch_source_commit"]
     batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
     if batch_source_buffer is None:
@@ -261,7 +254,9 @@ def _build_candidate_previews(
                         exit_with_error(_("Replacement preview is not valid for apply candidates."))
                     if not selected_ids:
                         exit_with_error(_("`show --from --as` requires `--line`."))
-                    _require_contiguous_display_selection(selected_ids)
+                    replacement_selection.require_contiguous_display_selection(
+                        selected_ids,
+                    )
                     replacement_payload = coerce_replacement_payload(replacement_text)
                     try:
                         replacement_view = build_replacement_batch_view_from_lines(

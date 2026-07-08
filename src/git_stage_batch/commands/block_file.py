@@ -6,6 +6,7 @@ import sys
 from contextlib import nullcontext
 from pathlib import Path
 
+from ..data.session import session_is_active
 from ..data.undo import undo_checkpoint
 from ..data.ignore_files import (
     add_file_to_local_exclude,
@@ -20,7 +21,11 @@ from ..utils.git import (
     resolve_file_path_to_repo_relative,
     run_git_command,
 )
-from ..utils.paths import ensure_state_directory_exists, get_abort_head_file_path, get_auto_added_files_file_path, get_blocked_files_file_path
+from ..utils.paths import (
+    ensure_state_directory_exists,
+    get_auto_added_files_file_path,
+    get_blocked_files_file_path,
+)
 from .selection.action_completion import advance_to_and_show_next_change
 
 
@@ -58,7 +63,7 @@ def command_block_file(file_path_arg: str = "", local_only: bool = False) -> Non
     file_path = resolve_file_path_to_repo_relative(file_path_arg)
     if file_path_arg.endswith("/") or Path(file_path_arg).is_dir():
         file_path = file_path.rstrip("/") + "/"
-    session_active = get_abort_head_file_path().exists()
+    session_active = session_is_active()
     checkpoint_paths = [] if local_only else [".gitignore"]
     checkpoint = (
         undo_checkpoint(f"block-file {file_path}", worktree_paths=checkpoint_paths)

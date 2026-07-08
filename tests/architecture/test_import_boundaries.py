@@ -5690,6 +5690,7 @@ def test_line_action_refresh_header_stays_in_command_helper():
 def test_replacement_selection_stays_in_command_helper():
     """Include and discard should use the replacement-selection helper module."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
     show_from_path = SRC_ROOT / "commands" / "show_from.py"
     discard_replacement_path = (
@@ -5721,6 +5722,7 @@ def test_replacement_selection_stays_in_command_helper():
     }
     helper_user_paths = (
         include_path,
+        include_from_path,
         discard_replacement_path,
         show_from_path,
     )
@@ -5733,6 +5735,7 @@ def test_replacement_selection_stays_in_command_helper():
         assert f"def {old_name}" not in include_path.read_text()
     for old_name in old_show_from_names:
         assert f"def {old_name}" not in show_from_path.read_text()
+        assert f"def {old_name}" not in include_from_path.read_text()
 
     for command_path in helper_user_paths:
         imports = _import_from_nodes(command_path)

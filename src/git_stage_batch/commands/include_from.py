@@ -12,6 +12,7 @@ from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     CandidateEnumerationLimitError,
+    CandidatePreviewCount,
     build_include_candidate_previews,
     clear_candidate_preview_state_for_file,
     load_candidate_preview_state,
@@ -120,13 +121,6 @@ class _IncludeSubmodulePlan:
 def _close_include_plans(plans) -> None:
     for plan in plans:
         plan.close()
-
-
-@dataclass(frozen=True)
-class _IncludeCandidateCount:
-    count: int = 0
-    too_many: bool = False
-    error: str | None = None
 
 
 def _read_binary_file_from_batch(
@@ -398,15 +392,15 @@ def _include_candidate_count_for_file(
     file_meta: dict,
     selection_ids_to_include: set[int] | None,
     replacement_payload: ReplacementPayload | None,
-) -> _IncludeCandidateCount:
+) -> CandidatePreviewCount:
     if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(file_meta):
-        return _IncludeCandidateCount()
+        return CandidatePreviewCount()
     batch_source_commit = file_meta.get("batch_source_commit")
     if not batch_source_commit:
-        return _IncludeCandidateCount()
+        return CandidatePreviewCount()
     batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
     if batch_source_buffer is None:
-        return _IncludeCandidateCount()
+        return CandidatePreviewCount()
     index_buffer = load_git_object_as_buffer(f":{file_path}")
     index_exists = index_buffer is not None
     if index_buffer is None:
@@ -470,13 +464,13 @@ def _include_candidate_count_for_file(
                 count = len(previews)
                 for preview in previews:
                     preview.close()
-                return _IncludeCandidateCount(count=count)
+                return CandidatePreviewCount(count=count)
     except CandidateEnumerationLimitError as e:
-        return _IncludeCandidateCount(too_many=True, error=str(e))
+        return CandidatePreviewCount(too_many=True, error=str(e))
     except MergeError:
-        return _IncludeCandidateCount()
+        return CandidatePreviewCount()
     except Exception as e:
-        return _IncludeCandidateCount(error=str(e))
+        return CandidatePreviewCount(error=str(e))
 
 
 def _write_binary_file_from_batch(
@@ -638,7 +632,7 @@ def command_include_from_batch(
 
     repo_root = get_git_repository_root_path()
     failed_files = []
-    candidate_counts: dict[str, _IncludeCandidateCount] = {}
+    candidate_counts: dict[str, CandidatePreviewCount] = {}
     include_plans = []
 
     for file_path, file_meta in files.items():
@@ -811,7 +805,7 @@ def command_include_from_batch(
         candidate_limit_files = [
             file_path
             for file_path in failed_files
-            if candidate_counts.get(file_path, _IncludeCandidateCount()).too_many
+            if candidate_counts.get(file_path, CandidatePreviewCount()).too_many
         ]
         if len(candidate_limit_files) == 1:
             file_path = candidate_limit_files[0]
@@ -839,8 +833,8 @@ def command_include_from_batch(
             file_path
             for file_path in failed_files
             if (
-                candidate_counts.get(file_path, _IncludeCandidateCount()).error
-                and not candidate_counts.get(file_path, _IncludeCandidateCount()).too_many
+                candidate_counts.get(file_path, CandidatePreviewCount()).error
+                and not candidate_counts.get(file_path, CandidatePreviewCount()).too_many
             )
         ]
         if len(candidate_error_files) == 1:
@@ -868,7 +862,7 @@ def command_include_from_batch(
         ambiguous_files = [
             file_path
             for file_path in failed_files
-            if candidate_counts.get(file_path, _IncludeCandidateCount()).count
+            if candidate_counts.get(file_path, CandidatePreviewCount()).count
         ]
         if len(ambiguous_files) == 1:
             file_path = ambiguous_files[0]

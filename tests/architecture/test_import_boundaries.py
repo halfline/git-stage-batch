@@ -2081,10 +2081,17 @@ def test_tui_line_selection_menu_owns_line_actions():
 def test_tui_file_review_state_name_does_not_shadow_persisted_state():
     """TUI review state should not reuse the persisted file-review state name."""
     review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
-    tree = ast.parse(review_path.read_text(), filename=str(review_path))
-    class_names = {
+    session_path = SRC_ROOT / "tui" / "file_review" / "session.py"
+    review_tree = ast.parse(review_path.read_text(), filename=str(review_path))
+    session_tree = ast.parse(session_path.read_text(), filename=str(session_path))
+    review_class_names = {
         node.name
-        for node in tree.body
+        for node in review_tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+    session_class_names = {
+        node.name
+        for node in session_tree.body
         if isinstance(node, ast.ClassDef)
     }
     imported_state_names = set()
@@ -2104,8 +2111,10 @@ def test_tui_file_review_state_name_does_not_shadow_persisted_state():
 
     assert "FileReviewState" in vars(records)
     assert "FileReviewState" not in vars(persisted_state)
-    assert "FileReviewSessionState" in class_names
-    assert "FileReviewState" not in class_names
+    assert "FileReviewSessionState" in session_class_names
+    assert "FileReviewSessionState" in review_class_names | session_class_names
+    assert "FileReviewState" not in review_class_names
+    assert "FileReviewState" not in session_class_names
     assert "FileReviewState" not in imported_state_names
 
 

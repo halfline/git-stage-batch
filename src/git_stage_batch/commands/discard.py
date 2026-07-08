@@ -136,6 +136,7 @@ from ..utils.paths import (
     get_selected_hunk_patch_file_path,
 )
 from .selection import replacement_selection
+from .selection import discard_file_selection as _discard_file_selection
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -188,23 +189,6 @@ class _PreparedTextFileDiscardToBatch:
 class DiscardFilesToBatchResult:
     discarded_hunks: int
     discarded_files: list[str]
-
-
-def _load_explicit_file_selection(file_path: str):
-    """Return the active file-scoped view for an explicit discard target."""
-    auto_add_untracked_files([file_path])
-    reuse_selected_file_view = (
-        read_selected_change_kind() == SelectedChangeKind.FILE
-        and get_selected_change_file_path() == file_path
-    )
-    if reuse_selected_file_view:
-        line_changes = load_line_changes_from_state()
-    else:
-        line_changes = cache_unstaged_file_as_single_hunk(file_path)
-
-    if line_changes is None:
-        exit_with_error(_("No changes in file '{file}'.").format(file=file_path))
-    return line_changes
 
 
 def command_discard(
@@ -648,7 +632,7 @@ def command_discard_file_as(
                 snapshot_selected_change_state()
             )
 
-        line_changes = _load_explicit_file_selection(target_file)
+        line_changes = _discard_file_selection.load_explicit_file_selection(target_file)
         snapshot_file_if_untracked(target_file)
 
         absolute_path = get_git_repository_root_path() / target_file
@@ -711,7 +695,7 @@ def command_discard_line(
             else:
                 target_file = file
 
-            line_changes = _load_explicit_file_selection(target_file)
+            line_changes = _discard_file_selection.load_explicit_file_selection(target_file)
 
         requested_ids = parse_line_selection(line_id_specification)
         require_line_selection_in_view(
@@ -962,7 +946,7 @@ def command_discard_line_as_to_batch(
                 else:
                     target_file = file
 
-                _load_explicit_file_selection(target_file)
+                _discard_file_selection.load_explicit_file_selection(target_file)
 
             _command_discard_lines_to_batch_as(
                 batch_name,
@@ -1796,7 +1780,7 @@ def _command_discard_file_lines_to_batch(
 ) -> int:
     """Discard specific lines from a file to batch (file-scoped with line IDs)."""
 
-    cached_lines = _load_explicit_file_selection(file_path)
+    cached_lines = _discard_file_selection.load_explicit_file_selection(file_path)
 
     # Annotate with batch source line numbers
     line_changes = annotate_with_batch_source(file_path, cached_lines)

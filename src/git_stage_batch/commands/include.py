@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from contextlib import ExitStack
 import sys
 
@@ -29,6 +28,7 @@ from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
+    patch_is_file_deletion,
 )
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -152,11 +152,6 @@ from .selection.selected_change_staging import (
     stage_text_deletion_change,
 )
 from .selection.action_completion import finish_selected_change_action
-
-
-def _patch_is_text_file_path_deletion(patch_lines: Sequence[bytes]) -> bool:
-    """Return whether patch lines describe deletion of the file path itself."""
-    return any(line.rstrip(b"\n") == b"+++ /dev/null" for line in patch_lines)
 
 
 def command_include(
@@ -284,7 +279,7 @@ def command_include(
         filename = item.path
 
         with LineBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
-            if _patch_is_text_file_path_deletion(patch_buffer):
+            if patch_is_file_deletion(patch_buffer):
                 with LineBuffer.from_bytes(b"") as empty_buffer:
                     update_index_with_blob_buffer(filename, empty_buffer)
                 apply_result = None
@@ -461,7 +456,7 @@ def command_include_file(
                     hunks_staged += 1
                     continue
 
-                if _patch_is_text_file_path_deletion(patch.lines):
+                if patch_is_file_deletion(patch.lines):
                     with LineBuffer.from_bytes(b"") as empty_buffer:
                         update_index_with_blob_buffer(target_file, empty_buffer)
                     apply_result = None

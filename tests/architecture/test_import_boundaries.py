@@ -1775,6 +1775,43 @@ def test_tui_cli_escape_owns_command_fallback():
     assert cli_escape_names <= cli_escape_imported_names
 
 
+def test_tui_session_quit_owns_smart_quit_actions():
+    """TUI smart quit handling should live in the session quit adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    session_quit_path = SRC_ROOT / "tui" / "session_quit.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    session_quit = __import__(
+        "git_stage_batch.tui.session_quit",
+        fromlist=["session_quit"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    session_quit_imported_names = set()
+    session_quit_names = {
+        "command_abort",
+        "command_stop",
+        "prompt_quit_session",
+        "read_text_file_contents",
+    }
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(session_quit_path):
+        session_quit_imported_names |= {alias.name for alias in node.names}
+
+    assert "handle_quit" in vars(session_quit)
+    assert "git_stage_batch.tui.session_quit" in interactive_imports
+    assert session_quit_names.isdisjoint(interactive_imported_names)
+    assert session_quit_names <= session_quit_imported_names
+
+
 def test_tui_file_selection_menu_owns_whole_file_actions():
     """TUI whole-file selection should live in the file selection menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"

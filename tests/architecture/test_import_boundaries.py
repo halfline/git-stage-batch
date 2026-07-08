@@ -4379,9 +4379,16 @@ def test_discard_line_replacement_stays_in_command_helper():
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
     )
+    line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
+    )
     helper = __import__(
         "git_stage_batch.commands.selection.discard_line_replacement",
         fromlist=["discard_line_replacement"],
+    )
+    line_batching = __import__(
+        "git_stage_batch.commands.selection.discard_line_batching",
+        fromlist=["discard_line_batching"],
     )
     public_names = {
         "DiscardLineReplacementSelection",
@@ -4390,9 +4397,17 @@ def test_discard_line_replacement_stays_in_command_helper():
         "derive_live_replacement_line_runs",
         "prepare_discard_line_replacement_selection",
     }
+    line_batching_names = {
+        "discard_file_lines_to_batch",
+        "discard_lines_as_to_batch",
+        "discard_selected_lines_to_batch",
+    }
     old_discard_names = {
         "_add_discard_line_replacement_to_batch",
         "_derive_live_replacement_line_runs",
+        "_command_discard_file_lines_to_batch",
+        "_command_discard_lines_to_batch",
+        "_command_discard_lines_to_batch_as",
         "_select_rewritten_replacement_lines",
     }
     helper_imports = {
@@ -4439,44 +4454,60 @@ def test_discard_line_replacement_stays_in_command_helper():
     }
 
     assert public_names <= vars(helper).keys()
+    assert line_batching_names <= vars(line_batching).keys()
 
     discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    line_batching_tree = ast.parse(
+        line_batching_path.read_text(),
+        filename=str(line_batching_path),
+    )
     discard_helpers = {
         node.name for node in ast.walk(discard_tree) if isinstance(node, ast.FunctionDef)
     }
-    discard_functions = {
+    line_batching_functions = {
         node.name: node
-        for node in ast.walk(discard_tree)
+        for node in ast.walk(line_batching_tree)
         if isinstance(node, ast.FunctionDef)
     }
-    discard_imports_helper = False
+    discard_imports_line_batching = False
+    line_batching_imports_helper = False
 
     for imported_module, node in _import_from_nodes(discard_path):
         if imported_module != "git_stage_batch.commands.selection":
             continue
         imported_names = {alias.name for alias in node.names}
+        if "discard_line_batching" in imported_names:
+            discard_imports_line_batching = True
+
+    for imported_module, node in _import_from_nodes(line_batching_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
         if "discard_line_replacement" in imported_names:
-            discard_imports_helper = True
+            line_batching_imports_helper = True
 
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
     command_update_names = {
         node.id
-        for node in ast.walk(discard_functions["_command_discard_lines_to_batch_as"])
+        for node in ast.walk(line_batching_functions["discard_lines_as_to_batch"])
         if isinstance(node, ast.Name)
     }
 
     assert old_discard_names.isdisjoint(discard_helpers)
     assert moved_batch_update_names.isdisjoint(command_update_names)
-    assert discard_imports_helper
+    assert discard_imports_line_batching
+    assert line_batching_imports_helper
     assert helper_imports <= helper_imported_names
 
 
 def test_batch_line_selection_stays_in_command_helper():
     """Batch line-selection validation should live in command selection support."""
     include_path = SRC_ROOT / "commands" / "include.py"
-    discard_path = SRC_ROOT / "commands" / "discard.py"
+    discard_line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
+    )
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "batch_line_selection.py"
     )
@@ -4497,9 +4528,9 @@ def test_batch_line_selection_stays_in_command_helper():
             "_command_include_file_lines_to_batch",
             "_command_include_lines_to_batch",
         },
-        discard_path: {
-            "_command_discard_file_lines_to_batch",
-            "_command_discard_lines_to_batch",
+        discard_line_batching_path: {
+            "discard_file_lines_to_batch",
+            "discard_selected_lines_to_batch",
         },
     }
 
@@ -4539,7 +4570,9 @@ def test_batch_line_selection_stays_in_command_helper():
 def test_batch_line_updates_stays_in_command_helper():
     """Batch line updates should live in command selection support."""
     include_path = SRC_ROOT / "commands" / "include.py"
-    discard_path = SRC_ROOT / "commands" / "discard.py"
+    discard_line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
+    )
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "batch_line_updates.py"
     )
@@ -4564,9 +4597,9 @@ def test_batch_line_updates_stays_in_command_helper():
             "_command_include_file_lines_to_batch",
             "_command_include_lines_to_batch",
         },
-        discard_path: {
-            "_command_discard_file_lines_to_batch",
-            "_command_discard_lines_to_batch",
+        discard_line_batching_path: {
+            "discard_file_lines_to_batch",
+            "discard_selected_lines_to_batch",
         },
     }
 
@@ -4634,7 +4667,9 @@ def test_discard_uses_file_io_path_empty_helper():
 
 def test_discard_uses_core_buffer_newline_helper():
     """Discard should use core buffer helpers for trailing newline checks."""
-    discard_path = SRC_ROOT / "commands" / "discard.py"
+    line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
+    )
     core_buffer = __import__(
         "git_stage_batch.core.buffer",
         fromlist=["buffer"],
@@ -4643,12 +4678,15 @@ def test_discard_uses_core_buffer_newline_helper():
 
     assert "buffer_ends_with_lf" in vars(core_buffer)
 
-    tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    tree = ast.parse(
+        line_batching_path.read_text(),
+        filename=str(line_batching_path),
+    )
     discard_helpers = {
         node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
     }
 
-    for imported_module, node in _import_from_nodes(discard_path):
+    for imported_module, node in _import_from_nodes(line_batching_path):
         if imported_module != "git_stage_batch.core.buffer":
             continue
         imported_buffer_names |= {alias.name for alias in node.names}

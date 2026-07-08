@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 import sys
 from dataclasses import dataclass
 from typing import Callable
@@ -25,6 +24,7 @@ from ..utils.paths import (
 )
 from .asset_menu import handle_asset_menu
 from .batch_menu import handle_batch_menu
+from .cli_escape import handle_cli_escape
 from .display import print_status_bar
 from .file_selection_menu import handle_file_selection_menu
 from .file_review import handle_current_file_review, handle_file_browser
@@ -136,31 +136,6 @@ def _handle_help(flow_state: FlowState) -> None:
     raise BypassRefresh()
 
 
-def _handle_cli_command(action: str) -> None:
-    """Handle arbitrary CLI command as escape hatch."""
-    try:
-        from ..cli.argument_parser import parse_command_line
-        from ..cli.execution import execute_non_interactive_args
-
-        args_list = shlex.split(action)
-        args = parse_command_line(args_list, quiet=False)
-
-        if args is not None:
-            if (
-                getattr(args, "interactive_flag", False)
-                or getattr(args, "interactive_command", False)
-            ):
-                print(_("\nAlready in interactive mode."))
-            else:
-                execute_non_interactive_args(args)
-        else:
-            print(_("\nUnknown command: '{cmd}'").format(cmd=action))
-            print_help()
-    except Exception as e:
-        print(_("\nError executing command: {error}").format(error=e))
-    raise BypassRefresh()
-
-
 # Map of actions to their handlers
 ACTION_HANDLERS = {
     "i": ActionHandler(needs_hunk=True, handler=handle_hunk_include),
@@ -236,7 +211,7 @@ def _dispatch_action(
         handler_config.handler(flow_state)
         return
 
-    _handle_cli_command(action)
+    handle_cli_escape(action, print_help=print_help)
 
 
 def start_interactive_mode() -> None:

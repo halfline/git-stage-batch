@@ -1831,7 +1831,7 @@ def test_suggest_fixup_state_stays_in_data_layer():
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
     data_path = SRC_ROOT / "data" / "suggest_fixup_state.py"
     tui_paths = (
-        SRC_ROOT / "tui" / "interactive.py",
+        SRC_ROOT / "tui" / "fixup_menu.py",
         SRC_ROOT / "tui" / "file_review" / "__init__.py",
     )
     command_imports = {

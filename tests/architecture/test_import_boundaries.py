@@ -4055,6 +4055,8 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
         "candidate_preview_for_ordinal",
         "candidate_preview_state_matches",
         "close_candidate_previews",
+        "require_candidate_preview_for_ordinal",
+        "require_candidate_preview_state",
     }
     command_paths = {
         apply_from_path,
@@ -4094,6 +4096,11 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
         include_from_path: set(),
         show_from_path: set(),
     }
+    for path in command_paths:
+        command_text = path.read_text()
+        assert "_resolve_candidate_ordinal" not in command_text
+        assert ".candidate_preview_for_ordinal(" not in command_text
+        assert ".candidate_preview_state_matches(" not in command_text
 
 
 def test_batch_source_candidate_preview_builders_own_show_candidate_construction():

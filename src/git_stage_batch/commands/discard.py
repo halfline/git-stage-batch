@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 from contextlib import ExitStack
 
@@ -11,16 +10,8 @@ from ..core.replacement import (
     coerce_replacement_payload,
 )
 from ..core.diff_parser import (
-    acquire_unified_diff,
     build_line_changes_from_patch_lines,
     patch_is_new_file,
-)
-from ..core.hashing import (
-    compute_binary_file_hash,
-    compute_gitlink_change_hash,
-    compute_rename_change_hash,
-    compute_stable_hunk_hash_from_lines,
-    compute_text_file_deletion_hash,
 )
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
@@ -41,11 +32,6 @@ from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
 )
-from ..data.file_change_display import (
-    render_gitlink_change,
-    render_rename_change,
-    render_text_deletion_change,
-)
 from ..data.file_hunk_display import cache_unstaged_file_as_single_hunk
 from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
@@ -56,8 +42,6 @@ from ..data.file_review.state import (
     resolve_live_line_action_scope,
     resolve_live_to_batch_action_scope,
 )
-from ..data.file_tracking import auto_add_untracked_files
-from ..data.live_diff import stream_live_git_diff
 from ..data.progress import record_hunk_discarded
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
@@ -70,14 +54,12 @@ from ..i18n import _
 from ..utils.file_io import (
     append_lines_to_file,
     path_is_empty,
-    read_text_file_line_set,
     read_text_file_contents,
 )
 from ..utils.git import (
     get_git_repository_root_path,
     git_apply_to_worktree,
     git_checkout_paths,
-    git_remove_paths,
     require_git_repository,
     run_git_command,
 )
@@ -85,7 +67,6 @@ from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
-    get_context_lines,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
@@ -94,6 +75,7 @@ from .selection import discard_line_batching as _discard_line_batching
 from .selection import discard_line_selection as _discard_line_selection
 from .selection import selected_change_batch_discarding as _selected_change_batch_discarding
 from .selection import selected_file_discarding as _selected_file_discarding
+from .file_scope import discard_file as _file_scope_discard_file
 from .file_scope.discard_file_to_batch import discard_file_to_batch
 from .selection.whole_file_batch_discarding import (
     discard_binary_to_batch,
@@ -335,141 +317,10 @@ def command_discard_file(
         refuse_bare_action_after_file_list("discard --file")
         refuse_bare_action_after_auto_advance_disabled("discard --file")
 
-    # Determine target file
-    if file == "":
-        target_file = get_selected_change_file_path()
-        if target_file is None:
-            diff_result = run_git_command(
-                [
-                    "-c",
-                    "diff.ignoreSubmodules=none",
-                    "diff",
-                    "--ignore-submodules=none",
-                    "--quiet",
-                ],
-                check=False,
-                requires_index_lock=False,
-            )
-            if diff_result.returncode == 0:
-                print(_("No more hunks to process."), file=sys.stderr)
-            else:
-                print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
-            return
-    else:
-        # Explicit path provided
-        target_file = file
-    auto_add_untracked_files([target_file])
-    with undo_checkpoint(f"discard --file {file}".rstrip()):
-        # Load blocklist
-        blocklist_path = get_block_list_file_path()
-        blocked_hashes = read_text_file_line_set(blocklist_path)
-
-        deletion_change = render_text_deletion_change(target_file)
-        if deletion_change is not None:
-            patch_hash = compute_text_file_deletion_hash(deletion_change)
-            discard_text_deletion_change(deletion_change)
-            if patch_hash not in blocked_hashes:
-                append_lines_to_file(blocklist_path, [patch_hash])
-                record_hunk_discarded(patch_hash)
-            print(
-                _("✓ Text file deletion discarded: {file}").format(file=target_file),
-                file=sys.stderr,
-            )
-            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
-            return
-
-        gitlink_change = render_gitlink_change(target_file)
-        if gitlink_change is not None:
-            patch_hash = compute_gitlink_change_hash(gitlink_change)
-            discard_gitlink_change(gitlink_change)
-            if patch_hash not in blocked_hashes:
-                append_lines_to_file(blocklist_path, [patch_hash])
-                record_hunk_discarded(patch_hash)
-            print(
-                _("✓ Submodule pointer restored: {file}").format(file=target_file),
-                file=sys.stderr,
-            )
-            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
-            return
-
-        rename_change = render_rename_change(target_file)
-        if rename_change is not None:
-            patch_hash = compute_rename_change_hash(rename_change)
-            discard_rename_change(rename_change)
-            if patch_hash not in blocked_hashes:
-                append_lines_to_file(blocklist_path, [patch_hash])
-                record_hunk_discarded(patch_hash)
-            print(
-                _("✓ Rename discarded: {old} -> {new}").format(
-                    old=rename_change.old_path,
-                    new=rename_change.new_path,
-                ),
-                file=sys.stderr,
-            )
-            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
-            return
-
-        # Snapshot the file if it's untracked (for abort functionality)
-        snapshot_file_if_untracked(target_file)
-
-        # Stream through hunks and collect hashes from target file BEFORE removing it
-        # (git rm -f will stage the deletion, making hunks disappear from git diff)
-        hashes_to_block = []
-        with acquire_unified_diff(
-            stream_live_git_diff(context_lines=get_context_lines())
-        ) as patches:
-            for patch in patches:
-                if isinstance(patch, RenameChange):
-                    if target_file not in (patch.old_path, patch.new_path):
-                        continue
-
-                    patch_hash = compute_rename_change_hash(patch)
-                    if patch_hash not in blocked_hashes:
-                        hashes_to_block.append(patch_hash)
-                    continue
-
-                if isinstance(patch, TextFileDeletionChange):
-                    if patch.path() != target_file:
-                        continue
-
-                    patch_hash = compute_text_file_deletion_hash(patch)
-                    if patch_hash not in blocked_hashes:
-                        hashes_to_block.append(patch_hash)
-                    continue
-
-                if isinstance(patch, BinaryFileChange):
-                    file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
-                    if file_path != target_file:
-                        continue
-
-                    patch_hash = compute_binary_file_hash(patch)
-                    if patch_hash not in blocked_hashes:
-                        hashes_to_block.append(patch_hash)
-                    continue
-
-                if patch.new_path != target_file:
-                    continue
-
-                patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-
-                if patch_hash not in blocked_hashes:
-                    hashes_to_block.append(patch_hash)
-
-        # Remove the file from working tree
-        result = git_remove_paths([target_file], force=True, check=False)
-        if result.returncode != 0:
-            print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
-            return
-
-        # Mark all collected hashes as processed
-        for patch_hash in hashes_to_block:
-            append_lines_to_file(blocklist_path, [patch_hash])
-            # Record for progress tracking
-            record_hunk_discarded(patch_hash)
-
-        print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
-
-        finish_selected_change_action(quiet=False, auto_advance=auto_advance)
+    _file_scope_discard_file.discard_file_changes(
+        file,
+        auto_advance=auto_advance,
+    )
 
 
 def command_discard_file_as(

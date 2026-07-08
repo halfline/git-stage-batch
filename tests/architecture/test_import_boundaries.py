@@ -4089,8 +4089,8 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
 
     assert public_names <= vars(candidate_previews).keys()
     assert imports_candidate_previews == {
-        apply_from_path: True,
-        include_from_path: True,
+        apply_from_path: False,
+        include_from_path: False,
         show_from_path: True,
     }
     assert direct_state_imports == {
@@ -4213,6 +4213,97 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
     }
     for path, old_names in old_function_names.items():
         assert old_names.isdisjoint(helper_names[path])
+
+
+def test_batch_source_candidate_materialization_owns_reviewed_candidate_loading():
+    """Apply/include reviewed candidate loading should live in batch-source support."""
+    candidate_materialization = __import__(
+        "git_stage_batch.commands.batch_source.candidate_materialization",
+        fromlist=["candidate_materialization"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    materialization_path = (
+        SRC_ROOT / "commands" / "batch_source" / "candidate_materialization.py"
+    )
+    public_names = {
+        "ApplyCandidateMaterialization",
+        "IncludeCandidateMaterialization",
+        "materialize_apply_candidate",
+        "materialize_include_candidate",
+    }
+    builder_names = {
+        "build_apply_candidate_previews",
+        "build_include_candidate_previews",
+    }
+    command_paths = {
+        apply_from_path,
+        include_from_path,
+    }
+    imports_candidate_materialization = {
+        path: False
+        for path in command_paths
+    }
+    imports_candidate_previews = {
+        path: False
+        for path in command_paths
+    }
+    direct_builder_imports = {
+        path: set()
+        for path in command_paths
+    }
+    materialization_imports_candidate_previews = False
+    materialization_builder_imports = set()
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_materialization" in imported_names
+            ):
+                imports_candidate_materialization[path] = True
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_previews" in imported_names
+            ):
+                imports_candidate_previews[path] = True
+            if imported_module == "git_stage_batch.batch.operation_candidates":
+                direct_builder_imports[path] |= imported_names & builder_names
+
+    for imported_module, node in _import_from_nodes(materialization_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "candidate_previews" in imported_names
+        ):
+            materialization_imports_candidate_previews = True
+        if imported_module == "git_stage_batch.batch.operation_candidates":
+            materialization_builder_imports |= imported_names & builder_names
+
+    assert public_names <= vars(candidate_materialization).keys()
+    assert imports_candidate_materialization == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert imports_candidate_previews == {
+        apply_from_path: False,
+        include_from_path: False,
+    }
+    assert direct_builder_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+    assert materialization_imports_candidate_previews
+    assert materialization_builder_imports == builder_names
+
+    for path in command_paths:
+        command_text = path.read_text()
+        assert ".require_candidate_preview_for_ordinal(" not in command_text
+        assert ".require_candidate_preview_state(" not in command_text
+        assert ".close_candidate_previews(" not in command_text
+        assert "build_apply_candidate_previews(" not in command_text
+        assert "build_include_candidate_previews(" not in command_text
 
 
 def test_batch_source_replacement_previews_own_show_replacement_preview():

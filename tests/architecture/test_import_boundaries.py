@@ -2108,6 +2108,44 @@ def test_tui_file_review_state_name_does_not_shadow_persisted_state():
     assert "FileReviewState" not in imported_state_names
 
 
+def test_tui_file_review_display_owns_review_rendering():
+    """TUI file review display should own reviewed-file rendering."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    display_path = SRC_ROOT / "tui" / "file_review" / "display.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    display = __import__(
+        "git_stage_batch.tui.file_review.display",
+        fromlist=["display"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    display_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(display_path)
+    }
+    old_review_names = {
+        "_render_review",
+        "get_hunk_counts",
+        "print_status_bar",
+    }
+
+    assert "render_file_review" in vars(display)
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.display" in review_imports
+    assert "git_stage_batch.commands.show" not in review_imports
+    assert "git_stage_batch.data.progress" not in review_imports
+    assert "git_stage_batch.tui.display" not in review_imports
+    assert "git_stage_batch.commands.show" in display_imports
+    assert "git_stage_batch.commands.show_from" in display_imports
+    assert "git_stage_batch.data.progress" in display_imports
+    assert "git_stage_batch.tui.display" in display_imports
+
+
 def test_commands_do_not_import_tui():
     """Command modules should not launch or depend on TUI modules."""
     violations = []

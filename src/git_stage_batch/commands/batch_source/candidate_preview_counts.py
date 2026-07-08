@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
-import os
 
+from . import candidate_inputs as _candidate_inputs
 from . import candidate_previews as _candidate_previews
 from ...batch.operation_candidates import (
     CandidateEnumerationLimitError,
@@ -14,19 +14,13 @@ from ...batch.operation_candidates import (
 )
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
-from ...batch.submodule_pointer import is_batch_submodule_pointer
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
-from ...core.text_lifecycle import (
-    mode_for_text_materialization,
-    normalized_text_change_type,
-)
 from ...data.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
 from ...exceptions import MergeError
-from ...utils.git import get_git_repository_root_path
 
 
 def count_apply_candidate_previews_for_file(
@@ -37,24 +31,20 @@ def count_apply_candidate_previews_for_file(
     selection_ids_to_apply: set[int] | None,
 ) -> CandidatePreviewCount:
     """Return previewable apply candidate counts for one text batch file."""
-    if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(file_meta):
+    if not _candidate_inputs.is_text_candidate_entry(file_meta):
         return CandidatePreviewCount()
-    batch_source_commit = file_meta.get("batch_source_commit")
-    if not batch_source_commit:
+    batch_source_ref = _candidate_inputs.candidate_batch_source_ref(file_path, file_meta)
+    if batch_source_ref is None:
         return CandidatePreviewCount()
-    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
+    batch_source_buffer = load_git_object_as_buffer(batch_source_ref.object_spec)
     if batch_source_buffer is None:
         return CandidatePreviewCount()
 
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-    working_exists = os.path.lexists(full_path)
-    file_mode = mode_for_text_materialization(
-        str(file_meta.get("mode", "100644")),
-        selection_ids_to_apply,
-        destination_exists=working_exists,
+    worktree_target = _candidate_inputs.candidate_worktree_text_target(
+        file_path=file_path,
+        file_meta=file_meta,
+        selected_ids=selection_ids_to_apply,
     )
-    text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
     try:
         with (
@@ -72,11 +62,11 @@ def count_apply_candidate_previews_for_file(
                     source_lines=batch_source_lines,
                     ownership=ownership,
                     worktree_lines=working_lines,
-                    batch_source_commit=batch_source_commit,
+                    batch_source_commit=batch_source_ref.commit,
                     file_meta=file_meta,
-                    text_change_type=text_change_type,
-                    worktree_file_mode=file_mode,
-                    worktree_exists=working_exists,
+                    text_change_type=worktree_target.text_change_type,
+                    worktree_file_mode=worktree_target.file_mode,
+                    worktree_exists=worktree_target.exists,
                     selected_ids=selection_ids_to_apply,
                     selection_ids=selection_ids_to_apply,
                 )
@@ -100,12 +90,12 @@ def count_include_candidate_previews_for_file(
     replacement_payload: ReplacementPayload | None,
 ) -> CandidatePreviewCount:
     """Return previewable include candidate counts for one text batch file."""
-    if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(file_meta):
+    if not _candidate_inputs.is_text_candidate_entry(file_meta):
         return CandidatePreviewCount()
-    batch_source_commit = file_meta.get("batch_source_commit")
-    if not batch_source_commit:
+    batch_source_ref = _candidate_inputs.candidate_batch_source_ref(file_path, file_meta)
+    if batch_source_ref is None:
         return CandidatePreviewCount()
-    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
+    batch_source_buffer = load_git_object_as_buffer(batch_source_ref.object_spec)
     if batch_source_buffer is None:
         return CandidatePreviewCount()
 
@@ -114,20 +104,15 @@ def count_include_candidate_previews_for_file(
     if index_buffer is None:
         index_buffer = LineBuffer.from_bytes(b"")
 
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-    working_exists = os.path.lexists(full_path)
-    text_change_type = normalized_text_change_type(file_meta.get("change_type"))
-    batch_file_mode = str(file_meta.get("mode", "100644"))
-    index_file_mode = mode_for_text_materialization(
-        batch_file_mode,
-        selection_ids_to_include,
-        destination_exists=index_exists,
+    index_target = _candidate_inputs.candidate_index_text_target(
+        file_meta=file_meta,
+        selected_ids=selection_ids_to_include,
+        index_exists=index_exists,
     )
-    working_file_mode = mode_for_text_materialization(
-        batch_file_mode,
-        selection_ids_to_include,
-        destination_exists=working_exists,
+    worktree_target = _candidate_inputs.candidate_worktree_text_target(
+        file_path=file_path,
+        file_meta=file_meta,
+        selected_ids=selection_ids_to_include,
     )
 
     try:
@@ -160,13 +145,13 @@ def count_include_candidate_previews_for_file(
                         ownership=candidate_ownership,
                         index_lines=index_lines,
                         worktree_lines=working_lines,
-                        batch_source_commit=batch_source_commit,
+                        batch_source_commit=batch_source_ref.commit,
                         file_meta=file_meta,
-                        text_change_type=text_change_type,
-                        index_file_mode=index_file_mode,
-                        worktree_file_mode=working_file_mode,
-                        index_exists=index_exists,
-                        worktree_exists=working_exists,
+                        text_change_type=worktree_target.text_change_type,
+                        index_file_mode=index_target.file_mode,
+                        worktree_file_mode=worktree_target.file_mode,
+                        index_exists=index_target.exists,
+                        worktree_exists=worktree_target.exists,
                         selected_ids=selection_ids_to_include,
                         selection_ids=selection_ids_to_include,
                         replacement_payload=replacement_payload,

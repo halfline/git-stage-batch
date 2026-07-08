@@ -3798,15 +3798,20 @@ def test_include_selected_change_staging_stays_in_command_helper():
 def test_include_line_selection_stays_in_command_helper():
     """Include line-selection support should stay out of the command entrypoint."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_selection.py"
+    )
     helper = __import__(
         "git_stage_batch.commands.selection.include_line_selection",
         fromlist=["include_line_selection"],
     )
     public_names = {
+        "IncludeLineSelectionContext",
         "TransientIncludeFailureReason",
         "TransientIncludeResult",
         "annotate_line_changes_with_working_tree_source",
         "line_sequence_ends_with_lf",
+        "load_include_line_selection_context",
         "record_baseline_references_for_additions",
         "selected_file_view_is_fresh_for",
         "selected_file_view_targets",
@@ -3819,6 +3824,7 @@ def test_include_line_selection_stays_in_command_helper():
         "TransientIncludeResult",
         "_annotate_line_changes_with_working_tree_source",
         "_line_sequence_ends_with_lf",
+        "_load_include_line_selection_context",
         "_record_baseline_references_for_additions",
         "_restore_session_batch_sources_file",
         "_selected_file_view_is_fresh_for",
@@ -3827,6 +3833,23 @@ def test_include_line_selection_stays_in_command_helper():
         "_stage_live_line_target_buffer",
         "_transient_include_failure_message",
         "_try_build_index_content_via_transient_batch",
+    }
+    line_selection_resolution_names = {
+        "annotate_line_changes_with_working_tree_source",
+        "auto_add_untracked_files",
+        "cache_unstaged_file_as_single_hunk",
+        "load_line_changes_from_state",
+        "require_selected_hunk",
+        "selected_file_view_is_fresh_for",
+        "selected_file_view_targets",
+        "snapshot_selected_change_state",
+    }
+    helper_imports = {
+        "auto_add_untracked_files",
+        "cache_unstaged_file_as_single_hunk",
+        "load_line_changes_from_state",
+        "require_selected_hunk",
+        "snapshot_selected_change_state",
     }
     include_imports_helper = False
 
@@ -3838,6 +3861,11 @@ def test_include_line_selection_stays_in_command_helper():
         for node in ast.walk(tree)
         if isinstance(node, ast.ClassDef | ast.FunctionDef)
     }
+    include_functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
 
     for imported_module, node in _import_from_nodes(include_path):
         if imported_module != "git_stage_batch.commands.selection":
@@ -3846,8 +3874,19 @@ def test_include_line_selection_stays_in_command_helper():
         if "include_line_selection" in imported_names:
             include_imports_helper = True
 
+    command_include_line_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_line"])
+        if isinstance(node, ast.Name)
+    }
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
     assert old_include_names.isdisjoint(include_names)
     assert include_imports_helper
+    assert line_selection_resolution_names.isdisjoint(command_include_line_names)
+    assert helper_imports <= helper_imported_names
 
 
 def test_include_line_replacement_stays_in_command_helper():

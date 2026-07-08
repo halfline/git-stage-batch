@@ -6,6 +6,7 @@ from git_stage_batch.core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
     patch_is_file_deletion,
+    patch_is_new_file,
 )
 from git_stage_batch.core.models import SingleHunkPatch
 from git_stage_batch.core.buffer import LineBuffer
@@ -177,22 +178,23 @@ index abc123..0000000
         assert patches[0].new_path == "deleted.txt"
         assert b"+++ /dev/null" in patches[0].lines[1]
 
-    def test_patch_is_file_deletion(self):
-        """Test detecting file deletion patch headers."""
-        assert patch_is_file_deletion(
-            [
-                b"--- a/deleted.txt\n",
-                b"+++ /dev/null\n",
-                b"@@ -1 +0,0 @@\n",
-            ]
-        )
-        assert not patch_is_file_deletion(
-            [
-                b"--- /dev/null\n",
-                b"+++ b/new.txt\n",
-                b"@@ -0,0 +1 @@\n",
-            ]
-        )
+    def test_patch_path_queries(self):
+        """Test detecting file path patch headers."""
+        deleted_file_patch = [
+            b"--- a/deleted.txt\n",
+            b"+++ /dev/null\n",
+            b"@@ -1 +0,0 @@\n",
+        ]
+        new_file_patch = [
+            b"--- /dev/null\n",
+            b"+++ b/new.txt\n",
+            b"@@ -0,0 +1 @@\n",
+        ]
+
+        assert patch_is_file_deletion(deleted_file_patch)
+        assert not patch_is_file_deletion(new_file_patch)
+        assert patch_is_new_file(new_file_patch)
+        assert not patch_is_new_file(deleted_file_patch)
 
     def test_empty_diff(self):
         """Test parsing an empty diff."""

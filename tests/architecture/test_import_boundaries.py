@@ -617,6 +617,49 @@ def test_undo_worktree_capture_stays_in_worktree_module():
     assert old_undo_names.isdisjoint(vars(undo))
 
 
+def test_undo_snapshot_restore_stays_in_restore_module():
+    """Undo snapshot restoration should stay out of checkpoint orchestration."""
+    undo_path = SRC_ROOT / "data" / "undo.py"
+    undo = __import__(
+        "git_stage_batch.data.undo",
+        fromlist=["undo"],
+    )
+    undo_restore = __import__(
+        "git_stage_batch.data.undo_restore",
+        fromlist=["undo_restore"],
+    )
+    restore_names = {
+        "read_json_from_commit",
+        "restore_intent_to_add_entries",
+        "restore_refs",
+        "restore_tree_prefix",
+        "restore_worktree",
+    }
+    old_undo_names = {
+        "_read_json_blob",
+        "_read_json_from_commit",
+        "_restore_file_mode",
+        "_restore_intent_to_add_entries",
+        "_restore_refs",
+        "_restore_tree_prefix",
+        "_restore_worktree",
+        "_tree_entries",
+        "_write_blob_to_path",
+        "_write_blob_to_worktree_path",
+    }
+    undo_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(undo_path)
+    }
+
+    assert restore_names <= vars(undo_restore).keys()
+    assert restore_names.isdisjoint(vars(undo))
+    assert old_undo_names.isdisjoint(vars(undo))
+    assert "git_stage_batch.core.buffer" not in undo_imports
+    assert "git_stage_batch.utils.repository_buffers" not in undo_imports
+    assert "git_stage_batch.utils.file_io" not in undo_imports
+
+
 def test_batch_file_display_stays_below_hunk_navigation():
     """Batch file rendering should not depend on selected-change orchestration."""
     renderer_path = SRC_ROOT / "batch" / "file_display.py"

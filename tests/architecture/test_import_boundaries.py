@@ -4145,6 +4145,62 @@ def test_batch_source_candidate_refusals_own_candidate_count_refusals():
             assert snippet not in command_text
 
 
+def test_batch_source_candidate_selectors_own_action_selector_validation():
+    """Shared candidate selector validation should live outside action entries."""
+    candidate_selectors = __import__(
+        "git_stage_batch.commands.batch_source.candidate_selectors",
+        fromlist=["candidate_selectors"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    public_names = {
+        "resolve_batch_source_action_selector",
+    }
+    old_source_selector_names = {
+        "parse_batch_source_selector",
+        "require_candidate_operation",
+    }
+    old_snippets_by_path = {
+        apply_from_path: {
+            "names the apply candidate preview set",
+            "requires --file in this implementation",
+        },
+    }
+    command_paths = set(old_snippets_by_path)
+    imports_candidate_selectors = {
+        path: False
+        for path in command_paths
+    }
+    direct_selector_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_selectors" in imported_names
+            ):
+                imports_candidate_selectors[path] = True
+            if imported_module == "git_stage_batch.batch.source_selector":
+                direct_selector_imports[path] |= (
+                    imported_names & old_source_selector_names
+                )
+
+    assert public_names <= vars(candidate_selectors).keys()
+    assert imports_candidate_selectors == {
+        apply_from_path: True,
+    }
+    assert direct_selector_imports == {
+        apply_from_path: set(),
+    }
+    for path, old_snippets in old_snippets_by_path.items():
+        command_text = path.read_text()
+        for snippet in old_snippets:
+            assert snippet not in command_text
+
+
 def test_batch_source_text_actions_own_text_file_mutations():
     """Shared text file actions should live outside command entries."""
     text_file_actions = __import__(

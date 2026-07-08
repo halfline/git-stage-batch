@@ -40,6 +40,7 @@ from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
+    patch_is_new_file,
 )
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -342,10 +343,7 @@ def command_discard(
             # Extract filename for user feedback and snapshotting
             line_changes = build_line_changes_from_patch_lines(patch_buffer)
             filename = line_changes.path
-            is_new_file = any(
-                line.rstrip(b"\n") == b"--- /dev/null"
-                for line in patch_buffer
-            )
+            is_new_file = patch_is_new_file(patch_buffer)
 
             # Snapshot file if untracked before discarding
             if filename != "/dev/null":
@@ -2141,7 +2139,7 @@ def _command_discard_text_hunk_to_batch(
 
         # Check if this is a new file (before applying patches)
         is_new_file = any(
-            _patch_lines_contain_line(patch_lines_item, b"--- /dev/null")
+            patch_is_new_file(patch_lines_item)
             for patch_lines_item, _ in patches_to_discard
         )
 

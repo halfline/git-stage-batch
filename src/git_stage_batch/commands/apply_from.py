@@ -8,6 +8,7 @@ from typing import Optional
 
 from .batch_source import action_plans as _action_plans
 from .batch_source import binary_file_actions as _binary_file_actions
+from .batch_source import candidate_previews as _candidate_previews
 from .batch_source import text_file_actions as _text_file_actions
 from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
@@ -17,7 +18,6 @@ from ..batch.operation_candidates import (
     CandidatePreviewCount,
     build_apply_candidate_previews,
     clear_candidate_preview_state_for_file,
-    load_candidate_preview_state,
 )
 from ..batch.selection import (
     acquire_batch_ownership_for_display_ids_from_lines,
@@ -138,9 +138,12 @@ def _execute_apply_candidate(
             except MergeError as e:
                 exit_with_error(str(e))
 
-            if ordinal < 1 or ordinal > len(previews):
-                for preview in previews:
-                    preview.close()
+            preview = _candidate_previews.candidate_preview_for_ordinal(
+                previews,
+                ordinal,
+            )
+            if preview is None:
+                _candidate_previews.close_candidate_previews(previews)
                 exit_with_error(
                     _("Batch '{batch}' has {count} apply candidates for {file}; candidate {ordinal} does not exist.").format(
                         batch=batch_name,
@@ -150,15 +153,10 @@ def _execute_apply_candidate(
                     )
                 )
 
-            preview = previews[ordinal - 1]
             try:
-                state = load_candidate_preview_state(preview)
-                if (
-                    state is None
-                    or state.get("ordinal") != ordinal
-                    or state.get("candidate_id") != preview.candidate_id
-                    or state.get("target_fingerprints") != preview.target_fingerprints
-                    or state.get("target_result_fingerprints") != preview.target_result_fingerprints
+                if not _candidate_previews.candidate_preview_state_matches(
+                    preview,
+                    ordinal,
                 ):
                     exit_with_error(
                         _(
@@ -206,8 +204,7 @@ def _execute_apply_candidate(
                     file=sys.stderr,
                 )
             finally:
-                for candidate in previews:
-                    candidate.close()
+                _candidate_previews.close_candidate_previews(previews)
 
 
 def _apply_candidate_count_for_file(
@@ -259,8 +256,7 @@ def _apply_candidate_count_for_file(
                     selection_ids=selection_ids_to_apply,
                 )
                 count = len(previews)
-                for preview in previews:
-                    preview.close()
+                _candidate_previews.close_candidate_previews(previews)
                 return CandidatePreviewCount(count=count)
     except CandidateEnumerationLimitError as e:
         return CandidatePreviewCount(too_many=True, error=str(e))

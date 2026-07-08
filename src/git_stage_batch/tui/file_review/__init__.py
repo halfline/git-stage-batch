@@ -5,17 +5,17 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
-from ..batch.query import read_batch_metadata
-from ..data.file_review.state import read_last_file_review_state
-from ..data.line_state import load_line_changes_from_state
-from ..data.file_tracking import list_untracked_files
-from ..data.progress import get_hunk_counts
-from ..exceptions import BypassRefresh, CommandError
-from ..i18n import _
-from ..utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
-from .display import print_status_bar
-from .flow import FlowState, LocationRole
-from .prompts import (
+from ...batch.query import read_batch_metadata
+from ...data.file_review.state import read_last_file_review_state
+from ...data.line_state import load_line_changes_from_state
+from ...data.file_tracking import list_untracked_files
+from ...data.progress import get_hunk_counts
+from ...exceptions import BypassRefresh, CommandError
+from ...i18n import _
+from ...utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
+from ..display import print_status_bar
+from ..flow import FlowState, LocationRole
+from ..prompts import (
     confirm_destructive_operation,
     prompt_fixup_action,
     prompt_line_ids,
@@ -141,7 +141,7 @@ def _render_review(state: FileReviewState) -> bool:
 
     try:
         if state.flow_state.source.role is LocationRole.BATCH:
-            from ..commands.show_from import command_show_from_batch
+            from ...commands.show_from import command_show_from_batch
 
             command_show_from_batch(
                 state.flow_state.source.batch_name,
@@ -150,7 +150,7 @@ def _render_review(state: FileReviewState) -> bool:
                 selectable=True,
             )
         else:
-            from ..commands.show import command_show
+            from ...commands.show import command_show
 
             command_show(
                 file=state.file_path,
@@ -445,7 +445,7 @@ def _apply_marked_file_action(
     for path in sorted(marked_paths):
         try:
             if action == "B":
-                from ..commands.block_file import command_block_file
+                from ...commands.block_file import command_block_file
 
                 command_block_file(path, local_only=local_only)
                 continue
@@ -486,7 +486,7 @@ def _browse_candidates(state: FileReviewState) -> None:
     selector = f"{batch_name}:{operation}"
 
     try:
-        from ..commands.show_from import command_show_from_batch
+        from ...commands.show_from import command_show_from_batch
 
         command_show_from_batch(selector, file=state.file_path)
     except CommandError as e:
@@ -554,7 +554,7 @@ def _preview_candidate(
     ordinal: int,
     file_path: str,
 ) -> None:
-    from ..commands.show_from import command_show_from_batch
+    from ...commands.show_from import command_show_from_batch
 
     try:
         command_show_from_batch(
@@ -574,12 +574,12 @@ def _execute_candidate(
     selector = f"{batch_name}:{operation}:{ordinal}"
     try:
         if operation == "include":
-            from ..commands.include_from import command_include_from_batch
+            from ...commands.include_from import command_include_from_batch
 
             command_include_from_batch(selector, file=file_path)
             return
 
-        from ..commands.apply_from import command_apply_from_batch
+        from ...commands.apply_from import command_apply_from_batch
 
         command_apply_from_batch(selector, file=file_path)
     except CommandError as e:
@@ -663,7 +663,7 @@ def _apply_block_action(state: FileReviewState, action: str) -> None:
             return
 
         try:
-            from ..commands.block_file import command_block_file
+            from ...commands.block_file import command_block_file
 
             command_block_file(state.file_path, local_only=local_only)
         except CommandError as e:
@@ -671,7 +671,7 @@ def _apply_block_action(state: FileReviewState, action: str) -> None:
         return
 
     try:
-        from ..commands.unblock_file import command_unblock_file
+        from ...commands.unblock_file import command_unblock_file
 
         command_unblock_file(state.file_path)
     except CommandError as e:
@@ -687,7 +687,7 @@ def _apply_fixup_action(state: FileReviewState) -> None:
     if not line_ids:
         return
 
-    from ..commands.suggest_fixup import (
+    from ...commands.suggest_fixup import (
         _load_suggest_fixup_state,
         _reset_suggest_fixup_state,
         command_suggest_fixup_line,
@@ -743,7 +743,7 @@ def _apply_live_line_action(
 ) -> None:
     if action == "i":
         if state.flow_state.target.role is LocationRole.BATCH:
-            from ..commands.include import command_include_to_batch
+            from ...commands.include import command_include_to_batch
 
             command_include_to_batch(
                 state.flow_state.target.batch_name,
@@ -754,14 +754,14 @@ def _apply_live_line_action(
             )
             return
 
-        from ..commands.include import command_include_line
+        from ...commands.include import command_include_line
 
         command_include_line(line_ids, file=state.file_path, auto_advance=False)
         return
 
     if action == "s":
         if state.flow_state.target.role is LocationRole.BATCH:
-            from ..commands.include import command_include_to_batch
+            from ...commands.include import command_include_to_batch
 
             command_include_to_batch(
                 state.flow_state.target.batch_name,
@@ -772,13 +772,13 @@ def _apply_live_line_action(
             )
             return
 
-        from ..commands.skip import command_skip_line
+        from ...commands.skip import command_skip_line
 
         command_skip_line(line_ids, file=state.file_path, auto_advance=False)
         return
 
     if state.flow_state.target.role is LocationRole.BATCH:
-        from ..commands.discard import command_discard_to_batch
+        from ...commands.discard import command_discard_to_batch
 
         command_discard_to_batch(
             state.flow_state.target.batch_name,
@@ -789,7 +789,7 @@ def _apply_live_line_action(
         )
         return
 
-    from ..commands.discard import command_discard_line
+    from ...commands.discard import command_discard_line
 
     command_discard_line(line_ids, file=state.file_path, auto_advance=False)
 
@@ -800,7 +800,7 @@ def _apply_live_replacement_action(
     replacement_text: str,
 ) -> None:
     if state.flow_state.target.role is LocationRole.BATCH:
-        from ..commands.discard import command_discard_line_as_to_batch
+        from ...commands.discard import command_discard_line_as_to_batch
 
         command_discard_line_as_to_batch(
             state.flow_state.target.batch_name,
@@ -812,7 +812,7 @@ def _apply_live_replacement_action(
         )
         return
 
-    from ..commands.include import command_include_line_as
+    from ...commands.include import command_include_line_as
 
     command_include_line_as(
         line_ids,
@@ -825,7 +825,7 @@ def _apply_live_replacement_action(
 def _apply_live_file_action(state: FileReviewState, action: str) -> None:
     if action == "I":
         if state.flow_state.target.role is LocationRole.BATCH:
-            from ..commands.include import command_include_to_batch
+            from ...commands.include import command_include_to_batch
 
             command_include_to_batch(
                 state.flow_state.target.batch_name,
@@ -835,7 +835,7 @@ def _apply_live_file_action(state: FileReviewState, action: str) -> None:
             )
             return
 
-        from ..commands.include import command_include_file
+        from ...commands.include import command_include_file
 
         command_include_file(
             state.file_path,
@@ -847,7 +847,7 @@ def _apply_live_file_action(state: FileReviewState, action: str) -> None:
 
     if action == "S":
         if state.flow_state.target.role is LocationRole.BATCH:
-            from ..commands.include import command_include_to_batch
+            from ...commands.include import command_include_to_batch
 
             command_include_to_batch(
                 state.flow_state.target.batch_name,
@@ -857,7 +857,7 @@ def _apply_live_file_action(state: FileReviewState, action: str) -> None:
             )
             return
 
-        from ..commands.skip import command_skip_file
+        from ...commands.skip import command_skip_file
 
         command_skip_file(
             state.file_path,
@@ -868,7 +868,7 @@ def _apply_live_file_action(state: FileReviewState, action: str) -> None:
         return
 
     if state.flow_state.target.role is LocationRole.BATCH:
-        from ..commands.discard import command_discard_to_batch
+        from ...commands.discard import command_discard_to_batch
 
         command_discard_to_batch(
             state.flow_state.target.batch_name,
@@ -879,7 +879,7 @@ def _apply_live_file_action(state: FileReviewState, action: str) -> None:
         )
         return
 
-    from ..commands.discard import command_discard_file
+    from ...commands.discard import command_discard_file
 
     command_discard_file(state.file_path, auto_advance=False)
 
@@ -897,7 +897,7 @@ def _apply_batch_line_action(
         return
 
     if action == "i":
-        from ..commands.include_from import command_include_from_batch
+        from ...commands.include_from import command_include_from_batch
 
         command_include_from_batch(
             state.flow_state.source.batch_name,
@@ -906,7 +906,7 @@ def _apply_batch_line_action(
         )
         return
 
-    from ..commands.discard_from import command_discard_from_batch
+    from ...commands.discard_from import command_discard_from_batch
 
     command_discard_from_batch(
         state.flow_state.source.batch_name,
@@ -927,7 +927,7 @@ def _apply_batch_replacement_action(
         )
         return
 
-    from ..commands.include_from import command_include_from_batch
+    from ...commands.include_from import command_include_from_batch
 
     command_include_from_batch(
         state.flow_state.source.batch_name,
@@ -946,7 +946,7 @@ def _apply_batch_file_action(state: FileReviewState, action: str) -> None:
         return
 
     if action == "I":
-        from ..commands.include_from import command_include_from_batch
+        from ...commands.include_from import command_include_from_batch
 
         command_include_from_batch(
             state.flow_state.source.batch_name,
@@ -954,7 +954,7 @@ def _apply_batch_file_action(state: FileReviewState, action: str) -> None:
         )
         return
 
-    from ..commands.discard_from import command_discard_from_batch
+    from ...commands.discard_from import command_discard_from_batch
 
     command_discard_from_batch(
         state.flow_state.source.batch_name,

@@ -57,10 +57,7 @@ from ..data.file_review.state import (
 )
 from ..data.batch_file_review_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..batch.file_display import render_batch_file_display
-from ..core.buffer import (
-    LineBuffer,
-    write_buffer_to_working_tree_path,
-)
+from ..core.buffer import LineBuffer
 from ..data.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -360,31 +357,6 @@ def _include_candidate_count_for_file(
         return CandidatePreviewCount()
     except Exception as e:
         return CandidatePreviewCount(error=str(e))
-
-
-def _write_binary_file_from_batch(
-    file_path: str,
-    file_meta: dict,
-    buffer: LineBuffer | None,
-) -> None:
-    """Write one binary batch target into the working tree."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-    change_type = file_meta.get("change_type", "modified")
-
-    if change_type == "deleted":
-        if os.path.lexists(full_path):
-            full_path.unlink()
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
-
-    write_buffer_to_working_tree_path(
-        full_path,
-        buffer,
-        mode=str(file_meta.get("mode", "100644")),
-    )
 
 
 def command_include_from_batch(
@@ -841,7 +813,11 @@ def command_include_from_batch(
                             plan.file_meta,
                             plan.buffer,
                         )
-                        _write_binary_file_from_batch(plan.file_path, plan.file_meta, plan.buffer)
+                        _binary_file_actions.write_binary_file_to_worktree(
+                            plan.file_path,
+                            plan.file_meta,
+                            plan.buffer,
+                        )
                     else:
                         stage_submodule_pointer_from_batch(plan.file_path, plan.file_meta)
         except CommandError:

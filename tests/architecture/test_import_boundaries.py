@@ -2759,6 +2759,31 @@ def test_discard_selected_change_discarding_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_discard_uses_file_io_path_empty_helper():
+    """Discard should use file I/O utilities for generic path byte checks."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    file_io = __import__(
+        "git_stage_batch.utils.file_io",
+        fromlist=["file_io"],
+    )
+    imported_file_io_names = set()
+
+    assert "path_is_empty" in vars(file_io)
+
+    tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_helpers = {
+        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+    }
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.utils.file_io":
+            continue
+        imported_file_io_names |= {alias.name for alias in node.names}
+
+    assert "_path_is_empty" not in discard_helpers
+    assert "path_is_empty" in imported_file_io_names
+
+
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (

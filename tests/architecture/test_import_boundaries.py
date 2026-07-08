@@ -97,29 +97,39 @@ def test_diff_parser_uses_core_buffer_boundary():
     assert "git_stage_batch.editor" not in imported_modules
 
 
-def test_patch_deletion_query_stays_in_diff_parser():
-    """Include should use the core patch deletion query."""
+def test_patch_path_queries_stay_in_diff_parser():
+    """Include and discard should use core patch path queries."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    discard_path = SRC_ROOT / "commands" / "discard.py"
     diff_parser = __import__(
         "git_stage_batch.core.diff_parser",
         fromlist=["diff_parser"],
     )
 
     assert "patch_is_file_deletion" in vars(diff_parser)
+    assert "patch_is_new_file" in vars(diff_parser)
 
     include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
     include_helpers = {
         node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
     }
     imported_diff_names = set()
+    discard_imported_diff_names = set()
 
     for imported_module, node in _import_from_nodes(include_path):
         if imported_module != "git_stage_batch.core.diff_parser":
             continue
         imported_diff_names |= {alias.name for alias in node.names}
 
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.core.diff_parser":
+            continue
+        discard_imported_diff_names |= {alias.name for alias in node.names}
+
     assert "_patch_is_text_file_path_deletion" not in include_helpers
     assert "patch_is_file_deletion" in imported_diff_names
+    assert "patch_is_new_file" in discard_imported_diff_names
+    assert "--- /dev/null" not in discard_path.read_text()
 
 
 def test_core_modules_do_not_import_editor():

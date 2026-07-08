@@ -5,7 +5,13 @@ from __future__ import annotations
 from enum import Enum
 import os
 
-from ...core.buffer import LineBuffer, write_buffer_to_working_tree_path
+from ...core.buffer import (
+    LineBuffer,
+    write_buffer_to_path,
+    write_buffer_to_working_tree_path,
+)
+from ...data.file_modes import apply_git_file_mode, detect_file_mode_in_commit
+from ...data.repository_buffers import load_git_object_as_buffer
 from ...utils.git import (
     create_git_blob,
     get_git_repository_root_path,
@@ -19,6 +25,30 @@ class BinaryWorktreeAction(Enum):
     ADDED = "added"
     DELETED = "deleted"
     REPLACED = "replaced"
+
+
+def discard_binary_file_to_worktree(
+    file_path: str,
+    baseline_commit: str,
+) -> BinaryWorktreeAction | None:
+    """Restore or remove one binary file using the batch baseline commit."""
+    repo_root = get_git_repository_root_path()
+    full_path = repo_root / file_path
+
+    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    if baseline_buffer is not None:
+        with baseline_buffer:
+            write_buffer_to_path(full_path, baseline_buffer)
+        apply_git_file_mode(
+            full_path,
+            detect_file_mode_in_commit(baseline_commit, file_path),
+        )
+        return BinaryWorktreeAction.REPLACED
+
+    if full_path.exists():
+        full_path.unlink()
+        return BinaryWorktreeAction.DELETED
+    return None
 
 
 def write_binary_file_to_worktree(

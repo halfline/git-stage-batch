@@ -12,10 +12,13 @@ from ...data.file_tracking import list_untracked_files
 from ...exceptions import BypassRefresh, CommandError
 from ...i18n import _
 from ...utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
+from .action_router import (
+    apply_file_action,
+    apply_line_action,
+    apply_replacement_action,
+)
 from .batch_actions import (
     apply_batch_file_action,
-    apply_batch_line_action,
-    apply_batch_replacement_action,
 )
 from .block_actions import block_review_file, unblock_review_file
 from .candidates import browse_candidates
@@ -25,11 +28,7 @@ from .fixup_actions import (
     read_last_fixup_commit_hash,
     suggest_fixup_for_lines,
 )
-from .live_actions import (
-    apply_live_file_action,
-    apply_live_line_action,
-    apply_live_replacement_action,
-)
+from .live_actions import apply_live_file_action
 from .prompts import (
     normalize_review_action,
     print_review_help,
@@ -140,10 +139,10 @@ def _review_loop(state: FileReviewSessionState) -> None:
                 state.page_spec = None
             continue
         if normalized in {"i", "s", "d"}:
-            _apply_line_action(state, normalized)
+            apply_line_action(state, normalized)
             continue
         if normalized == "r":
-            _apply_replacement_action(state)
+            apply_replacement_action(state)
             continue
         if normalized == "x":
             _apply_fixup_action(state)
@@ -152,7 +151,7 @@ def _review_loop(state: FileReviewSessionState) -> None:
             browse_candidates(state)
             continue
         if normalized in {"I", "S", "D"}:
-            _apply_file_action(state, normalized)
+            apply_file_action(state, normalized)
             continue
         if normalized in {"B", "U"}:
             _apply_block_action(state, normalized)
@@ -197,18 +196,6 @@ def _previous_page_spec() -> str | None:
         return review_state.page_spec
 
     return str(current_page - 1)
-
-
-def _prompt_replacement_text() -> str | None:
-    try:
-        value = input(
-            wrap_prompt_for_readline(_("Replacement text (empty cancels): "))
-        )
-    except (KeyboardInterrupt, EOFError):
-        return None
-    if value == "":
-        return None
-    return value
 
 
 def _prompt_block_local_only() -> bool | None:
@@ -399,70 +386,6 @@ def _normalize_marked_file_action(raw_action: str) -> str | None:
     if lowered in {"d", "discard"}:
         return "D"
     return None
-
-
-def _apply_replacement_action(state: FileReviewSessionState) -> None:
-    line_ids = prompt_line_ids()
-    if not line_ids:
-        return
-
-    replacement_text = _prompt_replacement_text()
-    if replacement_text is None:
-        return
-
-    try:
-        if state.flow_state.source.role is LocationRole.BATCH:
-            apply_batch_replacement_action(state, line_ids, replacement_text)
-        else:
-            apply_live_replacement_action(state, line_ids, replacement_text)
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-
-
-def _apply_line_action(state: FileReviewSessionState, action: str) -> None:
-    if action == "s" and state.flow_state.source.role is LocationRole.BATCH:
-        print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
-        return
-
-    line_ids = prompt_line_ids()
-    if not line_ids:
-        return
-
-    if action == "d" and state.flow_state.source.role is LocationRole.WORKING_TREE:
-        if not confirm_destructive_operation(
-            "discard",
-            _("This will discard the selected lines from your working tree."),
-        ):
-            return
-
-    try:
-        if state.flow_state.source.role is LocationRole.BATCH:
-            apply_batch_line_action(state, action, line_ids)
-        else:
-            apply_live_line_action(state, action, line_ids)
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-
-
-def _apply_file_action(state: FileReviewSessionState, action: str) -> None:
-    if action == "S" and state.flow_state.source.role is LocationRole.BATCH:
-        print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
-        return
-
-    if action == "D" and state.flow_state.source.role is LocationRole.WORKING_TREE:
-        if not confirm_destructive_operation(
-            "discard",
-            _("This will discard the reviewed file from your working tree."),
-        ):
-            return
-
-    try:
-        if state.flow_state.source.role is LocationRole.BATCH:
-            apply_batch_file_action(state, action)
-        else:
-            apply_live_file_action(state, action)
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
 
 
 def _apply_block_action(state: FileReviewSessionState, action: str) -> None:

@@ -9,11 +9,10 @@ from ...batch.query import read_batch_metadata
 from ...data.file_review.state import read_last_file_review_state
 from ...data.line_state import load_line_changes_from_state
 from ...data.file_tracking import list_untracked_files
-from ...data.progress import get_hunk_counts
 from ...exceptions import BypassRefresh, CommandError
 from ...i18n import _
 from ...utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
-from ..display import print_status_bar
+from .display import render_file_review
 from ..flow import FlowState, LocationRole
 from ..prompts import (
     confirm_destructive_operation,
@@ -88,7 +87,11 @@ def handle_file_browser(flow_state: FlowState) -> None:
 
 def _review_loop(state: FileReviewSessionState) -> None:
     while True:
-        if not _render_review(state):
+        if not render_file_review(
+            state.flow_state,
+            file_path=state.file_path,
+            page_spec=state.page_spec,
+        ):
             return
 
         action = _prompt_review_action(state.flow_state)
@@ -134,35 +137,6 @@ def _review_loop(state: FileReviewSessionState) -> None:
             continue
 
         print(_("Unknown review action: {action}").format(action=action))
-
-
-def _render_review(state: FileReviewSessionState) -> bool:
-    print()
-    print_status_bar(get_hunk_counts(), state.flow_state)
-    print()
-
-    try:
-        if state.flow_state.source.role is LocationRole.BATCH:
-            from ...commands.show_from import command_show_from_batch
-
-            command_show_from_batch(
-                state.flow_state.source.batch_name,
-                file=state.file_path,
-                page=state.page_spec,
-                selectable=True,
-            )
-        else:
-            from ...commands.show import command_show
-
-            command_show(
-                file=state.file_path,
-                page=state.page_spec,
-                selectable=True,
-            )
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-        return False
-    return True
 
 
 def _prompt_review_action(flow_state: FlowState) -> str:

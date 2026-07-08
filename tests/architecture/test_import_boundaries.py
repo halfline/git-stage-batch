@@ -1663,6 +1663,54 @@ def test_tui_fixup_menu_owns_suggest_fixup_submenu():
     assert fixup_menu_names <= fixup_menu_imported_names
 
 
+def test_tui_shell_command_owns_shell_escape():
+    """TUI shell escapes should live in the shell command adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    shell_command_path = SRC_ROOT / "tui" / "shell_command.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    shell_command = __import__(
+        "git_stage_batch.tui.shell_command",
+        fromlist=["shell_command"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    shell_command_imported_names = set()
+    interactive_plain_imports = set()
+    shell_command_plain_imports = set()
+    shell_command_names = {
+        "get_git_repository_root_path",
+        "prompt_shell_command",
+    }
+
+    for node in ast.walk(ast.parse(interactive_path.read_text())):
+        if isinstance(node, ast.Import):
+            interactive_plain_imports |= {alias.name for alias in node.names}
+
+    for node in ast.walk(ast.parse(shell_command_path.read_text())):
+        if isinstance(node, ast.Import):
+            shell_command_plain_imports |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(shell_command_path):
+        shell_command_imported_names |= {alias.name for alias in node.names}
+
+    assert "handle_shell_command" in vars(shell_command)
+    assert "_handle_shell" not in vars(interactive)
+    assert "git_stage_batch.tui.shell_command" in interactive_imports
+    assert "subprocess" not in interactive_plain_imports
+    assert "subprocess" in shell_command_plain_imports
+    assert shell_command_names.isdisjoint(interactive_imported_names)
+    assert shell_command_names <= shell_command_imported_names
+
+
 def test_tui_file_selection_menu_owns_whole_file_actions():
     """TUI whole-file selection should live in the file selection menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"

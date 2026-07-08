@@ -4214,11 +4214,16 @@ def test_batch_source_merge_refusals_own_merge_failure_refusals():
         fromlist=["merge_refusals"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "refuse_batch_source_merge_failures",
     }
     old_snippets_by_path = {
         apply_from_path: {
+            "gutter_to_selection_id",
+            "Failed for: {files}",
+        },
+        include_from_path: {
             "gutter_to_selection_id",
             "Failed for: {files}",
         },
@@ -4249,9 +4254,11 @@ def test_batch_source_merge_refusals_own_merge_failure_refusals():
     assert public_names <= vars(merge_refusals).keys()
     assert imports_merge_refusals == {
         apply_from_path: True,
+        include_from_path: True,
     }
     assert direct_display_imports == {
         apply_from_path: set(),
+        include_from_path: set(),
     }
     for path, old_snippets in old_snippets_by_path.items():
         command_text = path.read_text()

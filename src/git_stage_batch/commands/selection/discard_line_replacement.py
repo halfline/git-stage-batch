@@ -1,0 +1,198 @@
+"""Line-replacement support for discard commands."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
+import os
+from pathlib import Path
+
+from ...batch.display import annotate_with_batch_source_working_lines
+from ...batch.ownership import (
+    ReplacementLineRun,
+    derive_replacement_line_runs_from_lines,
+)
+from ...batch.selection import require_line_selection_in_view
+from ...core.buffer import LineBuffer, buffer_ends_with_lf
+from ...core.line_selection import parse_line_selection
+from ...core.replacement import ReplacementPayload, coerce_replacement_payload
+from ...data.file_hunk_display import build_file_hunk_from_buffer
+from ...data.line_state import load_line_changes_from_state
+from ...data.repository_buffers import (
+    load_git_object_as_buffer_or_empty,
+    load_working_tree_file_as_buffer,
+)
+from ...exceptions import exit_with_error
+from ...i18n import _
+from ...staging.operations import (
+    build_target_working_tree_buffer_from_lines,
+    build_target_working_tree_buffer_with_replaced_lines,
+)
+from ...utils.git import get_git_repository_root_path
+from . import replacement_selection
+
+
+@dataclass(frozen=True)
+class DiscardLineReplacementSelection:
+    """Prepared replacement selection for discard-to-batch."""
+
+    line_changes: object
+    file_path: str
+    working_file_path: Path
+    selected_lines: list
+    rewritten_line_changes: object
+    rewritten_selected_lines: list
+    rewritten_working_lines: Sequence[bytes]
+
+
+def derive_live_replacement_line_runs(file_path: str) -> list[ReplacementLineRun]:
+    """Derive file-level replacement runs for the current live file state."""
+    with (
+        load_git_object_as_buffer_or_empty(f"HEAD:{file_path}") as baseline_lines,
+        load_working_tree_file_as_buffer(file_path) as working_lines,
+    ):
+        return derive_replacement_line_runs_from_lines(
+            old_file_lines=baseline_lines,
+            new_file_lines=working_lines,
+        )
+
+
+@contextmanager
+def prepare_discard_line_replacement_selection(
+    line_id_specification: str,
+    replacement_text: str | ReplacementPayload,
+    *,
+    no_edge_overlap: bool = False,
+) -> Iterator[DiscardLineReplacementSelection]:
+    """Prepare rewritten line selection state for discard-to-batch."""
+    line_changes = load_line_changes_from_state()
+    requested_ids = set(parse_line_selection(line_id_specification))
+    require_line_selection_in_view(
+        line_changes,
+        requested_ids,
+        line_id_specification=line_id_specification,
+    )
+    effective_ids = replacement_selection.expand_replacement_selection_ids(
+        line_changes,
+        requested_ids,
+    )
+
+    selected_lines = [
+        line for line in line_changes.lines if line.id in effective_ids
+    ]
+    if not selected_lines:
+        exit_with_error(
+            _("No matching lines found for selection: {ids}").format(
+                ids=line_id_specification
+            )
+        )
+
+    working_file_path = get_git_repository_root_path() / line_changes.path
+    if not os.path.lexists(working_file_path):
+        exit_with_error(
+            _("File not found in working tree: {file}").format(
+                file=line_changes.path
+            )
+        )
+
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    try:
+        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
+            rewritten_working_buffer = (
+                build_target_working_tree_buffer_with_replaced_lines(
+                    line_changes,
+                    effective_ids,
+                    replacement_payload,
+                    working_lines,
+                    working_has_trailing_newline=buffer_ends_with_lf(
+                        working_lines
+                    ),
+                    trim_unchanged_edge_anchors=not no_edge_overlap,
+                )
+            )
+    except ValueError as error:
+        exit_with_error(str(error))
+
+    with rewritten_working_buffer as rewritten_working_lines:
+        rewritten_cached_lines = build_file_hunk_from_buffer(
+            line_changes.path,
+            rewritten_working_lines,
+        )
+        if rewritten_cached_lines is None:
+            exit_with_error(
+                _("No changes in file '{file}'.").format(file=line_changes.path)
+            )
+        rewritten_line_changes = annotate_with_batch_source_working_lines(
+            line_changes.path,
+            rewritten_cached_lines,
+            rewritten_working_lines,
+        )
+        rewritten_selected_lines = _select_rewritten_replacement_lines(
+            selected_lines,
+            rewritten_line_changes,
+        )
+        yield DiscardLineReplacementSelection(
+            line_changes=line_changes,
+            file_path=line_changes.path,
+            working_file_path=working_file_path,
+            selected_lines=selected_lines,
+            rewritten_line_changes=rewritten_line_changes,
+            rewritten_selected_lines=rewritten_selected_lines,
+            rewritten_working_lines=rewritten_working_lines,
+        )
+
+
+def build_discard_line_replacement_target_buffer(
+    selection: DiscardLineReplacementSelection,
+) -> LineBuffer:
+    """Return the worktree buffer after removing rewritten replacement lines."""
+    rewritten_selected_ids = {
+        line.id for line in selection.rewritten_selected_lines if line.id is not None
+    }
+    return build_target_working_tree_buffer_from_lines(
+        selection.rewritten_line_changes,
+        rewritten_selected_ids,
+        selection.rewritten_working_lines,
+        working_has_trailing_newline=buffer_ends_with_lf(
+            selection.rewritten_working_lines
+        ),
+    )
+
+
+def _select_rewritten_replacement_lines(
+    original_selected_lines: list,
+    rewritten_line_changes,
+) -> list:
+    """Find the rewritten changed span that overlaps the original selection."""
+    original_old_lines = {
+        line.old_line_number
+        for line in original_selected_lines
+        if line.old_line_number is not None
+    }
+    original_new_lines = {
+        line.new_line_number
+        for line in original_selected_lines
+        if line.new_line_number is not None
+    }
+
+    matching_indices = [
+        index
+        for index, line in enumerate(rewritten_line_changes.lines)
+        if line.kind != " " and (
+            line.old_line_number in original_old_lines
+            or line.new_line_number in original_new_lines
+        )
+    ]
+    if matching_indices:
+        start_index = min(matching_indices)
+        end_index = max(matching_indices)
+        return [
+            line
+            for line in rewritten_line_changes.lines[start_index:end_index + 1]
+            if line.kind != " "
+        ]
+
+    exit_with_error(
+        _("Replacement selection could not be located after rewriting the file.")
+    )

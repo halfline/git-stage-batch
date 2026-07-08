@@ -48,7 +48,11 @@ def _patch_common_candidate_builder_io(monkeypatch, tmp_path):
             return index_buffer
         return None
 
-    monkeypatch.setattr(builders, "get_git_repository_root_path", lambda: tmp_path)
+    monkeypatch.setattr(
+        builders._candidate_inputs,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
     monkeypatch.setattr(builders, "load_git_object_as_buffer", load_git_object)
     monkeypatch.setattr(
         builders,

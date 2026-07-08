@@ -38,7 +38,6 @@ from ..core.hashing import (
     compute_text_file_deletion_hash,
 )
 from ..core.line_selection import (
-    format_line_ids,
     parse_line_selection,
     read_line_ids_file,
     write_line_ids_file,
@@ -108,7 +107,6 @@ from ..core.buffer import (
 )
 from ..data.repository_buffers import (
     load_git_object_as_buffer,
-    load_working_tree_file_as_buffer,
 )
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
@@ -787,60 +785,22 @@ def command_include_line_as(
     if file is not None:
         operation_parts.extend(["--file", file])
 
+    replacement_file_context = None
     with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
-        preserve_selected_state = False
-        saved_selected_state = None
-
         if file is None:
-            require_selected_hunk()
-            line_changes = load_line_changes_from_state()
-            replacement_line_changes = line_changes
-            replacement_line_id_specification = line_id_specification
-            replacement_base_buffer = None
-            replacement_source_buffer = None
-            selected_change_kind = read_selected_change_kind()
-            requested_ids = set(parse_line_selection(line_id_specification))
-            if selected_change_kind == SelectedChangeKind.FILE:
-                require_line_selection_in_view(
-                    line_changes,
-                    requested_ids,
-                    line_id_specification=line_id_specification,
+            replacement_context = (
+                _include_line_replacement.prepare_pathless_include_line_replacement(
+                    line_id_specification
                 )
-                translated_replacement = (
-                    _include_line_replacement.translate_file_view_replacement_to_unstaged_diff(
-                        line_changes,
-                        requested_ids,
-                    )
-                )
-                if translated_replacement is not None:
-                    replacement_line_changes, replacement_ids = translated_replacement
-                    replacement_line_id_specification = format_line_ids(
-                        sorted(replacement_ids)
-                    )
-                    replacement_base_buffer = load_git_object_as_buffer(
-                        f":{line_changes.path}"
-                    )
-                    if replacement_base_buffer is None:
-                        replacement_base_buffer = LineBuffer.from_bytes(b"")
-                    replacement_source_buffer = load_working_tree_file_as_buffer(
-                        line_changes.path
-                    )
-            if replacement_base_buffer is None:
-                replacement_base_buffer = LineBuffer.from_path(
-                    get_index_snapshot_file_path()
-                )
-            if replacement_source_buffer is None:
-                replacement_source_buffer = LineBuffer.from_path(
-                    get_working_tree_snapshot_file_path()
-                )
-
+            )
+            line_changes = replacement_context.display_line_changes
             with (
-                replacement_base_buffer as hunk_base_lines,
-                replacement_source_buffer as hunk_source_lines,
+                replacement_context.base_buffer as hunk_base_lines,
+                replacement_context.source_buffer as hunk_source_lines,
             ):
                 _include_line_replacement.apply_include_line_replacement(
-                    replacement_line_changes,
-                    line_id_specification=replacement_line_id_specification,
+                    replacement_context.replacement_line_changes,
+                    line_id_specification=replacement_context.line_id_specification,
                     replacement_text=replacement_text,
                     hunk_base_lines=hunk_base_lines,
                     hunk_source_lines=hunk_source_lines,
@@ -861,47 +821,18 @@ def command_include_line_as(
             )
             finish_review_scoped_line_action(review_state, file_path=line_changes.path)
         else:
-            if file == "":
-                target_file = get_selected_change_file_path()
-                if target_file is None:
-                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-                preserve_selected_state = False
-            else:
-                target_file = file
-            selected_file_view_targets_file = (
-                _include_line_selection.selected_file_view_targets(target_file)
-            )
-            reuse_selected_file_view = (
-                _include_line_selection.selected_file_view_is_fresh_for(target_file)
-            )
-            if reuse_selected_file_view:
-                cached_lines = load_line_changes_from_state()
-                if cached_lines is None:
-                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-                annotated_changes = annotate_with_batch_source(target_file, cached_lines)
-            else:
-                if file != "" and not selected_file_view_targets_file:
-                    preserve_selected_state = True
-                saved_selected_state = (
-                    selected_state_stack.enter_context(snapshot_selected_change_state())
-                    if preserve_selected_state else None
+            replacement_file_context = (
+                _include_line_replacement.prepare_file_include_line_replacement(
+                    file,
+                    selected_state_stack,
                 )
-
-                cached_lines = cache_unstaged_file_as_single_hunk(target_file)
-                if cached_lines is None:
-                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-
-                annotated_changes = annotate_with_batch_source(target_file, cached_lines)
-            hunk_base_buffer = load_git_object_as_buffer(f":{target_file}")
-            if hunk_base_buffer is None:
-                hunk_base_buffer = LineBuffer.from_bytes(b"")
-
+            )
             with (
-                hunk_base_buffer as hunk_base_lines,
-                load_working_tree_file_as_buffer(target_file) as hunk_source_lines,
+                replacement_file_context.base_buffer as hunk_base_lines,
+                replacement_file_context.source_buffer as hunk_source_lines,
             ):
                 _include_line_replacement.apply_include_line_replacement(
-                    annotated_changes,
+                    replacement_file_context.line_changes,
                     line_id_specification=line_id_specification,
                     replacement_text=replacement_text,
                     hunk_base_lines=hunk_base_lines,
@@ -909,29 +840,37 @@ def command_include_line_as(
                     trim_unchanged_edge_anchors=not no_edge_overlap,
                 )
 
-            if preserve_selected_state:
-                assert saved_selected_state is not None
-                restore_selected_change_state(saved_selected_state)
+            if replacement_file_context.preserve_selected_state:
+                assert replacement_file_context.saved_selected_state is not None
+                restore_selected_change_state(
+                    replacement_file_context.saved_selected_state
+                )
             else:
                 write_line_ids_file(get_processed_include_ids_file_path(), set())
                 print(
                     _("✓ Included line(s) as replacement: {lines} from {file}").format(
                         lines=line_id_specification,
-                        file=target_file,
+                        file=replacement_file_context.target_file,
                     ),
                     file=sys.stderr,
                 )
                 refresh_selected_hunk_after_line_action(
-                    target_file,
+                    replacement_file_context.target_file,
                     auto_advance=auto_advance,
                 )
-            finish_review_scoped_line_action(review_state, file_path=target_file)
+            finish_review_scoped_line_action(
+                review_state,
+                file_path=replacement_file_context.target_file,
+            )
 
-    if preserve_selected_state:
+    if (
+        replacement_file_context is not None
+        and replacement_file_context.preserve_selected_state
+    ):
         print(
             _("✓ Included line(s) as replacement: {lines} from {file}").format(
                 lines=line_id_specification,
-                file=target_file,
+                file=replacement_file_context.target_file,
             ),
             file=sys.stderr,
         )

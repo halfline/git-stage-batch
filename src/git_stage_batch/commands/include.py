@@ -140,6 +140,7 @@ from ..utils.paths import (
     get_working_tree_snapshot_file_path,
 )
 from .selection import include_line_selection as _include_line_selection
+from .selection import include_file_selection as _include_file_selection
 from .selection import include_line_replacement as _include_line_replacement
 from .selection import replacement_selection
 from .selection import batch_line_selection as _batch_line_selection
@@ -1386,23 +1387,7 @@ def _command_include_file_lines_to_batch(
     auto_advance: bool | None = None,
 ) -> None:
     """Include specific lines from a file to batch (file-scoped with line IDs)."""
-    if render_gitlink_change(file_path) is not None:
-        exit_with_error(
-            _("Cannot use --lines with submodule pointers. Include the whole pointer instead.")
-        )
-
-    reuse_selected_file_view = (
-        read_selected_change_kind() == SelectedChangeKind.FILE
-        and get_selected_change_file_path() == file_path
-    )
-    if reuse_selected_file_view:
-        cached_lines = load_line_changes_from_state()
-    else:
-        cached_lines = cache_unstaged_file_as_single_hunk(file_path)
-
-    if cached_lines is None:
-        exit_with_error(_("No changes in file '{file}'.").format(file=file_path))
-
+    cached_lines = _include_file_selection.load_explicit_file_selection(file_path)
     # Annotate with batch source line numbers
     line_changes = annotate_with_batch_source(file_path, cached_lines)
     _include_line_selection.record_baseline_references_for_additions(line_changes)

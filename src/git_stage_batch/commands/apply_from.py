@@ -10,6 +10,7 @@ from .batch_source import action_plans as _action_plans
 from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import candidate_previews as _candidate_previews
 from .batch_source import candidate_refusals as _candidate_refusals
+from .batch_source import candidate_selectors as _candidate_selectors
 from .batch_source import text_file_actions as _text_file_actions
 from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
@@ -31,10 +32,6 @@ from ..batch.submodule_pointer import (
     apply_submodule_pointer_from_batch,
     is_batch_submodule_pointer,
     refuse_batch_submodule_pointer_lines,
-)
-from ..batch.source_selector import (
-    parse_batch_source_selector,
-    require_candidate_operation,
 )
 from ..batch.validation import batch_exists
 from ..core.text_lifecycle import (
@@ -284,23 +281,11 @@ def command_apply_from_batch(
     """
     require_git_repository()
     raw_selector = batch_name
-    selector = parse_batch_source_selector(batch_name)
-    require_candidate_operation(selector, "apply", raw_value=raw_selector, file=file)
-    if selector.candidate_operation == "apply" and selector.candidate_ordinal is None:
-        exit_with_error(
-            _(
-                "'{selector}' names the apply candidate preview set.\n"
-                "Use 'git-stage-batch show --from {selector}' to preview candidates, "
-                "or use '{batch}:apply:N' to apply a candidate."
-            ).format(selector=raw_selector, batch=selector.batch_name)
-        )
-    if selector.candidate_ordinal is not None and file is None:
-        exit_with_error(
-            _(
-                "Candidate selector '{selector}' requires --file in this implementation.\n"
-                "No changes applied."
-            ).format(selector=raw_selector)
-        )
+    selector = _candidate_selectors.resolve_batch_source_action_selector(
+        raw_selector,
+        "apply",
+        file=file,
+    )
     batch_name = selector.batch_name
     scope_resolution = resolve_batch_source_action_scope(
         FileReviewAction.APPLY_FROM_BATCH,

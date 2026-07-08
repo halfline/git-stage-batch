@@ -4888,16 +4888,20 @@ def test_batch_source_binary_actions_own_worktree_mutation():
         fromlist=["binary_file_actions"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "BinaryWorktreeAction",
+        "discard_binary_file_to_worktree",
         "write_binary_file_to_worktree",
     }
     old_names = {
+        "_discard_binary_file_from_batch",
         "_write_binary_file_from_batch",
     }
     command_paths = {
         apply_from_path,
+        discard_from_path,
         include_from_path,
     }
     helpers_by_path = {
@@ -4925,6 +4929,7 @@ def test_batch_source_binary_actions_own_worktree_mutation():
     assert public_names <= vars(binary_file_actions).keys()
     assert imports_binary_file_actions == {
         apply_from_path: True,
+        discard_from_path: True,
         include_from_path: True,
     }
     for helpers in helpers_by_path.values():

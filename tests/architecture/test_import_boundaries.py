@@ -2393,9 +2393,14 @@ def test_suggest_fixup_state_stays_in_data_layer():
     """Suggest-fixup state persistence should stay below command and TUI flows."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
     data_path = SRC_ROOT / "data" / "suggest_fixup_state.py"
-    tui_paths = (
+    tui_command_paths = (
         SRC_ROOT / "tui" / "fixup_menu.py",
         SRC_ROOT / "tui" / "file_review" / "__init__.py",
+        SRC_ROOT / "tui" / "file_review" / "fixup_actions.py",
+    )
+    tui_state_paths = (
+        SRC_ROOT / "tui" / "fixup_menu.py",
+        SRC_ROOT / "tui" / "file_review" / "fixup_actions.py",
     )
     command_imports = {
         imported_module
@@ -2417,11 +2422,13 @@ def test_suggest_fixup_state_stays_in_data_layer():
     }
     violations = []
 
-    for tui_path in tui_paths:
+    for tui_path in tui_state_paths:
         imports = _import_from_nodes(tui_path)
         imported_modules = {imported_module for imported_module, _node in imports}
         assert "git_stage_batch.data.suggest_fixup_state" in imported_modules
 
+    for tui_path in tui_command_paths:
+        imports = _import_from_nodes(tui_path)
         for imported_module, node in imports:
             if imported_module != "git_stage_batch.commands.suggest_fixup":
                 continue

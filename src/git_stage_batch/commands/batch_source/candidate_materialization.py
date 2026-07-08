@@ -42,7 +42,7 @@ class ApplyCandidateMaterialization:
 
     @property
     def target(self) -> TargetCandidatePreview:
-        return self.preview.targets[0]
+        return self.preview.require_target("worktree")
 
     def close(self) -> None:
         _candidate_previews.close_candidate_previews(self.previews)
@@ -60,13 +60,11 @@ class IncludeCandidateMaterialization:
 
     @property
     def index_target(self) -> TargetCandidatePreview:
-        return next(target for target in self.preview.targets if target.target == "index")
+        return self.preview.require_target("index")
 
     @property
     def worktree_target(self) -> TargetCandidatePreview:
-        return next(
-            target for target in self.preview.targets if target.target == "worktree"
-        )
+        return self.preview.require_target("worktree")
 
     def close(self) -> None:
         _candidate_previews.close_candidate_previews(self.previews)

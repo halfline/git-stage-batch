@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
-import os
 import sys
 from typing import Optional
 
@@ -14,21 +12,19 @@ from .batch_source import candidate_preview_counts as _candidate_preview_counts
 from .batch_source import candidate_refusals as _candidate_refusals
 from .batch_source import candidate_selectors as _candidate_selectors
 from .batch_source import merge_refusals as _merge_refusals
+from .batch_source import text_plan_builders as _text_plan_builders
 from .batch_source import text_file_actions as _text_file_actions
 from .selection import replacement_selection
 from ..batch.binary_file_content import read_binary_file_from_batch
-from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     clear_candidate_preview_state_for_file,
 )
-from ..batch.replacement import build_replacement_batch_view_from_lines
 from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
 )
 from ..batch.selection import (
-    acquire_batch_ownership_for_display_ids_from_lines,
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
@@ -40,23 +36,12 @@ from ..batch.submodule_pointer import (
     stage_submodule_pointer_from_batch,
 )
 from ..batch.validation import batch_exists
-from ..core.text_lifecycle import (
-    TextFileChangeType,
-    mode_for_text_materialization,
-    normalized_text_change_type,
-    selected_text_target_change_type,
-)
 from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
     finish_review_scoped_line_action,
     resolve_batch_source_action_scope,
 )
 from ..data.batch_file_review_selection import translate_batch_file_gutter_ids_to_selection_ids
-from ..core.buffer import LineBuffer
-from ..data.repository_buffers import (
-    load_git_object_as_buffer,
-    load_working_tree_file_as_buffer,
-)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import (
@@ -68,7 +53,6 @@ from ..exceptions import (
 )
 from ..i18n import _
 from ..utils.git import (
-    get_git_repository_root_path,
     git_refresh_index,
     require_git_repository,
 )
@@ -251,14 +235,11 @@ def command_include_from_batch(
         )
         return
 
-    repo_root = get_git_repository_root_path()
     failed_files = []
     candidate_counts = {}
     include_plans = []
 
     for file_path, file_meta in files.items():
-        merged_index_buffer = None
-        merged_working_buffer = None
         try:
             if file_meta.get("file_type") == "binary":
                 batch_buffer = read_binary_file_from_batch(
@@ -283,140 +264,43 @@ def command_include_from_batch(
                 )
                 continue
 
-            text_change_type = normalized_text_change_type(file_meta.get("change_type"))
-
-            index_buffer = load_git_object_as_buffer(f":{file_path}")
-            index_exists = index_buffer is not None
-            if index_buffer is None:
-                index_buffer = LineBuffer.from_bytes(b"")
-
-            full_path = repo_root / file_path
-            working_exists = os.path.lexists(full_path)
-
-            batch_file_mode = str(file_meta.get("mode", "100644"))
-            index_file_mode = mode_for_text_materialization(
-                batch_file_mode,
-                selected_ids,
-                destination_exists=index_exists,
-            )
-            working_file_mode = mode_for_text_materialization(
-                batch_file_mode,
-                selected_ids,
-                destination_exists=working_exists,
-            )
-            if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
-                index_buffer.close()
-                include_plans.append(
-                    _action_plans.IncludeTextFileActionPlan(
-                        file_path,
-                        None,
-                        None,
-                        index_file_mode,
-                        working_file_mode,
-                        text_change_type,
-                        text_change_type,
+            try:
+                text_plan_result = (
+                    _text_plan_builders.build_include_text_file_action_plan(
+                        file_path=file_path,
+                        file_meta=file_meta,
+                        selected_ids=selected_ids,
+                        selection_ids_to_include=selection_ids_to_include,
+                        replacement_payload=replacement_payload,
                     )
                 )
-                continue
+            except AtomicUnitError as e:
+                if rendered:
+                    translate_atomic_unit_error_to_gutter_ids(
+                        e,
+                        rendered,
+                        "include from",
+                        batch_name,
+                    )
+                _action_plans.close_action_plans(include_plans)
+                exit_with_error(
+                    _("Failed to include from batch '{name}': {error}").format(
+                        name=batch_name,
+                        error=str(e),
+                    )
+                )
+            except ValueError as e:
+                _action_plans.close_action_plans(include_plans)
+                exit_with_error(str(e))
 
-            batch_source_commit = file_meta["batch_source_commit"]
-            batch_source_buffer = load_git_object_as_buffer(
-                f"{batch_source_commit}:{file_path}"
-            )
-            if batch_source_buffer is None:
-                index_buffer.close()
+            if text_plan_result.missing_source:
                 failed_files.append(file_path)
                 continue
-
-            with (
-                batch_source_buffer as batch_source_lines,
-                index_buffer as index_lines,
-                load_working_tree_file_as_buffer(file_path) as working_lines,
-            ):
-                try:
-                    with acquire_batch_ownership_for_display_ids_from_lines(
-                        file_meta,
-                        batch_source_lines,
-                        selection_ids_to_include,
-                    ) as ownership:
-                        if ownership.is_empty():
-                            if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
-                                merged_index_buffer = LineBuffer.from_bytes(b"")
-                                merged_working_buffer = LineBuffer.from_bytes(b"")
-                            else:
-                                continue
-                        elif replacement_payload is not None:
-                            try:
-                                replacement_view = build_replacement_batch_view_from_lines(
-                                    batch_source_lines,
-                                    ownership,
-                                    replacement_payload,
-                                )
-                            except ValueError as e:
-                                _action_plans.close_action_plans(include_plans)
-                                exit_with_error(str(e))
-
-                            with replacement_view:
-                                ownership = replacement_view.ownership
-                                merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
-                                    replacement_view.source_buffer,
-                                    ownership,
-                                    index_lines,
-                                )
-                                merged_working_buffer = merge_batch_from_line_sequences_as_buffer(
-                                    replacement_view.source_buffer,
-                                    ownership,
-                                    working_lines,
-                                )
-                        else:
-                            merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
-                                batch_source_lines,
-                                ownership,
-                                index_lines,
-                            )
-                            merged_working_buffer = merge_batch_from_line_sequences_as_buffer(
-                                batch_source_lines,
-                                ownership,
-                                working_lines,
-                            )
-                except AtomicUnitError as e:
-                    if rendered:
-                        translate_atomic_unit_error_to_gutter_ids(e, rendered, "include from", batch_name)
-                    _action_plans.close_action_plans(include_plans)
-                    exit_with_error(_("Failed to include from batch '{name}': {error}").format(
-                        name=batch_name,
-                        error=str(e)
-                    ))
-
-            index_change_type = selected_text_target_change_type(
-                text_change_type,
-                selected_ids,
-                merged_index_buffer,
-            )
-            working_change_type = selected_text_target_change_type(
-                text_change_type,
-                selected_ids,
-                merged_working_buffer,
-            )
-            include_plans.append(
-                _action_plans.IncludeTextFileActionPlan(
-                    file_path,
-                    merged_index_buffer,
-                    merged_working_buffer,
-                    index_file_mode,
-                    working_file_mode,
-                    index_change_type,
-                    working_change_type,
-                )
-            )
-            merged_index_buffer = None
-            merged_working_buffer = None
+            if text_plan_result.plan is None:
+                continue
+            include_plans.append(text_plan_result.plan)
 
         except MergeError:
-            if merged_index_buffer is not None:
-                merged_index_buffer.close()
-            if merged_working_buffer is not None:
-                merged_working_buffer.close()
             # Merge conflict - batch created from different file version
             candidate_count = (
                 _candidate_preview_counts.count_include_candidate_previews_for_file(

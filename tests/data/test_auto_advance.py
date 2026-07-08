@@ -13,7 +13,7 @@ from git_stage_batch.data.auto_advance import (
 from git_stage_batch.data.hunk_tracking import (
     select_next_change_after_action,
 )
-from git_stage_batch.data.selected_change.store import (
+from git_stage_batch.data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     selected_change_was_cleared_by_auto_advance_disabled,
 )

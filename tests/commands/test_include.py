@@ -26,7 +26,7 @@ from git_stage_batch.data.hunk_tracking import (
 )
 from git_stage_batch.data.selected_change.loading import load_selected_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
-from git_stage_batch.data.selected_change.store import (
+from git_stage_batch.data.selected_change.clear_reasons import (
     selected_change_was_cleared_by_auto_advance_disabled,
 )
 from git_stage_batch.exceptions import CommandError, NoMoreHunks

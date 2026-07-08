@@ -94,6 +94,7 @@ def test_selected_change_display_names_data_modules_at_import_sites():
         {
             "git_stage_batch.data": {
                 "line_state",
+                "selected_change_clear_reasons",
                 "selected_file_changes",
                 "selected_change_store",
             },
@@ -515,6 +516,48 @@ def test_selected_file_change_cache_stays_in_file_change_module():
     violations = []
 
     assert moved_names <= vars(selected_file_changes).keys()
+    assert moved_names.isdisjoint(vars(selected_store))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.selected_change.store":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            stale_imports = imported_names & moved_names
+            if stale_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(stale_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_selected_change_clear_reasons_stay_in_clear_reason_module():
+    """Selected-change clear markers should stay out of the state store."""
+    clear_reasons = __import__(
+        "git_stage_batch.data.selected_change.clear_reasons",
+        fromlist=["clear_reasons"],
+    )
+    selected_store = __import__(
+        "git_stage_batch.data.selected_change.store",
+        fromlist=["store"],
+    )
+    moved_names = {
+        "SelectedChangeClearReason",
+        "mark_selected_change_cleared_by_auto_advance_disabled",
+        "mark_selected_change_cleared_by_file_list",
+        "mark_selected_change_cleared_by_stale_batch_selection",
+        "refuse_bare_action_after_auto_advance_disabled",
+        "refuse_bare_action_after_file_list",
+        "refuse_bare_action_after_stale_batch_selection",
+        "selected_change_was_cleared_by_auto_advance_disabled",
+        "selected_change_was_cleared_by_file_list",
+        "selected_change_was_cleared_by_stale_batch_selection",
+    }
+    violations = []
+
+    assert moved_names <= vars(clear_reasons).keys()
     assert moved_names.isdisjoint(vars(selected_store))
 
     for path in SRC_ROOT.rglob("*.py"):

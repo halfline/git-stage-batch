@@ -1676,6 +1676,51 @@ def test_tui_hunk_actions_own_direct_hunk_commands():
     assert hunk_command_names <= hunk_actions_imported_names
 
 
+def test_tui_history_actions_own_undo_redo_actions():
+    """TUI history actions should live in the history action adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    history_actions_path = SRC_ROOT / "tui" / "history_actions.py"
+    action_dispatch = __import__(
+        "git_stage_batch.tui.action_dispatch",
+        fromlist=["action_dispatch"],
+    )
+    history_actions = __import__(
+        "git_stage_batch.tui.history_actions",
+        fromlist=["history_actions"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    history_actions_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(history_actions_path)
+    }
+    old_dispatch_names = {
+        "_handle_redo",
+        "_handle_undo",
+    }
+    command_modules = {
+        "git_stage_batch.commands.redo",
+        "git_stage_batch.commands.undo",
+    }
+
+    assert {"handle_redo", "handle_undo"} <= vars(history_actions).keys()
+    assert old_dispatch_names.isdisjoint(vars(action_dispatch))
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.history_actions" in action_dispatch_imports
+
+    for imported_module in command_modules:
+        assert imported_module not in interactive_imports
+        assert imported_module not in action_dispatch_imports
+        assert imported_module in history_actions_imports
+
+
 def test_tui_fixup_menu_owns_suggest_fixup_submenu():
     """TUI suggest-fixup selection should live in the fixup menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"

@@ -456,85 +456,13 @@ def _compute_sifted_text_file(
     file_meta: dict,
     repo_root: Path,
 ) -> Optional[dict]:
-    """Compute a sifted text file result.
-
-    Returns a destination ownership in target-content coordinate space plus the
-    target buffer itself.
-    """
-    batch_source_commit = file_meta["batch_source_commit"]
-    change_type = normalized_text_change_type(file_meta.get("change_type"))
-    baseline_commit = get_batch_baseline_commit(source_batch)
-    full_path = repo_root / file_path
-    working_exists = full_path.exists()
-
-    batch_source_buffer = load_git_object_as_buffer_or_empty(
-        f"{batch_source_commit}:{file_path}"
+    """Compute a sifted text file result."""
+    return _sift_results.compute_sifted_text_file(
+        source_batch,
+        file_path,
+        file_meta,
+        repo_root,
     )
-    baseline_buffer = (
-        load_git_object_as_buffer_or_empty(f"{baseline_commit}:{file_path}")
-        if baseline_commit is not None else
-        LineBuffer.from_bytes(b"")
-    )
-    working_buffer = load_working_tree_file_as_buffer(file_path)
-    target_buffer: LineBuffer | None = None
-
-    with (
-        batch_source_buffer,
-        baseline_buffer,
-        working_buffer,
-        BatchOwnership.acquire_for_metadata_dict(file_meta) as source_ownership,
-    ):
-        target_buffer = build_realized_buffer_from_lines(
-            baseline_buffer,
-            batch_source_buffer,
-            source_ownership,
-        )
-        try:
-            target_exists = change_type != TextFileChangeType.DELETED
-            if target_exists == working_exists and buffer_matches(
-                working_buffer,
-                target_buffer,
-            ):
-                return None
-
-            working_lines = normalize_line_sequence_endings(working_buffer)
-            target_lines = normalize_line_sequence_endings(target_buffer)
-
-            new_ownership = build_ownership_from_working_and_target_lines(
-                working_lines=working_lines,
-                target_lines=target_lines,
-            )
-            if new_ownership is None or new_ownership.is_empty():
-                result_change_type = sifted_empty_text_path_change_type(
-                    change_type,
-                    target_exists=target_exists,
-                    working_exists=working_exists,
-                    target_content=target_buffer,
-                    ownership_is_empty=True,
-                )
-                if result_change_type == TextFileChangeType.MODIFIED:
-                    return None
-                new_ownership = BatchOwnership([], [])
-            else:
-                result_change_type = change_type
-
-            validate_sifted_text_file_result_from_lines(
-                target_lines=target_lines,
-                dest_ownership=new_ownership,
-                working_lines=working_lines,
-            )
-
-            returned_target_buffer = target_buffer
-            target_buffer = None
-            return {
-                "type": "text",
-                "ownership": new_ownership,
-                "target_buffer": returned_target_buffer,
-                "change_type": result_change_type.value,
-            }
-        finally:
-            if target_buffer is not None:
-                target_buffer.close()
 
 
 

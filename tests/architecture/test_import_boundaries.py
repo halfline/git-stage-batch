@@ -1721,6 +1721,41 @@ def test_tui_history_actions_own_undo_redo_actions():
         assert imported_module in history_actions_imports
 
 
+def test_tui_status_action_owns_status_command():
+    """TUI status action should live in the status action adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    status_action_path = SRC_ROOT / "tui" / "status_action.py"
+    action_dispatch = __import__(
+        "git_stage_batch.tui.action_dispatch",
+        fromlist=["action_dispatch"],
+    )
+    status_action = __import__(
+        "git_stage_batch.tui.status_action",
+        fromlist=["status_action"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    status_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(status_action_path)
+    }
+
+    assert "handle_status" in vars(status_action)
+    assert "_handle_status" not in vars(action_dispatch)
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.status_action" in action_dispatch_imports
+    assert "git_stage_batch.commands.status" not in interactive_imports
+    assert "git_stage_batch.commands.status" not in action_dispatch_imports
+    assert "git_stage_batch.commands.status" in status_action_imports
+
+
 def test_tui_fixup_menu_owns_suggest_fixup_submenu():
     """TUI suggest-fixup selection should live in the fixup menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"

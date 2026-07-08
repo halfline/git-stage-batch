@@ -2,20 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Protocol
-
-from ..flow import FlowState, LocationRole
-
-
-class FileReviewLiveActionState(Protocol):
-    """State needed to apply actions from a reviewed working-tree file."""
-
-    flow_state: FlowState
-    file_path: str
+from .session import FileReviewSessionState
+from ..flow import LocationRole
 
 
 def apply_live_line_action(
-    state: FileReviewLiveActionState,
+    state: FileReviewSessionState,
     action: str,
     line_ids: str,
 ) -> None:
@@ -74,7 +66,7 @@ def apply_live_line_action(
 
 
 def apply_live_replacement_action(
-    state: FileReviewLiveActionState,
+    state: FileReviewSessionState,
     line_ids: str,
     replacement_text: str,
 ) -> None:
@@ -103,7 +95,7 @@ def apply_live_replacement_action(
 
 
 def apply_live_file_action(
-    state: FileReviewLiveActionState,
+    state: FileReviewSessionState,
     action: str,
 ) -> None:
     """Apply a whole-file action from a working-tree file review."""

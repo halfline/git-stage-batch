@@ -3,21 +3,14 @@
 from __future__ import annotations
 
 import sys
-from typing import Protocol
 
 from ...i18n import _
-from ..flow import FlowState, LocationRole
-
-
-class FileReviewBatchActionState(Protocol):
-    """State needed to apply actions from a reviewed batch file."""
-
-    flow_state: FlowState
-    file_path: str
+from .session import FileReviewSessionState
+from ..flow import LocationRole
 
 
 def apply_batch_line_action(
-    state: FileReviewBatchActionState,
+    state: FileReviewSessionState,
     action: str,
     line_ids: str,
 ) -> None:
@@ -46,7 +39,7 @@ def apply_batch_line_action(
 
 
 def apply_batch_replacement_action(
-    state: FileReviewBatchActionState,
+    state: FileReviewSessionState,
     line_ids: str,
     replacement_text: str,
 ) -> None:
@@ -66,7 +59,7 @@ def apply_batch_replacement_action(
 
 
 def apply_batch_file_action(
-    state: FileReviewBatchActionState,
+    state: FileReviewSessionState,
     action: str,
 ) -> None:
     """Apply a whole-file action from a batch-backed file review."""

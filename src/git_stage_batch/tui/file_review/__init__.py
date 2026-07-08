@@ -34,6 +34,7 @@ from .prompts import (
     print_review_help,
     prompt_review_action,
 )
+from .session import FileReviewSessionState
 from ..flow import FlowState, LocationRole
 from ..prompts import (
     confirm_destructive_operation,
@@ -41,15 +42,6 @@ from ..prompts import (
     prompt_line_ids,
     wrap_prompt_for_readline,
 )
-
-
-@dataclass
-class FileReviewSessionState:
-    """State for one interactive file review session."""
-
-    flow_state: FlowState
-    file_path: str
-    page_spec: str | None = None
 
 
 @dataclass(frozen=True)

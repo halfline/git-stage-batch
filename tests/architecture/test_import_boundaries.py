@@ -1030,9 +1030,9 @@ def test_file_review_records_stay_out_of_state_module():
             "ReviewSource",
         },
         SRC_ROOT / "commands" / "show.py": {"ReviewSource"},
-        SRC_ROOT / "commands" / "show_from.py": {
+        SRC_ROOT / "commands" / "show_from.py": {"ReviewSource"},
+        SRC_ROOT / "commands" / "batch_source" / "replacement_previews.py": {
             "FileReviewAction",
-            "ReviewSource",
         },
         SRC_ROOT / "commands" / "skip.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "status.py": {
@@ -4141,6 +4141,69 @@ def test_batch_source_candidate_preview_builders_own_show_candidate_construction
     assert direct_operation_builder_imports == set()
 
 
+def test_batch_source_replacement_previews_own_show_replacement_preview():
+    """Show-from replacement preview rendering should live in batch-source support."""
+    replacement_previews = __import__(
+        "git_stage_batch.commands.batch_source.replacement_previews",
+        fromlist=["replacement_previews"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    public_names = {
+        "print_batch_source_replacement_preview",
+    }
+    old_function_names = {
+        "_preview_replacement_batch_view",
+    }
+    old_import_names_by_module = {
+        "git_stage_batch.batch.operation_candidates": {
+            "render_candidate_buffer_diff",
+        },
+        "git_stage_batch.batch.replacement": {
+            "build_replacement_batch_view_from_lines",
+        },
+        "git_stage_batch.batch.selection": {
+            "acquire_batch_ownership_for_display_ids_from_lines",
+        },
+        "git_stage_batch.commands.selection": {
+            "replacement_selection",
+        },
+        "git_stage_batch.core.replacement": {
+            "coerce_replacement_payload",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_git_object_as_buffer",
+        },
+    }
+    show_from_tree = ast.parse(
+        show_from_path.read_text(),
+        filename=str(show_from_path),
+    )
+    show_from_helpers = {
+        node.name
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    imports_replacement_previews = False
+    direct_preview_imports = set()
+
+    for imported_module, node in _import_from_nodes(show_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "replacement_previews" in imported_names
+        ):
+            imports_replacement_previews = True
+        direct_preview_imports |= imported_names & old_import_names_by_module.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(replacement_previews).keys()
+    assert imports_replacement_previews
+    assert old_function_names.isdisjoint(show_from_helpers)
+    assert direct_preview_imports == set()
+
+
 def test_batch_source_candidate_refusals_own_candidate_count_refusals():
     """Shared candidate count refusals should live outside command entries."""
     candidate_refusals = __import__(
@@ -6212,6 +6275,9 @@ def test_replacement_selection_stays_in_command_helper():
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
     show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    replacement_previews_path = (
+        SRC_ROOT / "commands" / "batch_source" / "replacement_previews.py"
+    )
     discard_replacement_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
     )
@@ -6243,7 +6309,7 @@ def test_replacement_selection_stays_in_command_helper():
         include_path,
         include_from_path,
         discard_replacement_path,
-        show_from_path,
+        replacement_previews_path,
     )
     violations = []
 

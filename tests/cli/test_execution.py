@@ -14,11 +14,7 @@ def test_execute_noninteractive_args_no_command(monkeypatch):
     """No command should raise unless an active selected hunk exists."""
     args = argparse.Namespace(command=None)
 
-    class _FakePath:
-        def exists(self) -> bool:
-            return False
-
-    monkeypatch.setattr(execution, "get_abort_head_file_path", lambda: _FakePath())
+    monkeypatch.setattr(execution, "session_is_active", lambda: False)
 
     with pytest.raises(CommandError) as exc_info:
         execution.execute_non_interactive_args(args)
@@ -45,12 +41,7 @@ def test_execute_noninteractive_args_no_command_shows_selected_hunk(monkeypatch)
     called = []
 
     monkeypatch.setattr(execution, "command_show", lambda: called.append(True))
-
-    class _FakePath:
-        def exists(self) -> bool:
-            return True
-
-    monkeypatch.setattr(execution, "get_abort_head_file_path", lambda: _FakePath())
+    monkeypatch.setattr(execution, "session_is_active", lambda: True)
 
     execution.execute_non_interactive_args(args)
 

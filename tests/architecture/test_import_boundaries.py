@@ -2109,13 +2109,59 @@ def test_tui_file_review_state_name_does_not_shadow_persisted_state():
             continue
         imported_state_names |= {alias.name for alias in node.names}
 
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+
     assert "FileReviewState" in vars(records)
     assert "FileReviewState" not in vars(persisted_state)
     assert "FileReviewSessionState" in session_class_names
-    assert "FileReviewSessionState" in review_class_names | session_class_names
+    assert "FileReviewSessionState" not in review_class_names
+    assert "git_stage_batch.tui.file_review.session" in review_imports
     assert "FileReviewState" not in review_class_names
     assert "FileReviewState" not in session_class_names
     assert "FileReviewState" not in imported_state_names
+
+
+def test_tui_file_review_modules_share_session_state():
+    """TUI file review modules should use the shared session state."""
+    owner_import = "git_stage_batch.tui.file_review.session"
+    reviewed_paths = {
+        SRC_ROOT / "tui" / "file_review" / "__init__.py": {
+            "FileReviewActionState",
+            "FileReviewBatchActionState",
+            "FileReviewCandidateState",
+            "FileReviewLiveActionState",
+        },
+        SRC_ROOT / "tui" / "file_review" / "action_router.py": {
+            "FileReviewActionState",
+        },
+        SRC_ROOT / "tui" / "file_review" / "batch_actions.py": {
+            "FileReviewBatchActionState",
+        },
+        SRC_ROOT / "tui" / "file_review" / "candidates.py": {
+            "FileReviewCandidateState",
+        },
+        SRC_ROOT / "tui" / "file_review" / "live_actions.py": {
+            "FileReviewLiveActionState",
+        },
+    }
+
+    for path, old_names in reviewed_paths.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        class_names = {
+            node.name
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+        }
+        imported_modules = {
+            imported_module
+            for imported_module, _node in _import_from_nodes(path)
+        }
+
+        assert old_names.isdisjoint(class_names)
+        assert owner_import in imported_modules
 
 
 def test_tui_file_review_display_owns_review_rendering():

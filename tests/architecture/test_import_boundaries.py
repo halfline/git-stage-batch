@@ -1451,12 +1451,17 @@ def test_cli_dispatch_delegates_noninteractive_execution():
 def test_tui_cli_escape_does_not_import_dispatch():
     """TUI command escape should execute parsed args without importing launcher dispatch."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     cli_escape_path = SRC_ROOT / "tui" / "cli_escape.py"
     execution_path = SRC_ROOT / "cli" / "execution.py"
     dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
     interactive_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
     }
     cli_escape_imports = {
         imported_module
@@ -1471,7 +1476,8 @@ def test_tui_cli_escape_does_not_import_dispatch():
         for imported_module, _node in _import_from_nodes(dispatch_path)
     }
 
-    assert "git_stage_batch.tui.cli_escape" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.cli_escape" in action_dispatch_imports
     assert "git_stage_batch.cli.argument_parser" in cli_escape_imports
     assert "git_stage_batch.cli.execution" in cli_escape_imports
     assert "git_stage_batch.cli.dispatch" not in cli_escape_imports
@@ -1482,6 +1488,7 @@ def test_tui_cli_escape_does_not_import_dispatch():
 def test_tui_batch_menu_owns_batch_management_actions():
     """TUI batch management should live in the batch menu adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     batch_menu_path = SRC_ROOT / "tui" / "batch_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1494,6 +1501,10 @@ def test_tui_batch_menu_owns_batch_management_actions():
     interactive_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
     }
     batch_menu_imports = {
         imported_module
@@ -1516,16 +1527,19 @@ def test_tui_batch_menu_owns_batch_management_actions():
 
     assert "handle_batch_menu" in vars(batch_menu)
     assert moved_names.isdisjoint(vars(interactive))
-    assert "git_stage_batch.tui.batch_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.batch_menu" in action_dispatch_imports
 
     for imported_module in menu_command_modules:
         assert imported_module not in interactive_imports
+        assert imported_module not in action_dispatch_imports
         assert imported_module in batch_menu_imports
 
 
 def test_tui_asset_menu_owns_install_assets_action():
     """TUI asset installation should live in the asset menu adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     asset_menu_path = SRC_ROOT / "tui" / "asset_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1539,6 +1553,10 @@ def test_tui_asset_menu_owns_install_assets_action():
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     asset_menu_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(asset_menu_path)
@@ -1546,14 +1564,17 @@ def test_tui_asset_menu_owns_install_assets_action():
 
     assert "handle_asset_menu" in vars(asset_menu)
     assert "handle_install_assets" not in vars(interactive)
-    assert "git_stage_batch.tui.asset_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.asset_menu" in action_dispatch_imports
     assert "git_stage_batch.commands.install_assets" not in interactive_imports
+    assert "git_stage_batch.commands.install_assets" not in action_dispatch_imports
     assert "git_stage_batch.commands.install_assets" in asset_menu_imports
 
 
 def test_tui_flow_menu_owns_batch_selection_menus():
     """TUI flow selection should live in the flow menu adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     flow_actions_path = SRC_ROOT / "tui" / "flow_actions.py"
     flow_menu_path = SRC_ROOT / "tui" / "flow_menu.py"
     interactive = __import__(
@@ -1572,6 +1593,10 @@ def test_tui_flow_menu_owns_batch_selection_menus():
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     flow_actions_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(flow_actions_path)
@@ -1585,10 +1610,13 @@ def test_tui_flow_menu_owns_batch_selection_menus():
     assert {"handle_from_menu", "handle_to_menu"} <= vars(flow_menu).keys()
     assert "_handle_from" not in vars(interactive)
     assert "_handle_to" not in vars(interactive)
-    assert "git_stage_batch.tui.flow_actions" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.flow_actions" in action_dispatch_imports
     assert "git_stage_batch.tui.flow_menu" in flow_actions_imports
     assert "git_stage_batch.batch.query" not in interactive_imports
+    assert "git_stage_batch.batch.query" not in action_dispatch_imports
     assert "git_stage_batch.commands.new" not in interactive_imports
+    assert "git_stage_batch.commands.new" not in action_dispatch_imports
     assert "git_stage_batch.batch.query" in flow_menu_imports
     assert "git_stage_batch.commands.new" in flow_menu_imports
 
@@ -1596,6 +1624,7 @@ def test_tui_flow_menu_owns_batch_selection_menus():
 def test_tui_hunk_actions_own_direct_hunk_commands():
     """TUI direct hunk actions should live in the hunk actions adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     hunk_actions_path = SRC_ROOT / "tui" / "hunk_actions.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1610,6 +1639,10 @@ def test_tui_hunk_actions_own_direct_hunk_commands():
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
     interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     hunk_actions_imported_names = set()
     hunk_action_names = {
         "handle_hunk_discard",
@@ -1636,7 +1669,8 @@ def test_tui_hunk_actions_own_direct_hunk_commands():
     assert "_handle_include" not in vars(interactive)
     assert "_handle_skip" not in vars(interactive)
     assert "_handle_discard" not in vars(interactive)
-    assert "git_stage_batch.tui.hunk_actions" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.hunk_actions" in action_dispatch_imports
     assert hunk_command_names.isdisjoint(interactive_imported_names)
     assert hunk_command_names <= hunk_actions_imported_names
 
@@ -1644,6 +1678,7 @@ def test_tui_hunk_actions_own_direct_hunk_commands():
 def test_tui_fixup_menu_owns_suggest_fixup_submenu():
     """TUI suggest-fixup selection should live in the fixup menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     fixup_menu_path = SRC_ROOT / "tui" / "fixup_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1658,6 +1693,10 @@ def test_tui_fixup_menu_owns_suggest_fixup_submenu():
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
     interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     fixup_menu_imported_names = set()
     fixup_menu_names = {
         "clear_suggest_fixup_state",
@@ -1674,7 +1713,8 @@ def test_tui_fixup_menu_owns_suggest_fixup_submenu():
 
     assert "handle_fixup_menu" in vars(fixup_menu)
     assert "handle_fixup_selection" not in vars(interactive)
-    assert "git_stage_batch.tui.fixup_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.fixup_menu" in action_dispatch_imports
     assert fixup_menu_names.isdisjoint(interactive_imported_names)
     assert fixup_menu_names <= fixup_menu_imported_names
 
@@ -1682,6 +1722,7 @@ def test_tui_fixup_menu_owns_suggest_fixup_submenu():
 def test_tui_shell_command_owns_shell_escape():
     """TUI shell escapes should live in the shell command adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     shell_command_path = SRC_ROOT / "tui" / "shell_command.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1696,6 +1737,10 @@ def test_tui_shell_command_owns_shell_escape():
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
     interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     shell_command_imported_names = set()
     interactive_plain_imports = set()
     shell_command_plain_imports = set()
@@ -1720,7 +1765,8 @@ def test_tui_shell_command_owns_shell_escape():
 
     assert "handle_shell_command" in vars(shell_command)
     assert "_handle_shell" not in vars(interactive)
-    assert "git_stage_batch.tui.shell_command" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.shell_command" in action_dispatch_imports
     assert "subprocess" not in interactive_plain_imports
     assert "subprocess" in shell_command_plain_imports
     assert shell_command_names.isdisjoint(interactive_imported_names)
@@ -1730,6 +1776,7 @@ def test_tui_shell_command_owns_shell_escape():
 def test_tui_cli_escape_owns_command_fallback():
     """TUI CLI command fallback should live in the CLI escape adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     cli_escape_path = SRC_ROOT / "tui" / "cli_escape.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1744,6 +1791,10 @@ def test_tui_cli_escape_owns_command_fallback():
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
     interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     cli_escape_imported_names = set()
     interactive_plain_imports = set()
     cli_escape_plain_imports = set()
@@ -1768,7 +1819,8 @@ def test_tui_cli_escape_owns_command_fallback():
 
     assert "handle_cli_escape" in vars(cli_escape)
     assert "_handle_cli_command" not in vars(interactive)
-    assert "git_stage_batch.tui.cli_escape" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.cli_escape" in action_dispatch_imports
     assert "shlex" not in interactive_plain_imports
     assert "shlex" in cli_escape_plain_imports
     assert cli_escape_names.isdisjoint(interactive_imported_names)
@@ -1778,6 +1830,7 @@ def test_tui_cli_escape_owns_command_fallback():
 def test_tui_session_quit_owns_smart_quit_actions():
     """TUI smart quit handling should live in the session quit adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     session_quit_path = SRC_ROOT / "tui" / "session_quit.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1792,6 +1845,10 @@ def test_tui_session_quit_owns_smart_quit_actions():
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
     interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     session_quit_imported_names = set()
     session_quit_names = {
         "command_abort",
@@ -1807,7 +1864,8 @@ def test_tui_session_quit_owns_smart_quit_actions():
         session_quit_imported_names |= {alias.name for alias in node.names}
 
     assert "handle_quit" in vars(session_quit)
-    assert "git_stage_batch.tui.session_quit" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.session_quit" in action_dispatch_imports
     assert session_quit_names.isdisjoint(interactive_imported_names)
     assert session_quit_names <= session_quit_imported_names
 
@@ -1815,6 +1873,7 @@ def test_tui_session_quit_owns_smart_quit_actions():
 def test_tui_file_selection_menu_owns_whole_file_actions():
     """TUI whole-file selection should live in the file selection menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     file_menu_path = SRC_ROOT / "tui" / "file_selection_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1829,6 +1888,10 @@ def test_tui_file_selection_menu_owns_whole_file_actions():
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
     interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     file_menu_imported_names = set()
     whole_file_command_names = {
         "command_discard_file",
@@ -1844,7 +1907,8 @@ def test_tui_file_selection_menu_owns_whole_file_actions():
 
     assert "handle_file_selection_menu" in vars(file_menu)
     assert "handle_file_selection" not in vars(interactive)
-    assert "git_stage_batch.tui.file_selection_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.file_selection_menu" in action_dispatch_imports
     assert whole_file_command_names.isdisjoint(interactive_imported_names)
     assert whole_file_command_names <= file_menu_imported_names
 
@@ -1852,6 +1916,7 @@ def test_tui_file_selection_menu_owns_whole_file_actions():
 def test_tui_line_selection_menu_owns_line_actions():
     """TUI line selection should live in the line selection menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     line_menu_path = SRC_ROOT / "tui" / "line_selection_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1866,6 +1931,10 @@ def test_tui_line_selection_menu_owns_line_actions():
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
     interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     line_menu_imported_names = set()
     line_command_names = {
         "command_discard_line",
@@ -1881,7 +1950,8 @@ def test_tui_line_selection_menu_owns_line_actions():
 
     assert "handle_line_selection_menu" in vars(line_menu)
     assert "handle_line_selection" not in vars(interactive)
-    assert "git_stage_batch.tui.line_selection_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.line_selection_menu" in action_dispatch_imports
     assert line_command_names.isdisjoint(interactive_imported_names)
     assert line_command_names <= line_menu_imported_names
 

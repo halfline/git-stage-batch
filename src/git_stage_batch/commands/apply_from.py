@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .batch_source import action_plans as _action_plans
+from .batch_source import text_file_actions as _text_file_actions
 from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
@@ -107,27 +108,6 @@ def _write_binary_file_from_batch(
         print(_("✓ Applied new binary file: {file}").format(file=file_path), file=sys.stderr)
     else:
         print(_("✓ Replaced binary file: {file}").format(file=file_path), file=sys.stderr)
-
-
-def _write_text_file_from_batch(
-    file_path: str,
-    buffer: LineBuffer | None,
-    file_mode: str | None,
-    change_type: str = "modified",
-) -> None:
-    """Write one text batch target into the working tree."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-
-    if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        if os.path.lexists(full_path):
-            full_path.unlink()
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Text file not found in batch content: {file_path}")
-
-    write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)
 
 
 def _execute_apply_candidate(
@@ -237,7 +217,7 @@ def _execute_apply_candidate(
                 operation_parts = ["apply", "--from", raw_selector, "--file", file_path]
                 with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
                     snapshot_file_if_untracked(file_path)
-                    _write_text_file_from_batch(
+                    _text_file_actions.write_text_file_to_worktree(
                         file_path,
                         target.after_buffer,
                         file_mode,
@@ -664,7 +644,7 @@ def command_apply_from_batch(
                 for plan in apply_plans:
                     snapshot_file_if_untracked(plan.file_path)
                     if isinstance(plan, _ApplyTextPlan):
-                        _write_text_file_from_batch(
+                        _text_file_actions.write_text_file_to_worktree(
                             plan.file_path,
                             plan.buffer,
                             plan.file_mode,

@@ -29,6 +29,7 @@ from .hunk_actions import (
 from .line_selection_menu import handle_line_selection_menu
 from .session_quit import handle_quit
 from .shell_command import handle_shell_command
+from .status_action import handle_status
 
 
 @dataclass
@@ -47,14 +48,6 @@ def _handle_again(flow_state: FlowState) -> None:
 
     auto_add_untracked_files()
     fetch_next_change()
-
-
-def _handle_status(flow_state: FlowState) -> None:
-    """Handle status drawer."""
-    from ..commands.status import command_status
-
-    command_status()
-    raise BypassRefresh()
 
 
 def _handle_assets(flow_state: FlowState) -> None:
@@ -123,7 +116,7 @@ ACTION_HANDLERS = {
     "a": ActionHandler(needs_hunk=False, handler=_handle_again),
     "u": ActionHandler(needs_hunk=False, handler=handle_undo),
     "U": ActionHandler(needs_hunk=False, handler=handle_redo),
-    "S": ActionHandler(needs_hunk=False, handler=_handle_status),
+    "S": ActionHandler(needs_hunk=False, handler=handle_status),
     "A": ActionHandler(needs_hunk=False, handler=_handle_assets),
     "b": ActionHandler(needs_hunk=False, handler=_handle_batch),
     "?": ActionHandler(needs_hunk=False, handler=_handle_help),

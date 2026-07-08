@@ -3900,21 +3900,55 @@ def test_include_line_replacement_stays_in_command_helper():
         fromlist=["include_line_replacement"],
     )
     public_names = {
+        "IncludeLineReplacementFileSelection",
+        "IncludeLineReplacementSelection",
         "apply_include_line_replacement",
+        "prepare_file_include_line_replacement",
+        "prepare_pathless_include_line_replacement",
         "translate_file_view_replacement_to_unstaged_diff",
     }
     old_include_names = {
         "_apply_include_line_replacement",
         "_line_identity_for_live_replacement",
+        "_prepare_file_include_line_replacement",
+        "_prepare_pathless_include_line_replacement",
         "_translate_file_view_replacement_to_unstaged_diff",
     }
     helper_imports = {
+        "SelectedChangeKind",
+        "annotate_with_batch_source",
         "build_target_index_buffer_with_replaced_lines",
+        "cache_unstaged_file_as_single_hunk",
+        "format_line_ids",
+        "get_index_snapshot_file_path",
+        "get_selected_change_file_path",
+        "get_working_tree_snapshot_file_path",
+        "load_git_object_as_buffer_or_empty",
+        "load_line_changes_from_state",
+        "load_working_tree_file_as_buffer",
         "parse_line_selection",
+        "read_selected_change_kind",
         "record_consumed_selection",
         "render_unstaged_file_as_single_hunk",
         "require_line_selection_in_view",
+        "require_selected_hunk",
+        "snapshot_selected_change_state",
         "update_index_with_blob_buffer",
+    }
+    replacement_context_names = {
+        "annotate_with_batch_source",
+        "cache_unstaged_file_as_single_hunk",
+        "format_line_ids",
+        "get_index_snapshot_file_path",
+        "get_selected_change_file_path",
+        "get_working_tree_snapshot_file_path",
+        "load_git_object_as_buffer",
+        "load_line_changes_from_state",
+        "load_working_tree_file_as_buffer",
+        "require_selected_hunk",
+        "selected_file_view_is_fresh_for",
+        "selected_file_view_targets",
+        "snapshot_selected_change_state",
     }
 
     assert public_names <= vars(helper).keys()
@@ -3924,6 +3958,11 @@ def test_include_line_replacement_stays_in_command_helper():
         node.name
         for node in ast.walk(include_tree)
         if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
     }
     include_imports_helper = False
 
@@ -3938,8 +3977,23 @@ def test_include_line_replacement_stays_in_command_helper():
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
 
+    command_line_as_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_line_as"])
+        if isinstance(node, ast.Name)
+    }
+    command_line_as_attributes = {
+        node.attr
+        for node in ast.walk(include_functions["command_include_line_as"])
+        if isinstance(node, ast.Attribute)
+    }
+
     assert old_include_names.isdisjoint(include_names)
     assert include_imports_helper
+    assert "prepare_file_include_line_replacement" in command_line_as_attributes
+    assert "prepare_pathless_include_line_replacement" in command_line_as_attributes
+    assert replacement_context_names.isdisjoint(command_line_as_names)
+    assert replacement_context_names.isdisjoint(command_line_as_attributes)
     assert helper_imports <= helper_imported_names
 
 

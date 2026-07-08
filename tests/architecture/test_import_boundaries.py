@@ -1546,6 +1546,37 @@ def test_tui_asset_menu_owns_install_assets_action():
     assert "git_stage_batch.commands.install_assets" in asset_menu_imports
 
 
+def test_tui_flow_menu_owns_batch_selection_menus():
+    """TUI flow selection should live in the flow menu adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    flow_menu_path = SRC_ROOT / "tui" / "flow_menu.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    flow_menu = __import__(
+        "git_stage_batch.tui.flow_menu",
+        fromlist=["flow_menu"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    flow_menu_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(flow_menu_path)
+    }
+
+    assert {"handle_from_menu", "handle_to_menu"} <= vars(flow_menu).keys()
+    assert "_handle_from" not in vars(interactive)
+    assert "_handle_to" not in vars(interactive)
+    assert "git_stage_batch.tui.flow_menu" in interactive_imports
+    assert "git_stage_batch.batch.query" not in interactive_imports
+    assert "git_stage_batch.commands.new" not in interactive_imports
+    assert "git_stage_batch.batch.query" in flow_menu_imports
+    assert "git_stage_batch.commands.new" in flow_menu_imports
+
+
 def test_tui_file_review_state_name_does_not_shadow_persisted_state():
     """TUI review state should not reuse the persisted file-review state name."""
     review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"

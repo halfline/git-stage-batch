@@ -544,8 +544,17 @@ def buffer_byte_chunks(
         if not isinstance(chunk, (bytes, bytearray, memoryview)):
             raise TypeError(
                 f"expected bytes-like object, got {type(chunk).__name__}"
-            )
+        )
         yield bytes(chunk)
+
+
+def buffer_ends_with_lf(buffer: BufferInput) -> bool:
+    """Return whether a buffer input ends with a newline byte."""
+    last_chunk = b""
+    for chunk in buffer_byte_chunks(buffer):
+        if chunk:
+            last_chunk = chunk
+    return bool(last_chunk) and last_chunk.endswith(b"\n")
 
 
 def buffer_matches(left: BufferInput, right: BufferInput) -> bool:

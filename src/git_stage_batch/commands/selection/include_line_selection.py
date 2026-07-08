@@ -19,14 +19,23 @@ from ...batch.storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
 from ...data.batch_sources import create_batch_source_commit
+from ...data.file_hunk_display import cache_unstaged_file_as_single_hunk
 from ...data.file_modes import detect_file_mode
+from ...data.file_tracking import auto_add_untracked_files
+from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
+from ...data.selected_change.loading import require_selected_hunk
 from ...data.selected_change.paths import get_selected_change_file_path
-from ...data.selected_change.store import SelectedChangeKind, read_selected_change_kind
+from ...data.selected_change.store import (
+    SelectedChangeKind,
+    read_selected_change_kind,
+    snapshot_selected_change_state,
+)
 from ...data.selected_change.snapshots import snapshots_are_stale
+from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.operations import update_index_with_blob_buffer
 from ...utils.paths import get_session_batch_sources_file_path
@@ -66,6 +75,16 @@ class TransientIncludeResult:
         detail: str | None = None,
     ) -> TransientIncludeResult:
         return cls(buffer=None, failure_reason=reason, failure_detail=detail)
+
+
+@dataclass(frozen=True)
+class IncludeLineSelectionContext:
+    """Resolved selected-line view for a live include action."""
+
+    line_changes: object
+    preserve_selected_state: bool = False
+    saved_selected_state: object | None = None
+    reset_processed_include_ids: bool = False
 
 
 def record_baseline_references_for_additions(line_changes) -> None:
@@ -138,6 +157,53 @@ def selected_file_view_is_fresh_for(target_file: str) -> bool:
     return (
         selected_file_view_targets(target_file)
         and not snapshots_are_stale(target_file)
+    )
+
+
+def load_include_line_selection_context(
+    file: str | None,
+    selected_state_stack,
+) -> IncludeLineSelectionContext:
+    """Resolve the selected line view for include --line."""
+    if file is None:
+        require_selected_hunk()
+        return IncludeLineSelectionContext(
+            line_changes=annotate_line_changes_with_working_tree_source(
+                load_line_changes_from_state()
+            )
+        )
+
+    if file == "":
+        target_file = get_selected_change_file_path()
+        if target_file is None:
+            exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+    else:
+        target_file = file
+
+    auto_add_untracked_files([target_file])
+    selected_file_view_targets_file = selected_file_view_targets(target_file)
+    reuse_selected_file_view = selected_file_view_is_fresh_for(target_file)
+    preserve_selected_state = False
+    saved_selected_state = None
+
+    if reuse_selected_file_view:
+        line_changes = load_line_changes_from_state()
+    else:
+        if file != "" and not selected_file_view_targets_file:
+            preserve_selected_state = True
+            saved_selected_state = selected_state_stack.enter_context(
+                snapshot_selected_change_state()
+            )
+
+        line_changes = cache_unstaged_file_as_single_hunk(target_file)
+        if line_changes is None:
+            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+
+    return IncludeLineSelectionContext(
+        line_changes=annotate_line_changes_with_working_tree_source(line_changes),
+        preserve_selected_state=preserve_selected_state,
+        saved_selected_state=saved_selected_state,
+        reset_processed_include_ids=not reuse_selected_file_view,
     )
 
 

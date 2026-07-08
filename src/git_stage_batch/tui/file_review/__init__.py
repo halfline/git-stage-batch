@@ -12,6 +12,11 @@ from ...data.file_tracking import list_untracked_files
 from ...exceptions import BypassRefresh, CommandError
 from ...i18n import _
 from ...utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
+from .batch_actions import (
+    apply_batch_file_action,
+    apply_batch_line_action,
+    apply_batch_replacement_action,
+)
 from .candidates import browse_candidates
 from .display import render_file_review
 from ..flow import FlowState, LocationRole
@@ -429,7 +434,7 @@ def _apply_marked_file_action(
 
             state = FileReviewSessionState(flow_state=flow_state, file_path=path)
             if flow_state.source.role is LocationRole.BATCH:
-                _apply_batch_file_action(state, action)
+                apply_batch_file_action(state, action)
             else:
                 _apply_live_file_action(state, action)
         except CommandError as e:
@@ -461,7 +466,7 @@ def _apply_replacement_action(state: FileReviewSessionState) -> None:
 
     try:
         if state.flow_state.source.role is LocationRole.BATCH:
-            _apply_batch_replacement_action(state, line_ids, replacement_text)
+            apply_batch_replacement_action(state, line_ids, replacement_text)
         else:
             _apply_live_replacement_action(state, line_ids, replacement_text)
     except CommandError as e:
@@ -486,7 +491,7 @@ def _apply_line_action(state: FileReviewSessionState, action: str) -> None:
 
     try:
         if state.flow_state.source.role is LocationRole.BATCH:
-            _apply_batch_line_action(state, action, line_ids)
+            apply_batch_line_action(state, action, line_ids)
         else:
             _apply_live_line_action(state, action, line_ids)
     except CommandError as e:
@@ -507,7 +512,7 @@ def _apply_file_action(state: FileReviewSessionState, action: str) -> None:
 
     try:
         if state.flow_state.source.role is LocationRole.BATCH:
-            _apply_batch_file_action(state, action)
+            apply_batch_file_action(state, action)
         else:
             _apply_live_file_action(state, action)
     except CommandError as e:
@@ -746,84 +751,6 @@ def _apply_live_file_action(state: FileReviewSessionState, action: str) -> None:
     from ...commands.discard import command_discard_file
 
     command_discard_file(state.file_path, auto_advance=False)
-
-
-def _apply_batch_line_action(
-    state: FileReviewSessionState,
-    action: str,
-    line_ids: str,
-) -> None:
-    if state.flow_state.target.role is not LocationRole.STAGING_AREA:
-        print(
-            _("Batch-to-batch transfers not yet supported. Target must be staging."),
-            file=sys.stderr,
-        )
-        return
-
-    if action == "i":
-        from ...commands.include_from import command_include_from_batch
-
-        command_include_from_batch(
-            state.flow_state.source.batch_name,
-            line_ids=line_ids,
-            file=state.file_path,
-        )
-        return
-
-    from ...commands.discard_from import command_discard_from_batch
-
-    command_discard_from_batch(
-        state.flow_state.source.batch_name,
-        line_ids=line_ids,
-        file=state.file_path,
-    )
-
-
-def _apply_batch_replacement_action(
-    state: FileReviewSessionState,
-    line_ids: str,
-    replacement_text: str,
-) -> None:
-    if state.flow_state.target.role is not LocationRole.STAGING_AREA:
-        print(
-            _("Batch-to-batch transfers not yet supported. Target must be staging."),
-            file=sys.stderr,
-        )
-        return
-
-    from ...commands.include_from import command_include_from_batch
-
-    command_include_from_batch(
-        state.flow_state.source.batch_name,
-        line_ids=line_ids,
-        file=state.file_path,
-        replacement_text=replacement_text,
-    )
-
-
-def _apply_batch_file_action(state: FileReviewSessionState, action: str) -> None:
-    if state.flow_state.target.role is not LocationRole.STAGING_AREA:
-        print(
-            _("Batch-to-batch transfers not yet supported. Target must be staging."),
-            file=sys.stderr,
-        )
-        return
-
-    if action == "I":
-        from ...commands.include_from import command_include_from_batch
-
-        command_include_from_batch(
-            state.flow_state.source.batch_name,
-            file=state.file_path,
-        )
-        return
-
-    from ...commands.discard_from import command_discard_from_batch
-
-    command_discard_from_batch(
-        state.flow_state.source.batch_name,
-        file=state.file_path,
-    )
 
 
 def _print_review_help(flow_state: FlowState) -> None:

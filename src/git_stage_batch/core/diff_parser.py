@@ -37,6 +37,11 @@ def patch_is_file_deletion(patch_lines: Iterable[bytes]) -> bool:
     return any(line.rstrip(b"\n") == b"+++ /dev/null" for line in patch_lines)
 
 
+def patch_is_new_file(patch_lines: Iterable[bytes]) -> bool:
+    """Return whether patch lines target a newly added file path."""
+    return any(line.rstrip(b"\n") == b"--- /dev/null" for line in patch_lines)
+
+
 def _metadata_indicates_gitlink(metadata_lines: list[bytes]) -> bool:
     """Return whether diff metadata describes a mode-160000 entry."""
     for line in metadata_lines:

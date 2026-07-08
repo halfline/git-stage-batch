@@ -41,7 +41,7 @@ from ..selection.action_completion import finish_selected_change_action
 
 
 @dataclass(frozen=True)
-class PreparedPatchDiscard:
+class _PreparedPatchDiscard:
     """One patch scheduled for reverse application."""
 
     patch_lines: Sequence[bytes]
@@ -49,32 +49,32 @@ class PreparedPatchDiscard:
 
 
 @dataclass
-class TextFileDiscardInput:
+class _TextFileDiscardInput:
     """Collected text hunks for one file-scope discard."""
 
     file_path: str
     file_mode: str
     all_lines_to_batch: list
-    patches_to_discard: list[PreparedPatchDiscard]
+    patches_to_discard: list[_PreparedPatchDiscard]
 
 
 @dataclass(frozen=True)
-class CollectedTextFileDiscards:
+class _CollectedTextFileDiscards:
     """Collected text-file discard inputs from one live diff."""
 
-    inputs_by_file: dict[str, TextFileDiscardInput]
+    inputs_by_file: dict[str, _TextFileDiscardInput]
     files_with_text_patches: set[str]
 
 
 @dataclass(frozen=True)
-class PreparedTextFileDiscardToBatch:
+class _PreparedTextFileDiscardToBatch:
     """Prepared text-file discard that can be published atomically."""
 
     file_path: str
     file_mode: str
     ownership: object
     batch_source_commit: str | None
-    patches_to_discard: list[PreparedPatchDiscard]
+    patches_to_discard: list[_PreparedPatchDiscard]
 
 
 @dataclass(frozen=True)
@@ -87,11 +87,11 @@ class DiscardFilesToBatchResult:
 
 def _prepare_text_file_discard_to_batch(
     batch_name: str,
-    discard_input: TextFileDiscardInput,
+    discard_input: _TextFileDiscardInput,
     *,
     metadata: dict,
     ownership_stack: ExitStack,
-) -> PreparedTextFileDiscardToBatch | None:
+) -> _PreparedTextFileDiscardToBatch | None:
     """Prepare one normal text file discard without publishing batch state."""
     if not discard_input.all_lines_to_batch:
         return None
@@ -118,7 +118,7 @@ def _prepare_text_file_discard_to_batch(
             ).format(file=file_path, batch=batch_name, error=str(e))
         )
 
-    return PreparedTextFileDiscardToBatch(
+    return _PreparedTextFileDiscardToBatch(
         file_path=file_path,
         file_mode=discard_input.file_mode,
         ownership=update.ownership_after,
@@ -132,16 +132,16 @@ def _collect_text_file_discard_inputs(
     *,
     blocked_hashes: set[str],
     patch_stack: ExitStack,
-) -> CollectedTextFileDiscards:
+) -> _CollectedTextFileDiscards:
     """Collect normal text file discard inputs from one Git diff."""
     if not files:
-        return CollectedTextFileDiscards(
+        return _CollectedTextFileDiscards(
             inputs_by_file={},
             files_with_text_patches=set(),
         )
 
     repo_root = get_git_repository_root_path()
-    inputs_by_file: dict[str, TextFileDiscardInput] = {}
+    inputs_by_file: dict[str, _TextFileDiscardInput] = {}
     files_with_text_patches: set[str] = set()
 
     with acquire_unified_diff(
@@ -179,7 +179,7 @@ def _collect_text_file_discard_inputs(
             )
             discard_input = inputs_by_file.get(file_path)
             if discard_input is None:
-                discard_input = TextFileDiscardInput(
+                discard_input = _TextFileDiscardInput(
                     file_path=file_path,
                     file_mode=detect_file_mode_from_root(repo_root, file_path),
                     all_lines_to_batch=[],
@@ -188,7 +188,7 @@ def _collect_text_file_discard_inputs(
                 inputs_by_file[file_path] = discard_input
             discard_input.all_lines_to_batch.extend(hunk_lines.lines)
             discard_input.patches_to_discard.append(
-                PreparedPatchDiscard(
+                _PreparedPatchDiscard(
                     patch_lines=patch_stack.enter_context(
                         LineBuffer.from_chunks(patch.lines)
                     ),
@@ -197,14 +197,14 @@ def _collect_text_file_discard_inputs(
             )
             blocked_hashes.add(patch_hash)
 
-    return CollectedTextFileDiscards(
+    return _CollectedTextFileDiscards(
         inputs_by_file=inputs_by_file,
         files_with_text_patches=files_with_text_patches,
     )
 
 
 def _run_reverse_apply_for_prepared_discards(
-    prepared_discards: list[PreparedTextFileDiscardToBatch],
+    prepared_discards: list[_PreparedTextFileDiscardToBatch],
     *,
     check_only: bool = False,
 ) -> None:
@@ -231,7 +231,7 @@ def _run_reverse_apply_for_prepared_discards(
 
 def _discard_prepared_text_files_to_batch(
     batch_name: str,
-    prepared_discards: list[PreparedTextFileDiscardToBatch],
+    prepared_discards: list[_PreparedTextFileDiscardToBatch],
 ) -> DiscardFilesToBatchResult:
     """Publish prepared text file discards once, then update the worktree."""
     if not prepared_discards:
@@ -297,7 +297,7 @@ def discard_files_to_batch(
 
     blocklist_path = get_block_list_file_path()
     blocked_hashes = read_text_file_line_set(blocklist_path)
-    prepared_discards: list[PreparedTextFileDiscardToBatch] = []
+    prepared_discards: list[_PreparedTextFileDiscardToBatch] = []
     ownership_stack = ExitStack()
     patch_stack = ExitStack()
     total_hunks = 0

@@ -8,8 +8,8 @@ from typing import Optional
 
 from .batch_source import action_plans as _action_plans
 from .batch_source import binary_file_actions as _binary_file_actions
+from .batch_source import candidate_materialization as _candidate_materialization
 from .batch_source import candidate_preview_counts as _candidate_preview_counts
-from .batch_source import candidate_previews as _candidate_previews
 from .batch_source import candidate_refusals as _candidate_refusals
 from .batch_source import candidate_selectors as _candidate_selectors
 from .batch_source import merge_refusals as _merge_refusals
@@ -18,7 +18,6 @@ from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
-    build_apply_candidate_previews,
     clear_candidate_preview_state_for_file,
 )
 from ..batch.selection import (
@@ -87,107 +86,50 @@ def _execute_apply_candidate(
     selection_ids_to_apply: set[int] | None,
 ) -> None:
     """Recompute and apply one previewed apply candidate."""
-    if len(files) != 1:
-        exit_with_error(_("Candidate execution requires exactly one file."))
-    file_path, file_meta = next(iter(files.items()))
-    if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(file_meta):
-        exit_with_error(_("Candidate execution is only available for text batch entries."))
-
-    batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
-    if batch_source_buffer is None:
-        exit_with_error(_("Batch source content is missing for {file}.").format(file=file_path))
-
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-    working_exists = os.path.lexists(full_path)
-    file_mode = mode_for_text_materialization(
-        str(file_meta.get("mode", "100644")),
-        selected_ids,
-        destination_exists=working_exists,
+    materialized = _candidate_materialization.materialize_apply_candidate(
+        batch_name=batch_name,
+        raw_selector=raw_selector,
+        ordinal=ordinal,
+        files=files,
+        selected_ids=selected_ids,
+        selection_ids_to_apply=selection_ids_to_apply,
     )
-    text_change_type = normalized_text_change_type(file_meta.get("change_type"))
-
-    with (
-        batch_source_buffer as batch_source_lines,
-        load_working_tree_file_as_buffer(file_path) as working_lines,
-    ):
-        with acquire_batch_ownership_for_display_ids_from_lines(
-            file_meta,
-            batch_source_lines,
-            selection_ids_to_apply,
-        ) as ownership:
-            try:
-                previews = build_apply_candidate_previews(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    source_lines=batch_source_lines,
-                    ownership=ownership,
-                    worktree_lines=working_lines,
-                    batch_source_commit=batch_source_commit,
-                    file_meta=file_meta,
-                    text_change_type=text_change_type,
-                    worktree_file_mode=file_mode,
-                    worktree_exists=working_exists,
-                    selected_ids=selected_ids,
-                    selection_ids=selection_ids_to_apply,
-                )
-            except MergeError as e:
-                exit_with_error(str(e))
-
-            try:
-                preview = _candidate_previews.require_candidate_preview_for_ordinal(
-                    previews,
-                    ordinal,
-                    batch_name=batch_name,
-                    operation="apply",
-                    file_path=file_path,
-                )
-                _candidate_previews.require_candidate_preview_state(
-                    preview,
-                    ordinal,
-                    selector=raw_selector,
-                    file_path=file_path,
-                )
-
-                target = preview.targets[0]
-                effective_change_type = selected_text_target_change_type(
-                    text_change_type,
-                    selected_ids,
-                    target.after_buffer,
-                )
-                print(
-                    _("Applying candidate {ordinal} of {count} from batch '{batch}':").format(
-                        ordinal=preview.ordinal,
-                        count=preview.count,
-                        batch=batch_name,
-                    ),
-                    file=sys.stderr,
-                )
-                print(f"  {file_path}: {_('Working tree')}", file=sys.stderr)
-                operation_parts = ["apply", "--from", raw_selector, "--file", file_path]
-                with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
-                    snapshot_file_if_untracked(file_path)
-                    _text_file_actions.write_text_file_to_worktree(
-                        file_path,
-                        target.after_buffer,
-                        file_mode,
-                        effective_change_type,
-                    )
-                clear_candidate_preview_state_for_file(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                )
-                print(
-                    _("✓ Applied candidate {ordinal} of {count} from batch '{batch}' to working tree").format(
-                        ordinal=preview.ordinal,
-                        count=preview.count,
-                        batch=batch_name,
-                    ),
-                    file=sys.stderr,
-                )
-            finally:
-                _candidate_previews.close_candidate_previews(previews)
+    try:
+        target = materialized.target
+        preview = materialized.preview
+        file_path = materialized.file_path
+        print(
+            _("Applying candidate {ordinal} of {count} from batch '{batch}':").format(
+                ordinal=preview.ordinal,
+                count=preview.count,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+        print(f"  {file_path}: {_('Working tree')}", file=sys.stderr)
+        operation_parts = ["apply", "--from", raw_selector, "--file", file_path]
+        with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
+            snapshot_file_if_untracked(file_path)
+            _text_file_actions.write_text_file_to_worktree(
+                file_path,
+                target.after_buffer,
+                materialized.file_mode,
+                target.change_type,
+            )
+        clear_candidate_preview_state_for_file(
+            batch_name=batch_name,
+            file_path=file_path,
+        )
+        print(
+            _("✓ Applied candidate {ordinal} of {count} from batch '{batch}' to working tree").format(
+                ordinal=preview.ordinal,
+                count=preview.count,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+    finally:
+        materialized.close()
 
 
 def command_apply_from_batch(

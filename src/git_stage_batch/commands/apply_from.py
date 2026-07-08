@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from typing import Optional
 
@@ -14,14 +13,13 @@ from .batch_source import candidate_refusals as _candidate_refusals
 from .batch_source import candidate_selectors as _candidate_selectors
 from .batch_source import merge_refusals as _merge_refusals
 from .batch_source import text_file_actions as _text_file_actions
+from .batch_source import text_plan_builders as _text_plan_builders
 from ..batch.binary_file_content import read_binary_file_from_batch
-from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     clear_candidate_preview_state_for_file,
 )
 from ..batch.selection import (
-    acquire_batch_ownership_for_display_ids_from_lines,
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
@@ -33,28 +31,17 @@ from ..batch.submodule_pointer import (
     refuse_batch_submodule_pointer_lines,
 )
 from ..batch.validation import batch_exists
-from ..core.text_lifecycle import (
-    TextFileChangeType,
-    mode_for_text_materialization,
-    normalized_text_change_type,
-    selected_text_target_change_type,
-)
 from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
     finish_review_scoped_line_action,
     resolve_batch_source_action_scope,
 )
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
-from ..core.buffer import LineBuffer
-from ..utils.repository_buffers import (
-    load_git_object_as_buffer,
-    load_working_tree_file_as_buffer,
-)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError, BatchMetadataError
 from ..i18n import _
-from ..utils.git import get_git_repository_root_path, require_git_repository
+from ..utils.git import require_git_repository
 
 
 def _print_binary_worktree_result(
@@ -225,7 +212,6 @@ def command_apply_from_batch(
         )
         return
 
-    repo_root = get_git_repository_root_path()
     failed_files = []
     candidate_counts = {}
     apply_plans = []
@@ -253,78 +239,35 @@ def command_apply_from_batch(
                 )
                 continue
 
-            text_change_type = normalized_text_change_type(file_meta.get("change_type"))
-
-            full_path = repo_root / file_path
-            working_exists = os.path.lexists(full_path)
-
-            file_mode = mode_for_text_materialization(
-                str(file_meta.get("mode", "100644")),
-                selected_ids,
-                destination_exists=working_exists,
-            )
-            if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
-                apply_plans.append(
-                    _action_plans.ApplyTextFileActionPlan(
-                        file_path,
-                        None,
-                        file_mode,
-                        text_change_type,
+            try:
+                text_plan_result = (
+                    _text_plan_builders.build_apply_text_file_action_plan(
+                        file_path=file_path,
+                        file_meta=file_meta,
+                        selected_ids=selected_ids,
+                        selection_ids_to_apply=selection_ids_to_apply,
                     )
                 )
-                continue
+            except AtomicUnitError as e:
+                if rendered:
+                    translate_atomic_unit_error_to_gutter_ids(
+                        e,
+                        rendered,
+                        "apply",
+                        batch_name,
+                    )
+                _action_plans.close_action_plans(apply_plans)
+                exit_with_error(_("Failed to apply batch '{name}': {error}").format(
+                    name=batch_name,
+                    error=str(e)
+                ))
 
-            batch_source_commit = file_meta["batch_source_commit"]
-            batch_source_buffer = load_git_object_as_buffer(
-                f"{batch_source_commit}:{file_path}"
-            )
-            if batch_source_buffer is None:
+            if text_plan_result.missing_source:
                 failed_files.append(file_path)
                 continue
-
-            with (
-                batch_source_buffer as batch_source_lines,
-                load_working_tree_file_as_buffer(file_path) as working_lines,
-            ):
-                try:
-                    with acquire_batch_ownership_for_display_ids_from_lines(
-                        file_meta,
-                        batch_source_lines,
-                        selection_ids_to_apply,
-                    ) as ownership:
-                        if ownership.is_empty():
-                            if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
-                                merged_buffer = LineBuffer.from_bytes(b"")
-                            else:
-                                continue
-                        else:
-                            merged_buffer = merge_batch_from_line_sequences_as_buffer(
-                                batch_source_lines,
-                                ownership,
-                                working_lines,
-                            )
-                except AtomicUnitError as e:
-                    if rendered:
-                        translate_atomic_unit_error_to_gutter_ids(e, rendered, "apply", batch_name)
-                    _action_plans.close_action_plans(apply_plans)
-                    exit_with_error(_("Failed to apply batch '{name}': {error}").format(
-                        name=batch_name,
-                        error=str(e)
-                    ))
-
-            effective_change_type = selected_text_target_change_type(
-                text_change_type,
-                selected_ids,
-                merged_buffer,
-            )
-            apply_plans.append(
-                _action_plans.ApplyTextFileActionPlan(
-                    file_path,
-                    merged_buffer,
-                    file_mode,
-                    effective_change_type,
-                )
-            )
+            if text_plan_result.plan is None:
+                continue
+            apply_plans.append(text_plan_result.plan)
 
         except MergeError:
             # Merge conflict - batch created from different file version

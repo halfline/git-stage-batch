@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .batch_source import action_plans as _action_plans
+from .batch_source import text_file_actions as _text_file_actions
 from .selection import replacement_selection
 from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
@@ -143,27 +144,6 @@ def _stage_text_file_from_batch(
 
     blob_hash = create_git_blob(buffer.byte_chunks())
     git_update_index(file_path=file_path, mode=file_mode, blob_sha=blob_hash)
-
-
-def _write_text_file_from_batch(
-    file_path: str,
-    buffer: LineBuffer | None,
-    file_mode: str | None,
-    change_type: str = "modified",
-) -> None:
-    """Write one text batch target into the working tree."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-
-    if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        if os.path.lexists(full_path):
-            full_path.unlink()
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Text file not found in batch content: {file_path}")
-
-    write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)
 
 
 def _execute_include_candidate(
@@ -318,7 +298,7 @@ def _execute_include_candidate(
                         index_file_mode,
                         index_change_type,
                     )
-                    _write_text_file_from_batch(
+                    _text_file_actions.write_text_file_to_worktree(
                         file_path,
                         worktree_target.after_buffer,
                         working_file_mode,
@@ -896,7 +876,7 @@ def command_include_from_batch(
                             plan.index_file_mode,
                             plan.index_change_type,
                         )
-                        _write_text_file_from_batch(
+                        _text_file_actions.write_text_file_to_worktree(
                             plan.file_path,
                             plan.working_buffer,
                             plan.working_file_mode,

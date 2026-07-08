@@ -1272,8 +1272,15 @@ def test_status_does_not_import_hunk_navigation():
 
 
 def test_active_session_query_stays_in_session_data():
-    """Status should ask session data whether a session is active."""
-    status_path = SRC_ROOT / "commands" / "status.py"
+    """Callers should ask session data whether a session is active."""
+    caller_paths = (
+        SRC_ROOT / "cli" / "execution.py",
+        SRC_ROOT / "commands" / "block_file.py",
+        SRC_ROOT / "commands" / "start.py",
+        SRC_ROOT / "commands" / "status.py",
+        SRC_ROOT / "commands" / "unblock_file.py",
+        SRC_ROOT / "tui" / "interactive.py",
+    )
     session = __import__(
         "git_stage_batch.data.session",
         fromlist=["session"],
@@ -1285,26 +1292,28 @@ def test_active_session_query_stays_in_session_data():
 
     assert public_names <= vars(session).keys()
 
-    status_tree = ast.parse(status_path.read_text(), filename=str(status_path))
-    status_names = {
-        node.name
-        for node in ast.walk(status_tree)
-        if isinstance(node, ast.ClassDef | ast.FunctionDef)
-    }
-    status_imported_session_names = set()
-    status_imported_path_names = set()
+    for caller_path in caller_paths:
+        caller_tree = ast.parse(caller_path.read_text(), filename=str(caller_path))
+        caller_names = {
+            node.name
+            for node in ast.walk(caller_tree)
+            if isinstance(node, ast.ClassDef | ast.FunctionDef)
+        }
+        caller_imported_session_names = set()
+        caller_imported_path_names = set()
 
-    for imported_module, node in _import_from_nodes(status_path):
-        imported_names = {alias.name for alias in node.names}
-        if imported_module == "git_stage_batch.data.session":
-            status_imported_session_names |= imported_names
-        if imported_module == "git_stage_batch.utils.paths":
-            status_imported_path_names |= imported_names
+        for imported_module, node in _import_from_nodes(caller_path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.session":
+                caller_imported_session_names |= imported_names
+            if imported_module == "git_stage_batch.utils.paths":
+                caller_imported_path_names |= imported_names
 
-    assert "_session_marker_path" not in status_names
-    assert "session_is_active" in status_imported_session_names
-    assert "get_state_directory_path" not in status_imported_path_names
-    assert "session/abort/head.txt" not in status_path.read_text()
+        assert "_session_marker_path" not in caller_names
+        assert "session_is_active" in caller_imported_session_names
+        assert "get_abort_head_file_path" not in caller_imported_path_names
+        assert "get_state_directory_path" not in caller_imported_path_names
+        assert "session/abort/head.txt" not in caller_path.read_text()
 
 
 def test_status_prompt_rendering_stays_in_output_module():

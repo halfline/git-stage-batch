@@ -1625,6 +1625,44 @@ def test_tui_hunk_actions_own_direct_hunk_commands():
     assert hunk_command_names <= hunk_actions_imported_names
 
 
+def test_tui_fixup_menu_owns_suggest_fixup_submenu():
+    """TUI suggest-fixup selection should live in the fixup menu."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    fixup_menu_path = SRC_ROOT / "tui" / "fixup_menu.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    fixup_menu = __import__(
+        "git_stage_batch.tui.fixup_menu",
+        fromlist=["fixup_menu"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    fixup_menu_imported_names = set()
+    fixup_menu_names = {
+        "clear_suggest_fixup_state",
+        "command_suggest_fixup",
+        "prompt_fixup_action",
+        "read_suggest_fixup_state",
+    }
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(fixup_menu_path):
+        fixup_menu_imported_names |= {alias.name for alias in node.names}
+
+    assert "handle_fixup_menu" in vars(fixup_menu)
+    assert "handle_fixup_selection" not in vars(interactive)
+    assert "git_stage_batch.tui.fixup_menu" in interactive_imports
+    assert fixup_menu_names.isdisjoint(interactive_imported_names)
+    assert fixup_menu_names <= fixup_menu_imported_names
+
+
 def test_tui_file_selection_menu_owns_whole_file_actions():
     """TUI whole-file selection should live in the file selection menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"

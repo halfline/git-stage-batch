@@ -85,6 +85,78 @@ class DiscardFilesToBatchResult:
     discarded_files: list[str]
 
 
+class _DiscardFilesToBatchSession:
+    """Mutable publication state for one multi-file discard-to-batch action."""
+
+    def __init__(self, batch_name: str, metadata: dict) -> None:
+        self._batch_name = batch_name
+        self._metadata = metadata
+        self._ownership_stack = ExitStack()
+        self._prepared_discards: list[_PreparedTextFileDiscardToBatch] = []
+        self._discarded_hunks = 0
+        self._discarded_files: list[str] = []
+
+    @property
+    def discarded_hunks(self) -> int:
+        """Return the total discarded hunk count."""
+        return self._discarded_hunks
+
+    @property
+    def discarded_files(self) -> list[str]:
+        """Return files that produced discarded hunks."""
+        return self._discarded_files
+
+    def close(self) -> None:
+        """Release any pending batch ownership update contexts."""
+        self._ownership_stack.close()
+
+    def prepare_text_file(self, discard_input: _TextFileDiscardInput) -> bool:
+        """Stage one text file for a later batch publication flush."""
+        prepared = _prepare_text_file_discard_to_batch(
+            self._batch_name,
+            discard_input,
+            metadata=self._metadata,
+            ownership_stack=self._ownership_stack,
+        )
+        if prepared is None:
+            return False
+        self._prepared_discards.append(prepared)
+        return True
+
+    def flush(self) -> None:
+        """Publish any pending prepared text file discards."""
+        ownership_stack = self._ownership_stack
+        prepared_discards = self._prepared_discards
+        self._ownership_stack = ExitStack()
+        self._prepared_discards = []
+
+        with ownership_stack:
+            result = _discard_prepared_text_files_to_batch(
+                self._batch_name,
+                prepared_discards,
+            )
+        self._record_result(result)
+
+    def record_single_file_discard(self, file_path: str, discarded_hunks: int) -> bool:
+        """Record fallback single-file command output."""
+        if discarded_hunks <= 0:
+            return False
+        self._record_result(
+            DiscardFilesToBatchResult(
+                discarded_hunks=discarded_hunks,
+                discarded_files=[file_path],
+            )
+        )
+        return True
+
+    def _record_result(self, result: DiscardFilesToBatchResult) -> None:
+        if result.discarded_hunks <= 0:
+            return
+        self._discarded_hunks += result.discarded_hunks
+        self._discarded_files.extend(result.discarded_files)
+        self._metadata = read_batch_metadata(self._batch_name)
+
+
 def _prepare_text_file_discard_to_batch(
     batch_name: str,
     discard_input: _TextFileDiscardInput,
@@ -297,29 +369,13 @@ def discard_files_to_batch(
 
     blocklist_path = get_block_list_file_path()
     blocked_hashes = read_text_file_line_set(blocklist_path)
-    prepared_discards: list[_PreparedTextFileDiscardToBatch] = []
-    ownership_stack = ExitStack()
+    session = _DiscardFilesToBatchSession(
+        batch_name=batch_name,
+        metadata=read_batch_metadata(batch_name),
+    )
     patch_stack = ExitStack()
-    total_hunks = 0
-    discarded_files: list[str] = []
-
-    def flush_prepared() -> None:
-        nonlocal metadata, total_hunks
-        nonlocal discarded_files, ownership_stack, prepared_discards
-        with ownership_stack:
-            result = _discard_prepared_text_files_to_batch(
-                batch_name,
-                prepared_discards,
-            )
-        if result.discarded_hunks:
-            total_hunks += result.discarded_hunks
-            discarded_files.extend(result.discarded_files)
-            metadata = read_batch_metadata(batch_name)
-        prepared_discards = []
-        ownership_stack = ExitStack()
 
     try:
-        metadata = read_batch_metadata(batch_name)
         collected_discards = _collect_text_file_discard_inputs(
             files,
             blocked_hashes=blocked_hashes,
@@ -340,17 +396,8 @@ def discard_files_to_batch(
             ):
                 continue
 
-            prepared = (
-                _prepare_text_file_discard_to_batch(
-                    batch_name,
-                    discard_input,
-                    metadata=metadata,
-                    ownership_stack=ownership_stack,
-                )
-                if discard_input is not None else None
-            )
-            if prepared is None:
-                flush_prepared()
+            if discard_input is None or not session.prepare_text_file(discard_input):
+                session.flush()
                 discarded_hunks = command_discard_to_batch(
                     batch_name,
                     file=file_path,
@@ -358,29 +405,25 @@ def discard_files_to_batch(
                     advance=False,
                     auto_advance=auto_advance,
                 )
-                if discarded_hunks > 0:
-                    total_hunks += discarded_hunks
-                    discarded_files.append(file_path)
-                    metadata = read_batch_metadata(batch_name)
+                if session.record_single_file_discard(file_path, discarded_hunks):
                     blocked_hashes = read_text_file_line_set(blocklist_path)
                 continue
 
-            prepared_discards.append(prepared)
             log_journal(
                 "discard_file_to_batch_end",
                 batch_name=batch_name,
                 file_path=file_path,
             )
 
-        flush_prepared()
+        session.flush()
     finally:
-        ownership_stack.close()
+        session.close()
         patch_stack.close()
 
     if advance:
         finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
 
     return DiscardFilesToBatchResult(
-        discarded_hunks=total_hunks,
-        discarded_files=discarded_files,
+        discarded_hunks=session.discarded_hunks,
+        discarded_files=session.discarded_files,
     )

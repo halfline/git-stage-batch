@@ -55,6 +55,20 @@ class IncludeTextFileActionPlan:
 
 
 @dataclass
+class DiscardTextFileActionPlan:
+    """Deferred discard-from text file action with final worktree content."""
+
+    file_path: str
+    buffer: LineBuffer | None
+    file_mode: str | None
+    change_type: str
+
+    def close(self) -> None:
+        if self.buffer is not None:
+            self.buffer.close()
+
+
+@dataclass
 class BinaryFileActionPlan:
     """Deferred binary file action with optional stored batch content."""
 

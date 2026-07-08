@@ -9,8 +9,8 @@ from typing import Optional
 
 from .batch_source import action_plans as _action_plans
 from .batch_source import binary_file_actions as _binary_file_actions
+from .batch_source import candidate_materialization as _candidate_materialization
 from .batch_source import candidate_preview_counts as _candidate_preview_counts
-from .batch_source import candidate_previews as _candidate_previews
 from .batch_source import candidate_refusals as _candidate_refusals
 from .batch_source import candidate_selectors as _candidate_selectors
 from .batch_source import merge_refusals as _merge_refusals
@@ -20,7 +20,6 @@ from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
-    build_include_candidate_previews,
     clear_candidate_preview_state_for_file,
 )
 from ..batch.replacement import build_replacement_batch_view_from_lines
@@ -86,151 +85,60 @@ def _execute_include_candidate(
     replacement_payload: ReplacementPayload | None,
 ) -> None:
     """Recompute and include one previewed include candidate."""
-    if len(files) != 1:
-        exit_with_error(_("Candidate execution requires exactly one file."))
-    file_path, file_meta = next(iter(files.items()))
-    if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(file_meta):
-        exit_with_error(_("Candidate execution is only available for text batch entries."))
-
-    batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
-    if batch_source_buffer is None:
-        exit_with_error(_("Batch source content is missing for {file}.").format(file=file_path))
-
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-    working_exists = os.path.lexists(full_path)
-    text_change_type = normalized_text_change_type(file_meta.get("change_type"))
-    batch_file_mode = str(file_meta.get("mode", "100644"))
-    index_buffer = load_git_object_as_buffer(f":{file_path}")
-    index_exists = index_buffer is not None
-    if index_buffer is None:
-        index_buffer = LineBuffer.from_bytes(b"")
-    index_file_mode = mode_for_text_materialization(
-        batch_file_mode,
-        selected_ids,
-        destination_exists=index_exists,
+    materialized = _candidate_materialization.materialize_include_candidate(
+        batch_name=batch_name,
+        raw_selector=raw_selector,
+        ordinal=ordinal,
+        files=files,
+        selected_ids=selected_ids,
+        selection_ids_to_include=selection_ids_to_include,
+        replacement_payload=replacement_payload,
     )
-    working_file_mode = mode_for_text_materialization(
-        batch_file_mode,
-        selected_ids,
-        destination_exists=working_exists,
-    )
-
-    with (
-        batch_source_buffer as batch_source_lines,
-        index_buffer as index_lines,
-        load_working_tree_file_as_buffer(file_path) as working_lines,
-    ):
-        with acquire_batch_ownership_for_display_ids_from_lines(
-            file_meta,
-            batch_source_lines,
-            selection_ids_to_include,
-        ) as ownership:
-            with ExitStack() as stack:
-                source_for_candidates = batch_source_lines
-                candidate_ownership = ownership
-                if replacement_payload is not None:
-                    try:
-                        replacement_view = build_replacement_batch_view_from_lines(
-                            batch_source_lines,
-                            ownership,
-                            replacement_payload,
-                        )
-                    except ValueError as e:
-                        exit_with_error(str(e))
-                    replacement_view = stack.enter_context(replacement_view)
-                    source_for_candidates = replacement_view.source_buffer
-                    candidate_ownership = replacement_view.ownership
-                try:
-                    previews = build_include_candidate_previews(
-                        batch_name=batch_name,
-                        file_path=file_path,
-                        source_lines=source_for_candidates,
-                        ownership=candidate_ownership,
-                        index_lines=index_lines,
-                        worktree_lines=working_lines,
-                        batch_source_commit=batch_source_commit,
-                        file_meta=file_meta,
-                        text_change_type=text_change_type,
-                        index_file_mode=index_file_mode,
-                        worktree_file_mode=working_file_mode,
-                        index_exists=index_exists,
-                        worktree_exists=working_exists,
-                        selected_ids=selected_ids,
-                        selection_ids=selection_ids_to_include,
-                        replacement_payload=replacement_payload,
-                    )
-                except (MergeError, ValueError) as e:
-                    exit_with_error(str(e))
-
-            try:
-                preview = _candidate_previews.require_candidate_preview_for_ordinal(
-                    previews,
-                    ordinal,
-                    batch_name=batch_name,
-                    operation="include",
-                    file_path=file_path,
-                )
-                _candidate_previews.require_candidate_preview_state(
-                    preview,
-                    ordinal,
-                    selector=raw_selector,
-                    file_path=file_path,
-                )
-
-                index_target = next(target for target in preview.targets if target.target == "index")
-                worktree_target = next(target for target in preview.targets if target.target == "worktree")
-                index_change_type = selected_text_target_change_type(
-                    text_change_type,
-                    selected_ids,
-                    index_target.after_buffer,
-                )
-                working_change_type = selected_text_target_change_type(
-                    text_change_type,
-                    selected_ids,
-                    worktree_target.after_buffer,
-                )
-                print(
-                    _("Including candidate {ordinal} of {count} for batch '{batch}':").format(
-                        ordinal=preview.ordinal,
-                        count=preview.count,
-                        batch=batch_name,
-                    ),
-                    file=sys.stderr,
-                )
-                print(f"  {file_path}:", file=sys.stderr)
-                print(f"    {_('Index')}", file=sys.stderr)
-                print(f"    {_('Working tree')}", file=sys.stderr)
-                operation_parts = ["include", "--from", raw_selector, "--file", file_path]
-                with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
-                    snapshot_file_if_untracked(file_path)
-                    _text_file_actions.stage_text_file_to_index(
-                        file_path,
-                        index_target.after_buffer,
-                        index_file_mode,
-                        index_change_type,
-                    )
-                    _text_file_actions.write_text_file_to_worktree(
-                        file_path,
-                        worktree_target.after_buffer,
-                        working_file_mode,
-                        working_change_type,
-                    )
-                clear_candidate_preview_state_for_file(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                )
-                print(
-                    _("✓ Included candidate {ordinal} of {count} from batch '{batch}'").format(
-                        ordinal=preview.ordinal,
-                        count=preview.count,
-                        batch=batch_name,
-                    ),
-                    file=sys.stderr,
-                )
-            finally:
-                _candidate_previews.close_candidate_previews(previews)
+    try:
+        preview = materialized.preview
+        file_path = materialized.file_path
+        index_target = materialized.index_target
+        worktree_target = materialized.worktree_target
+        print(
+            _("Including candidate {ordinal} of {count} for batch '{batch}':").format(
+                ordinal=preview.ordinal,
+                count=preview.count,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+        print(f"  {file_path}:", file=sys.stderr)
+        print(f"    {_('Index')}", file=sys.stderr)
+        print(f"    {_('Working tree')}", file=sys.stderr)
+        operation_parts = ["include", "--from", raw_selector, "--file", file_path]
+        with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
+            snapshot_file_if_untracked(file_path)
+            _text_file_actions.stage_text_file_to_index(
+                file_path,
+                index_target.after_buffer,
+                materialized.index_file_mode,
+                index_target.change_type,
+            )
+            _text_file_actions.write_text_file_to_worktree(
+                file_path,
+                worktree_target.after_buffer,
+                materialized.worktree_file_mode,
+                worktree_target.change_type,
+            )
+        clear_candidate_preview_state_for_file(
+            batch_name=batch_name,
+            file_path=file_path,
+        )
+        print(
+            _("✓ Included candidate {ordinal} of {count} from batch '{batch}'").format(
+                ordinal=preview.ordinal,
+                count=preview.count,
+                batch=batch_name,
+            ),
+            file=sys.stderr,
+        )
+    finally:
+        materialized.close()
 
 
 def command_include_from_batch(

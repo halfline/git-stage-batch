@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 import git_stage_batch.batch.operation_candidates as operation_candidates
+import git_stage_batch.commands.batch_source.candidate_preview_counts as candidate_preview_counts
 import git_stage_batch.commands.apply_from as apply_from_module
 import git_stage_batch.commands.include_from as include_from_module
 import git_stage_batch.commands.show_from as show_from_module
@@ -388,7 +389,7 @@ def test_apply_from_reports_candidate_enumeration_error(
         raise RuntimeError("metadata drift")
 
     monkeypatch.setattr(
-        apply_from_module,
+        candidate_preview_counts,
         "build_apply_candidate_previews",
         fail_count,
     )

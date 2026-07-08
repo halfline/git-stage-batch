@@ -29,6 +29,7 @@ from .batch_menu import handle_batch_menu
 from .display import print_status_bar
 from .file_selection_menu import handle_file_selection_menu
 from .file_review import handle_current_file_review, handle_file_browser
+from .fixup_menu import handle_fixup_menu
 from .flow import FlowLocation, LocationRole, FlowState
 from .flow_menu import handle_from_menu, handle_to_menu
 from .hunk_actions import (
@@ -39,7 +40,6 @@ from .hunk_actions import (
 from .line_selection_menu import handle_line_selection_menu
 from .prompts import (
     prompt_action,
-    prompt_fixup_action,
     prompt_quit_session,
     prompt_shell_command,
 )
@@ -117,7 +117,7 @@ def _handle_fixup(flow_state: FlowState) -> None:
         # Fixup doesn't make sense when pulling from batch
         print(_("Suggest-fixup is not available when pulling from a batch."), file=sys.stderr)
         raise BypassRefresh()
-    handle_fixup_selection()
+    handle_fixup_menu()
 
 
 def _handle_quit(flow_state: FlowState) -> None:
@@ -368,74 +368,6 @@ def start_interactive_mode() -> None:
             should_refresh = False
         except QuitInteractive:
             break
-
-
-def handle_fixup_selection() -> None:
-    """
-    Handle suggest-fixup submenu for iterative candidate selection.
-
-    Displays fixup candidates one at a time, prompting user to accept,
-    move to next, reset, or cancel. Maintains iteration state across
-    invocations within the same hunk context.
-    """
-    from ..commands.suggest_fixup import command_suggest_fixup
-    from ..data.suggest_fixup_state import (
-        clear_suggest_fixup_state,
-        read_suggest_fixup_state,
-    )
-
-    use_color = Colors.enabled()
-    line_changes = load_line_changes_from_state()
-    if line_changes is None:
-        return
-
-    # Show initial candidate
-    try:
-        command_suggest_fixup()
-    except CommandError as e:
-        # No candidates found or other error
-        print(f"\n{e.message}")
-        return
-
-    # Interactive loop for fixup candidate selection
-    while True:
-        print()
-        action = prompt_fixup_action(use_color=use_color)
-
-        if action == "y":
-            # Accept - show how to create fixup commit
-            state = read_suggest_fixup_state()
-            if state and state.get("last_shown_commit"):
-                commit_hash = state["last_shown_commit"][:7]
-                print()
-                print(_("Create fixup commit with:"))
-                if use_color:
-                    print(f"  {Colors.BOLD}git commit --fixup={commit_hash}{Colors.RESET}")
-                else:
-                    print(f"  git commit --fixup={commit_hash}")
-                print()
-            break
-        elif action == "n":
-            # Next candidate
-            try:
-                command_suggest_fixup()
-            except CommandError as e:
-                print(f"\n{e.message}")
-                break
-        elif action == "r":
-            # Reset iteration
-            try:
-                command_suggest_fixup(reset=True)
-            except CommandError as e:
-                print(f"\n{e.message}")
-                break
-        elif action == "q":
-            # Cancel - abort and exit submenu
-            clear_suggest_fixup_state()
-            print(_("\nCanceled."))
-            break
-        else:
-            print(_("\nUnknown action: '{action}'").format(action=action))
 
 
 def handle_quit(*, stop_session: bool = True) -> None:

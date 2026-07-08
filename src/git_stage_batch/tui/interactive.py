@@ -7,7 +7,6 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Callable
-from ..batch.query import list_batch_names, read_batch_metadata
 from ..data.selected_change.batch_file_cache import cache_batch_as_single_hunk
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.hunk_tracking import fetch_next_change
@@ -30,6 +29,7 @@ from .batch_menu import handle_batch_menu
 from .display import print_status_bar
 from .file_review import handle_current_file_review, handle_file_browser
 from .flow import FlowLocation, LocationRole, FlowState
+from .flow_menu import handle_from_menu, handle_to_menu
 from .prompts import (
     confirm_destructive_operation,
     prompt_action,
@@ -230,146 +230,6 @@ def _handle_batch(flow_state: FlowState) -> None:
     handle_batch_menu()
 
 
-def _handle_from(flow_state: FlowState) -> None:
-    """Handle [<]from action to set source."""
-
-    use_color = Colors.enabled()
-    batches = list_batch_names()
-
-    print()
-    print(_("Pull changes from:"))
-    print()
-
-    # Build menu
-    options = []
-    selected_marker = _(" (selected)")
-
-    # Option 1: Working tree
-    is_selected = flow_state.source.role is LocationRole.WORKING_TREE
-    marker = selected_marker if is_selected else ""
-    text = _("Working tree{marker}").format(marker=marker)
-    if use_color and is_selected:
-        print(f"  [1] {Colors.BOLD}{text}{Colors.RESET}")
-    else:
-        print(f"  [1] {text}")
-    options.append(("working tree", FlowLocation.WORKING_TREE))
-
-    # Options 2+: Batches
-    for idx, name in enumerate(batches, 2):
-        metadata = read_batch_metadata(name)
-        note = metadata.get("note", "")
-        is_selected = flow_state.source.role is LocationRole.BATCH and flow_state.source.batch_name == name
-        marker = selected_marker if is_selected else ""
-        note_display = f" - {note}" if note else ""
-        text = _("batch: {name}{note}{marker}").format(
-            name=name,
-            note=note_display,
-            marker=marker
-        )
-        if use_color and is_selected:
-            print(f"  [{idx}] {Colors.BOLD}{text}{Colors.RESET}")
-        else:
-            print(f"  [{idx}] {text}")
-        options.append((name, FlowLocation.for_batch(name)))
-
-    print()
-    try:
-        choice = input(_("Select: ")).strip()
-    except (KeyboardInterrupt, EOFError):
-        return  # No change if cancelled
-
-    # Parse choice
-    if choice.isdigit():
-        idx = int(choice) - 1
-        if 0 <= idx < len(options):
-            flow_state.source = options[idx][1]
-
-            # Prevent batch-to-batch state: if we just set source to a batch
-            # and target is also a batch, reset target to staging
-            if (flow_state.source.role is LocationRole.BATCH and
-                flow_state.target.role is LocationRole.BATCH):
-                flow_state.target = FlowLocation.STAGING_AREA
-
-
-def _handle_to(flow_state: FlowState) -> None:
-    """Handle [>]to action to set target."""
-
-    use_color = Colors.enabled()
-    batches = list_batch_names()
-
-    print()
-    print(_("Push changes to:"))
-    print()
-
-    # Build menu
-    options = []
-    selected_marker = _(" (selected)")
-
-    # Option 1: Staging
-    is_selected = flow_state.target.role is LocationRole.STAGING_AREA
-    marker = selected_marker if is_selected else ""
-    text = _("Staging for commit{marker}").format(marker=marker)
-    if use_color and is_selected:
-        print(f"  [1] {Colors.BOLD}{text}{Colors.RESET}")
-    else:
-        print(f"  [1] {text}")
-    options.append(("staging", FlowLocation.STAGING_AREA))
-
-    # Options 2+: Existing batches
-    for idx, name in enumerate(batches, 2):
-        metadata = read_batch_metadata(name)
-        note = metadata.get("note", "")
-        is_selected = flow_state.target.role is LocationRole.BATCH and flow_state.target.batch_name == name
-        marker = selected_marker if is_selected else ""
-        note_display = f" - {note}" if note else ""
-        text = _("batch: {name}{note}{marker}").format(
-            name=name,
-            note=note_display,
-            marker=marker
-        )
-        if use_color and is_selected:
-            print(f"  [{idx}] {Colors.BOLD}{text}{Colors.RESET}")
-        else:
-            print(f"  [{idx}] {text}")
-        options.append((name, FlowLocation.for_batch(name)))
-
-    # Last option: Create new batch
-    new_batch_idx = len(batches) + 2
-    print(f"  [{new_batch_idx}] {_('New Batch...')}")
-    options.append(("new", None))  # Placeholder
-
-    print()
-    try:
-        choice = input(_("Select: ")).strip()
-    except (KeyboardInterrupt, EOFError):
-        return  # No change if cancelled
-
-    # Parse choice
-    if choice.isdigit():
-        idx = int(choice) - 1
-        if idx == len(options) - 1:
-            # New batch
-            try:
-                batch_id = input(_("Batch ID: ")).strip()
-                if not batch_id:
-                    return
-                note = input(_("Note (optional): ")).strip()
-            except (KeyboardInterrupt, EOFError):
-                return
-
-            from ..commands.new import command_new_batch
-            command_new_batch(batch_name=batch_id, note=note if note else None)
-            flow_state.target = FlowLocation.for_batch(batch_id)
-        elif 0 <= idx < len(options) - 1:
-            flow_state.target = options[idx][1]
-
-        # Prevent batch-to-batch state: if we just set target to a batch
-        # and source is also a batch, reset source to working tree
-        if (flow_state.target.role is LocationRole.BATCH and
-            flow_state.source.role is LocationRole.BATCH):
-            flow_state.source = FlowLocation.WORKING_TREE
-
-
 def _handle_help(flow_state: FlowState) -> None:
     """Handle help action."""
     print_help()
@@ -451,7 +311,7 @@ def _dispatch_action(
                 flow_state.target = FlowLocation.STAGING_AREA
         else:
             # Show menu
-            _handle_from(flow_state)
+            handle_from_menu(flow_state)
         return  # Refresh display after flow change
     elif action.startswith(">"):
         if len(action) > 1:
@@ -463,7 +323,7 @@ def _dispatch_action(
                 flow_state.source = FlowLocation.WORKING_TREE
         else:
             # Show menu
-            _handle_to(flow_state)
+            handle_to_menu(flow_state)
         return  # Refresh display after flow change
 
     handler_config = ACTION_HANDLERS.get(action)

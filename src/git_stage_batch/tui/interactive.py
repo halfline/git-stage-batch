@@ -25,6 +25,7 @@ from ..utils.paths import (
     get_start_head_file_path,
     get_start_index_tree_file_path,
 )
+from .asset_menu import handle_asset_menu
 from .batch_menu import handle_batch_menu
 from .display import print_status_bar
 from .file_review import handle_current_file_review, handle_file_browser
@@ -161,7 +162,7 @@ def _handle_status(flow_state: FlowState) -> None:
 
 def _handle_assets(flow_state: FlowState) -> None:
     """Handle bundled assistant asset installation."""
-    handle_install_assets()
+    handle_asset_menu()
     raise BypassRefresh()
 
 
@@ -227,66 +228,6 @@ def _handle_shell(action: str) -> None:
 def _handle_batch(flow_state: FlowState) -> None:
     """Handle batch management submenu."""
     handle_batch_menu()
-
-
-def handle_install_assets() -> None:
-    """Prompt for assistant asset install options and run the installer."""
-    from ..commands.install_assets import ASSET_GROUPS, command_install_assets
-
-    group_names = list(ASSET_GROUPS)
-
-    print()
-    print(_("Install bundled assistant assets:"))
-    print(f"  [1] {_('all asset groups')}")
-    for idx, group_name in enumerate(group_names, 2):
-        print(f"  [{idx}] {group_name}")
-
-    try:
-        choice = input(_("Group (empty to cancel): ")).strip()
-    except (KeyboardInterrupt, EOFError):
-        return
-
-    if not choice:
-        return
-
-    asset_group_name: str | None
-    if choice == "1" or choice.lower() in ("all", _("all asset groups")):
-        asset_group_name = None
-    elif choice.isdigit():
-        group_idx = int(choice) - 2
-        if 0 <= group_idx < len(group_names):
-            asset_group_name = group_names[group_idx]
-        else:
-            print(_("\nInvalid selection."), file=sys.stderr)
-            return
-    elif choice in group_names:
-        asset_group_name = choice
-    else:
-        print(_("\nInvalid selection."), file=sys.stderr)
-        return
-
-    try:
-        filters_text = input(_("Filters (empty for all): ")).strip()
-    except (KeyboardInterrupt, EOFError):
-        return
-
-    if filters_text:
-        try:
-            filters = shlex.split(filters_text)
-        except ValueError as error:
-            print(_("\nInvalid filter syntax: {error}").format(error=error), file=sys.stderr)
-            return
-    else:
-        filters = None
-
-    try:
-        force_text = input(_("Overwrite existing assets? [y/N]: ")).strip().lower()
-    except (KeyboardInterrupt, EOFError):
-        return
-
-    force = force_text in ("y", "yes")
-    command_install_assets(asset_group_name, filters, force=force)
-    print(_("\nAsset installation complete."))
 
 
 def _handle_from(flow_state: FlowState) -> None:

@@ -4049,6 +4049,7 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
     public_names = {
         "candidate_preview_for_ordinal",
         "candidate_preview_state_matches",
@@ -4057,6 +4058,7 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
     command_paths = {
         apply_from_path,
         include_from_path,
+        show_from_path,
     }
     imports_candidate_previews = {
         path: False
@@ -4084,10 +4086,12 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
     assert imports_candidate_previews == {
         apply_from_path: True,
         include_from_path: True,
+        show_from_path: True,
     }
     assert direct_state_imports == {
         apply_from_path: set(),
         include_from_path: set(),
+        show_from_path: set(),
     }
 
 

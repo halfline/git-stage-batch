@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
+from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
@@ -16,7 +17,6 @@ from ..batch.operation_candidates import (
     clear_candidate_preview_state_for_file,
     load_candidate_preview_state,
 )
-from ..batch.query import get_batch_commit_sha
 from ..batch.selection import (
     acquire_batch_ownership_for_display_ids_from_lines,
     resolve_current_batch_binary_file_scope,
@@ -92,29 +92,6 @@ class _ApplySubmodulePlan:
 
     def close(self) -> None:
         return None
-
-
-def _read_binary_file_from_batch(
-    batch_name: str,
-    file_path: str,
-    file_meta: dict,
-) -> LineBuffer | None:
-    """Read one binary batch target, or return None for a stored deletion."""
-    batch_commit = get_batch_commit_sha(batch_name)
-    if not batch_commit:
-        raise RuntimeError(f"Batch commit not found for batch '{batch_name}'")
-
-    change_type = file_meta.get("change_type", "modified")
-    if change_type == "deleted":
-        return None
-
-    batch_buffer = load_git_object_as_buffer(f"{batch_commit}:{file_path}")
-    if batch_buffer is None:
-        raise RuntimeError(
-            f"Binary file metadata for {file_path} says {change_type}, "
-            "but the batch content is missing"
-        )
-    return batch_buffer
 
 
 def _write_binary_file_from_batch(
@@ -481,7 +458,11 @@ def command_apply_from_batch(
         try:
             # Binary files are atomic units - handle separately without ownership/merge logic
             if file_meta.get("file_type") == "binary":
-                batch_buffer = _read_binary_file_from_batch(batch_name, file_path, file_meta)
+                batch_buffer = read_binary_file_from_batch(
+                    batch_name,
+                    file_path,
+                    file_meta,
+                )
                 apply_plans.append(_ApplyBinaryPlan(file_path, file_meta, batch_buffer))
                 continue
             if is_batch_submodule_pointer(file_meta):

@@ -20,13 +20,13 @@ from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
     ACTION_HANDLERS,
     _dispatch_action,
-    handle_file_selection,
     handle_line_selection,
     handle_quit,
     print_help,
     start_interactive_mode,
 )
 from git_stage_batch.tui.asset_menu import handle_asset_menu
+from git_stage_batch.tui.file_selection_menu import handle_file_selection_menu
 
 
 @pytest.fixture
@@ -294,7 +294,7 @@ class TestHandleQuit:
 
 
 class TestHandleFileSelection:
-    """Tests for handle_file_selection function."""
+    """Tests for handle_file_selection_menu function."""
 
     def test_handle_file_selection_include(self):
         """Test file selection with include action."""
@@ -306,11 +306,11 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.include.command_include_file") as mock_include:
-                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.file_selection_menu.command_include_file") as mock_include:
+                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
                     with patch("builtins.input", return_value="i"):
-                        handle_file_selection(FlowState(
+                        handle_file_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
@@ -326,11 +326,11 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.skip.command_skip_file") as mock_skip:
-                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.file_selection_menu.command_skip_file") as mock_skip:
+                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
                     with patch("builtins.input", return_value="s"):
-                        handle_file_selection(FlowState(
+                        handle_file_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
@@ -346,12 +346,12 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.discard.command_discard_file") as mock_discard:
-                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
-                    with patch("git_stage_batch.tui.interactive.confirm_destructive_operation", return_value=True):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.file_selection_menu.command_discard_file") as mock_discard:
+                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
+                    with patch("git_stage_batch.tui.file_selection_menu.confirm_destructive_operation", return_value=True):
                         with patch("builtins.input", return_value="d"):
-                            handle_file_selection(FlowState(
+                            handle_file_selection_menu(FlowState(
                                 source=FlowLocation.WORKING_TREE,
                                 target=FlowLocation.STAGING_AREA
                             ))
@@ -367,11 +367,11 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.discard.command_discard_to_batch") as mock_discard:
-                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.file_selection_menu.command_discard_to_batch") as mock_discard:
+                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
                     with patch("builtins.input", return_value="d"):
-                        handle_file_selection(FlowState(
+                        handle_file_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.for_batch("mybatch")
                         ))
@@ -392,10 +392,10 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
             with patch("builtins.input", side_effect=KeyboardInterrupt):
                 # Should return without raising
-                handle_file_selection(FlowState(
+                handle_file_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))

@@ -36,8 +36,8 @@ from ...utils.paths import (
     get_block_list_file_path,
     get_context_lines,
 )
-from ..discard import command_discard_to_batch
 from ..selection.action_completion import finish_selected_change_action
+from .discard_file_to_batch import discard_file_to_batch
 
 
 @dataclass(frozen=True)
@@ -398,9 +398,9 @@ def discard_files_to_batch(
 
             if discard_input is None or not session.prepare_text_file(discard_input):
                 session.flush()
-                discarded_hunks = command_discard_to_batch(
+                discarded_hunks = discard_file_to_batch(
                     batch_name,
-                    file=file_path,
+                    file_path,
                     quiet=True,
                     advance=False,
                     auto_advance=auto_advance,

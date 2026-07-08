@@ -1,0 +1,217 @@
+"""Tests for batch-source candidate materialization."""
+
+from __future__ import annotations
+
+from contextlib import AbstractContextManager
+
+import pytest
+
+from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.exceptions import CommandError
+import git_stage_batch.commands.batch_source.candidate_materialization as materialization
+
+
+class _OwnershipContext(AbstractContextManager):
+    def __init__(self, ownership: object) -> None:
+        self.ownership = ownership
+
+    def __enter__(self) -> object:
+        return self.ownership
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        return None
+
+
+class _Target:
+    def __init__(self, name: str = "worktree") -> None:
+        self.target = name
+
+
+class _Preview:
+    def __init__(self, name: str = "preview") -> None:
+        self.name = name
+        self.targets = (_Target(),)
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _patch_apply_materialization_io(monkeypatch, tmp_path):
+    ownership = object()
+    batch_buffer = LineBuffer.from_bytes(b"batch\n")
+    worktree_buffer = LineBuffer.from_bytes(b"worktree\n")
+    (tmp_path / "notes.txt").write_bytes(b"worktree\n")
+
+    monkeypatch.setattr(
+        materialization,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        materialization,
+        "load_git_object_as_buffer",
+        lambda spec: batch_buffer if spec == "commit:notes.txt" else None,
+    )
+    monkeypatch.setattr(
+        materialization,
+        "load_working_tree_file_as_buffer",
+        lambda file_path: worktree_buffer,
+    )
+    monkeypatch.setattr(
+        materialization,
+        "acquire_batch_ownership_for_display_ids_from_lines",
+        lambda file_meta, source_lines, selection_ids: _OwnershipContext(ownership),
+    )
+    return ownership
+
+
+def test_materialize_apply_candidate_returns_reviewed_preview(monkeypatch, tmp_path):
+    """Apply materialization should return the reviewed preview and mode."""
+    ownership = _patch_apply_materialization_io(monkeypatch, tmp_path)
+    previews = (_Preview("first"), _Preview("second"))
+    calls = {}
+
+    def build_apply_candidate_previews(**kwargs):
+        calls["build"] = kwargs
+        return previews
+
+    def require_preview(loaded_previews, ordinal, **kwargs):
+        calls["require_preview"] = (loaded_previews, ordinal, kwargs)
+        return loaded_previews[1]
+
+    def require_state(preview, ordinal, **kwargs):
+        calls["require_state"] = (preview, ordinal, kwargs)
+
+    monkeypatch.setattr(
+        materialization,
+        "build_apply_candidate_previews",
+        build_apply_candidate_previews,
+    )
+    monkeypatch.setattr(
+        materialization._candidate_previews,
+        "require_candidate_preview_for_ordinal",
+        require_preview,
+    )
+    monkeypatch.setattr(
+        materialization._candidate_previews,
+        "require_candidate_preview_state",
+        require_state,
+    )
+
+    result = materialization.materialize_apply_candidate(
+        batch_name="cleanup",
+        raw_selector="cleanup:apply:2",
+        ordinal=2,
+        files={
+            "notes.txt": {
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+        },
+        selected_ids={3},
+        selection_ids_to_apply={9},
+    )
+
+    assert result.preview is previews[1]
+    assert result.previews is previews
+    assert result.target is previews[1].targets[0]
+    assert result.file_path == "notes.txt"
+    assert result.file_mode is None
+    assert calls["build"]["batch_name"] == "cleanup"
+    assert calls["build"]["file_path"] == "notes.txt"
+    assert calls["build"]["ownership"] is ownership
+    assert calls["build"]["selected_ids"] == {3}
+    assert calls["build"]["selection_ids"] == {9}
+    assert calls["build"]["worktree_exists"]
+    assert calls["require_preview"] == (
+        previews,
+        2,
+        {
+            "batch_name": "cleanup",
+            "operation": "apply",
+            "file_path": "notes.txt",
+        },
+    )
+    assert calls["require_state"] == (
+        previews[1],
+        2,
+        {
+            "selector": "cleanup:apply:2",
+            "file_path": "notes.txt",
+        },
+    )
+
+    result.close()
+
+    assert [preview.closed for preview in previews] == [True, True]
+
+
+def test_materialize_apply_candidate_closes_previews_on_state_failure(
+    monkeypatch,
+    tmp_path,
+):
+    """Apply materialization should close previews when state validation fails."""
+    _patch_apply_materialization_io(monkeypatch, tmp_path)
+    previews = (_Preview("first"), _Preview("second"))
+
+    monkeypatch.setattr(
+        materialization,
+        "build_apply_candidate_previews",
+        lambda **kwargs: previews,
+    )
+    monkeypatch.setattr(
+        materialization._candidate_previews,
+        "require_candidate_preview_for_ordinal",
+        lambda loaded_previews, ordinal, **kwargs: loaded_previews[0],
+    )
+
+    def reject_state(preview, ordinal, **kwargs):
+        raise CommandError("stale")
+
+    monkeypatch.setattr(
+        materialization._candidate_previews,
+        "require_candidate_preview_state",
+        reject_state,
+    )
+
+    with pytest.raises(CommandError):
+        materialization.materialize_apply_candidate(
+            batch_name="cleanup",
+            raw_selector="cleanup:apply:1",
+            ordinal=1,
+            files={
+                "notes.txt": {
+                    "batch_source_commit": "commit",
+                    "change_type": "modified",
+                    "mode": "100644",
+                },
+            },
+            selected_ids={3},
+            selection_ids_to_apply={9},
+        )
+
+    assert [preview.closed for preview in previews] == [True, True]
+
+
+def test_materialize_apply_candidate_rejects_binary_entries():
+    """Apply materialization should reject binary batch entries."""
+    with pytest.raises(CommandError) as exc_info:
+        materialization.materialize_apply_candidate(
+            batch_name="cleanup",
+            raw_selector="cleanup:apply:1",
+            ordinal=1,
+            files={
+                "notes.bin": {
+                    "file_type": "binary",
+                    "batch_source_commit": "commit",
+                    "change_type": "modified",
+                    "mode": "100644",
+                },
+            },
+            selected_ids=None,
+            selection_ids_to_apply=None,
+        )
+
+    assert "text batch entries" in exc_info.value.message

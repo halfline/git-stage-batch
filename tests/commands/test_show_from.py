@@ -10,7 +10,7 @@ from git_stage_batch.batch.file_display import render_batch_file_display
 import git_stage_batch.batch.merge as merge_module
 import git_stage_batch.batch.display as display_module
 import git_stage_batch.batch.file_display as file_display
-import git_stage_batch.data.selected_change.store as selected_change_store
+import git_stage_batch.data.selected_change.paths as selected_change_paths
 import git_stage_batch.commands.show_from as show_from_module
 
 import subprocess
@@ -472,7 +472,7 @@ class TestCommandShowFromBatch:
         readme.write_text("# Test\nselected\n")
         command_show()
         capsys.readouterr()
-        assert selected_change_store.get_selected_change_file_path() == "README.md"
+        assert selected_change_paths.get_selected_change_file_path() == "README.md"
 
         (temp_git_repo / "file1.txt").write_text("one\n")
         (temp_git_repo / "file2.txt").write_text("two\n")
@@ -493,4 +493,4 @@ class TestCommandShowFromBatch:
         command_show_from_batch("multi-file-batch", selectable=False)
         capsys.readouterr()
 
-        assert selected_change_store.get_selected_change_file_path() == "README.md"
+        assert selected_change_paths.get_selected_change_file_path() == "README.md"

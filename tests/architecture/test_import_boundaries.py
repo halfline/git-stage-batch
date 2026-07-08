@@ -20,6 +20,7 @@ def test_selected_change_display_names_data_modules_at_import_sites():
                 "line_state",
                 "selected_change_clear_reasons",
                 "selected_file_changes",
+                "selected_change_paths",
                 "selected_change_store",
             },
         }
@@ -481,6 +482,37 @@ def test_selected_change_clear_reasons_stay_in_clear_reason_module():
     violations = []
 
     assert moved_names <= vars(clear_reasons).keys()
+    assert moved_names.isdisjoint(vars(selected_store))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.selected_change.store":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            stale_imports = imported_names & moved_names
+            if stale_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(stale_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_selected_change_path_query_stays_in_path_module():
+    """Selected-change path resolution should stay out of the state store."""
+    selected_paths = __import__(
+        "git_stage_batch.data.selected_change.paths",
+        fromlist=["paths"],
+    )
+    selected_store = __import__(
+        "git_stage_batch.data.selected_change.store",
+        fromlist=["store"],
+    )
+    moved_names = {"get_selected_change_file_path"}
+    violations = []
+
+    assert moved_names <= vars(selected_paths).keys()
     assert moved_names.isdisjoint(vars(selected_store))
 
     for path in SRC_ROOT.rglob("*.py"):

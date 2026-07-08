@@ -3536,7 +3536,7 @@ def test_batch_ownership_uses_public_absence_builder():
         "_AbsenceContentBuilder",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "sift.py": public_names,
+        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": public_names,
     }
     violations = []
 
@@ -3585,7 +3585,13 @@ def test_batch_storage_uses_public_content_helpers():
         "_update_batch_commit",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "sift.py": public_names,
+        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
+            "build_realized_buffer_from_lines",
+        },
+        SRC_ROOT / "commands" / "sift.py": {
+            "remove_file_from_batch_commit",
+            "update_batch_commit",
+        },
     }
     violations = []
 
@@ -3616,6 +3622,89 @@ def test_batch_storage_uses_public_content_helpers():
             assert expected_imports[path] <= imported_public_names
 
     assert violations == []
+
+
+def test_batch_transform_sift_results_own_result_planning():
+    """Sift result planning should live outside the command entry point."""
+    sift_results = __import__(
+        "git_stage_batch.commands.batch_transform.sift_results",
+        fromlist=["sift_results"],
+    )
+    sift_path = SRC_ROOT / "commands" / "sift.py"
+    public_names = {
+        "build_ownership_from_working_and_target_lines",
+        "compute_sifted_binary_file",
+        "compute_sifted_text_file",
+        "validate_sifted_text_file_result_from_lines",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.comparison": {
+            "SemanticChangeKind",
+            "derive_semantic_change_runs",
+        },
+        "git_stage_batch.batch.merge": {
+            "merge_batch_from_line_sequences_as_buffer",
+        },
+        "git_stage_batch.batch.ownership": {
+            "AbsenceClaim",
+            "AbsenceContentBuilder",
+        },
+        "git_stage_batch.batch.storage": {
+            "build_realized_buffer_from_lines",
+        },
+        "git_stage_batch.core.buffer": {
+            "buffer_byte_count",
+            "buffer_matches",
+        },
+        "git_stage_batch.core.line_selection": {
+            "LineRanges",
+        },
+        "git_stage_batch.core.models": {
+            "BinaryFileChange",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "sifted_empty_text_path_change_type",
+        },
+        "git_stage_batch.data.repository_buffers": {
+            "load_git_object_as_buffer_or_empty",
+            "load_working_tree_file_as_buffer",
+        },
+        "git_stage_batch.utils.text": {
+            "normalize_line_sequence_endings",
+        },
+    }
+    old_helper_names = {
+        "_compute_sifted_binary_file",
+        "_compute_sifted_text_file",
+        "build_ownership_from_working_and_target_lines",
+        "validate_sifted_text_file_result_from_lines",
+    }
+    imports_sift_results = False
+    direct_result_imports = set()
+
+    for imported_module, node in _import_from_nodes(sift_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_transform"
+            and "sift_results" in imported_names
+        ):
+            imports_sift_results = True
+        direct_result_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    sift_tree = ast.parse(sift_path.read_text(), filename=str(sift_path))
+    sift_helpers = {
+        node.name
+        for node in ast.walk(sift_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+
+    assert public_names <= vars(sift_results).keys()
+    assert imports_sift_results
+    assert direct_result_imports == set()
+    assert old_helper_names.isdisjoint(sift_helpers)
 
 
 def test_batch_ownership_units_bridge_keeps_display_out_of_ownership():

@@ -197,7 +197,7 @@ def test_discard_to_batch_each_resolved_file_reports_batch_result(
 
     monkeypatch.setattr(
         multi_file_actions,
-        "command_discard_files_to_batch",
+        "discard_files_to_batch",
         fake_discard_files_to_batch,
     )
     monkeypatch.setattr(

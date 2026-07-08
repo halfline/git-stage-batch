@@ -1577,6 +1577,54 @@ def test_tui_flow_menu_owns_batch_selection_menus():
     assert "git_stage_batch.commands.new" in flow_menu_imports
 
 
+def test_tui_hunk_actions_own_direct_hunk_commands():
+    """TUI direct hunk actions should live in the hunk actions adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    hunk_actions_path = SRC_ROOT / "tui" / "hunk_actions.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    hunk_actions = __import__(
+        "git_stage_batch.tui.hunk_actions",
+        fromlist=["hunk_actions"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    hunk_actions_imported_names = set()
+    hunk_action_names = {
+        "handle_hunk_discard",
+        "handle_hunk_include",
+        "handle_hunk_skip",
+    }
+    hunk_command_names = {
+        "command_discard",
+        "command_discard_from_batch",
+        "command_discard_to_batch",
+        "command_include",
+        "command_include_from_batch",
+        "command_include_to_batch",
+        "command_skip",
+    }
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(hunk_actions_path):
+        hunk_actions_imported_names |= {alias.name for alias in node.names}
+
+    assert hunk_action_names <= vars(hunk_actions).keys()
+    assert "_handle_include" not in vars(interactive)
+    assert "_handle_skip" not in vars(interactive)
+    assert "_handle_discard" not in vars(interactive)
+    assert "git_stage_batch.tui.hunk_actions" in interactive_imports
+    assert hunk_command_names.isdisjoint(interactive_imported_names)
+    assert hunk_command_names <= hunk_actions_imported_names
+
+
 def test_tui_file_selection_menu_owns_whole_file_actions():
     """TUI whole-file selection should live in the file selection menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"

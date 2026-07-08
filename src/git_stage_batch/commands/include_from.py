@@ -12,6 +12,7 @@ from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import candidate_previews as _candidate_previews
 from .batch_source import candidate_refusals as _candidate_refusals
 from .batch_source import candidate_selectors as _candidate_selectors
+from .batch_source import merge_refusals as _merge_refusals
 from .batch_source import text_file_actions as _text_file_actions
 from .selection import replacement_selection
 from ..batch.binary_file_content import read_binary_file_from_batch
@@ -53,7 +54,6 @@ from ..data.file_review.state import (
     resolve_batch_source_action_scope,
 )
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
-from ..batch.file_display import render_batch_file_display
 from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
@@ -638,36 +638,10 @@ def command_include_from_batch(
             failed_files=failed_files,
             candidate_counts=candidate_counts,
         )
-        if len(failed_files) == 1:
-            # Check if there are individually mergeable lines to suggest --lines
-            file_path = failed_files[0]
-            rendered = render_batch_file_display(batch_name, file_path)
-            has_mergeable_lines = rendered and len(rendered.gutter_to_selection_id) > 0
-
-            if has_mergeable_lines:
-                error_msg = _("Batch '{batch}' contains changes to {file} that are incompatible with the current working tree. "
-                             "Use 'git-stage-batch show --from {batch}' to review the batch, "
-                             "or use '--lines' to apply only specific changes.").format(
-                    batch=batch_name,
-                    file=file_path
-                )
-            else:
-                error_msg = _("Batch '{batch}' contains changes to {file} that are incompatible with the current working tree. "
-                             "Use 'git-stage-batch show --from {batch}' to review the batch.").format(
-                    batch=batch_name,
-                    file=file_path
-                )
-            exit_with_error(error_msg)
-        else:
-            exit_with_error(
-                _("Batch '{batch}' contains changes to one or more files that are incompatible with the current working tree. "
-                  "Failed for: {files}. "
-                  "Use 'git-stage-batch show --from {batch}' to review the batch, "
-                  "or use '--lines' to apply only specific changes.").format(
-                    batch=batch_name,
-                    files=', '.join(failed_files)
-                )
-            )
+        _merge_refusals.refuse_batch_source_merge_failures(
+            batch_name=batch_name,
+            failed_files=failed_files,
+        )
 
     try:
         try:

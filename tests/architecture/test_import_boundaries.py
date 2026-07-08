@@ -3842,6 +3842,53 @@ def test_operation_candidates_owns_candidate_preview_count():
         assert expected_names <= imported_candidate_names
 
 
+def test_output_owns_operation_candidate_preview_rendering():
+    """Operation candidate preview rendering should live in output."""
+    candidate_preview = __import__(
+        "git_stage_batch.output.candidate_preview",
+        fromlist=["candidate_preview"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    public_names = {
+        "render_operation_candidate",
+        "render_operation_candidate_overview",
+    }
+    moved_names = {
+        "_candidate_overview_subject",
+        "_execute_candidate_command",
+        "_print_candidate_buffer_diff",
+        "_show_candidate_command",
+        "_summarize_ambiguity_block",
+        "_summarize_candidate_target",
+        "_CandidateSnippetLine",
+        "_CandidateTargetSummary",
+    }
+    show_from_tree = ast.parse(show_from_path.read_text(), filename=str(show_from_path))
+    show_from_helpers = {
+        node.name
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    show_from_renderer_imports = set()
+    candidate_preview_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_preview_path)
+    }
+
+    for imported_module, node in _import_from_nodes(show_from_path):
+        if imported_module != "git_stage_batch.output.candidate_preview":
+            continue
+        show_from_renderer_imports |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(candidate_preview).keys()
+    assert moved_names <= vars(candidate_preview).keys()
+    assert public_names <= show_from_renderer_imports
+    assert moved_names.isdisjoint(show_from_helpers)
+    assert "git_stage_batch.output.colors" in candidate_preview_imports
+    assert "git_stage_batch.core.diff_parser" in candidate_preview_imports
+
+
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(

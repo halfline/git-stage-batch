@@ -26,142 +26,29 @@ from typing import Optional
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
-from ..batch.ownership import BatchOwnership
-from ..batch.query import get_batch_baseline_commit, read_batch_metadata
+from ..batch.query import read_batch_metadata
 from ..batch.state_refs import (
     delete_batch_state_refs,
     get_batch_content_ref_name,
     sync_batch_state_refs,
 )
-from ..batch.storage import (
-    add_binary_file_to_batch,
-    remove_file_from_batch_commit,
-    update_batch_commit,
-)
+from ..batch.storage import add_binary_file_to_batch
 from ..batch.validation import batch_exists, validate_batch_name
 from ..batch.source_selector import require_plain_batch_name
+from .batch_transform import sift_persistence as _sift_persistence
 from .batch_transform import sift_results as _sift_results
-from ..core.text_lifecycle import (
-    TextFileChangeType,
-    normalized_text_change_type,
-)
 from ..core.buffer import LineBuffer
 from ..exceptions import BatchMetadataError, exit_with_error
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
-    create_git_blob,
     get_git_repository_root_path,
-    git_commit_tree,
-    git_read_tree,
-    git_update_index,
-    git_write_tree,
     require_git_repository,
     run_git_command,
-    temp_git_index,
 )
 from ..utils.paths import (
     get_batch_metadata_file_path,
 )
-
-
-def create_synthetic_batch_source_commit(
-    baseline_commit: str,
-    file_path: str,
-    file_buffer: LineBuffer,
-    file_mode: str = "100644",
-) -> str:
-    """Create a synthetic batch source commit for a single file.
-
-    The created commit has ``baseline_commit`` as its parent, but the file at
-    ``file_path`` contains ``file_buffer``. Sift uses this to persist target
-    buffers for text files in a batch-source commit even when that content does
-    not exist as-is in history.
-    """
-    blob_sha = create_git_blob(file_buffer.byte_chunks())
-
-    with temp_git_index() as env:
-        git_read_tree(baseline_commit, env=env)
-        git_update_index(mode=file_mode, blob_sha=blob_sha, file_path=file_path, env=env)
-        new_tree = git_write_tree(env=env)
-
-    return git_commit_tree(
-        new_tree,
-        parents=[baseline_commit],
-        message=f"Sift batch source for {file_path}",
-    )
-
-
-
-def add_sifted_text_file_to_batch(
-    batch_name: str,
-    file_path: str,
-    target_buffer: LineBuffer,
-    ownership: BatchOwnership,
-    file_mode: str = "100644",
-    change_type: str | None = None,
-) -> None:
-    """Persist a sifted text file into a batch.
-
-    ``target_buffer`` is the file content the sifted batch wants to realize
-    when merged with an appropriate working tree. For sifted text files, the
-    synthetic batch-source commit stores this target buffer directly, and the
-    batch ref stores the same target buffer directly.
-
-    The ownership is expressed in ``target_buffer`` coordinate space and is
-    validated separately against the working tree before this helper is called.
-    """
-    validate_batch_name(batch_name)
-
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    baseline_commit = get_batch_baseline_commit(batch_name)
-    if not baseline_commit:
-        exit_with_error(_("Batch '{name}' has no baseline commit").format(name=batch_name))
-
-    batch_source_commit = create_synthetic_batch_source_commit(
-        baseline_commit=baseline_commit,
-        file_path=file_path,
-        file_buffer=target_buffer,
-        file_mode=file_mode,
-    )
-
-    target_blob_sha = create_git_blob(target_buffer.byte_chunks())
-
-    metadata = read_batch_metadata(batch_name)
-    if "files" not in metadata:
-        metadata["files"] = {}
-
-    text_change_type = normalized_text_change_type(change_type)
-    file_metadata = {
-        "batch_source_commit": batch_source_commit,
-        **ownership.to_metadata_dict(),
-        "mode": file_mode,
-    }
-    if text_change_type != TextFileChangeType.MODIFIED:
-        file_metadata["change_type"] = text_change_type.value
-    metadata["files"][file_path] = file_metadata
-
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
-
-    source_buffers = {file_path: target_buffer}
-    if text_change_type == TextFileChangeType.DELETED:
-        remove_file_from_batch_commit(
-            batch_name,
-            file_path,
-            source_buffers=source_buffers,
-        )
-    else:
-        update_batch_commit(
-            batch_name,
-            file_path,
-            target_blob_sha,
-            file_mode,
-            source_buffers=source_buffers,
-        )
-
 
 
 def command_sift_batch(source_batch: str, dest_batch: str) -> None:
@@ -255,7 +142,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                         file_buffer_override=result.get("target_buffer"),
                     )
                 else:
-                    add_sifted_text_file_to_batch(
+                    _sift_persistence.add_sifted_text_file_to_batch(
                         batch_name=dest_batch,
                         file_path=file_path,
                         target_buffer=result["target_buffer"],
@@ -319,7 +206,6 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
             )
 
 
-
 def _perform_atomic_in_place_sift(
     batch_name: str,
     retained_files: list,
@@ -347,7 +233,7 @@ def _perform_atomic_in_place_sift(
                     file_buffer_override=result.get("target_buffer"),
                 )
             else:
-                add_sifted_text_file_to_batch(
+                _sift_persistence.add_sifted_text_file_to_batch(
                     batch_name=temp_batch_name,
                     file_path=file_path,
                     target_buffer=result["target_buffer"],
@@ -405,7 +291,6 @@ def _target_buffer_from_sift_result(result: dict) -> LineBuffer | None:
     if isinstance(target_buffer, LineBuffer):
         return target_buffer
     return None
-
 
 
 def _handle_empty_source_batch(source_batch: str, dest_batch: str) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -32,11 +33,84 @@ from ...exceptions import MergeError
 from ...utils.text import normalize_line_sequence_endings
 
 
+@dataclass
+class SiftedBinaryFileResult:
+    """Sift result for a binary file retained in the destination batch."""
+
+    binary_change: BinaryFileChange
+    target_buffer: LineBuffer | None = None
+
+    def target_source_buffer(self) -> LineBuffer | None:
+        return self.target_buffer
+
+    def close(self) -> None:
+        if self.target_buffer is not None:
+            self.target_buffer.close()
+
+    def __contains__(self, key: str) -> bool:
+        if key in {"type", "binary_change"}:
+            return True
+        return key == "target_buffer" and self.target_buffer is not None
+
+    def __getitem__(self, key: str) -> object:
+        if key == "type":
+            return "binary"
+        if key == "binary_change":
+            return self.binary_change
+        if key == "target_buffer" and self.target_buffer is not None:
+            return self.target_buffer
+        raise KeyError(key)
+
+    def get(self, key: str, default: object = None) -> object:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+
+@dataclass
+class SiftedTextFileResult:
+    """Sift result for a text file retained in the destination batch."""
+
+    ownership: BatchOwnership
+    target_buffer: LineBuffer
+    change_type: str
+
+    def target_source_buffer(self) -> LineBuffer | None:
+        return self.target_buffer
+
+    def close(self) -> None:
+        self.target_buffer.close()
+
+    def __contains__(self, key: str) -> bool:
+        return key in {"type", "ownership", "target_buffer", "change_type"}
+
+    def __getitem__(self, key: str) -> object:
+        if key == "type":
+            return "text"
+        if key == "ownership":
+            return self.ownership
+        if key == "target_buffer":
+            return self.target_buffer
+        if key == "change_type":
+            return self.change_type
+        raise KeyError(key)
+
+    def get(self, key: str, default: object = None) -> object:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+
+SiftedFileResult = SiftedBinaryFileResult | SiftedTextFileResult
+
+
 def compute_sifted_binary_file(
     file_path: str,
     file_meta: dict,
     repo_root: Path,
-) -> Optional[dict]:
+) -> Optional[SiftedBinaryFileResult]:
     """Compute a sifted binary file result."""
     batch_source_commit = file_meta["batch_source_commit"]
     change_type = file_meta["change_type"]
@@ -66,16 +140,15 @@ def compute_sifted_binary_file(
         old_path = file_path if change_type != "added" else "/dev/null"
         new_path = file_path if change_type != "deleted" else "/dev/null"
 
-        result = {
-            "type": "binary",
-            "binary_change": BinaryFileChange(
+        result = SiftedBinaryFileResult(
+            binary_change=BinaryFileChange(
                 old_path=old_path,
                 new_path=new_path,
                 change_type=change_type,
             ),
-        }
+        )
         if target_buffer is not None:
-            result["target_buffer"] = target_buffer
+            result.target_buffer = target_buffer
             target_buffer = None
         return result
     finally:
@@ -91,7 +164,7 @@ def compute_sifted_text_file(
     file_path: str,
     file_meta: dict,
     repo_root: Path,
-) -> Optional[dict]:
+) -> Optional[SiftedTextFileResult]:
     """Compute a sifted text file result."""
     batch_source_commit = file_meta["batch_source_commit"]
     change_type = normalized_text_change_type(file_meta.get("change_type"))
@@ -158,12 +231,11 @@ def compute_sifted_text_file(
 
             returned_target_buffer = target_buffer
             target_buffer = None
-            return {
-                "type": "text",
-                "ownership": new_ownership,
-                "target_buffer": returned_target_buffer,
-                "change_type": result_change_type.value,
-            }
+            return SiftedTextFileResult(
+                ownership=new_ownership,
+                target_buffer=returned_target_buffer,
+                change_type=result_change_type.value,
+            )
         finally:
             if target_buffer is not None:
                 target_buffer.close()

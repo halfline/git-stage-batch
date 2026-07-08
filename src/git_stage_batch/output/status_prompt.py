@@ -81,7 +81,7 @@ def _prompt_values(summary: dict | None = None) -> dict:
     progress_label = _("in progress") if progress_status == "in_progress" else _("complete")
     processed = progress["included"] + progress["skipped"] + progress["discarded"]
     total = processed + progress["remaining"]
-    status = "STAGING"
+    status = DEFAULT_PROMPT_FORMAT
 
     return {
         "active": session["active"],

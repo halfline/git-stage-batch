@@ -1554,10 +1554,15 @@ def test_tui_asset_menu_owns_install_assets_action():
 def test_tui_flow_menu_owns_batch_selection_menus():
     """TUI flow selection should live in the flow menu adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    flow_actions_path = SRC_ROOT / "tui" / "flow_actions.py"
     flow_menu_path = SRC_ROOT / "tui" / "flow_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
         fromlist=["interactive"],
+    )
+    flow_actions = __import__(
+        "git_stage_batch.tui.flow_actions",
+        fromlist=["flow_actions"],
     )
     flow_menu = __import__(
         "git_stage_batch.tui.flow_menu",
@@ -1567,15 +1572,21 @@ def test_tui_flow_menu_owns_batch_selection_menus():
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
+    flow_actions_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(flow_actions_path)
+    }
     flow_menu_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(flow_menu_path)
     }
 
+    assert "handle_flow_action" in vars(flow_actions)
     assert {"handle_from_menu", "handle_to_menu"} <= vars(flow_menu).keys()
     assert "_handle_from" not in vars(interactive)
     assert "_handle_to" not in vars(interactive)
-    assert "git_stage_batch.tui.flow_menu" in interactive_imports
+    assert "git_stage_batch.tui.flow_actions" in interactive_imports
+    assert "git_stage_batch.tui.flow_menu" in flow_actions_imports
     assert "git_stage_batch.batch.query" not in interactive_imports
     assert "git_stage_batch.commands.new" not in interactive_imports
     assert "git_stage_batch.batch.query" in flow_menu_imports

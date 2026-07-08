@@ -5,24 +5,15 @@ from __future__ import annotations
 from contextlib import ExitStack
 import sys
 
-from ..batch.operations import create_batch
-from ..batch.storage import (
-    add_file_to_batch,
-)
-from ..batch.display import annotate_with_batch_source
 from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
 )
-from ..batch.query import read_batch_metadata
 from ..batch.selection import (
     require_line_selection_in_view,
 )
-from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
-from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     acquire_unified_diff,
-    build_line_changes_from_patch_lines,
     patch_is_file_deletion,
 )
 from ..core.hashing import (
@@ -58,7 +49,6 @@ from ..data.selected_change.clear_reasons import (
 from ..data.file_hunk_display import (
     cache_unstaged_file_as_single_hunk,
 )
-from ..data.file_modes import detect_file_mode
 from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
     finish_review_scoped_line_action,
@@ -71,7 +61,6 @@ from ..data.file_tracking import auto_add_untracked_files
 from ..data.live_diff import stream_live_git_diff
 from ..data.progress import (
     record_hunk_included,
-    record_hunk_skipped,
 )
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
@@ -89,8 +78,6 @@ from ..staging.operations import (
     update_index_with_blob_buffer,
 )
 from ..utils.file_io import (
-    append_lines_to_file,
-    read_text_file_line_set,
     read_text_file_contents,
 )
 from ..utils.git import (
@@ -102,7 +89,6 @@ from ..utils.git import (
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
-    get_block_list_file_path,
     get_context_lines,
     get_index_snapshot_file_path,
     get_selected_hunk_hash_file_path,
@@ -114,6 +100,7 @@ from .selection import include_line_selection as _include_line_selection
 from .selection import include_line_batching as _include_line_batching
 from .selection import include_line_replacement as _include_line_replacement
 from .selection import replacement_selection
+from .selection import selected_change_batch_staging as _selected_change_batch_staging
 from .selection import whole_file_batch_staging as _whole_file_batch_staging
 from .file_scope import include_file_replacement as _file_scope_include_file_replacement
 from .file_scope import include_file_to_batch as _file_scope_include_file_to_batch
@@ -875,9 +862,8 @@ def command_include_to_batch(
                 )
                 return
             else:
-                _command_include_hunk_to_batch(
+                _selected_change_batch_staging.include_selected_change_to_batch(
                     batch_name,
-                    file_only=False,
                     quiet=quiet,
                     auto_advance=auto_advance,
                 )
@@ -897,9 +883,8 @@ def command_include_to_batch(
                 )
                 return
             else:
-                _command_include_hunk_to_batch(
+                _selected_change_batch_staging.include_selected_change_to_batch(
                     batch_name,
-                    file_only=False,
                     quiet=quiet,
                     auto_advance=auto_advance,
                 )
@@ -919,9 +904,8 @@ def command_include_to_batch(
                 )
                 return
             else:
-                _command_include_hunk_to_batch(
+                _selected_change_batch_staging.include_selected_change_to_batch(
                     batch_name,
-                    file_only=False,
                     quiet=quiet,
                     auto_advance=auto_advance,
                 )
@@ -966,196 +950,10 @@ def command_include_to_batch(
                 )
             else:
                 # Include entire selected hunk
-                _command_include_hunk_to_batch(
+                _selected_change_batch_staging.include_selected_change_to_batch(
                     batch_name,
-                    file_only=False,
                     quiet=quiet,
                     auto_advance=auto_advance,
                 )
     if original_file_scope in (None, "") and line_ids is not None:
         finish_review_scoped_line_action(review_state)
-
-
-def _command_include_hunk_to_batch(
-    batch_name: str,
-    file_only: bool = False,
-    *,
-    quiet: bool = False,
-    auto_advance: bool | None = None,
-) -> None:
-    """Save whole hunk or file to batch (internal helper)."""
-
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    # Load blocklist
-    blocklist_path = get_block_list_file_path()
-    blocked_hashes = read_text_file_line_set(blocklist_path)
-
-    # Stream diff to find first non-blocked hunk
-    selected_file_path = None
-    selected_line_changes = None
-    selected_hash = None
-    with acquire_unified_diff(
-        stream_live_git_diff(
-            context_lines=get_context_lines(),
-            full_index=True,
-            ignore_submodules="none",
-            submodule_format="short",
-        )
-    ) as patches:
-        for patch in patches:
-            if isinstance(patch, RenameChange):
-                continue
-
-            if isinstance(patch, TextFileDeletionChange):
-                patch_hash = compute_text_file_deletion_hash(patch)
-                if patch_hash not in blocked_hashes:
-                    _whole_file_batch_staging.include_text_deletion_to_batch(
-                        batch_name,
-                        patch,
-                        quiet=quiet,
-                        auto_advance=auto_advance,
-                    )
-                    return
-                continue
-
-            if isinstance(patch, GitlinkChange):
-                patch_hash = compute_gitlink_change_hash(patch)
-                if patch_hash not in blocked_hashes:
-                    _whole_file_batch_staging.include_gitlink_to_batch(
-                        batch_name,
-                        patch,
-                        quiet=quiet,
-                        auto_advance=auto_advance,
-                    )
-                    return
-                continue
-
-            if isinstance(patch, BinaryFileChange):
-                patch_hash = compute_binary_file_hash(patch)
-                if patch_hash not in blocked_hashes:
-                    _whole_file_batch_staging.include_binary_to_batch(
-                        batch_name,
-                        patch,
-                        quiet=quiet,
-                        auto_advance=auto_advance,
-                    )
-                    return
-                continue
-
-            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-            if patch_hash not in blocked_hashes:
-                selected_file_path = patch.new_path
-                selected_line_changes = build_line_changes_from_patch_lines(
-                    patch.lines,
-                    annotator=annotate_with_batch_source,
-                )
-                selected_hash = patch_hash
-                break
-
-    if selected_file_path is None or selected_line_changes is None or selected_hash is None:
-        print(_("No changes to process."), file=sys.stderr)
-        return
-
-    # Get the file path
-    file_path = selected_file_path
-
-    # Detect file mode
-    file_mode = detect_file_mode(file_path)
-
-    # Collect all lines to batch (either selected hunk or all hunks from file)
-    all_lines_to_batch = []
-    all_display_ids_to_batch = set()
-    processed_hunks = []
-
-    if file_only:
-        # Collect ALL hunks from this file
-        with acquire_unified_diff(
-            stream_live_git_diff(
-                context_lines=get_context_lines(),
-                full_index=True,
-                ignore_submodules="none",
-                submodule_format="short",
-            )
-        ) as patches:
-            for patch in patches:
-                if isinstance(patch, (RenameChange, TextFileDeletionChange)):
-                    continue
-
-                if patch.new_path != file_path:
-                    continue
-
-                patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-
-                if patch_hash in blocked_hashes:
-                    continue
-
-                # Parse hunk to get lines
-                line_changes = build_line_changes_from_patch_lines(
-                    patch.lines,
-                    annotator=annotate_with_batch_source,
-                )
-                all_lines_to_batch.extend(line_changes.lines)
-                all_display_ids_to_batch.update(line.id for line in line_changes.lines if line.id is not None)
-                processed_hunks.append((line_changes, patch_hash))
-    else:
-        # Just selected hunk
-        line_changes = selected_line_changes
-        all_lines_to_batch = line_changes.lines
-        all_display_ids_to_batch = {line.id for line in line_changes.lines if line.id is not None}
-        processed_hunks = [(line_changes, selected_hash)]
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(file_path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    file_metadata=file_metadata,
-                    selected_lines=all_lines_to_batch,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot include to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\nBatch: {batch}\nError: {error}").format(
-                    file=file_path, batch=batch_name, error=str(e))
-            )
-
-        # Save to batch using batch source model (once, with all accumulated data)
-        add_file_to_batch(
-            batch_name,
-            file_path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
-        )
-
-    # Mark hunks as processed
-    for hunk_lines, patch_hash in processed_hunks:
-        # Mark this hunk as processed
-        append_lines_to_file(blocklist_path, [patch_hash])
-
-        # Record hunk as skipped for progress tracking
-        record_hunk_skipped(hunk_lines, patch_hash)
-
-    # Print success message
-    if not quiet:
-        if file_only:
-            msg = ngettext(
-                "✓ {count} hunk from {file} saved to batch '{name}'",
-                "✓ {count} hunks from {file} saved to batch '{name}'",
-                len(processed_hunks)
-            ).format(count=len(processed_hunks), file=file_path, name=batch_name)
-            print(msg, file=sys.stderr)
-        else:
-            print(_("✓ Hunk saved to batch '{name}'").format(name=batch_name), file=sys.stderr)
-
-    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)

@@ -2708,6 +2708,60 @@ def test_include_line_selection_stays_in_command_helper():
     assert include_imports_helper
 
 
+def test_include_line_replacement_stays_in_command_helper():
+    """Include line-replacement support should stay out of the command entrypoint."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_replacement.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.include_line_replacement",
+        fromlist=["include_line_replacement"],
+    )
+    public_names = {
+        "apply_include_line_replacement",
+        "translate_file_view_replacement_to_unstaged_diff",
+    }
+    old_include_names = {
+        "_apply_include_line_replacement",
+        "_line_identity_for_live_replacement",
+        "_translate_file_view_replacement_to_unstaged_diff",
+    }
+    helper_imports = {
+        "build_target_index_buffer_with_replaced_lines",
+        "parse_line_selection",
+        "record_consumed_selection",
+        "render_unstaged_file_as_single_hunk",
+        "require_line_selection_in_view",
+        "update_index_with_blob_buffer",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_names = {
+        node.name
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    include_imports_helper = False
+
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "include_line_replacement" in imported_names:
+            include_imports_helper = True
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert old_include_names.isdisjoint(include_names)
+    assert include_imports_helper
+    assert helper_imports <= helper_imported_names
+
+
 def test_discard_selected_change_discarding_stays_in_command_helper():
     """Discard should use the selected-change discarding helper module."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

@@ -2654,6 +2654,61 @@ def test_include_selected_change_staging_stays_in_command_helper():
     assert public_names <= imported_staging_names
 
 
+def test_include_line_selection_stays_in_command_helper():
+    """Include line-selection support should stay out of the command entrypoint."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper = __import__(
+        "git_stage_batch.commands.selection.include_line_selection",
+        fromlist=["include_line_selection"],
+    )
+    public_names = {
+        "TransientIncludeFailureReason",
+        "TransientIncludeResult",
+        "annotate_line_changes_with_working_tree_source",
+        "line_sequence_ends_with_lf",
+        "record_baseline_references_for_additions",
+        "selected_file_view_is_fresh_for",
+        "selected_file_view_targets",
+        "stage_live_line_target_buffer",
+        "transient_include_failure_message",
+        "try_build_index_content_via_transient_batch",
+    }
+    old_include_names = {
+        "TransientIncludeFailureReason",
+        "TransientIncludeResult",
+        "_annotate_line_changes_with_working_tree_source",
+        "_line_sequence_ends_with_lf",
+        "_record_baseline_references_for_additions",
+        "_restore_session_batch_sources_file",
+        "_selected_file_view_is_fresh_for",
+        "_selected_file_view_targets",
+        "_snapshot_session_batch_sources_file",
+        "_stage_live_line_target_buffer",
+        "_transient_include_failure_message",
+        "_try_build_index_content_via_transient_batch",
+    }
+    include_imports_helper = False
+
+    assert public_names <= vars(helper).keys()
+
+    tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_names = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "include_line_selection" in imported_names:
+            include_imports_helper = True
+
+    assert old_include_names.isdisjoint(include_names)
+    assert include_imports_helper
+
+
 def test_discard_selected_change_discarding_stays_in_command_helper():
     """Discard should use the selected-change discarding helper module."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

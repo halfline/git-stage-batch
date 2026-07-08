@@ -1627,6 +1627,50 @@ def test_selected_change_batch_discarding_owns_hunk_pipeline():
     assert helper_imports <= helper_imported_names
 
 
+def test_selected_file_discarding_owns_selected_file_pipeline():
+    """Selected file-scope discard support should stay out of discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_file_discarding.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.selected_file_discarding",
+        fromlist=["selected_file_discarding"],
+    )
+    public_names = {
+        "discard_selected_file",
+    }
+    old_command_helper_names = {
+        "_command_discard_selected_file",
+    }
+    helper_imports = {
+        "finish_selected_change_action",
+        "get_selected_change_file_path",
+        "snapshot_file_if_untracked",
+        "undo_checkpoint",
+    }
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_names = {
+        node.name
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    discard_imported_names = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.selection":
+            discard_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert old_command_helper_names.isdisjoint(discard_names)
+    assert "selected_file_discarding" in discard_imported_names
+    assert helper_imports <= helper_imported_names
+
+
 def test_argument_parser_uses_file_scope_resolver_module():
     """Parser branches should not own repository file-scope resolution."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"

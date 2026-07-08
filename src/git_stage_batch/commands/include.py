@@ -613,53 +613,11 @@ def command_include_line(
         operation_parts.extend(["--file", file])
 
     with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
-        preserve_selected_state = False
-        saved_selected_state = None
-
-        if file is None:
-            require_selected_hunk()
-            line_changes = load_line_changes_from_state()
-            line_changes = (
-                _include_line_selection.annotate_line_changes_with_working_tree_source(
-                    line_changes
-                )
-            )
-        else:
-            if file == "":
-                target_file = get_selected_change_file_path()
-                if target_file is None:
-                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-            else:
-                target_file = file
-            auto_add_untracked_files([target_file])
-            selected_file_view_targets_file = (
-                _include_line_selection.selected_file_view_targets(target_file)
-            )
-            reuse_selected_file_view = (
-                _include_line_selection.selected_file_view_is_fresh_for(target_file)
-            )
-            if reuse_selected_file_view:
-                line_changes = load_line_changes_from_state()
-                line_changes = (
-                    _include_line_selection.annotate_line_changes_with_working_tree_source(
-                        line_changes
-                    )
-                )
-            else:
-                if file != "" and not selected_file_view_targets_file:
-                    preserve_selected_state = True
-                    saved_selected_state = selected_state_stack.enter_context(
-                        snapshot_selected_change_state()
-                    )
-
-                line_changes = cache_unstaged_file_as_single_hunk(target_file)
-                if line_changes is None:
-                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-                line_changes = (
-                    _include_line_selection.annotate_line_changes_with_working_tree_source(
-                        line_changes
-                    )
-                )
+        selection_context = _include_line_selection.load_include_line_selection_context(
+            file,
+            selected_state_stack,
+        )
+        line_changes = selection_context.line_changes
 
         requested_ids = parse_line_selection(line_id_specification)
         require_line_selection_in_view(
@@ -667,7 +625,7 @@ def command_include_line(
             set(requested_ids),
             line_id_specification=line_id_specification,
         )
-        if preserve_selected_state or (file is not None and not reuse_selected_file_view):
+        if selection_context.reset_processed_include_ids:
             already_included_ids = set()
         else:
             already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
@@ -764,9 +722,9 @@ def command_include_line(
                 target_index_buffer,
             )
 
-        if preserve_selected_state:
-            assert saved_selected_state is not None
-            restore_selected_change_state(saved_selected_state)
+        if selection_context.preserve_selected_state:
+            assert selection_context.saved_selected_state is not None
+            restore_selected_change_state(selection_context.saved_selected_state)
         else:
             # Update processed include IDs only when the selected display remains
             # current for incremental line inclusion.
@@ -783,7 +741,7 @@ def command_include_line(
                 auto_advance=auto_advance,
             )
         finish_review_scoped_line_action(review_state, file_path=line_changes.path)
-    if preserve_selected_state:
+    if selection_context.preserve_selected_state:
         print(
             _("✓ Included line(s): {lines} from {file}").format(
                 lines=line_id_specification,

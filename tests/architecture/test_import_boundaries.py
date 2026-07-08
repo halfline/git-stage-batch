@@ -2146,6 +2146,44 @@ def test_tui_file_review_display_owns_review_rendering():
     assert "git_stage_batch.tui.display" in display_imports
 
 
+def test_tui_file_review_candidates_own_candidate_browser():
+    """TUI file review candidates should own batch candidate browsing."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    candidates_path = SRC_ROOT / "tui" / "file_review" / "candidates.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    candidates = __import__(
+        "git_stage_batch.tui.file_review.candidates",
+        fromlist=["candidates"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    candidate_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidates_path)
+    }
+    old_review_names = {
+        "_browse_candidates",
+        "_execute_candidate",
+        "_preview_candidate",
+        "_prompt_candidate_action",
+        "_prompt_candidate_operation",
+    }
+
+    assert "browse_candidates" in vars(candidates)
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.candidates" in review_imports
+    assert "git_stage_batch.commands.apply_from" not in review_imports
+    assert "git_stage_batch.commands.show_from" not in review_imports
+    assert "git_stage_batch.commands.apply_from" in candidate_imports
+    assert "git_stage_batch.commands.include_from" in candidate_imports
+    assert "git_stage_batch.commands.show_from" in candidate_imports
+
+
 def test_commands_do_not_import_tui():
     """Command modules should not launch or depend on TUI modules."""
     violations = []

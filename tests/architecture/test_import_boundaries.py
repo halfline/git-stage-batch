@@ -704,6 +704,51 @@ def test_binary_diff_owns_binary_parser_helpers():
         assert name not in diff_parser_text
 
 
+def test_empty_file_diff_owns_empty_file_parser_helpers():
+    """Empty-file diff helpers should stay outside the general parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    empty_file_diff_path = SRC_ROOT / "core" / "empty_file_diff.py"
+    diff_parser_text = diff_parser_path.read_text()
+    empty_file_diff_text = empty_file_diff_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    empty_file_diff = __import__(
+        "git_stage_batch.core.empty_file_diff",
+        fromlist=["empty_file_diff"],
+    )
+    public_names = {
+        "metadata_indicates_new_empty_file",
+        "synthetic_empty_file_patch_lines",
+    }
+    helper_constants = {
+        "EMPTY_BLOB_SHORT_HASH",
+        "NEW_FILE_MODE_MARKER",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(empty_file_diff).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "empty_file_diff" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.empty_file_diff" not in diff_imports
+    assert "_empty_file_diff.SYNTHETIC_EMPTY_HUNK_HEADER" in diff_parser_text
+    assert "_empty_file_diff.metadata_indicates_new_empty_file" in diff_parser_text
+    assert "_empty_file_diff.synthetic_empty_file_patch_lines" in diff_parser_text
+    assert "e69de29" not in diff_parser_text
+    assert "new file mode" not in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_constants:
+        assert name in empty_file_diff_text
+        assert name not in diff_parser_text
+
+
 def test_gitlink_diff_owns_gitlink_parser_helpers():
     """Gitlink-specific diff helpers should stay outside the general parser."""
     diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"

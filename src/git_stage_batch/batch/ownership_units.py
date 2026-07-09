@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from enum import Enum
 
 from ..core.line_selection import LineRanges, LineSelection
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
 from .display import build_display_lines_from_batch_source_lines
 from .ownership import (
-    AbsenceClaim,
     BatchOwnership,
     ReplacementUnit,
-    ReplacementUnitOrigin,
 )
 from .ownership_claims import (
     LineRangeBuilder,
@@ -22,53 +18,17 @@ from .ownership_claims import (
     parse_ownership_line_ranges,
     presence_claims_from_source_lines,
 )
+from .ownership_unit_types import (
+    OwnershipUnit as _UnitRecord,
+    OwnershipUnitKind as _UnitKind,
+)
 from .ownership_replacement_units import normalize_replacement_units
-
-
-class OwnershipUnitKind(Enum):
-    """Type of ownership unit for semantic filtering operations."""
-
-    PRESENCE_ONLY = "presence_only"
-    """Pure claimed lines with no coupled deletions (non-atomic)."""
-
-    REPLACEMENT = "replacement"
-    """Claimed lines coupled with absence claims (atomic)."""
-
-    DELETION_ONLY = "deletion_only"
-    """Pure absence claims with no claimed lines (atomic)."""
-
-
-@dataclass
-class OwnershipUnit:
-    """Semantic unit of ownership that should be manipulated atomically.
-
-    Represents the coupling between claimed lines and absence claims.
-    Used for semantic filtering operations like line-level reset.
-
-    Attributes:
-        kind: Type of ownership unit
-        claimed_source_lines: Batch source line numbers owned by this unit
-        deletion_claims: Absence claims that are part of this unit
-        display_line_ids: Display line IDs that map to this unit (from reconstructed display)
-        is_atomic: If True, partial removal is not allowed
-        atomic_reason: Explanation for why unit is atomic (for debugging/errors)
-        preserves_replacement_unit: True when this unit came from persisted replacement metadata
-        replacement_origin: Original parent replacement context, when known
-    """
-    kind: OwnershipUnitKind
-    claimed_source_lines: LineRanges
-    deletion_claims: list[AbsenceClaim]
-    display_line_ids: LineRanges
-    is_atomic: bool = False
-    atomic_reason: str | None = None
-    preserves_replacement_unit: bool = False
-    replacement_origin: ReplacementUnitOrigin | None = None
 
 
 def build_ownership_units_from_display_lines(
     ownership: BatchOwnership,
     display_lines: list[dict],
-) -> list[OwnershipUnit]:
+) -> list[_UnitRecord]:
     """Build semantic ownership units from already reconstructed display lines.
 
     This is the fast path for callers that already need display lines for
@@ -176,8 +136,8 @@ def build_ownership_units_from_display_lines(
             else:
                 # Presence-only unit: one claimed line without adjacent deletions
                 # One unit per line allows independent reset
-                units.append(OwnershipUnit(
-                    kind=OwnershipUnitKind.PRESENCE_ONLY,
+                units.append(_UnitRecord(
+                    kind=_UnitKind.PRESENCE_ONLY,
                     claimed_source_lines=LineRanges.from_lines([claimed_source_line]),
                     deletion_claims=[],
                     display_line_ids=LineRanges.from_lines([claimed_display_id]),
@@ -191,7 +151,7 @@ def build_ownership_units_from_display_lines(
     return sorted(units, key=_ownership_unit_display_order_key)
 
 
-def _ownership_unit_display_order_key(unit: OwnershipUnit) -> int:
+def _ownership_unit_display_order_key(unit: _UnitRecord) -> int:
     """Return the first visible display line covered by a semantic unit."""
     return unit.display_line_ids.first() or 10**12
 
@@ -199,9 +159,9 @@ def _ownership_unit_display_order_key(unit: OwnershipUnit) -> int:
 def _build_explicit_replacement_units_from_display_lines(
     ownership: BatchOwnership,
     display_lines: list[dict],
-) -> tuple[list[OwnershipUnit], LineRanges, set[int]]:
+) -> tuple[list[_UnitRecord], LineRanges, set[int]]:
     """Build units from persisted replacement metadata."""
-    units: list[OwnershipUnit] = []
+    units: list[_UnitRecord] = []
     consumed_claimed_lines = LineRanges.empty()
     consumed_deletion_indices: set[int] = set()
 
@@ -245,8 +205,8 @@ def _build_explicit_replacement_units_from_display_lines(
             ownership.deletions[index]
             for index in sorted(deletion_indices)
         ]
-        units.append(OwnershipUnit(
-            kind=OwnershipUnitKind.REPLACEMENT,
+        units.append(_UnitRecord(
+            kind=_UnitKind.REPLACEMENT,
             claimed_source_lines=claimed_source_lines,
             deletion_claims=deletion_claims,
             display_line_ids=claimed_display_ids.union(deletion_display_ids),
@@ -330,7 +290,7 @@ def _build_replacement_unit(
     ownership: BatchOwnership,
     deletion_run: dict,
     claimed_run: dict
-) -> OwnershipUnit:
+) -> _UnitRecord:
     """Build a REPLACEMENT unit from adjacent deletion and claimed runs.
 
     Args:
@@ -346,8 +306,8 @@ def _build_replacement_unit(
         for idx in set(deletion_run["deletion_indices"])
     ]
 
-    return OwnershipUnit(
-        kind=OwnershipUnitKind.REPLACEMENT,
+    return _UnitRecord(
+        kind=_UnitKind.REPLACEMENT,
         claimed_source_lines=LineRanges.from_lines(claimed_run["source_lines"]),
         deletion_claims=deletion_claims,
         display_line_ids=LineRanges.from_lines(
@@ -361,7 +321,7 @@ def _build_replacement_unit(
 def _build_deletion_only_unit(
     ownership: BatchOwnership,
     deletion_run: dict
-) -> OwnershipUnit:
+) -> _UnitRecord:
     """Build a DELETION_ONLY unit from a deletion run with no adjacent claimed lines.
 
     Args:
@@ -376,8 +336,8 @@ def _build_deletion_only_unit(
         for idx in set(deletion_run["deletion_indices"])
     ]
 
-    return OwnershipUnit(
-        kind=OwnershipUnitKind.DELETION_ONLY,
+    return _UnitRecord(
+        kind=_UnitKind.DELETION_ONLY,
         claimed_source_lines=LineRanges.empty(),
         deletion_claims=deletion_claims,
         display_line_ids=LineRanges.from_lines(deletion_run["display_ids"]),
@@ -386,7 +346,7 @@ def _build_deletion_only_unit(
     )
 
 
-def validate_ownership_units(units: list[OwnershipUnit]) -> None:
+def validate_ownership_units(units: list[_UnitRecord]) -> None:
     """Validate structural invariants of ownership units.
 
     Ensures:
@@ -414,12 +374,12 @@ def validate_ownership_units(units: list[OwnershipUnit]) -> None:
 
         # Validate atomic units have coherent structure
         if unit.is_atomic:
-            if unit.kind == OwnershipUnitKind.REPLACEMENT:
+            if unit.kind == _UnitKind.REPLACEMENT:
                 if not unit.claimed_source_lines or not unit.deletion_claims:
                     raise MergeError(
                         _("Invalid replacement in batch metadata: expected both added and removed lines.")
                     )
-            elif unit.kind == OwnershipUnitKind.DELETION_ONLY:
+            elif unit.kind == _UnitKind.DELETION_ONLY:
                 if unit.claimed_source_lines or not unit.deletion_claims:
                     raise MergeError(
                         _("Invalid deletion in batch metadata: expected removed lines only.")
@@ -427,9 +387,9 @@ def validate_ownership_units(units: list[OwnershipUnit]) -> None:
 
 
 def select_ownership_units_by_display_ids(
-    units: list[OwnershipUnit],
+    units: list[_UnitRecord],
     selected_display_ids: LineSelection | Iterable[int],
-) -> list[OwnershipUnit]:
+) -> list[_UnitRecord]:
     """Select ownership units that match the given display line IDs.
 
     Validates that atomic units are not partially selected.
@@ -478,9 +438,9 @@ def select_ownership_units_by_display_ids(
 
 
 def filter_ownership_units_by_display_ids(
-    units: list[OwnershipUnit],
+    units: list[_UnitRecord],
     selected_display_ids: LineSelection | Iterable[int],
-) -> tuple[list[OwnershipUnit], list[OwnershipUnit]]:
+) -> tuple[list[_UnitRecord], list[_UnitRecord]]:
     """Filter ownership units, removing those that match display line IDs.
 
     This is a convenience wrapper around select_ownership_units_by_display_ids
@@ -502,7 +462,7 @@ def filter_ownership_units_by_display_ids(
     return remaining, removed
 
 
-def rebuild_ownership_from_units(units: list[OwnershipUnit]) -> BatchOwnership:
+def rebuild_ownership_from_units(units: list[_UnitRecord]) -> BatchOwnership:
     """Rebuild BatchOwnership from semantic ownership units.
 
     Args:
@@ -521,7 +481,10 @@ def rebuild_ownership_from_units(units: list[OwnershipUnit]) -> BatchOwnership:
         for deletion in unit.deletion_claims:
             all_deletions.append(deletion)
             deletion_indices.append(len(all_deletions) - 1)
-        if unit.kind == OwnershipUnitKind.REPLACEMENT and unit.preserves_replacement_unit:
+        if (
+            unit.kind == _UnitKind.REPLACEMENT
+            and unit.preserves_replacement_unit
+        ):
             replacement_units.append(ReplacementUnit(
                 presence_lines=format_ownership_line_set(unit.claimed_source_lines),
                 deletion_indices=deletion_indices,
@@ -541,7 +504,7 @@ def rebuild_ownership_from_units(units: list[OwnershipUnit]) -> BatchOwnership:
 def build_ownership_units_from_batch_source_lines(
     ownership: BatchOwnership,
     batch_source_lines: Sequence[bytes],
-) -> list[OwnershipUnit]:
+) -> list[_UnitRecord]:
     """Build semantic ownership units from indexed batch-source lines.
 
     Persisted replacement metadata is honored first, so captured replacements

@@ -9604,39 +9604,54 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
     assert violations == []
 
 
-def test_batch_realized_entries_uses_public_entry_helpers():
-    """Batch callers should import public realized-entry helpers."""
+def test_batch_realized_entries_owns_entry_view_model():
+    """Realized entry views should stay separate from storage."""
     realized_entries = __import__(
         "git_stage_batch.batch.realized_entries",
         fromlist=["realized_entries"],
     )
+    realized_entries_path = SRC_ROOT / "batch" / "realized_entries.py"
     public_names = {
         "RealizedEntry",
+    }
+    moved_names = {
+        "RealizedEntries",
+        "RealizedEntryContentSequence",
+        "as_realized_entries",
+        "backing_content_sequence",
+        "realized_entry_content_at",
         "realized_entry_content_chunks",
+        "realized_entry_is_claimed_at",
+        "realized_entry_source_line_at",
+        "realized_entry_target_line_at",
     }
     private_names = {
+        "_RealizedEntries",
+        "_RealizedEntryContentSequence",
+        "_as_realized_entries",
+        "_backing_content_sequence",
+        "_entry_content_at",
+        "_entry_is_claimed_at",
+        "_entry_source_line_at",
+        "_entry_target_line_at",
         "_realized_entry_content_chunks",
     }
     expected_imports = {
+        SRC_ROOT / "batch" / "absence_constraints.py": public_names,
         SRC_ROOT / "batch" / "discard.py": public_names,
-        SRC_ROOT / "batch" / "merge.py": {
-            "realized_entry_content_chunks",
-        },
-        SRC_ROOT / "batch" / "source_advancement.py": {
-            "realized_entry_content_chunks",
-        },
-        SRC_ROOT / "batch" / "realized_file_content.py": {
-            "realized_entry_content_chunks",
-        },
+        SRC_ROOT / "batch" / "discard_reversal.py": public_names,
+        SRC_ROOT / "batch" / "presence_constraints.py": public_names,
+        SRC_ROOT / "batch" / "realized_boundaries.py": public_names,
+        SRC_ROOT / "batch" / "realized_entry_storage.py": public_names,
     }
     violations = []
 
-    for public_name in public_names:
-        assert public_name in vars(realized_entries)
+    assert public_names <= vars(realized_entries).keys()
+    assert moved_names.isdisjoint(vars(realized_entries))
     assert private_names.isdisjoint(vars(realized_entries))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "realized_entries.py":
+        if path == realized_entries_path:
             continue
 
         imports = _import_from_nodes(path)
@@ -9648,7 +9663,125 @@ def test_batch_realized_entries_uses_public_entry_helpers():
 
             imported_names = {alias.name for alias in node.names}
             imported_public_names |= imported_names & public_names
-            disallowed_names = imported_names & private_names
+            disallowed_names = imported_names & (moved_names | private_names)
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_realized_entry_storage_owns_compact_storage():
+    """Compact realized-entry storage should live outside entry views."""
+    realized_entries = __import__(
+        "git_stage_batch.batch.realized_entries",
+        fromlist=["realized_entries"],
+    )
+    realized_entry_storage = __import__(
+        "git_stage_batch.batch.realized_entry_storage",
+        fromlist=["realized_entry_storage"],
+    )
+    storage_path = SRC_ROOT / "batch" / "realized_entry_storage.py"
+    public_names = {
+        "RealizedEntries",
+        "RealizedEntryContentSequence",
+        "as_realized_entries",
+        "backing_content_sequence",
+        "realized_entry_content_at",
+        "realized_entry_content_chunks",
+        "realized_entry_is_claimed_at",
+        "realized_entry_source_line_at",
+        "realized_entry_target_line_at",
+    }
+    private_names = {
+        "_RealizedEntries",
+        "_RealizedEntryContentSequence",
+        "_as_realized_entries",
+        "_backing_content_sequence",
+        "_entry_content_at",
+        "_entry_is_claimed_at",
+        "_entry_source_line_at",
+        "_entry_target_line_at",
+        "_realized_entry_content_chunks",
+    }
+    model_names = {
+        "RealizedEntry",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "absence_constraints.py": {
+            "RealizedEntries",
+            "as_realized_entries",
+            "realized_entry_content_at",
+            "realized_entry_is_claimed_at",
+        },
+        SRC_ROOT / "batch" / "discard.py": {
+            "RealizedEntries",
+            "as_realized_entries",
+            "realized_entry_content_chunks",
+        },
+        SRC_ROOT / "batch" / "discard_reversal.py": {
+            "RealizedEntries",
+            "realized_entry_source_line_at",
+        },
+        SRC_ROOT / "batch" / "merge.py": {
+            "realized_entry_content_chunks",
+        },
+        SRC_ROOT / "batch" / "realized_file_content.py": {
+            "realized_entry_content_chunks",
+        },
+        SRC_ROOT / "batch" / "presence_constraints.py": {
+            "RealizedEntries",
+            "RealizedEntryContentSequence",
+            "realized_entry_is_claimed_at",
+            "realized_entry_source_line_at",
+        },
+        SRC_ROOT / "batch" / "realized_boundaries.py": {
+            "RealizedEntries",
+            "realized_entry_content_at",
+            "realized_entry_is_claimed_at",
+            "realized_entry_source_line_at",
+        },
+        SRC_ROOT / "batch" / "realized_mapping.py": {
+            "RealizedEntries",
+            "backing_content_sequence",
+        },
+        SRC_ROOT / "batch" / "source_advancement.py": {
+            "realized_entry_content_chunks",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(realized_entry_storage).keys()
+    assert public_names.isdisjoint(vars(realized_entries))
+    assert model_names.isdisjoint(vars(realized_entry_storage))
+    assert private_names.isdisjoint(vars(realized_entry_storage))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == storage_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.realized_entries":
+                disallowed_names = imported_names & (public_names | private_names)
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.realized_entry_storage":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & (private_names | model_names)
             if disallowed_names:
                 relative_path = path.relative_to(REPO_ROOT)
                 names = ", ".join(sorted(disallowed_names))
@@ -9679,7 +9812,7 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "baseline_correspondence.py": public_names,
-        SRC_ROOT / "batch" / "realized_entries.py": public_names,
+        SRC_ROOT / "batch" / "realized_entry_storage.py": public_names,
     }
     violations = []
 
@@ -9751,7 +9884,7 @@ def test_batch_realized_provenance_owns_run_storage():
         "_stored_line_number",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "realized_entries.py": public_names,
+        SRC_ROOT / "batch" / "realized_entry_storage.py": public_names,
     }
     violations = []
 

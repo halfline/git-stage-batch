@@ -475,6 +475,31 @@ def test_cli_argument_parser_delegates_sift_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_apply_subcommand_registration():
+    """Argument parsing should not own apply parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_apply_subcommand" in vars(batch_subcommands)
+    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    assert "git_stage_batch.cli.apply_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.apply_dispatch" in batch_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
 def test_cli_argument_parser_delegates_new_batch_subcommand_registration():
     """Argument parsing should not own new-batch parser details."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -3408,11 +3433,16 @@ def test_argument_parser_delegates_skip_dispatch():
 def test_argument_parser_delegates_apply_dispatch():
     """Parser construction should not own apply workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
     apply_dispatch_path = SRC_ROOT / "cli" / "apply_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
     }
     apply_dispatch_imports = {
         imported_module
@@ -3431,7 +3461,9 @@ def test_argument_parser_delegates_apply_dispatch():
         "git_stage_batch.commands.file_scope.multi_file_actions",
     }
 
-    assert "git_stage_batch.cli.apply_dispatch" in parser_imports
+    assert "git_stage_batch.cli.batch_subcommands" in parser_imports
+    assert "git_stage_batch.cli.apply_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.apply_dispatch" in batch_subcommands_imports
     assert "git_stage_batch.commands.apply_from" not in parser_imports
     assert apply_runtime_imports <= apply_dispatch_imports
     assert "git_stage_batch.cli.file_scope" in apply_dispatch_imports

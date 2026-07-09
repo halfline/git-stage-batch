@@ -6776,6 +6776,81 @@ def test_batch_merge_validation_owns_structural_checks():
     assert violations == []
 
 
+def test_batch_absence_constraints_own_suppression_helpers():
+    """Absence suppression should live outside merge."""
+    absence_constraints = __import__(
+        "git_stage_batch.batch.absence_constraints",
+        fromlist=["absence_constraints"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    absence_constraints_path = SRC_ROOT / "batch" / "absence_constraints.py"
+    public_names = {
+        "AbsenceChoice",
+        "absence_ambiguity_key",
+        "absence_choices_for_claim",
+        "apply_absence_constraints",
+    }
+    stale_merge_names = public_names | {
+        "_AbsenceChoice",
+        "_absence_ambiguity_key",
+        "_absence_choices_for_claim",
+        "_apply_absence_constraints",
+        "_find_sequence_nearby",
+        "_normalize_line_content",
+        "_position_after_claimed_insertions_at_boundary",
+        "_remove_sequence_at_position",
+        "_sequence_matches_at_position",
+        "_suppress_absence_with_resolution",
+        "_suppress_at_boundary_for_realization",
+        "_suppress_at_boundary_strict",
+        "iter_sequence_occurrences_nearby",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "merge.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(absence_constraints).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == absence_constraints_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & stale_merge_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.absence_constraints":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            private_old_names = imported_names & {
+                name for name in stale_merge_names if name.startswith("_")
+            }
+            if private_old_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_old_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_operation_candidates_owns_candidate_preview_count():
     """Candidate preview count state should live with operation candidates."""
     operation_candidates = __import__(

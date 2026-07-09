@@ -70,6 +70,7 @@ from .file_scope import (
     resolve_live_file_scope,
 )
 from .git_help import GitHelpArgumentParser
+from .quick_actions import expand_quick_actions
 
 
 def _add_subcommand_parser(
@@ -190,24 +191,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     Returns:
         Parsed arguments on success, None if parsing failed
     """
-    # Mapping from shortcuts to their expanded forms
-    quick_actions = {
-        '?': ['--help'],
-        'if': ['include', '--file'],
-        'il': ['include', '--line'],
-        'sf': ['skip', '--file'],
-        'sl': ['skip', '--line'],
-        'df': ['discard', '--file'],
-        'dl': ['discard', '--line'],
-    }
-
-    # Expand quick actions
-    expanded = []
-    for arg in args:
-        if arg in quick_actions:
-            expanded.extend(quick_actions[arg])
-        else:
-            expanded.append(arg)
+    expanded = expand_quick_actions(args)
 
     # Create parser
     parser = GitHelpArgumentParser(

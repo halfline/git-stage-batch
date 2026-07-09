@@ -7,7 +7,7 @@ from git_stage_batch.data.selected_change.hunk_recalculation import (
 def test_recalculate_selected_hunk_for_command_displays_refreshed_change(monkeypatch):
     calls = []
     display_calls = []
-    show_calls = []
+    next_change_calls = []
 
     def fake_recalculate(file_path, *, auto_advance=None):
         calls.append((file_path, auto_advance))
@@ -24,8 +24,9 @@ def test_recalculate_selected_hunk_for_command_displays_refreshed_change(monkeyp
         lambda: display_calls.append(True),
     )
     monkeypatch.setattr(
-        "git_stage_batch.commands.show.command_show",
-        lambda: show_calls.append(True),
+        selected_hunk_refresh,
+        "show_next_unprocessed_change",
+        lambda: next_change_calls.append(True),
     )
 
     selected_hunk_refresh.recalculate_selected_hunk_for_command(
@@ -35,11 +36,11 @@ def test_recalculate_selected_hunk_for_command_displays_refreshed_change(monkeyp
 
     assert calls == [("file.txt", False)]
     assert display_calls == [True]
-    assert show_calls == []
+    assert next_change_calls == []
 
 
 def test_recalculate_selected_hunk_for_command_shows_next_change(monkeypatch):
-    show_calls = []
+    next_change_calls = []
 
     def fake_recalculate(file_path, *, auto_advance=None):
         assert file_path == "file.txt"
@@ -52,8 +53,9 @@ def test_recalculate_selected_hunk_for_command_shows_next_change(monkeypatch):
         fake_recalculate,
     )
     monkeypatch.setattr(
-        "git_stage_batch.commands.show.command_show",
-        lambda: show_calls.append(True),
+        selected_hunk_refresh,
+        "show_next_unprocessed_change",
+        lambda: next_change_calls.append(True),
     )
 
     selected_hunk_refresh.recalculate_selected_hunk_for_command(
@@ -61,7 +63,7 @@ def test_recalculate_selected_hunk_for_command_shows_next_change(monkeypatch):
         auto_advance=True,
     )
 
-    assert show_calls == [True]
+    assert next_change_calls == [True]
 
 
 def test_recalculate_selected_hunk_for_command_reports_empty_hunk(

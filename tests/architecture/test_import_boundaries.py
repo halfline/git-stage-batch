@@ -5679,6 +5679,79 @@ def test_batch_ownership_remapping_owns_public_helpers():
     assert violations == []
 
 
+def test_batch_ownership_translation_owns_public_helpers():
+    """Ownership translation should live outside ownership metadata."""
+    translation = __import__(
+        "git_stage_batch.batch.ownership_translation",
+        fromlist=["ownership_translation"],
+    )
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    public_names = {
+        "detect_stale_batch_source_for_selection",
+        "translate_hunk_selection_to_batch_ownership",
+        "translate_lines_to_batch_ownership",
+    }
+    private_names = {
+        "_detect_stale_batch_source_for_selection",
+        "_translate_hunk_selection_to_batch_ownership",
+        "_translate_lines_to_batch_ownership",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "source_refresh.py": public_names,
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
+            "translate_lines_to_batch_ownership",
+        },
+        SRC_ROOT / "commands" / "selection" / "include_line_selection.py": {
+            "translate_hunk_selection_to_batch_ownership",
+        },
+        SRC_ROOT / "data" / "consumed_selections.py": {
+            "detect_stale_batch_source_for_selection",
+            "translate_lines_to_batch_ownership",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(translation)
+        assert public_name not in vars(ownership)
+    assert private_names.isdisjoint(vars(translation))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "ownership_translation.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.ownership":
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.ownership_translation":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_source_advancement_uses_public_entry_helpers():
     """Source advancement callers should import public advancement helpers."""
     source_advancement = __import__(
@@ -5759,7 +5832,13 @@ def test_batch_absence_content_owns_public_builders():
         "_copy_absence_content",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership.py": public_names,
+        SRC_ROOT / "batch" / "ownership.py": {
+            "copy_absence_content",
+        },
+        SRC_ROOT / "batch" / "ownership_translation.py": {
+            "AbsenceContentBuilder",
+            "build_absence_content_from_range",
+        },
         SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
             "AbsenceContentBuilder",
         },
@@ -5815,9 +5894,7 @@ def test_batch_replacement_line_runs_own_public_derivation():
         "_derive_replacement_line_runs_from_lines",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership.py": {
-            "ReplacementLineRun",
-        },
+        SRC_ROOT / "batch" / "ownership_translation.py": {"ReplacementLineRun"},
         SRC_ROOT / "batch" / "source_refresh.py": {
             "ReplacementLineRun",
         },

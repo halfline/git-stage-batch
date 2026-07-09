@@ -5,51 +5,13 @@ from __future__ import annotations
 import sys
 from typing import Optional
 
-from .batch_source import action_completion as _action_completion
 from .batch_source import action_context as _action_context
 from .batch_source import action_selection as _action_selection
-from .batch_source import action_plans as _action_plans
-from .batch_source import binary_file_actions as _binary_file_actions
+from .batch_source import apply_action as _apply_action
 from .batch_source import candidate_execution as _candidate_execution
-from .batch_source import candidate_preview_counts as _candidate_preview_counts
-from .batch_source import candidate_refusals as _candidate_refusals
-from .batch_source import merge_refusals as _merge_refusals
-from .batch_source import text_file_actions as _text_file_actions
-from .batch_source import text_plan_builders as _text_plan_builders
-from .batch_source import worktree_refusals as _worktree_refusals
-from ..batch.binary_file_content import read_binary_file_from_batch
-from ..batch.selection import (
-    translate_atomic_unit_error_to_gutter_ids,
-)
-from ..batch.submodule_pointer import (
-    apply_submodule_pointer_from_batch,
-    is_batch_submodule_pointer,
-)
 from ..data.file_review.records import FileReviewAction
-from ..data.session import snapshot_file_if_untracked
-from ..data.undo import undo_checkpoint
-from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError
 from ..i18n import _
 from ..utils.git_repository import require_git_repository
-
-
-def _print_binary_worktree_result(
-    file_path: str,
-    action: _binary_file_actions.BinaryWorktreeAction | None,
-) -> None:
-    """Print apply-from status for a binary working-tree action."""
-    if action is None:
-        return
-
-    if action is _binary_file_actions.BinaryWorktreeAction.DELETED:
-        print(_("✓ Deleted binary file: {file}").format(file=file_path), file=sys.stderr)
-    elif action is _binary_file_actions.BinaryWorktreeAction.ADDED:
-        print(_("✓ Applied new binary file: {file}").format(file=file_path), file=sys.stderr)
-    else:
-        print(
-            _("✓ Replaced binary file: {file}").format(file=file_path),
-            file=sys.stderr,
-        )
 
 
 def command_apply_from_batch(
@@ -90,8 +52,6 @@ def command_apply_from_batch(
     files = selection.files
     selected_ids = selection.selected_ids
     selection_ids_to_apply = selection.selection_ids
-    rendered = selection.rendered
-    operation_parts = list(selection.operation_parts)
     if selector.candidate_ordinal is not None:
         _candidate_execution.execute_apply_candidate(
             batch_name=batch_name,
@@ -103,134 +63,11 @@ def command_apply_from_batch(
         )
         return
 
-    failed_files = []
-    candidate_counts = {}
-    apply_plans = []
-
-    for file_path, file_meta in files.items():
-        try:
-            # Binary files are atomic units - handle separately without ownership/merge logic
-            if file_meta.get("file_type") == "binary":
-                batch_buffer = read_binary_file_from_batch(
-                    batch_name,
-                    file_path,
-                    file_meta,
-                )
-                apply_plans.append(
-                    _action_plans.BinaryFileActionPlan(
-                        file_path,
-                        file_meta,
-                        batch_buffer,
-                    )
-                )
-                continue
-            if is_batch_submodule_pointer(file_meta):
-                apply_plans.append(
-                    _action_plans.SubmodulePointerActionPlan(file_path, file_meta)
-                )
-                continue
-
-            try:
-                text_plan_result = (
-                    _text_plan_builders.build_apply_text_file_action_plan(
-                        file_path=file_path,
-                        file_meta=file_meta,
-                        selected_ids=selected_ids,
-                        selection_ids_to_apply=selection_ids_to_apply,
-                    )
-                )
-            except AtomicUnitError as e:
-                if rendered:
-                    translate_atomic_unit_error_to_gutter_ids(
-                        e,
-                        rendered,
-                        "apply",
-                        batch_name,
-                    )
-                _action_plans.close_action_plans(apply_plans)
-                exit_with_error(_("Failed to apply batch '{name}': {error}").format(
-                    name=batch_name,
-                    error=str(e)
-                ))
-
-            if text_plan_result.missing_source:
-                failed_files.append(file_path)
-                continue
-            if text_plan_result.plan is None:
-                continue
-            apply_plans.append(text_plan_result.plan)
-
-        except MergeError:
-            # Merge conflict - batch created from different file version
-            candidate_count = (
-                _candidate_preview_counts.count_apply_candidate_previews_for_file(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    file_meta=file_meta,
-                    selection_ids_to_apply=selection_ids_to_apply,
-                )
-            )
-            if candidate_count.count or candidate_count.too_many or candidate_count.error:
-                candidate_counts[file_path] = candidate_count
-            failed_files.append(file_path)
-        except CommandError:
-            # Re-raise user errors (e.g., partial atomic selection)
-            _action_plans.close_action_plans(apply_plans)
-            raise
-        except Exception as e:
-            print(_("Error applying {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
-            failed_files.append(file_path)
-
-    if failed_files:
-        _action_plans.close_action_plans(apply_plans)
-        _candidate_refusals.refuse_candidate_conflicts(
-            batch_name=batch_name,
-            operation="apply",
-            failed_files=failed_files,
-            candidate_counts=candidate_counts,
-        )
-        _merge_refusals.refuse_batch_source_merge_failures(
-            batch_name=batch_name,
-            failed_files=failed_files,
-        )
-
-    try:
-        try:
-            with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
-                for plan in apply_plans:
-                    snapshot_file_if_untracked(plan.file_path)
-                    if isinstance(plan, _action_plans.ApplyTextFileActionPlan):
-                        _text_file_actions.write_text_file_to_worktree(
-                            plan.file_path,
-                            plan.buffer,
-                            plan.file_mode,
-                            plan.change_type,
-                        )
-                    elif isinstance(plan, _action_plans.BinaryFileActionPlan):
-                        action = _binary_file_actions.write_binary_file_to_worktree(
-                            plan.file_path,
-                            plan.file_meta,
-                            plan.buffer,
-                            missing_content_message=(
-                                f"Binary file metadata for {plan.file_path} "
-                                f"says {plan.file_meta.get('change_type', 'modified')}, "
-                                "but the batch content is missing"
-                            ),
-                        )
-                        _print_binary_worktree_result(plan.file_path, action)
-                    else:
-                        apply_submodule_pointer_from_batch(plan.file_path, plan.file_meta)
-        except CommandError:
-            raise
-        except Exception:
-            _worktree_refusals.refuse_incompatible_worktree_action(
-                batch_name=batch_name,
-                file_paths=files,
-            )
-    finally:
-        _action_plans.close_action_plans(apply_plans)
-
-    _action_completion.finish_batch_source_action_review(context, files)
+    _apply_action.execute_apply_action(
+        batch_name=batch_name,
+        context=context,
+        selection=selection,
+    )
 
     if line_ids:
         print(_("✓ Applied selected lines from batch '{name}' to working tree").format(name=batch_name), file=sys.stderr)

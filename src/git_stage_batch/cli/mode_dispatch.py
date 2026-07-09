@@ -1,4 +1,4 @@
-"""Command dispatch logic."""
+"""CLI mode dispatch logic."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ def _run_interactive_command() -> None:
     start_interactive_mode()
 
 
-def dispatch_args(args: argparse.Namespace) -> None:
-    """Execute the command based on parsed arguments.
+def dispatch_cli_mode(args: argparse.Namespace) -> None:
+    """Route parsed arguments to interactive or noninteractive execution.
 
     Args:
         args: Parsed arguments from ArgumentParser

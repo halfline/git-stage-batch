@@ -11,7 +11,7 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.session_lock import acquire_session_lock
 from .argument_parser import parse_command_line
-from .dispatch import dispatch_args
+from .mode_dispatch import dispatch_cli_mode
 from .pager import pager_output, should_page_output
 
 
@@ -31,7 +31,7 @@ def main() -> None:
             )
             with pager_context:
                 with lock_context:
-                    dispatch_args(args)
+                    dispatch_cli_mode(args)
         else:
             # Parsing failed
             sys.exit(2)

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 
 from ..core.line_selection import (
     LineRanges,
-    LineSelection,
 )
 from ..core.buffer import (
     LineBuffer,
@@ -22,6 +21,13 @@ from ..utils.git_object_io import (
     read_git_blobs_as_bytes,
 )
 from .absence_content import copy_absence_content as _copy_absence_content
+from .ownership_claims import (
+    parse_ownership_line_ranges as _claim_parse_line_ranges,
+    presence_claims_from_source_lines as _claim_presence_claims_from_source_lines,
+)
+from .ownership_replacement_units import (
+    normalize_replacement_units as _replacement_normalize_units,
+)
 
 
 @dataclass
@@ -179,7 +185,7 @@ class PresenceClaim:
 
     def source_line_set(self) -> LineRanges:
         """Return batch-source line numbers covered by this presence claim."""
-        return _parse_line_ranges(self.source_lines)
+        return _claim_parse_line_ranges(self.source_lines)
 
     def to_dict(self) -> dict:
         """Serialize to metadata dictionary."""
@@ -376,8 +382,8 @@ class BatchOwnership:
         list of PresenceClaim objects.
         """
         return cls(
-            presence_claims=_presence_claims_from_source_lines(
-                _parse_line_ranges(source_lines),
+            presence_claims=_claim_presence_claims_from_source_lines(
+                _claim_parse_line_ranges(source_lines),
                 baseline_references or {},
             ),
             deletions=deletions or [],
@@ -410,7 +416,7 @@ class BatchOwnership:
         }
         replacement_units = [
             unit.to_dict()
-            for unit in _normalize_replacement_units(
+            for unit in _replacement_normalize_units(
                 self.replacement_units,
                 deletion_count=len(self.deletions),
             )
@@ -476,8 +482,8 @@ class BatchOwnership:
             for d in presence_metadata
         ]
         if not presence_claims and legacy_claimed_lines:
-            presence_claims = _presence_claims_from_source_lines(
-                _parse_line_ranges(legacy_claimed_lines)
+            presence_claims = _claim_presence_claims_from_source_lines(
+                _claim_parse_line_ranges(legacy_claimed_lines)
             )
         deletions = [
             AbsenceClaim.from_dict(d, blob_contents, deletion_blob_buffers)
@@ -667,167 +673,6 @@ def _merge_deletion_claim_metadata(
     )
 
 
-def _parse_line_ranges(line_ranges: list[str] | list[int]) -> LineRanges:
-    """Parse source line range strings into a selection."""
-    return LineRanges.from_specs(line_ranges)
-
-
-def _format_line_set(source_lines: LineSelection | Iterable[int]) -> list[str]:
-    """Format a source line selection as normalized range strings."""
-    if isinstance(source_lines, LineRanges):
-        return source_lines.to_range_strings()
-    source_selection = LineRanges.from_lines(source_lines)
-    if not source_selection:
-        return []
-    return source_selection.to_range_strings()
-
-
-@dataclass
-class _LineRangeBuilder:
-    """Build a normalized line selection from mostly ordered additions."""
-
-    ranges: list[tuple[int, int]] = field(default_factory=list)
-    pending_start: int | None = None
-    pending_end: int | None = None
-
-    def add_line(self, line_number: int) -> None:
-        if self.pending_start is None or self.pending_end is None:
-            self.pending_start = line_number
-            self.pending_end = line_number
-            return
-
-        if self.pending_start <= line_number <= self.pending_end:
-            return
-
-        if line_number == self.pending_end + 1:
-            self.pending_end = line_number
-            return
-
-        self.ranges.append((self.pending_start, self.pending_end))
-        self.pending_start = line_number
-        self.pending_end = line_number
-
-    def finish(self) -> LineRanges:
-        ranges = list(self.ranges)
-        if self.pending_start is not None and self.pending_end is not None:
-            ranges.append((self.pending_start, self.pending_end))
-        return LineRanges.from_ranges(ranges)
-
-
-
-def _presence_claims_from_source_lines(
-    source_lines: LineSelection | Iterable[int],
-    baseline_references: dict[int, BaselineReference] | None = None,
-) -> list[PresenceClaim]:
-    """Build normalized presence claims from a source-line selection."""
-    source_selection = (
-        source_lines
-        if isinstance(source_lines, LineRanges)
-        else LineRanges.from_lines(source_lines)
-    )
-    if not source_selection:
-        return []
-    references = baseline_references or {}
-    return [
-        PresenceClaim(
-            source_lines=_format_line_set(source_selection),
-            baseline_references={
-                line: reference
-                for line, reference in references.items()
-                if line in source_selection
-            },
-        )
-    ]
-
-
-def _normalize_replacement_units(
-    replacement_units: list[ReplacementUnit],
-    *,
-    deletion_count: int,
-) -> list[ReplacementUnit]:
-    """Drop invalid references and coalesce overlapping replacement units."""
-    components: list[tuple[LineRanges, set[int], ReplacementUnitOrigin | None]] = []
-
-    for unit in replacement_units:
-        claimed = _parse_line_ranges(unit.presence_lines)
-        deletion_indices = {
-            index
-            for index in unit.deletion_indices
-            if type(index) is int and 0 <= index < deletion_count
-        }
-        if not claimed or not deletion_indices:
-            continue
-        origin = _normalize_replacement_unit_origin(unit.origin)
-
-        overlapping_component_indices = [
-            index
-            for index, (component_claimed, component_deletions, _component_origin)
-            in enumerate(components)
-            if component_claimed.intersection(claimed) or component_deletions & deletion_indices
-        ]
-        if not overlapping_component_indices:
-            components.append((claimed, set(deletion_indices), origin))
-            continue
-
-        target_index = overlapping_component_indices[0]
-        target_claimed, target_deletions, target_origin = components[target_index]
-        target_claimed = target_claimed.union(claimed)
-        target_deletions.update(deletion_indices)
-        target_origin = _merge_replacement_unit_origins(target_origin, origin)
-
-        for source_index in reversed(overlapping_component_indices[1:]):
-            source_claimed, source_deletions, source_origin = components[source_index]
-            target_claimed = target_claimed.union(source_claimed)
-            target_deletions.update(source_deletions)
-            target_origin = _merge_replacement_unit_origins(
-                target_origin,
-                source_origin,
-            )
-            del components[source_index]
-        components[target_index] = (target_claimed, target_deletions, target_origin)
-
-    return [
-        ReplacementUnit(
-            presence_lines=_format_line_set(claimed),
-            deletion_indices=sorted(deletion_indices),
-            origin=origin,
-        )
-        for claimed, deletion_indices, origin in components
-    ]
-
-
-def _normalize_replacement_unit_origin(
-    origin: ReplacementUnitOrigin | None,
-) -> ReplacementUnitOrigin | None:
-    """Return valid original replacement context, or None."""
-    if origin is None:
-        return None
-    if (
-        type(origin.old_start) is not int
-        or type(origin.old_end) is not int
-        or type(origin.new_start) is not int
-        or type(origin.new_end) is not int
-        or origin.old_start > origin.old_end
-        or origin.new_start > origin.new_end
-    ):
-        return None
-    return origin
-
-
-def _merge_replacement_unit_origins(
-    left: ReplacementUnitOrigin | None,
-    right: ReplacementUnitOrigin | None,
-) -> ReplacementUnitOrigin | None:
-    """Keep parent context only when coalesced units agree on it."""
-    if left == right:
-        return left
-    if left is None:
-        return right
-    if right is None:
-        return left
-    return None
-
-
 def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> BatchOwnership:
     """Merge two BatchOwnership objects.
 
@@ -901,12 +746,12 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
             ))
 
     return BatchOwnership(
-        presence_claims=_presence_claims_from_source_lines(
+        presence_claims=_claim_presence_claims_from_source_lines(
             combined_claimed,
             combined_presence_references,
         ),
         deletions=combined_deletions,
-        replacement_units=_normalize_replacement_units(
+        replacement_units=_replacement_normalize_units(
             combined_replacement_units,
             deletion_count=len(combined_deletions),
         ),

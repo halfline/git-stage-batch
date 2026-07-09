@@ -16,17 +16,16 @@ from .ownership import (
     BatchOwnership,
     ReplacementUnit,
     ReplacementUnitOrigin,
-    _LineRangeBuilder,
-    _normalize_replacement_units,
-    _presence_claims_from_source_lines,
 )
+from .ownership_claims import LineRangeBuilder, presence_claims_from_source_lines
+from .ownership_replacement_units import normalize_replacement_units
 from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
 
 
 @dataclass
 class _ReplacementUnitBuilder:
     deletion_indices: list[int]
-    claimed_lines: _LineRangeBuilder = field(default_factory=_LineRangeBuilder)
+    claimed_lines: LineRangeBuilder = field(default_factory=LineRangeBuilder)
 
     def add_presence_line(self, source_line: int) -> None:
         self.claimed_lines.add_line(source_line)
@@ -92,7 +91,7 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     # Deletion lines don't exist in batch source → absence claims (suppression)
 
     content_view = _LineEntryContentSequence(selected_lines)
-    claimed_source_lines = _LineRangeBuilder()
+    claimed_source_lines = LineRangeBuilder()
     presence_baseline_references: dict[int, BaselineReference] = {}
     absence_claims: list[AbsenceClaim] = []
     replacement_units: list[ReplacementUnit] = []
@@ -202,12 +201,12 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
     finish_replacement_unit(active_replacement_unit)
 
     return BatchOwnership(
-        presence_claims=_presence_claims_from_source_lines(
+        presence_claims=presence_claims_from_source_lines(
             claimed_source_lines.finish(),
             presence_baseline_references,
         ),
         deletions=absence_claims,
-        replacement_units=_normalize_replacement_units(
+        replacement_units=normalize_replacement_units(
             replacement_units,
             deletion_count=len(absence_claims),
         ),
@@ -410,7 +409,7 @@ def translate_hunk_selection_to_batch_ownership(
     runs derived from the full files represented by the hunk. This function does
     not infer semantic replacement units from the pregenerated diff layout.
     """
-    claimed_source_lines = _LineRangeBuilder()
+    claimed_source_lines = LineRangeBuilder()
     presence_baseline_references: dict[int, BaselineReference] = {}
     absence_claims: list[AbsenceClaim] = []
     replacement_units: list[ReplacementUnit] = []
@@ -428,7 +427,7 @@ def translate_hunk_selection_to_batch_ownership(
     ) -> None:
         deletion_anchor: int | None = None
         old_line_seen = False
-        selected_source_lines = _LineRangeBuilder()
+        selected_source_lines = LineRangeBuilder()
         consumed_ids: list[int] = []
         with _AbsenceContentBuilder() as builder:
             for range_start, range_stop in selected_old_ranges:
@@ -703,12 +702,12 @@ def translate_hunk_selection_to_batch_ownership(
     finish_replacement_unit(active_replacement_unit)
 
     return BatchOwnership(
-        presence_claims=_presence_claims_from_source_lines(
+        presence_claims=presence_claims_from_source_lines(
             claimed_source_lines.finish(),
             presence_baseline_references,
         ),
         deletions=absence_claims,
-        replacement_units=_normalize_replacement_units(
+        replacement_units=normalize_replacement_units(
             replacement_units,
             deletion_count=len(absence_claims),
         ),

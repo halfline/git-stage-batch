@@ -11,11 +11,13 @@ from .ownership import (
     AbsenceClaim,
     BatchOwnership,
     ReplacementUnit,
-    _format_line_set,
-    _normalize_replacement_units,
-    _parse_line_ranges,
-    _presence_claims_from_source_lines,
 )
+from .ownership_claims import (
+    format_ownership_line_set,
+    parse_ownership_line_ranges,
+    presence_claims_from_source_lines,
+)
+from .ownership_replacement_units import normalize_replacement_units
 
 
 def _remap_replacement_units(
@@ -29,7 +31,7 @@ def _remap_replacement_units(
 
     for unit in replacement_units:
         new_presence_lines: set[int] = set()
-        for old_line_num in _parse_line_ranges(unit.presence_lines):
+        for old_line_num in parse_ownership_line_ranges(unit.presence_lines):
             new_line_num = map_claimed_line(old_line_num)
             if new_line_num is None:
                 raise ValueError(
@@ -39,12 +41,12 @@ def _remap_replacement_units(
             new_presence_lines.add(new_line_num)
 
         remapped_units.append(ReplacementUnit(
-            presence_lines=_format_line_set(new_presence_lines),
+            presence_lines=format_ownership_line_set(new_presence_lines),
             deletion_indices=unit.deletion_indices,
             origin=unit.origin,
         ))
 
-    return _normalize_replacement_units(
+    return normalize_replacement_units(
         remapped_units,
         deletion_count=deletion_count,
     )
@@ -67,7 +69,7 @@ def _remap_replacement_units_with_lineage(
     remapped_units: list[ReplacementUnit] = []
 
     for unit in replacement_units:
-        old_presence_lines = _parse_line_ranges(unit.presence_lines)
+        old_presence_lines = parse_ownership_line_ranges(unit.presence_lines)
         first_unmapped = _first_unmapped_line(old_presence_lines, lineage)
         if first_unmapped is not None:
             raise ValueError(
@@ -76,14 +78,14 @@ def _remap_replacement_units_with_lineage(
             )
 
         remapped_units.append(ReplacementUnit(
-            presence_lines=_format_line_set(
+            presence_lines=format_ownership_line_set(
                 lineage.translate_source_selection(old_presence_lines)
             ),
             deletion_indices=unit.deletion_indices,
             origin=unit.origin,
         ))
 
-    return _normalize_replacement_units(
+    return normalize_replacement_units(
         remapped_units,
         deletion_count=deletion_count,
     )
@@ -158,7 +160,7 @@ def _remap_batch_ownership_with_mapping(
             new_presence_baseline_references[new_line_num] = reference
 
     return BatchOwnership(
-        presence_claims=_presence_claims_from_source_lines(
+        presence_claims=presence_claims_from_source_lines(
             new_presence,
             new_presence_baseline_references,
         ),
@@ -216,7 +218,7 @@ def remap_batch_ownership_with_lineage(
             new_presence_baseline_references[new_line_num] = reference
 
     return BatchOwnership(
-        presence_claims=_presence_claims_from_source_lines(
+        presence_claims=presence_claims_from_source_lines(
             new_presence,
             new_presence_baseline_references,
         ),

@@ -8,7 +8,8 @@ from ..data.staged_renames import restore_unstaged_start_time_deletions, restore
 from ..data.session import clear_session_state
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
-from ..utils.git import git_reset_paths, run_git_command
+from ..utils.git import run_git_command
+from ..utils.git_index import git_reset_paths
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import get_auto_added_files_file_path
 

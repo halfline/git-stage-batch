@@ -12,6 +12,7 @@ import git_stage_batch.batch.display as display_module
 import git_stage_batch.batch.file_display as file_display
 import git_stage_batch.data.selected_change.paths as selected_change_paths
 import git_stage_batch.commands.show_from as show_from_module
+import git_stage_batch.commands.batch_source.file_list_action as file_list_action
 
 import subprocess
 
@@ -457,7 +458,13 @@ class TestCommandShowFromBatch:
                 probe_mergeability=probe_mergeability,
             )
 
-        monkeypatch.setattr(show_from_module, "render_batch_file_display", counting_render)
+        monkeypatch.setattr(file_list_action, "render_batch_file_display", counting_render)
+        if hasattr(show_from_module, "render_batch_file_display"):
+            monkeypatch.setattr(
+                show_from_module,
+                "render_batch_file_display",
+                counting_render,
+            )
 
         command_show_from_batch("multi-file-batch")
 

@@ -8,7 +8,6 @@ import sys
 from .. import __version__
 from ..commands.again import command_again
 from ..commands.block_file import command_block_file
-from ..commands.start import command_start
 from ..commands.suggest_fixup import (
     command_suggest_fixup,
     command_suggest_fixup_line,
@@ -39,6 +38,7 @@ from .session_subcommands import (
     add_abort_subcommand,
     add_check_unstaged_subcommand,
     add_redo_subcommand,
+    add_start_subcommand,
     add_status_subcommand,
     add_stop_subcommand,
     add_undo_subcommand,
@@ -93,27 +93,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_check_unstaged_subcommand(subparsers)
 
-    # start - Start a new batch staging session
-    parser_start = add_subcommand_parser(
-        subparsers,
-        "start",
-        help=_("Start a new batch staging session"),
-    )
-    parser_start.add_argument(
-        "-U",
-        "--unified",
-        dest="context_lines",
-        type=int,
-        metavar="N",
-        help=_("Number of context lines in diff output (default: 3)"),
-    )
-    add_auto_advance_arguments(parser_start)
-    parser_start.set_defaults(
-        func=lambda args: command_start(
-            context_lines=args.context_lines,
-            auto_advance=args.auto_advance,
-        )
-    )
+    add_start_subcommand(subparsers)
 
     # interactive - Start interactive hunk-by-hunk mode
     parser_interactive = add_subcommand_parser(

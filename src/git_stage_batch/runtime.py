@@ -1,20 +1,20 @@
-"""Command dispatch logic."""
+"""Runtime mode dispatch between CLI parsing and interactive TUI launch."""
 
 from __future__ import annotations
 
 import argparse
 
-from .execution import execute_non_interactive_args
+from .cli.execution import execute_non_interactive_args
 
 
 def _run_interactive_command() -> None:
-    from ..tui.interactive import start_interactive_mode
+    from .tui.interactive import start_interactive_mode
 
     start_interactive_mode()
 
 
-def dispatch_args(args: argparse.Namespace) -> None:
-    """Execute the command based on parsed arguments.
+def dispatch_cli_mode(args: argparse.Namespace) -> None:
+    """Route parsed arguments to interactive or noninteractive execution.
 
     Args:
         args: Parsed arguments from ArgumentParser

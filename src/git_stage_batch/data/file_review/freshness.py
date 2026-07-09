@@ -16,10 +16,6 @@ from ..selected_change.paths import get_selected_change_file_path
 from ..selected_change.snapshots import snapshots_are_stale
 
 
-def _coerce_review_action(action: _records.FileReviewAction | str) -> _records.FileReviewAction:
-    return action if isinstance(action, _records.FileReviewAction) else _records.FileReviewAction(action)
-
-
 def selected_change_kind_matches_review_source(
     selected_kind: SelectedChangeKind | None,
     review_state: _records.FileReviewState,
@@ -151,7 +147,7 @@ def review_state_matches_action(
     action: _records.FileReviewAction | str,
 ) -> bool:
     """Return whether a review is fresh for a specific action."""
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     if (
         review_state.source == _records.ReviewSource.BATCH
         and review_action == _records.FileReviewAction.RESET_FROM_BATCH

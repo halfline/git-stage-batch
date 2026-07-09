@@ -35,13 +35,16 @@ def read_last_file_review_state() -> _records.FileReviewState | None:
                 first_page=selection["first_page"],
                 last_page=selection["last_page"],
                 reason=ActionableSelectionReason(selection["reason"]),
-                actions=tuple(_records.FileReviewAction(action) for action in selection["actions"]),
+                actions=tuple(
+                    _records.coerce_review_action(action)
+                    for action in selection["actions"]
+                ),
                 is_splittable=bool(selection["is_splittable"]),
             )
             for selection in data.get("selections", [])
         )
         return _records.FileReviewState(
-            source=_records.ReviewSource(data["source"]),
+            source=_records.coerce_review_source(data["source"]),
             batch_name=data.get("batch_name"),
             file_path=data["file_path"],
             page_spec=data["page_spec"],

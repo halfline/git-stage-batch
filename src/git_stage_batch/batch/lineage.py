@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..core.line_selection import LineRanges, LineSelection
+from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..utils.mapped_storage import ChunkedMappedRecordVector
 
 
@@ -53,15 +53,6 @@ def _lineage_run_from_record(record: tuple[int, ...]) -> LineageRun:
         record[_LINEAGE_OLD_END],
         record[_LINEAGE_NEW_START],
     )
-
-
-def _selection_ranges(
-    selection: LineSelection | Iterable[int],
-) -> tuple[tuple[int, int], ...]:
-    ranges = getattr(selection, "ranges", None)
-    if ranges is not None:
-        return ranges()
-    return LineRanges.from_lines(selection).ranges()
 
 
 def _lineage_runs_can_merge(left: LineageRun, right: LineageRun) -> bool:
@@ -172,7 +163,7 @@ class _LineageRunTable:
         translated_ranges: list[tuple[int, int]] = []
         run_index = 0
 
-        for selected_start, selected_end in _selection_ranges(selection):
+        for selected_start, selected_end in coerce_line_ranges(selection).ranges():
             while (
                 run_index < len(self)
                 and self._run_at_index(run_index).old_end < selected_start
@@ -202,7 +193,7 @@ class _LineageRunTable:
         self._require_open()
         run_index = 0
 
-        for selected_start, selected_end in _selection_ranges(selection):
+        for selected_start, selected_end in coerce_line_ranges(selection).ranges():
             current_line = selected_start
             while (
                 run_index < len(self)

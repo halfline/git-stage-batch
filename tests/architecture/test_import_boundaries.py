@@ -1217,7 +1217,6 @@ def test_command_event_models_stay_out_of_command_runner():
         "StdinClosedEvent",
     }
     runner_names = {
-        "StreamingProcess",
         "run_command",
         "start_command",
         "stream_command",
@@ -1233,6 +1232,7 @@ def test_command_event_models_stay_out_of_command_runner():
     assert event_names <= vars(command_events).keys()
     assert event_names.isdisjoint(vars(command_runner))
     assert runner_names <= vars(command_runner).keys()
+    assert "StreamingProcess" not in vars(command_runner)
     assert imports_event_module
 
     for path in SRC_ROOT.rglob("*.py"):
@@ -1250,6 +1250,54 @@ def test_command_event_models_stay_out_of_command_runner():
                 violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
     assert violations == []
+
+
+def test_command_streaming_process_state_stays_out_of_command_runner():
+    """Command process state should live beside the subprocess runner."""
+    command_runner = __import__(
+        "git_stage_batch.utils.command",
+        fromlist=["command"],
+    )
+    command_streaming = __import__(
+        "git_stage_batch.utils.command_streaming",
+        fromlist=["command_streaming"],
+    )
+    command_path = SRC_ROOT / "utils" / "command.py"
+    command_streaming_path = SRC_ROOT / "utils" / "command_streaming.py"
+    command_text = command_path.read_text()
+    command_streaming_text = command_streaming_path.read_text()
+    process_names = {
+        "SpawnedProcess",
+        "StreamingProcess",
+        "terminate_then_kill",
+    }
+    runner_names = {
+        "run_command",
+        "start_command",
+        "stream_command",
+    }
+    command_imports = _import_from_nodes(command_path)
+    command_streaming_imports = _import_from_nodes(command_streaming_path)
+    imports_streaming_module = any(
+        imported_module == "git_stage_batch.utils"
+        and any(alias.name == "command_streaming" for alias in node.names)
+        for imported_module, node in command_imports
+    )
+    streaming_imports_events = any(
+        imported_module == "git_stage_batch.utils"
+        and any(alias.name == "command_events" for alias in node.names)
+        for imported_module, node in command_streaming_imports
+    )
+
+    assert process_names <= vars(command_streaming).keys()
+    assert process_names.isdisjoint(vars(command_runner))
+    assert runner_names <= vars(command_runner).keys()
+    assert imports_streaming_module
+    assert streaming_imports_events
+    assert "import selectors" not in command_text
+    assert "import signal" not in command_text
+    assert "class StreamingProcess" not in command_text
+    assert "class StreamingProcess" in command_streaming_text
 
 
 def test_batch_hunk_display_does_not_import_hunk_navigation():

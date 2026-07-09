@@ -9,7 +9,10 @@ from ..data.hunk_tracking import fetch_next_change
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.session import initialize_abort_state, session_is_active
-from ..data.staged_renames import normalize_start_time_staged_deletions, normalize_start_time_staged_renames
+from ..data.start_time_changes import (
+    normalize_start_time_staged_deletions,
+    normalize_start_time_staged_renames,
+)
 from ..exceptions import CommandError, NoMoreHunks
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents

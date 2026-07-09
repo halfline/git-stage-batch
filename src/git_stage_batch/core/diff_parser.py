@@ -11,6 +11,7 @@ from . import empty_file_diff as _empty_file_diff
 from . import file_metadata_diff as _file_metadata_diff
 from . import gitlink_diff as _gitlink_diff
 from . import hunk_headers as _hunk_headers
+from . import line_change_body as _line_change_body
 from . import patch_headers as _patch_headers
 from .buffer import LineBuffer
 from .models import (
@@ -18,7 +19,6 @@ from .models import (
     GitlinkChange,
     LineLevelChange,
     HunkHeader,
-    LineEntry,
     RenameChange,
     SingleHunkPatch,
     TextFileDeletionChange,
@@ -464,10 +464,7 @@ def build_line_changes_from_patch_lines(
     old_path_value = ""
     new_path_value = ""
     hunk_header: HunkHeader | None = None
-    old_line_number = 0
-    new_line_number = 0
-    next_display_id = 0
-    line_entries: list[LineEntry] = []
+    body_builder = _line_change_body.LineChangeBodyBuilder()
 
     # Preserve line endings so a parsed hunk can be emitted unchanged.
     for line_with_ending in patch_lines:
@@ -480,76 +477,20 @@ def build_line_changes_from_patch_lines(
             new_path_value = _patch_headers.new_file_path_from_header(line)
         elif _hunk_headers.line_is_hunk_header(line):
             hunk_header = _hunk_headers.parse_hunk_header_line(line)
-            old_line_number = hunk_header.old_start
-            new_line_number = hunk_header.new_start
-            next_display_id = 0
+            body_builder.reset_for_hunk_header(hunk_header)
         elif hunk_header is not None:
-            if line.startswith(b"\\ No newline at end of file"):
-                if line_entries:
-                    line_entries[-1].has_trailing_newline = False
-                continue
-            if not line:
-                sign = " "
-                text_bytes = b""
-            else:
-                sign = line[0:1].decode('ascii')  # +, -, or space (always ASCII)
-                text_bytes = line[1:]  # Canonical bytes (without +/- prefix)
-
-            if sign == " ":
-                # Context line
-                line_entries.append(LineEntry(
-                    id=None,
-                    kind=" ",
-                    old_line_number=old_line_number,
-                    new_line_number=new_line_number,
-                    text_bytes=text_bytes,
-                    source_line=None,
-                ))
-                old_line_number += 1
-                new_line_number += 1
-            elif sign == "-":
-                next_display_id += 1
-                # Deletion: doesn't exist in working tree
-                line_entries.append(LineEntry(
-                    id=next_display_id,
-                    kind="-",
-                    old_line_number=old_line_number,
-                    new_line_number=None,
-                    text_bytes=text_bytes,
-                    source_line=None,
-                ))
-                old_line_number += 1
-            elif sign == "+":
-                next_display_id += 1
-                # Addition: exists in working tree
-                line_entries.append(LineEntry(
-                    id=next_display_id,
-                    kind="+",
-                    old_line_number=None,
-                    new_line_number=new_line_number,
-                    text_bytes=text_bytes,
-                    source_line=None,
-                ))
-                new_line_number += 1
-            else:
-                # Treat as context line
-                line_entries.append(LineEntry(
-                    id=None,
-                    kind=" ",
-                    old_line_number=old_line_number,
-                    new_line_number=new_line_number,
-                    text_bytes=text_bytes,
-                    source_line=None,
-                ))
-                old_line_number += 1
-                new_line_number += 1
+            body_builder.append_patch_line(line)
 
     path_value = _patch_headers.line_change_path(old_path_value, new_path_value)
 
     if hunk_header is None:
         raise CommandError(_("Failed to parse hunk header."))
 
-    line_changes = LineLevelChange(path=path_value, header=hunk_header, lines=line_entries)
+    line_changes = LineLevelChange(
+        path=path_value,
+        header=hunk_header,
+        lines=body_builder.line_entries,
+    )
 
     # Apply annotator hook if provided
     if annotator is not None:

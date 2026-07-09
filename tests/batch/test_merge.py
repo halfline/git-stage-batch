@@ -2,10 +2,12 @@
 
 import pytest
 
+from git_stage_batch.batch.baseline_correspondence import (
+    RegionKind,
+    build_baseline_correspondence,
+)
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.batch.merge import (
-    RegionKind,
-    _build_baseline_correspondence,
     _build_realized_entries_for_discard,
     _check_structural_validity,
     _discard_batch_line_chunks,
@@ -685,7 +687,7 @@ class TestMergeLineSequences:
         """Discard restore scans realized runs instead of per-line lookups."""
         baseline = [b"one\n", b"old\n", b"three\n"]
         source = [b"one\n", b"new\n", b"three\n"]
-        correspondence = _build_baseline_correspondence(baseline, source)
+        correspondence = build_baseline_correspondence(baseline, source)
         entries = _SourceLookupGuardedRealizedEntries()
         entries.append_line_range_from(
             source,
@@ -710,7 +712,7 @@ class TestMergeLineSequences:
         baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])
         source = line_sequence([b"line1\n", b"new\n", b"line3\n"])
 
-        correspondence = _build_baseline_correspondence(baseline, source)
+        correspondence = build_baseline_correspondence(baseline, source)
         region = correspondence.get_region_for_source_line(2)
 
         assert region is not None
@@ -723,7 +725,7 @@ class TestMergeLineSequences:
         baseline = [b"line1\n", b"line3\n"]
         source = [b"line1\n", b"line2\n", b"line3\n"]
 
-        correspondence = _build_baseline_correspondence(baseline, source)
+        correspondence = build_baseline_correspondence(baseline, source)
 
         assert correspondence.get_region_for_source_line(0) is None
         assert correspondence.get_region_for_source_line(1).kind == RegionKind.EQUAL

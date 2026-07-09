@@ -196,7 +196,7 @@ class TestHandleCurrentFileReview:
                         "git_stage_batch.commands.suggest_fixup.command_suggest_fixup_line"
                     ) as mock_fixup:
                         with patch(
-                            "git_stage_batch.tui.file_review.browser.prompt_fixup_action",
+                            "git_stage_batch.tui.file_review.fixup_actions.prompt_fixup_action",
                             return_value="q",
                         ):
                             with patch(

@@ -16,6 +16,82 @@ def _imported_modules_for(path):
     return {imported_module for imported_module, _node in _import_from_nodes(path)}
 
 
+def _top_level_package_names() -> set[str]:
+    return {
+        path.name
+        for path in SRC_ROOT.iterdir()
+        if path.is_dir() and (path / "__init__.py").exists()
+    }
+
+
+def _top_level_package_import_edges() -> set[tuple[str, str]]:
+    package_names = _top_level_package_names()
+    edges = set()
+
+    for path in SRC_ROOT.rglob("*.py"):
+        relative_parts = path.relative_to(SRC_ROOT).parts
+        source_package = relative_parts[0]
+        if source_package not in package_names:
+            continue
+
+        for imported_module, _node in _import_from_nodes(path):
+            if not imported_module.startswith("git_stage_batch."):
+                continue
+
+            imported_parts = imported_module.split(".")
+            if len(imported_parts) < 2:
+                continue
+
+            target_package = imported_parts[1]
+            if target_package not in package_names or target_package == source_package:
+                continue
+
+            edges.add((source_package, target_package))
+
+    return edges
+
+
+def _cycle_from_edges(
+    edges: set[tuple[str, str]],
+) -> list[str] | None:
+    adjacency: dict[str, set[str]] = {}
+    for source, target in edges:
+        adjacency.setdefault(source, set()).add(target)
+
+    visiting: list[str] = []
+    visited = set()
+
+    def visit(package: str) -> list[str] | None:
+        if package in visiting:
+            return visiting[visiting.index(package):] + [package]
+        if package in visited:
+            return None
+
+        visiting.append(package)
+        for target in sorted(adjacency.get(package, ())):
+            cycle = visit(target)
+            if cycle is not None:
+                return cycle
+        visiting.pop()
+        visited.add(package)
+        return None
+
+    for package in sorted(adjacency):
+        cycle = visit(package)
+        if cycle is not None:
+            return cycle
+
+    return None
+
+
+def test_top_level_packages_are_acyclic():
+    """Top-level packages should not import each other in cycles."""
+    edges = _top_level_package_import_edges()
+    cycle = _cycle_from_edges(edges)
+
+    assert cycle is None
+
+
 def _assert_parser_delegates_subcommand_registry(
     parser_imports: set[str],
     delegated_module: str,
@@ -5525,20 +5601,21 @@ def test_argument_parser_uses_auto_advance_option_module():
     assert "Leave no hunk selected after the command completes" not in parser_text
 
 
-def test_cli_mode_dispatch_delegates_noninteractive_execution():
-    """CLI mode dispatch should launch TUI or delegate parsed command execution."""
-    mode_dispatch_path = SRC_ROOT / "cli" / "mode_dispatch.py"
+def test_runtime_dispatch_delegates_noninteractive_execution():
+    """Runtime dispatch should launch TUI or delegate parsed command execution."""
+    runtime_path = SRC_ROOT / "runtime.py"
     imported_modules = {
         imported_module
-        for imported_module, _node in _import_from_nodes(mode_dispatch_path)
+        for imported_module, _node in _import_from_nodes(runtime_path)
     }
-    mode_dispatch = __import__(
-        "git_stage_batch.cli.mode_dispatch",
-        fromlist=["mode_dispatch"],
+    runtime = __import__(
+        "git_stage_batch.runtime",
+        fromlist=["runtime"],
     )
 
+    assert not (SRC_ROOT / "cli" / "mode_dispatch.py").exists()
     assert not (SRC_ROOT / "cli" / "dispatch.py").exists()
-    assert "dispatch_cli_mode" in vars(mode_dispatch)
+    assert "dispatch_cli_mode" in vars(runtime)
     assert "git_stage_batch.commands" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.cli.execution" in imported_modules
@@ -5551,7 +5628,7 @@ def test_tui_cli_escape_does_not_import_dispatch():
     action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     cli_escape_path = SRC_ROOT / "tui" / "cli_escape.py"
     execution_path = SRC_ROOT / "cli" / "execution.py"
-    mode_dispatch_path = SRC_ROOT / "cli" / "mode_dispatch.py"
+    runtime_path = SRC_ROOT / "runtime.py"
     interactive_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
@@ -5568,9 +5645,9 @@ def test_tui_cli_escape_does_not_import_dispatch():
         imported_module
         for imported_module, _node in _import_from_nodes(execution_path)
     }
-    mode_dispatch_imports = {
+    runtime_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(mode_dispatch_path)
+        for imported_module, _node in _import_from_nodes(runtime_path)
     }
 
     assert "git_stage_batch.tui.action_dispatch" in interactive_imports
@@ -5579,8 +5656,9 @@ def test_tui_cli_escape_does_not_import_dispatch():
     assert "git_stage_batch.cli.execution" in cli_escape_imports
     assert "git_stage_batch.cli.dispatch" not in cli_escape_imports
     assert "git_stage_batch.cli.mode_dispatch" not in cli_escape_imports
+    assert "git_stage_batch.runtime" not in cli_escape_imports
     assert "git_stage_batch.tui.interactive" not in execution_imports
-    assert "git_stage_batch.tui.interactive" in mode_dispatch_imports
+    assert "git_stage_batch.tui.interactive" in runtime_imports
 
 
 def test_tui_session_startup_owns_interactive_startup():

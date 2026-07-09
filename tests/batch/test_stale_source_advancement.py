@@ -9,13 +9,15 @@ from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
-    detect_stale_batch_source_for_selection,
     merge_batch_ownership,
-    translate_lines_to_batch_ownership,
 )
 from git_stage_batch.batch.ownership_remapping import (
     remap_batch_ownership_to_new_source_lines,
     remap_batch_ownership_with_lineage,
+)
+from git_stage_batch.batch.ownership_translation import (
+    detect_stale_batch_source_for_selection,
+    translate_lines_to_batch_ownership,
 )
 from git_stage_batch.batch.source_advancement import (
     advance_source_lines_preserving_existing_presence,

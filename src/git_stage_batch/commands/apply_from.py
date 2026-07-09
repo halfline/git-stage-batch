@@ -16,6 +16,7 @@ from .batch_source import candidate_refusals as _candidate_refusals
 from .batch_source import merge_refusals as _merge_refusals
 from .batch_source import text_file_actions as _text_file_actions
 from .batch_source import text_plan_builders as _text_plan_builders
+from .batch_source import worktree_refusals as _worktree_refusals
 from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.operation_candidates import (
     clear_candidate_preview_state_for_file,
@@ -281,20 +282,9 @@ def command_apply_from_batch(
         except CommandError:
             raise
         except Exception:
-            if len(files) == 1:
-                file_path = next(iter(files))
-                exit_with_error(
-                    _("Batch '{batch}' contains changes to {file} that are incompatible with the current working tree. "
-                      "Use 'git-stage-batch show --from {batch}' to review the batch.").format(
-                        batch=batch_name,
-                        file=file_path,
-                    )
-                )
-            exit_with_error(
-                _("Batch '{batch}' contains changes to one or more files that are incompatible with the current working tree. "
-                  "Use 'git-stage-batch show --from {batch}' to review the batch.").format(
-                    batch=batch_name,
-                )
+            _worktree_refusals.refuse_incompatible_worktree_action(
+                batch_name=batch_name,
+                file_paths=files,
             )
     finally:
         _action_plans.close_action_plans(apply_plans)

@@ -10962,8 +10962,8 @@ def test_discard_uses_core_buffer_newline_helper():
 def test_recalc_handoff_stays_in_command_helper():
     """Include and discard commands should use the command refresh handoff."""
     command_paths = (
-        SRC_ROOT / "commands" / "include.py",
-        SRC_ROOT / "commands" / "discard.py",
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py",
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py",
     )
     forbidden_names = {
         "RecalculateSelectedHunkResult",
@@ -11001,8 +11001,8 @@ def test_action_completion_stays_in_command_helper():
     assert "finish_selected_change_action" not in vars(hunk_tracking)
 
     command_paths = (
-        SRC_ROOT / "commands" / "include.py",
-        SRC_ROOT / "commands" / "discard.py",
+        SRC_ROOT / "commands" / "selection" / "selected_change_staging.py",
+        SRC_ROOT / "commands" / "selection" / "selected_change_discarding.py",
         SRC_ROOT / "commands" / "file_scope" / "skip_file.py",
         SRC_ROOT / "commands" / "selection" / "selected_change_skipping.py",
         SRC_ROOT / "commands" / "selection" / "skip_line_selection.py",

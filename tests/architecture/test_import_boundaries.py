@@ -8774,7 +8774,11 @@ def test_selected_change_loading_stays_out_of_hunk_tracking():
         / "selection"
         / "include_line_batching.py": {"require_selected_hunk"},
         SRC_ROOT / "commands" / "discard.py": moved_names,
-        SRC_ROOT / "commands" / "skip.py": moved_names,
+        SRC_ROOT / "commands" / "skip.py": {"require_selected_hunk"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "selected_change_skipping.py": {"load_selected_change"},
         SRC_ROOT / "commands" / "suggest_fixup.py": {"require_selected_hunk"},
     }
     violations = []

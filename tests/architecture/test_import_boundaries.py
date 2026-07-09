@@ -1783,6 +1783,48 @@ def test_argument_parser_delegates_multi_file_action_flow():
     )
 
 
+def test_argument_parser_delegates_git_help_display():
+    """Parser construction should not own Git help manpage lookup."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    git_help_path = SRC_ROOT / "cli" / "git_help.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    git_help_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_help_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    git_help = __import__(
+        "git_stage_batch.cli.git_help",
+        fromlist=["git_help"],
+    )
+    moved_names = {
+        "_build_manpath_with_packaged_page",
+        "_git_help_name_for_help_topic",
+        "_manpage_name_for_help_topic",
+        "_resolve_default_manpath",
+        "_show_git_stage_batch_help",
+        "_try_git_help_with_environment",
+        "_with_real_manpath_root",
+    }
+
+    assert "git_stage_batch.cli.git_help" in parser_imports
+    assert "git_stage_batch.utils.command" not in parser_imports
+    assert "git_stage_batch.utils.git" not in parser_imports
+    assert "git_stage_batch.utils.command" in git_help_imports
+    assert "git_stage_batch.utils.git" in git_help_imports
+    assert "GitHelpArgumentParser" in vars(git_help)
+    assert moved_names.isdisjoint(vars(parser))
+    assert "_show_git_stage_batch_help(" not in parser_text
+    assert "import tempfile" not in parser_text
+
+
 def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
     """Multi-file discard-to-batch support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

@@ -15,12 +15,12 @@ from .presence_missing_claims import (
     mapped_missing_source_lines as _mapped_missing_source_lines,
 )
 from . import presence_placement_choices as _presence_placement_choices
-from .realized_entries import (
-    RealizedEntry as _RealizedEntry,
-    _RealizedEntries,
-    _RealizedEntryContentSequence,
-    _entry_is_claimed_at,
-    _entry_source_line_at,
+from .realized_entries import RealizedEntry as _RealizedEntry
+from .realized_entry_storage import (
+    RealizedEntries,
+    RealizedEntryContentSequence,
+    realized_entry_is_claimed_at,
+    realized_entry_source_line_at,
 )
 from . import realized_mapping as _realized_mapping
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
@@ -41,7 +41,7 @@ def apply_presence_constraints(
     *,
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Apply presence constraints: ensure all claimed lines exist in result.
 
     Uses structural alignment to determine which claimed lines are already present
@@ -82,11 +82,11 @@ def _apply_presence_constraints_with_mapping(
     mapping: LineMapping,
     *,
     resolution: _MergeResolution | None = None,
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Apply presence constraints using an existing source-to-working mapping."""
 
     if not presence_line_set:
-        result = _RealizedEntries()
+        result = RealizedEntries()
         _realized_mapping.append_working_range_with_mapping(
             result,
             working_lines,
@@ -104,7 +104,7 @@ def _apply_presence_constraints_with_mapping(
     )
 
     if not missing_claimed:
-        result = _RealizedEntries()
+        result = RealizedEntries()
         _realized_mapping.append_working_range_with_mapping(
             result,
             working_lines,
@@ -129,7 +129,7 @@ def _apply_presence_constraints_with_mapping(
             selected_choice_index = resolution.decisions[presence_key]
             for choice in presence_choices:
                 if choice.choice_index == selected_choice_index:
-                    result = _RealizedEntries()
+                    result = RealizedEntries()
                     _realized_mapping.append_working_range_with_mapping(
                         result,
                         working_lines,
@@ -156,7 +156,7 @@ def _apply_presence_constraints_with_mapping(
                     return result
             raise _MergeError(_("Selected merge resolution is no longer valid"))
 
-    result = _RealizedEntries()
+    result = RealizedEntries()
     working_idx = 0
 
     for source_line in range(1, len(source_lines) + 1):
@@ -223,7 +223,7 @@ def _missing_claimed_lines(
     claimed_ranges: list[tuple[int, int]] = []
     presence_lines = coerce_line_ranges(presence_line_set)
 
-    if isinstance(entries, _RealizedEntries):
+    if isinstance(entries, RealizedEntries):
         for run in entries.provenance_runs():
             if not run.is_claimed or run.source_start == 0:
                 continue
@@ -236,8 +236,8 @@ def _missing_claimed_lines(
         )
 
     for index in range(len(entries)):
-        source_line = _entry_source_line_at(entries, index)
-        if source_line is not None and _entry_is_claimed_at(entries, index):
+        source_line = realized_entry_source_line_at(entries, index)
+        if source_line is not None and realized_entry_is_claimed_at(entries, index):
             claimed_ranges.append((source_line, source_line))
     return presence_lines.difference(
         LineRanges.from_ranges(claimed_ranges)
@@ -253,7 +253,7 @@ def satisfy_constraints(
     strict: bool = True,
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
     realized_entries = apply_presence_constraints(
         source_lines,
@@ -278,7 +278,7 @@ def satisfy_constraints(
             return realized_entries
 
         previous_entries = realized_entries
-        current_lines = _RealizedEntryContentSequence(previous_entries)
+        current_lines = RealizedEntryContentSequence(previous_entries)
         try:
             updated_entries = apply_presence_constraints(
                 source_lines,

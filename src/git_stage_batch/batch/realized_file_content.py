@@ -12,7 +12,7 @@ from ..editor.line_endings import (
 )
 from ..utils.text import normalize_line_sequence_endings
 from .presence_constraints import satisfy_constraints
-from .realized_entries import realized_entry_content_chunks
+from .realized_entry_storage import realized_entry_content_chunks
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership

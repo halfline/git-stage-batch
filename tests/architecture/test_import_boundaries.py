@@ -8170,7 +8170,9 @@ def test_batch_source_text_plan_builders_own_discard_text_planning():
         "git_stage_batch.commands.batch_source.text_plan_builders",
         fromlist=["text_plan_builders"],
     )
-    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
+    discard_action_path = (
+        SRC_ROOT / "commands" / "batch_source" / "discard_action.py"
+    )
     public_names = {
         "DiscardTextPlanBuildResult",
         "build_discard_text_file_action_plan",
@@ -8198,7 +8200,7 @@ def test_batch_source_text_plan_builders_own_discard_text_planning():
     imports_text_plan_builders = False
     direct_plan_imports = set()
 
-    for imported_module, node in _import_from_nodes(discard_from_path):
+    for imported_module, node in _import_from_nodes(discard_action_path):
         imported_names = {alias.name for alias in node.names}
         if (
             imported_module == "git_stage_batch.commands.batch_source"
@@ -8210,15 +8212,15 @@ def test_batch_source_text_plan_builders_own_discard_text_planning():
             set(),
         )
 
-    command_text = discard_from_path.read_text()
+    action_text = discard_action_path.read_text()
 
     assert public_names <= vars(text_plan_builders).keys()
     assert imports_text_plan_builders
     assert direct_plan_imports == set()
-    assert "build_discard_text_file_action_plan(" in command_text
-    assert "_discard_text_file_lifecycle_from_batch" not in command_text
-    assert "discard_batch_from_line_sequences_as_buffer(" not in command_text
-    assert "selected_text_discard_change_type(" not in command_text
+    assert "build_discard_text_file_action_plan(" in action_text
+    assert "_discard_text_file_lifecycle_from_batch" not in action_text
+    assert "discard_batch_from_line_sequences_as_buffer(" not in action_text
+    assert "selected_text_discard_change_type(" not in action_text
 
 
 def test_batch_source_candidate_previews_own_candidate_preview_checks():
@@ -9128,6 +9130,57 @@ def test_batch_source_discard_action_owns_discard_execution():
     assert "build_discard_text_file_action_plan(" in action_text
 
 
+def test_discard_from_delegates_discard_action_execution():
+    """Discard-from should delegate selected file execution to batch-source support."""
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
+    disallowed_imports = {
+        "git_stage_batch.commands.batch_source": {
+            "binary_file_actions",
+            "text_file_actions",
+            "text_plan_builders",
+        },
+        "git_stage_batch.batch.metadata_validation": {
+            "get_validated_baseline_commit",
+        },
+        "git_stage_batch.batch.selection": {
+            "translate_atomic_unit_error_to_gutter_ids",
+        },
+        "git_stage_batch.batch.submodule_pointer": {
+            "discard_submodule_pointer_from_batch",
+            "is_batch_submodule_pointer",
+        },
+        "git_stage_batch.data.session": {
+            "snapshot_file_if_untracked",
+        },
+        "git_stage_batch.data.undo": {
+            "undo_checkpoint",
+        },
+    }
+    imports_discard_action = False
+    direct_execution_imports = set()
+
+    for imported_module, node in _import_from_nodes(discard_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "discard_action" in imported_names
+        ):
+            imports_discard_action = True
+        direct_execution_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    command_text = discard_from_path.read_text()
+
+    assert imports_discard_action
+    assert direct_execution_imports == set()
+    assert "execute_discard_action(" in command_text
+    assert "build_discard_text_file_action_plan(" not in command_text
+    assert "discard_binary_file_to_worktree(" not in command_text
+    assert "write_discarded_text_file_to_worktree(" not in command_text
+
+
 def test_batch_source_selection_state_cleanup_owns_reset_cleanup():
     """Reset selected-state cleanup should live outside the reset entry."""
     selection_state_cleanup = __import__(
@@ -9542,6 +9595,9 @@ def test_batch_source_text_actions_own_text_file_mutations():
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
+    discard_action_path = (
+        SRC_ROOT / "commands" / "batch_source" / "discard_action.py"
+    )
     public_names = {
         "stage_text_file_to_index",
         "write_discarded_text_file_to_worktree",
@@ -9552,9 +9608,9 @@ def test_batch_source_text_actions_own_text_file_mutations():
         "_stage_text_file_from_batch",
         "_write_text_file_from_batch",
     }
-    command_paths = {
+    helper_paths = {
         apply_from_path,
-        discard_from_path,
+        discard_action_path,
         include_from_path,
     }
     helpers_by_path = {
@@ -9563,14 +9619,14 @@ def test_batch_source_text_actions_own_text_file_mutations():
             for node in ast.walk(ast.parse(path.read_text(), filename=str(path)))
             if isinstance(node, (ast.ClassDef, ast.FunctionDef))
         }
-        for path in command_paths
+        for path in {*helper_paths, discard_from_path}
     }
     imports_text_file_actions = {
         path: False
-        for path in command_paths
+        for path in helper_paths
     }
 
-    for path in command_paths:
+    for path in helper_paths:
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
             if (
@@ -9582,7 +9638,7 @@ def test_batch_source_text_actions_own_text_file_mutations():
     assert public_names <= vars(text_file_actions).keys()
     assert imports_text_file_actions == {
         apply_from_path: True,
-        discard_from_path: True,
+        discard_action_path: True,
         include_from_path: True,
     }
     for helpers in helpers_by_path.values():
@@ -9635,6 +9691,9 @@ def test_batch_source_binary_actions_own_worktree_mutation():
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    discard_action_path = (
+        SRC_ROOT / "commands" / "batch_source" / "discard_action.py"
+    )
     public_names = {
         "BinaryWorktreeAction",
         "discard_binary_file_to_worktree",
@@ -9644,9 +9703,9 @@ def test_batch_source_binary_actions_own_worktree_mutation():
         "_discard_binary_file_from_batch",
         "_write_binary_file_from_batch",
     }
-    command_paths = {
+    helper_paths = {
         apply_from_path,
-        discard_from_path,
+        discard_action_path,
         include_from_path,
     }
     helpers_by_path = {
@@ -9655,14 +9714,14 @@ def test_batch_source_binary_actions_own_worktree_mutation():
             for node in ast.walk(ast.parse(path.read_text(), filename=str(path)))
             if isinstance(node, (ast.ClassDef, ast.FunctionDef))
         }
-        for path in command_paths
+        for path in {*helper_paths, discard_from_path}
     }
     imports_binary_file_actions = {
         path: False
-        for path in command_paths
+        for path in helper_paths
     }
 
-    for path in command_paths:
+    for path in helper_paths:
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
             if (
@@ -9674,7 +9733,7 @@ def test_batch_source_binary_actions_own_worktree_mutation():
     assert public_names <= vars(binary_file_actions).keys()
     assert imports_binary_file_actions == {
         apply_from_path: True,
-        discard_from_path: True,
+        discard_action_path: True,
         include_from_path: True,
     }
     for helpers in helpers_by_path.values():

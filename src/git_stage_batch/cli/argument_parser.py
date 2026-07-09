@@ -63,6 +63,7 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .completion import command_complete_files
+from .file_arguments import add_file_argument, normalize_parsed_file_arguments
 from .file_scope import (
     FileArgument,
     resolve_batch_file_scope,
@@ -87,27 +88,6 @@ def _add_subcommand_parser(
     )
 
 
-def _add_file_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
-    """Add a single-file argument that supports omitted values."""
-    parser.add_argument(
-        "--file",
-        action="append",
-        nargs="*",
-        default=None,
-        metavar="PATH",
-        help=help_text,
-    )
-    parser.add_argument(
-        "--files",
-        dest="file_patterns",
-        action="append",
-        nargs="+",
-        default=None,
-        metavar="PATTERN",
-        help=_("Resolve one or more gitignore-style PATTERNs to files."),
-    )
-
-
 def _add_auto_advance_arguments(parser: argparse.ArgumentParser) -> None:
     """Add controls for selecting the next hunk after an action."""
     auto_advance = parser.add_mutually_exclusive_group()
@@ -124,44 +104,6 @@ def _add_auto_advance_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_false",
         help=_("Leave no hunk selected after the command completes"),
     )
-
-
-def _flatten_file_patterns(
-    pattern_groups: list[list[str]] | None,
-) -> list[str] | None:
-    """Flatten repeated --files groups into one ordered pattern list."""
-    if pattern_groups is None:
-        return None
-    return [
-        pattern
-        for group in pattern_groups
-        for pattern in group
-    ]
-
-
-def _normalize_parsed_file_arguments(args: argparse.Namespace) -> None:
-    """Normalize parser storage for --file/--files before dispatch."""
-    if hasattr(args, "file_patterns"):
-        args.file_patterns = _flatten_file_patterns(args.file_patterns)
-
-    if not hasattr(args, "file") or args.file is None:
-        return
-
-    file_groups = args.file
-    if file_groups and not file_groups[-1]:
-        args.file = ""
-        return
-
-    file_values = [
-        value
-        for group in file_groups
-        for value in group
-    ]
-
-    if len(file_values) == 1:
-        args.file = file_values[0]
-    else:
-        args.file = file_values
 
 
 def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Namespace | None:
@@ -319,7 +261,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         dest="page",
         help=_("Show page selection for a file review, e.g. '3', '3-5', '1,3,5-7', or 'all'."),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_show,
         _("Operate on entire file (live working tree state). "
           "If PATH omitted, uses selected hunk's file. "
@@ -491,7 +433,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Stage only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_include,
         _("Operate on entire file (live working tree state). "
           "If PATH omitted, uses selected hunk's file. "
@@ -657,7 +599,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Skip only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_skip,
         _("Operate on entire file (live working tree state). "
           "If PATH omitted, uses selected hunk's file. "
@@ -704,7 +646,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Discard only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_discard,
         _("Operate on entire file (live working tree state). "
           "If PATH omitted, uses selected hunk's file. "
@@ -1014,7 +956,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Apply only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_apply,
         _("Operate on entire file from batch. "
           "If PATH omitted, uses first file in batch (sorted order). "
@@ -1063,7 +1005,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Reset only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_reset,
         _("Operate on entire file from batch. "
           "If PATH omitted, uses selected hunk's file. "
@@ -1166,7 +1108,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     # Parse arguments, return None on failure
     try:
         parsed_args = parser.parse_args(expanded)
-        _normalize_parsed_file_arguments(parsed_args)
+        normalize_parsed_file_arguments(parsed_args)
         return parsed_args
     except argparse.ArgumentError:
         if not quiet:

@@ -7649,7 +7649,7 @@ def test_selected_line_source_refresh_uses_public_api():
         / "commands"
         / "selection"
         / "discard_line_replacement.py": {"refresh_selected_lines_against_source_lines"},
-        SRC_ROOT / "data" / "consumed_selections.py": {
+        SRC_ROOT / "commands" / "selection" / "consumed_selection_recording.py": {
             "refresh_selected_lines_against_new_source",
             "refresh_selected_lines_against_source_lines",
         },
@@ -7854,7 +7854,7 @@ def test_batch_ownership_translation_owns_public_helpers():
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
             "translate_lines_to_batch_ownership",
         },
-        SRC_ROOT / "data" / "consumed_selections.py": {
+        SRC_ROOT / "commands" / "selection" / "consumed_selection_recording.py": {
             "detect_stale_batch_source_for_selection",
             "translate_lines_to_batch_ownership",
         },
@@ -8341,7 +8341,9 @@ def test_batch_ownership_merging_owns_merge_helpers():
         / "commands"
         / "selection"
         / "discard_line_replacement.py": public_names,
-        SRC_ROOT / "data" / "consumed_selections.py": public_names,
+        SRC_ROOT / "commands" / "selection" / "consumed_selection_recording.py": (
+            public_names
+        ),
     }
     violations = []
 
@@ -8409,7 +8411,7 @@ def test_batch_source_advancement_uses_public_entry_helpers():
         SRC_ROOT / "batch" / "source_refresh.py": {
             "advance_batch_source_for_file_with_provenance",
         },
-        SRC_ROOT / "data" / "consumed_selections.py": {
+        SRC_ROOT / "commands" / "selection" / "consumed_selection_recording.py": {
             "advance_batch_source_for_file_with_provenance",
         },
     }
@@ -14285,6 +14287,106 @@ def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     assert "filter_consumed_replacement_masks" not in vars(hunk_tracking)
     assert "_filter_consumed_replacement_masks" not in vars(hunk_tracking)
     assert "read_consumed_file_metadata" not in vars(hunk_tracking)
+
+
+def test_consumed_selection_recording_stays_out_of_data_store():
+    """Consumed-selection recording should live outside metadata storage."""
+    consumed_selections = __import__(
+        "git_stage_batch.data.consumed_selections",
+        fromlist=["consumed_selections"],
+    )
+    recording = __import__(
+        "git_stage_batch.commands.selection.consumed_selection_recording",
+        fromlist=["consumed_selection_recording"],
+    )
+    data_path = SRC_ROOT / "data" / "consumed_selections.py"
+    recording_path = (
+        SRC_ROOT / "commands" / "selection" / "consumed_selection_recording.py"
+    )
+    include_replacement_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_replacement.py"
+    )
+    recording_names = {
+        "record_consumed_selection",
+    }
+    data_names = {
+        "load_consumed_selections_metadata",
+        "read_consumed_file_metadata",
+        "write_consumed_file_metadata",
+    }
+    recording_imports = {
+        "git_stage_batch.batch.ownership": {"BatchOwnership"},
+        "git_stage_batch.batch.ownership_merging": {"merge_batch_ownership"},
+        "git_stage_batch.batch.ownership_translation": {
+            "detect_stale_batch_source_for_selection",
+            "translate_lines_to_batch_ownership",
+        },
+        "git_stage_batch.batch.selected_line_source_refresh": {
+            "refresh_selected_lines_against_new_source",
+            "refresh_selected_lines_against_source_lines",
+        },
+        "git_stage_batch.batch.source_advancement": {
+            "advance_batch_source_for_file_with_provenance",
+        },
+        "git_stage_batch.data.batch_sources": {"create_batch_source_commit"},
+        "git_stage_batch.data.consumed_selections": {
+            "read_consumed_file_metadata",
+            "write_consumed_file_metadata",
+        },
+    }
+    data_imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(data_path)
+    }
+    recording_imported_names = set()
+    include_recording_imports = set()
+    stale_data_imports = []
+
+    assert recording_names <= vars(recording).keys()
+    assert recording_names.isdisjoint(vars(consumed_selections))
+    assert data_names <= vars(consumed_selections).keys()
+
+    assert not any(
+        imported_module.startswith("git_stage_batch.batch")
+        for imported_module in data_imported_modules
+    )
+
+    for imported_module, node in _import_from_nodes(recording_path):
+        recording_imported_names |= {
+            alias.name
+            for alias in node.names
+            if alias.name in recording_imports.get(imported_module, set())
+        }
+
+    for imported_module, node in _import_from_nodes(include_replacement_path):
+        if (
+            imported_module
+            == "git_stage_batch.commands.selection.consumed_selection_recording"
+        ):
+            include_recording_imports |= {
+                alias.name for alias in node.names
+            } & recording_names
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == data_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.consumed_selections":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            moved_names = imported_names & recording_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                stale_data_imports.append(
+                    f"{relative_path}:{node.lineno} imports {names}"
+                )
+
+    assert recording_imported_names == set().union(*recording_imports.values())
+    assert include_recording_imports == recording_names
+    assert stale_data_imports == []
 
 
 def test_selected_hunk_recalculation_stays_out_of_hunk_tracking():

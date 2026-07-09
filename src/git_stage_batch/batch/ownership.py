@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ..core.line_selection import (
     LineRanges,
@@ -19,7 +20,6 @@ from ..utils.git_object_io import (
     create_git_blob,
     read_git_blobs_as_bytes,
 )
-from .absence_content import copy_absence_content as _copy_absence_content
 from .ownership_claims import (
     parse_ownership_line_ranges as _claim_parse_line_ranges,
     presence_claims_from_source_lines as _claim_presence_claims_from_source_lines,
@@ -34,6 +34,11 @@ from .ownership_metadata_blobs import (
 from .ownership_replacement_units import (
     normalize_replacement_units as _replacement_normalize_units,
 )
+
+if TYPE_CHECKING:
+    from .ownership_acquisition import (
+        AcquiredBatchOwnership as _AcquiredBatchOwnership,
+    )
 
 
 @dataclass
@@ -365,6 +370,8 @@ class BatchOwnership:
         data: dict,
     ) -> _AcquiredBatchOwnership:
         """Acquire ownership for metadata with buffered deletion blobs."""
+        from .ownership_acquisition import AcquiredBatchOwnership
+
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
         replacement_metadata = data.get("replacement_units", [])
@@ -395,7 +402,7 @@ class BatchOwnership:
                 buffer.close()
             raise
 
-        return _AcquiredBatchOwnership(
+        return AcquiredBatchOwnership(
             ownership=ownership,
             buffers=buffers,
         )
@@ -443,24 +450,6 @@ class BatchOwnership:
 
 
 @dataclass
-class _AcquiredBatchOwnership:
-    """Own buffers used by a scoped BatchOwnership value."""
-
-    ownership: BatchOwnership
-    buffers: list[LineBuffer]
-
-    def close(self) -> None:
-        for buffer in self.buffers:
-            buffer.close()
-
-    def __enter__(self) -> BatchOwnership:
-        return self.ownership
-
-    def __exit__(self, exc_type, exc, traceback) -> None:
-        self.close()
-
-
-@dataclass
 class ResolvedBatchOwnership:
     """Resolved ownership representation for materialization and merge.
 
@@ -472,48 +461,3 @@ class ResolvedBatchOwnership:
     """
     presence_line_set: LineRanges  # Batch source line numbers (1-indexed)
     deletion_claims: list[AbsenceClaim]  # Separate constraints, not collapsed
-
-
-def acquire_detached_batch_ownership(
-    ownership: BatchOwnership,
-) -> _AcquiredBatchOwnership:
-    """Acquire an ownership copy with independent absence content buffers."""
-    buffers: list[LineBuffer] = []
-    deletions: list[AbsenceClaim] = []
-    try:
-        for deletion in ownership.deletions:
-            content_lines = _copy_absence_content(deletion.content_lines)
-            buffers.append(content_lines)
-            deletions.append(
-                AbsenceClaim(
-                    anchor_line=deletion.anchor_line,
-                    content_lines=content_lines,
-                    baseline_reference=deletion.baseline_reference,
-                )
-            )
-    except Exception:
-        for buffer in buffers:
-            buffer.close()
-        raise
-
-    return _AcquiredBatchOwnership(
-        ownership=BatchOwnership(
-            presence_claims=[
-                PresenceClaim(
-                    source_lines=claim.source_lines[:],
-                    baseline_references=dict(claim.baseline_references),
-                )
-                for claim in ownership.presence_claims
-            ],
-            deletions=deletions,
-            replacement_units=[
-                ReplacementUnit(
-                    presence_lines=unit.presence_lines[:],
-                    deletion_indices=unit.deletion_indices[:],
-                    origin=unit.origin,
-                )
-                for unit in ownership.replacement_units
-            ],
-        ),
-        buffers=buffers,
-    )

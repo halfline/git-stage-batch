@@ -8,10 +8,8 @@ from collections.abc import Sequence
 from contextlib import AbstractContextManager
 
 from ...batch.operations import create_batch
-from ...batch.ownership import (
-    BatchOwnership,
-    acquire_detached_batch_ownership,
-)
+from ...batch.ownership import BatchOwnership
+from ...batch.ownership_detachment import acquire_detached_batch_ownership
 from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_units import (
     build_ownership_units_from_batch_source_lines,

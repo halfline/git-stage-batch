@@ -7,11 +7,13 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.commands.selection.consumed_selection_recording import (
+    record_consumed_selection,
+)
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import LineEntry
 from git_stage_batch.data.consumed_selections import (
     read_consumed_file_metadata,
-    record_consumed_selection,
 )
 from git_stage_batch.core.buffer import LineBuffer
 

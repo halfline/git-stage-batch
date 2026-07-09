@@ -2001,11 +2001,13 @@ def test_file_review_action_scope_stays_out_of_state_module():
             "resolve_batch_source_action_scope",
         },
         SRC_ROOT / "commands" / "discard.py": {
-            "finish_review_scoped_line_action",
             "refuse_ambiguous_bare_action_after_partial_file_review",
             "refuse_live_action_for_batch_selection",
             "resolve_live_line_action_scope",
             "resolve_live_to_batch_action_scope",
+        },
+        SRC_ROOT / "commands" / "selection" / "discard_to_batch_action.py": {
+            "finish_review_scoped_line_action",
         },
         SRC_ROOT / "commands" / "include.py": {
             "refuse_ambiguous_bare_action_after_partial_file_review",
@@ -3150,6 +3152,7 @@ def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
 def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
     """File-scope fallback support should not depend on discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    action_path = SRC_ROOT / "commands" / "selection" / "discard_to_batch_action.py"
     multi_file_helper_path = (
         SRC_ROOT / "commands" / "file_scope" / "discard_to_batch.py"
     )
@@ -3184,6 +3187,17 @@ def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
         imported_module
         for imported_module, _node in _import_from_nodes(discard_path)
     }
+    discard_selection_imported_names = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.selection":
+            discard_selection_imported_names |= {alias.name for alias in node.names}
+    action_file_scope_imported_names = set()
+    action_selection_imported_names = set()
+    for imported_module, node in _import_from_nodes(action_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            action_file_scope_imported_names |= {alias.name for alias in node.names}
+        if imported_module == "git_stage_batch.commands.selection":
+            action_selection_imported_names |= {alias.name for alias in node.names}
     multi_file_helper_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(multi_file_helper_path)
@@ -3207,14 +3221,13 @@ def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
     assert old_command_helper_names.isdisjoint(vars(single_file_helper).keys())
     assert old_command_helper_names.isdisjoint(vars(whole_file_helper).keys())
     assert old_command_helper_names.isdisjoint(discard_names)
+    assert "discard_to_batch_action" in discard_selection_imported_names
     assert (
         "git_stage_batch.commands.file_scope.discard_file_to_batch"
-        in discard_imports
+        not in discard_imports
     )
-    assert (
-        "git_stage_batch.commands.selection.whole_file_batch_discarding"
-        in discard_imports
-    )
+    assert "discard_file_to_batch" in action_file_scope_imported_names
+    assert "whole_file_batch_discarding" in action_selection_imported_names
     assert (
         "git_stage_batch.commands.file_scope.discard_file_to_batch"
         in multi_file_helper_imports
@@ -3502,6 +3515,70 @@ def test_discard_to_batch_action_owns_resolved_dispatch():
     ]
 
 
+def test_discard_delegates_discard_to_batch_action_routing():
+    """The discard-to-batch command should delegate resolved action routing."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_attrs = {
+        node.attr
+        for node in ast.walk(discard_functions["command_discard_to_batch"])
+        if isinstance(node, ast.Attribute)
+    }
+    discard_imports = {}
+    for imported_module, node in _import_from_nodes(discard_path):
+        discard_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+    disallowed_imports = {
+        "git_stage_batch.core.models": {
+            "BinaryFileChange",
+            "RenameChange",
+            "TextFileDeletionChange",
+        },
+        "git_stage_batch.data.file_review.action_scope": {
+            "finish_review_scoped_line_action",
+        },
+        "git_stage_batch.data.selected_change.loading": {
+            "load_selected_change",
+        },
+        "git_stage_batch.data.undo": {
+            "undo_checkpoint",
+        },
+        "git_stage_batch.exceptions": {
+            "exit_with_error",
+        },
+        "git_stage_batch.commands.selection": {
+            "discard_line_batching",
+            "selected_change_batch_discarding",
+            "whole_file_batch_discarding",
+        },
+        "git_stage_batch.commands.file_scope": {
+            "discard_file_to_batch",
+        },
+        "git_stage_batch.commands.file_scope.target_path": {
+            "require_file_scope_target_path",
+        },
+    }
+    violations = []
+
+    for imported_module, disallowed_names in disallowed_imports.items():
+        stale_names = discard_imports.get(imported_module, set()) & disallowed_names
+        if stale_names:
+            names = ", ".join(sorted(stale_names))
+            violations.append(f"{imported_module} imports {names}")
+
+    assert "discard_to_batch_action" in discard_imports[
+        "git_stage_batch.commands.selection"
+    ]
+    assert "execute_discard_to_batch_action" in command_attrs
+    assert violations == []
+
+
 def test_file_scope_include_file_owns_file_pipeline():
     """Explicit file-scope include support should stay out of include.py."""
     include_path = SRC_ROOT / "commands" / "include.py"
@@ -3784,10 +3861,13 @@ def test_file_scope_file_display_action_owns_show_entry_flow():
 def test_file_scope_target_path_stays_in_file_scope_support():
     """File-scope target fallback should stay out of command entrypoints."""
     direct_target_path_paths = {
-        SRC_ROOT / "commands" / "discard.py",
         SRC_ROOT / "commands" / "selection" / "include_to_batch_action.py",
+        SRC_ROOT / "commands" / "selection" / "discard_to_batch_action.py",
     }
-    include_path = SRC_ROOT / "commands" / "include.py"
+    command_paths = {
+        SRC_ROOT / "commands" / "discard.py",
+        SRC_ROOT / "commands" / "include.py",
+    }
     helper_path = SRC_ROOT / "commands" / "file_scope" / "target_path.py"
     helper = __import__(
         "git_stage_batch.commands.file_scope.target_path",
@@ -3798,7 +3878,7 @@ def test_file_scope_target_path_stays_in_file_scope_support():
     imports_by_path = {}
     imported_names = set()
 
-    for path in direct_target_path_paths | {include_path}:
+    for path in direct_target_path_paths | command_paths:
         imports_by_path[path] = set()
         for imported_module, node in _import_from_nodes(path):
             imports_by_path[path].add(imported_module)
@@ -3816,8 +3896,10 @@ def test_file_scope_target_path_stays_in_file_scope_support():
             "git_stage_batch.commands.file_scope.target_path" in imports_by_path[path]
         )
     assert (
-        "git_stage_batch.commands.file_scope.target_path"
-        not in imports_by_path[include_path]
+        all(
+            "git_stage_batch.commands.file_scope.target_path" not in imports_by_path[path]
+            for path in command_paths
+        )
     )
     for imports in imports_by_path.values():
         assert "git_stage_batch.data.selected_change.paths" not in imports
@@ -4135,6 +4217,7 @@ def test_file_scope_include_replacement_owns_file_pipeline():
 def test_selected_change_batch_discarding_owns_hunk_pipeline():
     """Selected change batch support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    action_path = SRC_ROOT / "commands" / "selection" / "discard_to_batch_action.py"
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "selected_change_batch_discarding.py"
     )
@@ -4172,6 +4255,10 @@ def test_selected_change_batch_discarding_owns_hunk_pipeline():
     for imported_module, node in _import_from_nodes(discard_path):
         if imported_module == "git_stage_batch.commands.selection":
             discard_imported_names |= {alias.name for alias in node.names}
+    action_imported_names = set()
+    for imported_module, node in _import_from_nodes(action_path):
+        if imported_module == "git_stage_batch.commands.selection":
+            action_imported_names |= {alias.name for alias in node.names}
 
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
@@ -4180,7 +4267,9 @@ def test_selected_change_batch_discarding_owns_hunk_pipeline():
     assert public_names <= vars(helper).keys()
     assert internal_names <= vars(helper).keys()
     assert old_command_helper_names.isdisjoint(discard_names)
-    assert "selected_change_batch_discarding" in discard_imported_names
+    assert "discard_to_batch_action" in discard_imported_names
+    assert "selected_change_batch_discarding" not in discard_imported_names
+    assert "selected_change_batch_discarding" in action_imported_names
     assert helper_imports <= helper_imported_names
 
 
@@ -10456,7 +10545,10 @@ def test_selected_change_loading_stays_out_of_hunk_tracking():
         / "commands"
         / "selection"
         / "include_line_batching.py": {"require_selected_hunk"},
-        SRC_ROOT / "commands" / "discard.py": {"load_selected_change"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "discard_to_batch_action.py": {"load_selected_change"},
         SRC_ROOT
         / "commands"
         / "selection"
@@ -11819,6 +11911,7 @@ def test_skip_line_selection_stays_in_command_helper():
 def test_discard_line_replacement_stays_in_command_helper():
     """Discard line-replacement support should stay out of the command entrypoint."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    action_path = SRC_ROOT / "commands" / "selection" / "discard_to_batch_action.py"
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
     )
@@ -11913,6 +12006,7 @@ def test_discard_line_replacement_stays_in_command_helper():
         if isinstance(node, ast.FunctionDef)
     }
     discard_imports_line_batching = False
+    action_imports_line_batching = False
     line_batching_imports_helper = False
 
     for imported_module, node in _import_from_nodes(discard_path):
@@ -11921,6 +12015,12 @@ def test_discard_line_replacement_stays_in_command_helper():
         imported_names = {alias.name for alias in node.names}
         if "discard_line_batching" in imported_names:
             discard_imports_line_batching = True
+    for imported_module, node in _import_from_nodes(action_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "discard_line_batching" in imported_names:
+            action_imports_line_batching = True
 
     for imported_module, node in _import_from_nodes(line_batching_path):
         if imported_module != "git_stage_batch.commands.selection":
@@ -11940,7 +12040,8 @@ def test_discard_line_replacement_stays_in_command_helper():
 
     assert old_discard_names.isdisjoint(discard_helpers)
     assert moved_batch_update_names.isdisjoint(command_update_names)
-    assert discard_imports_line_batching
+    assert not discard_imports_line_batching
+    assert action_imports_line_batching
     assert line_batching_imports_helper
     assert helper_imports <= helper_imported_names
 

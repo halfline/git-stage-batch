@@ -13,6 +13,7 @@ from git_stage_batch.cli import (
     git_help,
     include_dispatch,
     replacement_input,
+    session_subcommands,
     show_dispatch,
     skip_dispatch,
 )
@@ -245,7 +246,7 @@ def test_parse_command_line_start_passes_auto_advance(monkeypatch):
 def test_parse_command_line_check_unstaged(monkeypatch):
     """check-unstaged dispatches to the unstaged-only index guard."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_check_unstaged", mock_command)
+    monkeypatch.setattr(session_subcommands, "command_check_unstaged", mock_command)
 
     args = parse_command_line(["check-unstaged"], quiet=True)
 

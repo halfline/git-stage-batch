@@ -9,8 +9,7 @@ from typing import TYPE_CHECKING, Optional
 
 from .metadata_validation import get_validated_baseline_commit
 from .operations import create_batch
-from .query import get_batch_baseline_commit, get_batch_commit_sha, read_batch_metadata
-from .state_refs import read_file_backed_batch_metadata
+from .query import get_batch_commit_sha, read_batch_metadata
 from .validation import batch_exists, validate_batch_name
 from ..core.models import BinaryFileChange, GitlinkChange
 from ..core.text_lifecycle import (
@@ -36,8 +35,6 @@ from ..utils.git_index import (
     GitIndexEntryUpdate,
     git_commit_tree,
     git_read_tree,
-    git_update_gitlink,
-    git_update_index,
     git_update_index_entries,
     git_write_tree,
     temp_git_index,
@@ -45,6 +42,7 @@ from ..utils.git_index import (
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob
 from ..utils.paths import get_batch_metadata_file_path
+from . import content_commits as _content_commits
 from . import realized_file_content as _realized_file_content
 
 if TYPE_CHECKING:
@@ -264,7 +262,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
 
         commit_sha = git_commit_tree(
             tree_sha,
-            parents=_batch_commit_parents(batch_name),
+            parents=_content_commits.batch_content_commit_parents(batch_name),
             message=f"Batch: {batch_name}",
         )
 
@@ -370,7 +368,7 @@ def add_binary_file_to_batch(
         # Update batch commit tree
         if blob_sha:
             # Added or modified: add file to batch commit tree
-            update_batch_commit(
+            _content_commits.update_batch_commit(
                 batch_name,
                 file_path,
                 blob_sha,
@@ -379,7 +377,7 @@ def add_binary_file_to_batch(
             )
         else:
             # Deleted: remove file from batch commit tree
-            remove_file_from_batch_commit(
+            _content_commits.remove_file_from_batch_commit(
                 batch_name,
                 file_path,
                 source_buffers=source_buffers,
@@ -416,7 +414,7 @@ def add_gitlink_to_batch(
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
     if gitlink_change.is_deleted_file():
-        remove_file_from_batch_commit(batch_name, file_path)
+        _content_commits.remove_file_from_batch_commit(batch_name, file_path)
         return
 
     if gitlink_change.new_oid is None:
@@ -424,7 +422,11 @@ def add_gitlink_to_batch(
             "new_oid is required for added or modified submodule pointers"
         )
 
-    _update_batch_gitlink_commit(batch_name, file_path, gitlink_change.new_oid)
+    _content_commits.update_batch_gitlink_commit(
+        batch_name,
+        file_path,
+        gitlink_change.new_oid,
+    )
 
 
 def remove_file_from_batch(batch_name: str, file_path: str) -> None:
@@ -433,7 +435,7 @@ def remove_file_from_batch(batch_name: str, file_path: str) -> None:
     metadata.get("files", {}).pop(file_path, None)
     metadata_path = get_batch_metadata_file_path(batch_name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
-    remove_file_from_batch_commit(batch_name, file_path)
+    _content_commits.remove_file_from_batch_commit(batch_name, file_path)
 
 
 def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path: str) -> None:
@@ -453,18 +455,18 @@ def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path:
 
     source_commit = get_batch_commit_sha(source_batch)
     if not source_commit:
-        remove_file_from_batch_commit(dest_batch, file_path)
+        _content_commits.remove_file_from_batch_commit(dest_batch, file_path)
         return
 
     if file_meta.get("file_type") == "gitlink":
         if file_meta.get("change_type") == "deleted":
-            remove_file_from_batch_commit(dest_batch, file_path)
+            _content_commits.remove_file_from_batch_commit(dest_batch, file_path)
             return
         oid = file_meta.get("new_oid")
         if not oid:
-            remove_file_from_batch_commit(dest_batch, file_path)
+            _content_commits.remove_file_from_batch_commit(dest_batch, file_path)
             return
-        _update_batch_gitlink_commit(dest_batch, file_path, oid)
+        _content_commits.update_batch_gitlink_commit(dest_batch, file_path, oid)
         return
 
     source_buffer = load_git_object_as_buffer(f"{source_commit}:{file_path}")
@@ -472,131 +474,14 @@ def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path:
         with source_buffer:
             blob_sha = create_git_blob(source_buffer.byte_chunks())
         file_mode = file_meta.get("mode", "100644")
-        update_batch_commit(dest_batch, file_path, blob_sha, file_mode)
+        _content_commits.update_batch_commit(
+            dest_batch,
+            file_path,
+            blob_sha,
+            file_mode,
+        )
     else:
-        remove_file_from_batch_commit(dest_batch, file_path)
-
-
-def _batch_commit_parents(batch_name: str) -> list[str]:
-    """Return parent commits for a batch content commit."""
-    parents = []
-    baseline = get_batch_baseline_commit(batch_name)
-    if baseline:
-        parents.append(baseline)
-
-    metadata = read_file_backed_batch_metadata(batch_name)
-    batch_source_commits = {
-        file_meta["batch_source_commit"]
-        for file_meta in metadata.get("files", {}).values()
-        if "batch_source_commit" in file_meta
-    }
-    parents.extend(sorted(batch_source_commits))
-    return parents
-
-
-def remove_file_from_batch_commit(
-    batch_name: str,
-    file_path: str,
-    *,
-    source_buffers: dict[str, LineBuffer] | None = None,
-) -> None:
-    """Remove a file from batch commit tree (for deletions).
-
-    Creates a new batch commit with the file removed from the tree.
-    Used when a binary file deletion is stored in a batch.
-
-    Args:
-        batch_name: Name of the batch
-        file_path: Repository-relative path to the file to remove
-    """
-    with temp_git_index() as env:
-        existing_commit = get_batch_commit_sha(batch_name)
-        if existing_commit:
-            git_read_tree(existing_commit, env=env)
-
-        # Remove file from the temporary index regardless of the working tree.
-        # `--remove` consults worktree state and can leave a baseline blob in
-        # the batch tree when the file exists locally; stored deletions need the
-        # path absent from the batch commit unconditionally.
-        git_update_index(file_path=file_path, force_remove=True, check=False, env=env)
-        tree_sha = git_write_tree(env=env)
-
-    commit_sha = git_commit_tree(
-        tree_sha,
-        parents=_batch_commit_parents(batch_name),
-        message=f"Batch: {batch_name}",
-    )
-
-    from .state_refs import sync_batch_state_refs
-    sync_batch_state_refs(
-        batch_name,
-        content_commit=commit_sha,
-        source_buffers=source_buffers,
-    )
-
-
-def update_batch_commit(
-    batch_name: str,
-    file_path: str,
-    blob_sha: str,
-    file_mode: str,
-    *,
-    source_buffers: dict[str, LineBuffer] | None = None,
-) -> None:
-    """Update batch commit tree with new/updated file.
-
-    Creates a new batch commit with parents=[baseline, ...batch sources].
-
-    Args:
-        batch_name: Name of the batch
-        file_path: Repository-relative path to the file
-        blob_sha: Blob SHA for the file content
-        file_mode: File mode
-    """
-    with temp_git_index() as env:
-        existing_commit = get_batch_commit_sha(batch_name)
-        if existing_commit:
-            git_read_tree(existing_commit, env=env)
-
-        git_update_index(mode=file_mode, blob_sha=blob_sha, file_path=file_path, env=env)
-        tree_sha = git_write_tree(env=env)
-
-    commit_sha = git_commit_tree(
-        tree_sha,
-        parents=_batch_commit_parents(batch_name),
-        message=f"Batch: {batch_name}",
-    )
-
-    from .state_refs import sync_batch_state_refs
-    sync_batch_state_refs(
-        batch_name,
-        content_commit=commit_sha,
-        source_buffers=source_buffers,
-    )
-
-
-def _update_batch_gitlink_commit(
-    batch_name: str,
-    file_path: str,
-    oid: str,
-) -> None:
-    """Update batch commit tree with one submodule pointer entry."""
-    with temp_git_index() as env:
-        existing_commit = get_batch_commit_sha(batch_name)
-        if existing_commit:
-            git_read_tree(existing_commit, env=env)
-
-        git_update_gitlink(file_path=file_path, oid=oid, env=env)
-        tree_sha = git_write_tree(env=env)
-
-    commit_sha = git_commit_tree(
-        tree_sha,
-        parents=_batch_commit_parents(batch_name),
-        message=f"Batch: {batch_name}",
-    )
-
-    from .state_refs import sync_batch_state_refs
-    sync_batch_state_refs(batch_name, content_commit=commit_sha)
+        _content_commits.remove_file_from_batch_commit(dest_batch, file_path)
 
 
 def read_file_from_batch(batch_name: str, file_path: str) -> Optional[str]:

@@ -12504,6 +12504,10 @@ def test_batch_source_action_selection_owns_file_line_selection():
             "resolve_batch_file_scope",
             "resolve_current_batch_atomic_file_scope",
         },
+        "git_stage_batch.data.batch_file_scope": {
+            "resolve_batch_file_scope",
+            "resolve_current_batch_atomic_file_scope",
+        },
         "git_stage_batch.batch.submodule_pointer": {
             "refuse_batch_submodule_pointer_lines",
         },
@@ -12552,6 +12556,90 @@ def test_batch_source_action_selection_owns_file_line_selection():
         discard_from_path: set(),
         include_from_path: set(),
     }
+
+
+def test_data_batch_file_scope_owns_session_batch_scope_resolution():
+    """Session-aware batch file scope should live on the data boundary."""
+    batch_file_scope = __import__(
+        "git_stage_batch.data.batch_file_scope",
+        fromlist=["batch_file_scope"],
+    )
+    batch_selection = __import__(
+        "git_stage_batch.batch.selection",
+        fromlist=["selection"],
+    )
+    scope_path = SRC_ROOT / "data" / "batch_file_scope.py"
+    action_selection_path = (
+        SRC_ROOT / "commands" / "batch_source" / "action_selection.py"
+    )
+    reset_claims_path = (
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py"
+    )
+    reset_selection_path = (
+        SRC_ROOT / "commands" / "batch_source" / "reset_selection.py"
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    review_selection_path = SRC_ROOT / "data" / "file_review" / "batch_selection.py"
+    public_names = {
+        "resolve_batch_file_scope",
+        "resolve_current_batch_atomic_file_scope",
+    }
+    moved_names = public_names | {"_get_batch_file_for_line_operation"}
+    session_imports = {
+        "git_stage_batch.data.batch_selected_changes",
+        "git_stage_batch.data.selected_change.paths",
+        "git_stage_batch.data.selected_change.store",
+        "git_stage_batch.utils.file_patterns",
+    }
+    expected_scope_imports = {
+        action_selection_path: {
+            "resolve_batch_file_scope",
+            "resolve_current_batch_atomic_file_scope",
+        },
+        reset_selection_path: {
+            "resolve_batch_file_scope",
+            "resolve_current_batch_atomic_file_scope",
+        },
+        reset_claims_path: {
+            "resolve_batch_file_scope",
+        },
+        show_from_path: {
+            "resolve_batch_file_scope",
+        },
+        review_selection_path: {
+            "resolve_batch_file_scope",
+        },
+    }
+    scope_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(scope_path)
+    }
+    actual_scope_imports = {
+        path: set()
+        for path in expected_scope_imports
+    }
+    old_selection_imports = {
+        path: set()
+        for path in expected_scope_imports
+    }
+
+    for path in expected_scope_imports:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.batch_file_scope":
+                actual_scope_imports[path] |= imported_names & public_names
+            if imported_module == "git_stage_batch.batch.selection":
+                old_selection_imports[path] |= imported_names & moved_names
+
+    assert public_names <= vars(batch_file_scope).keys()
+    assert moved_names.isdisjoint(vars(batch_selection))
+    assert session_imports <= scope_imports
+    assert "git_stage_batch.batch.selection" not in scope_imports
+    assert actual_scope_imports == expected_scope_imports
+    assert all(
+        not imported_names
+        for imported_names in old_selection_imports.values()
+    )
 
 
 def test_batch_source_action_completion_owns_review_finalization():
@@ -13071,6 +13159,10 @@ def test_batch_source_reset_selection_owns_reset_scope():
             "read_batch_metadata",
         },
         "git_stage_batch.batch.selection": {
+            "resolve_batch_file_scope",
+            "resolve_current_batch_atomic_file_scope",
+        },
+        "git_stage_batch.data.batch_file_scope": {
             "resolve_batch_file_scope",
             "resolve_current_batch_atomic_file_scope",
         },

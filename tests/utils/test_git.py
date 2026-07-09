@@ -13,7 +13,6 @@ import pytest
 
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git import (
-    create_git_blob,
     get_git_repository_root_path,
     git_commit_tree,
     git_read_tree,
@@ -24,6 +23,7 @@ from git_stage_batch.utils.git import (
     temp_git_index,
 )
 from git_stage_batch.utils.git_index_lock import wait_for_git_index_lock
+from git_stage_batch.utils.git_object_io import create_git_blob
 
 
 @pytest.fixture

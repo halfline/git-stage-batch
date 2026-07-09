@@ -6604,6 +6604,94 @@ def test_batch_merge_candidates_uses_public_data_types():
     assert violations == []
 
 
+def test_batch_baseline_edits_own_replacement_fallback():
+    """Baseline-coordinate merge fallback should live outside merge."""
+    baseline_edits = __import__(
+        "git_stage_batch.batch.baseline_edits",
+        fromlist=["baseline_edits"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    merge_path = SRC_ROOT / "batch" / "merge.py"
+    public_names = {
+        "ReplacementOriginChoice",
+        "has_missing_origin_replacement_claims",
+        "replacement_origin_choices_for_unit",
+        "try_apply_baseline_replacement_units",
+    }
+    stale_merge_names = public_names | {
+        "_BaselineLineEdit",
+        "_ReplacementOriginChoice",
+        "_baseline_reference_absence_position",
+        "_baseline_reference_insertion_position",
+        "_has_missing_origin_replacement_claims",
+        "_line_payload_for_reference_match",
+        "_line_sequences_equal",
+        "_replacement_baseline_edit",
+        "_replacement_origin_ambiguity_key",
+        "_replacement_origin_choices_for_unit",
+        "_try_apply_baseline_replacement_units",
+    }
+    expected_direct_imports = {
+        merge_path: {
+            "ReplacementOriginChoice",
+        },
+    }
+    expected_child_imports = {
+        merge_path: {
+            "baseline_edits",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(baseline_edits).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == baseline_edits_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        direct_public_names = set()
+        child_module_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & stale_merge_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module == "git_stage_batch.batch":
+                child_module_names |= imported_names & {"baseline_edits"}
+                continue
+
+            if imported_module != "git_stage_batch.batch.baseline_edits":
+                continue
+
+            direct_public_names |= imported_names & public_names
+            private_old_names = imported_names & {
+                name for name in stale_merge_names if name.startswith("_")
+            }
+            if private_old_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_old_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_direct_imports:
+            assert expected_direct_imports[path] <= direct_public_names
+        if path in expected_child_imports:
+            assert expected_child_imports[path] <= child_module_names
+
+    assert violations == []
+
+
 def test_operation_candidates_owns_candidate_preview_count():
     """Candidate preview count state should live with operation candidates."""
     operation_candidates = __import__(

@@ -11431,9 +11431,7 @@ def test_output_owns_operation_candidate_preview_rendering():
         "render_operation_candidate",
         "render_operation_candidate_overview",
     }
-    renderer_helper_names = {
-        "_print_candidate_buffer_diff",
-    }
+    renderer_helper_names: set[str] = set()
     summary_names = {
         "CandidateSnippetLine",
         "CandidateTargetSummary",
@@ -11480,7 +11478,6 @@ def test_output_owns_operation_candidate_preview_rendering():
     assert old_renderer_summary_names.isdisjoint(vars(candidate_preview))
     assert "git_stage_batch.output" in candidate_preview_imports
     assert "git_stage_batch.output.colors" in candidate_preview_imports
-    assert "git_stage_batch.core.diff_parser" in candidate_preview_imports
     assert "git_stage_batch.output.colors" not in candidate_summary_imports
     assert "git_stage_batch.core.diff_parser" not in candidate_summary_imports
 

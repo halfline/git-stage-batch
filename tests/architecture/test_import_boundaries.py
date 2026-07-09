@@ -9026,7 +9026,7 @@ def test_batch_merge_does_not_reexport_merge_exceptions():
         "MergeError",
         "MissingAnchorError",
     }
-    show_from_exception_imports = set()
+    candidate_preview_action_exception_imports = set()
     violations = []
 
     assert exception_names.isdisjoint(vars(merge))
@@ -9035,8 +9035,16 @@ def test_batch_merge_does_not_reexport_merge_exceptions():
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
             if imported_module == "git_stage_batch.exceptions":
-                if path == SRC_ROOT / "commands" / "show_from.py":
-                    show_from_exception_imports |= imported_names & exception_names
+                if (
+                    path
+                    == SRC_ROOT
+                    / "commands"
+                    / "batch_source"
+                    / "candidate_preview_action.py"
+                ):
+                    candidate_preview_action_exception_imports |= (
+                        imported_names & exception_names
+                    )
                 continue
 
             if imported_module != "git_stage_batch.batch.merge":
@@ -9048,7 +9056,7 @@ def test_batch_merge_does_not_reexport_merge_exceptions():
                 names = ", ".join(sorted(moved_names))
                 violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
-    assert "MergeError" in show_from_exception_imports
+    assert "MergeError" in candidate_preview_action_exception_imports
     assert violations == []
 
 

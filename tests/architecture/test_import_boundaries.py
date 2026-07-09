@@ -2619,6 +2619,54 @@ def test_argument_parser_delegates_quick_action_expansion():
     assert "'if': ['include', '--file']" not in parser_text
 
 
+def test_argument_parser_delegates_show_dispatch():
+    """Parser construction should not own show workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    show_dispatch_path = SRC_ROOT / "cli" / "show_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    show_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(show_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    show_dispatch = __import__(
+        "git_stage_batch.cli.show_dispatch",
+        fromlist=["show_dispatch"],
+    )
+    dispatch_helper_names = {
+        "_dispatch_show_from_batch",
+        "_dispatch_show_live",
+        "_validate_show_page_request",
+    }
+    show_runtime_imports = {
+        "git_stage_batch.batch.query",
+        "git_stage_batch.batch.source_selector",
+        "git_stage_batch.batch.validation",
+        "git_stage_batch.commands.show",
+        "git_stage_batch.commands.show_from",
+    }
+
+    assert "git_stage_batch.cli.show_dispatch" in parser_imports
+    assert show_runtime_imports.isdisjoint(parser_imports)
+    assert show_runtime_imports <= show_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in show_dispatch_imports
+    assert "git_stage_batch.cli.replacement_input" in show_dispatch_imports
+    assert "dispatch_show_command" in vars(show_dispatch)
+    assert dispatch_helper_names <= vars(show_dispatch).keys()
+    assert dispatch_helper_names.isdisjoint(vars(parser))
+    assert "def dispatch_show(" not in parser_text
+    assert "read_batch_metadata(" not in parser_text
+    assert "command_show_from_batch(" not in parser_text
+    assert "command_show(" not in parser_text
+
+
 def test_argument_parser_delegates_replacement_input_decoding():
     """Parser branches should not own replacement payload decoding."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -4950,7 +4998,9 @@ def test_argument_parser_does_not_import_command_facade():
     assert "from .. import commands" not in parser_text
     assert "commands.command_" not in parser_text
     assert "commands.DEFAULT_PROMPT_FORMAT" not in parser_text
-    assert "git_stage_batch.commands.show" in imported_modules
+    assert "git_stage_batch.cli.show_dispatch" in imported_modules
+    assert "git_stage_batch.commands.show" not in imported_modules
+    assert "git_stage_batch.commands.show_from" not in imported_modules
     assert "git_stage_batch.commands.include" in imported_modules
     assert "git_stage_batch.commands.discard" in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules

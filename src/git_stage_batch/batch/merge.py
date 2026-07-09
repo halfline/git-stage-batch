@@ -8,9 +8,10 @@ import hashlib
 from typing import TYPE_CHECKING, Any
 
 from .baseline_correspondence import (
-    BaselineCorrespondence as _BaselineCorrespondence,
-    RegionKind as _RegionKind,
     build_baseline_correspondence as _build_discard_baseline_correspondence,
+)
+from .discard_reversal import (
+    reverse_presence_constraints as _reverse_batch_presence_constraints,
 )
 from .merge_candidates import (
     MergeCandidate as _MergeCandidate,
@@ -2798,7 +2799,7 @@ def _discard_batch_acquired_line_chunks(
         )
 
     try:
-        updated_entries = _reverse_presence_constraints(
+        updated_entries = _reverse_batch_presence_constraints(
             realized_entries,
             presence_line_set,
             correspondence
@@ -2848,166 +2849,6 @@ def _build_realized_entries_for_discard(
         len(working_lines),
         set(),
     )
-
-    return result
-
-
-def _count_lines_in_range(
-    line_selection: LineSelection,
-    start_line: int,
-    end_line: int,
-) -> int:
-    return _as_line_ranges(line_selection).count(start_line, end_line)
-
-
-def _reverse_presence_constraints(
-    entries: Sequence[_RealizedEntry],
-    presence_line_set: LineSelection,
-    correspondence: _BaselineCorrespondence
-) -> _RealizedEntries:
-    """Reverse presence constraints: replace/remove batch-owned claimed lines.
-
-    For each entry in the working tree that corresponds to a claimed source line:
-    - If from EQUAL or REPLACE_LINE_BY_LINE region: replace with baseline line-by-line
-    - If from INSERT region: remove (batch-added content)
-    - If from REPLACE_BY_HUNK region: verify full ownership, then restore as unit
-
-    This is the inverse of presence constraint application: where merge ensures
-    claimed lines are present, discard ensures they are removed or restored to baseline.
-
-    Replace regions are handled intelligently:
-    - Line-by-line replace (same size): restored line-by-line like equal regions
-    - By-hunk replace (different sizes): requires full region ownership
-      - If batch owns entire region → restore entire baseline block
-      - If batch owns only part → raise MergeError (cannot safely discard partial)
-
-    Args:
-        entries: Realized entries from working tree with source provenance
-        presence_line_set: Source line numbers that are batch-owned
-        correspondence: Baseline restoration correspondence
-
-    Returns:
-        Entries with batch-owned claimed lines replaced or removed
-
-    Raises:
-        MergeError: If the restoration region is missing or cannot be
-            partially discarded
-    """
-    result = _RealizedEntries()
-    processed_replace_regions: set[int] = set()
-
-    def flush_copy(start: int | None, stop: int) -> None:
-        if start is not None and start < stop:
-            result.copy_slice_from(entries, start, stop)
-
-    def restore_source_line(source_line: int) -> None:
-        region = correspondence.get_region_for_source_line(source_line)
-
-        if region is None:
-            raise _MergeError(
-                _("Cannot discard source line {line}: no baseline restoration region found").format(
-                    line=source_line
-                )
-            )
-
-        if region.kind in (_RegionKind.EQUAL, _RegionKind.REPLACE_LINE_BY_LINE):
-            offset = source_line - region.source_start_line
-            if 0 <= offset < len(region.baseline_lines):
-                result.append_line_range_from(
-                    region.baseline_lines,
-                    offset,
-                    offset + 1,
-                    source_line_start=None,
-                    is_claimed=False,
-                )
-            else:
-                raise _MergeError(
-                    _("Source line {line} offset {offset} outside region bounds").format(
-                        line=source_line, offset=offset
-                    )
-                )
-
-        elif region.kind == _RegionKind.INSERT:
-            pass
-
-        elif region.kind == _RegionKind.REPLACE_BY_HUNK:
-            if region.region_id not in processed_replace_regions:
-                total_lines_in_region = (
-                    region.source_end_line - region.source_start_line + 1
-                )
-                claimed_line_count = _count_lines_in_range(
-                    presence_line_set,
-                    region.source_start_line,
-                    region.source_end_line
-                )
-
-                if claimed_line_count != total_lines_in_region:
-                    raise _MergeError(
-                        _("Cannot discard partial ownership of by-hunk replace region "
-                          "(source lines {start}-{end}): batch owns {owned} of {total} lines").format(
-                            start=region.source_start_line,
-                            end=region.source_end_line,
-                            owned=claimed_line_count,
-                            total=total_lines_in_region
-                        )
-                    )
-
-                result.append_line_range_from(
-                    region.baseline_lines,
-                    0,
-                    len(region.baseline_lines),
-                    source_line_start=None,
-                    is_claimed=False,
-                )
-                processed_replace_regions.add(region.region_id)
-
-        else:
-            raise _MergeError(
-                _("Unknown region kind: {kind}").format(kind=region.kind)
-            )
-
-    copy_start: int | None = 0
-
-    if isinstance(entries, _RealizedEntries):
-        presence_lines = _as_line_ranges(presence_line_set)
-        for run in entries.provenance_runs():
-            if run.source_start == 0:
-                continue
-
-            run_length = run.dest_end - run.dest_start
-            run_source_end = run.source_start + run_length - 1
-            selected_lines = presence_lines.intersection(
-                LineRanges.from_ranges([(run.source_start, run_source_end)])
-            )
-            if not selected_lines:
-                continue
-
-            for selected_start, selected_end in selected_lines.ranges():
-                for source_line in range(selected_start, selected_end + 1):
-                    index = run.dest_start + (source_line - run.source_start)
-                    flush_copy(copy_start, index)
-                    copy_start = None
-                    restore_source_line(source_line)
-                    copy_start = index + 1
-
-        if copy_start is not None:
-            flush_copy(copy_start, len(entries))
-
-        return result
-
-    for index in range(len(entries)):
-        source_line = _entry_source_line_at(entries, index)
-        if source_line is not None and source_line in presence_line_set:
-            flush_copy(copy_start, index)
-            copy_start = None
-            restore_source_line(source_line)
-            copy_start = index + 1
-        else:
-            if copy_start is None:
-                copy_start = index
-
-    if copy_start is not None:
-        flush_copy(copy_start, len(entries))
 
     return result
 

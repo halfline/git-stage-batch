@@ -2745,6 +2745,43 @@ def test_argument_parser_delegates_apply_dispatch():
     assert "apply --from" not in parser_text
 
 
+def test_argument_parser_delegates_reset_dispatch():
+    """Parser construction should not own reset workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    reset_dispatch_path = SRC_ROOT / "cli" / "reset_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    reset_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(reset_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    reset_dispatch = __import__(
+        "git_stage_batch.cli.reset_dispatch",
+        fromlist=["reset_dispatch"],
+    )
+    reset_runtime_imports = {
+        "git_stage_batch.commands.reset",
+        "git_stage_batch.commands.file_scope.multi_file_actions",
+    }
+
+    assert "git_stage_batch.cli.reset_dispatch" in parser_imports
+    assert "git_stage_batch.commands.reset" not in parser_imports
+    assert reset_runtime_imports <= reset_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in reset_dispatch_imports
+    assert "dispatch_reset_command" in vars(reset_dispatch)
+    assert "command_reset_from_batch" not in vars(parser)
+    assert "def dispatch_reset(" not in parser_text
+    assert "command_reset_from_batch(" not in parser_text
+    assert "reset --from" not in parser_text
+
+
 def test_argument_parser_delegates_replacement_input_decoding():
     """Parser branches should not own replacement payload decoding."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"

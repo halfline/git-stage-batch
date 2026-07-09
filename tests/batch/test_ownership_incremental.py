@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from git_stage_batch.batch.ownership import (
     AbsenceClaim,
-    ReplacementLineRun,
     ReplacementUnit,
     ReplacementUnitOrigin,
-    derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
+)
+from git_stage_batch.batch.replacement_line_runs import (
+    ReplacementLineRun,
+    derive_replacement_line_runs_from_lines,
 )
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.models import LineEntry

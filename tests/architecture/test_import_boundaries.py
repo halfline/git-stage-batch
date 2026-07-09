@@ -10571,7 +10571,7 @@ def test_batch_ownership_units_owns_unit_operations():
         "validate_ownership_units",
     }
     expected_unit_imports = {
-        SRC_ROOT / "batch" / "file_display.py": {
+        SRC_ROOT / "batch" / "file_mergeability.py": {
             "build_ownership_units_from_display_lines",
         },
         SRC_ROOT / "batch" / "selection.py": {
@@ -10648,7 +10648,7 @@ def test_batch_ownership_unit_validation_owns_structural_checks():
         "_validate_ownership_units",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "file_display.py": public_names,
+        SRC_ROOT / "batch" / "file_mergeability.py": public_names,
         SRC_ROOT / "batch" / "selection.py": public_names,
         SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": public_names,
     }
@@ -10698,7 +10698,7 @@ def test_batch_ownership_unit_rebuild_owns_metadata_reconstruction():
         "_rebuild_ownership_from_units",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "file_display.py": public_names,
+        SRC_ROOT / "batch" / "file_mergeability.py": public_names,
         SRC_ROOT / "batch" / "selection.py": public_names,
         SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": public_names,
     }
@@ -10728,6 +10728,81 @@ def test_batch_ownership_unit_rebuild_owns_metadata_reconstruction():
             assert expected_imports[path] <= imported_public_names
 
     assert violations == []
+
+
+def test_batch_file_mergeability_owns_display_probe():
+    """Batch file display should not own per-unit mergeability probing."""
+    file_display = __import__(
+        "git_stage_batch.batch.file_display",
+        fromlist=["file_display"],
+    )
+    file_mergeability = __import__(
+        "git_stage_batch.batch.file_mergeability",
+        fromlist=["file_mergeability"],
+    )
+    display_path = SRC_ROOT / "batch" / "file_display.py"
+    mergeability_path = SRC_ROOT / "batch" / "file_mergeability.py"
+    public_names = {
+        "BatchFileMergeability",
+        "probe_batch_file_mergeability",
+    }
+    expected_probe_imports = {
+        "git_stage_batch.batch": {"file_mergeability"},
+    }
+    expected_dependency_imports = {
+        "git_stage_batch.batch.match": {"match_lines"},
+        "git_stage_batch.batch.ownership_unit_rebuild": {
+            "rebuild_ownership_from_units",
+        },
+        "git_stage_batch.batch.ownership_unit_validation": {
+            "validate_ownership_units",
+        },
+        "git_stage_batch.batch.ownership_units": {
+            "build_ownership_units_from_display_lines",
+        },
+        "git_stage_batch.core.text_lines": {"normalize_line_sequence_endings"},
+        "git_stage_batch.exceptions": {"MergeError"},
+        "git_stage_batch.utils.repository_buffers": {
+            "load_working_tree_file_as_buffer",
+        },
+    }
+    display_imported_names: dict[str | None, set[str]] = {}
+    mergeability_imported_names: dict[str | None, set[str]] = {}
+    display_text = display_path.read_text()
+    mergeability_text = mergeability_path.read_text()
+
+    assert public_names <= vars(file_mergeability).keys()
+    assert public_names.isdisjoint(vars(file_display))
+
+    for imported_module, node in _import_from_nodes(display_path):
+        display_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    for imported_module, node in _import_from_nodes(mergeability_path):
+        mergeability_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    for imported_module, imported_names in expected_probe_imports.items():
+        assert imported_names <= display_imported_names.get(imported_module, set())
+
+    for imported_module, imported_names in expected_dependency_imports.items():
+        assert imported_names.isdisjoint(
+            display_imported_names.get(imported_module, set())
+        )
+        assert imported_names <= mergeability_imported_names.get(
+            imported_module,
+            set(),
+        )
+
+    assert "merge" in mergeability_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert "can_merge_batch_from_line_sequences" not in display_text
+    assert "_file_mergeability.probe_batch_file_mergeability" in display_text
+    assert "batch_merge.can_merge_batch_from_line_sequences" in mergeability_text
 
 
 def test_batch_ownership_unit_selection_owns_display_id_filtering():

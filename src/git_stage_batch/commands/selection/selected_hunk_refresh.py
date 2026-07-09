@@ -10,6 +10,7 @@ from ...data.selected_change.hunk_recalculation import (
 )
 from ...i18n import _
 from ...output.hunk import print_remaining_line_changes_header
+from .next_change_display import show_next_unprocessed_change
 from .selected_change_display import show_selected_change
 
 
@@ -26,9 +27,7 @@ def recalculate_selected_hunk_for_command(
     if result == RecalculateSelectedHunkResult.RECALCULATED:
         show_selected_change()
     elif result == RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE:
-        from ..show import command_show
-
-        command_show()
+        show_next_unprocessed_change()
     elif result == RecalculateSelectedHunkResult.NO_MORE_LINES:
         print(_("No more lines in this hunk."), file=sys.stderr)
     elif result == RecalculateSelectedHunkResult.NO_PENDING_HUNKS:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from typing import Iterable, Iterator, Union
 
@@ -10,6 +9,7 @@ from . import binary_diff as _binary_diff
 from . import diff_headers as _diff_headers
 from . import empty_file_diff as _empty_file_diff
 from . import gitlink_diff as _gitlink_diff
+from . import hunk_headers as _hunk_headers
 from .buffer import LineBuffer
 from .models import (
     BinaryFileChange,
@@ -28,9 +28,6 @@ from ..i18n import _
 # Type for annotator hooks that enrich LineLevelChange with additional metadata
 LineLevelChangeAnnotator = Callable[[str, LineLevelChange], LineLevelChange]
 UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]
-
-
-HUNK_HEADER_PATTERN = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
 
 
 def patch_is_file_deletion(patch_lines: Iterable[bytes]) -> bool:
@@ -189,7 +186,7 @@ class _UnifiedDiffParserBuildContext:
                 if _diff_headers.line_is_diff_git_header(body_line_stripped):
                     # Next file starting
                     break
-                if body_line_stripped.startswith(b"@@"):
+                if _hunk_headers.line_is_hunk_header(body_line_stripped):
                     # Next hunk for same file
                     break
                 # Check for start of new file diff (---/+++)
@@ -372,7 +369,9 @@ class _UnifiedDiffParserBuildContext:
                         if hunk_header_line is None:
                             return
                         hunk_header_stripped = hunk_header_line.rstrip(b'\n')
-                        if not hunk_header_stripped.startswith(b"@@"):
+                        if not _hunk_headers.line_is_hunk_header(
+                            hunk_header_stripped
+                        ):
                             # No more hunks for this file
                             break
 
@@ -488,19 +487,10 @@ def build_line_changes_from_patch_lines(
             new_path_value = line.split(b" ", 1)[1].strip().decode('utf-8')
             if new_path_value != "/dev/null" and new_path_value.startswith("b/"):
                 new_path_value = new_path_value[2:]
-        elif line.startswith(b"@@ "):
-            captured_header_line = line.decode('utf-8', errors='replace')
-            header_match = HUNK_HEADER_PATTERN.match(captured_header_line)
-            if not header_match:
-                raise CommandError(f"Bad hunk header: {captured_header_line}")
-
-            old_start = int(header_match.group(1))
-            old_length = int(header_match.group(2) or "1")
-            new_start = int(header_match.group(3))
-            new_length = int(header_match.group(4) or "1")
-            hunk_header = HunkHeader(old_start, old_length, new_start, new_length)
-            old_line_number = old_start
-            new_line_number = new_start
+        elif _hunk_headers.line_is_hunk_header(line):
+            hunk_header = _hunk_headers.parse_hunk_header_line(line)
+            old_line_number = hunk_header.old_start
+            new_line_number = hunk_header.new_start
             next_display_id = 0
         elif hunk_header is not None:
             if line.startswith(b"\\ No newline at end of file"):

@@ -10,7 +10,6 @@ from ...batch.selection import require_line_selection_in_view
 from ...core.buffer import LineBuffer
 from ...core.line_selection import format_line_ids, parse_line_selection
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
-from ...data.consumed_selections import record_consumed_selection
 from ...data.file_hunk_display import (
     cache_unstaged_file_as_single_hunk,
     render_unstaged_file_as_single_hunk,
@@ -38,6 +37,7 @@ from ...utils.paths import (
     get_working_tree_snapshot_file_path,
 )
 from . import include_line_selection as _include_line_selection
+from .consumed_selection_recording import record_consumed_selection
 from . import replacement_selection
 
 

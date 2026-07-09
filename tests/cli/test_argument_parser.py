@@ -5,7 +5,13 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from git_stage_batch.cli import argument_parser, file_scope, git_help, replacement_input
+from git_stage_batch.cli import (
+    argument_parser,
+    file_scope,
+    git_help,
+    replacement_input,
+    show_dispatch,
+)
 from git_stage_batch.cli.argument_parser import parse_command_line
 
 
@@ -35,10 +41,10 @@ def _mock_batch_files(monkeypatch, files, *, exists=True):
     """Provide deterministic batch file candidates for parser scope resolution."""
     metadata = {"files": {path: {} for path in files}}
 
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: exists)
-    monkeypatch.setattr(argument_parser, "read_batch_metadata", lambda name: metadata)
     monkeypatch.setattr(file_scope, "batch_exists", lambda name: exists)
     monkeypatch.setattr(file_scope, "read_batch_metadata", lambda name: metadata)
+    monkeypatch.setattr(show_dispatch, "batch_exists", lambda name: exists)
+    monkeypatch.setattr(show_dispatch, "read_batch_metadata", lambda name: metadata)
 
 
 def test_resolve_live_file_scope_marks_implicit_scope():
@@ -293,7 +299,7 @@ def test_parse_command_line_show():
 
 def test_parse_command_line_show_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
 
     args = parse_command_line(["show", "--no-advance"], quiet=True)
 
@@ -304,7 +310,7 @@ def test_parse_command_line_show_no_advance_peeks_without_selecting(monkeypatch)
 
 def test_parse_command_line_show_no_auto_advance_is_show_local(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
 
     args = parse_command_line(["show", "--no-auto-advance"], quiet=True)
 
@@ -331,7 +337,7 @@ def test_show_pages_alias_requires_file():
 
 def test_show_page_accepts_single_files_match(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/parser.py", "notes.txt"])
 
     args = parse_command_line(["show", "--files", "*.py", "--page", "2"], quiet=True)
@@ -343,7 +349,7 @@ def test_show_page_accepts_single_files_match(monkeypatch):
 
 def test_show_file_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(["show", "--file", "src/parser.py", "--no-advance"], quiet=True)
@@ -360,7 +366,7 @@ def test_show_file_no_advance_peeks_without_selecting(monkeypatch):
 
 def test_show_from_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(
@@ -381,7 +387,7 @@ def test_show_from_no_advance_peeks_without_selecting(monkeypatch):
 
 def test_show_page_accepts_single_file_pattern_match(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/parser.py", "notes.txt"])
 
     args = parse_command_line(["show", "--file", "*.py", "--page", "2"], quiet=True)
@@ -429,7 +435,7 @@ def test_show_page_rejects_porcelain(monkeypatch):
 
 def test_show_from_page_accepts_single_file_batch_without_file(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(["show", "--from", "batch", "--page", "2"], quiet=True)
@@ -441,7 +447,7 @@ def test_show_from_page_accepts_single_file_batch_without_file(monkeypatch):
 
 def test_show_from_page_rejects_multi_file_batch_without_file(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["src/parser.py", "src/render.py"])
 
     args = parse_command_line(["show", "--from", "batch", "--page", "2"], quiet=True)
@@ -454,10 +460,10 @@ def test_show_from_page_rejects_multi_file_batch_without_file(monkeypatch):
 
 def test_show_from_page_missing_batch_reports_missing_batch(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: False)
+    monkeypatch.setattr(show_dispatch, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(show_dispatch, "batch_exists", lambda name: False)
     monkeypatch.setattr(
-        argument_parser,
+        show_dispatch,
         "read_batch_metadata",
         Mock(side_effect=AssertionError("missing batch should not be read")),
     )
@@ -1117,7 +1123,7 @@ def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
 def test_parse_command_line_show_with_files_uses_file_list(monkeypatch):
     """Show should route multi-file matches to a navigational file list."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_file_list", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show_file_list", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["show", "--files", "*.py"], quiet=True)

@@ -1,24 +1,24 @@
-"""Batch file display selected-state caching."""
+"""Selected-change caching for rendered batch file views."""
 
 from __future__ import annotations
 
 import json
 from typing import Optional
 
-from ..batch.query import read_batch_metadata
-from ..core.hashing import compute_stable_hunk_hash_from_lines
-from ..core.models import RenderedBatchDisplay
-from ..exceptions import CommandError
-from ..utils.file_io import write_text_file_contents
-from ..utils.paths import (
+from ...batch.query import read_batch_metadata
+from ...core.hashing import compute_stable_hunk_hash_from_lines
+from ...core.models import RenderedBatchDisplay
+from ...exceptions import CommandError
+from ...utils.file_io import write_text_file_contents
+from ...utils.paths import (
     get_index_snapshot_file_path,
     get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
     get_working_tree_snapshot_file_path,
 )
-from ..batch.file_display import render_batch_file_display
-from .line_state import convert_line_changes_to_serializable_dict
-from .selected_change.store import (
+from ...batch.file_display import render_batch_file_display
+from ..line_state import convert_line_changes_to_serializable_dict
+from .store import (
     SelectedChangeKind,
     write_selected_change_kind,
     write_selected_hunk_patch_lines,

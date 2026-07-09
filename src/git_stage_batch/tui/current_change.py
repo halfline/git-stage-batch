@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..core.models import LineLevelChange
-from ..data.batch_hunk_display import cache_batch_as_single_hunk
+from ..data.selected_change.batch_file_cache import cache_batch_as_single_hunk
 from ..data.line_state import load_line_changes_from_state
 from ..data.progress import get_hunk_counts
 from ..output.hunk import print_line_level_changes

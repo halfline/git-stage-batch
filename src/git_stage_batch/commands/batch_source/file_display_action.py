@@ -10,7 +10,7 @@ from ...batch.atomic_file_changes import (
 )
 from ...batch.file_display import render_batch_file_display
 from ...core.models import LineLevelChange
-from ...data.batch_hunk_display import cache_rendered_batch_file_display
+from ...data.selected_change.batch_file_cache import cache_rendered_batch_file_display
 from ...data.batch_selected_changes import (
     compute_batch_binary_fingerprint,
     compute_batch_gitlink_fingerprint,

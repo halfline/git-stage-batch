@@ -8,7 +8,7 @@ import pytest
 from git_stage_batch.batch.operations import create_batch, delete_batch, update_batch_note
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name, get_batch_state_ref_name
-from git_stage_batch.batch.storage import add_file_to_batch
+from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 

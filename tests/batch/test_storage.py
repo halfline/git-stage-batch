@@ -10,18 +10,18 @@ from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
 from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
+from git_stage_batch.batch.absence_content import AbsenceContentBuilder
 from git_stage_batch.batch.ownership import (
     BaselineReference,
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
     ReplacementUnitOrigin,
-    AbsenceContentBuilder,
     _absence_signature,
     acquire_detached_batch_ownership,
     merge_batch_ownership,
 )
-import git_stage_batch.batch.ownership as ownership_module
+import git_stage_batch.batch.absence_content as absence_content_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.utils.git_object_io import create_git_blob
@@ -275,14 +275,14 @@ def test_absence_signature_streams_line_buffer_chunks(monkeypatch):
 def test_absence_content_builder_closes_editor_on_finish(monkeypatch):
     """Finishing absence content should close the temporary editor."""
     close_count = 0
-    original_close = ownership_module.Editor.close
+    original_close = absence_content_module.Editor.close
 
     def count_close(self):
         nonlocal close_count
         close_count += 1
         original_close(self)
 
-    monkeypatch.setattr(ownership_module.Editor, "close", count_close)
+    monkeypatch.setattr(absence_content_module.Editor, "close", count_close)
 
     with AbsenceContentBuilder() as builder:
         builder.append_line_range([b"old\n"], 0, 1)
@@ -298,14 +298,14 @@ def test_absence_content_builder_closes_editor_on_finish(monkeypatch):
 def test_absence_content_builder_closes_editor_on_exception(monkeypatch):
     """Failing absence construction should close the temporary editor."""
     close_count = 0
-    original_close = ownership_module.Editor.close
+    original_close = absence_content_module.Editor.close
 
     def count_close(self):
         nonlocal close_count
         close_count += 1
         original_close(self)
 
-    monkeypatch.setattr(ownership_module.Editor, "close", count_close)
+    monkeypatch.setattr(absence_content_module.Editor, "close", count_close)
 
     with pytest.raises(RuntimeError, match="boom"):
         with AbsenceContentBuilder() as builder:

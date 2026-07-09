@@ -4,15 +4,11 @@ from __future__ import annotations
 
 import sys
 
-from ..data.batch_hunk_display import cache_batch_as_single_hunk
-from ..data.progress import get_hunk_counts
-from ..data.line_state import load_line_changes_from_state
 from ..exceptions import BypassRefresh, QuitInteractive
 from ..i18n import _
 from ..output.colors import Colors
-from ..output.hunk import print_line_level_changes
+from . import current_change
 from .action_dispatch import dispatch_action
-from .display import print_status_bar
 from .flow import FlowLocation, LocationRole, FlowState
 from .prompts import (
     prompt_action,
@@ -46,18 +42,10 @@ def start_interactive_mode() -> None:
 
     # Main interactive loop
     while True:
-        # Load hunks based on source
-        if flow_state.source.role is LocationRole.BATCH:
-            # Load batch as single hunk
-            rendered = cache_batch_as_single_hunk(flow_state.source.batch_name)
-            line_changes = rendered.line_changes if rendered is not None else None
-            gutter_mapping = rendered.gutter_to_selection_id if rendered is not None else None
-        else:
-            # Load working tree hunks
-            line_changes = load_line_changes_from_state()
-            gutter_mapping = None
+        loaded_change = current_change.load_current_change(flow_state)
+        has_hunk = loaded_change is not None
 
-        if line_changes is None:
+        if loaded_change is None:
             # No hunks available - enter degraded mode
             if not degraded_mode:
                 degraded_mode = True
@@ -71,32 +59,23 @@ def start_interactive_mode() -> None:
             degraded_mode = False
 
         # Display hunk if needed
-        if should_refresh and line_changes is not None:
+        if should_refresh and loaded_change is not None:
             displayed_any_hunk = True
-            # Get progress stats
-            stats = get_hunk_counts()
-
-            # Display status bar
-            print()
-            print_status_bar(stats, flow_state)
-            print()
-
-            # Display selected hunk with line IDs
-            print_line_level_changes(line_changes, gutter_to_selection_id=gutter_mapping)
+            current_change.display_current_change(loaded_change, flow_state)
 
         # Prompt for action
         action = prompt_action(
             use_color=use_color,
             show_question=should_refresh,
-            has_hunk=(line_changes is not None)
+            has_hunk=has_hunk,
         )
 
         try:
             dispatch_action(
                 action,
-                has_hunk=(line_changes is not None),
+                has_hunk=has_hunk,
                 use_color=use_color,
-                flow_state=flow_state
+                flow_state=flow_state,
             )
             should_refresh = True
         except BypassRefresh:

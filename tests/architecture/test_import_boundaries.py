@@ -189,7 +189,11 @@ def test_line_id_file_persistence_stays_in_data_layer():
         "write_line_ids_file",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": file_helper_names,
+        SRC_ROOT / "commands" / "include.py": {"write_line_ids_file"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "include_line_action.py": file_helper_names,
         SRC_ROOT / "commands" / "file_scope" / "include_file_replacement.py": {
             "write_line_ids_file",
         },
@@ -9754,6 +9758,9 @@ def test_selected_change_staging_owns_include_pipeline():
 def test_include_line_selection_stays_in_command_helper():
     """Include line-selection support should stay out of the command entrypoint."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    action_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_action.py"
+    )
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "include_line_selection.py"
     )
@@ -9807,7 +9814,7 @@ def test_include_line_selection_stays_in_command_helper():
         "require_selected_hunk",
         "snapshot_selected_change_state",
     }
-    include_imports_helper = False
+    action_imports_helper = False
 
     assert public_names <= vars(helper).keys()
 
@@ -9823,12 +9830,12 @@ def test_include_line_selection_stays_in_command_helper():
         if isinstance(node, ast.FunctionDef)
     }
 
-    for imported_module, node in _import_from_nodes(include_path):
+    for imported_module, node in _import_from_nodes(action_path):
         if imported_module != "git_stage_batch.commands.selection":
             continue
         imported_names = {alias.name for alias in node.names}
         if "include_line_selection" in imported_names:
-            include_imports_helper = True
+            action_imports_helper = True
 
     command_include_line_names = {
         node.id
@@ -9840,7 +9847,7 @@ def test_include_line_selection_stays_in_command_helper():
         helper_imported_names |= {alias.name for alias in node.names}
 
     assert old_include_names.isdisjoint(include_names)
-    assert include_imports_helper
+    assert action_imports_helper
     assert line_selection_resolution_names.isdisjoint(command_include_line_names)
     assert helper_imports <= helper_imported_names
 
@@ -10967,6 +10974,9 @@ def test_replacement_selection_stays_in_command_helper():
     replacement_previews_path = (
         SRC_ROOT / "commands" / "batch_source" / "replacement_previews.py"
     )
+    include_line_action_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_action.py"
+    )
     discard_replacement_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
     )
@@ -10995,7 +11005,7 @@ def test_replacement_selection_stays_in_command_helper():
         "_require_contiguous_display_selection",
     }
     helper_user_paths = (
-        include_path,
+        include_line_action_path,
         action_selection_path,
         discard_replacement_path,
         replacement_previews_path,

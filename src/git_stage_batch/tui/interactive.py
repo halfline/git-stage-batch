@@ -12,7 +12,7 @@ from ..i18n import _
 from ..output.colors import Colors
 from ..output.hunk import print_line_level_changes
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 from ..utils.paths import (
     get_start_head_file_path,
     get_start_index_tree_file_path,

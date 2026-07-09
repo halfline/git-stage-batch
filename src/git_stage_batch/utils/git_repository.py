@@ -8,7 +8,7 @@ from pathlib import Path
 
 from ..exceptions import exit_with_error
 from ..i18n import _
-from .git import run_git_command
+from .git_command import run_git_command
 
 
 _GIT_REPOSITORY_ROOT_CACHE: dict[Path, Path] = {}

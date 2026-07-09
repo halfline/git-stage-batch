@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 
 
 def file_has_staged_changes(file_path: str) -> bool:

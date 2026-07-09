@@ -9,7 +9,7 @@ from hashlib import sha256
 from ..batch.query import get_batch_commit_sha
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 from .selected_change.lifecycle import clear_selected_change_state_files
 from .selected_change.file_changes import (
     load_selected_binary_file,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from .ref_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 
 
 def validate_batch_name(name: str) -> None:

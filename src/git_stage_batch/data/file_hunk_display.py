@@ -28,7 +28,7 @@ from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import load_git_object_as_buffer
 from ..i18n import ngettext
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import stream_git_command
+from ..utils.git_command import stream_git_command
 from ..utils.paths import (
     get_context_lines,
     get_line_changes_json_file_path,

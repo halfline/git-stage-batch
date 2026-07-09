@@ -12,7 +12,7 @@ from .query import read_batch_metadata
 from .state_refs import get_batch_state_ref_name, get_legacy_batch_ref_name
 from ..exceptions import BatchMetadataError
 from ..i18n import _
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 from ..utils.paths import (
     get_batch_metadata_file_path,
     get_state_directory_path,

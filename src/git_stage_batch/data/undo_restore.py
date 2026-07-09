@@ -18,7 +18,7 @@ from .undo_refs import list_restorable_refs
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
-from ..utils.git import (
+from ..utils.git_command import (
     run_git_command,
 )
 from ..utils.git_refs import (

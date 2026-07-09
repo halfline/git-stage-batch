@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.buffer import LineBuffer
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 from ..utils.git_index import GitIndexEntryUpdate
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob

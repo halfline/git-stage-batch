@@ -18,7 +18,7 @@ from ..utils.repository_buffers import (
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
-from ..utils.git import (
+from ..utils.git_command import (
     run_git_command,
 )
 from ..utils.git_refs import (

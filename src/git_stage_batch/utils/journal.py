@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .git import run_git_command
+from .git_command import run_git_command
 from .paths import get_state_directory_path
 
 

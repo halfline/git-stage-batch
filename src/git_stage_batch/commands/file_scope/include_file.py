@@ -21,7 +21,7 @@ from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.undo import undo_checkpoint
 from ...i18n import _, ngettext
 from ...staging.operations import update_index_with_blob_buffer
-from ...utils.git import run_git_command
+from ...utils.git_command import run_git_command
 from ...utils.git_index import git_add_paths, git_apply_to_index
 from ..selection import selected_change_staging as _selected_change_staging
 from ..selection.action_completion import finish_selected_change_action

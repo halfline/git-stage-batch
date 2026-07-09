@@ -7655,6 +7655,158 @@ def test_batch_ownership_translation_owns_public_helpers():
     assert violations == []
 
 
+def test_batch_ownership_claims_owns_line_range_helpers():
+    """Ownership claim range helpers should live outside ownership metadata."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    ownership_claims = __import__(
+        "git_stage_batch.batch.ownership_claims",
+        fromlist=["ownership_claims"],
+    )
+    claim_path = SRC_ROOT / "batch" / "ownership_claims.py"
+    public_names = {
+        "LineRangeBuilder",
+        "format_ownership_line_set",
+        "parse_ownership_line_ranges",
+        "presence_claims_from_source_lines",
+    }
+    old_private_names = {
+        "_LineRangeBuilder",
+        "_format_line_set",
+        "_parse_line_ranges",
+        "_presence_claims_from_source_lines",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "ownership.py": {
+            "parse_ownership_line_ranges",
+            "presence_claims_from_source_lines",
+        },
+        SRC_ROOT / "batch" / "ownership_remapping.py": {
+            "format_ownership_line_set",
+            "parse_ownership_line_ranges",
+            "presence_claims_from_source_lines",
+        },
+        SRC_ROOT / "batch" / "ownership_translation.py": {
+            "LineRangeBuilder",
+            "presence_claims_from_source_lines",
+        },
+        SRC_ROOT / "batch" / "ownership_units.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(ownership_claims)
+        assert public_name not in vars(ownership)
+    assert old_private_names.isdisjoint(vars(ownership))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == claim_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.ownership":
+                disallowed_names = imported_names & (
+                    public_names | old_private_names
+                )
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.ownership_claims":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & old_private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_ownership_replacement_units_owns_normalization():
+    """Replacement-unit normalization should live outside ownership metadata."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    replacement_units = __import__(
+        "git_stage_batch.batch.ownership_replacement_units",
+        fromlist=["ownership_replacement_units"],
+    )
+    replacement_unit_path = SRC_ROOT / "batch" / "ownership_replacement_units.py"
+    public_names = {
+        "normalize_replacement_units",
+    }
+    old_private_names = {
+        "_merge_replacement_unit_origins",
+        "_normalize_replacement_unit_origin",
+        "_normalize_replacement_units",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "ownership.py": public_names,
+        SRC_ROOT / "batch" / "ownership_remapping.py": public_names,
+        SRC_ROOT / "batch" / "ownership_translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership_units.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(replacement_units)
+        assert public_name not in vars(ownership)
+    assert old_private_names.isdisjoint(vars(ownership))
+    assert "_normalize_replacement_units" not in vars(replacement_units)
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == replacement_unit_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.ownership":
+                disallowed_names = imported_names & (
+                    public_names | old_private_names
+                )
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if (
+                imported_module
+                != "git_stage_batch.batch.ownership_replacement_units"
+            ):
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & old_private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_source_advancement_uses_public_entry_helpers():
     """Source advancement callers should import public advancement helpers."""
     source_advancement = __import__(

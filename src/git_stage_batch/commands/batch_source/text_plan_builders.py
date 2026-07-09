@@ -7,10 +7,8 @@ from dataclasses import dataclass
 import os
 
 from . import action_plans as _action_plans
-from ...batch.merge import (
-    discard_batch_from_line_sequences_as_buffer,
-    merge_batch_from_line_sequences_as_buffer,
-)
+from ...batch.discard import discard_batch_from_line_sequences_as_buffer
+from ...batch.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...core.buffer import LineBuffer

@@ -667,6 +667,31 @@ def test_cli_argument_parser_delegates_abort_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_status_subcommand_registration():
+    """Argument parsing should not own status parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_status_subcommand" in vars(session_subcommands)
+    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    assert "git_stage_batch.commands.status" not in argument_parser_imports
+    assert "git_stage_batch.commands.status" in session_subcommands_imports
+    assert "git_stage_batch.output.status_prompt" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
 def test_tui_package_does_not_reexport_tui_apis():
     """TUI callers should import concrete modules instead of the package."""
     tui_path = SRC_ROOT / "tui" / "__init__.py"
@@ -2733,7 +2758,7 @@ def test_active_session_query_stays_in_session_data():
 def test_status_prompt_rendering_stays_in_output_module():
     """Status prompt formatting should stay out of the command module."""
     status_path = SRC_ROOT / "commands" / "status.py"
-    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
     prompt = __import__(
         "git_stage_batch.output.status_prompt",
         fromlist=["status_prompt"],
@@ -2765,17 +2790,17 @@ def test_status_prompt_rendering_stays_in_output_module():
         if isinstance(node, ast.ClassDef | ast.FunctionDef)
     }
     status_imported_prompt_names = set()
-    parser_imported_prompt_names = set()
+    session_imported_prompt_names = set()
 
     for imported_module, node in _import_from_nodes(status_path):
         if imported_module != "git_stage_batch.output.status_prompt":
             continue
         status_imported_prompt_names |= {alias.name for alias in node.names}
 
-    for imported_module, node in _import_from_nodes(parser_path):
+    for imported_module, node in _import_from_nodes(session_subcommands_path):
         if imported_module != "git_stage_batch.output.status_prompt":
             continue
-        parser_imported_prompt_names |= {alias.name for alias in node.names}
+        session_imported_prompt_names |= {alias.name for alias in node.names}
 
     assert old_status_names.isdisjoint(vars(status_module))
     assert old_status_names.isdisjoint(status_names)
@@ -2783,7 +2808,7 @@ def test_status_prompt_rendering_stays_in_output_module():
         "prompt_needs_status_summary",
         "render_prompt_status",
     } <= status_imported_prompt_names
-    assert "DEFAULT_PROMPT_FORMAT" in parser_imported_prompt_names
+    assert "DEFAULT_PROMPT_FORMAT" in session_imported_prompt_names
 
 
 def test_status_summary_rendering_stays_in_output_module():
@@ -6251,7 +6276,8 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.discard" not in imported_modules
     assert "git_stage_batch.commands.discard_from" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
-    assert "git_stage_batch.commands.status" in imported_modules
+    assert "git_stage_batch.commands.status" not in imported_modules
+    assert "git_stage_batch.cli.session_subcommands" in imported_modules
 
 
 def test_argument_parser_command_entries_stay_in_commands_modules():

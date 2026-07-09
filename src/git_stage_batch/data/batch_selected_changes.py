@@ -90,7 +90,7 @@ def selected_batch_binary_file_for_batch(
     if binary_file is None:
         return None
 
-    file_path = _binary_change_path(binary_file)
+    file_path = binary_file.path()
     file_meta = all_files.get(file_path)
     if file_meta is None:
         return None
@@ -123,7 +123,7 @@ def load_current_selected_batch_binary_file() -> BinaryFileChange | None:
         clear_selected_change_state_files()
         return None
 
-    file_path = _binary_change_path(binary_file)
+    file_path = binary_file.path()
     metadata = read_batch_metadata(batch_name)
     if selected_batch_binary_file_for_batch(batch_name, metadata.get("files", {})):
         return binary_file
@@ -150,11 +150,9 @@ def require_current_selected_batch_binary_file_for_batch(
 
     binary_file = load_selected_binary_file()
     file_path = (
-        binary_file.new_path
-        if binary_file is not None and binary_file.new_path != "/dev/null" else
-        binary_file.old_path
-        if binary_file is not None else
-        "the selected batch binary"
+        binary_file.path()
+        if binary_file is not None
+        else "the selected batch binary"
     )
     clear_selected_change_state_files()
     mark_selected_change_cleared_by_stale_batch_selection(
@@ -166,14 +164,6 @@ def require_current_selected_batch_binary_file_for_batch(
             "The selected batch binary no longer matches batch '{name}'.\n"
             "Show the batch again before using a pathless batch action."
         ).format(name=batch_name)
-    )
-
-
-def _binary_change_path(binary_file: BinaryFileChange) -> str:
-    return (
-        binary_file.new_path
-        if binary_file.new_path != "/dev/null"
-        else binary_file.old_path
     )
 
 

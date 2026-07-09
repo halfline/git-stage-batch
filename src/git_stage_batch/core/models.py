@@ -48,6 +48,10 @@ class SingleHunkPatch:
     new_path: str
     lines: Sequence[bytes]  # includes ---/+++ and a single @@ hunk body, with \n terminators
 
+    def path(self) -> str:
+        """Return the repository path that identifies this text hunk."""
+        return self.new_path if self.new_path != "/dev/null" else self.old_path
+
 
 @dataclass
 class BinaryFileChange:
@@ -71,6 +75,10 @@ class BinaryFileChange:
     def is_modified_file(self) -> bool:
         """Check if this is a modified binary file."""
         return self.change_type == "modified"
+
+    def path(self) -> str:
+        """Return the repository path that identifies this binary change."""
+        return self.new_path if self.new_path != "/dev/null" else self.old_path
 
 
 @dataclass(frozen=True)

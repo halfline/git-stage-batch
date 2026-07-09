@@ -91,11 +91,7 @@ def load_selected_change() -> Optional[SelectedChange]:
             selected_kind == _selected_store.SelectedChangeKind.BINARY
             and _change_freshness.binary_file_change_is_stale(binary_file)
         ):
-            file_path = (
-                binary_file.new_path
-                if binary_file.new_path != "/dev/null" else
-                binary_file.old_path
-            )
+            file_path = binary_file.path()
             raise CommandError(
                 _(
                     "Selected binary file no longer matches the working tree: {file}.\n"

@@ -118,7 +118,7 @@ def _skip_loaded_selected_change(
         return
 
     if isinstance(item, BinaryFileChange):
-        file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+        file_path = item.path()
 
         append_lines_to_file(blocklist_path, [patch_hash])
         record_binary_hunk_skipped(item, patch_hash)

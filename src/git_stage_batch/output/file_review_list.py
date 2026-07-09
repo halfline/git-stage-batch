@@ -53,7 +53,7 @@ def make_file_review_list_entry(
 
 def make_binary_file_review_list_entry(binary_change: BinaryFileChange) -> FileReviewListEntry:
     """Build a list entry from a binary file change."""
-    path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    path = binary_change.path()
     return FileReviewListEntry(
         path=path,
         change_count=1,

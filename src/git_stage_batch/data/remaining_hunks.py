@@ -81,7 +81,7 @@ def _unprocessed_patch_count(
         file_path = patch.path()
     elif isinstance(patch, BinaryFileChange):
         hunk_hash = compute_binary_file_hash(patch)
-        file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+        file_path = patch.path()
     else:
         if patch.old_path != patch.new_path:
             rename_hash = compute_rename_change_hash(

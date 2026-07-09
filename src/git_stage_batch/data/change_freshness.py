@@ -21,11 +21,7 @@ from .selected_change.snapshots import snapshots_are_stale
 
 def binary_file_change_is_stale(binary_change: BinaryFileChange) -> bool:
     """Return whether a cached binary selection no longer matches repository state."""
-    file_path = (
-        binary_change.new_path
-        if binary_change.new_path != "/dev/null"
-        else binary_change.old_path
-    )
+    file_path = binary_change.path()
     if snapshots_are_stale(file_path):
         return True
     current_change = render_binary_file_change(file_path)

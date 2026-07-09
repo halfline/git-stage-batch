@@ -240,7 +240,7 @@ def _collect_text_file_discard_inputs(
             if isinstance(patch, BinaryFileChange):
                 continue
 
-            file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
+            file_path = patch.path()
             files_with_text_patches.add(file_path)
 
             patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)

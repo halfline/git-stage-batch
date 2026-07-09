@@ -164,7 +164,7 @@ def _discard_binary_change(
     auto_advance: bool | None,
 ) -> None:
     """Discard one selected binary change from the working tree."""
-    file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+    file_path = item.path()
 
     if file_path != "/dev/null":
         snapshot_file_if_untracked(file_path)

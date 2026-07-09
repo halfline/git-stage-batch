@@ -218,11 +218,7 @@ def _read_selected_change_summary() -> tuple[bool, dict | None]:
             binary_file
         ):
             return False, None
-        file_path = (
-            binary_file.new_path
-            if binary_file.new_path != "/dev/null"
-            else binary_file.old_path
-        )
+        file_path = binary_file.path()
         return True, {
             "kind": selected_kind.value,
             "file": file_path,

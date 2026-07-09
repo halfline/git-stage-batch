@@ -69,7 +69,7 @@ def record_hunk_skipped(line_changes: LineLevelChange, hunk_hash: str) -> None:
 
 def record_binary_hunk_skipped(binary_change: BinaryFileChange, hunk_hash: str) -> None:
     """Record that a binary change was skipped with file-level metadata."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    file_path = binary_change.path()
     metadata = {
         "hash": hunk_hash,
         "file": file_path,

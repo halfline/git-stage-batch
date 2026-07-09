@@ -178,11 +178,7 @@ def cache_binary_file_change(
     """Cache a binary file change as the current selected change."""
     if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
         raise ValueError("binary selections must use a binary selected-change kind")
-    file_path = (
-        binary_change.new_path
-        if binary_change.new_path != "/dev/null" else
-        binary_change.old_path
-    )
+    file_path = binary_change.path()
     binary_data = {
         "old_path": binary_change.old_path,
         "new_path": binary_change.new_path,

@@ -89,7 +89,7 @@ def compute_binary_file_hash(binary_change: BinaryFileChange) -> str:
         SHA-1 hash (hex string)
     """
     # Use new_path for added files, old_path for deleted files, either for modified
-    path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    path = binary_change.path()
 
     # Hash: "BINARY:" + path + ":" + change_type
     key = f"BINARY:{path}:{binary_change.change_type}".encode('utf-8')

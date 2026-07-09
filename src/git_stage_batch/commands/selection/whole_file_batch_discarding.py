@@ -28,7 +28,7 @@ from .selected_change_discarding import discard_text_deletion_change
 
 def _discard_binary_change_from_working_tree(binary_change: BinaryFileChange) -> None:
     """Discard one live binary change from the working tree."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    file_path = binary_change.path()
     absolute_path = get_git_repository_root_path() / file_path
 
     if binary_change.is_new_file():
@@ -51,7 +51,7 @@ def discard_binary_to_batch(
     auto_advance: bool | None = None,
 ) -> int:
     """Save one binary change to a batch, then discard it from the working tree."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    file_path = binary_change.path()
     patch_hash = compute_binary_file_hash(binary_change)
 
     snapshot_file_if_untracked(file_path)

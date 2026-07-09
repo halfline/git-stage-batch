@@ -113,11 +113,7 @@ def skip_file_changes(
                     continue
 
                 if isinstance(patch, BinaryFileChange):
-                    file_path = (
-                        patch.new_path
-                        if patch.new_path != "/dev/null"
-                        else patch.old_path
-                    )
+                    file_path = patch.path()
                     if file_path != target_file:
                         continue
 

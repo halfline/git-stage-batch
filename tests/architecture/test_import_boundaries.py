@@ -1215,6 +1215,34 @@ def test_file_review_output_uses_page_selection_module():
     assert "parse_positive_selection" not in review_output_text
 
 
+def test_file_review_output_uses_layout_module():
+    """File-review output should not own terminal layout sizing."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    imports = _import_from_nodes(review_output_path)
+    imports_layout_module = any(
+        imported_module == "git_stage_batch.output"
+        and any(alias.name == "file_review_layout" for alias in node.names)
+        for imported_module, node in imports
+    )
+    file_review = __import__(
+        "git_stage_batch.output.file_review",
+        fromlist=["file_review"],
+    )
+    file_review_layout = __import__(
+        "git_stage_batch.output.file_review_layout",
+        fromlist=["file_review_layout"],
+    )
+
+    assert imports_layout_module
+    assert "body_budget" in vars(file_review_layout)
+    assert "body_budget" not in vars(file_review)
+    assert "def _body_budget" not in review_output_text
+    assert "review_terminal_size" not in review_output_text
+    assert "DEFAULT_NON_TTY_REVIEW_LINES" not in review_output_text
+    assert "REVIEW_HEADER_LINES" not in review_output_text
+
+
 def test_file_review_action_commands_stay_out_of_state_module():
     """File-review command text should live beside validation state."""
     action_commands = __import__(

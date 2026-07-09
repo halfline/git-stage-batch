@@ -8,9 +8,7 @@ from dataclasses import dataclass
 from ..core.line_selection import format_line_ids
 from ..core.replacement import (
     ReplacementPayload,
-    ReplacementText,
     coerce_replacement_payload,
-    replacement_line_bodies,
     replacement_line_chunks,
 )
 from ..core.buffer import LineBuffer
@@ -19,12 +17,7 @@ from .ownership import BatchOwnership, AbsenceClaim, ReplacementUnit
 
 __all__ = [
     "ReplacementBatchView",
-    "ReplacementPayload",
-    "ReplacementText",
     "build_replacement_batch_view_from_lines",
-    "coerce_replacement_payload",
-    "replacement_line_bodies",
-    "replacement_line_chunks",
 ]
 
 

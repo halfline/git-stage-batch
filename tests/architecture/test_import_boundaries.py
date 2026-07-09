@@ -2188,10 +2188,16 @@ def test_file_review_freshness_stays_out_of_state_module():
         SRC_ROOT / "data" / "status_summary.py": {
             "selected_change_matches_review_state",
         },
-        SRC_ROOT / "data" / "file_review" / "action_scope.py": {
+        SRC_ROOT / "data" / "file_review" / "action_refusals.py": {
             "review_state_matches_action",
             "selected_change_kind_matches_review_source",
             "selected_change_matches_review_state",
+        },
+        SRC_ROOT / "data" / "file_review" / "batch_selection_freshness.py": {
+            "review_state_matches_action",
+        },
+        SRC_ROOT / "data" / "file_review" / "line_action_validation.py": {
+            "review_state_matches_action",
         },
     }
     violations = []
@@ -2712,7 +2718,18 @@ def test_file_review_action_commands_stay_out_of_state_module():
         "show_command_for_review_state",
     }
     expected_imports = {
-        SRC_ROOT / "data" / "file_review" / "action_scope.py": public_names,
+        SRC_ROOT / "data" / "file_review" / "action_scope.py": {
+            "batch_source_action_command",
+            "live_to_batch_action_command",
+        },
+        SRC_ROOT / "data" / "file_review" / "action_refusals.py": {
+            "line_action_command",
+            "show_command_for_review_state",
+        },
+        SRC_ROOT / "data" / "file_review" / "line_action_validation.py": {
+            "line_action_command",
+            "show_command_for_review_state",
+        },
         SRC_ROOT / "output" / "file_review.py": {"line_action_command"},
     }
     violations = []
@@ -2758,8 +2775,6 @@ def test_file_review_action_scope_stays_out_of_state_module():
     public_names = {
         "finish_review_scoped_line_action",
         "line_action_came_from_partial_review",
-        "refuse_ambiguous_bare_action_after_partial_file_review",
-        "refuse_live_action_for_batch_selection",
         "resolve_batch_source_action_scope",
         "resolve_live_line_action_scope",
         "resolve_live_to_batch_action_scope",
@@ -2777,8 +2792,6 @@ def test_file_review_action_scope_stays_out_of_state_module():
             "resolve_batch_source_action_scope",
         },
         SRC_ROOT / "commands" / "discard.py": {
-            "refuse_ambiguous_bare_action_after_partial_file_review",
-            "refuse_live_action_for_batch_selection",
             "resolve_live_line_action_scope",
             "resolve_live_to_batch_action_scope",
         },
@@ -2786,8 +2799,6 @@ def test_file_review_action_scope_stays_out_of_state_module():
             "finish_review_scoped_line_action",
         },
         SRC_ROOT / "commands" / "include.py": {
-            "refuse_ambiguous_bare_action_after_partial_file_review",
-            "refuse_live_action_for_batch_selection",
             "resolve_live_line_action_scope",
             "resolve_live_to_batch_action_scope",
         },
@@ -2795,8 +2806,6 @@ def test_file_review_action_scope_stays_out_of_state_module():
             "finish_review_scoped_line_action",
         },
         SRC_ROOT / "commands" / "skip.py": {
-            "refuse_ambiguous_bare_action_after_partial_file_review",
-            "refuse_live_action_for_batch_selection",
             "resolve_live_line_action_scope",
         },
         SRC_ROOT
@@ -2836,6 +2845,55 @@ def test_file_review_action_scope_stays_out_of_state_module():
     assert violations == []
 
 
+def test_file_review_action_refusals_stay_out_of_action_scope():
+    """File-review refusal helpers should have a focused module."""
+    action_scope = __import__(
+        "git_stage_batch.data.file_review.action_scope",
+        fromlist=["action_scope"],
+    )
+    action_refusals = __import__(
+        "git_stage_batch.data.file_review.action_refusals",
+        fromlist=["action_refusals"],
+    )
+    public_names = {
+        "refuse_ambiguous_bare_action_after_partial_file_review",
+        "refuse_live_action_for_batch_selection",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "discard.py": public_names,
+        SRC_ROOT / "commands" / "include.py": public_names,
+        SRC_ROOT / "commands" / "skip.py": public_names,
+        SRC_ROOT / "data" / "file_review" / "action_scope.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(action_refusals).keys()
+    assert public_names.isdisjoint(vars(action_scope))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "action_refusals.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.action_refusals":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.action_scope":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_file_review_line_action_validation_stays_out_of_action_scope():
     """Pathless line-action validation should have a focused module."""
     action_scope = __import__(
@@ -2852,8 +2910,10 @@ def test_file_review_line_action_validation_stays_out_of_action_scope():
         "validate_pathless_review_line_action",
     }
     expected_imports = {
-        SRC_ROOT / "data" / "file_review" / "action_scope.py": {
+        SRC_ROOT / "data" / "file_review" / "action_refusals.py": {
             "raise_stale_or_mismatched_file_review",
+        },
+        SRC_ROOT / "data" / "file_review" / "action_scope.py": {
             "validate_pathless_review_line_action",
         },
     }

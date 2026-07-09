@@ -247,6 +247,8 @@ Key modules:
   Replacement line-run derivation from old and new file content.
 - `batch.merge`
   Structural merge and reverse-merge logic.
+- `batch.baseline_edits`
+  Exact baseline-coordinate edit fallback for replacement merge round trips.
 - `batch.baseline_correspondence`
   Baseline restoration mapping for discarding batch-owned changes.
 - `batch.discard_reversal`

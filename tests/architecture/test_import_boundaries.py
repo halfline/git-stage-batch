@@ -11482,6 +11482,52 @@ def test_output_owns_operation_candidate_preview_rendering():
     assert "git_stage_batch.core.diff_parser" not in candidate_summary_imports
 
 
+def test_candidate_preview_diff_owns_buffer_diff_rendering():
+    """Candidate preview diff rendering should stay out of overview pages."""
+    candidate_preview = __import__(
+        "git_stage_batch.output.candidate_preview",
+        fromlist=["candidate_preview"],
+    )
+    candidate_preview_diff = __import__(
+        "git_stage_batch.output.candidate_preview_diff",
+        fromlist=["candidate_preview_diff"],
+    )
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    candidate_diff_path = SRC_ROOT / "output" / "candidate_preview_diff.py"
+    candidate_preview_text = candidate_preview_path.read_text()
+    candidate_diff_text = candidate_diff_path.read_text()
+    candidate_preview_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_preview_path)
+    }
+    candidate_diff_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_diff_path)
+    }
+    old_diff_names = {
+        "_candidate_diff_hunks",
+        "_candidate_line_number",
+        "_print_candidate_buffer_diff",
+        "_print_candidate_line_changes",
+    }
+
+    assert "git_stage_batch.output.candidate_preview_diff" in candidate_preview_imports
+    assert "print_candidate_buffer_diff" in vars(candidate_preview_diff)
+    assert old_diff_names.isdisjoint(vars(candidate_preview))
+    assert "git_stage_batch.core.diff_parser" not in candidate_preview_imports
+    assert "git_stage_batch.core.diff_parser" in candidate_diff_imports
+    assert "git_stage_batch.core.buffer" not in candidate_preview_imports
+    assert "git_stage_batch.core.buffer" in candidate_diff_imports
+    assert "def _candidate_diff_hunks" not in candidate_preview_text
+    assert "def _candidate_line_number" not in candidate_preview_text
+    assert "def _print_candidate_buffer_diff" not in candidate_preview_text
+    assert "def _print_candidate_line_changes" not in candidate_preview_text
+    assert "render_candidate_buffer_diff" not in candidate_preview_text
+    assert "splitlines(keepends=True)" not in candidate_preview_text
+    assert "render_candidate_buffer_diff" in candidate_diff_text
+    assert "splitlines(keepends=True)" in candidate_diff_text
+
+
 def test_candidate_preview_commands_own_command_text():
     """Candidate preview command text should stay out of rendering."""
     candidate_preview = __import__(

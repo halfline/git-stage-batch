@@ -3387,6 +3387,43 @@ def test_file_scope_include_file_owns_file_pipeline():
     assert helper_imports <= helper_imported_names
 
 
+def test_file_scope_target_path_stays_in_file_scope_support():
+    """File-scope target fallback should stay out of command entrypoints."""
+    command_paths = {
+        SRC_ROOT / "commands" / "discard.py",
+        SRC_ROOT / "commands" / "include.py",
+    }
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "target_path.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.target_path",
+        fromlist=["target_path"],
+    )
+    public_names = {"require_file_scope_target_path"}
+    moved_names = {"get_selected_change_file_path"}
+    command_imports = {}
+    command_imported_names = set()
+
+    for path in command_paths:
+        command_imports[path] = set()
+        for imported_module, node in _import_from_nodes(path):
+            command_imports[path].add(imported_module)
+            command_imported_names |= {alias.name for alias in node.names}
+
+    helper_imports = set()
+    helper_imported_names = set()
+    for imported_module, node in _import_from_nodes(helper_path):
+        helper_imports.add(imported_module)
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    for imports in command_imports.values():
+        assert "git_stage_batch.commands.file_scope.target_path" in imports
+        assert "git_stage_batch.data.selected_change.paths" not in imports
+    assert "git_stage_batch.data.selected_change.paths" in helper_imports
+    assert moved_names.isdisjoint(command_imported_names)
+    assert moved_names <= helper_imported_names
+
+
 def test_file_scope_skip_owns_file_pipeline():
     """Explicit file-scope skip support should stay out of skip.py."""
     skip_path = SRC_ROOT / "commands" / "skip.py"

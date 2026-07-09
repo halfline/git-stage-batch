@@ -405,6 +405,7 @@ def test_output_package_does_not_reexport_output_apis():
         "print_binary_file_change",
         "print_colored_patch",
         "print_gitlink_change",
+        "print_group_install_summary",
         "print_line_level_changes",
         "print_remaining_line_changes_header",
         "print_rename_change",
@@ -1652,6 +1653,53 @@ def test_status_summary_rendering_stays_in_output_module():
     assert old_status_snippets.isdisjoint(status_text)
     assert "_print_status_summary" in imported_status_output_names
     assert direct_render_imports == set()
+
+
+def test_install_asset_summary_rendering_stays_in_output_module():
+    """Install asset summary rendering should stay out of the command module."""
+    install_output = __import__(
+        "git_stage_batch.output.install_assets",
+        fromlist=["install_assets"],
+    )
+    install_assets = __import__(
+        "git_stage_batch.commands.install_assets",
+        fromlist=["install_assets"],
+    )
+    command_path = SRC_ROOT / "commands" / "install_assets.py"
+    public_names = {
+        "print_group_install_summary",
+    }
+    old_command_names = {
+        "_print_group_install_summary",
+    }
+    old_command_snippets = {
+        "✓ Installed",
+        "Installed {kind}",
+        "file=sys.stderr",
+        "import sys",
+    }
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    command_names = {
+        node.name
+        for node in ast.walk(command_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    imported_install_output_names = set()
+
+    for imported_module, node in _import_from_nodes(command_path):
+        if imported_module == "git_stage_batch.output.install_assets":
+            imported_install_output_names |= {
+                alias.asname or alias.name
+                for alias in node.names
+            }
+
+    command_text = command_path.read_text()
+
+    assert public_names <= vars(install_output).keys()
+    assert "print_group_install_summary" not in vars(install_assets)
+    assert old_command_names.isdisjoint(command_names)
+    assert all(snippet not in command_text for snippet in old_command_snippets)
+    assert "_print_group_install_summary" in imported_install_output_names
 
 
 def test_argument_parser_delegates_multi_file_action_flow():

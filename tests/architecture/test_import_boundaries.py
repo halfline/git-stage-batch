@@ -8668,6 +8668,36 @@ def test_batch_source_candidate_execution_owns_apply_candidate_side_effects():
     assert helper_imports <= helper_imported_names
 
 
+def test_batch_source_candidate_execution_owns_include_candidate_side_effects():
+    """Include candidate side effects should live in batch-source support."""
+    candidate_execution = __import__(
+        "git_stage_batch.commands.batch_source.candidate_execution",
+        fromlist=["candidate_execution"],
+    )
+    helper_path = (
+        SRC_ROOT / "commands" / "batch_source" / "candidate_execution.py"
+    )
+    public_names = {
+        "execute_include_candidate",
+    }
+    helper_imports = {
+        "ReplacementPayload",
+        "_",
+        "candidate_materialization",
+        "clear_candidate_preview_state_for_file",
+        "snapshot_file_if_untracked",
+        "text_file_actions",
+        "undo_checkpoint",
+    }
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(candidate_execution).keys()
+    assert helper_imports <= helper_imported_names
+
+
 def test_batch_source_candidate_execution_owns_apply_from_flow():
     """Apply-from should delegate reviewed candidate execution."""
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"

@@ -23,7 +23,8 @@ from .merge_candidates import (
 from .merge_validation import (
     check_structural_validity as _check_merge_structural_validity,
 )
-from .match import LineMapping, match_lines
+from .line_mapping import LineMapping
+from .match import match_lines
 from .realized_entries import (
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )

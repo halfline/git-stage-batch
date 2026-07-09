@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections.abc import Hashable, Iterator, Sequence
-from dataclasses import dataclass, field
-from typing import Protocol, TypeVar
+from dataclasses import dataclass
+from typing import TypeVar
 
+from .line_mapping import IntVector as _IntVector, LineMapping as _LineMapping
 from .match_storage import MatcherWorkspace
 from ..utils.mapped_storage import MappedIntVector, MappedRecordVector
 from ..utils.text import AcquirableLineSequence, as_acquirable_line_sequence
@@ -25,92 +26,6 @@ _OCCURRENCE_TARGET_COUNT = 4
 _OCCURRENCE_NEXT = 5
 
 
-class IntVector(Protocol):
-    """Fixed-width integer vector used by line mappings."""
-
-    def __len__(self) -> int: ...
-
-    def __getitem__(self, index: int) -> int: ...
-
-    def __setitem__(self, index: int, value: int) -> None: ...
-
-
-@dataclass
-class LineMapping:
-    """Alignment between batch source lines and working tree lines."""
-
-    source_to_target: IntVector
-    target_to_source: IntVector
-    _closed: bool = field(default=False, init=False, repr=False)
-    _close_on_exit: bool = field(default=True, init=False, repr=False)
-
-    def __enter__(self) -> LineMapping:
-        self._require_open()
-        self._close_on_exit = True
-        return self
-
-    def __exit__(self, exc_type, exc, traceback) -> None:
-        if self._close_on_exit:
-            self.close()
-
-    def detach(self) -> LineMapping:
-        """Transfer ownership out of the current context manager."""
-        self._require_open()
-        self._close_on_exit = False
-        return self
-
-    def close(self) -> None:
-        """Close owned vector storage."""
-        if self._closed:
-            return
-
-        _close_vector(self.source_to_target)
-        _close_vector(self.target_to_source)
-        self._closed = True
-
-    def __del__(self) -> None:
-        try:
-            self.close()
-        except Exception:
-            pass
-
-    def is_source_line_present(
-        self,
-        source_line: int
-    ) -> bool:
-        """Check if a batch source line is present in working tree."""
-        self._require_open()
-        return _lookup_line_mapping(self.source_to_target, source_line) is not None
-
-    def get_target_line_from_source_line(
-        self,
-        source_line: int
-    ) -> int | None:
-        """Map batch source line to working tree line."""
-        self._require_open()
-        return _lookup_line_mapping(self.source_to_target, source_line)
-
-    def get_source_line_from_target_line(
-        self,
-        target_line: int
-    ) -> int | None:
-        """Map working tree line to batch source line."""
-        self._require_open()
-        return _lookup_line_mapping(self.target_to_source, target_line)
-
-    def mapped_line_pairs(self) -> Iterator[tuple[int, int]]:
-        """Yield mapped source/target line pairs in source-line order."""
-        self._require_open()
-        for source_index in range(len(self.source_to_target)):
-            target_line = self.source_to_target[source_index]
-            if target_line != 0:
-                yield source_index + 1, target_line
-
-    def _require_open(self) -> None:
-        if self._closed:
-            raise ValueError("line mapping is closed")
-
-
 @dataclass(frozen=True)
 class TargetGap:
     """A concrete gap between target lines."""
@@ -118,12 +33,6 @@ class TargetGap:
     gap_index: int
     target_after_line: int | None
     target_before_line: int | None
-
-
-def _close_vector(vector: IntVector) -> None:
-    close = getattr(vector, "close", None)
-    if close is not None:
-        close()
 
 
 def _line_mapping_width(max_line_number: int) -> int:
@@ -138,16 +47,6 @@ def _new_line_mapping(size: int, max_line_number: int) -> MappedIntVector:
         width=_line_mapping_width(max_line_number),
         fill=0,
     )
-
-
-def _lookup_line_mapping(mapping: IntVector, line_number: int) -> int | None:
-    if line_number < 1 or line_number > len(mapping):
-        return None
-
-    mapped_line = mapping[line_number - 1]
-    if mapped_line == 0:
-        return None
-    return mapped_line
 
 
 class _LineOccurrenceTable:
@@ -401,8 +300,8 @@ def _longest_increasing_subsequence_records(
 
 
 def _query_best_record_by_target_rank(
-    best_lengths: IntVector,
-    best_indexes: IntVector,
+    best_lengths: _IntVector,
+    best_indexes: _IntVector,
     target_rank: int,
 ) -> tuple[int, int]:
     """Return the best mapped LIS record ending before a target rank."""
@@ -426,8 +325,8 @@ def _query_best_record_by_target_rank(
 
 
 def _update_best_record_by_target_rank(
-    best_lengths: IntVector,
-    best_indexes: IntVector,
+    best_lengths: _IntVector,
+    best_indexes: _IntVector,
     target_rank: int,
     candidate_length: int,
     candidate_index_number: int,
@@ -471,8 +370,8 @@ def _map_equal_prefix(
     source_end: int,
     target_start: int,
     target_end: int,
-    source_to_target: IntVector,
-    target_to_source: IntVector
+    source_to_target: _IntVector,
+    target_to_source: _IntVector,
 ) -> tuple[int, int]:
     """Map equal prefix lines and return new segment starts."""
     while (
@@ -495,8 +394,8 @@ def _map_equal_suffix(
     source_end: int,
     target_start: int,
     target_end: int,
-    source_to_target: IntVector,
-    target_to_source: IntVector
+    source_to_target: _IntVector,
+    target_to_source: _IntVector,
 ) -> tuple[int, int]:
     """Map equal suffix lines and return new segment ends."""
     while (
@@ -519,8 +418,8 @@ def _align_segment(
     source_end: int,
     target_start: int,
     target_end: int,
-    source_to_target: IntVector,
-    target_to_source: IntVector,
+    source_to_target: _IntVector,
+    target_to_source: _IntVector,
     workspace: MatcherWorkspace,
 ) -> None:
     """Conservatively align one source/target segment.
@@ -640,7 +539,7 @@ def _align_segment(
 def match_acquirable_lines(
     source_lines: AcquirableLineSequence[LineContent],
     target_lines: AcquirableLineSequence[LineContent]
-) -> LineMapping:
+) -> _LineMapping:
     """Compute conservative structural alignment between source and target.
 
     This matcher is bytes-safe and ambiguity-intolerant.
@@ -692,7 +591,7 @@ def match_acquirable_lines(
                 workspace,
             )
 
-        return LineMapping(
+        return _LineMapping(
             source_to_target=source_to_target,
             target_to_source=target_to_source
         )
@@ -705,7 +604,7 @@ def match_acquirable_lines(
 def match_lines(
     source_lines: Sequence[LineContent],
     target_lines: Sequence[LineContent]
-) -> LineMapping:
+) -> _LineMapping:
     """Compute conservative structural alignment between source and target."""
     return match_acquirable_lines(
         as_acquirable_line_sequence(source_lines),

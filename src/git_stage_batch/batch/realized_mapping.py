@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from .match import LineMapping
+from .line_mapping import LineMapping
 from .realized_entries import _RealizedEntries, _backing_content_sequence
 from ..core.line_selection import LineSelection
 

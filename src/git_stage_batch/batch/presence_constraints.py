@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 from .absence_constraints import (
     apply_absence_constraints as _apply_merge_absence_constraints,
 )
-from .match import LineMapping, iter_exact_context_gaps, match_lines
+from .line_mapping import LineMapping
+from .match import iter_exact_context_gaps, match_lines
 from .merge_candidates import MergeResolution as _MergeResolution
 from .realized_entries import (
     RealizedEntry as _RealizedEntry,

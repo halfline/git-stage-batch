@@ -13,7 +13,8 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from enum import Enum
 
-from ..batch.match import LineMapping, match_lines
+from ..batch.line_mapping import LineMapping
+from ..batch.match import match_lines
 from . import attribution_fingerprints as _attribution_fingerprints
 from ..batch.query import list_batch_names, read_batch_metadata
 from ..core.line_selection import parse_line_selection

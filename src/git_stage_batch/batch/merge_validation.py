@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
-from .match import LineMapping
+from .line_mapping import LineMapping
 
 if TYPE_CHECKING:
     from .ownership import AbsenceClaim

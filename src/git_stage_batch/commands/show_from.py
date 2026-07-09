@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import shlex
-import sys
 from typing import Optional
 
 from .batch_source import candidate_preview_action as _candidate_preview_action
 from .batch_source import file_display_action as _file_display_action
+from .batch_source import file_list_action as _file_list_action
 from .batch_source import replacement_previews as _replacement_previews
-from ..batch.atomic_file_changes import (
-    binary_change_from_batch_file_metadata,
-    gitlink_change_from_batch_file_metadata,
-)
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..core.replacement import ReplacementPayload
 from ..batch.selection import (
@@ -21,19 +17,7 @@ from ..batch.selection import (
 )
 from ..batch.source_selector import parse_batch_source_selector
 from ..batch.validation import batch_exists
-from ..batch.file_display import render_batch_file_display
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
-from ..data.selected_change.lifecycle import clear_selected_change_state_files
-from ..data.selected_change.clear_reasons import (
-    mark_selected_change_cleared_by_file_list,
-)
-from ..data.file_review.records import ReviewSource
-from ..output.file_review_list import (
-    make_binary_file_review_list_entry,
-    make_file_review_list_entry,
-    make_gitlink_file_review_list_entry,
-    print_file_review_list,
-)
 from ..exceptions import (
     exit_with_error,
     BatchMetadataError,
@@ -141,42 +125,10 @@ def command_show_from_batch(
         )
         return
 
-    entries = []
-    for file_path, file_meta in files.items():
-        binary_change = binary_change_from_batch_file_metadata(file_path, file_meta)
-        if binary_change is not None:
-            entries.append(make_binary_file_review_list_entry(binary_change))
-            continue
-        gitlink_change = gitlink_change_from_batch_file_metadata(file_path, file_meta)
-        if gitlink_change is not None:
-            entries.append(make_gitlink_file_review_list_entry(gitlink_change))
-            continue
-        rendered = render_batch_file_display(
-            batch_name,
-            file_path,
-            metadata=metadata,
-            probe_mergeability=False,
-        )
-        if rendered is not None:
-            entries.append(
-                make_file_review_list_entry(
-                    rendered.line_changes,
-                )
-            )
-
-    if entries:
-        # Multi-file batch output is navigational; it must not leave a hidden
-        # selected file that a later bare action could operate on.
-        if selectable:
-            clear_selected_change_state_files()
-            mark_selected_change_cleared_by_file_list(
-                source=ReviewSource.BATCH.value,
-                batch_name=batch_name,
-            )
-        print_file_review_list(
-            source_label=_("Changes: batch {name}").format(name=batch_name),
-            entries=entries,
-            command_source_args=_batch_source_args(batch_name),
-        )
-    else:
-        print(_("Batch '{name}' is empty").format(name=batch_name), file=sys.stderr)
+    _file_list_action.show_batch_source_file_list(
+        batch_name=batch_name,
+        files=files,
+        metadata=metadata,
+        selectable=selectable,
+        command_source_args=_batch_source_args(batch_name),
+    )

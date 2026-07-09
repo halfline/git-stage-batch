@@ -21,12 +21,16 @@ def _assert_parser_delegates_subcommand_registry(
     delegated_module: str,
 ) -> None:
     delegated_module_name = f"git_stage_batch.cli.{delegated_module}"
+    root_parser_imports = _imported_modules_for(SRC_ROOT / "cli" / "root_parser.py")
     registry_imports = _imported_modules_for(
         SRC_ROOT / "cli" / "subcommand_registry.py"
     )
 
-    assert "git_stage_batch.cli.subcommand_registry" in parser_imports
+    assert "git_stage_batch.cli.root_parser" in parser_imports
+    assert "git_stage_batch.cli.subcommand_registry" not in parser_imports
+    assert "git_stage_batch.cli.subcommand_registry" in root_parser_imports
     assert delegated_module_name not in parser_imports
+    assert delegated_module_name not in root_parser_imports
     assert delegated_module_name in registry_imports
 
 
@@ -3351,11 +3355,16 @@ def test_argument_parser_delegates_multi_file_action_flow():
 def test_argument_parser_delegates_git_help_display():
     """Parser construction should not own Git help manpage lookup."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    root_parser_path = SRC_ROOT / "cli" / "root_parser.py"
     git_help_path = SRC_ROOT / "cli" / "git_help.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    root_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(root_parser_path)
     }
     git_help_imports = {
         imported_module
@@ -3379,7 +3388,9 @@ def test_argument_parser_delegates_git_help_display():
         "_with_real_manpath_root",
     }
 
-    assert "git_stage_batch.cli.git_help" in parser_imports
+    assert "git_stage_batch.cli.root_parser" in parser_imports
+    assert "git_stage_batch.cli.git_help" not in parser_imports
+    assert "git_stage_batch.cli.git_help" in root_parser_imports
     assert "git_stage_batch.utils.command" not in parser_imports
     assert "git_stage_batch.utils.git_command" not in parser_imports
     assert "git_stage_batch.utils.command" in git_help_imports
@@ -6702,6 +6713,7 @@ def test_argument_parser_does_not_import_command_facade():
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
     }
+    root_parser_imports = _imported_modules_for(SRC_ROOT / "cli" / "root_parser.py")
     registry_imports = _imported_modules_for(SRC_ROOT / "cli" / "subcommand_registry.py")
     delegated_subcommand_modules = {
         "git_stage_batch.cli.asset_subcommands",
@@ -6735,8 +6747,11 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.check_unstaged" not in imported_modules
     assert "git_stage_batch.commands.start" not in imported_modules
     assert "git_stage_batch.commands.status" not in imported_modules
-    assert "git_stage_batch.cli.subcommand_registry" in imported_modules
+    assert "git_stage_batch.cli.root_parser" in imported_modules
+    assert "git_stage_batch.cli.subcommand_registry" not in imported_modules
+    assert "git_stage_batch.cli.subcommand_registry" in root_parser_imports
     assert delegated_subcommand_modules.isdisjoint(imported_modules)
+    assert delegated_subcommand_modules.isdisjoint(root_parser_imports)
     assert delegated_subcommand_modules <= registry_imports
 
 

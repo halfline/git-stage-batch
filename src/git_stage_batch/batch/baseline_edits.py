@@ -24,7 +24,8 @@ from .line_mapping import LineMapping
 from .merge_candidates import MergeResolution as _MergeResolution
 
 if TYPE_CHECKING:
-    from .ownership import AbsenceClaim, BatchOwnership
+    from .ownership import BatchOwnership
+    from .ownership_absence_claims import AbsenceClaim
 
 
 _BaselineLineEdit = tuple[int, int, list[bytes]]

@@ -5,8 +5,9 @@ from __future__ import annotations
 from ..core.buffer import LineBuffer
 from ..utils.git_object_io import read_git_blobs_as_bytes
 from ..utils.repository_buffers import load_git_blob_as_buffer
-from .ownership import AbsenceClaim, BatchOwnership
+from .ownership import BatchOwnership
 from .ownership_acquisition import AcquiredBatchOwnership
+from .ownership_absence_claims import AbsenceClaim
 from .ownership_claims import (
     PresenceClaim,
     parse_ownership_line_ranges,

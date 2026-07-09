@@ -32,7 +32,8 @@ from ..i18n import _
 from ..core.text_lines import normalize_line_endings
 
 if TYPE_CHECKING:
-    from .ownership import AbsenceClaim, BatchOwnership
+    from .ownership import BatchOwnership
+    from .ownership_absence_claims import AbsenceClaim
 
 
 _MergeResolutionValidator = Callable[[_MergeResolution], bool]

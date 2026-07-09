@@ -8,15 +8,6 @@ import subprocess
 import sys
 
 from ..batch.query import read_batch_metadata
-from ..core.hashing import (
-    compute_binary_file_hash,
-    compute_gitlink_change_hash,
-    compute_rename_change_hash,
-    compute_stable_hunk_hash_from_lines,
-    compute_text_file_deletion_hash,
-)
-from ..core.diff_parser import acquire_unified_diff
-from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.batch_selected_changes import (
     selected_batch_binary_batch_name,
     selected_batch_binary_file_for_batch,
@@ -25,7 +16,6 @@ from ..data.change_freshness import (
     binary_file_change_is_stale,
     gitlink_change_is_stale,
     rename_change_is_stale,
-    text_deletion_change_is_batched,
     text_deletion_change_is_stale,
 )
 from ..data.file_review.freshness import selected_change_matches_review_state
@@ -33,8 +23,8 @@ from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.selection_validation import shown_review_selections_for_action
 from ..data.file_review.state import read_last_file_review_state
 from ..data.line_state import load_line_changes_from_state
-from ..data.live_diff import stream_live_git_diff
 from ..data.progress import format_id_range
+from ..data.remaining_hunks import estimate_remaining_hunks as _estimate_remaining_hunks
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
     SelectedChangeKind,
@@ -56,84 +46,16 @@ from ..i18n import _
 from ..output.status_prompt import prompt_needs_status_summary, render_prompt_status
 from ..utils.file_io import (
     count_nonblank_text_file_lines,
-    is_path_blocked,
     stream_text_file_lines,
-    read_file_paths_file,
-    read_text_file_line_set,
 )
 from ..utils.git import require_git_repository, run_git_command
 from ..utils.paths import (
-    get_block_list_file_path,
-    get_blocked_files_file_path,
-    get_context_lines,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
     get_discarded_hunks_file_path,
     get_included_hunks_file_path,
     get_skipped_hunks_jsonl_file_path,
 )
-
-
-def estimate_remaining_hunks() -> int:
-    """Estimate number of remaining unprocessed hunks.
-
-    Returns:
-        Number of hunks not yet included, skipped, or discarded
-    """
-    # Filter out blocked hunks
-    blocked_hashes = read_text_file_line_set(get_block_list_file_path())
-
-    # Filter out hunks from blocked files
-    blocked_files = read_file_paths_file(get_blocked_files_file_path())
-
-    remaining = 0
-    try:
-        with acquire_unified_diff(
-            stream_live_git_diff(
-                context_lines=get_context_lines(),
-                full_index=True,
-                ignore_submodules="none",
-                submodule_format="short",
-            )
-        ) as patches:
-            for patch in patches:
-                if isinstance(patch, RenameChange):
-                    hunk_hash = compute_rename_change_hash(patch)
-                    if (
-                        hunk_hash not in blocked_hashes
-                        and not is_path_blocked(patch.old_path, blocked_files)
-                        and not is_path_blocked(patch.new_path, blocked_files)
-                    ):
-                        remaining += 1
-                    continue
-                elif isinstance(patch, TextFileDeletionChange):
-                    if text_deletion_change_is_batched(patch):
-                        continue
-                    hunk_hash = compute_text_file_deletion_hash(patch)
-                    file_path = patch.path()
-                elif isinstance(patch, GitlinkChange):
-                    hunk_hash = compute_gitlink_change_hash(patch)
-                    file_path = patch.path()
-                elif isinstance(patch, BinaryFileChange):
-                    hunk_hash = compute_binary_file_hash(patch)
-                    file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
-                else:
-                    if patch.old_path != patch.new_path:
-                        rename_hash = compute_rename_change_hash(
-                            RenameChange(old_path=patch.old_path, new_path=patch.new_path)
-                        )
-                        if rename_hash in blocked_hashes:
-                            continue
-                    hunk_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-                    file_path = patch.old_path if patch.old_path != "/dev/null" else patch.new_path
-                file_path = file_path.removeprefix("a/").removeprefix("b/")
-
-                if hunk_hash not in blocked_hashes and not is_path_blocked(file_path, blocked_files):
-                    remaining += 1
-    except Exception:
-        return 0
-
-    return remaining
 
 
 def _selected_change_is_stale(selected_kind: SelectedChangeKind | None, file_path: str) -> bool:
@@ -386,7 +308,7 @@ def _read_status_summary() -> dict:
     has_selected, selected_summary = _read_selected_change_summary()
     file_review_summary = _read_file_review_summary()
 
-    remaining_estimate = estimate_remaining_hunks()
+    remaining_estimate = _estimate_remaining_hunks()
     status_value = "in_progress" if has_selected or remaining_estimate > 0 else "complete"
 
     return {

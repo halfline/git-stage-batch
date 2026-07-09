@@ -336,6 +336,7 @@ def test_data_package_does_not_reexport_data_apis():
         "restore_batch_refs",
         "snapshot_batch_refs",
         "Traversable",
+        "validate_asset_destination_path",
     }
 
     assert imported_modules <= {"__future__"}
@@ -2673,7 +2674,7 @@ def test_asset_installation_owns_asset_tree_copying():
 
     for imported_module, node in _import_from_nodes(command_path):
         if imported_module == "git_stage_batch.data.asset_installation":
-            command_imports |= {alias.name for alias in node.names}
+            command_imports |= {alias.asname or alias.name for alias in node.names}
 
     command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
     data_tree = ast.parse(data_path.read_text(), filename=str(data_path))
@@ -2694,7 +2695,53 @@ def test_asset_installation_owns_asset_tree_copying():
     assert old_command_names.isdisjoint(vars(install_assets))
     assert old_command_names.isdisjoint(command_names)
     assert all(snippet not in command_text for snippet in old_command_snippets)
-    assert command_imports == {"copy_asset_tree"}
+    assert "copy_asset_tree" in command_imports
+
+
+def test_asset_installation_owns_destination_validation():
+    """Asset destination validation should live in the data helper."""
+    asset_installation = __import__(
+        "git_stage_batch.data.asset_installation",
+        fromlist=["asset_installation"],
+    )
+    install_assets = __import__(
+        "git_stage_batch.commands.install_assets",
+        fromlist=["install_assets"],
+    )
+    command_path = SRC_ROOT / "commands" / "install_assets.py"
+    public_names = {
+        "validate_asset_destination_path",
+    }
+    old_command_names = {
+        "_validate_destination_path_shape",
+    }
+    old_command_snippets = {
+        "destination.parents",
+        "Cannot install bundled assets because",
+        "is not a directory",
+        "is a directory",
+    }
+    imported_installation_names = set()
+
+    for imported_module, node in _import_from_nodes(command_path):
+        if imported_module == "git_stage_batch.data.asset_installation":
+            imported_installation_names |= {
+                alias.asname or alias.name for alias in node.names
+            }
+
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    command_names = {
+        node.name
+        for node in ast.walk(command_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    command_text = command_path.read_text()
+
+    assert public_names <= vars(asset_installation).keys()
+    assert public_names.isdisjoint(vars(install_assets))
+    assert old_command_names.isdisjoint(command_names)
+    assert all(snippet not in command_text for snippet in old_command_snippets)
+    assert "_validate_asset_destination" in imported_installation_names
 
 
 def test_asset_inventory_owns_packaged_asset_lookup():

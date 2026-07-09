@@ -6,7 +6,10 @@ from git_stage_batch.utils.paths import (
     get_abort_stash_file_path,
 )
 from git_stage_batch.utils.file_io import write_text_file_contents
-from git_stage_batch.batch.source_snapshots import load_saved_session_file_as_buffer
+try:
+    from git_stage_batch.batch.source_buffers import load_saved_session_file_as_buffer
+except ModuleNotFoundError:
+    from git_stage_batch.batch.source_snapshots import load_saved_session_file_as_buffer
 from git_stage_batch.utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,

@@ -165,10 +165,19 @@ def test_batch_package_stays_below_workflow_data():
         "git_stage_batch.batch.source_snapshots",
         fromlist=["source_snapshots"],
     )
+    try:
+        source_buffers = __import__(
+            "git_stage_batch.batch.source_buffers",
+            fromlist=["source_buffers"],
+        )
+    except ModuleNotFoundError:
+        source_buffers = source_snapshots
     public_snapshot_names = {
         "BatchSourceCommit",
         "create_batch_source_commit",
         "create_batch_source_commits",
+    }
+    public_buffer_names = {
         "load_saved_session_file_as_buffer",
     }
     violations = []
@@ -186,6 +195,7 @@ def test_batch_package_stays_below_workflow_data():
 
     assert not old_source_path.exists()
     assert public_snapshot_names <= vars(source_snapshots).keys()
+    assert public_buffer_names <= vars(source_buffers).keys()
     assert violations == []
 
 

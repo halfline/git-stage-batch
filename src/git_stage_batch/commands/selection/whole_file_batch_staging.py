@@ -7,7 +7,7 @@ import sys
 from ...batch.binary_file_storage import add_binary_file_to_batch
 from ...batch.gitlink_storage import add_gitlink_to_batch
 from ...batch.ownership import BatchOwnership
-from ...batch.storage import (
+from ...batch.text_file_storage import (
     add_file_to_batch,
 )
 from ...core.hashing import (

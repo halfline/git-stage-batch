@@ -22,7 +22,7 @@ from ...batch.ownership_units import (
 from ...batch.query import read_batch_metadata
 from ...batch.selection import require_display_ids_available, resolve_batch_file_scope
 from ...batch.state_refs import sync_batch_state_refs
-from ...batch.storage import (
+from ...batch.text_file_storage import (
     add_file_to_batch,
 )
 from ...batch.file_entry_storage import (

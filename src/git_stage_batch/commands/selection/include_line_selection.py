@@ -15,7 +15,7 @@ from ...batch.ownership_translation import (
 )
 from ...batch.query import read_batch_metadata
 from ...batch.selection import line_selection_not_valid_message
-from ...batch.storage import add_file_to_batch
+from ...batch.text_file_storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
 from ...data.batch_sources import create_batch_source_commit

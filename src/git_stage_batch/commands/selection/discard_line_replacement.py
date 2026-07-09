@@ -27,7 +27,7 @@ from ...batch.source_refresh import (
     acquire_batch_ownership_update_for_selection,
     refresh_selected_lines_against_source_lines,
 )
-from ...batch.storage import add_file_to_batch
+from ...batch.text_file_storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
 from ...core.line_selection import parse_line_selection

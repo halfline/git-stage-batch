@@ -27,6 +27,7 @@ except ImportError:
     INPUT_USES_LIBEDIT = False
     readline = None  # type: ignore
 
+from . import action_prompt_choices
 from . import action_prompt_menu
 from ..output.colors import Colors, format_hotkey
 from ..i18n import _, pgettext
@@ -73,67 +74,10 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
     Returns:
         Normalized choice (e.g., 'i', 's', 'd', 'q', 'a', 'l', 'x', '!', etc.)
     """
-    if has_hunk:
-        # Primary actions
-        primary_options = [
-            ("include", "i", Colors.GREEN if use_color else ""),
-            ("skip", "s", ""),
-            ("discard", "d", Colors.RED if use_color else ""),
-            ("quit", "q", ""),
-        ]
-
-        # Scope options
-        scope_options = [
-            ("lines", "l", ""),
-            ("file", "f", ""),
-            ("view", "v", ""),
-        ]
-
-        # Flow options
-        flow_options = [
-            ("from", "<", ""),
-            ("to", ">", ""),
-        ]
-
-        # More options
-        more_options = [
-            ("again", "a", ""),
-            ("undo", "u", ""),
-            ("redo", "U", ""),
-            ("status", "S", ""),
-            ("assets", "A", ""),
-            ("batch", "b", ""),
-            ("open", "o", ""),
-            ("fixup", "x", ""),
-            ("cmd", "!", ""),
-            ("help", "?", ""),
-        ]
-    else:
-        # No hunk available - only show non-hunk actions
-        primary_options = [
-            ("quit", "q", ""),
-            ("help", "?", ""),
-        ]
-
-        # Scope options - none in degraded mode
-        scope_options = []
-
-        # Flow options - still available
-        flow_options = [
-            ("from", "<", ""),
-            ("to", ">", ""),
-        ]
-
-        # More options - limited set
-        more_options = [
-            ("undo", "u", ""),
-            ("redo", "U", ""),
-            ("status", "S", ""),
-            ("assets", "A", ""),
-            ("batch", "b", ""),
-            ("open", "o", ""),
-            ("cmd", "!", ""),
-        ]
+    option_groups = action_prompt_choices.action_prompt_option_groups(
+        has_hunk=has_hunk,
+        use_color=use_color,
+    )
 
     if show_question:
         print()
@@ -141,7 +85,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
             print(_("What do you want to do with this hunk?"))
         else:
             print(_("What do you want to do?"))
-        for text, hotkey, color in primary_options:
+        for text, hotkey, color in option_groups.primary:
             formatted = format_hotkey(text, hotkey, color)
             print(f"  {formatted}")
 
@@ -165,9 +109,9 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
                 )
 
         section_specs = [
-                (pgettext("menu section label", "Other scope"), scope_options),
-                (pgettext("menu section label", "Flow"), flow_options),
-                (pgettext("menu section label", "More"), more_options),
+                (pgettext("menu section label", "Other scope"), option_groups.scope),
+                (pgettext("menu section label", "Flow"), option_groups.flow),
+                (pgettext("menu section label", "More"), option_groups.more),
         ]
 
         for label, options in section_specs:
@@ -193,34 +137,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
     except (KeyboardInterrupt, EOFError):
         return "q"  # Ctrl-C or Ctrl-D exits
 
-    # Normalize full words to single letters (case-insensitive)
-    choice_lower = choice.lower()
-    word_to_letter = {
-        "include": "i",
-        "skip": "s",
-        "discard": "d",
-        "quit": "q",
-        "again": "a",
-        "undo": "u",
-        "redo": "U",
-        "status": "S",
-        "assets": "A",
-        "install-assets": "A",
-        "lines": "l",
-        "file": "f",
-        "review": "v",
-        "view": "v",
-        "open": "o",
-        "files": "o",
-        "batch": "b",
-        "fixup": "x",
-        "command": "!",
-        "help": "?",
-        "from": "<",
-        "to": ">",
-    }
-
-    return word_to_letter.get(choice_lower, choice_lower)
+    return action_prompt_choices.normalize_action_prompt_choice(choice)
 
 
 def confirm_destructive_operation(_operation: str, message: str) -> bool:

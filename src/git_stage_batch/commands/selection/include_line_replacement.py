@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ...batch.display import annotate_with_batch_source
+from ...batch.source_annotation import annotate_with_batch_source
 from ...batch.selection import require_line_selection_in_view
 from ...core.buffer import LineBuffer
 from ...core.line_selection import format_line_ids, parse_line_selection

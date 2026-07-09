@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from typing import Union
 
-from ..batch.display import annotate_with_batch_source
+from ..batch.source_annotation import annotate_with_batch_source
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,

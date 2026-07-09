@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 
-from ...batch.display import annotate_with_batch_source_working_lines
+from ...batch.source_annotation import annotate_with_batch_source_working_lines
 from ...batch.lifecycle import create_batch
 from ...batch.ownership import (
     BatchOwnership,

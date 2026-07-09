@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..commands.abort import command_abort
 from ..commands.redo import command_redo
 from ..commands.stop import command_stop
 from ..commands.undo import command_undo
@@ -49,3 +50,13 @@ def add_redo_subcommand(subparsers) -> None:
         help=_("Overwrite changes made after the undo"),
     )
     parser_redo.set_defaults(func=lambda args: command_redo(force=args.force))
+
+
+def add_abort_subcommand(subparsers) -> None:
+    """Register the abort subcommand."""
+    parser_abort = add_subcommand_parser(
+        subparsers,
+        "abort",
+        help=_("Restore repository to pre-session state"),
+    )
+    parser_abort.set_defaults(func=lambda _: command_abort())

@@ -3838,6 +3838,12 @@ def test_tui_file_review_fixup_actions_own_line_fixups():
         "git_stage_batch.tui.file_review.fixup_actions",
         fromlist=["fixup_actions"],
     )
+    browser_tree = ast.parse(browser_path.read_text(), filename=str(browser_path))
+    browser_function_names = {
+        node.name
+        for node in ast.walk(browser_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
     browser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(browser_path)
@@ -3846,17 +3852,30 @@ def test_tui_file_review_fixup_actions_own_line_fixups():
         imported_module
         for imported_module, _node in _import_from_nodes(fixup_actions_path)
     }
+    old_browser_snippets = {
+        "Create fixup commit with:",
+        "clear_file_review_fixup_state",
+        "prompt_fixup_action",
+        "prompt_line_ids",
+        "read_last_fixup_commit_hash",
+        "suggest_fixup_for_lines",
+    }
+    browser_text = browser_path.read_text()
 
     assert {
+        "apply_fixup_action",
         "clear_file_review_fixup_state",
         "read_last_fixup_commit_hash",
         "suggest_fixup_for_lines",
     } <= vars(fixup_actions).keys()
+    assert "_apply_fixup_action" not in browser_function_names
+    assert all(snippet not in browser_text for snippet in old_browser_snippets)
     assert "git_stage_batch.tui.file_review.fixup_actions" in browser_imports
     assert "git_stage_batch.commands.suggest_fixup" not in browser_imports
     assert "git_stage_batch.data.suggest_fixup_state" not in browser_imports
     assert "git_stage_batch.commands.suggest_fixup" in fixup_action_imports
     assert "git_stage_batch.data.suggest_fixup_state" in fixup_action_imports
+    assert "git_stage_batch.tui.prompts" in fixup_action_imports
 
 
 def test_tui_file_review_prompts_own_action_vocabulary():

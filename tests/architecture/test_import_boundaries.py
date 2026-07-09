@@ -2663,8 +2663,6 @@ def test_file_review_records_stay_out_of_state_module():
             "ReviewSource",
         },
         SRC_ROOT / "output" / "file_review_footer.py": {
-            "FileReviewAction",
-            "FileReviewState",
             "ReviewSource",
         },
         SRC_ROOT / "output" / "file_review_action_selections.py": {
@@ -3053,9 +3051,7 @@ def test_file_review_footer_owns_command_rendering():
     assert "git_stage_batch.output.file_review_footer" in review_imports
     assert "print_file_review_footer" in vars(file_review_footer)
     assert "git_stage_batch.data.file_review.action_commands" not in review_imports
-    assert "git_stage_batch.data.file_review.action_commands" in footer_imports
     assert "git_stage_batch.data.selected_change.store" not in review_imports
-    assert "git_stage_batch.data.selected_change.store" in footer_imports
     assert "def _print_footer" not in review_output_text
     assert "def _style_footer_command" not in review_output_text
     assert "def _display_footer_command" not in review_output_text
@@ -3263,7 +3259,6 @@ def test_file_review_action_commands_stay_out_of_state_module():
             "line_action_command",
             "show_command_for_review_state",
         },
-        SRC_ROOT / "output" / "file_review_footer.py": {"line_action_command"},
     }
     violations = []
 

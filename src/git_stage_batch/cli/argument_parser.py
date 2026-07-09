@@ -8,7 +8,6 @@ import sys
 from .. import __version__
 from ..commands.abort import command_abort
 from ..commands.again import command_again
-from ..commands.annotate import command_annotate_batch
 from ..commands.block_file import command_block_file
 from ..commands.check_unstaged import command_check_unstaged
 from ..commands.redo import command_redo
@@ -27,6 +26,7 @@ from .apply_dispatch import dispatch_apply_command
 from .asset_subcommands import add_install_assets_subcommand
 from .auto_advance_options import add_auto_advance_arguments
 from .batch_subcommands import (
+    add_annotate_subcommand,
     add_drop_subcommand,
     add_list_subcommand,
     add_new_subcommand,
@@ -513,21 +513,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_drop_subcommand(subparsers)
 
-    # annotate - Add/update batch description
-    parser_annotate = add_subcommand_parser(
-        subparsers,
-        "annotate",
-        help=_("Add or update batch description"),
-    )
-    parser_annotate.add_argument(
-        "batch_name",
-        help=_("Name of the batch"),
-    )
-    parser_annotate.add_argument(
-        "note",
-        help=_("Description text"),
-    )
-    parser_annotate.set_defaults(func=lambda args: command_annotate_batch(args.batch_name, args.note))
+    add_annotate_subcommand(subparsers)
 
     # apply - Apply batch changes to working tree
     parser_apply = add_subcommand_parser(

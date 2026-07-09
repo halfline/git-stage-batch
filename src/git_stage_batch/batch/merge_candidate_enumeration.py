@@ -10,9 +10,11 @@ from .absence_constraints import (
     absence_ambiguity_key as _merge_absence_ambiguity_key,
     absence_choices_for_claim as _merge_absence_choices_for_claim,
 )
-from . import baseline_edits as _baseline_edits
 from . import presence_constraints as _presence_constraints
-from .baseline_edits import ReplacementOriginChoice as _BaselineReplacementOriginChoice
+from .baseline_replacement_choices import (
+    ReplacementOriginChoice as _BaselineReplacementOriginChoice,
+    replacement_origin_choices_for_unit as _replacement_origin_choices_for_unit,
+)
 from .match import match_lines
 from .merge_candidates import (
     MergeCandidate as _MergeCandidate,
@@ -77,7 +79,7 @@ def _replacement_origin_candidate_set(
                 raise _MergeError(
                     _("Batch was created from a different version of the file")
                 )
-            key, choices = _baseline_edits.replacement_origin_choices_for_unit(
+            key, choices = _replacement_origin_choices_for_unit(
                 deletion_claims[deletion_index],
                 unit_index,
                 unit,

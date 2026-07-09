@@ -6,6 +6,7 @@ import re
 from collections.abc import Callable
 from typing import Iterable, Iterator, Union
 
+from . import binary_diff as _binary_diff
 from . import gitlink_diff as _gitlink_diff
 from .buffer import LineBuffer
 from .models import (
@@ -291,33 +292,13 @@ class _UnifiedDiffParserBuildContext:
                             )
                             continue
 
-                        # Check if this is a binary file
-                        # Binary files have lines like "Binary files a/X and b/X differ"
-                        is_binary = any(b"Binary files" in m for m in metadata_lines)
-
-                        if is_binary:
-                            # Yield binary file change
-                            # Extract the binary file line to determine change type
-                            binary_line = next(
-                                (m for m in metadata_lines if b"Binary files" in m),
-                                b"Binary files differ",
-                            )
-
-                            # Determine if it's a new, modified, or deleted binary file
-                            is_new_binary = b"/dev/null" in binary_line and b"and b/" in binary_line
-                            is_deleted_binary = b"a/" in binary_line and b"/dev/null" in binary_line
-
-                            if is_new_binary:
-                                change_type = "added"
-                            elif is_deleted_binary:
-                                change_type = "deleted"
-                            else:
-                                change_type = "modified"
-
+                        if _binary_diff.metadata_indicates_binary_file(metadata_lines):
                             yield BinaryFileChange(
                                 old_path=old_path,
                                 new_path=new_path,
-                                change_type=change_type
+                                change_type=_binary_diff.binary_change_type(
+                                    metadata_lines
+                                ),
                             )
                             continue
 

@@ -2882,6 +2882,38 @@ def test_file_review_output_uses_display_id_module():
     assert "def _display_ids_for_rows" not in review_output_text
 
 
+def test_file_review_output_uses_summary_module():
+    """File-review output should not own shared status summary formatting."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    file_review_summary = __import__(
+        "git_stage_batch.output.file_review_summary",
+        fromlist=["file_review_summary"],
+    )
+    public_names = {
+        "change_spec_for_fragments",
+        "change_summary",
+        "display_line_spec",
+        "line_spec_for_display_ids",
+        "page_summary",
+        "review_source_summary",
+    }
+
+    assert "git_stage_batch.output.file_review_summary" in imported_modules
+    assert public_names <= vars(file_review_summary).keys()
+    assert "ReviewChangeFragment" not in review_output_text
+    assert "def _line_spec_for_display_ids" not in review_output_text
+    assert "def _change_spec_for_fragments" not in review_output_text
+    assert "def _display_line_spec" not in review_output_text
+    assert "def _page_summary" not in review_output_text
+    assert "def _change_summary" not in review_output_text
+    assert "def _review_source_summary" not in review_output_text
+
+
 def test_file_review_rows_own_row_rendering():
     """File-review row rendering should stay out of page orchestration."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"

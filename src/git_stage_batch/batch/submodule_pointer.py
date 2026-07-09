@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 
-from ..exceptions import exit_with_error
+from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import run_git_command
 from ..utils.git_worktree import (
@@ -25,7 +25,7 @@ def is_batch_submodule_pointer(file_meta: dict) -> bool:
 
 def refuse_batch_submodule_pointer_lines(action: str) -> None:
     """Reject line selection for an atomic submodule pointer batch entry."""
-    exit_with_error(
+    raise CommandError(
         _("Cannot use --lines with submodule pointers. {action} the whole pointer instead.").format(
             action=action,
         )
@@ -42,7 +42,7 @@ def _submodule_pointer_oid(
     """Return one stored submodule pointer oid, or raise a user error."""
     oid = file_meta.get(field)
     if not isinstance(oid, str):
-        exit_with_error(
+        raise CommandError(
             _(
                 "Cannot {action} submodule pointer for {file}: missing stored commit id."
             ).format(action=action.lower(), file=file_path)
@@ -54,7 +54,7 @@ def _change_type(file_path: str, file_meta: dict, action: str) -> str:
     """Return the stored pointer change type, or raise a user error."""
     change_type = file_meta.get("change_type")
     if change_type not in {"added", "modified", "deleted"}:
-        exit_with_error(
+        raise CommandError(
             _(
                 "Cannot {action} submodule pointer for {file}: invalid stored change type."
             ).format(action=action.lower(), file=file_path)
@@ -75,13 +75,13 @@ def _checkout_submodule_pointer(file_path: str, oid: str, action: str) -> None:
         requires_index_lock=False,
     )
     if status_result.returncode != 0:
-        exit_with_error(
+        raise CommandError(
             _(
                 "Cannot {action} submodule pointer for {file}: submodule working tree is unavailable."
             ).format(action=action, file=file_path)
         )
     if status_result.stdout.strip():
-        exit_with_error(
+        raise CommandError(
             _(
                 "Cannot {action} submodule pointer for {file}: submodule working tree has local changes."
             ).format(action=action, file=file_path)
@@ -89,7 +89,7 @@ def _checkout_submodule_pointer(file_path: str, oid: str, action: str) -> None:
 
     checkout_result = git_checkout_detached(oid, cwd=file_path, check=False)
     if checkout_result.returncode != 0:
-        exit_with_error(
+        raise CommandError(
             _(
                 "Failed to update submodule pointer for {file}: {error}"
             ).format(file=file_path, error=checkout_result.stderr)
@@ -102,7 +102,7 @@ def _ensure_submodule_worktree(file_path: str, oid: str, action: str) -> None:
     if not full_path.exists():
         update_result = git_submodule_update_checkout([file_path], check=False)
         if update_result.returncode != 0:
-            exit_with_error(
+            raise CommandError(
                 _(
                     "Cannot {action} submodule pointer for {file}: submodule working tree is unavailable."
                 ).format(action=action, file=file_path)
@@ -123,13 +123,13 @@ def _remove_submodule_worktree(file_path: str, action: str) -> None:
         requires_index_lock=False,
     )
     if status_result.returncode != 0:
-        exit_with_error(
+        raise CommandError(
             _(
                 "Cannot {action} submodule pointer for {file}: submodule working tree is unavailable."
             ).format(action=action, file=file_path)
         )
     if status_result.stdout.strip():
-        exit_with_error(
+        raise CommandError(
             _(
                 "Cannot {action} submodule pointer for {file}: submodule working tree has local changes."
             ).format(action=action, file=file_path)
@@ -145,7 +145,7 @@ def _mark_submodule_pointer_intent_to_add(file_path: str, action: str) -> None:
     """Add an intent-to-add gitlink so an added pointer appears as a live diff."""
     result = git_add_paths([file_path], intent_to_add=True, check=False)
     if result.returncode != 0:
-        exit_with_error(
+        raise CommandError(
             _(
                 "Failed to mark submodule pointer intent-to-add for {file}: {error}"
             ).format(file=file_path, error=result.stderr)
@@ -161,7 +161,7 @@ def _remove_submodule_pointer_from_index(file_path: str, action: str) -> None:
         check=False,
     )
     if result.returncode != 0:
-        exit_with_error(
+        raise CommandError(
             _(
                 "Failed to update submodule pointer in the index for {file}: {error}"
             ).format(file=file_path, error=result.stderr)
@@ -197,7 +197,7 @@ def stage_submodule_pointer_from_batch(file_path: str, file_meta: dict) -> None:
         check=False,
     )
     if index_result.returncode != 0:
-        exit_with_error(
+        raise CommandError(
             _(
                 "Failed to update submodule pointer in the index for {file}: {error}"
             ).format(file=file_path, error=index_result.stderr)

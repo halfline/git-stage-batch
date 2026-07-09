@@ -234,7 +234,7 @@ def test_parse_command_line_interactive_marks_launch_intent():
 
 def test_parse_command_line_start_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_start", mock_command)
+    monkeypatch.setattr(session_subcommands, "command_start", mock_command)
 
     args = parse_command_line(["start", "--no-auto-advance"], quiet=True)
 

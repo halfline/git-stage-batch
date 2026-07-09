@@ -1482,6 +1482,35 @@ def test_batch_package_does_not_reexport_batch_apis():
     assert violations == []
 
 
+def test_batch_lifecycle_module_owns_batch_lifecycle_api():
+    """Batch lifecycle APIs should live in the lifecycle module."""
+    old_operations_path = SRC_ROOT / "batch" / "operations.py"
+    lifecycle = __import__(
+        "git_stage_batch.batch.lifecycle",
+        fromlist=["lifecycle"],
+    )
+    lifecycle_names = {
+        "create_batch",
+        "delete_batch",
+        "update_batch_note",
+    }
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.batch.operations":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_operations_path.exists()
+    assert lifecycle_names <= vars(lifecycle).keys()
+    assert violations == []
+
+
 def test_output_package_does_not_reexport_output_apis():
     """Output callers should import concrete modules instead of the package."""
     output_path = SRC_ROOT / "output" / "__init__.py"
@@ -13312,7 +13341,7 @@ def test_batch_source_reset_claims_own_reset_mutations():
         "_reset_pattern_claims_from_batch",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.operations": {
+        "git_stage_batch.batch.lifecycle": {
             "create_batch",
         },
         "git_stage_batch.batch.ownership": {

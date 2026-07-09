@@ -2873,6 +2873,51 @@ def test_file_review_pagination_owns_page_assembly():
     assert "page_fragments" in pagination_text
 
 
+def test_file_review_model_selections_own_actionable_derivation():
+    """File-review selection derivation should stay out of change assembly."""
+    review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
+    model_selections_path = SRC_ROOT / "output" / "file_review_model_selections.py"
+    review_model_builder_text = review_model_builder_path.read_text()
+    model_selections_text = model_selections_path.read_text()
+    builder_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_model_builder_path)
+    }
+    builder_core_imports = {
+        alias.name
+        for imported_module, node in _import_from_nodes(review_model_builder_path)
+        if imported_module == "git_stage_batch.core.actionable_changes"
+        for alias in node.names
+    }
+    model_selection_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(model_selections_path)
+    }
+    file_review_model_selections = __import__(
+        "git_stage_batch.output.file_review_model_selections",
+        fromlist=["file_review_model_selections"],
+    )
+
+    assert "git_stage_batch.output.file_review_model_selections" in builder_imports
+    assert "derive_file_review_actionable_selections" in vars(
+        file_review_model_selections
+    )
+    assert "derive_actionable_selections" not in builder_core_imports
+    assert "_partly_selects_ownership_group" not in review_model_builder_text
+    assert "_reason_for_selection_ids" not in review_model_builder_text
+    assert "_actionable_selections_from_selection_groups" not in (
+        review_model_builder_text
+    )
+    assert "_display_actionable_selections_from_review_action_groups" not in (
+        review_model_builder_text
+    )
+    assert "git_stage_batch.core.actionable_changes" in model_selection_imports
+    assert "_partly_selects_ownership_group" in model_selections_text
+    assert "_display_actionable_selections_from_review_action_groups" in (
+        model_selections_text
+    )
+
+
 def test_file_review_output_uses_model_module():
     """File-review output should not own passive model records."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"

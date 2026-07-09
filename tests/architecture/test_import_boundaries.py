@@ -308,6 +308,45 @@ def test_tui_package_does_not_reexport_tui_apis():
     assert violations == []
 
 
+def test_tui_file_review_package_does_not_reexport_browser_apis():
+    """TUI file-review callers should import concrete modules."""
+    package_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(package_path)
+    }
+    file_review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    facade_names = {
+        "FileReviewSessionState",
+        "ReviewFileEntry",
+        "handle_current_file_review",
+        "handle_file_browser",
+        "list_review_file_entries",
+    }
+    violations = []
+
+    assert imported_modules == set()
+    assert "__all__" not in vars(file_review)
+    assert facade_names.isdisjoint(vars(file_review))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.tui.file_review":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_data_package_does_not_reexport_data_apis():
     """Data callers should import concrete modules instead of the package."""
     data_path = SRC_ROOT / "data" / "__init__.py"
@@ -3407,13 +3446,13 @@ def test_tui_line_selection_menu_owns_line_actions():
 
 def test_tui_file_review_state_name_does_not_shadow_persisted_state():
     """TUI review state should not reuse the persisted file-review state name."""
-    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
     session_path = SRC_ROOT / "tui" / "file_review" / "session.py"
-    review_tree = ast.parse(review_path.read_text(), filename=str(review_path))
+    browser_tree = ast.parse(browser_path.read_text(), filename=str(browser_path))
     session_tree = ast.parse(session_path.read_text(), filename=str(session_path))
     review_class_names = {
         node.name
-        for node in review_tree.body
+        for node in browser_tree.body
         if isinstance(node, ast.ClassDef)
     }
     session_class_names = {
@@ -3431,21 +3470,21 @@ def test_tui_file_review_state_name_does_not_shadow_persisted_state():
         fromlist=["state"],
     )
 
-    for imported_module, node in _import_from_nodes(review_path):
+    for imported_module, node in _import_from_nodes(browser_path):
         if imported_module != "git_stage_batch.data.file_review.state":
             continue
         imported_state_names |= {alias.name for alias in node.names}
 
-    review_imports = {
+    browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(review_path)
+        for imported_module, _node in _import_from_nodes(browser_path)
     }
 
     assert "FileReviewState" in vars(records)
     assert "FileReviewState" not in vars(persisted_state)
     assert "FileReviewSessionState" in session_class_names
     assert "FileReviewSessionState" not in review_class_names
-    assert "git_stage_batch.tui.file_review.session" in review_imports
+    assert "git_stage_batch.tui.file_review.session" in browser_imports
     assert "FileReviewState" not in review_class_names
     assert "FileReviewState" not in session_class_names
     assert "FileReviewState" not in imported_state_names
@@ -3455,7 +3494,7 @@ def test_tui_file_review_modules_share_session_state():
     """TUI file review modules should use the shared session state."""
     owner_import = "git_stage_batch.tui.file_review.session"
     reviewed_paths = {
-        SRC_ROOT / "tui" / "file_review" / "__init__.py": {
+        SRC_ROOT / "tui" / "file_review" / "browser.py": {
             "FileReviewActionState",
             "FileReviewBatchActionState",
             "FileReviewCandidateState",
@@ -3493,19 +3532,19 @@ def test_tui_file_review_modules_share_session_state():
 
 def test_tui_file_review_display_owns_review_rendering():
     """TUI file review display should own reviewed-file rendering."""
-    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
     display_path = SRC_ROOT / "tui" / "file_review" / "display.py"
-    review = __import__(
-        "git_stage_batch.tui.file_review",
-        fromlist=["file_review"],
+    browser = __import__(
+        "git_stage_batch.tui.file_review.browser",
+        fromlist=["browser"],
     )
     display = __import__(
         "git_stage_batch.tui.file_review.display",
         fromlist=["display"],
     )
-    review_imports = {
+    browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(review_path)
+        for imported_module, _node in _import_from_nodes(browser_path)
     }
     display_imports = {
         imported_module
@@ -3518,11 +3557,11 @@ def test_tui_file_review_display_owns_review_rendering():
     }
 
     assert "render_file_review" in vars(display)
-    assert old_review_names.isdisjoint(vars(review))
-    assert "git_stage_batch.tui.file_review.display" in review_imports
-    assert "git_stage_batch.commands.show" not in review_imports
-    assert "git_stage_batch.data.progress" not in review_imports
-    assert "git_stage_batch.tui.display" not in review_imports
+    assert old_review_names.isdisjoint(vars(browser))
+    assert "git_stage_batch.tui.file_review.display" in browser_imports
+    assert "git_stage_batch.commands.show" not in browser_imports
+    assert "git_stage_batch.data.progress" not in browser_imports
+    assert "git_stage_batch.tui.display" not in browser_imports
     assert "git_stage_batch.commands.show" in display_imports
     assert "git_stage_batch.commands.show_from" in display_imports
     assert "git_stage_batch.data.progress" in display_imports
@@ -3531,19 +3570,19 @@ def test_tui_file_review_display_owns_review_rendering():
 
 def test_tui_file_review_candidates_own_candidate_browser():
     """TUI file review candidates should own batch candidate browsing."""
-    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
     candidates_path = SRC_ROOT / "tui" / "file_review" / "candidates.py"
-    review = __import__(
-        "git_stage_batch.tui.file_review",
-        fromlist=["file_review"],
+    browser = __import__(
+        "git_stage_batch.tui.file_review.browser",
+        fromlist=["browser"],
     )
     candidates = __import__(
         "git_stage_batch.tui.file_review.candidates",
         fromlist=["candidates"],
     )
-    review_imports = {
+    browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(review_path)
+        for imported_module, _node in _import_from_nodes(browser_path)
     }
     candidate_imports = {
         imported_module
@@ -3558,10 +3597,10 @@ def test_tui_file_review_candidates_own_candidate_browser():
     }
 
     assert "browse_candidates" in vars(candidates)
-    assert old_review_names.isdisjoint(vars(review))
-    assert "git_stage_batch.tui.file_review.candidates" in review_imports
-    assert "git_stage_batch.commands.apply_from" not in review_imports
-    assert "git_stage_batch.commands.show_from" not in review_imports
+    assert old_review_names.isdisjoint(vars(browser))
+    assert "git_stage_batch.tui.file_review.candidates" in browser_imports
+    assert "git_stage_batch.commands.apply_from" not in browser_imports
+    assert "git_stage_batch.commands.show_from" not in browser_imports
     assert "git_stage_batch.commands.apply_from" in candidate_imports
     assert "git_stage_batch.commands.include_from" in candidate_imports
     assert "git_stage_batch.commands.show_from" in candidate_imports
@@ -3569,19 +3608,19 @@ def test_tui_file_review_candidates_own_candidate_browser():
 
 def test_tui_file_review_batch_actions_own_batch_transfers():
     """TUI file review batch actions should own batch transfer commands."""
-    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
     batch_actions_path = SRC_ROOT / "tui" / "file_review" / "batch_actions.py"
-    review = __import__(
-        "git_stage_batch.tui.file_review",
-        fromlist=["file_review"],
+    browser = __import__(
+        "git_stage_batch.tui.file_review.browser",
+        fromlist=["browser"],
     )
     batch_actions = __import__(
         "git_stage_batch.tui.file_review.batch_actions",
         fromlist=["batch_actions"],
     )
-    review_imports = {
+    browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(review_path)
+        for imported_module, _node in _import_from_nodes(browser_path)
     }
     batch_action_imports = {
         imported_module
@@ -3598,29 +3637,29 @@ def test_tui_file_review_batch_actions_own_batch_transfers():
         "apply_batch_line_action",
         "apply_batch_replacement_action",
     } <= vars(batch_actions).keys()
-    assert old_review_names.isdisjoint(vars(review))
-    assert "git_stage_batch.tui.file_review.batch_actions" in review_imports
-    assert "git_stage_batch.commands.discard_from" not in review_imports
-    assert "git_stage_batch.commands.include_from" not in review_imports
+    assert old_review_names.isdisjoint(vars(browser))
+    assert "git_stage_batch.tui.file_review.batch_actions" in browser_imports
+    assert "git_stage_batch.commands.discard_from" not in browser_imports
+    assert "git_stage_batch.commands.include_from" not in browser_imports
     assert "git_stage_batch.commands.discard_from" in batch_action_imports
     assert "git_stage_batch.commands.include_from" in batch_action_imports
 
 
 def test_tui_file_review_live_actions_own_live_transfers():
     """TUI file review live actions should own live transfer commands."""
-    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
     live_actions_path = SRC_ROOT / "tui" / "file_review" / "live_actions.py"
-    review = __import__(
-        "git_stage_batch.tui.file_review",
-        fromlist=["file_review"],
+    browser = __import__(
+        "git_stage_batch.tui.file_review.browser",
+        fromlist=["browser"],
     )
     live_actions = __import__(
         "git_stage_batch.tui.file_review.live_actions",
         fromlist=["live_actions"],
     )
-    review_imports = {
+    browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(review_path)
+        for imported_module, _node in _import_from_nodes(browser_path)
     }
     live_action_imports = {
         imported_module
@@ -3637,11 +3676,11 @@ def test_tui_file_review_live_actions_own_live_transfers():
         "apply_live_line_action",
         "apply_live_replacement_action",
     } <= vars(live_actions).keys()
-    assert old_review_names.isdisjoint(vars(review))
-    assert "git_stage_batch.tui.file_review.live_actions" in review_imports
-    assert "git_stage_batch.commands.discard" not in review_imports
-    assert "git_stage_batch.commands.include" not in review_imports
-    assert "git_stage_batch.commands.skip" not in review_imports
+    assert old_review_names.isdisjoint(vars(browser))
+    assert "git_stage_batch.tui.file_review.live_actions" in browser_imports
+    assert "git_stage_batch.commands.discard" not in browser_imports
+    assert "git_stage_batch.commands.include" not in browser_imports
+    assert "git_stage_batch.commands.skip" not in browser_imports
     assert "git_stage_batch.commands.discard" in live_action_imports
     assert "git_stage_batch.commands.include" in live_action_imports
     assert "git_stage_batch.commands.skip" in live_action_imports
@@ -3649,15 +3688,15 @@ def test_tui_file_review_live_actions_own_live_transfers():
 
 def test_tui_file_review_block_actions_own_block_commands():
     """TUI file review block actions should own block command calls."""
-    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
     block_actions_path = SRC_ROOT / "tui" / "file_review" / "block_actions.py"
     block_actions = __import__(
         "git_stage_batch.tui.file_review.block_actions",
         fromlist=["block_actions"],
     )
-    review_imports = {
+    browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(review_path)
+        for imported_module, _node in _import_from_nodes(browser_path)
     }
     block_action_imports = {
         imported_module
@@ -3668,24 +3707,24 @@ def test_tui_file_review_block_actions_own_block_commands():
         "block_review_file",
         "unblock_review_file",
     } <= vars(block_actions).keys()
-    assert "git_stage_batch.tui.file_review.block_actions" in review_imports
-    assert "git_stage_batch.commands.block_file" not in review_imports
-    assert "git_stage_batch.commands.unblock_file" not in review_imports
+    assert "git_stage_batch.tui.file_review.block_actions" in browser_imports
+    assert "git_stage_batch.commands.block_file" not in browser_imports
+    assert "git_stage_batch.commands.unblock_file" not in browser_imports
     assert "git_stage_batch.commands.block_file" in block_action_imports
     assert "git_stage_batch.commands.unblock_file" in block_action_imports
 
 
 def test_tui_file_review_fixup_actions_own_line_fixups():
     """TUI file review fixup actions should own line-fixup command calls."""
-    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
     fixup_actions_path = SRC_ROOT / "tui" / "file_review" / "fixup_actions.py"
     fixup_actions = __import__(
         "git_stage_batch.tui.file_review.fixup_actions",
         fromlist=["fixup_actions"],
     )
-    review_imports = {
+    browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(review_path)
+        for imported_module, _node in _import_from_nodes(browser_path)
     }
     fixup_action_imports = {
         imported_module
@@ -3697,28 +3736,28 @@ def test_tui_file_review_fixup_actions_own_line_fixups():
         "read_last_fixup_commit_hash",
         "suggest_fixup_for_lines",
     } <= vars(fixup_actions).keys()
-    assert "git_stage_batch.tui.file_review.fixup_actions" in review_imports
-    assert "git_stage_batch.commands.suggest_fixup" not in review_imports
-    assert "git_stage_batch.data.suggest_fixup_state" not in review_imports
+    assert "git_stage_batch.tui.file_review.fixup_actions" in browser_imports
+    assert "git_stage_batch.commands.suggest_fixup" not in browser_imports
+    assert "git_stage_batch.data.suggest_fixup_state" not in browser_imports
     assert "git_stage_batch.commands.suggest_fixup" in fixup_action_imports
     assert "git_stage_batch.data.suggest_fixup_state" in fixup_action_imports
 
 
 def test_tui_file_review_prompts_own_action_vocabulary():
     """TUI file review prompts should own action text and parsing."""
-    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
     prompts_path = SRC_ROOT / "tui" / "file_review" / "prompts.py"
-    review = __import__(
-        "git_stage_batch.tui.file_review",
-        fromlist=["file_review"],
+    browser = __import__(
+        "git_stage_batch.tui.file_review.browser",
+        fromlist=["browser"],
     )
     prompts = __import__(
         "git_stage_batch.tui.file_review.prompts",
         fromlist=["prompts"],
     )
-    review_imports = {
+    browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(review_path)
+        for imported_module, _node in _import_from_nodes(browser_path)
     }
     prompt_imports = {
         imported_module
@@ -3730,35 +3769,35 @@ def test_tui_file_review_prompts_own_action_vocabulary():
         "_prompt_review_action",
     }
     prompt_text = prompts_path.read_text()
-    review_text = review_path.read_text()
+    browser_text = browser_path.read_text()
 
     assert {
         "normalize_review_action",
         "print_review_help",
         "prompt_review_action",
     } <= vars(prompts).keys()
-    assert old_review_names.isdisjoint(vars(review))
-    assert "git_stage_batch.tui.file_review.prompts" in review_imports
+    assert old_review_names.isdisjoint(vars(browser))
+    assert "git_stage_batch.tui.file_review.prompts" in browser_imports
     assert "git_stage_batch.tui.prompts" in prompt_imports
-    assert "Review action:" not in review_text
+    assert "Review action:" not in browser_text
     assert "Review action:" in prompt_text
 
 
 def test_tui_file_review_action_router_owns_standard_actions():
     """TUI file review action router should own standard action gates."""
-    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
     router_path = SRC_ROOT / "tui" / "file_review" / "action_router.py"
-    review = __import__(
-        "git_stage_batch.tui.file_review",
-        fromlist=["file_review"],
+    browser = __import__(
+        "git_stage_batch.tui.file_review.browser",
+        fromlist=["browser"],
     )
     router = __import__(
         "git_stage_batch.tui.file_review.action_router",
         fromlist=["action_router"],
     )
-    review_imports = {
+    browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(review_path)
+        for imported_module, _node in _import_from_nodes(browser_path)
     }
     router_imports = {
         imported_module
@@ -3770,7 +3809,7 @@ def test_tui_file_review_action_router_owns_standard_actions():
         "_apply_replacement_action",
         "_prompt_replacement_text",
     }
-    review_text = review_path.read_text()
+    browser_text = browser_path.read_text()
     router_text = router_path.read_text()
 
     assert {
@@ -3778,11 +3817,11 @@ def test_tui_file_review_action_router_owns_standard_actions():
         "apply_line_action",
         "apply_replacement_action",
     } <= vars(router).keys()
-    assert old_review_names.isdisjoint(vars(review))
-    assert "git_stage_batch.tui.file_review.action_router" in review_imports
+    assert old_review_names.isdisjoint(vars(browser))
+    assert "git_stage_batch.tui.file_review.action_router" in browser_imports
     assert "git_stage_batch.tui.file_review.batch_actions" in router_imports
     assert "git_stage_batch.tui.file_review.live_actions" in router_imports
-    assert "Replacement text (empty cancels):" not in review_text
+    assert "Replacement text (empty cancels):" not in browser_text
     assert "Replacement text (empty cancels):" in router_text
 
 

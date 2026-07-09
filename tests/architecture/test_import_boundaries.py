@@ -660,6 +660,49 @@ def test_diff_parser_uses_core_buffer_boundary():
     assert imported_exception_names == {"CommandError"}
 
 
+def test_diff_headers_own_git_file_header_parsing():
+    """Git file diff header parsing should stay outside the general parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    diff_headers_path = SRC_ROOT / "core" / "diff_headers.py"
+    diff_parser_text = diff_parser_path.read_text()
+    diff_headers_text = diff_headers_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    diff_headers = __import__(
+        "git_stage_batch.core.diff_headers",
+        fromlist=["diff_headers"],
+    )
+    public_names = {
+        "diff_git_paths",
+        "line_is_diff_git_header",
+    }
+    helper_constants = {
+        "DIFF_GIT_PREFIX",
+        "NEW_PATH_MARKER",
+        "OLD_PATH_PREFIX",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(diff_headers).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "diff_headers" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.diff_headers" not in diff_imports
+    assert "_diff_headers.diff_git_paths" in diff_parser_text
+    assert "_diff_headers.line_is_diff_git_header" in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_constants:
+        assert name in diff_headers_text
+        assert name not in diff_parser_text
+
+
 def test_binary_diff_owns_binary_parser_helpers():
     """Binary-specific diff helpers should stay outside the general parser."""
     diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"

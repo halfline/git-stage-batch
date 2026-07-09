@@ -92,11 +92,11 @@ def test_top_level_packages_are_acyclic():
     assert cycle is None
 
 
-def test_core_and_utils_do_not_import_command_exit_helper():
-    """Core and utils should raise errors without command-exit policy helpers."""
+def test_lower_packages_do_not_import_command_exit_helper():
+    """Lower packages should raise errors without command-exit policy helpers."""
     violations = []
 
-    for package_name in ("core", "utils"):
+    for package_name in ("batch", "core", "utils"):
         for path in (SRC_ROOT / package_name).rglob("*.py"):
             for imported_module, node in _import_from_nodes(path):
                 if imported_module != "git_stage_batch.exceptions":

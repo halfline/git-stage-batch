@@ -9025,6 +9025,84 @@ def test_batch_realized_entries_uses_public_entry_helpers():
     assert violations == []
 
 
+def test_batch_realized_provenance_owns_run_storage():
+    """Realized provenance run storage should live outside entry editing."""
+    realized_entries = __import__(
+        "git_stage_batch.batch.realized_entries",
+        fromlist=["realized_entries"],
+    )
+    realized_provenance = __import__(
+        "git_stage_batch.batch.realized_provenance",
+        fromlist=["realized_provenance"],
+    )
+    provenance_path = SRC_ROOT / "batch" / "realized_provenance.py"
+    public_names = {
+        "PROVENANCE_RUN_CLAIMED",
+        "ProvenanceRun",
+        "ProvenanceRunTable",
+        "line_number_or_none",
+        "stored_line_number",
+    }
+    moved_private_names = {
+        "_PROVENANCE_CHUNK_CAPACITY",
+        "_ProvenanceRun",
+        "_ProvenanceRunTable",
+        "_RUN_CLAIMED",
+        "_RUN_DEST_END",
+        "_RUN_DEST_START",
+        "_RUN_FLAGS",
+        "_RUN_SOURCE_START",
+        "_RUN_TARGET_START",
+        "_line_number_or_none",
+        "_run_from_record",
+        "_run_source_is_contiguous",
+        "_run_target_is_contiguous",
+        "_runs_can_merge",
+        "_stored_line_number",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "realized_entries.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(realized_provenance).keys()
+    for public_name in public_names:
+        assert public_name not in vars(realized_entries)
+    assert moved_private_names.isdisjoint(vars(realized_entries))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == provenance_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.realized_entries":
+                moved_names = imported_names & (public_names | moved_private_names)
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.realized_provenance":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & moved_private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_line_mapping_owns_public_mapping_type():
     """Line mapping data types should live outside the match algorithm."""
     line_mapping = __import__(

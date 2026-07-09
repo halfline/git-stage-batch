@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 
 from ..core.line_selection import parse_line_selection
@@ -20,7 +19,6 @@ from ..data.suggest_fixup_state import (
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_text_file_contents
-from ..utils.git_command import run_git_command
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
@@ -235,24 +233,7 @@ def command_suggest_fixup_line(
     min_line = line_range.min_line
     max_line = line_range.max_line
 
-    # Validate boundary ref
-    try:
-        run_git_command(["rev-parse", "--verify", effective_boundary], check=True, requires_index_lock=False)
-    except subprocess.CalledProcessError:
-        exit_with_error(_("Invalid boundary ref: {boundary}").format(boundary=effective_boundary))
-
-    # Check if there are any commits in the range
-    try:
-        rev_list_result = run_git_command(
-            ["rev-list", f"{effective_boundary}..HEAD"],
-            check=True,
-            requires_index_lock=False,
-        )
-    except subprocess.CalledProcessError:
-        exit_with_error(_("Failed to get commit range {boundary}..HEAD").format(boundary=effective_boundary))
-
-    if not rev_list_result.stdout.strip():
-        exit_with_error(_("No commits found in range {boundary}..HEAD").format(boundary=effective_boundary))
+    require_suggest_fixup_boundary_range(effective_boundary)
 
     # Check if we should reset state due to context change
     if state and suggest_fixup_state_should_reset(

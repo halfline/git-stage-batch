@@ -4882,11 +4882,77 @@ def test_batch_source_candidate_refusals_own_candidate_count_refusals():
             assert snippet not in command_text
 
 
+def test_batch_source_action_context_owns_action_prologue():
+    """Shared apply/include setup should live outside action entries."""
+    action_context = __import__(
+        "git_stage_batch.commands.batch_source.action_context",
+        fromlist=["action_context"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "BatchSourceActionContext",
+        "resolve_batch_source_action_context",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.metadata_validation": {
+            "read_validated_batch_metadata",
+        },
+        "git_stage_batch.batch.validation": {
+            "batch_exists",
+        },
+        "git_stage_batch.data.file_review.state": {
+            "resolve_batch_source_action_scope",
+        },
+        "git_stage_batch.exceptions": {
+            "BatchMetadataError",
+        },
+    }
+    command_paths = {
+        apply_from_path,
+        include_from_path,
+    }
+    imports_action_context = {
+        path: False
+        for path in command_paths
+    }
+    direct_setup_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "action_context" in imported_names
+            ):
+                imports_action_context[path] = True
+            direct_setup_imports[path] |= imported_names & disallowed_imports.get(
+                imported_module,
+                set(),
+            )
+
+    assert public_names <= vars(action_context).keys()
+    assert imports_action_context == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_setup_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+
+
 def test_batch_source_candidate_selectors_own_action_selector_validation():
     """Shared candidate selector validation should live outside action entries."""
     candidate_selectors = __import__(
         "git_stage_batch.commands.batch_source.candidate_selectors",
         fromlist=["candidate_selectors"],
+    )
+    action_context_path = (
+        SRC_ROOT / "commands" / "batch_source" / "action_context.py"
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
@@ -4907,35 +4973,31 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
             "requires --file in this implementation",
         },
     }
-    command_paths = set(old_snippets_by_path)
-    imports_candidate_selectors = {
-        path: False
-        for path in command_paths
-    }
+    inspected_paths = set(old_snippets_by_path) | {action_context_path}
+    imports_candidate_selectors = False
     direct_selector_imports = {
         path: set()
-        for path in command_paths
+        for path in inspected_paths
     }
 
-    for path in command_paths:
+    for path in inspected_paths:
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
             if (
-                imported_module == "git_stage_batch.commands.batch_source"
+                path == action_context_path
+                and imported_module == "git_stage_batch.commands.batch_source"
                 and "candidate_selectors" in imported_names
             ):
-                imports_candidate_selectors[path] = True
+                imports_candidate_selectors = True
             if imported_module == "git_stage_batch.batch.source_selector":
                 direct_selector_imports[path] |= (
                     imported_names & old_source_selector_names
                 )
 
     assert public_names <= vars(candidate_selectors).keys()
-    assert imports_candidate_selectors == {
-        apply_from_path: True,
-        include_from_path: True,
-    }
+    assert imports_candidate_selectors
     assert direct_selector_imports == {
+        action_context_path: set(),
         apply_from_path: set(),
         include_from_path: set(),
     }

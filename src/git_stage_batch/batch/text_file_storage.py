@@ -1,4 +1,4 @@
-"""Batch storage operations: file management."""
+"""Text file batch persistence."""
 
 from __future__ import annotations
 

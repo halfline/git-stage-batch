@@ -320,13 +320,6 @@ def _as_line_ranges(lines: LineSelection | Iterable[int]) -> LineRanges:
     return LineRanges.from_lines(lines)
 
 
-def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
-    for start, end in _as_line_ranges(lines).ranges():
-        if start < 1 or end > max_line:
-            return True
-    return False
-
-
 def _find_nearest_mapped_source_line_before(
     line_mapping: LineMapping,
     source_line: int

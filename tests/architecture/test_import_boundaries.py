@@ -94,6 +94,38 @@ def test_batch_package_stays_below_workflow_data():
     assert violations == []
 
 
+def test_mapped_storage_lives_in_core_boundary():
+    """Mapped storage primitives should live below batch and utils adapters."""
+    old_storage_path = SRC_ROOT / "utils" / "mapped_storage.py"
+    mapped_storage = __import__(
+        "git_stage_batch.core.mapped_storage",
+        fromlist=["mapped_storage"],
+    )
+    public_storage_names = {
+        "ChunkedMappedRecordVector",
+        "ManagedMappedResources",
+        "MappedIntVector",
+        "MappedRecordVector",
+        "byte_storage_from_chunks",
+        "byte_storage_from_path",
+    }
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.mapped_storage":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_storage_path.exists()
+    assert public_storage_names <= vars(mapped_storage).keys()
+    assert violations == []
+
+
 def test_replacement_payload_imports_use_core_boundary():
     """Non-batch code should not depend on batch replacement for neutral payloads."""
     neutral_names = {

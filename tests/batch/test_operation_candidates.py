@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from git_stage_batch.batch.operation_candidates import (
-    OperationCandidatePreview,
-    TargetCandidatePreview,
-)
+try:
+    from git_stage_batch.batch.operation_candidate_types import (
+        OperationCandidatePreview,
+        TargetCandidatePreview,
+    )
+except ModuleNotFoundError:
+    from git_stage_batch.batch.operation_candidates import (
+        OperationCandidatePreview,
+        TargetCandidatePreview,
+    )
 from git_stage_batch.core.buffer import LineBuffer
 
 

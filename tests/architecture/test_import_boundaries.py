@@ -11148,6 +11148,9 @@ def test_batch_merge_candidates_uses_public_data_types():
     merge_candidate_enumeration_path = (
         SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
     )
+    operation_candidate_types_path = (
+        SRC_ROOT / "batch" / "operation_candidate_types.py"
+    )
     public_names = {
         "MergeCandidate",
         "MergeCandidateSet",
@@ -11166,11 +11169,14 @@ def test_batch_merge_candidates_uses_public_data_types():
             "MergeResolution",
         },
         merge_candidate_enumeration_path: public_names,
-        SRC_ROOT / "batch" / "operation_candidates.py": {
-            "MergeCandidate",
-            "MergeResolution",
-        },
+        SRC_ROOT / "batch" / "operation_candidates.py": (
+            {"MergeCandidate"}
+            if operation_candidate_types_path.exists() else
+            {"MergeCandidate", "MergeResolution"}
+        ),
     }
+    if operation_candidate_types_path.exists():
+        expected_imports[operation_candidate_types_path] = {"MergeResolution"}
     violations = []
 
     for public_name in public_names:
@@ -11710,6 +11716,13 @@ def test_operation_candidates_owns_candidate_preview_count():
         "git_stage_batch.batch.operation_candidates",
         fromlist=["operation_candidates"],
     )
+    try:
+        operation_candidate_types = __import__(
+            "git_stage_batch.batch.operation_candidate_types",
+            fromlist=["operation_candidate_types"],
+        )
+    except ModuleNotFoundError:
+        operation_candidate_types = operation_candidates
     public_names = {
         "CandidatePreviewCount",
     }
@@ -11724,8 +11737,13 @@ def test_operation_candidates_owns_candidate_preview_count():
         / "candidate_preview_counts.py": public_names,
         SRC_ROOT / "commands" / "batch_source" / "candidate_refusals.py": public_names,
     }
+    expected_import_module = (
+        "git_stage_batch.batch.operation_candidate_types"
+        if (SRC_ROOT / "batch" / "operation_candidate_types.py").exists() else
+        "git_stage_batch.batch.operation_candidates"
+    )
 
-    assert public_names <= vars(operation_candidates).keys()
+    assert public_names <= vars(operation_candidate_types).keys()
     assert private_names.isdisjoint(vars(operation_candidates))
 
     for path, expected_names in expected_imports.items():
@@ -11736,7 +11754,7 @@ def test_operation_candidates_owns_candidate_preview_count():
         imported_candidate_names = set()
 
         for imported_module, node in _import_from_nodes(path):
-            if imported_module != "git_stage_batch.batch.operation_candidates":
+            if imported_module != expected_import_module:
                 continue
             imported_candidate_names |= {alias.name for alias in node.names}
 

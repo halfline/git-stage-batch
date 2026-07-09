@@ -34,7 +34,7 @@ from ...batch.submodule_pointer import (
 from ...batch.validation import batch_exists
 from ...core.line_selection import LineRanges
 from ...data.batch_file_scope import resolve_batch_file_scope
-from ...data.repository_buffers import load_git_object_as_buffer
+from ...utils.repository_buffers import load_git_object_as_buffer
 from ...exceptions import MergeError, exit_with_error
 from ...i18n import _
 from ...utils.file_io import write_text_file_contents

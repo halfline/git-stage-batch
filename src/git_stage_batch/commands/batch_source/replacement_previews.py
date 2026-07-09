@@ -16,7 +16,7 @@ from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
 )
 from ...data.file_review.records import FileReviewAction
-from ...data.repository_buffers import load_git_object_as_buffer
+from ...utils.repository_buffers import load_git_object_as_buffer
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.paths import get_context_lines

@@ -10,7 +10,7 @@ from ...core.buffer import LineBuffer, buffer_matches
 from ...core.line_selection import parse_line_selection
 from ...data.file_review.action_scope import finish_review_scoped_line_action
 from ...data.line_id_files import read_line_ids_file, write_line_ids_file
-from ...data.repository_buffers import load_git_object_as_buffer
+from ...utils.repository_buffers import load_git_object_as_buffer
 from ...data.selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,

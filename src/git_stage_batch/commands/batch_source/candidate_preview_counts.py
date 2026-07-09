@@ -16,7 +16,7 @@ from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
-from ...data.repository_buffers import (
+from ...utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )

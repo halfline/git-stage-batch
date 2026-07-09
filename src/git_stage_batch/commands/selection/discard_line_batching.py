@@ -9,7 +9,7 @@ from ...batch.display import annotate_with_batch_source
 from ...core.buffer import LineBuffer, buffer_ends_with_lf, write_buffer_to_path
 from ...core.replacement import ReplacementPayload
 from ...data.line_state import load_line_changes_from_state
-from ...data.repository_buffers import load_working_tree_file_as_buffer
+from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...data.selected_change.loading import require_selected_hunk
 from ...exceptions import exit_with_error
 from ...i18n import _

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ..core.buffer import LineBuffer
-from ..data.repository_buffers import load_git_object_as_buffer
+from ..utils.repository_buffers import load_git_object_as_buffer
 from .query import get_batch_commit_sha
 
 

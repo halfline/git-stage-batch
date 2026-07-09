@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import hashlib
 
 from ..core.buffer import buffer_matches
-from ..data.repository_buffers import load_git_blob_as_buffer
+from ..utils.repository_buffers import load_git_blob_as_buffer
 
 
 @dataclass(frozen=True)

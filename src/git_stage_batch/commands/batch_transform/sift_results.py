@@ -28,8 +28,8 @@ from ...core.text_lifecycle import (
     normalized_text_change_type,
     sifted_empty_text_path_change_type,
 )
-from ...data.repository_buffers import load_git_object_as_buffer_or_empty
-from ...data.repository_buffers import load_working_tree_file_as_buffer
+from ...utils.repository_buffers import load_git_object_as_buffer_or_empty
+from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...exceptions import MergeError
 from ...utils.text import normalize_line_sequence_endings
 

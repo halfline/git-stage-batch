@@ -21,7 +21,7 @@ from ..data.batch_sources import (
     save_session_batch_sources,
 )
 from ..core.buffer import LineBuffer
-from ..data.repository_buffers import (
+from ..utils.repository_buffers import (
     load_git_tree_files_as_buffers,
 )
 from ..utils.file_io import write_text_file_contents

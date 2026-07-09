@@ -22,7 +22,7 @@ from ..core.models import (
     RenderedBatchDisplay,
     ReviewActionGroup,
 )
-from ..data.repository_buffers import (
+from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )

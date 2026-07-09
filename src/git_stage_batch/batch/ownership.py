@@ -13,7 +13,7 @@ from ..core.buffer import (
     LineBuffer,
     buffer_byte_chunks,
 )
-from ..data.repository_buffers import (
+from ..utils.repository_buffers import (
     load_git_blob_as_buffer,
 )
 from ..utils.git_object_io import (

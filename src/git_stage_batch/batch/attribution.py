@@ -25,7 +25,7 @@ from .attribution_units import (
 from .query import list_batch_names, read_batch_metadata
 from ..core.line_selection import parse_line_selection
 from ..data.consumed_selections import read_consumed_file_metadata
-from ..data.repository_buffers import (
+from ..utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )

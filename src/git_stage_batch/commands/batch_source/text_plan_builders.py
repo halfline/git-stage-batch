@@ -21,7 +21,7 @@ from ...core.text_lifecycle import (
     selected_text_target_change_type,
 )
 from ...data.file_modes import detect_file_mode_in_commit
-from ...data.repository_buffers import (
+from ...utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )

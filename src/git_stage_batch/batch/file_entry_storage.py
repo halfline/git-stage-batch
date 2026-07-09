@@ -6,7 +6,7 @@ import json
 from copy import deepcopy
 from typing import Optional
 
-from ..data.repository_buffers import load_git_object_as_buffer
+from ..utils.repository_buffers import load_git_object_as_buffer
 from ..utils.file_io import write_text_file_contents
 from ..utils.git_command import run_git_command
 from ..utils.git_object_io import create_git_blob

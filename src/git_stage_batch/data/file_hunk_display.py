@@ -25,7 +25,7 @@ from ..core.models import (
 )
 from ..core.buffer import LineBuffer
 from .line_id_files import write_line_ids_file
-from .repository_buffers import load_git_object_as_buffer
+from ..utils.repository_buffers import load_git_object_as_buffer
 from ..i18n import ngettext
 from ..utils.file_io import write_text_file_contents
 from ..utils.git_command import stream_git_command

@@ -42,7 +42,7 @@ from ...data.batch_sources import (
 from ...data.file_modes import detect_file_mode
 from ...data.file_hunk_display import build_file_hunk_from_buffer
 from ...data.line_state import load_line_changes_from_state
-from ...data.repository_buffers import (
+from ...utils.repository_buffers import (
     load_git_object_as_buffer,
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,

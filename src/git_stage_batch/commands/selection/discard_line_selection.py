@@ -8,7 +8,7 @@ from ...batch.selection import require_line_selection_in_view
 from ...core.buffer import buffer_ends_with_lf, write_buffer_to_path
 from ...core.line_selection import parse_line_selection
 from ...data.line_state import load_line_changes_from_state
-from ...data.repository_buffers import load_working_tree_file_as_buffer
+from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...data.selected_change.loading import require_selected_hunk
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...exceptions import exit_with_error

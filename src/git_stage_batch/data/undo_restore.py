@@ -13,7 +13,7 @@ from ..core.buffer import (
     write_buffer_to_path,
     write_buffer_to_working_tree_path,
 )
-from .repository_buffers import load_git_blob_as_buffer
+from ..utils.repository_buffers import load_git_blob_as_buffer
 from .undo_refs import list_restorable_refs
 from ..exceptions import CommandError
 from ..i18n import _

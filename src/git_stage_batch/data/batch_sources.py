@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass
 
 from ..core.buffer import LineBuffer
-from .repository_buffers import (
+from ..utils.repository_buffers import (
     load_git_blob_as_buffer,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,

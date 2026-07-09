@@ -8,7 +8,7 @@ import git_stage_batch.commands.batch_source.reset_claims as reset_claims
 import git_stage_batch.commands.reset as reset_module
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.batch.file_display as file_display_module
-import git_stage_batch.data.batch_file_review_selection as batch_review_selection_module
+import git_stage_batch.data.file_review.batch_selection as batch_review_selection_module
 import git_stage_batch.data.file_review.freshness as file_review_freshness_module
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.query import read_batch_metadata

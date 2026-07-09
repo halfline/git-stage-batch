@@ -1020,7 +1020,7 @@ def test_file_review_selection_validation_stays_out_of_state_module():
         SRC_ROOT / "data" / "status_summary.py": {
             "shown_review_selections_for_action",
         },
-        SRC_ROOT / "data" / "batch_file_review_selection.py": {
+        SRC_ROOT / "data" / "file_review" / "batch_selection.py": {
             "validate_review_scoped_line_selection",
         },
         SRC_ROOT / "data" / "file_review" / "action_scope.py": public_names,
@@ -1095,7 +1095,7 @@ def test_file_review_records_stay_out_of_state_module():
             "FileReviewAction",
             "ReviewSource",
         },
-        SRC_ROOT / "data" / "batch_file_review_selection.py": {"FileReviewAction"},
+        SRC_ROOT / "data" / "file_review" / "batch_selection.py": {"FileReviewAction"},
         SRC_ROOT / "output" / "file_review.py": {
             "FileReviewAction",
             "FileReviewSelectionState",
@@ -1251,7 +1251,7 @@ def test_file_review_action_scope_stays_out_of_state_module():
             "refuse_live_action_for_batch_selection",
             "resolve_live_line_action_scope",
         },
-        SRC_ROOT / "data" / "batch_file_review_selection.py": {
+        SRC_ROOT / "data" / "file_review" / "batch_selection.py": {
             "fresh_batch_review_selections_for_action",
         },
     }
@@ -1296,15 +1296,15 @@ def test_batch_selection_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
-def test_batch_review_selection_translation_stays_in_data_layer():
-    """Review-aware batch selection translation should live under data."""
+def test_batch_review_selection_translation_stays_in_file_review_package():
+    """Review-aware batch selection translation should live under file_review."""
     batch_selection = __import__(
         "git_stage_batch.batch.selection",
         fromlist=["selection"],
     )
     review_selection = __import__(
-        "git_stage_batch.data.batch_file_review_selection",
-        fromlist=["batch_file_review_selection"],
+        "git_stage_batch.data.file_review.batch_selection",
+        fromlist=["batch_selection"],
     )
     public_names = {
         "translate_batch_file_gutter_ids_to_selection_ids",
@@ -1336,7 +1336,7 @@ def test_batch_review_selection_translation_stays_in_data_layer():
     assert "git_stage_batch.data.file_review.state" not in selection_imports
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "data" / "batch_file_review_selection.py":
+        if path == SRC_ROOT / "data" / "file_review" / "batch_selection.py":
             continue
 
         imports = _import_from_nodes(path)
@@ -1344,7 +1344,7 @@ def test_batch_review_selection_translation_stays_in_data_layer():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.data.batch_file_review_selection":
+            if imported_module == "git_stage_batch.data.file_review.batch_selection":
                 imported_public_names |= imported_names & public_names
             if imported_module == "git_stage_batch.batch.selection":
                 moved_names = imported_names & public_names
@@ -6046,7 +6046,7 @@ def test_batch_source_action_selection_owns_file_line_selection():
         "git_stage_batch.commands.selection": {
             "replacement_selection",
         },
-        "git_stage_batch.data.batch_file_review_selection": {
+        "git_stage_batch.data.file_review.batch_selection": {
             "translate_batch_file_gutter_ids_to_selection_ids",
         },
     }
@@ -6321,7 +6321,7 @@ def test_batch_source_reset_selection_owns_reset_scope():
             "batch_exists",
             "validate_batch_name",
         },
-        "git_stage_batch.data.batch_file_review_selection": {
+        "git_stage_batch.data.file_review.batch_selection": {
             "translate_reset_batch_file_gutter_ids_to_selection_ranges",
         },
         "git_stage_batch.data.file_review.records": {

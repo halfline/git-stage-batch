@@ -11,7 +11,6 @@ from ..core.actionable_changes import (
     ActionableSelectionReason,
 )
 from ..core.line_selection import format_line_ids
-from ..core.models import LineEntry
 from ..data.file_review.records import (
     FileReviewAction,
     FileReviewState,
@@ -27,6 +26,10 @@ from .file_review_model import (
     FileReviewModel,
     ReviewChange,
     ReviewChangeFragment,
+)
+from .file_review_rows import (
+    maximum_display_id_digit_count,
+    print_file_review_rows,
 )
 
 
@@ -155,9 +158,9 @@ def print_file_review(
                         note=change.note or _("not currently selectable"),
                     )
                 )
-            _print_rows(
+            print_file_review_rows(
                 fragment.rows,
-                _maximum_display_id_digit_count(model),
+                maximum_display_id_digit_count(model),
                 display_id_by_selection_id=model.display_id_by_selection_id,
                 allowed_selection_ids=set(change.selection_ids) if change.display_ids else set(),
             )
@@ -276,65 +279,6 @@ def _print_header(
                 print(f"    {line}")
     rule = "─" * 78
     print(f"{Colors.GRAY}{rule}{Colors.RESET}" if use_color else rule)
-
-
-def _maximum_display_id_digit_count(model: FileReviewModel) -> int:
-    if model.display_id_by_selection_id is None:
-        return model.line_changes.maximum_line_id_digit_count()
-    if not model.display_id_by_selection_id:
-        return 1
-    return len(str(max(model.display_id_by_selection_id.values())))
-
-
-def _print_rows(
-    rows: tuple[LineEntry, ...],
-    maximum_digits: int,
-    *,
-    display_id_by_selection_id: dict[int, int] | None,
-    allowed_selection_ids: set[int] | None = None,
-) -> None:
-    use_color = Colors.enabled()
-    label_width = maximum_digits + 3
-    for line in rows:
-        is_gap_line = (
-            line.id is None
-            and line.kind == " "
-            and line.old_line_number is None
-            and line.new_line_number is None
-            and line.source_line is None
-        )
-        if line.id is None or (
-            allowed_selection_ids is not None
-            and line.id not in allowed_selection_ids
-        ):
-            display_id = None
-        elif display_id_by_selection_id is not None:
-            display_id = display_id_by_selection_id.get(line.id)
-        else:
-            display_id = line.id
-        if display_id is None:
-            label = ""
-        else:
-            label = f"[#{display_id}]"
-        padding = " " * max(0, label_width - len(label))
-        row_text = f" {line.kind} {line.display_text()}"
-        if not use_color:
-            print(f"{label}{padding}{row_text}")
-            continue
-
-        if label:
-            print(f"{Colors.GRAY}{label}{Colors.RESET}{padding}", end="")
-        else:
-            print(padding, end="")
-
-        if line.kind == "+":
-            print(f"{Colors.GREEN}{row_text}{Colors.RESET}")
-        elif line.kind == "-":
-            print(f"{Colors.RED}{row_text}{Colors.RESET}")
-        elif is_gap_line:
-            print(f"{Colors.GRAY}{row_text}{Colors.RESET}")
-        else:
-            print(row_text)
 
 
 def _style_footer_command(command: str) -> str:

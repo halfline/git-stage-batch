@@ -451,6 +451,30 @@ def test_cli_argument_parser_delegates_completion_subcommand_registration():
     assert "__complete-files" not in argument_parser_text
 
 
+def test_cli_argument_parser_delegates_sift_subcommand_registration():
+    """Argument parsing should not own sift parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_sift_subcommand" in vars(batch_subcommands)
+    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    assert "git_stage_batch.commands.sift" not in argument_parser_imports
+    assert "git_stage_batch.commands.sift" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
 def test_tui_package_does_not_reexport_tui_apis():
     """TUI callers should import concrete modules instead of the package."""
     tui_path = SRC_ROOT / "tui" / "__init__.py"

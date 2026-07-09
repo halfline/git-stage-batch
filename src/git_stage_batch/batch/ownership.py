@@ -30,9 +30,9 @@ from .absence_content import (
     build_absence_content_from_range as _build_absence_content_from_range,
     copy_absence_content as _copy_absence_content,
 )
-from .comparison import SemanticChangeKind, derive_semantic_change_runs
 from .lineage import BatchSourceLineage
 from .match import LineMapping, match_lines
+from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
 
 
 @dataclass
@@ -356,57 +356,6 @@ class ReplacementUnit:
                 if isinstance(origin_metadata, dict) else None
             ),
         )
-
-
-@dataclass(frozen=True, slots=True)
-class ReplacementLineRun:
-    """One file-derived replacement run in old-file and new-file coordinates."""
-
-    old_start: int
-    old_end: int
-    new_start: int
-    new_end: int
-
-    def __post_init__(self) -> None:
-        if self.old_start > self.old_end:
-            raise ValueError("old range start must be <= end")
-        if self.new_start > self.new_end:
-            raise ValueError("new range start must be <= end")
-
-    def old_line_numbers(self) -> range:
-        """Return old-file line numbers without materializing them."""
-        return range(self.old_start, self.old_end + 1)
-
-    def new_line_numbers(self) -> range:
-        """Return new-file line numbers without materializing them."""
-        return range(self.new_start, self.new_end + 1)
-
-
-def derive_replacement_line_runs_from_lines(
-    *,
-    old_file_lines: Sequence[bytes],
-    new_file_lines: Sequence[bytes],
-) -> list[ReplacementLineRun]:
-    """Derive replacement line runs from old/new byte-line sequences."""
-    replacement_runs: list[ReplacementLineRun] = []
-    semantic_runs = derive_semantic_change_runs(old_file_lines, new_file_lines)
-    for run in semantic_runs:
-        if (
-            run.kind == SemanticChangeKind.REPLACEMENT
-            and run.source_start is not None
-            and run.source_end is not None
-            and run.target_start is not None
-            and run.target_end is not None
-        ):
-            replacement_runs.append(
-                ReplacementLineRun(
-                    old_start=run.source_start,
-                    old_end=run.source_end,
-                    new_start=run.target_start,
-                    new_end=run.target_end,
-                )
-            )
-    return replacement_runs
 
 
 @dataclass
@@ -1216,7 +1165,7 @@ def _baseline_reference_for_old_line_range(
 
 
 def _replacement_unit_origin_for_line_run(
-    replacement_run: ReplacementLineRun,
+    replacement_run: _ReplacementLineRun,
     old_line_content: dict[int, bytes],
 ) -> ReplacementUnitOrigin:
     """Build parent replacement context for a file-derived replacement run."""
@@ -1347,7 +1296,7 @@ def translate_hunk_selection_to_batch_ownership(
     hunk_lines: list[LineEntry],
     selected_display_ids: set[int],
     *,
-    replacement_line_runs: list[ReplacementLineRun] | None = None,
+    replacement_line_runs: list[_ReplacementLineRun] | None = None,
 ) -> BatchOwnership:
     """Translate selected live-hunk IDs while retaining full-hunk boundaries.
 

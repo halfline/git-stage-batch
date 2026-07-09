@@ -4,14 +4,10 @@ from __future__ import annotations
 
 import sys
 
-from ..core.hashing import compute_rename_change_hash
 from ..data.selected_change.store import (
     SelectedChangeKind,
 )
 from ..data.selected_change.paths import get_selected_change_file_path
-from ..data.selected_change.clear_reasons import (
-    mark_selected_change_cleared_by_file_list,
-)
 from ..data.selected_change.file_changes import (
     cache_binary_file_change,
     cache_gitlink_change,
@@ -34,7 +30,6 @@ from ..data.file_review.state import (
 )
 from ..data.line_state import load_line_changes_from_state
 from ..data.session import require_session_started
-from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..output.hunk import print_line_level_changes
@@ -52,18 +47,11 @@ from ..output.file_review_state_builder import (
     make_file_review_state,
     resolve_default_review_pages,
 )
-from ..output.file_review_list import (
-    make_binary_file_review_list_entry,
-    make_file_review_list_entry,
-    make_gitlink_file_review_list_entry,
-    make_rename_file_review_list_entry,
-    make_text_deletion_file_review_list_entry,
-    print_file_review_list,
-)
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
 )
+from .file_scope import file_list_action as _file_list_action
 from .selection.next_change_display import show_next_unprocessed_change
 
 
@@ -81,44 +69,7 @@ def command_show_file_list(files: list[str], *, selectable: bool = True) -> None
     require_session_started()
     ensure_state_directory_exists()
 
-    entries = []
-    seen_rename_hashes: set[str] = set()
-    for file_path in files:
-        line_changes = render_file_as_single_hunk(file_path)
-        if line_changes is not None:
-            entries.append(make_file_review_list_entry(line_changes))
-            continue
-        deletion_change = render_text_deletion_change(file_path)
-        if deletion_change is not None and not text_deletion_change_is_batched(deletion_change):
-            entries.append(make_text_deletion_file_review_list_entry(deletion_change))
-            continue
-        binary_change = render_binary_file_change(file_path)
-        if binary_change is not None:
-            entries.append(make_binary_file_review_list_entry(binary_change))
-            continue
-        gitlink_change = render_gitlink_change(file_path)
-        if gitlink_change is not None:
-            entries.append(make_gitlink_file_review_list_entry(gitlink_change))
-            continue
-        rename_change = render_rename_change(file_path)
-        if rename_change is not None:
-            rename_hash = compute_rename_change_hash(rename_change)
-            if rename_hash not in seen_rename_hashes:
-                entries.append(make_rename_file_review_list_entry(rename_change))
-                seen_rename_hashes.add(rename_hash)
-
-    if not entries:
-        print(_("No reviewable changes in matched files."), file=sys.stderr)
-        return
-
-    if selectable:
-        clear_selected_change_state_files()
-        mark_selected_change_cleared_by_file_list(source=ReviewSource.FILE_VS_HEAD.value)
-
-    print_file_review_list(
-        source_label=_("Changes: file vs HEAD"),
-        entries=entries,
-    )
+    _file_list_action.show_live_file_list(files, selectable=selectable)
 
 
 def command_show(

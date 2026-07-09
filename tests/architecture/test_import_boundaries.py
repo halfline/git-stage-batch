@@ -258,11 +258,12 @@ def test_text_line_helpers_live_in_core_boundary():
 
 def test_staging_index_update_owns_git_index_mutation():
     """Index mutation should stay separate from staging buffer construction."""
-    operations_path = SRC_ROOT / "staging" / "operations.py"
+    old_operations_path = SRC_ROOT / "staging" / "operations.py"
+    content_buffers_path = SRC_ROOT / "staging" / "content_buffers.py"
     index_update_path = SRC_ROOT / "staging" / "index_update.py"
-    operations = __import__(
-        "git_stage_batch.staging.operations",
-        fromlist=["operations"],
+    content_buffers = __import__(
+        "git_stage_batch.staging.content_buffers",
+        fromlist=["content_buffers"],
     )
     index_update = __import__(
         "git_stage_batch.staging.index_update",
@@ -274,18 +275,19 @@ def test_staging_index_update_owns_git_index_mutation():
         "git_stage_batch.utils.git_object_io",
         "git_stage_batch.utils.journal",
     }
-    operations_imports = {
+    content_buffer_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(operations_path)
+        for imported_module, _node in _import_from_nodes(content_buffers_path)
     }
     index_update_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(index_update_path)
     }
 
-    assert "update_index_with_blob_buffer" not in vars(operations)
+    assert not old_operations_path.exists()
+    assert "update_index_with_blob_buffer" not in vars(content_buffers)
     assert "update_index_with_blob_buffer" in vars(index_update)
-    assert operations_imports.isdisjoint(mutation_modules)
+    assert content_buffer_imports.isdisjoint(mutation_modules)
     assert mutation_modules <= index_update_imports
 
 

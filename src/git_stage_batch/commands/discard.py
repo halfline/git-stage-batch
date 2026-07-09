@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
@@ -46,8 +44,8 @@ from ..utils.paths import (
     ensure_state_directory_exists,
 )
 from .selection import discard_file_selection as _discard_file_selection
+from .selection import discard_line_action as _discard_line_action
 from .selection import discard_line_batching as _discard_line_batching
-from .selection import discard_line_selection as _discard_line_selection
 from .selection import selected_change_batch_discarding as _selected_change_batch_discarding
 from .selection import selected_change_discarding as _selected_change_discarding
 from .selection import selected_file_discarding as _selected_file_discarding
@@ -182,26 +180,12 @@ def command_discard_line(
     if scope_resolution.should_stop:
         return
     review_state = scope_resolution.review_state
-    operation_parts = ["discard", "--line", line_id_specification]
-    if file is not None:
-        operation_parts.extend(["--file", file])
-    with undo_checkpoint(" ".join(operation_parts)):
-        file_path = _discard_line_selection.discard_worktree_line_selection(
-            line_id_specification,
-            file=file,
-        )
-        print(
-            _("✓ Discarded line(s): {lines} from {file}").format(
-                lines=line_id_specification,
-                file=file_path,
-            ),
-            file=sys.stderr,
-        )
-        refresh_selected_hunk_after_line_action(
-            file_path,
-            auto_advance=auto_advance,
-        )
-        finish_review_scoped_line_action(review_state)
+    _discard_line_action.discard_live_line_selection(
+        line_id_specification,
+        file,
+        review_state=review_state,
+        auto_advance=auto_advance,
+    )
 
 
 def command_discard_to_batch(

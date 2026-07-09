@@ -267,8 +267,9 @@ workflow rather than a parallel implementation.
 
 ## Git Integration Philosophy
 
-The `utils.git` layer wraps subprocess calls to Git and provides streaming and
-transactional helpers such as:
+The `utils.git_command`, `utils.git_refs`, and related `utils.git_*` modules
+wrap subprocess calls to Git and provide streaming and transactional helpers
+such as:
 
 - `run_git_command()`
 - `stream_git_command()`

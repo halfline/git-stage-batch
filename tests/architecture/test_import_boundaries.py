@@ -2580,6 +2580,36 @@ def test_argument_parser_uses_file_scope_resolver_module():
     assert parser_local_names.isdisjoint(vars(parser))
 
 
+def test_argument_parser_uses_file_argument_module():
+    """Parser branches should not own shared file option normalization."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    file_arguments = __import__(
+        "git_stage_batch.cli.file_arguments",
+        fromlist=["file_arguments"],
+    )
+    moved_names = {
+        "_add_file_argument",
+        "_flatten_file_patterns",
+        "_normalize_parsed_file_arguments",
+    }
+
+    assert "git_stage_batch.cli.file_arguments" in parser_imports
+    assert "add_file_argument" in vars(file_arguments)
+    assert "normalize_parsed_file_arguments" in vars(file_arguments)
+    assert moved_names.isdisjoint(vars(parser))
+    assert "dest=\"file_patterns\"" not in parser_text
+    assert "nargs=\"*\"" not in parser_text
+
+
 def test_cli_dispatch_delegates_noninteractive_execution():
     """CLI dispatch should launch TUI or delegate parsed command execution."""
     dispatch_path = SRC_ROOT / "cli" / "dispatch.py"

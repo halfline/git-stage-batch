@@ -2698,6 +2698,32 @@ def test_argument_parser_uses_file_argument_module():
     assert "nargs=\"*\"" not in parser_text
 
 
+def test_argument_parser_uses_auto_advance_option_module():
+    """Parser branches should not own shared auto-advance option setup."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    auto_advance_options = __import__(
+        "git_stage_batch.cli.auto_advance_options",
+        fromlist=["auto_advance_options"],
+    )
+
+    assert "git_stage_batch.cli.auto_advance_options" in parser_imports
+    assert "add_auto_advance_arguments" in vars(auto_advance_options)
+    assert "_add_auto_advance_arguments" not in vars(parser)
+    assert 'dest="auto_advance"' not in parser_text
+    assert "\"--auto-advance\"" not in parser_text
+    assert "Select the next hunk after the command completes" not in parser_text
+    assert "Leave no hunk selected after the command completes" not in parser_text
+
+
 def test_cli_dispatch_delegates_noninteractive_execution():
     """CLI dispatch should launch TUI or delegate parsed command execution."""
     dispatch_path = SRC_ROOT / "cli" / "dispatch.py"

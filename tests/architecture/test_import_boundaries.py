@@ -703,6 +703,50 @@ def test_diff_headers_own_git_file_header_parsing():
         assert name not in diff_parser_text
 
 
+def test_hunk_headers_own_hunk_header_parsing():
+    """Unified diff hunk header parsing should stay outside diff_parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    hunk_headers_path = SRC_ROOT / "core" / "hunk_headers.py"
+    diff_parser_text = diff_parser_path.read_text()
+    hunk_headers_text = hunk_headers_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    hunk_headers = __import__(
+        "git_stage_batch.core.hunk_headers",
+        fromlist=["hunk_headers"],
+    )
+    public_names = {
+        "line_is_hunk_header",
+        "parse_hunk_header_line",
+    }
+    helper_names = {
+        "HUNK_HEADER_PATTERN",
+        "HUNK_HEADER_PREFIX",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(hunk_headers).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "hunk_headers" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.hunk_headers" not in diff_imports
+    assert "_hunk_headers.line_is_hunk_header" in diff_parser_text
+    assert "_hunk_headers.parse_hunk_header_line" in diff_parser_text
+    assert "Bad hunk header" not in diff_parser_text
+    assert "import re" not in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_names:
+        assert name in hunk_headers_text
+        assert name not in diff_parser_text
+
+
 def test_binary_diff_owns_binary_parser_helpers():
     """Binary-specific diff helpers should stay outside the general parser."""
     diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"

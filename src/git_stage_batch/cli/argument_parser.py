@@ -27,7 +27,6 @@ from ..commands.file_scope.multi_file_actions import (
     discard_to_batch_each_resolved_file,
     include_each_resolved_file,
     run_for_each_resolved_file,
-    skip_each_resolved_file,
 )
 from ..commands.include import (
     command_include,
@@ -44,7 +43,6 @@ from ..commands.new import command_new_batch
 from ..commands.redo import command_redo
 from ..commands.reset import command_reset_from_batch
 from ..commands.sift import command_sift_batch
-from ..commands.skip import command_skip, command_skip_file, command_skip_line
 from ..commands.start import command_start
 from ..commands.status import command_status
 from ..commands.stop import command_stop
@@ -69,6 +67,7 @@ from .git_help import GitHelpArgumentParser
 from .quick_actions import expand_quick_actions
 from .replacement_input import resolve_replacement_text
 from .show_dispatch import dispatch_show_command
+from .skip_dispatch import dispatch_skip_command
 
 
 def _add_subcommand_parser(
@@ -494,30 +493,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     add_auto_advance_arguments(parser_skip)
 
-    def dispatch_skip(args: argparse.Namespace) -> None:
-        resolved_file_scope = resolve_live_file_scope(args.file, args.file_patterns)
-        if args.line_ids:
-            resolved_file = resolved_file_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            command_skip_line(
-                args.line_ids,
-                file=resolved_file,
-                auto_advance=args.auto_advance,
-            )
-        elif not resolved_file_scope.is_implicit:
-            if resolved_file_scope.is_multiple:
-                skip_each_resolved_file(
-                    list(resolved_file_scope.files),
-                    auto_advance=args.auto_advance,
-                )
-            else:
-                command_skip_file(
-                    resolved_file_scope.optional_file(),
-                    auto_advance=args.auto_advance,
-                )
-        else:
-            command_skip(auto_advance=args.auto_advance)
-
-    parser_skip.set_defaults(func=dispatch_skip)
+    parser_skip.set_defaults(func=dispatch_skip_command)
 
     # discard - Remove the selected hunk from working tree
     parser_discard = _add_subcommand_parser(

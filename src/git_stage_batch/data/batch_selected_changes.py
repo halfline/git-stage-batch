@@ -6,7 +6,8 @@ import json
 from collections.abc import Mapping
 from hashlib import sha256
 
-from ..batch.query import get_batch_commit_sha
+from ..batch.query import get_batch_commit_sha, read_batch_metadata
+from ..core.models import BinaryFileChange
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import run_git_command
@@ -89,7 +90,7 @@ def selected_batch_binary_file_for_batch(
     if binary_file is None:
         return None
 
-    file_path = binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
+    file_path = _binary_change_path(binary_file)
     file_meta = all_files.get(file_path)
     if file_meta is None:
         return None
@@ -109,6 +110,30 @@ def selected_batch_binary_file_for_batch(
         return None
 
     return file_path
+
+
+def load_current_selected_batch_binary_file() -> BinaryFileChange | None:
+    """Return the selected batch binary, clearing it if stale."""
+    binary_file = load_selected_binary_file()
+    if binary_file is None:
+        return None
+
+    batch_name = selected_batch_binary_batch_name()
+    if batch_name is None:
+        clear_selected_change_state_files()
+        return None
+
+    file_path = _binary_change_path(binary_file)
+    metadata = read_batch_metadata(batch_name)
+    if selected_batch_binary_file_for_batch(batch_name, metadata.get("files", {})):
+        return binary_file
+
+    clear_selected_change_state_files()
+    mark_selected_change_cleared_by_stale_batch_selection(
+        batch_name=batch_name,
+        file_path=file_path,
+    )
+    return None
 
 
 def require_current_selected_batch_binary_file_for_batch(
@@ -141,6 +166,14 @@ def require_current_selected_batch_binary_file_for_batch(
             "The selected batch binary no longer matches batch '{name}'.\n"
             "Show the batch again before using a pathless batch action."
         ).format(name=batch_name)
+    )
+
+
+def _binary_change_path(binary_file: BinaryFileChange) -> str:
+    return (
+        binary_file.new_path
+        if binary_file.new_path != "/dev/null"
+        else binary_file.old_path
     )
 
 

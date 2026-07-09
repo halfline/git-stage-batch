@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import json
 
-from ..batch.query import read_batch_metadata
 from .batch_selected_changes import (
-    selected_batch_binary_batch_name,
-    selected_batch_binary_file_for_batch,
+    load_current_selected_batch_binary_file,
 )
 from .change_freshness import (
     binary_file_change_is_stale,
@@ -209,7 +207,11 @@ def _read_selected_change_summary() -> tuple[bool, dict | None]:
         }
 
     if selected_kind in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
-        binary_file = load_selected_binary_file()
+        binary_file = (
+            load_current_selected_batch_binary_file()
+            if selected_kind == SelectedChangeKind.BATCH_BINARY
+            else load_selected_binary_file()
+        )
         if binary_file is None:
             return False, None
         if selected_kind == SelectedChangeKind.BINARY and binary_file_change_is_stale(
@@ -221,22 +223,6 @@ def _read_selected_change_summary() -> tuple[bool, dict | None]:
             if binary_file.new_path != "/dev/null"
             else binary_file.old_path
         )
-        if selected_kind == SelectedChangeKind.BATCH_BINARY:
-            batch_name = selected_batch_binary_batch_name()
-            if batch_name is None:
-                clear_selected_change_state_files()
-                return False, None
-            metadata = read_batch_metadata(batch_name)
-            if (
-                selected_batch_binary_file_for_batch(batch_name, metadata.get("files", {}))
-                is None
-            ):
-                clear_selected_change_state_files()
-                mark_selected_change_cleared_by_stale_batch_selection(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                )
-                return False, None
         return True, {
             "kind": selected_kind.value,
             "file": file_path,

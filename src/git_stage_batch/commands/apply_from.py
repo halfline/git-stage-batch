@@ -10,7 +10,7 @@ from .batch_source import action_context as _action_context
 from .batch_source import action_selection as _action_selection
 from .batch_source import action_plans as _action_plans
 from .batch_source import binary_file_actions as _binary_file_actions
-from .batch_source import candidate_materialization as _candidate_materialization
+from .batch_source import candidate_execution as _candidate_execution
 from .batch_source import candidate_preview_counts as _candidate_preview_counts
 from .batch_source import candidate_refusals as _candidate_refusals
 from .batch_source import merge_refusals as _merge_refusals
@@ -18,9 +18,6 @@ from .batch_source import text_file_actions as _text_file_actions
 from .batch_source import text_plan_builders as _text_plan_builders
 from .batch_source import worktree_refusals as _worktree_refusals
 from ..batch.binary_file_content import read_binary_file_from_batch
-from ..batch.operation_candidates import (
-    clear_candidate_preview_state_for_file,
-)
 from ..batch.selection import (
     translate_atomic_unit_error_to_gutter_ids,
 )
@@ -53,62 +50,6 @@ def _print_binary_worktree_result(
             _("✓ Replaced binary file: {file}").format(file=file_path),
             file=sys.stderr,
         )
-
-
-def _execute_apply_candidate(
-    *,
-    batch_name: str,
-    raw_selector: str,
-    ordinal: int,
-    files: dict,
-    selected_ids: set[int] | None,
-    selection_ids_to_apply: set[int] | None,
-) -> None:
-    """Recompute and apply one previewed apply candidate."""
-    materialized = _candidate_materialization.materialize_apply_candidate(
-        batch_name=batch_name,
-        raw_selector=raw_selector,
-        ordinal=ordinal,
-        files=files,
-        selected_ids=selected_ids,
-        selection_ids_to_apply=selection_ids_to_apply,
-    )
-    try:
-        target = materialized.target
-        preview = materialized.preview
-        file_path = materialized.file_path
-        print(
-            _("Applying candidate {ordinal} of {count} from batch '{batch}':").format(
-                ordinal=preview.ordinal,
-                count=preview.count,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
-        )
-        print(f"  {file_path}: {_('Working tree')}", file=sys.stderr)
-        operation_parts = ["apply", "--from", raw_selector, "--file", file_path]
-        with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
-            snapshot_file_if_untracked(file_path)
-            _text_file_actions.write_text_file_to_worktree(
-                file_path,
-                target.after_buffer,
-                materialized.file_mode,
-                target.change_type,
-            )
-        clear_candidate_preview_state_for_file(
-            batch_name=batch_name,
-            file_path=file_path,
-        )
-        print(
-            _("✓ Applied candidate {ordinal} of {count} from batch '{batch}' to working tree").format(
-                ordinal=preview.ordinal,
-                count=preview.count,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
-        )
-    finally:
-        materialized.close()
 
 
 def command_apply_from_batch(
@@ -152,7 +93,7 @@ def command_apply_from_batch(
     rendered = selection.rendered
     operation_parts = list(selection.operation_parts)
     if selector.candidate_ordinal is not None:
-        _execute_apply_candidate(
+        _candidate_execution.execute_apply_candidate(
             batch_name=batch_name,
             raw_selector=raw_selector,
             ordinal=selector.candidate_ordinal,

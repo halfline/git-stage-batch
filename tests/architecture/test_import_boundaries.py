@@ -2755,7 +2755,6 @@ def test_file_review_action_scope_stays_out_of_state_module():
     public_names = {
         "ReviewScopedSelectionError",
         "finish_review_scoped_line_action",
-        "fresh_batch_review_selections_for_action",
         "line_action_came_from_partial_review",
         "refuse_ambiguous_bare_action_after_partial_file_review",
         "refuse_live_action_for_batch_selection",
@@ -2805,9 +2804,6 @@ def test_file_review_action_scope_stays_out_of_state_module():
         / "skip_line_selection.py": {
             "finish_review_scoped_line_action",
         },
-        SRC_ROOT / "data" / "file_review" / "batch_selection.py": {
-            "fresh_batch_review_selections_for_action",
-        },
     }
     violations = []
 
@@ -2827,6 +2823,54 @@ def test_file_review_action_scope_stays_out_of_state_module():
             if imported_module == "git_stage_batch.data.file_review.action_scope":
                 imported_public_names |= imported_names & public_names
             if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_file_review_batch_selection_freshness_stays_out_of_action_scope():
+    """Batch review selection freshness should have a focused module."""
+    action_scope = __import__(
+        "git_stage_batch.data.file_review.action_scope",
+        fromlist=["action_scope"],
+    )
+    batch_selection_freshness = __import__(
+        "git_stage_batch.data.file_review.batch_selection_freshness",
+        fromlist=["batch_selection_freshness"],
+    )
+    public_names = {
+        "fresh_batch_review_selections_for_action",
+    }
+    expected_imports = {
+        SRC_ROOT / "data" / "file_review" / "batch_selection.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(batch_selection_freshness).keys()
+    assert public_names.isdisjoint(vars(action_scope))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "batch_selection_freshness.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module
+                == "git_stage_batch.data.file_review.batch_selection_freshness"
+            ):
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.action_scope":
                 moved_names = imported_names & public_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)

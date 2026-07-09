@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
-from ..utils.mapped_storage import ChunkedMappedRecordVector
+from ..core.mapped_storage import ChunkedMappedRecordVector
 
 
 _LINEAGE_RECORD_FORMAT = "QQQ"

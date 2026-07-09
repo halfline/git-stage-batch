@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
 
-from ..utils.mapped_storage import (
+from .mapped_storage import (
     ChunkedMappedRecordVector,
     byte_storage_from_chunks,
     byte_storage_from_path,

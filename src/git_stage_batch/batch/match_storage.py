@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..utils.mapped_storage import (
+from ..core.mapped_storage import (
     ManagedMappedResources,
     MappedIntVector,
     MappedRecordVector,

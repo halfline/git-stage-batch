@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from ..utils.mapped_storage import ChunkedMappedRecordVector
+from ..core.mapped_storage import ChunkedMappedRecordVector
 
 
 _RUN_DEST_START = 0

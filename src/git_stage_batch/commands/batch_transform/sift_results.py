@@ -12,7 +12,8 @@ from ...batch.comparison import (
     derive_semantic_change_runs,
 )
 from ...batch.merge import merge_batch_from_line_sequences_as_buffer
-from ...batch.ownership import BatchOwnership, AbsenceClaim, AbsenceContentBuilder
+from ...batch.absence_content import AbsenceContentBuilder
+from ...batch.ownership import BatchOwnership, AbsenceClaim
 from ...batch.query import get_batch_baseline_commit
 from ...batch.storage import build_realized_buffer_from_lines
 from ...core.buffer import (

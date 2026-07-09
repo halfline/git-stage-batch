@@ -19,12 +19,16 @@ from ..core.buffer import (
 from ..data.repository_buffers import (
     load_git_blob_as_buffer,
 )
-from ..editor.edit import Editor
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
 from ..utils.git_object_io import (
     create_git_blob,
     read_git_blobs_as_bytes,
+)
+from .absence_content import (
+    AbsenceContentBuilder as _AbsenceContentBuilder,
+    build_absence_content_from_range as _build_absence_content_from_range,
+    copy_absence_content as _copy_absence_content,
 )
 from .comparison import SemanticChangeKind, derive_semantic_change_runs
 from .lineage import BatchSourceLineage
@@ -1189,67 +1193,6 @@ class _LineEntryContentSequence(Sequence[bytes]):
         return _line_entry_content(self._lines[index])
 
 
-class AbsenceContentBuilder:
-    """Build absence content as an LineBuffer from appended line ranges."""
-
-    def __init__(self) -> None:
-        self._editor: Editor | None = Editor(())
-
-    def __enter__(self) -> AbsenceContentBuilder:
-        self._check_open()
-        return self
-
-    def __exit__(self, exc_type, exc, traceback) -> None:
-        self.close()
-
-    def append_line_range(
-        self,
-        lines: Sequence[bytes],
-        start: int,
-        end: int,
-    ) -> None:
-        editor = self._check_open()
-        editor.append_line_range(lines, start, end)
-
-    def finish(self) -> LineBuffer:
-        editor = self._check_open()
-        try:
-            return LineBuffer.from_chunks(editor.line_chunks())
-        finally:
-            self.close()
-
-    def close(self) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-
-        self._editor = None
-        editor.close()
-
-    def _check_open(self) -> Editor:
-        editor = self._editor
-        if editor is None:
-            raise RuntimeError("absence content builder is closed")
-
-        return editor
-
-
-def _copy_absence_content(content_lines: Sequence[bytes]) -> LineBuffer:
-    if isinstance(content_lines, LineBuffer):
-        return LineBuffer.from_chunks(buffer_byte_chunks(content_lines))
-    return _build_absence_content_from_range(content_lines, 0, len(content_lines))
-
-
-def _build_absence_content_from_range(
-    content_lines: Sequence[bytes],
-    start: int,
-    end: int,
-) -> LineBuffer:
-    with AbsenceContentBuilder() as builder:
-        builder.append_line_range(content_lines, start, end)
-        return builder.finish()
-
-
 def _baseline_reference_for_old_line_range(
     old_start: int,
     old_end: int,
@@ -1438,7 +1381,7 @@ def translate_hunk_selection_to_batch_ownership(
         old_line_seen = False
         selected_source_lines = _LineRangeBuilder()
         consumed_ids: list[int] = []
-        with AbsenceContentBuilder() as builder:
+        with _AbsenceContentBuilder() as builder:
             for range_start, range_stop in selected_old_ranges:
                 if not old_line_seen:
                     deletion_anchor = hunk_lines[range_start].source_line

@@ -20,8 +20,8 @@ from git_stage_batch.batch.merge import (
     discard_batch_from_line_sequences_as_buffer,
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
-    satisfy_constraints,
 )
+from git_stage_batch.batch.presence_constraints import satisfy_constraints
 from git_stage_batch.batch.realized_entries import (
     RealizedEntry,
     _RealizedEntries,

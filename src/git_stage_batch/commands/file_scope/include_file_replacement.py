@@ -21,7 +21,7 @@ from ...data.selected_change.store import (
     restore_selected_change_state,
     snapshot_selected_change_state,
 )
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer

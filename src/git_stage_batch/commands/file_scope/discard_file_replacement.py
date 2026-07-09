@@ -13,7 +13,7 @@ from ...data.selected_change.store import (
     snapshot_selected_change_state,
 )
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.git_repository import get_git_repository_root_path

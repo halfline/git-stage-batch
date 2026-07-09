@@ -1,4 +1,4 @@
-"""Undo checkpoint orchestration."""
+"""Undo checkpoint stack orchestration."""
 
 from __future__ import annotations
 

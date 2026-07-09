@@ -23,7 +23,7 @@ from ...batch.submodule_pointer import (
 )
 from ...core.replacement import ReplacementPayload
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import (
     AtomicUnitError,
     CommandError,

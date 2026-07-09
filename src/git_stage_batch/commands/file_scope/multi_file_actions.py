@@ -10,7 +10,7 @@ from typing import Protocol
 
 from ...data.hunk_tracking import select_next_change_after_action
 from ...data.session import require_session_started
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import CommandError
 from ...i18n import _, ngettext
 from ...utils.git_repository import require_git_repository

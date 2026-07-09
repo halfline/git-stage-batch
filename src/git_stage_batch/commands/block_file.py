@@ -7,7 +7,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 from ..data.session import session_is_active
-from ..data.undo import undo_checkpoint
+from ..data.undo_checkpoints import undo_checkpoint
 from ..data.ignore_files import (
     add_file_to_local_exclude,
     add_file_to_gitignore,

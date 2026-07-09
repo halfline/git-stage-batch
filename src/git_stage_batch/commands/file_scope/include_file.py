@@ -18,7 +18,7 @@ from ...data.file_tracking import auto_add_untracked_files
 from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunk_included
 from ...data.selected_change.paths import get_selected_change_file_path
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...i18n import _, ngettext
 from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.git_command import run_git_command

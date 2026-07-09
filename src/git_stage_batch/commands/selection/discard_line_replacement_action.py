@@ -9,7 +9,7 @@ from ...data.selected_change.store import (
     restore_selected_change_state,
     snapshot_selected_change_state,
 )
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ..file_scope.target_path import require_file_scope_target_path
 from . import discard_file_selection as _discard_file_selection
 from . import discard_line_batching as _discard_line_batching

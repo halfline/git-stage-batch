@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 
 from ..data.session import require_session_started
-from ..data.undo import redo_last_checkpoint
+from ..data.undo_checkpoints import redo_last_checkpoint
 from ..i18n import _
 from ..utils.git_repository import require_git_repository
 

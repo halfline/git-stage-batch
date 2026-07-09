@@ -6,7 +6,7 @@ import sys
 
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...i18n import _
 from ...utils.git_command import run_git_command
 from ...utils.git_worktree import git_checkout_paths

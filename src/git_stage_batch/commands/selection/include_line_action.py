@@ -16,7 +16,7 @@ from ...data.selected_change.store import (
     read_selected_change_kind,
     restore_selected_change_state,
 )
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.content_buffers import build_target_index_buffer_from_lines

@@ -1,4 +1,4 @@
-"""Line selection parsing for line-level staging operations."""
+"""Line selection parsing and range helpers."""
 
 from __future__ import annotations
 

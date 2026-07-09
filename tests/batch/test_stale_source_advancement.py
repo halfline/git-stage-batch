@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from git_stage_batch.batch.ownership import (
-    BaselineReference,
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
@@ -19,6 +18,7 @@ from git_stage_batch.batch.ownership_translation import (
     detect_stale_batch_source_for_selection,
     translate_lines_to_batch_ownership,
 )
+from git_stage_batch.batch.ownership_references import BaselineReference
 from git_stage_batch.batch.source_advancement import (
     advance_source_lines_preserving_existing_presence,
 )

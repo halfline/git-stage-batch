@@ -13,7 +13,6 @@ from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.absence_content import AbsenceContentBuilder
 from git_stage_batch.batch.ownership import (
-    BaselineReference,
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
@@ -24,6 +23,7 @@ from git_stage_batch.batch.ownership_merging import (
     _absence_signature,
     merge_batch_ownership,
 )
+from git_stage_batch.batch.ownership_references import BaselineReference
 import git_stage_batch.batch.absence_content as absence_content_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer

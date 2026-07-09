@@ -32,12 +32,12 @@ from git_stage_batch.batch.realized_entry_storage import (
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import MergeError
 from git_stage_batch.batch.ownership import (
-    BaselineReference,
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
+from git_stage_batch.batch.ownership_references import BaselineReference
 from git_stage_batch.core.text_lines import normalize_line_sequence_endings
 
 

@@ -8191,7 +8191,7 @@ def test_selected_hunk_filtering_stays_out_of_hunk_tracking():
         "apply_line_level_batch_filter_to_cached_hunk",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "show.py": moved_names,
+        SRC_ROOT / "commands" / "selection" / "next_change_display.py": moved_names,
     }
     violations = []
 
@@ -8347,7 +8347,7 @@ def test_selected_hunk_cache_writes_stay_in_selected_change_store():
     caller_paths = (
         SRC_ROOT / "data" / "hunk_tracking.py",
         SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py",
-        SRC_ROOT / "commands" / "show.py",
+        SRC_ROOT / "commands" / "selection" / "next_change_display.py",
     )
     forbidden_imports = {
         "git_stage_batch.data.selected_change.snapshots": {
@@ -9526,6 +9526,41 @@ def test_selected_change_display_stays_in_command_helper():
                     f"{relative_path}:{node.lineno} imports show_selected_change"
                 )
 
+    assert violations == []
+
+
+def test_next_change_display_stays_in_selection_helper():
+    """Selected-hunk refresh should not import the show command entrypoint."""
+    show_path = SRC_ROOT / "commands" / "show.py"
+    refresh_path = SRC_ROOT / "commands" / "selection" / "selected_hunk_refresh.py"
+    helper_path = SRC_ROOT / "commands" / "selection" / "next_change_display.py"
+    helper = __import__(
+        "git_stage_batch.commands.selection.next_change_display",
+        fromlist=["next_change_display"],
+    )
+    expected_imports = {
+        show_path: {"show_next_unprocessed_change"},
+        refresh_path: {"show_next_unprocessed_change"},
+    }
+    violations = []
+
+    for path in (show_path, refresh_path, helper_path):
+        imported_helper_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.commands.show":
+                relative_path = path.relative_to(REPO_ROOT)
+                violations.append(f"{relative_path}:{node.lineno} imports show")
+            if (
+                imported_module
+                == "git_stage_batch.commands.selection.next_change_display"
+            ):
+                imported_helper_names |= imported_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_helper_names
+
+    assert "show_next_unprocessed_change" in vars(helper)
     assert violations == []
 
 

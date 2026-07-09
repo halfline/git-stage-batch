@@ -36,7 +36,7 @@ from ..exceptions import (
     AmbiguousAnchorError as _AmbiguousAnchorError,
     MissingAnchorError as _MissingAnchorError,
 )
-from ..utils.text import (
+from ..core.text_lines import (
     AcquirableLineSequence,
     normalize_line_sequence_endings,
 )

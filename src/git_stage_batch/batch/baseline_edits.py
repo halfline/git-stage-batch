@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
-from ..utils.text import normalize_line_endings
+from ..core.text_lines import normalize_line_endings
 from .baseline_reference_positions import (
     baseline_reference_absence_position as _find_baseline_absence_position,
     baseline_reference_insertion_position as _find_baseline_insertion_position,

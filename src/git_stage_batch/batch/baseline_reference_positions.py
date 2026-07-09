@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from ..utils.text import normalize_line_endings
+from ..core.text_lines import normalize_line_endings
 
 
 def _line_payload_for_reference_match(content: Any) -> bytes:

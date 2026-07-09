@@ -28,7 +28,7 @@ from ..utils.repository_buffers import (
 )
 from ..exceptions import MergeError
 from ..utils.paths import get_context_lines
-from ..utils.text import normalize_line_sequence_endings
+from ..core.text_lines import normalize_line_sequence_endings
 
 
 _BATCH_MERGE_REVIEW_ACTIONS = (

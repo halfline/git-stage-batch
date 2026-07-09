@@ -9,7 +9,7 @@ from typing import TypeVar
 from .line_mapping import IntVector as _IntVector, LineMapping as _LineMapping
 from .match_storage import MatcherWorkspace
 from ..core.mapped_storage import MappedIntVector, MappedRecordVector
-from ..utils.text import AcquirableLineSequence, as_acquirable_line_sequence
+from ..core.text_lines import AcquirableLineSequence, as_acquirable_line_sequence
 
 
 LineContent = TypeVar("LineContent", bound=Hashable)

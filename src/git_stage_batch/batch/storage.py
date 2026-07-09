@@ -37,7 +37,6 @@ from ..editor.line_endings import (
 )
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import (
-    create_git_blob,
     GitIndexEntryUpdate,
     get_git_repository_root_path,
     git_commit_tree,
@@ -49,6 +48,7 @@ from ..utils.git import (
     run_git_command,
     temp_git_index,
 )
+from ..utils.git_object_io import create_git_blob
 from ..utils.paths import get_batch_metadata_file_path
 from ..utils.text import normalize_line_sequence_endings
 from .merge import satisfy_constraints

@@ -8209,6 +8209,110 @@ def test_batch_ownership_replacement_units_owns_normalization():
     assert violations == []
 
 
+def test_batch_ownership_acquisition_owns_scoped_context():
+    """Scoped ownership context management should live outside ownership metadata."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    ownership_acquisition = __import__(
+        "git_stage_batch.batch.ownership_acquisition",
+        fromlist=["ownership_acquisition"],
+    )
+    acquisition_path = SRC_ROOT / "batch" / "ownership_acquisition.py"
+    public_names = {
+        "AcquiredBatchOwnership",
+    }
+    private_names = {
+        "_AcquiredBatchOwnership",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "ownership.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(ownership_acquisition).keys()
+    assert public_names.isdisjoint(vars(ownership))
+    assert private_names.isdisjoint(vars(ownership))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == acquisition_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.ownership":
+                disallowed_names = imported_names & (public_names | private_names)
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.ownership_acquisition":
+                continue
+
+            imported_public_names |= imported_names & public_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_ownership_detachment_owns_detached_copies():
+    """Detached ownership copies should live outside ownership metadata."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    ownership_detachment = __import__(
+        "git_stage_batch.batch.ownership_detachment",
+        fromlist=["ownership_detachment"],
+    )
+    detachment_path = SRC_ROOT / "batch" / "ownership_detachment.py"
+    public_names = {
+        "acquire_detached_batch_ownership",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(ownership_detachment).keys()
+    assert public_names.isdisjoint(vars(ownership))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == detachment_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.ownership":
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.ownership_detachment":
+                continue
+
+            imported_public_names |= imported_names & public_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_ownership_merging_owns_merge_helpers():
     """Ownership merge behavior should live outside ownership metadata."""
     ownership = __import__(
@@ -8365,7 +8469,7 @@ def test_batch_absence_content_owns_public_builders():
             "AbsenceContentBuilder",
             "build_absence_content_from_range",
         },
-        SRC_ROOT / "batch" / "ownership.py": {
+        SRC_ROOT / "batch" / "ownership_detachment.py": {
             "copy_absence_content",
         },
         SRC_ROOT / "batch" / "ownership_translation.py": {

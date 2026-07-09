@@ -190,10 +190,13 @@ def test_line_id_file_persistence_stays_in_data_layer():
     }
     expected_imports = {
         SRC_ROOT / "commands" / "include.py": file_helper_names,
-        SRC_ROOT / "commands" / "skip.py": file_helper_names,
         SRC_ROOT / "commands" / "file_scope" / "include_file_replacement.py": {
             "write_line_ids_file",
         },
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "skip_line_selection.py": file_helper_names,
         SRC_ROOT / "data" / "file_hunk_display.py": {"write_line_ids_file"},
         SRC_ROOT / "data" / "line_state.py": {"read_line_ids_file"},
         SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py": {
@@ -1988,10 +1991,15 @@ def test_file_review_action_scope_stays_out_of_state_module():
             "resolve_live_to_batch_action_scope",
         },
         SRC_ROOT / "commands" / "skip.py": {
-            "finish_review_scoped_line_action",
             "refuse_ambiguous_bare_action_after_partial_file_review",
             "refuse_live_action_for_batch_selection",
             "resolve_live_line_action_scope",
+        },
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "skip_line_selection.py": {
+            "finish_review_scoped_line_action",
         },
         SRC_ROOT / "data" / "file_review" / "batch_selection.py": {
             "fresh_batch_review_selections_for_action",
@@ -8845,11 +8853,14 @@ def test_selected_change_loading_stays_out_of_hunk_tracking():
         / "selection"
         / "include_line_batching.py": {"require_selected_hunk"},
         SRC_ROOT / "commands" / "discard.py": moved_names,
-        SRC_ROOT / "commands" / "skip.py": {"require_selected_hunk"},
         SRC_ROOT
         / "commands"
         / "selection"
         / "selected_change_skipping.py": {"load_selected_change"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "skip_line_selection.py": {"require_selected_hunk"},
         SRC_ROOT / "commands" / "suggest_fixup.py": {"require_selected_hunk"},
     }
     violations = []
@@ -10251,7 +10262,9 @@ def test_action_completion_stays_in_command_helper():
     command_paths = (
         SRC_ROOT / "commands" / "include.py",
         SRC_ROOT / "commands" / "discard.py",
-        SRC_ROOT / "commands" / "skip.py",
+        SRC_ROOT / "commands" / "file_scope" / "skip_file.py",
+        SRC_ROOT / "commands" / "selection" / "selected_change_skipping.py",
+        SRC_ROOT / "commands" / "selection" / "skip_line_selection.py",
     )
     violations = []
 

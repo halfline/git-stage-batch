@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from ..core.line_selection import (
     LineRanges,
@@ -13,34 +12,19 @@ from ..core.buffer import (
     LineBuffer,
     buffer_byte_chunks,
 )
-from ..utils.repository_buffers import (
-    load_git_blob_as_buffer,
-)
 from ..utils.git_object_io import (
     create_git_blob,
-    read_git_blobs_as_bytes,
 )
 from .ownership_claims import (
     PresenceClaim as _PresenceClaim,
     parse_ownership_line_ranges as _claim_parse_line_ranges,
     presence_claims_from_source_lines as _claim_presence_claims_from_source_lines,
 )
-from .ownership_metadata_blobs import (
-    deletion_content_blob_ids as _metadata_deletion_content_blob_ids,
-    deletion_reference_blob_ids as _metadata_deletion_reference_blob_ids,
-    presence_claim_reference_blob_ids as _metadata_presence_reference_blob_ids,
-    replacement_origin_reference_blob_ids as _metadata_replacement_reference_blob_ids,
-)
 from .ownership_references import BaselineReference as _BaselineReference
 from .ownership_replacement_units import (
     ReplacementUnit as _ReplacementUnit,
     normalize_replacement_units as _replacement_normalize_units,
 )
-
-if TYPE_CHECKING:
-    from .ownership_acquisition import (
-        AcquiredBatchOwnership as _AcquiredBatchOwnership,
-    )
 
 
 @dataclass
@@ -172,82 +156,6 @@ class BatchOwnership:
         if replacement_units:
             data["replacement_units"] = replacement_units
         return data
-
-    @classmethod
-    def acquire_for_metadata_dict(
-        cls,
-        data: dict,
-    ) -> _AcquiredBatchOwnership:
-        """Acquire ownership for metadata with buffered deletion blobs."""
-        from .ownership_acquisition import AcquiredBatchOwnership
-
-        deletion_metadata = data.get("deletions", [])
-        presence_metadata = data.get("presence_claims", [])
-        replacement_metadata = data.get("replacement_units", [])
-        blob_buffers: dict[str, LineBuffer] = {}
-        buffers: list[LineBuffer] = []
-        try:
-            for blob_sha in _metadata_deletion_content_blob_ids(deletion_metadata):
-                if blob_sha in blob_buffers:
-                    continue
-                buffer = load_git_blob_as_buffer(blob_sha)
-                blob_buffers[blob_sha] = buffer
-                buffers.append(buffer)
-
-            blob_contents = read_git_blobs_as_bytes(
-                [
-                    *_metadata_deletion_reference_blob_ids(deletion_metadata),
-                    *_metadata_presence_reference_blob_ids(presence_metadata),
-                    *_metadata_replacement_reference_blob_ids(replacement_metadata),
-                ]
-            )
-            ownership = cls._from_metadata_dict(
-                data,
-                blob_contents=blob_contents,
-                deletion_blob_buffers=blob_buffers,
-            )
-        except Exception:
-            for buffer in buffers:
-                buffer.close()
-            raise
-
-        return AcquiredBatchOwnership(
-            ownership=ownership,
-            buffers=buffers,
-        )
-
-    @classmethod
-    def _from_metadata_dict(
-        cls,
-        data: dict,
-        *,
-        blob_contents: dict[str, bytes],
-        deletion_blob_buffers: dict[str, LineBuffer] | None = None,
-    ) -> BatchOwnership:
-        deletion_metadata = data.get("deletions", [])
-        presence_metadata = data.get("presence_claims", [])
-        legacy_claimed_lines = data.get("claimed_lines", [])
-        presence_claims = [
-            _PresenceClaim.from_dict(d, blob_contents)
-            for d in presence_metadata
-        ]
-        if not presence_claims and legacy_claimed_lines:
-            presence_claims = _claim_presence_claims_from_source_lines(
-                _claim_parse_line_ranges(legacy_claimed_lines)
-            )
-        deletions = [
-            AbsenceClaim.from_dict(d, blob_contents, deletion_blob_buffers)
-            for d in deletion_metadata
-        ]
-        replacement_units = [
-            _ReplacementUnit.from_dict(d, blob_contents)
-            for d in data.get("replacement_units", [])
-        ]
-        return cls(
-            presence_claims=presence_claims,
-            deletions=deletions,
-            replacement_units=replacement_units,
-        )
 
     def resolve(self) -> ResolvedBatchOwnership:
         """Resolve into representation for materialization and merge.

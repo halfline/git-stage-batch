@@ -25,6 +25,7 @@ from .hunk_ownership_translation import translate_hunk_selection_to_batch_owners
 from .ownership import (
     BatchOwnership,
 )
+from .ownership_metadata_loading import acquire_ownership_for_metadata_dict
 from .ownership_merging import merge_batch_ownership
 from .ownership_translation import (
     detect_stale_batch_source_for_selection,
@@ -379,7 +380,7 @@ def acquire_batch_ownership_update_for_selection(
         )
         return
 
-    with BatchOwnership.acquire_for_metadata_dict(file_metadata) as existing_ownership:
+    with acquire_ownership_for_metadata_dict(file_metadata) as existing_ownership:
         yield prepare_batch_ownership_update_for_selection(
             batch_name=batch_name,
             file_path=file_path,

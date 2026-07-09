@@ -13,6 +13,7 @@ from ...batch.hunk_ownership_translation import (
 from ...batch.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.lifecycle import create_batch, delete_batch
 from ...batch.ownership import BatchOwnership
+from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.query import read_batch_metadata
 from ...batch.selection import line_selection_not_valid_message
 from ...batch.text_file_storage import add_file_to_batch
@@ -317,7 +318,7 @@ def try_build_index_content_via_transient_batch(
                 )
 
             with (
-                BatchOwnership.acquire_for_metadata_dict(file_metadata) as ownership,
+                acquire_ownership_for_metadata_dict(file_metadata) as ownership,
                 source_buffer as source_lines,
             ):
                 try:

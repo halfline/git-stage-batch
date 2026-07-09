@@ -51,7 +51,7 @@ from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob
 from ..utils.paths import get_batch_metadata_file_path
 from ..utils.text import normalize_line_sequence_endings
-from .merge import satisfy_constraints
+from .presence_constraints import satisfy_constraints
 from .realized_entries import realized_entry_content_chunks
 
 if TYPE_CHECKING:

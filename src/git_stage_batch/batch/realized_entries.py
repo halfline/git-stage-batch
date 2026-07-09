@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..editor.edit import Editor
+from .line_range_view import LineRangeView as _LineRangeView
 from .realized_provenance import (
     PROVENANCE_RUN_CLAIMED as _PROVENANCE_CLAIMED_FLAG,
     ProvenanceRun as _RealizedProvenanceRun,
@@ -356,52 +357,6 @@ def _entry_is_claimed_at(entries: Sequence[RealizedEntry], index: int) -> bool:
     return entries[index].is_claimed
 
 
-class _LineRange(Sequence[bytes]):
-    """Indexed view over a contiguous range of lines."""
-
-    def __init__(
-        self,
-        lines: Sequence[bytes],
-        start: int,
-        end: int,
-    ) -> None:
-        if start < 0 or end < start:
-            raise ValueError("invalid line range")
-        self._lines = lines
-        self._start = start
-        self._end = end
-
-    def __len__(self) -> int:
-        return self._end - self._start
-
-    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
-        if isinstance(index, slice):
-            start, stop, step = index.indices(len(self))
-            if step == 1:
-                return _LineRange(
-                    self._lines,
-                    self._start + start,
-                    self._start + stop,
-                )
-            return tuple(self[child_index] for child_index in range(start, stop, step))
-
-        if index < 0:
-            index += len(self)
-        if index < 0 or index >= len(self):
-            raise IndexError(index)
-        return self._lines[self._start + index]
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Sequence):
-            return NotImplemented
-        if len(self) != len(other):
-            return False
-        return all(
-            left_line == right_line
-            for left_line, right_line in zip(self, other, strict=True)
-        )
-
-
 class _RealizedEntryContentSequence(Sequence[bytes]):
     """Indexed view over realized entry content."""
 
@@ -415,7 +370,7 @@ class _RealizedEntryContentSequence(Sequence[bytes]):
         if isinstance(index, slice):
             start, stop, step = index.indices(len(self))
             if step == 1:
-                return _LineRange(self, start, stop)
+                return _LineRangeView(self, start, stop)
             return tuple(self[child_index] for child_index in range(start, stop, step))
 
         if index < 0:

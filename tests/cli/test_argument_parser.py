@@ -6,6 +6,7 @@ from unittest.mock import Mock, call
 import pytest
 
 from git_stage_batch.cli import (
+    apply_dispatch,
     argument_parser,
     file_scope,
     git_help,
@@ -1105,7 +1106,7 @@ def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkey
 def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
     """Apply should dispatch once per file resolved from --files."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_apply_from_batch", mock_command)
+    monkeypatch.setattr(apply_dispatch, "command_apply_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(

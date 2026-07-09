@@ -3403,6 +3403,43 @@ def test_file_scope_include_file_owns_file_pipeline():
     assert helper_imports <= helper_imported_names
 
 
+def test_file_scope_file_list_action_owns_live_list_rendering():
+    """Live multi-file list rendering should live in file-scope support."""
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.file_list_action",
+        fromlist=["file_list_action"],
+    )
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "file_list_action.py"
+    public_names = {
+        "show_live_file_list",
+    }
+    helper_imports = {
+        "ReviewSource",
+        "clear_selected_change_state_files",
+        "compute_rename_change_hash",
+        "make_binary_file_review_list_entry",
+        "make_file_review_list_entry",
+        "make_gitlink_file_review_list_entry",
+        "make_rename_file_review_list_entry",
+        "make_text_deletion_file_review_list_entry",
+        "mark_selected_change_cleared_by_file_list",
+        "print_file_review_list",
+        "render_binary_file_change",
+        "render_file_as_single_hunk",
+        "render_gitlink_change",
+        "render_rename_change",
+        "render_text_deletion_change",
+        "text_deletion_change_is_batched",
+    }
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert helper_imports <= helper_imported_names
+
+
 def test_file_scope_target_path_stays_in_file_scope_support():
     """File-scope target fallback should stay out of command entrypoints."""
     command_paths = {

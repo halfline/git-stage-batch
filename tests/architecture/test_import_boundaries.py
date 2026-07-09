@@ -9899,6 +9899,68 @@ def test_batch_baseline_reference_positions_own_position_lookup():
     assert violations == []
 
 
+def test_batch_line_sequence_equality_owns_exact_comparison():
+    """Exact byte-line comparisons should live outside batch merge policies."""
+    line_sequence_equality = __import__(
+        "git_stage_batch.batch.line_sequence_equality",
+        fromlist=["line_sequence_equality"],
+    )
+    baseline_edits = __import__(
+        "git_stage_batch.batch.baseline_edits",
+        fromlist=["baseline_edits"],
+    )
+    presence_constraints = __import__(
+        "git_stage_batch.batch.presence_constraints",
+        fromlist=["presence_constraints"],
+    )
+    line_sequence_equality_path = (
+        SRC_ROOT / "batch" / "line_sequence_equality.py"
+    )
+    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    presence_constraints_path = SRC_ROOT / "batch" / "presence_constraints.py"
+    public_names = {
+        "line_sequences_equal",
+        "line_slice_equals",
+    }
+    private_comparison_names = {
+        "_line_sequences_equal",
+        "_line_slice_equals",
+    }
+    expected_imports = {
+        baseline_edits_path: public_names,
+        presence_constraints_path: {
+            "line_slice_equals",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(line_sequence_equality).keys()
+    assert private_comparison_names.isdisjoint(vars(baseline_edits))
+    assert private_comparison_names.isdisjoint(vars(presence_constraints))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == line_sequence_equality_path:
+            continue
+
+        direct_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module != "git_stage_batch.batch.line_sequence_equality":
+                continue
+
+            direct_public_names |= imported_names & public_names
+            private_imports = imported_names & private_comparison_names
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= direct_public_names
+
+    assert violations == []
+
+
 def test_batch_merge_validation_owns_structural_checks():
     """Structural merge validation should live outside merge."""
     merge_validation = __import__(

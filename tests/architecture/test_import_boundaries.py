@@ -8966,6 +8966,73 @@ def test_batch_ownership_units_owns_unit_operations():
     assert violations == []
 
 
+def test_batch_ownership_metadata_blobs_own_blob_discovery():
+    """Ownership metadata blob discovery should live outside ownership models."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    ownership_metadata_blobs = __import__(
+        "git_stage_batch.batch.ownership_metadata_blobs",
+        fromlist=["ownership_metadata_blobs"],
+    )
+    ownership_path = SRC_ROOT / "batch" / "ownership.py"
+    metadata_blob_path = SRC_ROOT / "batch" / "ownership_metadata_blobs.py"
+    public_names = {
+        "baseline_reference_blob_ids",
+        "baseline_references_blob_ids",
+        "deletion_content_blob_ids",
+        "deletion_reference_blob_ids",
+        "presence_claim_reference_blob_ids",
+        "read_metadata_blob",
+        "replacement_origin_reference_blob_ids",
+    }
+    old_private_names = {
+        "_baseline_reference_blob_ids",
+        "_baseline_references_blob_ids",
+        "_deletion_content_blob_ids",
+        "_deletion_reference_blob_ids",
+        "_presence_claim_reference_blob_ids",
+        "_read_metadata_blob",
+        "_replacement_origin_reference_blob_ids",
+    }
+    expected_imports = {
+        ownership_path: {
+            "deletion_content_blob_ids",
+            "deletion_reference_blob_ids",
+            "presence_claim_reference_blob_ids",
+            "read_metadata_blob",
+            "replacement_origin_reference_blob_ids",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(ownership_metadata_blobs).keys()
+    assert old_private_names.isdisjoint(vars(ownership))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == metadata_blob_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module != "git_stage_batch.batch.ownership_metadata_blobs":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            private_imports = imported_names & old_private_names
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_realized_entries_uses_public_entry_helpers():
     """Batch callers should import public realized-entry helpers."""
     realized_entries = __import__(

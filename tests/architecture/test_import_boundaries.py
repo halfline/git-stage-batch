@@ -11485,6 +11485,53 @@ def test_output_owns_operation_candidate_preview_rendering():
     assert "git_stage_batch.core.diff_parser" not in candidate_summary_imports
 
 
+def test_candidate_preview_commands_own_command_text():
+    """Candidate preview command text should stay out of rendering."""
+    candidate_preview = __import__(
+        "git_stage_batch.output.candidate_preview",
+        fromlist=["candidate_preview"],
+    )
+    candidate_preview_commands = __import__(
+        "git_stage_batch.output.candidate_preview_commands",
+        fromlist=["candidate_preview_commands"],
+    )
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    candidate_commands_path = SRC_ROOT / "output" / "candidate_preview_commands.py"
+    candidate_preview_text = candidate_preview_path.read_text()
+    candidate_commands_text = candidate_commands_path.read_text()
+    candidate_preview_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_preview_path)
+    }
+    candidate_commands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_commands_path)
+    }
+    command_names = {
+        "candidate_selector_text",
+        "execute_candidate_command",
+        "show_candidate_command",
+    }
+    old_command_names = {
+        "_candidate_selector_text",
+        "_execute_candidate_command",
+        "_show_candidate_command",
+    }
+
+    assert "git_stage_batch.output.candidate_preview_commands" in candidate_preview_imports
+    assert command_names <= vars(candidate_preview_commands).keys()
+    assert old_command_names.isdisjoint(vars(candidate_preview))
+    assert "shlex" not in candidate_preview_imports
+    assert "import shlex" in candidate_commands_text
+    assert "def _candidate_selector_text" not in candidate_preview_text
+    assert "def _show_candidate_command" not in candidate_preview_text
+    assert "def _execute_candidate_command" not in candidate_preview_text
+    assert "git-stage-batch show --from" not in candidate_preview_text
+    assert "git-stage-batch {command} --from" not in candidate_preview_text
+    assert "git-stage-batch show --from" in candidate_commands_text
+    assert "git-stage-batch {command} --from" in candidate_commands_text
+
+
 def test_batch_owns_atomic_file_change_metadata_conversion():
     """Stored atomic file metadata conversion should live in batch."""
     atomic_file_changes = __import__(

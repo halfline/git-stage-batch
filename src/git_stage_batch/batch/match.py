@@ -8,7 +8,7 @@ from typing import TypeVar
 
 from .line_mapping import IntVector as _IntVector, LineMapping as _LineMapping
 from .match_storage import MatcherWorkspace
-from ..utils.mapped_storage import MappedIntVector, MappedRecordVector
+from ..core.mapped_storage import MappedIntVector, MappedRecordVector
 from ..utils.text import AcquirableLineSequence, as_acquirable_line_sequence
 
 

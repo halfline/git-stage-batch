@@ -15,8 +15,6 @@ from git_stage_batch.batch.absence_content import AbsenceContentBuilder
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
-    ReplacementUnit,
-    ReplacementUnitOrigin,
 )
 from git_stage_batch.batch.ownership_detachment import acquire_detached_batch_ownership
 from git_stage_batch.batch.ownership_merging import (
@@ -24,6 +22,10 @@ from git_stage_batch.batch.ownership_merging import (
     merge_batch_ownership,
 )
 from git_stage_batch.batch.ownership_references import BaselineReference
+from git_stage_batch.batch.ownership_replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 import git_stage_batch.batch.absence_content as absence_content_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer

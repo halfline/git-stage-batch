@@ -34,10 +34,12 @@ from git_stage_batch.exceptions import MergeError
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
+)
+from git_stage_batch.batch.ownership_references import BaselineReference
+from git_stage_batch.batch.ownership_replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
-from git_stage_batch.batch.ownership_references import BaselineReference
 from git_stage_batch.core.text_lines import normalize_line_sequence_endings
 
 

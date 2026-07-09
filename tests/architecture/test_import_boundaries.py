@@ -1197,6 +1197,62 @@ def test_git_ref_helpers_stay_out_of_git_command_module():
     assert violations == []
 
 
+def test_command_event_models_stay_out_of_command_runner():
+    """Command event models should live beside the subprocess runner."""
+    command_runner = __import__(
+        "git_stage_batch.utils.command",
+        fromlist=["command"],
+    )
+    command_events = __import__(
+        "git_stage_batch.utils.command_events",
+        fromlist=["command_events"],
+    )
+    command_path = SRC_ROOT / "utils" / "command.py"
+    command_events_path = SRC_ROOT / "utils" / "command_events.py"
+    event_names = {
+        "CapturedFd",
+        "CommandEvent",
+        "CommandEventRole",
+        "ExitEvent",
+        "OutputEvent",
+        "StdinClosedEvent",
+    }
+    runner_names = {
+        "StreamingProcess",
+        "run_command",
+        "start_command",
+        "stream_command",
+    }
+    command_imports = _import_from_nodes(command_path)
+    imports_event_module = any(
+        imported_module == "git_stage_batch.utils"
+        and any(alias.name == "command_events" for alias in node.names)
+        for imported_module, node in command_imports
+    )
+    violations = []
+
+    assert event_names <= vars(command_events).keys()
+    assert event_names.isdisjoint(vars(command_runner))
+    assert runner_names <= vars(command_runner).keys()
+    assert imports_event_module
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == command_events_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.command":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & event_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
     """Batch file selection caching should not depend on hunk navigation."""
     cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"

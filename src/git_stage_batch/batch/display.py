@@ -17,7 +17,8 @@ from .match import match_lines
 
 if TYPE_CHECKING:
     from .line_mapping import LineMapping
-    from .ownership import BatchOwnership, AbsenceClaim
+    from .ownership import BatchOwnership
+    from .ownership_absence_claims import AbsenceClaim
 
 
 LineForDisplay = TypeVar("LineForDisplay", bytes, str)

@@ -5,10 +5,8 @@ from __future__ import annotations
 from .absence_content import (
     build_absence_content_from_range as _build_absence_content_from_range,
 )
-from .ownership import (
-    AbsenceClaim,
-    BatchOwnership,
-)
+from .ownership import BatchOwnership
+from .ownership_absence_claims import AbsenceClaim
 from .ownership_claims import LineRangeBuilder, presence_claims_from_source_lines
 from .ownership_line_entries import (
     LineEntryContentSequence as _LineEntryContentSequence,

@@ -2,19 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ..core.line_selection import (
     LineRanges,
 )
-from ..core.buffer import (
-    LineBuffer,
-    buffer_byte_chunks,
-)
-from ..utils.git_object_io import (
-    create_git_blob,
-)
+from .ownership_absence_claims import AbsenceClaim as _AbsenceClaim
 from .ownership_claims import (
     PresenceClaim as _PresenceClaim,
     parse_ownership_line_ranges as _claim_parse_line_ranges,
@@ -28,64 +21,6 @@ from .ownership_replacement_units import (
 
 
 @dataclass
-class AbsenceClaim:
-    """A suppression constraint: specific baseline content that must not appear.
-
-    Deletions are constraints, not content to replay. Each absence claim represents
-    a contiguous run of lines that must be absent from the materialized result.
-
-    Attributes:
-        anchor_line: Batch source line after which this absence claim is anchored
-                     (None for start-of-file)
-        content_lines: Exact baseline line content that must be suppressed,
-                       with line endings preserved
-        baseline_reference: Optional old-file coordinate where this absence
-                            claim was selected. This lets same-source batch
-                            round trips apply replacement units back to an
-                            unchanged baseline/index without guessing from
-                            post-change source anchors.
-    """
-    anchor_line: int | None
-    content_lines: Sequence[bytes]
-    baseline_reference: _BaselineReference | None = None
-
-    def to_dict(self) -> dict:
-        """Serialize to metadata dictionary."""
-        blob_sha = create_git_blob(buffer_byte_chunks(self.content_lines))
-        data = {
-            "after_source_line": self.anchor_line,
-            "blob": blob_sha
-        }
-        if self.baseline_reference is not None:
-            data["baseline_reference"] = self.baseline_reference.to_dict()
-        return data
-
-    @classmethod
-    def from_dict(
-        cls,
-        data: dict,
-        blob_contents: dict[str, bytes] | None = None,
-        blob_buffers: dict[str, LineBuffer] | None = None,
-    ) -> AbsenceClaim:
-        """Deserialize from metadata dictionary."""
-        anchor_line = data.get("after_source_line")
-        blob_sha = data["blob"]
-        if blob_buffers is None:
-            raise ValueError("deletion blobs must be loaded before deserialization")
-        content_lines = blob_buffers[blob_sha]
-        baseline_metadata = data.get("baseline_reference")
-        baseline_reference = (
-            _BaselineReference.from_dict(baseline_metadata, blob_contents)
-            if baseline_metadata is not None else None
-        )
-        return cls(
-            anchor_line=anchor_line,
-            content_lines=content_lines,
-            baseline_reference=baseline_reference,
-        )
-
-
-@dataclass
 class BatchOwnership:
     """Represents batch ownership in batch source space.
 
@@ -95,14 +30,14 @@ class BatchOwnership:
     - replacement_units: Optional explicit coupling between claims and deletions
     """
     presence_claims: list[_PresenceClaim]
-    deletions: list[AbsenceClaim]  # Separate deletion constraints
+    deletions: list[_AbsenceClaim]  # Separate deletion constraints
     replacement_units: list[_ReplacementUnit] = field(default_factory=list)
 
     @classmethod
     def from_presence_lines(
         cls,
         source_lines: list[str],
-        deletions: list[AbsenceClaim] | None = None,
+        deletions: list[_AbsenceClaim] | None = None,
         *,
         replacement_units: list[_ReplacementUnit] | None = None,
         baseline_references: dict[int, _BaselineReference] | None = None,
@@ -177,4 +112,4 @@ class ResolvedBatchOwnership:
         deletion_claims: List of suppression constraints (order and structure preserved)
     """
     presence_line_set: LineRanges  # Batch source line numbers (1-indexed)
-    deletion_claims: list[AbsenceClaim]  # Separate constraints, not collapsed
+    deletion_claims: list[_AbsenceClaim]  # Separate constraints, not collapsed

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from ..core.line_selection import LineRanges
-from .ownership import AbsenceClaim
+from .ownership_absence_claims import AbsenceClaim
 from .ownership_replacement_units import ReplacementUnitOrigin
 
 

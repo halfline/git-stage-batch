@@ -8,7 +8,7 @@ import sys
 
 from ..data.batch_refs import restore_batch_refs
 from ..data.session import clear_session_state
-from ..data.staged_renames import read_staged_renames
+from ..data.start_time_changes import read_staged_renames
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents

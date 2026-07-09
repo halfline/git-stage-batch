@@ -1249,19 +1249,21 @@ def test_file_review_state_builder_uses_page_selection_module():
     assert "parse_positive_selection" not in review_state_builder_text
 
 
-def test_file_review_output_uses_layout_module():
-    """File-review output should not own terminal layout sizing."""
+def test_file_review_model_builder_uses_layout_module():
+    """File-review model construction should not own terminal layout sizing."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
-    imports = _import_from_nodes(review_output_path)
+    review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
+    review_model_builder_text = review_model_builder_path.read_text()
+    imports = _import_from_nodes(review_model_builder_path)
     imports_layout_module = any(
         imported_module == "git_stage_batch.output"
         and any(alias.name == "file_review_layout" for alias in node.names)
         for imported_module, node in imports
     )
-    file_review = __import__(
-        "git_stage_batch.output.file_review",
-        fromlist=["file_review"],
+    file_review_model_builder = __import__(
+        "git_stage_batch.output.file_review_model_builder",
+        fromlist=["file_review_model_builder"],
     )
     file_review_layout = __import__(
         "git_stage_batch.output.file_review_layout",
@@ -1270,11 +1272,16 @@ def test_file_review_output_uses_layout_module():
 
     assert imports_layout_module
     assert "body_budget" in vars(file_review_layout)
-    assert "body_budget" not in vars(file_review)
-    assert "def _body_budget" not in review_output_text
-    assert "review_terminal_size" not in review_output_text
-    assert "DEFAULT_NON_TTY_REVIEW_LINES" not in review_output_text
-    assert "REVIEW_HEADER_LINES" not in review_output_text
+    assert "body_budget" not in vars(file_review_model_builder)
+    assert "git_stage_batch.output.file_review_layout" not in {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    assert "def _body_budget" not in review_model_builder_text
+    assert "review_terminal_size" not in review_model_builder_text
+    assert "DEFAULT_NON_TTY_REVIEW_LINES" not in review_model_builder_text
+    assert "REVIEW_HEADER_LINES" not in review_model_builder_text
+    assert "file_review_layout" not in review_output_text
 
 
 def test_file_review_output_uses_model_module():
@@ -1321,6 +1328,50 @@ def test_file_review_output_uses_display_id_module():
     assert "display_ids_for_rows" in vars(file_review_display_ids)
     assert "def display_ids_for_rows" not in review_output_text
     assert "def _display_ids_for_rows" not in review_output_text
+
+
+def test_file_review_callers_use_model_builder():
+    """File-review callers should not import model construction from rendering."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    caller_paths = (
+        SRC_ROOT / "commands" / "show.py",
+        SRC_ROOT / "commands" / "show_from.py",
+        SRC_ROOT / "output" / "file_review_list.py",
+    )
+    file_review_model_builder = __import__(
+        "git_stage_batch.output.file_review_model_builder",
+        fromlist=["file_review_model_builder"],
+    )
+    public_names = {"build_file_review_model"}
+    direct_model_builder_imports: dict[str, set[str]] = {}
+    old_renderer_imports: dict[str, set[str]] = {}
+
+    for path in caller_paths:
+        relative_path = str(path.relative_to(REPO_ROOT))
+        direct_model_builder_imports[relative_path] = set()
+        old_renderer_imports[relative_path] = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.output.file_review_model_builder":
+                direct_model_builder_imports[relative_path] |= (
+                    imported_names & public_names
+                )
+            if imported_module == "git_stage_batch.output.file_review":
+                old_renderer_imports[relative_path] |= imported_names & public_names
+
+    assert public_names <= vars(file_review_model_builder).keys()
+    assert "def build_file_review_model" not in review_output_text
+    assert direct_model_builder_imports == {
+        "src/git_stage_batch/commands/show.py": public_names,
+        "src/git_stage_batch/commands/show_from.py": public_names,
+        "src/git_stage_batch/output/file_review_list.py": public_names,
+    }
+    assert old_renderer_imports == {
+        "src/git_stage_batch/commands/show.py": set(),
+        "src/git_stage_batch/commands/show_from.py": set(),
+        "src/git_stage_batch/output/file_review_list.py": set(),
+    }
 
 
 def test_file_review_output_uses_action_selection_module():

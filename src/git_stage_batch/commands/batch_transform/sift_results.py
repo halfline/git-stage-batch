@@ -15,7 +15,7 @@ from ...batch.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.absence_content import AbsenceContentBuilder
 from ...batch.ownership import BatchOwnership, AbsenceClaim
 from ...batch.query import get_batch_baseline_commit
-from ...batch.storage import build_realized_buffer_from_lines
+from ...batch.realized_file_content import build_realized_buffer_from_lines
 from ...core.buffer import (
     LineBuffer,
     buffer_byte_count,

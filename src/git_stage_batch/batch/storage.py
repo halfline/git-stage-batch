@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
@@ -31,10 +30,6 @@ from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_git_tree_files_as_buffers,
 )
-from ..editor.line_endings import (
-    restore_line_endings_in_chunks,
-    detect_line_ending,
-)
 from ..utils.file_io import write_text_file_contents
 from ..utils.git_command import run_git_command
 from ..utils.git_index import (
@@ -50,9 +45,7 @@ from ..utils.git_index import (
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob
 from ..utils.paths import get_batch_metadata_file_path
-from ..utils.text import normalize_line_sequence_endings
-from .presence_constraints import satisfy_constraints
-from .realized_entries import realized_entry_content_chunks
+from . import realized_file_content as _realized_file_content
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership
@@ -190,10 +183,12 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                 base_buffer = baseline_buffers.get(file_path, empty_buffer)
                 batch_source_buffer = batch_source_buffers.get(file_path, empty_buffer)
 
-                realized_buffer = build_realized_buffer_from_lines(
-                    base_buffer,
-                    batch_source_buffer,
-                    update.ownership,
+                realized_buffer = (
+                    _realized_file_content.build_realized_buffer_from_lines(
+                        base_buffer,
+                        batch_source_buffer,
+                        update.ownership,
+                    )
                 )
                 managed_buffers.append(realized_buffer)
 
@@ -430,51 +425,6 @@ def add_gitlink_to_batch(
         )
 
     _update_batch_gitlink_commit(batch_name, file_path, gitlink_change.new_oid)
-
-
-def build_realized_buffer_from_lines(
-    base_lines: Sequence[bytes],
-    batch_source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
-) -> LineBuffer:
-    """Build realized batch content as a line buffer."""
-    return LineBuffer.from_chunks(
-        restore_line_endings_in_chunks(
-            _stream_realized_content_chunks_from_lines(
-                normalize_line_sequence_endings(base_lines),
-                normalize_line_sequence_endings(batch_source_lines),
-                ownership,
-            ),
-            detect_line_ending(batch_source_lines),
-        )
-    )
-
-
-def _stream_realized_content_chunks_from_lines(
-    base_lines: Sequence[bytes],
-    batch_source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
-) -> Iterator[bytes]:
-    """Yield realized batch content chunks from normalized line sequences."""
-    # Resolve ownership
-    resolved = ownership.resolve()
-    presence_line_set = resolved.presence_line_set
-    deletion_claims = resolved.deletion_claims
-
-    # Apply constraints using same model as merge, with lenient absence
-    # enforcement because baseline may not have deletion content at that boundary.
-    realized_entries = satisfy_constraints(
-        batch_source_lines,
-        base_lines,
-        presence_line_set,
-        deletion_claims,
-        strict=False
-    )
-
-    try:
-        yield from realized_entry_content_chunks(realized_entries)
-    finally:
-        realized_entries.close()
 
 
 def remove_file_from_batch(batch_name: str, file_path: str) -> None:

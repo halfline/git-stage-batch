@@ -2783,6 +2783,65 @@ def test_argument_parser_delegates_reset_dispatch():
     assert "reset --from" not in parser_text
 
 
+def test_argument_parser_delegates_include_dispatch():
+    """Parser construction should not own include workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    include_dispatch_path = SRC_ROOT / "cli" / "include_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    include_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(include_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    include_dispatch = __import__(
+        "git_stage_batch.cli.include_dispatch",
+        fromlist=["include_dispatch"],
+    )
+    include_runtime_imports = {
+        "git_stage_batch.commands.include",
+        "git_stage_batch.commands.include_from",
+        "git_stage_batch.commands.file_scope.multi_file_actions",
+    }
+    include_command_names = {
+        "command_include",
+        "command_include_file",
+        "command_include_file_as",
+        "command_include_from_batch",
+        "command_include_line",
+        "command_include_line_as",
+        "command_include_to_batch",
+        "include_each_resolved_file",
+    }
+
+    assert "git_stage_batch.cli.include_dispatch" in parser_imports
+    assert "git_stage_batch.commands.include" not in parser_imports
+    assert "git_stage_batch.commands.include_from" not in parser_imports
+    assert include_runtime_imports <= include_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in include_dispatch_imports
+    assert "git_stage_batch.cli.replacement_input" in include_dispatch_imports
+    assert "dispatch_include_command" in vars(include_dispatch)
+    assert "_dispatch_include_replacement" in vars(include_dispatch)
+    assert include_command_names.isdisjoint(vars(parser))
+    assert "def dispatch_include(" not in parser_text
+    assert "include_each_resolved_file(" not in parser_text
+    assert "command_include_from_batch(" not in parser_text
+    assert "command_include_to_batch(" not in parser_text
+    assert "command_include_line_as(" not in parser_text
+    assert "command_include_line(" not in parser_text
+    assert "command_include_file_as(" not in parser_text
+    assert "command_include_file(" not in parser_text
+    assert "command_include(" not in parser_text
+    assert "include --from" not in parser_text
+    assert "include --to" not in parser_text
+
+
 def test_argument_parser_delegates_replacement_input_decoding():
     """Parser branches should not own replacement payload decoding."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -5117,7 +5176,9 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.cli.show_dispatch" in imported_modules
     assert "git_stage_batch.commands.show" not in imported_modules
     assert "git_stage_batch.commands.show_from" not in imported_modules
-    assert "git_stage_batch.commands.include" in imported_modules
+    assert "git_stage_batch.cli.include_dispatch" in imported_modules
+    assert "git_stage_batch.commands.include" not in imported_modules
+    assert "git_stage_batch.commands.include_from" not in imported_modules
     assert "git_stage_batch.commands.discard" in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.commands.status" in imported_modules

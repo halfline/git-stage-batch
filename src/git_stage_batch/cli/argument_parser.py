@@ -6,7 +6,6 @@ import argparse
 import sys
 
 from .. import __version__
-from ..commands.block_file import command_block_file
 from ..commands.suggest_fixup import (
     command_suggest_fixup,
     command_suggest_fixup_line,
@@ -25,6 +24,7 @@ from .batch_subcommands import (
 )
 from .completion import add_completion_subcommand
 from .discard_dispatch import dispatch_discard_command
+from .file_blocking_subcommands import add_block_file_subcommand
 from .file_arguments import add_file_argument, normalize_parsed_file_arguments
 from .file_scope import (
     FileArgument,
@@ -325,26 +325,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_abort_subcommand(subparsers)
 
-    # block-file - Permanently exclude a file
-    parser_block_file = add_subcommand_parser(
-        subparsers,
-        "block-file",
-        aliases=["bf"],
-        help=_("Permanently exclude a file (adds to .gitignore)"),
-    )
-    parser_block_file.add_argument(
-        "file_path",
-        nargs="?",
-        default="",
-        help=_("Path to the file to block (defaults to selected hunk's file)"),
-    )
-    parser_block_file.add_argument(
-        "--local-only",
-        action="store_true",
-        default=False,
-        help=_("Add to .git/info/exclude instead of .gitignore"),
-    )
-    parser_block_file.set_defaults(func=lambda args: command_block_file(args.file_path, local_only=args.local_only))
+    add_block_file_subcommand(subparsers)
 
     # unblock-file - Remove a file from blocked list
     parser_unblock_file = add_subcommand_parser(

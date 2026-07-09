@@ -9093,6 +9093,41 @@ def test_batch_source_action_completion_owns_review_finalization():
     }
 
 
+def test_batch_source_discard_action_owns_discard_execution():
+    """Discard-from file execution should live in batch-source support."""
+    discard_action = __import__(
+        "git_stage_batch.commands.batch_source.discard_action",
+        fromlist=["discard_action"],
+    )
+    action_path = SRC_ROOT / "commands" / "batch_source" / "discard_action.py"
+    public_names = {
+        "execute_discard_action",
+    }
+    required_imports = {
+        ("git_stage_batch.commands.batch_source", "binary_file_actions"),
+        ("git_stage_batch.commands.batch_source", "text_file_actions"),
+        ("git_stage_batch.commands.batch_source", "text_plan_builders"),
+        ("git_stage_batch.batch.metadata_validation", "get_validated_baseline_commit"),
+        ("git_stage_batch.batch.selection", "translate_atomic_unit_error_to_gutter_ids"),
+        ("git_stage_batch.batch.submodule_pointer", "discard_submodule_pointer_from_batch"),
+        ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
+        ("git_stage_batch.data.undo", "undo_checkpoint"),
+    }
+    action_imports = set()
+
+    for imported_module, node in _import_from_nodes(action_path):
+        for alias in node.names:
+            action_imports.add((imported_module, alias.name))
+
+    action_text = action_path.read_text()
+
+    assert public_names <= vars(discard_action).keys()
+    assert required_imports <= action_imports
+    assert "discard_binary_file_to_worktree(" in action_text
+    assert "write_discarded_text_file_to_worktree(" in action_text
+    assert "build_discard_text_file_action_plan(" in action_text
+
+
 def test_batch_source_selection_state_cleanup_owns_reset_cleanup():
     """Reset selected-state cleanup should live outside the reset entry."""
     selection_state_cleanup = __import__(

@@ -1296,6 +1296,25 @@ def test_file_review_output_uses_model_module():
     assert "from dataclasses import dataclass" not in review_output_text
 
 
+def test_file_review_output_uses_display_id_module():
+    """File-review output should not own row display-ID mapping."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    file_review_display_ids = __import__(
+        "git_stage_batch.output.file_review_display_ids",
+        fromlist=["file_review_display_ids"],
+    )
+
+    assert "git_stage_batch.output.file_review_display_ids" in imported_modules
+    assert "display_ids_for_rows" in vars(file_review_display_ids)
+    assert "def display_ids_for_rows" not in review_output_text
+    assert "def _display_ids_for_rows" not in review_output_text
+
+
 def test_file_review_action_commands_stay_out_of_state_module():
     """File-review command text should live beside validation state."""
     action_commands = __import__(

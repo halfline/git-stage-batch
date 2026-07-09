@@ -7,9 +7,6 @@ import shlex
 import sys
 
 from .. import __version__
-from ..batch.query import read_batch_metadata
-from ..batch.source_selector import batch_name_for_source_lookup
-from ..batch.validation import batch_exists
 from ..commands.abort import command_abort
 from ..commands.again import command_again
 from ..commands.annotate import command_annotate_batch
@@ -46,8 +43,6 @@ from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
 from ..commands.redo import command_redo
 from ..commands.reset import command_reset_from_batch
-from ..commands.show import command_show, command_show_file_list
-from ..commands.show_from import command_show_from_batch
 from ..commands.sift import command_sift_batch
 from ..commands.skip import command_skip, command_skip_file, command_skip_line
 from ..commands.start import command_start
@@ -73,6 +68,7 @@ from .file_scope import (
 from .git_help import GitHelpArgumentParser
 from .quick_actions import expand_quick_actions
 from .replacement_input import resolve_replacement_text
+from .show_dispatch import dispatch_show_command
 
 
 def _add_subcommand_parser(
@@ -280,99 +276,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Read replacement preview text from standard input exactly"),
     )
-    def dispatch_show(args: argparse.Namespace) -> None:
-        replacement_requested = args.as_text is not None or args.as_stdin
-        if replacement_requested and not args.from_batch:
-            raise CommandError(_("`show --as` requires `--from`."))
-        if args.as_text is not None and args.as_stdin:
-            raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-        resolved_file_scope = (
-            resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-            if args.from_batch
-            else resolve_live_file_scope(args.file, args.file_patterns)
-        )
-        if args.page is not None:
-            lookup_batch = batch_name_for_source_lookup(args.from_batch) if args.from_batch else None
-            if lookup_batch and not batch_exists(lookup_batch):
-                raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch))
-            if resolved_file_scope.is_implicit:
-                if not (
-                    args.from_batch
-                    and lookup_batch is not None
-                    and batch_exists(lookup_batch)
-                    and len(read_batch_metadata(lookup_batch).get("files", {})) == 1
-                ):
-                    raise CommandError(
-                        _(
-                            "`show --page` requires `--file` or a single-file `--files` match, "
-                            "unless `--from` names a single-file batch."
-                        )
-                    )
-            if resolved_file_scope.is_multiple:
-                raise CommandError(_("`show --page` requires exactly one resolved file."))
-            if args.line_ids is not None:
-                raise CommandError(_("Cannot use `show --page` together with `show --line`."))
-            if args.porcelain:
-                raise CommandError(_("Cannot use `show --page` with `--porcelain`."))
-        if args.from_batch:
-            replacement_text = resolve_replacement_text(args) if replacement_requested else None
-            show_kwargs = {"page": args.page}
-            if args.porcelain:
-                show_kwargs["porcelain"] = args.porcelain
-            if not args.advance:
-                show_kwargs["selectable"] = False
-            if replacement_text is not None:
-                show_kwargs["replacement_text"] = replacement_text
-            if resolved_file_scope.is_multiple:
-                if args.line_ids:
-                    raise CommandError(_("Cannot use --lines with multiple files."))
-                if replacement_requested:
-                    raise CommandError(_("`show --as` requires exactly one resolved file."))
-                command_show_from_batch(
-                    args.from_batch,
-                    args.line_ids,
-                    patterns=args.file_patterns,
-                    **show_kwargs,
-                )
-            else:
-                command_show_from_batch(
-                    args.from_batch,
-                    args.line_ids,
-                    resolved_file_scope.optional_file(),
-                    **show_kwargs,
-                )
-            return
-        if args.line_ids or not resolved_file_scope.is_implicit:
-            if resolved_file_scope.is_multiple and args.porcelain:
-                raise CommandError(_("Cannot use --porcelain with multiple files."))
-            if resolved_file_scope.is_multiple:
-                if args.line_ids:
-                    raise CommandError(_("Cannot use --lines with multiple files."))
-                show_list_kwargs = {}
-                if not args.advance:
-                    show_list_kwargs["selectable"] = False
-                command_show_file_list(
-                    list(resolved_file_scope.files),
-                    **show_list_kwargs,
-                )
-            else:
-                show_kwargs = {
-                    "file": resolved_file_scope.optional_file(),
-                    "page": args.page,
-                    "porcelain": args.porcelain,
-                }
-                if not args.advance:
-                    show_kwargs["selectable"] = False
-                command_show(
-                    **show_kwargs,
-                )
-            return
-        show_kwargs = {"porcelain": args.porcelain}
-        if not args.advance:
-            show_kwargs["selectable"] = False
-        command_show(**show_kwargs)
-
-    parser_show.set_defaults(func=dispatch_show)
+    parser_show.set_defaults(func=dispatch_show_command)
 
     # status - Show selected session status
     parser_status = _add_subcommand_parser(

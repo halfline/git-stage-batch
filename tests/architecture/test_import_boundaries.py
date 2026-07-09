@@ -1170,6 +1170,27 @@ def test_file_review_output_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_file_review_output_uses_page_selection_module():
+    """File-review output should not own page-spec parsing."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    file_review_pages = __import__(
+        "git_stage_batch.data.file_review.pages",
+        fromlist=["file_review_pages"],
+    )
+
+    assert "git_stage_batch.data.file_review.pages" in imported_modules
+    assert "parse_page_selection" in vars(file_review_pages)
+    assert "normalize_page_spec" in vars(file_review_pages)
+    assert "def parse_page_selection" not in review_output_text
+    assert "def normalize_page_spec" not in review_output_text
+    assert "parse_positive_selection" not in review_output_text
+
+
 def test_file_review_action_commands_stay_out_of_state_module():
     """File-review command text should live beside validation state."""
     action_commands = __import__(

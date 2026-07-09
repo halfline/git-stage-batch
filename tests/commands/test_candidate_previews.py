@@ -7,14 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 import git_stage_batch.batch.operation_candidates as operation_candidates
-try:
-    from git_stage_batch.batch.operation_candidate_types import (
-        CandidateEnumerationLimitError,
-    )
-except ModuleNotFoundError:
-    from git_stage_batch.batch.operation_candidates import (
-        CandidateEnumerationLimitError,
-    )
+from git_stage_batch.batch.operation_candidate_types import (
+    CandidateEnumerationLimitError,
+)
 import git_stage_batch.commands.batch_source.action_selection as action_selection
 import git_stage_batch.commands.batch_source.candidate_preview_action as candidate_preview_action
 import git_stage_batch.commands.batch_source.candidate_preview_counts as candidate_preview_counts

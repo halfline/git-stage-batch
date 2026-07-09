@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Any
 
-from ..editor.edit import Editor
+from ..editor.line_editor import LineEditor
 from .line_range_view import LineRangeView as _LineRangeView
 from .realized_entries import RealizedEntry as _RealizedEntry
 from .realized_provenance import (
@@ -26,7 +26,7 @@ class RealizedEntries(Sequence[_RealizedEntry]):
     """
 
     def __init__(self, entries: Iterable[_RealizedEntry] = ()) -> None:
-        self._editor = Editor(())
+        self._editor = LineEditor(())
         self._provenance = _RealizedProvenanceTable()
         self._line_count = 0
         self._closed = False
@@ -95,7 +95,7 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         if start == end:
             return
 
-        if isinstance(lines, Editor):
+        if isinstance(lines, LineEditor):
             self._editor.append_line_ranges_from_editor(lines, start, end)
         else:
             self._editor.append_line_range(lines, start, end)

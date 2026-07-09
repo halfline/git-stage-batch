@@ -13,7 +13,7 @@ from ..core.replacement import (
 from ..core.buffer import (
     LineBuffer,
 )
-from ..editor.edit import edit_lines_as_buffer
+from ..editor.line_editor import edit_lines_as_buffer
 
 
 def _line_payload(line: bytes) -> bytes:

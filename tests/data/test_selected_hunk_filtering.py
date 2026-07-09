@@ -7,8 +7,8 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.core.line_selection import write_line_ids_file
 from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.line_id_files import write_line_ids_file
 from git_stage_batch.data.selected_change.hunk_filtering import (
     apply_line_level_batch_filter_to_cached_hunk,
 )

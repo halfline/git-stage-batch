@@ -3441,6 +3441,56 @@ def test_file_scope_file_list_action_owns_live_list_rendering():
     assert helper_imports <= helper_imported_names
 
 
+def test_file_scope_file_display_action_owns_live_display_rendering():
+    """Live single-file display rendering should live in file-scope support."""
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.file_display_action",
+        fromlist=["file_display_action"],
+    )
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "file_display_action.py"
+    public_names = {
+        "show_live_file_display",
+    }
+    helper_imports = {
+        "ReviewSource",
+        "SelectedChangeKind",
+        "_",
+        "build_file_review_model",
+        "cache_binary_file_change",
+        "cache_file_as_single_hunk",
+        "cache_gitlink_change",
+        "cache_rename_change",
+        "cache_text_deletion_change",
+        "clear_last_file_review_state",
+        "exit_with_error",
+        "get_selected_change_file_path",
+        "load_line_changes_from_state",
+        "make_file_review_state",
+        "normalize_page_spec",
+        "print_binary_file_change",
+        "print_file_review",
+        "print_gitlink_change",
+        "print_line_level_changes",
+        "print_rename_change",
+        "print_text_file_deletion_change",
+        "render_binary_file_change",
+        "render_file_as_single_hunk",
+        "render_gitlink_change",
+        "render_rename_change",
+        "render_text_deletion_change",
+        "resolve_default_review_pages",
+        "text_deletion_change_is_batched",
+        "write_last_file_review_state",
+    }
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert helper_imports <= helper_imported_names
+
+
 def test_file_scope_file_list_action_owns_show_entry_flow():
     """The show file-list entrypoint should delegate live list rendering."""
     show_path = SRC_ROOT / "commands" / "show.py"

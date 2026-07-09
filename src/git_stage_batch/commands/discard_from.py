@@ -5,8 +5,11 @@ from __future__ import annotations
 import sys
 from typing import Optional
 
-from ..batch.metadata_validation import get_validated_baseline_commit, read_validated_batch_metadata
-from ..batch.source_selector import require_plain_batch_name
+from .batch_source import action_context as _action_context
+from .batch_source import binary_file_actions as _binary_file_actions
+from .batch_source import text_file_actions as _text_file_actions
+from .batch_source import text_plan_builders as _text_plan_builders
+from ..batch.metadata_validation import get_validated_baseline_commit
 from ..batch.selection import (
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
@@ -18,14 +21,7 @@ from ..batch.submodule_pointer import (
     is_batch_submodule_pointer,
     refuse_batch_submodule_pointer_lines,
 )
-from ..batch.validation import batch_exists
-from .batch_source import binary_file_actions as _binary_file_actions
-from .batch_source import text_file_actions as _text_file_actions
-from .batch_source import text_plan_builders as _text_plan_builders
 from ..data.file_review.records import FileReviewAction
-from ..data.file_review.state import (
-    resolve_batch_source_action_scope,
-)
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
@@ -50,31 +46,18 @@ def command_discard_from_batch(
         patterns: Optional gitignore-style file patterns to filter batch files.
     """
     require_git_repository()
-    batch_name = require_plain_batch_name(batch_name, "discard")
-    scope_resolution = resolve_batch_source_action_scope(
-        FileReviewAction.DISCARD_FROM_BATCH,
+    raw_selector = batch_name
+    context = _action_context.resolve_plain_batch_source_action_context(
+        raw_selector,
+        review_action=FileReviewAction.DISCARD_FROM_BATCH,
         command_name="discard",
-        batch_name=batch_name,
         line_ids=line_ids,
         file=file,
         patterns=patterns,
     )
-    file = scope_resolution.file
-
-    # Check batch exists
-    if not batch_exists(batch_name):
-        exit_with_error(_("Batch '{name}' does not exist").format(name=batch_name))
-
-    # Read and validate batch metadata
-    try:
-        metadata = read_validated_batch_metadata(batch_name)
-    except BatchMetadataError as e:
-        exit_with_error(str(e))
-
-    all_files = metadata.get("files", {})
-
-    if not all_files:
-        exit_with_error(_("Batch '{name}' is empty").format(name=batch_name))
+    batch_name = context.batch_name
+    file = context.file
+    all_files = context.all_files
 
     file = resolve_current_batch_binary_file_scope(batch_name, all_files, file, patterns, line_ids)
 

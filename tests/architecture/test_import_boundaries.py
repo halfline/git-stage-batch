@@ -8873,6 +8873,79 @@ def test_batch_realized_entries_uses_public_entry_helpers():
     assert violations == []
 
 
+def test_batch_line_mapping_owns_public_mapping_type():
+    """Line mapping data types should live outside the match algorithm."""
+    line_mapping = __import__(
+        "git_stage_batch.batch.line_mapping",
+        fromlist=["line_mapping"],
+    )
+    match = __import__(
+        "git_stage_batch.batch.match",
+        fromlist=["match"],
+    )
+    line_mapping_path = SRC_ROOT / "batch" / "line_mapping.py"
+    public_names = {
+        "LineMapping",
+    }
+    moved_names = {
+        "IntVector",
+        "_close_vector",
+        "_lookup_line_mapping",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "attribution.py": public_names,
+        SRC_ROOT / "batch" / "baseline_edits.py": public_names,
+        SRC_ROOT / "batch" / "discard.py": public_names,
+        SRC_ROOT / "batch" / "display.py": public_names,
+        SRC_ROOT / "batch" / "merge.py": public_names,
+        SRC_ROOT / "batch" / "merge_validation.py": public_names,
+        SRC_ROOT / "batch" / "ownership_remapping.py": public_names,
+        SRC_ROOT / "batch" / "presence_constraints.py": public_names,
+        SRC_ROOT / "batch" / "realized_mapping.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(line_mapping)
+        assert public_name not in vars(match)
+    assert moved_names.isdisjoint(vars(match))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == line_mapping_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.match":
+                disallowed_names = imported_names & (public_names | moved_names)
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.line_mapping":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & {
+                "_close_vector",
+                "_lookup_line_mapping",
+            }
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_baseline_correspondence_stays_out_of_merge_module():
     """Baseline restoration mapping should live outside merge operations."""
     baseline_correspondence = __import__(

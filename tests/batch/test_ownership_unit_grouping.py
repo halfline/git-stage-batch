@@ -21,6 +21,8 @@ from git_stage_batch.batch.ownership import (
 )
 from git_stage_batch.batch.ownership_units import (
     build_ownership_units_from_batch_source_lines,
+)
+from git_stage_batch.batch.ownership_unit_rebuild import (
     rebuild_ownership_from_units,
 )
 from git_stage_batch.batch.ownership_unit_selection import (

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Optional
 
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
@@ -51,6 +50,9 @@ from ..utils.paths import (
 )
 
 
+_RetainedSiftedFile = tuple[str, dict, _sift_results.SiftedFileResult]
+
+
 def command_sift_batch(source_batch: str, dest_batch: str) -> None:
     """Sift a batch to remove portions already present at tip."""
     require_git_repository()
@@ -74,7 +76,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
 
     in_place = source_batch == dest_batch
     dest_created = False
-    retained_files = []
+    retained_files: list[_RetainedSiftedFile] = []
 
     if not in_place:
         if batch_exists(dest_batch):
@@ -134,21 +136,21 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
             )
         else:
             for file_path, file_meta, result in retained_files:
-                if result["type"] == "binary":
+                if isinstance(result, _sift_results.SiftedBinaryFileResult):
                     add_binary_file_to_batch(
                         dest_batch,
-                        result["binary_change"],
+                        result.binary_change,
                         file_mode=file_meta.get("mode", "100644"),
-                        file_buffer_override=result.get("target_buffer"),
+                        file_buffer_override=result.target_buffer,
                     )
                 else:
                     _sift_persistence.add_sifted_text_file_to_batch(
                         batch_name=dest_batch,
                         file_path=file_path,
-                        target_buffer=result["target_buffer"],
-                        ownership=result["ownership"],
+                        target_buffer=result.target_buffer,
+                        ownership=result.ownership,
                         file_mode=file_meta.get("mode", "100644"),
-                        change_type=result.get("change_type"),
+                        change_type=result.change_type,
                     )
     except MergeError as e:
         if dest_created and batch_exists(dest_batch):
@@ -208,7 +210,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
 
 def _perform_atomic_in_place_sift(
     batch_name: str,
-    retained_files: list,
+    retained_files: list[_RetainedSiftedFile],
     source_metadata: dict,
 ) -> None:
     """Perform atomic in-place sift by writing to a temp batch then replacing."""
@@ -225,21 +227,21 @@ def _perform_atomic_in_place_sift(
 
     try:
         for file_path, file_meta, result in retained_files:
-            if result["type"] == "binary":
+            if isinstance(result, _sift_results.SiftedBinaryFileResult):
                 add_binary_file_to_batch(
                     temp_batch_name,
-                    result["binary_change"],
+                    result.binary_change,
                     file_mode=file_meta.get("mode", "100644"),
-                    file_buffer_override=result.get("target_buffer"),
+                    file_buffer_override=result.target_buffer,
                 )
             else:
                 _sift_persistence.add_sifted_text_file_to_batch(
                     batch_name=temp_batch_name,
                     file_path=file_path,
-                    target_buffer=result["target_buffer"],
-                    ownership=result["ownership"],
+                    target_buffer=result.target_buffer,
+                    ownership=result.ownership,
                     file_mode=file_meta.get("mode", "100644"),
-                    change_type=result.get("change_type"),
+                    change_type=result.change_type,
                 )
 
         temp_commit = run_git_command(
@@ -267,7 +269,7 @@ def _perform_atomic_in_place_sift(
 
 
 def _source_buffers_from_sift_results(
-    retained_files: list,
+    retained_files: list[_RetainedSiftedFile],
 ) -> dict[str, LineBuffer]:
     """Return source buffers held by retained sift results."""
     source_buffers: dict[str, LineBuffer] = {}
@@ -278,19 +280,16 @@ def _source_buffers_from_sift_results(
     return source_buffers
 
 
-def _close_sifted_results(retained_files: list) -> None:
+def _close_sifted_results(retained_files: list[_RetainedSiftedFile]) -> None:
     """Close target buffers held by retained sift results."""
     for _file_path, _file_meta, result in retained_files:
-        target_buffer = _target_buffer_from_sift_result(result)
-        if target_buffer is not None:
-            target_buffer.close()
+        result.close()
 
 
-def _target_buffer_from_sift_result(result: dict) -> LineBuffer | None:
-    target_buffer = result.get("target_buffer")
-    if isinstance(target_buffer, LineBuffer):
-        return target_buffer
-    return None
+def _target_buffer_from_sift_result(
+    result: _sift_results.SiftedFileResult,
+) -> LineBuffer | None:
+    return result.target_source_buffer()
 
 
 def _handle_empty_source_batch(source_batch: str, dest_batch: str) -> None:

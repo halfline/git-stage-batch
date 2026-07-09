@@ -47,26 +47,6 @@ class SiftedBinaryFileResult:
         if self.target_buffer is not None:
             self.target_buffer.close()
 
-    def __contains__(self, key: str) -> bool:
-        if key in {"type", "binary_change"}:
-            return True
-        return key == "target_buffer" and self.target_buffer is not None
-
-    def __getitem__(self, key: str) -> object:
-        if key == "type":
-            return "binary"
-        if key == "binary_change":
-            return self.binary_change
-        if key == "target_buffer" and self.target_buffer is not None:
-            return self.target_buffer
-        raise KeyError(key)
-
-    def get(self, key: str, default: object = None) -> object:
-        try:
-            return self[key]
-        except KeyError:
-            return default
-
 
 @dataclass
 class SiftedTextFileResult:
@@ -81,26 +61,6 @@ class SiftedTextFileResult:
 
     def close(self) -> None:
         self.target_buffer.close()
-
-    def __contains__(self, key: str) -> bool:
-        return key in {"type", "ownership", "target_buffer", "change_type"}
-
-    def __getitem__(self, key: str) -> object:
-        if key == "type":
-            return "text"
-        if key == "ownership":
-            return self.ownership
-        if key == "target_buffer":
-            return self.target_buffer
-        if key == "change_type":
-            return self.change_type
-        raise KeyError(key)
-
-    def get(self, key: str, default: object = None) -> object:
-        try:
-            return self[key]
-        except KeyError:
-            return default
 
 
 SiftedFileResult = SiftedBinaryFileResult | SiftedTextFileResult

@@ -7576,6 +7576,41 @@ def test_tui_file_review_prompts_own_action_vocabulary():
     assert "Review action:" in prompt_text
 
 
+def test_tui_action_prompt_menu_owns_grouped_section_layout():
+    """Interactive action prompt menu layout should stay out of input prompts."""
+    prompts = __import__(
+        "git_stage_batch.tui.prompts",
+        fromlist=["prompts"],
+    )
+    action_prompt_menu = __import__(
+        "git_stage_batch.tui.action_prompt_menu",
+        fromlist=["action_prompt_menu"],
+    )
+    prompts_path = SRC_ROOT / "tui" / "prompts.py"
+    menu_path = SRC_ROOT / "tui" / "action_prompt_menu.py"
+    prompts_text = prompts_path.read_text()
+    menu_text = menu_path.read_text()
+    prompts_imports_menu = any(
+        imported_module == "git_stage_batch.tui"
+        and any(alias.name == "action_prompt_menu" for alias in node.names)
+        for imported_module, node in _import_from_nodes(prompts_path)
+    )
+    public_names = {
+        "format_menu_section_lines",
+    }
+
+    assert public_names <= vars(action_prompt_menu).keys()
+    assert public_names.isdisjoint(vars(prompts))
+    assert prompts_imports_menu
+    assert "shutil.get_terminal_size" not in prompts_text
+    assert "ANSI_PATTERN" not in prompts_text
+    assert "_visible_len" not in prompts_text
+    assert "format_menu_section_lines" in menu_text
+    assert "shutil.get_terminal_size" in menu_text
+    assert "ANSI_PATTERN" in menu_text
+    assert "format_hotkey" in menu_text
+
+
 def test_tui_file_review_action_router_owns_standard_actions():
     """TUI file review action router should own standard action gates."""
     browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"

@@ -7,6 +7,12 @@ from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING, Any
 
+from .absence_constraints import (
+    AbsenceChoice as _MergeAbsenceChoice,
+    absence_ambiguity_key as _merge_absence_ambiguity_key,
+    absence_choices_for_claim as _merge_absence_choices_for_claim,
+    apply_absence_constraints as _apply_merge_absence_constraints,
+)
 from . import baseline_edits as _baseline_edits
 from .baseline_edits import ReplacementOriginChoice as _BaselineReplacementOriginChoice
 from .baseline_correspondence import (
@@ -31,16 +37,13 @@ from .realized_entries import (
     _RealizedEntryContentSequence,
     _as_realized_entries,
     _backing_content_sequence,
-    _entry_content_at,
     _entry_is_claimed_at,
     _entry_source_line_at,
     _entry_target_line_at,
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
 from .realized_boundaries import (
-    boundary_choices_after_source_line as _boundary_choices_for_source_line,
     find_boundary_after_source_line as _locate_boundary_after_source_line,
-    find_realization_fallback_boundary as _realization_fallback_boundary,
     sequence_present_at_boundary as _boundary_sequence_present,
 )
 from ..core.line_selection import LineRanges, LineSelection
@@ -74,10 +77,6 @@ _MERGE_CANDIDATE_CAP = 50
 def _byte_chunks(chunks: Iterable[Any]) -> Iterator[bytes]:
     for chunk in chunks:
         yield bytes(chunk)
-
-
-def _normalize_line_content(content: Any) -> bytes:
-    return normalize_line_endings(bytes(content))
 
 
 def _merge_result_line_ending_from_lines(
@@ -395,98 +394,6 @@ def _apply_presence_constraints_with_mapping(
     return result
 
 
-def _apply_absence_constraints(
-    entries: Sequence[_RealizedEntry],
-    deletion_claims: list['AbsenceClaim'],
-    *,
-    strict: bool = True,
-    resolution: _MergeResolution | None = None,
-) -> _RealizedEntries:
-    """Apply absence constraints with boundary enforcement.
-
-    For each absence claim:
-    1. Find the structural boundary after the anchor line
-    2. Suppress forbidden sequence at that boundary using appropriate mode
-
-    Two enforcement modes controlled by 'strict' parameter:
-
-    Strict mode (strict=True) - for applying batch ownership:
-    - Used when merging into live working tree that may have diverged
-    - Exact match at boundary: suppress
-    - Found nearby but not at boundary: raise MergeError (structural conflict)
-    - Not found: no-op (already suppressed or never existed)
-
-    Realization mode (strict=False) - for realized batch content construction:
-    - Used when building display/storage content from baseline
-    - Exact match at boundary: suppress
-    - Not at boundary: no-op (baseline may not have content there)
-
-    Both modes fail if anchor boundary itself cannot be determined (MissingAnchorError
-    or AmbiguousAnchorError), as this indicates a real structural inconsistency.
-
-    Args:
-        entries: Realized entries with source provenance from presence pass
-        deletion_claims: Absence constraints with structural anchors
-        strict: If True, use strict enforcement (merge). If False, lenient (realization)
-
-    Returns:
-        Entries with forbidden sequences suppressed at their anchored boundaries
-
-    Raises:
-        MissingAnchorError: If anchor line not present in realized content
-        AmbiguousAnchorError: If anchor boundary cannot be determined uniquely
-        MergeError: If strict=True and sequence found nearby but not at boundary
-    """
-    result = _as_realized_entries(entries)
-    if not deletion_claims:
-        return result
-
-    suppress_fn = _suppress_at_boundary_strict if strict else _suppress_at_boundary_for_realization
-
-    for claim_index, claim in enumerate(deletion_claims):
-        if not claim.content_lines:
-            continue
-
-        forbidden_sequence = [
-            normalize_line_endings(line)
-            for line in claim.content_lines
-        ]
-
-        ambiguity_key = _absence_ambiguity_key(
-            claim_index,
-            claim.anchor_line,
-            forbidden_sequence,
-        )
-
-        if resolution is not None and ambiguity_key in resolution.decisions:
-            old_result = result
-            result = _suppress_absence_with_resolution(
-                result,
-                claim.anchor_line,
-                forbidden_sequence,
-                ambiguity_key,
-                resolution,
-            )
-            if result is not old_result and old_result is not entries:
-                old_result.close()
-            continue
-
-        # Find boundary (fails if ambiguous or missing - appropriate for both modes)
-        try:
-            boundary = _locate_boundary_after_source_line(result, claim.anchor_line)
-        except _MissingAnchorError:
-            if strict:
-                raise
-            boundary = _realization_fallback_boundary(result, claim.anchor_line)
-
-        old_result = result
-        result = suppress_fn(result, boundary, forbidden_sequence)
-        if result is not old_result and old_result is not entries:
-            old_result.close()
-
-    return result
-
-
 def _missing_claimed_lines(
     entries: Sequence[_RealizedEntry],
     presence_line_set: LineSelection
@@ -536,7 +443,7 @@ def satisfy_constraints(
     )
 
     try:
-        updated_entries = _apply_absence_constraints(
+        updated_entries = _apply_merge_absence_constraints(
             realized_entries,
             deletion_claims,
             strict=strict,
@@ -562,7 +469,7 @@ def satisfy_constraints(
             previous_entries.close()
         realized_entries = updated_entries
 
-        updated_entries = _apply_absence_constraints(
+        updated_entries = _apply_merge_absence_constraints(
             realized_entries,
             deletion_claims,
             strict=strict,
@@ -587,16 +494,6 @@ def satisfy_constraints(
     except Exception:
         realized_entries.close()
         raise
-
-
-def _absence_ambiguity_key(
-    claim_index: int,
-    anchor_line: int | None,
-    forbidden_sequence: Sequence[bytes],
-) -> str:
-    anchor = "start" if anchor_line is None else str(anchor_line)
-    digest = hashlib.sha256(b"".join(forbidden_sequence)).hexdigest()[:12]
-    return f"absence:{claim_index}:{anchor}:{digest}"
 
 
 def _presence_ambiguity_key(
@@ -677,15 +574,6 @@ def _presence_choices_for_missing_claimed_run(
 
 
 @dataclass(frozen=True)
-class _AbsenceChoice:
-    choice_index: int
-    position: int
-    target_after_line: int | None
-    target_before_line: int | None
-    explanation: str
-
-
-@dataclass(frozen=True)
 class _PresenceChoice:
     choice_index: int
     gap_index: int
@@ -709,313 +597,6 @@ def _presence_ambiguity_target_line_range(
     if start > end:
         return None
     return start, end
-
-
-def _absence_choices_for_claim(
-    entries: Sequence[_RealizedEntry],
-    anchor_line: int | None,
-    forbidden_sequence: Sequence[bytes],
-    *,
-    max_results: int | None = None,
-) -> tuple[_AbsenceChoice, ...]:
-    """Return concrete exact-removal choices for one absence claim."""
-    positions: list[tuple[int, str]] = []
-    seen: set[int] = set()
-
-    def add_position(position: int, explanation: str) -> None:
-        if position in seen:
-            return
-        if not _sequence_matches_at_position(entries, position, list(forbidden_sequence)):
-            return
-        seen.add(position)
-        positions.append((position, explanation))
-
-    for boundary in _boundary_choices_for_source_line(entries, anchor_line):
-        add_position(boundary, _("deletion content appears at the anchored boundary"))
-        after_claimed = _position_after_claimed_insertions_at_boundary(entries, boundary)
-        if after_claimed != boundary:
-            add_position(
-                after_claimed,
-                _("deletion content appears after claimed insertions at the anchored boundary"),
-            )
-
-    if len(positions) <= 1:
-        for position in iter_sequence_occurrences_nearby(
-            entries,
-            _boundary_choices_for_source_line(entries, anchor_line)[0],
-            forbidden_sequence,
-            window=20,
-            max_results=(max_results or _MERGE_CANDIDATE_CAP) + 1,
-        ):
-            add_position(position, _("deletion content appears nearby"))
-
-    positions.sort(key=lambda item: item[0])
-    if max_results is not None:
-        positions = positions[:max_results]
-
-    choices = []
-    for index, (position, explanation) in enumerate(positions, start=1):
-        after_line = None if position == 0 else position
-        before_line = None if position + len(forbidden_sequence) >= len(entries) else position + 1
-        choices.append(
-            _AbsenceChoice(
-                choice_index=index,
-                position=position,
-                target_after_line=after_line,
-                target_before_line=before_line,
-                explanation=explanation,
-            )
-        )
-    return tuple(choices)
-
-
-def _suppress_absence_with_resolution(
-    entries: Sequence[_RealizedEntry],
-    anchor_line: int | None,
-    forbidden_sequence: list[bytes],
-    ambiguity_key: str,
-    resolution: _MergeResolution,
-) -> _RealizedEntries:
-    choice_index = resolution.decisions.get(ambiguity_key)
-    if choice_index is None:
-        raise _MergeError(_("Missing merge resolution for {key}").format(key=ambiguity_key))
-    choices = _absence_choices_for_claim(
-        entries,
-        anchor_line,
-        forbidden_sequence,
-        max_results=_MERGE_CANDIDATE_CAP + 1,
-    )
-    for choice in choices:
-        if choice.choice_index == choice_index:
-            return _remove_sequence_at_position(entries, choice.position, forbidden_sequence)
-    raise _MergeError(_("Selected merge resolution is no longer valid"))
-
-
-def _sequence_matches_at_position(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    sequence: list[bytes]
-) -> bool:
-    """Check if sequence matches entries starting at exact position.
-
-    Args:
-        entries: Realized entries
-        position: Starting position to check (0-indexed)
-        sequence: Normalized sequence to match
-
-    Returns:
-        True if sequence matches at position, False otherwise
-    """
-    if position + len(sequence) > len(entries):
-        return False
-
-    return all(
-        _normalize_line_content(_entry_content_at(entries, position + i)) == sequence[i]
-        for i in range(len(sequence))
-    )
-
-
-def _find_sequence_nearby(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    sequence: list[bytes],
-    window: int = 20
-) -> int | None:
-    """Search for sequence within window after position.
-
-    Args:
-        entries: Realized entries
-        position: Starting position for search window (0-indexed)
-        sequence: Normalized sequence to find
-        window: Number of positions to search after position
-
-    Returns:
-        Position where sequence was found, or None if not found
-    """
-    search_end = min(position + window, len(entries) - len(sequence) + 1)
-
-    for check_pos in range(position + 1, search_end):
-        if _sequence_matches_at_position(entries, check_pos, sequence):
-            return check_pos
-
-    return None
-
-
-def iter_sequence_occurrences_nearby(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    sequence: Sequence[bytes],
-    *,
-    window: int,
-    max_results: int,
-) -> Iterator[int]:
-    """Yield exact nearby sequence positions after a boundary."""
-    search_end = min(position + window, len(entries) - len(sequence) + 1)
-    result_count = 0
-    for check_pos in range(position + 1, search_end):
-        if _sequence_matches_at_position(entries, check_pos, list(sequence)):
-            yield check_pos
-            result_count += 1
-            if result_count >= max_results:
-                return
-
-
-def _remove_sequence_at_position(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    sequence: list[bytes]
-) -> _RealizedEntries:
-    """Remove sequence from entries at exact position.
-
-    Args:
-        entries: Realized entries
-        position: Position where sequence starts (0-indexed)
-        sequence: Sequence to remove (length determines how many entries removed)
-
-    Returns:
-        New list with sequence removed
-    """
-    return _as_realized_entries(entries).without_range(
-        position,
-        position + len(sequence),
-    )
-
-
-def _position_after_claimed_insertions_at_boundary(
-    entries: Sequence[_RealizedEntry],
-    position: int
-) -> int:
-    """Return the first position after contiguous claimed entries at boundary."""
-    check_pos = position
-
-    if isinstance(entries, _RealizedEntries):
-        for run in entries.provenance_runs(position, len(entries)):
-            if not run.is_claimed:
-                break
-            check_pos = run.dest_end
-        return check_pos
-
-    while check_pos < len(entries) and _entry_is_claimed_at(entries, check_pos):
-        check_pos += 1
-
-    return check_pos
-
-
-def _suppress_at_boundary_strict(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    forbidden_sequence: list[bytes]
-) -> _RealizedEntries:
-    """Suppress forbidden sequence with strict enforcement for merge operations.
-
-    This enforces absence constraints with two-phase checking:
-
-    Phase 1: Exact boundary enforcement
-    - If sequence matches at exact boundary: suppress it (remove from entries)
-    - If sequence not at exact boundary: move to phase 2
-
-    Phase 2: Conservative nearby ambiguity check
-    - Search within a limited window after the boundary (20 entries)
-    - If forbidden sequence appears nearby but not at exact boundary,
-      this indicates structural displacement (e.g., presence constraint
-      insertions pushed the deletion target away from its anchored position)
-    - Raise MergeError rather than silently failing to delete displaced content
-
-    This is not general fuzzy matching. It is a conservative structural safety
-    check: the deletion content must be suppressed at the exact anchored boundary.
-    Finding it nearby indicates the batch was created from a different file version
-    where the deletion target was positioned differently.
-
-    Used when applying batch ownership to live working tree lines.
-
-    Args:
-        entries: Realized entries
-        position: Exact boundary position to check (0-indexed)
-        forbidden_sequence: Sequence that must not appear at this position (normalized)
-
-    Returns:
-        Entries with sequence removed if found at exact position
-
-    Raises:
-        MergeError: If sequence appears nearby but not at exact boundary (displacement)
-    """
-    # Phase 1: Check exact match at boundary
-    if _sequence_matches_at_position(entries, position, forbidden_sequence):
-        return _remove_sequence_at_position(entries, position, forbidden_sequence)
-
-    after_claimed_insertions = _position_after_claimed_insertions_at_boundary(
-        entries,
-        position
-    )
-    if after_claimed_insertions != position:
-        if _sequence_matches_at_position(
-            entries,
-            after_claimed_insertions,
-            forbidden_sequence
-        ):
-            return _remove_sequence_at_position(
-                entries,
-                after_claimed_insertions,
-                forbidden_sequence
-            )
-
-    # Phase 2: Check for nearby displacement (conservative safety check)
-    nearby_pos = _find_sequence_nearby(entries, position, forbidden_sequence, window=20)
-    if nearby_pos is not None:
-        raise _MergeError(
-            _("Batch was created from a different version of the file")
-        )
-
-    # Not found - already suppressed or never existed
-    return _as_realized_entries(entries)
-
-
-def _suppress_at_boundary_for_realization(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    forbidden_sequence: list[bytes]
-) -> _RealizedEntries:
-    """Suppress forbidden sequence with lenient enforcement for content realization.
-
-    This enforces absence constraints only when exact match exists at boundary:
-    - If sequence matches at exact boundary: suppress it (remove from entries)
-    - If sequence not at exact boundary: no-op (baseline may not have content there)
-
-    Used when building display/storage content from baseline. The baseline may
-    legitimately not have the deletion content at the expected anchor, or may
-    not have it at all. We only suppress if there's an exact structural match.
-
-    Args:
-        entries: Realized entries
-        position: Exact boundary position to check (0-indexed)
-        forbidden_sequence: Sequence that must not appear at this position (normalized)
-
-    Returns:
-        Entries with sequence removed if found at exact position, otherwise unchanged
-    """
-    # Only suppress if exact match at boundary
-    if _sequence_matches_at_position(entries, position, forbidden_sequence):
-        return _remove_sequence_at_position(entries, position, forbidden_sequence)
-
-    after_claimed_insertions = _position_after_claimed_insertions_at_boundary(
-        entries,
-        position
-    )
-    if after_claimed_insertions != position:
-        if _sequence_matches_at_position(
-            entries,
-            after_claimed_insertions,
-            forbidden_sequence
-        ):
-            return _remove_sequence_at_position(
-                entries,
-                after_claimed_insertions,
-                forbidden_sequence
-            )
-
-    # Not at boundary - no-op, don't suppress
-    # (Baseline might not have this content or it might be elsewhere)
-    return _as_realized_entries(entries)
 
 
 def _line_slice_equals(
@@ -1486,12 +1067,12 @@ def _enumerate_merge_batch_candidates_acquired(
             normalize_line_endings(line)
             for line in claim.content_lines
         ]
-        ambiguity_key = _absence_ambiguity_key(
+        ambiguity_key = _merge_absence_ambiguity_key(
             claim_index,
             claim.anchor_line,
             forbidden_sequence,
         )
-        choices = _absence_choices_for_claim(
+        choices = _merge_absence_choices_for_claim(
             realized_entries,
             claim.anchor_line,
             forbidden_sequence,
@@ -1502,7 +1083,7 @@ def _enumerate_merge_batch_candidates_acquired(
         if len(choices) <= 1:
             return _MergeCandidateSet(())
 
-        valid_choices: list[_AbsenceChoice] = []
+        valid_choices: list[_MergeAbsenceChoice] = []
         for choice in choices:
             resolution = _MergeResolution({ambiguity_key: choice.choice_index})
             try:

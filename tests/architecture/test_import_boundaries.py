@@ -2917,6 +2917,43 @@ def test_file_review_output_uses_summary_module():
     assert "def _review_source_summary" not in review_output_text
 
 
+def test_file_review_footer_owns_command_rendering():
+    """File-review footer rendering should stay out of page orchestration."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    footer_output_path = SRC_ROOT / "output" / "file_review_footer.py"
+    footer_output_text = footer_output_path.read_text()
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    footer_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(footer_output_path)
+    }
+    file_review_footer = __import__(
+        "git_stage_batch.output.file_review_footer",
+        fromlist=["file_review_footer"],
+    )
+
+    assert "git_stage_batch.output.file_review_footer" in review_imports
+    assert "print_file_review_footer" in vars(file_review_footer)
+    assert "git_stage_batch.data.file_review.action_commands" not in review_imports
+    assert "git_stage_batch.data.file_review.action_commands" in footer_imports
+    assert "git_stage_batch.data.selected_change.store" not in review_imports
+    assert "git_stage_batch.data.selected_change.store" in footer_imports
+    assert "def _print_footer" not in review_output_text
+    assert "def _style_footer_command" not in review_output_text
+    assert "def _display_footer_command" not in review_output_text
+    assert "def _footer_review_state" not in review_output_text
+    assert "line_action_command" not in review_output_text
+    assert "FileReviewState" not in review_output_text
+    assert "SelectedChangeKind" not in review_output_text
+    assert "line_action_command" in footer_output_text
+    assert "FileReviewState" in footer_output_text
+    assert "SelectedChangeKind" in footer_output_text
+
+
 def test_file_review_rows_own_row_rendering():
     """File-review row rendering should stay out of page orchestration."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"

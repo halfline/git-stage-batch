@@ -9892,6 +9892,84 @@ def test_discard_line_selection_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_skip_line_selection_stays_in_command_helper():
+    """Skip line-selection editing should stay out of the command entrypoint."""
+    skip_path = SRC_ROOT / "commands" / "skip.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "skip_line_selection.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.skip_line_selection",
+        fromlist=["skip_line_selection"],
+    )
+    public_names = {"skip_line_selection"}
+    command_level_names = {
+        "append_lines_to_file",
+        "auto_add_untracked_files",
+        "cache_unstaged_file_as_single_hunk",
+        "convert_line_changes_to_serializable_dict",
+        "get_block_list_file_path",
+        "get_line_changes_json_file_path",
+        "get_processed_skip_ids_file_path",
+        "get_selected_change_file_path",
+        "get_selected_hunk_hash_file_path",
+        "load_line_changes_from_state",
+        "parse_line_selection",
+        "print_line_level_changes",
+        "print_remaining_line_changes_header",
+        "read_line_ids_file",
+        "read_text_file_contents",
+        "record_hunk_skipped",
+        "render_unstaged_file_as_single_hunk",
+        "require_line_selection_in_view",
+        "require_selected_hunk",
+        "write_line_ids_file",
+        "write_text_file_contents",
+    }
+    helper_imports = command_level_names | {
+        "NoMoreHunks",
+        "SelectedChangeKind",
+        "exit_with_error",
+        "finish_review_scoped_line_action",
+        "finish_selected_change_action",
+        "read_selected_change_kind",
+        "skip_file",
+        "undo_checkpoint",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    skip_tree = ast.parse(skip_path.read_text(), filename=str(skip_path))
+    skip_functions = {
+        node.name: node
+        for node in ast.walk(skip_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_skip_line_names = {
+        node.id
+        for node in ast.walk(skip_functions["command_skip_line"])
+        if isinstance(node, ast.Name)
+    }
+    command_skip_line_attributes = {
+        node.attr
+        for node in ast.walk(skip_functions["command_skip_line"])
+        if isinstance(node, ast.Attribute)
+    }
+    skip_selection_imports = set()
+    for imported_module, node in _import_from_nodes(skip_path):
+        if imported_module == "git_stage_batch.commands.selection":
+            skip_selection_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "skip_line_selection" in skip_selection_imports
+    assert "skip_line_selection" in command_skip_line_attributes
+    assert command_level_names.isdisjoint(command_skip_line_names)
+    assert helper_imports <= helper_imported_names
+
+
 def test_discard_line_replacement_stays_in_command_helper():
     """Discard line-replacement support should stay out of the command entrypoint."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

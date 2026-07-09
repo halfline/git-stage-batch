@@ -30,7 +30,7 @@ from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
 from git_stage_batch.core.actionable_changes import ActionableSelectionReason
 import git_stage_batch.batch.file_display as file_display_module
 import git_stage_batch.data.file_review.freshness as file_review_freshness_module
-from git_stage_batch.data.file_review.action_scope import validate_pathless_review_line_action
+from git_stage_batch.data.file_review.line_action_validation import validate_pathless_review_line_action
 from git_stage_batch.data.file_review.records import FileReviewAction, ReviewSource
 from git_stage_batch.data.file_review.selection_validation import shown_review_selections_for_action
 from git_stage_batch.data.file_review.state import (

@@ -8,6 +8,7 @@ from typing import Iterable, Iterator, Union
 from . import binary_diff as _binary_diff
 from . import diff_headers as _diff_headers
 from . import empty_file_diff as _empty_file_diff
+from . import file_metadata_diff as _file_metadata_diff
 from . import gitlink_diff as _gitlink_diff
 from . import hunk_headers as _hunk_headers
 from . import patch_headers as _patch_headers
@@ -47,18 +48,6 @@ def patch_is_empty_file_change(patch_lines: Iterable[bytes]) -> bool:
         line.rstrip(b"\n") == _empty_file_diff.SYNTHETIC_EMPTY_HUNK_HEADER
         for line in patch_lines
     )
-
-
-def _metadata_indicates_rename(metadata_lines: list[bytes]) -> bool:
-    """Return whether diff metadata describes a path rename."""
-    has_rename_from = any(line.startswith(b"rename from ") for line in metadata_lines)
-    has_rename_to = any(line.startswith(b"rename to ") for line in metadata_lines)
-    return has_rename_from and has_rename_to
-
-
-def _metadata_indicates_deleted_file(metadata_lines: list[bytes]) -> bool:
-    """Return whether diff metadata describes a deleted file."""
-    return any(line.startswith(b"deleted file mode ") for line in metadata_lines)
 
 
 class _UnifiedDiffParserBuildContext:
@@ -254,8 +243,14 @@ class _UnifiedDiffParserBuildContext:
                     is_gitlink = _gitlink_diff.metadata_indicates_gitlink(
                         metadata_lines
                     )
-                    is_rename = _metadata_indicates_rename(metadata_lines)
-                    is_deleted_file = _metadata_indicates_deleted_file(metadata_lines)
+                    is_rename = _file_metadata_diff.metadata_indicates_rename(
+                        metadata_lines
+                    )
+                    is_deleted_file = (
+                        _file_metadata_diff.metadata_indicates_deleted_file(
+                            metadata_lines
+                        )
+                    )
                     index_old_oid, index_new_oid = (
                         _gitlink_diff.gitlink_oids_from_index(metadata_lines)
                     )

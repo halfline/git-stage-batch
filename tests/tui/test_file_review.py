@@ -349,7 +349,7 @@ class TestHandleCurrentFileReview:
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
                     with patch(
-                        "git_stage_batch.tui.file_review.browser.confirm_destructive_operation",
+                        "git_stage_batch.tui.file_review.block_actions.confirm_destructive_operation",
                         return_value=True,
                     ):
                         with patch(
@@ -378,7 +378,7 @@ class TestHandleCurrentFileReview:
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
                     with patch(
-                        "git_stage_batch.tui.file_review.browser.confirm_destructive_operation",
+                        "git_stage_batch.tui.file_review.block_actions.confirm_destructive_operation",
                         return_value=True,
                     ):
                         with patch(
@@ -407,7 +407,7 @@ class TestHandleCurrentFileReview:
             ):
                 with patch("git_stage_batch.commands.show.command_show"):
                     with patch(
-                        "git_stage_batch.tui.file_review.browser.confirm_destructive_operation",
+                        "git_stage_batch.tui.file_review.block_actions.confirm_destructive_operation",
                         return_value=False,
                     ):
                         with patch(

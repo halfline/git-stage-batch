@@ -25,6 +25,8 @@ from ...batch.selection import require_line_selection_in_view
 from ...batch.source_advancement import advance_source_lines_preserving_existing_presence
 from ...batch.source_refresh import (
     acquire_batch_ownership_update_for_selection,
+)
+from ...batch.selected_line_source_refresh import (
     refresh_selected_lines_against_source_lines,
 )
 from ...batch.text_file_storage import add_file_to_batch

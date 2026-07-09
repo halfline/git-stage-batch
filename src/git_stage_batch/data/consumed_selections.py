@@ -14,7 +14,7 @@ from ..batch.ownership_translation import (
     translate_lines_to_batch_ownership,
 )
 from ..batch.source_advancement import advance_batch_source_for_file_with_provenance
-from ..batch.source_refresh import (
+from ..batch.selected_line_source_refresh import (
     refresh_selected_lines_against_new_source,
     refresh_selected_lines_against_source_lines,
 )

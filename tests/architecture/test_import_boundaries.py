@@ -9970,7 +9970,9 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
         SRC_ROOT / "batch" / "line_sequence_equality.py"
     )
     baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
-    presence_constraints_path = SRC_ROOT / "batch" / "presence_constraints.py"
+    presence_placement_choices_path = (
+        SRC_ROOT / "batch" / "presence_placement_choices.py"
+    )
     public_names = {
         "line_sequences_equal",
         "line_slice_equals",
@@ -9981,7 +9983,7 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
     }
     expected_imports = {
         baseline_edits_path: public_names,
-        presence_constraints_path: {
+        presence_placement_choices_path: {
             "line_slice_equals",
         },
     }
@@ -12911,6 +12913,83 @@ def test_batch_presence_missing_claims_own_mapping_lookup():
 
         if path in expected_imports:
             assert expected_imports[path] <= direct_public_names
+
+    assert violations == []
+
+
+def test_batch_presence_placement_choices_own_review_options():
+    """Presence placement review options should live outside realization."""
+    presence_placement_choices = __import__(
+        "git_stage_batch.batch.presence_placement_choices",
+        fromlist=["presence_placement_choices"],
+    )
+    presence_constraints = __import__(
+        "git_stage_batch.batch.presence_constraints",
+        fromlist=["presence_constraints"],
+    )
+    merge_candidate_enumeration = __import__(
+        "git_stage_batch.batch.merge_candidate_enumeration",
+        fromlist=["merge_candidate_enumeration"],
+    )
+    presence_placement_choices_path = (
+        SRC_ROOT / "batch" / "presence_placement_choices.py"
+    )
+    presence_constraints_path = SRC_ROOT / "batch" / "presence_constraints.py"
+    merge_candidate_enumeration_path = (
+        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+    )
+    public_names = {
+        "PresenceChoice",
+        "presence_ambiguity_key",
+        "presence_ambiguity_target_line_range",
+        "presence_choices_for_missing_claimed_run",
+    }
+    private_names = {
+        "_PresenceChoice",
+        "_presence_ambiguity_key",
+        "_presence_ambiguity_target_line_range",
+        "_presence_choices_for_missing_claimed_run",
+    }
+    expected_child_imports = {
+        presence_constraints_path,
+        merge_candidate_enumeration_path,
+    }
+    violations = []
+
+    assert public_names <= vars(presence_placement_choices).keys()
+    assert public_names.isdisjoint(vars(presence_constraints))
+    assert public_names.isdisjoint(vars(merge_candidate_enumeration))
+    presence_constraints_text = presence_constraints_path.read_text(encoding="utf-8")
+    assert "class PresenceChoice" not in presence_constraints_text
+    assert "def presence_ambiguity_key(" not in presence_constraints_text
+    assert "def presence_choices_for_missing_claimed_run(" not in (
+        presence_constraints_text
+    )
+    assert "def presence_ambiguity_target_line_range(" not in (
+        presence_constraints_text
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == presence_placement_choices_path:
+            continue
+
+        child_module_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch":
+                child_module_names |= imported_names & {"presence_placement_choices"}
+                continue
+            if imported_module != "git_stage_batch.batch.presence_placement_choices":
+                continue
+
+            private_imports = imported_names & private_names
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_child_imports:
+            assert "presence_placement_choices" in child_module_names
 
     assert violations == []
 

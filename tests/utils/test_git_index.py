@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from git_stage_batch.utils.git import run_git_command
+from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.git_index import (
     git_commit_tree,
     git_read_tree,

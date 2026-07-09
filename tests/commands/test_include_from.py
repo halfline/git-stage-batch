@@ -19,7 +19,7 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.git import run_git_command
+from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 

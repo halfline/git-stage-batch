@@ -1,16 +1,16 @@
 """Tests for git command execution utilities."""
 
-from git_stage_batch.utils import git as git_utils
+from git_stage_batch.utils import git_command as git_command_utils
 from git_stage_batch.utils import git_index_lock
-from git_stage_batch.utils.git import stream_git_command
-from git_stage_batch.utils.git import stream_git_diff
+from git_stage_batch.utils.git_command import stream_git_command
+from git_stage_batch.utils.git_command import stream_git_diff
 
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from git_stage_batch.utils.git import run_git_command
+from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.git_index_lock import wait_for_git_index_lock
 
 
@@ -87,7 +87,7 @@ class TestRunGitCommand:
             return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
 
         monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
-        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+        monkeypatch.setattr(git_command_utils, "run_command", fake_run_command)
 
         run_git_command(["add", "--", "file.txt"], env=command_env, cwd="/repo")
 
@@ -114,7 +114,7 @@ class TestRunGitCommand:
             return subprocess.CompletedProcess(arguments, 0, stdout="ok\n", stderr="")
 
         monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
-        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+        monkeypatch.setattr(git_command_utils, "run_command", fake_run_command)
 
         result = run_git_command(["apply", "--cached"], check=False, cwd="/repo")
 
@@ -145,7 +145,7 @@ class TestRunGitCommand:
             yield b"+new line\n"
 
         monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
-        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+        monkeypatch.setattr(git_command_utils, "run_command", fake_run_command)
 
         result = run_git_command(
             ["apply", "--cached"],
@@ -173,7 +173,7 @@ class TestRunGitCommand:
             return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
 
         monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fail_wait)
-        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+        monkeypatch.setattr(git_command_utils, "run_command", fake_run_command)
 
         original_env = {"CUSTOM": "1"}
         run_git_command(["status", "--short"], env=original_env, requires_index_lock=False)

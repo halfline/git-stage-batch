@@ -36,8 +36,9 @@ The codebase is organized as a set of layers:
 - `commands/`
   User-facing command implementations.
 - `data/`
-  Session-persistent state, selected-hunk caches, progress tracking, undo/redo,
-  page-aware file review safety state, and other workflow bookkeeping.
+  Session-persistent state, selected-change caches, progress tracking,
+  undo/redo, page-aware file review safety state, and other workflow
+  bookkeeping.
 - `core/`
   Neutral models and parsing logic for diffs, hunks, hashes, and line
   selections.
@@ -147,16 +148,24 @@ Important modules include:
 - `data.session`
   Session lifecycle, abort initialization, snapshotting, and cleanup.
 - `data.hunk_tracking`
-  Discovery, caching, navigation, hunk selection, and live filtering.
+  Discovery, navigation, selected-change orchestration, and live filtering.
+- `data.selected_change`
+  Persistence, loading, snapshots, stale-cache validation, and file-scoped views
+  for the current selected change.
 - `data.undo`
   Undo/redo checkpoints for session operations.
 - `data.line_state`
   Serialization of the currently selected line-level view.
-- `data.file_review_state`
-  Safety metadata for page-aware file reviews. It records the review source,
-  shown pages, complete actionable selections, and fingerprints of the selected
-  file view so later pathless actions can refuse stale or ambiguous operations.
-- `data.progress`, `data.file_tracking`, `data.hunk_tracking`
+- `data.file_review.state`
+  Persistence for page-aware file review safety state.
+- `data.file_review.records`
+  Dataclasses and enums that describe persisted file review state.
+- `data.file_review.pages`
+  Parsing and normalization for persisted review page selections.
+- `data.file_review.fingerprints`
+  Fingerprints of selected file views so later pathless actions can refuse
+  stale or ambiguous operations.
+- `data.progress`, `data.file_tracking`
   Progress bookkeeping across files and hunks.
 
 This layer is what makes the tool feel interactive even though many commands
@@ -250,7 +259,9 @@ The program separates data modeling from terminal rendering.
 
 - `output/`
   Knows how to print line-level changes, page-aware file reviews, multi-file
-  review lists, binary changes, patches, and colors.
+  review lists, binary changes, patches, and colors. Page-selection state
+  belongs to `data.file_review`, while `output/` owns terminal models and
+  rendering.
 - `tui/`
   Adds the interactive menu-driven front end.
 
@@ -395,8 +406,9 @@ For a contributor new to the codebase, a good reading order is:
    `src/git_stage_batch/commands/discard.py`
    Understand the core non-batch workflow.
 5. `src/git_stage_batch/data/session.py` and
-   `src/git_stage_batch/data/hunk_tracking.py`
-   Understand state and navigation.
+   `src/git_stage_batch/data/hunk_tracking.py`, then
+   `src/git_stage_batch/data/selected_change/`
+   Understand state, navigation, and selected-change persistence.
 6. `src/git_stage_batch/core/diff_parser.py` and
    `src/git_stage_batch/core/models.py`
    Understand the shared representation of change.

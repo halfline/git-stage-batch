@@ -576,9 +576,11 @@ only accept groups that are mergeable for that action, while `reset --from` can
 also accept reset-only groups.
 
 Page-aware batch reviews also persist short-lived safety state in
-`data.file_review_state`. That state records the batch name, file path, shown
-pages, complete action-specific review selections, and fingerprints of the
-selected batch view. Pathless line actions from batch commands, the
+`data.file_review.state`, with record types in `data.file_review.records` and
+batch review selection translation in `data.file_review.batch_selection`. That
+state records the batch name, file path, shown pages, complete action-specific
+review selections, and fingerprints of the selected batch view. Pathless line
+actions from batch commands, the
 corresponding omitted-path `--file` forms, and explicit `--file <path> --line`
 forms with a fresh matching review validate against this state so users cannot
 accidentally act on unshown pages, stale display IDs, or a selection that is not

@@ -1,4 +1,4 @@
-"""suggest-fixup command infrastructure and helpers."""
+"""suggest-fixup command entry points."""
 
 from __future__ import annotations
 
@@ -28,96 +28,11 @@ from ..utils.paths import (
     ensure_state_directory_exists,
     get_selected_hunk_hash_file_path,
 )
-
-
-def _get_commit_details(commit_hash: str) -> dict[str, str]:
-    """Get detailed information about a commit for JSON output.
-
-    Args:
-        commit_hash: Full or short commit hash
-
-    Returns:
-        Dictionary with hash, full_hash, subject, author, date, relative_date
-    """
-    try:
-        # Get commit details in a structured format
-        show_result = run_git_command([
-            "show", "--no-patch",
-            "--format=%h%n%H%n%s%n%an%n%ai%n%ar",
-            commit_hash
-        ], check=True, requires_index_lock=False)
-        lines = show_result.stdout.strip().split('\n')
-        if len(lines) >= 6:
-            return {
-                "hash": lines[0],
-                "full_hash": lines[1],
-                "subject": lines[2],
-                "author": lines[3],
-                "date": lines[4],
-                "relative_date": lines[5]
-            }
-    except subprocess.CalledProcessError:
-        pass
-
-    # Return minimal info when git show fails
-    return {
-        "hash": commit_hash[:7] if len(commit_hash) > 7 else commit_hash,
-        "full_hash": commit_hash,
-        "subject": "",
-        "author": "",
-        "date": "",
-        "relative_date": ""
-    }
-
-
-def _find_next_fixup_candidate(
-    file_path: str,
-    min_line: int,
-    max_line: int,
-    boundary: str,
-    last_shown_commit: str | None
-) -> str | None:
-    """Find the next commit that modified the given line range.
-
-    Returns the commit hash, or None if no more candidates found.
-    """
-    # Build the git log command
-    # If we have a last_shown_commit, search before it
-    if last_shown_commit:
-        commit_range = f"{boundary}..{last_shown_commit}^"
-    else:
-        commit_range = f"{boundary}..HEAD"
-
-    try:
-        log_result = run_git_command(
-            ["log", "-L", f"{min_line},{max_line}:{file_path}", commit_range, "--format=%H", "--max-count=1"],
-            check=True,
-            requires_index_lock=False,
-        )
-    except subprocess.CalledProcessError:
-        return None
-
-    # Parse the first commit (should only be one due to --max-count=1)
-    commits = [line.strip() for line in log_result.stdout.splitlines() if line.strip()]
-    return commits[0] if commits else None
-
-
-def _show_commit_diff_for_file(commit_hash: str, file_path: str) -> None:
-    """Show the diff from a specific commit for a specific file."""
-    try:
-        # Show what this commit changed in the file
-        show_result = run_git_command(
-            ["show", "--format=", "--color=always" if sys.stdout.isatty() else "--color=never", commit_hash, "--", file_path],
-            check=True,
-            requires_index_lock=False,
-        )
-        if show_result.stdout.strip():
-            print()
-            print(show_result.stdout.rstrip())
-            print()
-    except subprocess.CalledProcessError:
-        # File might not have been modified in this commit, or other error
-        pass
+from .fixup.history import (
+    find_next_fixup_candidate,
+    get_commit_details,
+    show_commit_diff_for_file,
+)
 
 
 def command_suggest_fixup(
@@ -241,7 +156,7 @@ def command_suggest_fixup(
 
         if porcelain:
             # JSON output
-            commit_details = _get_commit_details(candidate_commit)
+            commit_details = get_commit_details(candidate_commit)
             output = {
                 "candidate": commit_details,
                 "iteration": iteration,
@@ -261,7 +176,7 @@ def command_suggest_fixup(
                 commit_info = candidate_commit[:7]
 
             print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-            _show_commit_diff_for_file(candidate_commit, line_changes.path)
+            show_commit_diff_for_file(candidate_commit, line_changes.path)
             print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
         return
 
@@ -270,7 +185,7 @@ def command_suggest_fixup(
     iteration = state["iteration"] + 1 if state else 1
 
     # Find next candidate
-    candidate_commit = _find_next_fixup_candidate(
+    candidate_commit = find_next_fixup_candidate(
         line_changes.path,
         min_line,
         max_line,
@@ -303,7 +218,7 @@ def command_suggest_fixup(
     # Display the candidate
     if porcelain:
         # JSON output
-        commit_details = _get_commit_details(candidate_commit)
+        commit_details = get_commit_details(candidate_commit)
         output = {
             "candidate": commit_details,
             "iteration": iteration,
@@ -322,7 +237,7 @@ def command_suggest_fixup(
             commit_info = candidate_commit[:7]
 
         print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-        _show_commit_diff_for_file(candidate_commit, line_changes.path)
+        show_commit_diff_for_file(candidate_commit, line_changes.path)
         print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
 
 
@@ -468,7 +383,7 @@ def command_suggest_fixup_line(
 
         if porcelain:
             # JSON output
-            commit_details = _get_commit_details(candidate_commit)
+            commit_details = get_commit_details(candidate_commit)
             output = {
                 "candidate": commit_details,
                 "iteration": iteration,
@@ -488,7 +403,7 @@ def command_suggest_fixup_line(
                 commit_info = candidate_commit[:7]
 
             print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-            _show_commit_diff_for_file(candidate_commit, line_changes.path)
+            show_commit_diff_for_file(candidate_commit, line_changes.path)
             print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
         return
 
@@ -497,7 +412,7 @@ def command_suggest_fixup_line(
     iteration = state["iteration"] + 1 if state else 1
 
     # Find next candidate
-    candidate_commit = _find_next_fixup_candidate(
+    candidate_commit = find_next_fixup_candidate(
         line_changes.path,
         min_line,
         max_line,
@@ -530,7 +445,7 @@ def command_suggest_fixup_line(
     # Display the candidate
     if porcelain:
         # JSON output
-        commit_details = _get_commit_details(candidate_commit)
+        commit_details = get_commit_details(candidate_commit)
         output = {
             "candidate": commit_details,
             "iteration": iteration,
@@ -549,5 +464,5 @@ def command_suggest_fixup_line(
             commit_info = candidate_commit[:7]
 
         print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-        _show_commit_diff_for_file(candidate_commit, line_changes.path)
+        show_commit_diff_for_file(candidate_commit, line_changes.path)
         print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))

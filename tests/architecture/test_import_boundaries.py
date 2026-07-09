@@ -9460,6 +9460,9 @@ def test_batch_merge_candidates_uses_public_data_types():
         "git_stage_batch.batch.merge",
         fromlist=["merge"],
     )
+    merge_candidate_enumeration_path = (
+        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+    )
     public_names = {
         "MergeCandidate",
         "MergeCandidateSet",
@@ -9473,7 +9476,11 @@ def test_batch_merge_candidates_uses_public_data_types():
         "_MergeResolutionDecision",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "merge.py": public_names,
+        SRC_ROOT / "batch" / "merge.py": {
+            "MergeCandidateSet",
+            "MergeResolution",
+        },
+        merge_candidate_enumeration_path: public_names,
         SRC_ROOT / "batch" / "operation_candidates.py": {
             "MergeCandidate",
             "MergeResolution",
@@ -9519,6 +9526,76 @@ def test_batch_merge_candidates_uses_public_data_types():
     assert violations == []
 
 
+def test_batch_merge_candidate_enumeration_owns_preview_building():
+    """Merge candidate construction should live outside merge orchestration."""
+    merge_candidate_enumeration = __import__(
+        "git_stage_batch.batch.merge_candidate_enumeration",
+        fromlist=["merge_candidate_enumeration"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_candidate_enumeration_path = (
+        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+    )
+    public_names = {
+        "enumerate_merge_batch_candidates_for_lines",
+    }
+    stale_merge_names = public_names | {
+        "_BaselineReplacementOriginChoice",
+        "_MergeAbsenceChoice",
+        "_MergeCandidate",
+        "_MergeResolutionDecision",
+        "_absence_candidate_set",
+        "_enumerate_merge_batch_candidates_acquired",
+        "_merge_absence_ambiguity_key",
+        "_merge_absence_choices_for_claim",
+        "_presence_candidate_set",
+        "_replacement_origin_candidate_set",
+    }
+    expected_imports = {
+        merge_path: public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(merge_candidate_enumeration).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == merge_candidate_enumeration_path:
+            continue
+
+        direct_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.merge":
+                moved_names = imported_names & stale_merge_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.merge_candidate_enumeration":
+                continue
+
+            direct_public_names |= imported_names & public_names
+            private_imports = imported_names & {
+                name for name in stale_merge_names if name.startswith("_")
+            }
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= direct_public_names
+
+    assert violations == []
+
+
 def test_batch_baseline_edits_own_replacement_fallback():
     """Baseline-coordinate merge fallback should live outside merge."""
     baseline_edits = __import__(
@@ -9531,6 +9608,9 @@ def test_batch_baseline_edits_own_replacement_fallback():
     )
     baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
     merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_candidate_enumeration_path = (
+        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+    )
     public_names = {
         "ReplacementOriginChoice",
         "has_missing_origin_replacement_claims",
@@ -9551,12 +9631,15 @@ def test_batch_baseline_edits_own_replacement_fallback():
         "_try_apply_baseline_replacement_units",
     }
     expected_direct_imports = {
-        merge_path: {
+        merge_candidate_enumeration_path: {
             "ReplacementOriginChoice",
         },
     }
     expected_child_imports = {
         merge_path: {
+            "baseline_edits",
+        },
+        merge_candidate_enumeration_path: {
             "baseline_edits",
         },
     }
@@ -9742,6 +9825,9 @@ def test_batch_absence_constraints_own_suppression_helpers():
         fromlist=["merge"],
     )
     absence_constraints_path = SRC_ROOT / "batch" / "absence_constraints.py"
+    merge_candidate_enumeration_path = (
+        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+    )
     public_names = {
         "AbsenceChoice",
         "absence_ambiguity_key",
@@ -9764,7 +9850,14 @@ def test_batch_absence_constraints_own_suppression_helpers():
         "iter_sequence_occurrences_nearby",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "merge.py": public_names,
+        SRC_ROOT / "batch" / "presence_constraints.py": {
+            "apply_absence_constraints",
+        },
+        merge_candidate_enumeration_path: {
+            "AbsenceChoice",
+            "absence_ambiguity_key",
+            "absence_choices_for_claim",
+        },
     }
     violations = []
 

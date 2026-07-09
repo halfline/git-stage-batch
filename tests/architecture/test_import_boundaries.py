@@ -977,6 +977,53 @@ def test_git_object_io_stays_out_of_git_command_module():
     assert violations == []
 
 
+def test_git_repository_helpers_stay_out_of_git_command_module():
+    """Git repository helpers should live beside the command wrapper."""
+    git_path = SRC_ROOT / "utils" / "git.py"
+    repository_path = SRC_ROOT / "utils" / "git_repository.py"
+    git_text = git_path.read_text()
+    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_repository = __import__(
+        "git_stage_batch.utils.git_repository",
+        fromlist=["git_repository"],
+    )
+    public_names = {
+        "require_git_repository",
+        "get_git_repository_root_path",
+        "get_git_directory_path",
+        "resolve_file_path_to_repo_relative",
+    }
+    violations = []
+
+    assert public_names <= vars(git_repository).keys()
+    assert public_names.isdisjoint(vars(git_utils))
+
+    for public_name in public_names:
+        assert f"def {public_name}" not in git_text
+
+    git_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_path)
+    }
+    assert "git_stage_batch.utils.git_repository" not in git_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == repository_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.git":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & public_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
     """Batch file selection caching should not depend on hunk navigation."""
     cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"
@@ -5727,7 +5774,7 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
             "load_git_object_as_buffer",
             "load_working_tree_file_as_buffer",
         },
-        "git_stage_batch.utils.git": {
+        "git_stage_batch.utils.git_repository": {
             "get_git_repository_root_path",
         },
     }
@@ -5790,7 +5837,7 @@ def test_batch_source_text_plan_builders_own_include_text_planning():
             "load_git_object_as_buffer",
             "load_working_tree_file_as_buffer",
         },
-        "git_stage_batch.utils.git": {
+        "git_stage_batch.utils.git_repository": {
             "get_git_repository_root_path",
         },
     }
@@ -6077,7 +6124,7 @@ def test_batch_source_candidate_inputs_own_text_candidate_metadata():
             "mode_for_text_materialization",
             "normalized_text_change_type",
         },
-        "git_stage_batch.utils.git": {
+        "git_stage_batch.utils.git_repository": {
             "get_git_repository_root_path",
         },
     }

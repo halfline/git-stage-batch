@@ -6,7 +6,6 @@ import argparse
 import sys
 
 from .. import __version__
-from ..commands.again import command_again
 from ..commands.block_file import command_block_file
 from ..commands.suggest_fixup import (
     command_suggest_fixup,
@@ -36,6 +35,7 @@ from .quick_actions import expand_quick_actions
 from .reset_dispatch import dispatch_reset_command
 from .session_subcommands import (
     add_abort_subcommand,
+    add_again_subcommand,
     add_check_unstaged_subcommand,
     add_redo_subcommand,
     add_start_subcommand,
@@ -105,17 +105,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_stop_subcommand(subparsers)
 
-    # again - Clear state and start a fresh pass
-    parser_again = add_subcommand_parser(
-        subparsers,
-        "again",
-        aliases=["a"],
-        help=_("Clear state and start a fresh pass"),
-    )
-    add_auto_advance_arguments(parser_again)
-    parser_again.set_defaults(
-        func=lambda args: command_again(auto_advance=args.auto_advance)
-    )
+    add_again_subcommand(subparsers)
 
     add_undo_subcommand(subparsers)
 

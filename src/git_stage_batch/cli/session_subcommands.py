@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..commands.abort import command_abort
+from ..commands.again import command_again
 from ..commands.check_unstaged import command_check_unstaged
 from ..commands.redo import command_redo
 from ..commands.start import command_start
@@ -46,6 +47,20 @@ def add_start_subcommand(subparsers) -> None:
             context_lines=args.context_lines,
             auto_advance=args.auto_advance,
         )
+    )
+
+
+def add_again_subcommand(subparsers) -> None:
+    """Register the again subcommand."""
+    parser_again = add_subcommand_parser(
+        subparsers,
+        "again",
+        aliases=["a"],
+        help=_("Clear state and start a fresh pass"),
+    )
+    add_auto_advance_arguments(parser_again)
+    parser_again.set_defaults(
+        func=lambda args: command_again(auto_advance=args.auto_advance)
     )
 
 

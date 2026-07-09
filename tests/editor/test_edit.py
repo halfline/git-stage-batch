@@ -11,8 +11,8 @@ from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.editor.edit import (
     Editor,
     edit_lines_as_buffer,
-    export_lines_as_buffer,
 )
+from git_stage_batch.editor.line_export import export_lines_as_buffer
 
 
 class _LengthGuardedSequence(Sequence[bytes]):

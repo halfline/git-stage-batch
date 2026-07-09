@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..exceptions import CommandError, exit_with_error
+from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns
 from .batch_selected_changes import (
@@ -39,13 +39,13 @@ def resolve_batch_file_scope(
         Dictionary of file paths to file metadata for selected files
 
     Raises:
-        SystemExit: If file not found or no hunk selected when using ""
+        CommandError: If file not found or no hunk selected when using ""
     """
     if file is not None:
         if file == "":
             file_to_use = get_selected_change_file_path()
             if file_to_use is None:
-                exit_with_error(
+                raise CommandError(
                     _("No selected hunk. Run 'show' first or specify file path.")
                 )
         else:
@@ -60,7 +60,7 @@ def resolve_batch_file_scope(
     if patterns is not None:
         resolved_files = resolve_gitignore_style_patterns(all_files.keys(), patterns)
         if not resolved_files:
-            exit_with_error(
+            raise CommandError(
                 _("No files in batch '{name}' matched: {patterns}").format(
                     name=batch_name,
                     patterns=", ".join(patterns),

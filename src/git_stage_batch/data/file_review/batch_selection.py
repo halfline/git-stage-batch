@@ -13,7 +13,7 @@ from ...batch.submodule_pointer import (
     refuse_batch_submodule_pointer_lines,
 )
 from ...core.line_selection import LineRanges
-from ...exceptions import exit_with_error
+from ...exceptions import CommandError
 from ...i18n import _
 from ..batch_file_scope import resolve_batch_file_scope
 from .batch_selection_freshness import fresh_batch_review_selections_for_action
@@ -32,7 +32,7 @@ def _selection_ids_from_gutter_ids(
         if gutter_id in display_id_map:
             yield display_id_map[gutter_id]
         else:
-            exit_with_error(
+            raise CommandError(
                 _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
                     id=gutter_id
                 )
@@ -114,7 +114,7 @@ def translate_reset_batch_file_gutter_ids_to_selection_ranges(
 
     file_path = list(files.keys())[0]
     if files[file_path].get("file_type") == "binary":
-        exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
+        raise CommandError(_("Cannot use --lines with binary files. Reset the whole file instead."))
     if is_batch_submodule_pointer(files[file_path]):
         refuse_batch_submodule_pointer_lines(_("Reset"))
 
@@ -129,7 +129,7 @@ def translate_reset_batch_file_gutter_ids_to_selection_ranges(
 
     rendered = render_batch_file_display(batch_name, file_path)
     if rendered is None:
-        exit_with_error(
+        raise CommandError(
             _("No changes for file '{file}' in batch '{name}'.").format(
                 file=file_path,
                 name=batch_name,

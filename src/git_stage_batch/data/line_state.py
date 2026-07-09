@@ -7,7 +7,7 @@ from base64 import b64decode, b64encode
 from typing import Any, Optional
 
 from ..core.models import LineLevelChange, HunkHeader, LineEntry
-from ..exceptions import exit_with_error
+from ..exceptions import CommandError
 from ..i18n import _
 from .line_id_files import read_line_ids_file
 from ..utils.file_io import read_text_file_contents
@@ -77,7 +77,7 @@ def compute_remaining_changed_line_ids() -> list[int]:
     """Compute which changed line IDs haven't been processed yet."""
     line_changes = load_line_changes_from_state()
     if line_changes is None:
-        exit_with_error(_("No selected hunk. Run 'start' first."))
+        raise CommandError(_("No selected hunk. Run 'start' first."))
     all_changed_ids = set(line_changes.changed_line_ids())
     included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
     skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))

@@ -10,7 +10,6 @@ from ..commands.suggest_fixup import (
     command_suggest_fixup,
     command_suggest_fixup_line,
 )
-from ..commands.unblock_file import command_unblock_file
 from ..i18n import _
 from .apply_dispatch import dispatch_apply_command
 from .asset_subcommands import add_install_assets_subcommand
@@ -24,7 +23,10 @@ from .batch_subcommands import (
 )
 from .completion import add_completion_subcommand
 from .discard_dispatch import dispatch_discard_command
-from .file_blocking_subcommands import add_block_file_subcommand
+from .file_blocking_subcommands import (
+    add_block_file_subcommand,
+    add_unblock_file_subcommand,
+)
 from .file_arguments import add_file_argument, normalize_parsed_file_arguments
 from .file_scope import (
     FileArgument,
@@ -327,18 +329,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_block_file_subcommand(subparsers)
 
-    # unblock-file - Remove a file from blocked list
-    parser_unblock_file = add_subcommand_parser(
-        subparsers,
-        "unblock-file",
-        aliases=["ubf"],
-        help=_("Remove a file from the blocked list"),
-    )
-    parser_unblock_file.add_argument(
-        "file_path",
-        help=_("Path to the file to unblock"),
-    )
-    parser_unblock_file.set_defaults(func=lambda args: command_unblock_file(args.file_path))
+    add_unblock_file_subcommand(subparsers)
 
     # suggest-fixup - Suggest which commit the selected hunk should be fixed up to
     parser_suggest_fixup = add_subcommand_parser(

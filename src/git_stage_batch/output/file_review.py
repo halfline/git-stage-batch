@@ -16,28 +16,21 @@ from ..core.models import LineEntry, LineLevelChange, ReviewActionGroup
 from ..data.file_review.records import (
     FileReviewAction,
     FileReviewState,
-    FileReviewSelectionState,
     ReviewSource,
 )
 from ..data.file_review.action_commands import line_action_command
-from ..data.file_review.fingerprints import (
-    compute_current_file_review_diff_fingerprint,
-    fingerprint_selected_file_view,
-)
 from ..data.selected_change.store import SelectedChangeKind
-from ..exceptions import CommandError
 from ..i18n import _
 from . import file_review_layout
 from .colors import Colors
+from .file_review_action_selections import shown_line_action_selections
 from .file_review_display_ids import display_ids_for_rows
 from .file_review_model import (
     FileReviewModel,
     FileReviewPage,
-    FileReviewView,
     ReviewChange,
     ReviewChangeFragment,
 )
-from .file_review_pages import normalize_page_spec, parse_page_selection
 
 
 def _quote(value: str) -> str:
@@ -55,32 +48,6 @@ def _partly_selects_ownership_group(
         and not ownership_group.issubset(selected_ids)
         for ownership_group in ownership_group_sets
     )
-
-
-def _change_is_presence_only(change: ReviewChange) -> bool:
-    saw_changed_row = False
-    for row in change.rows:
-        if row.kind not in ("+", "-") or row.id is None:
-            continue
-        saw_changed_row = True
-        if row.kind != "+":
-            return False
-    return saw_changed_row
-
-
-def _change_is_live_splittable(change: ReviewChange) -> bool:
-    """Return whether live explicit line ranges may select part of a change."""
-    return (
-        _change_is_presence_only(change)
-        or change.reason == ActionableSelectionReason.REPLACEMENT
-    )
-
-
-def _coerce_actionable_reason(reason: str) -> ActionableSelectionReason:
-    try:
-        return ActionableSelectionReason(reason)
-    except ValueError:
-        return ActionableSelectionReason.SIMPLE
 
 
 def _reason_for_selection_ids(
@@ -533,351 +500,6 @@ def build_file_review_model(
     )
 
 
-def resolve_default_review_pages(
-    model: FileReviewModel,
-    *,
-    requested_page_spec: str | None,
-    previous_selection: LineLevelChange | None = None,
-) -> tuple[int, ...]:
-    """Resolve explicit pages, selected-hunk anchor, or default page 1."""
-    page_count = len(model.pages)
-    if requested_page_spec is not None:
-        return parse_page_selection(requested_page_spec, page_count, model.line_changes.path)
-    if page_count <= 1:
-        return (1,)
-    if previous_selection is not None and previous_selection.path == model.line_changes.path:
-        for change in model.changes:
-            if _change_overlaps_line_change(change, previous_selection):
-                return (change.first_page,)
-    return (1,)
-
-
-def _change_overlaps_line_change(change: ReviewChange, line_changes: LineLevelChange) -> bool:
-    old_numbers = [
-        line.old_line_number
-        for line in line_changes.lines
-        if line.kind != "+" and line.old_line_number is not None
-    ]
-    new_numbers = [
-        line.new_line_number
-        for line in line_changes.lines
-        if line.kind != "-" and line.new_line_number is not None
-    ]
-    return (
-        _ranges_overlap(change.old_start, change.old_end, min(old_numbers, default=None), max(old_numbers, default=None))
-        or _ranges_overlap(change.new_start, change.new_end, min(new_numbers, default=None), max(new_numbers, default=None))
-    )
-
-
-def _ranges_overlap(
-    left_start: int | None,
-    left_end: int | None,
-    right_start: int | None,
-    right_end: int | None,
-) -> bool:
-    if left_start is None or left_end is None or right_start is None or right_end is None:
-        return False
-    return left_start <= right_end and right_start <= left_end
-
-
-def _pages_containing_review_display_ids(
-    model: FileReviewModel,
-    display_ids: tuple[int, ...],
-) -> tuple[int, ...]:
-    """Return review pages containing all of the requested display IDs."""
-    if model.display_id_by_selection_id is None:
-        def display_id_for_row(row: LineEntry) -> int | None:
-            return row.id
-    else:
-        def display_id_for_row(row: LineEntry) -> int | None:
-            return model.display_id_by_selection_id.get(row.id)
-
-    wanted = set(display_ids)
-    found: set[int] = set()
-    pages: set[int] = set()
-    for page in model.pages:
-        for fragment in page.changes:
-            for row in fragment.rows:
-                if row.id is None:
-                    continue
-                display_id = display_id_for_row(row)
-                if display_id in wanted:
-                    found.add(display_id)
-                    pages.add(page.page)
-    if found != wanted:
-        return tuple()
-    return tuple(sorted(pages))
-
-
-def _change_index_containing_review_display_ids(
-    model: FileReviewModel,
-    display_ids: tuple[int, ...],
-) -> int:
-    """Return a stable nearby change index for supplemental review selections."""
-    if model.display_id_by_selection_id is None:
-        def display_id_for_row(row: LineEntry) -> int | None:
-            return row.id
-    else:
-        def display_id_for_row(row: LineEntry) -> int | None:
-            return model.display_id_by_selection_id.get(row.id)
-
-    wanted = set(display_ids)
-    for page in model.pages:
-        for fragment in page.changes:
-            row_display_ids = {
-                display_id_for_row(row)
-                for row in fragment.rows
-                if row.id is not None
-            }
-            if wanted & row_display_ids:
-                return fragment.change.index
-    return 0
-
-
-def _selection_ids_for_display_ids(
-    model: FileReviewModel,
-    display_ids: tuple[int, ...],
-) -> tuple[int, ...]:
-    """Translate review display IDs back to line-selection IDs."""
-    if model.display_id_by_selection_id is None:
-        return display_ids
-    selection_id_by_display_id = {
-        display_id: selection_id
-        for selection_id, display_id in model.display_id_by_selection_id.items()
-    }
-    return tuple(
-        selection_id_by_display_id[display_id]
-        for display_id in display_ids
-        if display_id in selection_id_by_display_id
-    )
-
-
-def _display_ids_for_change_pages(
-    model: FileReviewModel,
-    change: ReviewChange,
-    shown_pages: tuple[int, ...],
-) -> tuple[int, ...]:
-    """Return the display IDs from one visual change on the shown pages."""
-    display_ids: list[int] = []
-    seen_display_ids: set[int] = set()
-    for page_number in shown_pages:
-        page = model.pages[page_number - 1]
-        for fragment in page.changes:
-            if fragment.change.index != change.index:
-                continue
-            for display_id in display_ids_for_rows(
-                fragment.rows,
-                model.display_id_by_selection_id,
-            ):
-                if display_id in seen_display_ids:
-                    continue
-                display_ids.append(display_id)
-                seen_display_ids.add(display_id)
-    return tuple(display_ids)
-
-
-def _shown_line_action_selections(
-    model: FileReviewModel,
-    shown_pages: tuple[int, ...],
-    *,
-    source: ReviewSource,
-) -> list[ActionableSelection]:
-    """Return line-action selections fully contained by the shown pages."""
-    shown_page_set = set(shown_pages)
-    selections: list[ActionableSelection] = []
-    for change in model.changes:
-        if not change.display_ids:
-            continue
-        can_split_presence = (
-            source != ReviewSource.BATCH
-            and _change_is_presence_only(change)
-        )
-        display_ids = (
-            _display_ids_for_change_pages(model, change, shown_pages)
-            if can_split_presence else
-            change.display_ids
-        )
-        if not display_ids:
-            continue
-        pages = _pages_containing_review_display_ids(model, display_ids)
-        if not pages or not set(pages).issubset(shown_page_set):
-            continue
-        selections.append(
-            ActionableSelection(
-                display_ids=display_ids,
-                selection_ids=(
-                    _selection_ids_for_display_ids(model, display_ids)
-                    if can_split_presence else
-                    change.selection_ids
-                ),
-                reason=change.reason,
-                note=change.note,
-                actions=change.actions,
-            )
-        )
-    return selections
-
-
-def _supplemental_batch_review_selections(
-    model: FileReviewModel,
-    *,
-    visible_display_ids: set[int] | None,
-) -> tuple[FileReviewSelectionState, ...]:
-    """Persist reset ownership atoms without making them pagination changes."""
-    selections: list[FileReviewSelectionState] = []
-    primary_reset_groups = {
-        change.display_ids
-        for change in model.changes
-        if FileReviewAction.RESET_FROM_BATCH.value in change.actions
-    }
-    for group in model.review_action_groups:
-        if not group.display_ids:
-            continue
-        if group.display_ids in primary_reset_groups:
-            continue
-        display_id_set = set(group.display_ids)
-        if visible_display_ids is not None and not display_id_set.issubset(visible_display_ids):
-            continue
-        if FileReviewAction.RESET_FROM_BATCH.value not in group.actions:
-            continue
-        pages = _pages_containing_review_display_ids(model, group.display_ids)
-        if not pages:
-            continue
-        selections.append(
-            FileReviewSelectionState(
-                display_ids=group.display_ids,
-                selection_ids=group.selection_ids,
-                change_index=_change_index_containing_review_display_ids(
-                    model,
-                    group.display_ids,
-                ),
-                first_page=pages[0],
-                last_page=pages[-1],
-                reason=_coerce_actionable_reason(group.reason),
-                actions=(FileReviewAction.RESET_FROM_BATCH,),
-            )
-        )
-    return tuple(selections)
-
-
-def make_file_review_state(
-    model: FileReviewModel,
-    *,
-    source: ReviewSource,
-    batch_name: str | None,
-    shown_pages: tuple[int, ...],
-    selected_change_kind: SelectedChangeKind,
-    gutter_to_selection_id: dict[int, int] | None = None,
-    actionable_selection_groups: tuple[tuple[int, ...], ...] | None = None,
-    review_action_groups: tuple[ReviewActionGroup, ...] | None = None,
-    visible_display_ids: set[int] | None = None,
-    entire_file_shown: bool | None = None,
-) -> FileReviewState:
-    """Create persisted review state from a rendered page selection."""
-    page_count = len(model.pages)
-    shown_page_set = set(shown_pages)
-    default_actions = (
-        (
-            FileReviewAction.INCLUDE_FROM_BATCH,
-            FileReviewAction.DISCARD_FROM_BATCH,
-            FileReviewAction.APPLY_FROM_BATCH,
-            FileReviewAction.RESET_FROM_BATCH,
-        )
-        if source == ReviewSource.BATCH
-        else (
-            FileReviewAction.INCLUDE,
-            FileReviewAction.SKIP,
-            FileReviewAction.DISCARD,
-            FileReviewAction.INCLUDE_TO_BATCH,
-            FileReviewAction.DISCARD_TO_BATCH,
-        )
-    )
-    selections = []
-    for change in model.changes:
-        if not change.display_ids:
-            continue
-        is_splittable = (
-            source != ReviewSource.BATCH
-            and _change_is_live_splittable(change)
-        )
-        if is_splittable:
-            display_ids = _display_ids_for_change_pages(model, change, shown_pages)
-            if not display_ids and change.reason == ActionableSelectionReason.REPLACEMENT:
-                display_ids = change.display_ids
-        else:
-            display_ids = change.display_ids
-        if not display_ids:
-            continue
-        if visible_display_ids is not None and not set(display_ids).issubset(visible_display_ids):
-            continue
-        pages = _pages_containing_review_display_ids(
-            model,
-            display_ids,
-        )
-        if not pages:
-            continue
-        selection_actions = (
-            tuple(FileReviewAction(action) for action in change.actions)
-            if change.actions else
-            default_actions
-        )
-        selections.append(
-            FileReviewSelectionState(
-                display_ids=display_ids,
-                selection_ids=(
-                    _selection_ids_for_display_ids(model, display_ids)
-                    if is_splittable else
-                    change.selection_ids
-                ),
-                change_index=_change_index_containing_review_display_ids(
-                    model,
-                    display_ids,
-                ),
-                first_page=pages[0],
-                last_page=pages[-1],
-                reason=change.reason,
-                actions=selection_actions,
-                is_splittable=is_splittable,
-            )
-        )
-    if source == ReviewSource.BATCH and review_action_groups is not None:
-        selections.extend(
-            _supplemental_batch_review_selections(
-                model,
-                visible_display_ids=visible_display_ids,
-            )
-        )
-    computed_entire_file_shown = shown_page_set == set(range(1, page_count + 1))
-    return FileReviewState(
-        source=source,
-        batch_name=batch_name,
-        file_path=model.line_changes.path,
-        page_spec=normalize_page_spec(shown_pages, page_count),
-        shown_pages=shown_pages,
-        page_count=page_count,
-        entire_file_shown=(
-            computed_entire_file_shown
-            if entire_file_shown is None else
-            entire_file_shown
-        ),
-        selections=tuple(selections),
-        selected_change_kind=selected_change_kind,
-        selected_file_fingerprint=fingerprint_selected_file_view(
-            source=source,
-            batch_name=batch_name,
-            file_path=model.line_changes.path,
-            selected_change_kind=selected_change_kind,
-            gutter_to_selection_id=gutter_to_selection_id,
-            actionable_selection_groups=actionable_selection_groups,
-            review_action_groups=review_action_groups,
-            line_changes=model.line_changes,
-        ),
-        diff_fingerprint=compute_current_file_review_diff_fingerprint(
-            model.line_changes.path, line_changes=model.line_changes,
-        ),
-    )
-
-
 def _line_spec_for_display_ids(display_ids: tuple[int, ...]) -> str:
     if not display_ids:
         return "-"
@@ -937,7 +559,7 @@ def print_file_review(
             seen_display_ids.add(display_id)
     shown_line_spec = _line_spec_for_display_ids(tuple(shown_display_ids))
     shown_change_spec = _change_spec_for_fragments(shown_fragments)
-    complete_line_action_selections = _shown_line_action_selections(
+    complete_line_action_selections = shown_line_action_selections(
         model,
         shown_pages,
         source=source,

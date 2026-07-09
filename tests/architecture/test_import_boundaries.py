@@ -673,6 +673,34 @@ def test_cli_argument_parser_delegates_block_file_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in file_blocking_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_unblock_file_subcommand_registration():
+    """Argument parsing should not own unblock-file parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    file_blocking_subcommands_path = (
+        SRC_ROOT / "cli" / "file_blocking_subcommands.py"
+    )
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    file_blocking_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            file_blocking_subcommands_path
+        )
+    }
+    file_blocking_subcommands = __import__(
+        "git_stage_batch.cli.file_blocking_subcommands",
+        fromlist=["file_blocking_subcommands"],
+    )
+
+    assert "add_unblock_file_subcommand" in vars(file_blocking_subcommands)
+    assert "git_stage_batch.cli.file_blocking_subcommands" in argument_parser_imports
+    assert "git_stage_batch.commands.unblock_file" not in argument_parser_imports
+    assert "git_stage_batch.commands.unblock_file" in file_blocking_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in file_blocking_subcommands_imports
+
+
 def test_cli_argument_parser_delegates_stop_subcommand_registration():
     """Argument parsing should not own stop parser details."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -6378,6 +6406,7 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.discard" not in imported_modules
     assert "git_stage_batch.commands.discard_from" not in imported_modules
     assert "git_stage_batch.commands.block_file" not in imported_modules
+    assert "git_stage_batch.commands.unblock_file" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.commands.again" not in imported_modules
     assert "git_stage_batch.commands.check_unstaged" not in imported_modules

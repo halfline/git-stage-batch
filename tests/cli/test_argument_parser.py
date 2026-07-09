@@ -1508,6 +1508,22 @@ def test_parse_command_line_unblock_file_alias():
     assert callable(args.func)
 
 
+def test_parse_command_line_unblock_file_passes_args(monkeypatch):
+    """unblock-file dispatches through the file-blocking parser owner."""
+    mock_command = Mock()
+    monkeypatch.setattr(
+        file_blocking_subcommands,
+        "command_unblock_file",
+        mock_command,
+    )
+
+    args = parse_command_line(["unblock-file", "test.txt"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("test.txt")
+
+
 def test_parse_command_line_suggest_fixup():
     """Test parsing suggest-fixup command."""
     args = parse_command_line(["suggest-fixup"], quiet=True)

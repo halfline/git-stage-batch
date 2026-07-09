@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from typing import Optional
 
+from .batch_source import action_completion as _action_completion
 from .batch_source import action_context as _action_context
 from .batch_source import action_selection as _action_selection
 from .batch_source import action_plans as _action_plans
@@ -31,9 +32,6 @@ from ..batch.submodule_pointer import (
     stage_submodule_pointer_from_batch,
 )
 from ..data.file_review.records import FileReviewAction
-from ..data.file_review.state import (
-    finish_review_scoped_line_action,
-)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import (
@@ -146,7 +144,6 @@ def command_include_from_batch(
     )
     selector = context.selector
     batch_name = context.batch_name
-    scope_resolution = context.scope_resolution
 
     # Refresh index to ensure git's cached stat info is up-to-date
     git_refresh_index(check=False)
@@ -332,8 +329,7 @@ def command_include_from_batch(
     finally:
         _action_plans.close_action_plans(include_plans)
 
-    for file_path in files:
-        finish_review_scoped_line_action(scope_resolution.review_state, file_path=file_path)
+    _action_completion.finish_batch_source_action_review(context, files)
 
     if replacement_payload is not None and line_ids:
         print(

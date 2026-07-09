@@ -11242,6 +11242,30 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
     assert violations == []
 
 
+def test_realized_mapping_owns_working_range_builder():
+    """Working-range realization should stay on the realized mapping boundary."""
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    presence_constraints = __import__(
+        "git_stage_batch.batch.presence_constraints",
+        fromlist=["presence_constraints"],
+    )
+    realized_mapping = __import__(
+        "git_stage_batch.batch.realized_mapping",
+        fromlist=["realized_mapping"],
+    )
+    moved_names = {
+        "_append_working_range_with_mapping",
+        "_source_lines_are_contiguous",
+    }
+
+    assert "append_working_range_with_mapping" in vars(realized_mapping)
+    assert moved_names.isdisjoint(vars(merge))
+    assert moved_names.isdisjoint(vars(presence_constraints))
+
+
 def test_hunk_tracking_does_not_reexport_live_change_helpers():
     """Moved live-change helpers should not stay available from hunk tracking."""
     hunk_tracking = __import__(

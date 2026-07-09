@@ -5388,6 +5388,50 @@ def test_suggest_fixup_state_stays_in_data_layer():
     assert violations == []
 
 
+def test_suggest_fixup_history_stays_in_fixup_support():
+    """Git-history lookup should stay below suggest-fixup entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    history_path = SRC_ROOT / "commands" / "fixup" / "history.py"
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    history_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(history_path)
+    }
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    command_defined_functions = {
+        node.name
+        for node in command_tree.body
+        if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
+    }
+    history = __import__(
+        "git_stage_batch.commands.fixup.history",
+        fromlist=["history"],
+    )
+    history_names = {
+        "get_commit_details",
+        "find_next_fixup_candidate",
+        "show_commit_diff_for_file",
+    }
+    old_command_helper_names = {
+        "_get_commit_details",
+        "_find_next_fixup_candidate",
+        "_show_commit_diff_for_file",
+    }
+    command_names = {
+        "command_suggest_fixup",
+        "command_suggest_fixup_line",
+    }
+
+    assert history_names <= vars(history).keys()
+    assert old_command_helper_names.isdisjoint(command_defined_functions)
+    assert command_names.isdisjoint(vars(history))
+    assert "git_stage_batch.commands.fixup.history" in command_imports
+    assert "git_stage_batch.utils.git_command" in history_imports
+
+
 def test_selected_line_source_refresh_uses_public_api():
     """Cross-module source refresh callers should import public helpers."""
     source_refresh = __import__(

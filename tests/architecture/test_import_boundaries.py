@@ -5590,6 +5590,7 @@ def test_suggest_fixup_candidate_iteration_stays_in_fixup_support():
     """Suggest-fixup candidate advancement should stay below entrypoints."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
     helper_path = SRC_ROOT / "commands" / "fixup" / "candidate_iteration.py"
+    flow_path = SRC_ROOT / "commands" / "fixup" / "search_flow.py"
     helper = __import__(
         "git_stage_batch.commands.fixup.candidate_iteration",
         fromlist=["candidate_iteration"],
@@ -5611,6 +5612,10 @@ def test_suggest_fixup_candidate_iteration_stays_in_fixup_support():
         imported_module
         for imported_module, _node in _import_from_nodes(helper_path)
     }
+    flow_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(flow_path)
+    }
     command_imported_names = set()
     helper_imported_names = set()
 
@@ -5621,7 +5626,8 @@ def test_suggest_fixup_candidate_iteration_stays_in_fixup_support():
         helper_imported_names |= {alias.name for alias in node.names}
 
     assert public_names <= vars(helper).keys()
-    assert "git_stage_batch.commands.fixup.candidate_iteration" in command_imports
+    assert "git_stage_batch.commands.fixup.candidate_iteration" not in command_imports
+    assert "git_stage_batch.commands.fixup.candidate_iteration" in flow_imports
     assert "git_stage_batch.commands.fixup.history" in helper_imports
     assert "git_stage_batch.data.suggest_fixup_state" in helper_imports
     assert advanced_names.isdisjoint(command_imported_names)
@@ -5632,6 +5638,7 @@ def test_suggest_fixup_candidate_display_stays_in_fixup_support():
     """Suggest-fixup candidate output should stay below entrypoints."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
     helper_path = SRC_ROOT / "commands" / "fixup" / "candidate_display.py"
+    flow_path = SRC_ROOT / "commands" / "fixup" / "search_flow.py"
     command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
     helper_tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
     helper = __import__(
@@ -5654,6 +5661,10 @@ def test_suggest_fixup_candidate_display_stays_in_fixup_support():
         imported_module
         for imported_module, _node in _import_from_nodes(helper_path)
     }
+    flow_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(flow_path)
+    }
     command_imported_names = set()
     helper_imported_names = set()
     command_plain_imports = {
@@ -5676,7 +5687,8 @@ def test_suggest_fixup_candidate_display_stays_in_fixup_support():
         helper_imported_names |= {alias.name for alias in node.names}
 
     assert public_names <= vars(helper).keys()
-    assert "git_stage_batch.commands.fixup.candidate_display" in command_imports
+    assert "git_stage_batch.commands.fixup.candidate_display" not in command_imports
+    assert "git_stage_batch.commands.fixup.candidate_display" in flow_imports
     assert "git_stage_batch.commands.fixup.history" in helper_imports
     assert "git_stage_batch.utils.git_command" in helper_imports
     assert presentation_names.isdisjoint(command_imported_names)
@@ -5689,6 +5701,7 @@ def test_suggest_fixup_boundary_stays_in_fixup_support():
     """Suggest-fixup boundary validation should stay below entrypoints."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
     helper_path = SRC_ROOT / "commands" / "fixup" / "boundary.py"
+    flow_path = SRC_ROOT / "commands" / "fixup" / "search_flow.py"
     command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
     helper_tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
     helper = __import__(
@@ -5704,6 +5717,10 @@ def test_suggest_fixup_boundary_stays_in_fixup_support():
         imported_module
         for imported_module, _node in _import_from_nodes(helper_path)
     }
+    flow_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(flow_path)
+    }
     command_imported_names = set()
     helper_imported_names = set()
     command_plain_imports = {
@@ -5726,7 +5743,8 @@ def test_suggest_fixup_boundary_stays_in_fixup_support():
         helper_imported_names |= {alias.name for alias in node.names}
 
     assert public_names <= vars(helper).keys()
-    assert "git_stage_batch.commands.fixup.boundary" in command_imports
+    assert "git_stage_batch.commands.fixup.boundary" not in command_imports
+    assert "git_stage_batch.commands.fixup.boundary" in flow_imports
     assert "git_stage_batch.utils.git_command" in helper_imports
     assert "run_git_command" not in command_imported_names
     assert "run_git_command" in helper_imported_names
@@ -5773,6 +5791,7 @@ def test_suggest_fixup_search_state_stays_in_fixup_support():
     """Suggest-fixup search-state reset should stay below entrypoints."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
     helper_path = SRC_ROOT / "commands" / "fixup" / "search_state.py"
+    flow_path = SRC_ROOT / "commands" / "fixup" / "search_flow.py"
     helper = __import__(
         "git_stage_batch.commands.fixup.search_state",
         fromlist=["search_state"],
@@ -5793,6 +5812,10 @@ def test_suggest_fixup_search_state_stays_in_fixup_support():
         imported_module
         for imported_module, _node in _import_from_nodes(helper_path)
     }
+    flow_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(flow_path)
+    }
     command_imported_names = set()
     helper_imported_names = set()
 
@@ -5803,10 +5826,41 @@ def test_suggest_fixup_search_state_stays_in_fixup_support():
         helper_imported_names |= {alias.name for alias in node.names}
 
     assert public_names <= vars(helper).keys()
-    assert "git_stage_batch.commands.fixup.search_state" in command_imports
+    assert "git_stage_batch.commands.fixup.search_state" not in command_imports
+    assert "git_stage_batch.commands.fixup.search_state" in flow_imports
     assert "git_stage_batch.data.suggest_fixup_state" in helper_imports
     assert "suggest_fixup_state_should_reset" not in command_imported_names
     assert state_names <= helper_imported_names
+
+
+def test_suggest_fixup_search_flow_stays_in_fixup_support():
+    """Suggest-fixup post-target flow should stay below entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    helper_path = SRC_ROOT / "commands" / "fixup" / "search_flow.py"
+    helper = __import__(
+        "git_stage_batch.commands.fixup.search_flow",
+        fromlist=["search_flow"],
+    )
+    public_names = {"run_suggest_fixup_search"}
+    flow_owned_modules = {
+        "git_stage_batch.commands.fixup.boundary",
+        "git_stage_batch.commands.fixup.candidate_display",
+        "git_stage_batch.commands.fixup.candidate_iteration",
+        "git_stage_batch.commands.fixup.search_state",
+    }
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(helper_path)
+    }
+
+    assert public_names <= vars(helper).keys()
+    assert "git_stage_batch.commands.fixup.search_flow" in command_imports
+    assert flow_owned_modules.isdisjoint(command_imports)
+    assert flow_owned_modules <= helper_imports
 
 
 def test_suggest_fixup_search_targets_stay_in_fixup_support():

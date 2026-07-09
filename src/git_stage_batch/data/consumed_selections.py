@@ -48,6 +48,19 @@ def read_consumed_file_metadata(file_path: str) -> dict[str, Any] | None:
     return file_metadata if isinstance(file_metadata, dict) else None
 
 
+def write_consumed_file_metadata(
+    file_path: str,
+    file_metadata: dict[str, Any],
+) -> None:
+    """Persist hidden consumed-selection metadata for one file."""
+    metadata = load_consumed_selections_metadata()
+    metadata.setdefault("files", {})[file_path] = file_metadata
+    write_text_file_contents(
+        get_session_consumed_selections_file_path(),
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+    )
+
+
 def record_consumed_selection(
     file_path: str,
     *,

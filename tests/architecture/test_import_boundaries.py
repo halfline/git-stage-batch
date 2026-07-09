@@ -6482,6 +6482,7 @@ def test_realized_boundaries_stay_out_of_merge_module():
         fromlist=["merge"],
     )
     realized_boundaries_path = SRC_ROOT / "batch" / "realized_boundaries.py"
+    absence_constraints_path = SRC_ROOT / "batch" / "absence_constraints.py"
     merge_path = SRC_ROOT / "batch" / "merge.py"
     public_names = {
         "boundary_choices_after_source_line",
@@ -6495,7 +6496,17 @@ def test_realized_boundaries_stay_out_of_merge_module():
         "_find_realization_fallback_boundary",
         "_sequence_present_at_boundary",
     }
-    imported_by_merge = set()
+    expected_imports = {
+        absence_constraints_path: {
+            "boundary_choices_after_source_line",
+            "find_boundary_after_source_line",
+            "find_realization_fallback_boundary",
+        },
+        merge_path: {
+            "find_boundary_after_source_line",
+            "sequence_present_at_boundary",
+        },
+    }
     violations = []
     realized_boundary_imports = {
         imported_module
@@ -6510,6 +6521,8 @@ def test_realized_boundaries_stay_out_of_merge_module():
         if path == realized_boundaries_path:
             continue
 
+        imported_public_names = set()
+
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
 
@@ -6523,8 +6536,8 @@ def test_realized_boundaries_stay_out_of_merge_module():
             if imported_module != "git_stage_batch.batch.realized_boundaries":
                 continue
 
-            if path == merge_path:
-                imported_by_merge |= imported_names & public_names
+            imported_public_names |= imported_names & public_names
+            if path in expected_imports:
                 for alias in node.names:
                     if alias.name not in public_names:
                         continue
@@ -6534,7 +6547,9 @@ def test_realized_boundaries_stay_out_of_merge_module():
                             f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
                         )
 
-    assert public_names <= imported_by_merge
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
     assert violations == []
 
 

@@ -23,7 +23,7 @@ from git_stage_batch.data.repository_buffers import (
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )
-from git_stage_batch.utils.git import stream_git_command
+from git_stage_batch.utils.git_command import stream_git_command
 
 
 @pytest.fixture

@@ -39,7 +39,7 @@ from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.git import run_git_command
+from git_stage_batch.utils.git_command import run_git_command
 
 
 @pytest.fixture

@@ -701,6 +701,30 @@ def test_cli_argument_parser_delegates_unblock_file_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in file_blocking_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_suggest_fixup_subcommand_registration():
+    """Argument parsing should not own suggest-fixup parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    fixup_subcommands_path = SRC_ROOT / "cli" / "fixup_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    fixup_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(fixup_subcommands_path)
+    }
+    fixup_subcommands = __import__(
+        "git_stage_batch.cli.fixup_subcommands",
+        fromlist=["fixup_subcommands"],
+    )
+
+    assert "add_suggest_fixup_subcommand" in vars(fixup_subcommands)
+    assert "git_stage_batch.cli.fixup_subcommands" in argument_parser_imports
+    assert "git_stage_batch.commands.suggest_fixup" not in argument_parser_imports
+    assert "git_stage_batch.commands.suggest_fixup" in fixup_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in fixup_subcommands_imports
+
+
 def test_cli_argument_parser_delegates_stop_subcommand_registration():
     """Argument parsing should not own stop parser details."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -6410,12 +6434,14 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.discard_from" not in imported_modules
     assert "git_stage_batch.commands.block_file" not in imported_modules
     assert "git_stage_batch.commands.unblock_file" not in imported_modules
+    assert "git_stage_batch.commands.suggest_fixup" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.commands.again" not in imported_modules
     assert "git_stage_batch.commands.check_unstaged" not in imported_modules
     assert "git_stage_batch.commands.start" not in imported_modules
     assert "git_stage_batch.commands.status" not in imported_modules
     assert "git_stage_batch.cli.file_blocking_subcommands" in imported_modules
+    assert "git_stage_batch.cli.fixup_subcommands" in imported_modules
     assert "git_stage_batch.cli.session_subcommands" in imported_modules
 
 

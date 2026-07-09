@@ -6,10 +6,7 @@ import os
 import shlex
 import sys
 
-from ..core.actionable_changes import (
-    ActionableSelection,
-    ActionableSelectionReason,
-)
+from ..core.actionable_changes import ActionableSelection
 from ..core.line_selection import format_line_ids
 from ..data.file_review.records import (
     FileReviewAction,
@@ -22,10 +19,7 @@ from ..i18n import _
 from .colors import Colors
 from .file_review_action_selections import shown_line_action_selections
 from .file_review_display_ids import display_ids_for_rows
-from .file_review_model import (
-    FileReviewModel,
-    ReviewChange,
-)
+from .file_review_model import FileReviewModel
 from .file_review_rows import (
     maximum_display_id_digit_count,
     print_file_review_rows,
@@ -176,15 +170,6 @@ def _line_spec_for_selections(selections: list[ActionableSelection]) -> str:
     for selection in selections:
         display_ids.extend(selection.display_ids)
     return format_line_ids(display_ids)
-
-
-def _review_change_heading_action(change: ReviewChange) -> str:
-    """Return the concise action label shown for one review change."""
-    if change.reason == ActionableSelectionReason.REPLACEMENT:
-        return _("select together")
-    if change.actions == (FileReviewAction.RESET_FROM_BATCH.value,):
-        return _("reset")
-    return _("select")
 
 
 def _print_header(

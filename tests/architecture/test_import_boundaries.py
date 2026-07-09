@@ -183,9 +183,14 @@ def test_diff_parser_uses_core_buffer_boundary():
         imported_module
         for imported_module, _node in _import_from_nodes(diff_parser_path)
     }
+    imported_exception_names = set()
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        if imported_module == "git_stage_batch.exceptions":
+            imported_exception_names |= {alias.name for alias in node.names}
 
     assert "git_stage_batch.core.buffer" in imported_modules
     assert "git_stage_batch.editor" not in imported_modules
+    assert imported_exception_names == {"CommandError"}
 
 
 def test_patch_header_queries_stay_in_diff_parser():

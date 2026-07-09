@@ -62,6 +62,7 @@ from ..commands.undo import command_undo
 from ..exceptions import CommandError
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
+from .auto_advance_options import add_auto_advance_arguments
 from .completion import command_complete_files
 from .file_arguments import add_file_argument, normalize_parsed_file_arguments
 from .file_scope import (
@@ -85,24 +86,6 @@ def _add_subcommand_parser(
         command_name,
         help_topic=help_topic,
         **kwargs,
-    )
-
-
-def _add_auto_advance_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add controls for selecting the next hunk after an action."""
-    auto_advance = parser.add_mutually_exclusive_group()
-    auto_advance.add_argument(
-        "--auto-advance",
-        dest="auto_advance",
-        action="store_true",
-        default=None,
-        help=_("Select the next hunk after the command completes"),
-    )
-    auto_advance.add_argument(
-        "--no-auto-advance",
-        dest="auto_advance",
-        action="store_false",
-        help=_("Leave no hunk selected after the command completes"),
     )
 
 
@@ -171,7 +154,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="N",
         help=_("Number of context lines in diff output (default: 3)"),
     )
-    _add_auto_advance_arguments(parser_start)
+    add_auto_advance_arguments(parser_start)
     parser_start.set_defaults(
         func=lambda args: command_start(
             context_lines=args.context_lines,
@@ -202,7 +185,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["a"],
         help=_("Clear state and start a fresh pass"),
     )
-    _add_auto_advance_arguments(parser_again)
+    add_auto_advance_arguments(parser_again)
     parser_again.set_defaults(
         func=lambda args: command_again(auto_advance=args.auto_advance)
     )
@@ -476,7 +459,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    _add_auto_advance_arguments(parser_include)
+    add_auto_advance_arguments(parser_include)
 
     def dispatch_include(args: argparse.Namespace) -> None:
         replacement_requested = args.as_text is not None or args.as_stdin
@@ -605,7 +588,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
           "If PATH omitted, uses selected hunk's file. "
           "Without --line, skips all hunks from the file."),
     )
-    _add_auto_advance_arguments(parser_skip)
+    add_auto_advance_arguments(parser_skip)
 
     def dispatch_skip(args: argparse.Namespace) -> None:
         resolved_file_scope = resolve_live_file_scope(args.file, args.file_patterns)
@@ -689,7 +672,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    _add_auto_advance_arguments(parser_discard)
+    add_auto_advance_arguments(parser_discard)
 
     def dispatch_discard(args: argparse.Namespace) -> None:
         replacement_requested = args.as_text is not None or args.as_stdin

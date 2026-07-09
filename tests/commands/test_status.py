@@ -491,9 +491,9 @@ class TestCommandStatus:
         capsys,
     ):
         """Batch-file status should not advertise hidden-page line IDs."""
-        import git_stage_batch.output.file_review as file_review
+        import git_stage_batch.output.file_review_layout as file_review_layout
 
-        monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
+        monkeypatch.setattr(file_review_layout, "body_budget", lambda: 1)
         test_file = temp_git_repo / "file.txt"
         original = [f"line {number}\n" for number in range(1, 31)]
         test_file.write_text("".join(original))
@@ -531,9 +531,9 @@ class TestCommandStatus:
         capsys,
     ):
         """Live file status should not advertise hidden-page line IDs."""
-        import git_stage_batch.output.file_review as file_review
+        import git_stage_batch.output.file_review_layout as file_review_layout
 
-        monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
+        monkeypatch.setattr(file_review_layout, "body_budget", lambda: 1)
         test_file = temp_git_repo / "file.txt"
         original = [f"line {number}\n" for number in range(1, 31)]
         test_file.write_text("".join(original))
@@ -564,9 +564,9 @@ class TestCommandStatus:
         capsys,
     ):
         """Status should not fall back to raw IDs from a stale live review."""
-        import git_stage_batch.output.file_review as file_review
+        import git_stage_batch.output.file_review_layout as file_review_layout
 
-        monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
+        monkeypatch.setattr(file_review_layout, "body_budget", lambda: 1)
         test_file = temp_git_repo / "file.txt"
         original = [f"line {number}\n" for number in range(1, 31)]
         test_file.write_text("".join(original))

@@ -11,16 +11,14 @@ from .metadata_validation import get_validated_baseline_commit
 from .operations import create_batch
 from .query import get_batch_commit_sha, read_batch_metadata
 from .validation import batch_exists, validate_batch_name
-from ..core.models import BinaryFileChange, GitlinkChange
+from ..core.models import GitlinkChange
 from ..core.text_lifecycle import (
     TextFileChangeType,
     normalized_text_change_type,
     resolve_text_change_type,
 )
 from ..data.batch_sources import (
-    create_batch_source_commit,
     create_batch_source_commits,
-    get_batch_source_for_file,
     load_session_batch_sources,
     save_session_batch_sources,
 )
@@ -275,116 +273,6 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
     finally:
         for buffer in managed_buffers:
             buffer.close()
-
-
-def add_binary_file_to_batch(
-    batch_name: str,
-    binary_change: BinaryFileChange,
-    file_mode: str = "100644",
-    file_buffer_override: LineBuffer | None = None,
-) -> None:
-    """Add a binary file change to a batch as an atomic unit.
-
-    Binary files cannot have line-level operations, so they're stored
-    as complete file changes (added, modified, or deleted).
-
-    Args:
-        batch_name: Name of the batch
-        binary_change: BinaryFileChange describing the change
-        file_mode: Git file mode (default: 100644)
-        file_buffer_override: Optional buffer to persist for added/modified
-            binary changes instead of reading the current working tree.
-    """
-    validate_batch_name(batch_name)
-
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    # Determine file path
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-
-    current_binary_buffer: LineBuffer | None = None
-    close_current_binary_buffer = False
-    try:
-        if binary_change.is_deleted_file():
-            # Deleted binaries need the pre-delete source for baseline-style
-            # operations, so reuse/create the normal session source.
-            batch_source_commit = get_batch_source_for_file(file_path)
-            if not batch_source_commit:
-                batch_source_commit = create_batch_source_commit(file_path)
-                batch_sources = load_session_batch_sources()
-                batch_sources[file_path] = batch_source_commit
-                save_session_batch_sources(batch_sources)
-        else:
-            # Added/modified binaries are atomic and cannot be reconstructed
-            # from line ownership. Capture the current buffer as their source,
-            # even when the session already has an older source commit for
-            # this path.
-            if file_buffer_override is None:
-                full_path = get_git_repository_root_path() / file_path
-                if not full_path.exists():
-                    raise FileNotFoundError(file_path)
-                current_binary_buffer = LineBuffer.from_path(full_path)
-                close_current_binary_buffer = True
-            else:
-                current_binary_buffer = file_buffer_override
-            batch_source_commit = create_batch_source_commit(
-                file_path,
-                file_buffer_override=current_binary_buffer,
-            )
-
-        # For binary files, store the full live file bytes as the realized
-        # content. Binary batches are atomic, so the batch commit must carry
-        # the exact bytes the user is saving.
-        if binary_change.is_deleted_file():
-            # Deleted file: no content in batch (will be deleted when applied)
-            blob_sha = None
-        else:
-            assert current_binary_buffer is not None
-            blob_sha = create_git_blob(current_binary_buffer.byte_chunks())
-
-        # Update batch metadata with binary file marker
-        metadata = read_batch_metadata(batch_name)
-        if "files" not in metadata:
-            metadata["files"] = {}
-
-        metadata["files"][file_path] = {
-            "file_type": "binary",
-            "change_type": binary_change.change_type,
-            "batch_source_commit": batch_source_commit,
-            "mode": file_mode
-        }
-
-        # Write updated metadata
-        metadata_path = get_batch_metadata_file_path(batch_name)
-        write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
-
-        source_buffers = (
-            {file_path: current_binary_buffer}
-            if current_binary_buffer is not None else
-            None
-        )
-        # Update batch commit tree
-        if blob_sha:
-            # Added or modified: add file to batch commit tree
-            _content_commits.update_batch_commit(
-                batch_name,
-                file_path,
-                blob_sha,
-                file_mode,
-                source_buffers=source_buffers,
-            )
-        else:
-            # Deleted: remove file from batch commit tree
-            _content_commits.remove_file_from_batch_commit(
-                batch_name,
-                file_path,
-                source_buffers=source_buffers,
-            )
-    finally:
-        if close_current_binary_buffer and current_binary_buffer is not None:
-            current_binary_buffer.close()
 
 
 def add_gitlink_to_batch(

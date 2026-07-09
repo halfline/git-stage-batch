@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import sys
 
+from ...batch.binary_file_storage import add_binary_file_to_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.storage import (
-    add_binary_file_to_batch,
     add_file_to_batch,
     add_gitlink_to_batch,
 )

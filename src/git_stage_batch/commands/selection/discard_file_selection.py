@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...data.file_hunk_display import cache_unstaged_file_as_single_hunk
+from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.line_state import load_line_changes_from_state
 from ...data.selected_change.paths import get_selected_change_file_path

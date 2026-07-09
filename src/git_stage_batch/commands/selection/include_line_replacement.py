@@ -10,10 +10,8 @@ from ...batch.selection import require_line_selection_in_view
 from ...core.buffer import LineBuffer
 from ...core.line_selection import format_line_ids, parse_line_selection
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
-from ...data.file_hunk_display import (
-    cache_unstaged_file_as_single_hunk,
-    render_unstaged_file_as_single_hunk,
-)
+from ...data.file_hunk_display import render_unstaged_file_as_single_hunk
+from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,

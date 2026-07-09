@@ -6,10 +6,6 @@ import argparse
 import sys
 
 from .. import __version__
-from ..commands.suggest_fixup import (
-    command_suggest_fixup,
-    command_suggest_fixup_line,
-)
 from ..i18n import _
 from .apply_dispatch import dispatch_apply_command
 from .asset_subcommands import add_install_assets_subcommand
@@ -31,6 +27,7 @@ from .file_arguments import add_file_argument, normalize_parsed_file_arguments
 from .file_scope import (
     FileArgument,
 )
+from .fixup_subcommands import add_suggest_fixup_subcommand
 from .git_help import GitHelpArgumentParser
 from .include_dispatch import dispatch_include_command
 from .quick_actions import expand_quick_actions
@@ -331,56 +328,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_unblock_file_subcommand(subparsers)
 
-    # suggest-fixup - Suggest which commit the selected hunk should be fixed up to
-    parser_suggest_fixup = add_subcommand_parser(
-        subparsers,
-        "suggest-fixup",
-        aliases=["x"],
-        help=_("Suggest which commit the selected hunk should be fixed up to"),
-    )
-    parser_suggest_fixup.add_argument(
-        "--line",
-        "--lines",
-        dest="line_ids",
-        metavar="IDS",
-        help=_("Analyze only specific line IDs (e.g., '1,3,5-7')"),
-    )
-    parser_suggest_fixup.add_argument(
-        "--reset",
-        action="store_true",
-        help=_("Reset state and start search over from most recent"),
-    )
-    parser_suggest_fixup.add_argument(
-        "--abort",
-        action="store_true",
-        help=_("Clear state and exit without showing candidates"),
-    )
-    parser_suggest_fixup.add_argument(
-        "--last",
-        action="store_true",
-        help=_("Re-show the last candidate without advancing"),
-    )
-    parser_suggest_fixup.add_argument(
-        "boundary",
-        nargs="?",
-        default=None,
-        help=_("Git ref to use as lower bound for commit search (default: @{upstream})"),
-    )
-    parser_suggest_fixup.set_defaults(func=lambda args: (
-        command_suggest_fixup_line(
-            args.line_ids,
-            args.boundary,
-            reset=args.reset,
-            abort=args.abort,
-            show_last=args.last
-        ) if args.line_ids else
-        command_suggest_fixup(
-            args.boundary,
-            reset=args.reset,
-            abort=args.abort,
-            show_last=args.last
-        )
-    ))
+    add_suggest_fixup_subcommand(subparsers)
 
     add_new_subcommand(subparsers)
 

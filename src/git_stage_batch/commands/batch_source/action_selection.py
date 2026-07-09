@@ -126,6 +126,48 @@ def resolve_include_action_selection(
     )
 
 
+def resolve_discard_action_selection(
+    context: BatchSourceActionContext,
+    *,
+    line_ids: str | None,
+    patterns: list[str] | None,
+) -> BatchSourceActionSelection:
+    """Resolve discard-from file scope and optional line selection."""
+    file, files, selected_ids = _resolve_batch_source_action_files(
+        context,
+        line_ids=line_ids,
+        patterns=patterns,
+        command_name="discard",
+    )
+    _refuse_line_selection_for_atomic_files(
+        files,
+        selected_ids,
+        binary_message=_(
+            "Cannot use --lines with binary files. Discard the whole file instead."
+        ),
+        submodule_action=_("Discard"),
+    )
+    selection_ids, rendered = _translate_selected_ids(
+        context.batch_name,
+        files,
+        selected_ids,
+        FileReviewAction.DISCARD_FROM_BATCH,
+    )
+    return BatchSourceActionSelection(
+        file=file,
+        files=files,
+        selected_ids=selected_ids,
+        selection_ids=selection_ids,
+        rendered=rendered,
+        operation_parts=_operation_parts(
+            "discard",
+            context.raw_selector,
+            line_ids=line_ids,
+            file=file,
+        ),
+    )
+
+
 def _resolve_batch_source_action_files(
     context: BatchSourceActionContext,
     *,

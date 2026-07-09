@@ -11594,6 +11594,77 @@ def test_output_owns_operation_candidate_preview_rendering():
     assert "git_stage_batch.core.diff_parser" not in candidate_summary_imports
 
 
+def test_candidate_preview_snippets_own_snippet_formatting():
+    """Candidate preview snippets should stay out of target-summary derivation."""
+    candidate_preview_summary = __import__(
+        "git_stage_batch.output.candidate_preview_summary",
+        fromlist=["candidate_preview_summary"],
+    )
+    candidate_preview_snippets = __import__(
+        "git_stage_batch.output.candidate_preview_snippets",
+        fromlist=["candidate_preview_snippets"],
+    )
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    candidate_diff_path = SRC_ROOT / "output" / "candidate_preview_diff.py"
+    candidate_summary_path = SRC_ROOT / "output" / "candidate_preview_summary.py"
+    candidate_snippets_path = SRC_ROOT / "output" / "candidate_preview_snippets.py"
+    candidate_preview_text = candidate_preview_path.read_text()
+    candidate_diff_text = candidate_diff_path.read_text()
+    candidate_summary_text = candidate_summary_path.read_text()
+    candidate_snippets_text = candidate_snippets_path.read_text()
+    imports_snippets = {
+        path: any(
+            imported_module == "git_stage_batch.output"
+            and any(alias.name == "candidate_preview_snippets" for alias in node.names)
+            for imported_module, node in _import_from_nodes(path)
+        )
+        for path in (
+            candidate_preview_path,
+            candidate_diff_path,
+            candidate_summary_path,
+        )
+    }
+    snippet_names = {
+        "CANDIDATE_GUTTER_SEPARATOR",
+        "CandidateSnippetLine",
+        "candidate_line_in_range",
+        "plain_candidate_snippet_lines",
+        "shorten_candidate_overview_text",
+        "snippet_line_width",
+    }
+
+    assert snippet_names <= vars(candidate_preview_snippets).keys()
+    assert snippet_names.isdisjoint(vars(candidate_preview_summary))
+    assert all(imports_snippets.values())
+    assert "class CandidateSnippetLine" not in candidate_summary_text
+    assert "def shorten_candidate_overview_text" not in candidate_summary_text
+    assert "def plain_candidate_snippet_lines" not in candidate_summary_text
+    assert "def candidate_line_in_range" not in candidate_summary_text
+    assert "CANDIDATE_GUTTER_SEPARATOR =" not in candidate_summary_text
+    assert "candidate_preview_summary.CANDIDATE_GUTTER_SEPARATOR" not in (
+        candidate_preview_text
+    )
+    assert "candidate_preview_summary.shorten_candidate_overview_text" not in (
+        candidate_preview_text
+    )
+    assert "candidate_preview_summary.plain_candidate_snippet_lines" not in (
+        candidate_preview_text
+    )
+    assert "candidate_preview_summary.snippet_line_width" not in (
+        candidate_preview_text
+    )
+    assert "candidate_preview_summary.CANDIDATE_GUTTER_SEPARATOR" not in (
+        candidate_diff_text
+    )
+    assert "candidate_preview_summary.candidate_line_in_range" not in (
+        candidate_diff_text
+    )
+    assert "class CandidateSnippetLine" in candidate_snippets_text
+    assert "def shorten_candidate_overview_text" in candidate_snippets_text
+    assert "def plain_candidate_snippet_lines" in candidate_snippets_text
+    assert "def candidate_line_in_range" in candidate_snippets_text
+
+
 def test_candidate_preview_diff_owns_buffer_diff_rendering():
     """Candidate preview diff rendering should stay out of overview pages."""
     candidate_preview = __import__(

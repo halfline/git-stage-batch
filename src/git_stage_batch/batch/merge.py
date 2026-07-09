@@ -36,6 +36,7 @@ from .realized_boundaries import (
     boundary_choices_after_source_line as _boundary_choices_for_source_line,
     find_boundary_after_source_line as _locate_boundary_after_source_line,
     find_realization_fallback_boundary as _realization_fallback_boundary,
+    sequence_present_at_boundary as _boundary_sequence_present,
 )
 from ..core.line_selection import LineRanges, LineSelection
 from ..core.buffer import (
@@ -2757,7 +2758,7 @@ def _restore_absence_constraints(
         except _AmbiguousAnchorError:
             raise
 
-        if _sequence_present_at_boundary(result, boundary, claim.content_lines):
+        if _boundary_sequence_present(result, boundary, claim.content_lines):
             continue
 
         with _RealizedEntries() as restored_entries:
@@ -2775,31 +2776,3 @@ def _restore_absence_constraints(
             old_result.close()
 
     return result
-
-
-def _sequence_present_at_boundary(
-    entries: Sequence[_RealizedEntry],
-    boundary: int,
-    sequence: list[bytes]
-) -> bool:
-    """Check if a byte sequence is present at the exact boundary position.
-
-    Normalizes both entry content and sequence elements to LF line endings
-    for consistent comparison across CRLF/LF representations.
-
-    Args:
-        entries: Realized entries
-        boundary: Boundary position (0-indexed)
-        sequence: Byte sequence to check for
-
-    Returns:
-        True if sequence is present at boundary, False otherwise
-    """
-    if boundary + len(sequence) > len(entries):
-        return False
-
-    return all(
-        _normalize_line_content(_entry_content_at(entries, boundary + i))
-        == normalize_line_endings(sequence[i])
-        for i in range(len(sequence))
-    )

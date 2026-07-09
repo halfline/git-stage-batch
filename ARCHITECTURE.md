@@ -149,10 +149,15 @@ Important modules include:
   Undo/redo checkpoints for session operations.
 - `data.line_state`
   Serialization of the currently selected line-level view.
-- `data.file_review_state`
-  Safety metadata for page-aware file reviews. It records the review source,
-  shown pages, complete actionable selections, and fingerprints of the selected
-  file view so later pathless actions can refuse stale or ambiguous operations.
+- `data.file_review.state`
+  Persistence for page-aware file review safety state.
+- `data.file_review.records`
+  Dataclasses and enums that describe persisted file review state.
+- `data.file_review.pages`
+  Parsing and normalization for persisted review page selections.
+- `data.file_review.fingerprints`
+  Fingerprints of selected file views so later pathless actions can refuse
+  stale or ambiguous operations.
 - `data.progress`, `data.file_tracking`, `data.hunk_tracking`
   Progress bookkeeping across files and hunks.
 
@@ -247,7 +252,9 @@ The program separates data modeling from terminal rendering.
 
 - `output/`
   Knows how to print line-level changes, page-aware file reviews, multi-file
-  review lists, binary changes, patches, and colors.
+  review lists, binary changes, patches, and colors. Page-selection state
+  belongs to `data.file_review`, while `output/` owns terminal models and
+  rendering.
 - `tui/`
   Adds the interactive menu-driven front end.
 

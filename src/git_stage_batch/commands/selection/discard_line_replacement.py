@@ -13,9 +13,9 @@ from ...batch.operations import create_batch
 from ...batch.ownership import (
     BatchOwnership,
     merge_batch_ownership,
-    remap_batch_ownership_with_lineage,
     translate_lines_to_batch_ownership,
 )
+from ...batch.ownership_remapping import remap_batch_ownership_with_lineage
 from ...batch.query import read_batch_metadata
 from ...batch.replacement_line_runs import (
     ReplacementLineRun,

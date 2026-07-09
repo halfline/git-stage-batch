@@ -9,6 +9,7 @@ from git_stage_batch.cli import (
     apply_dispatch,
     argument_parser,
     discard_dispatch,
+    file_blocking_subcommands,
     file_scope,
     git_help,
     include_dispatch,
@@ -1473,6 +1474,18 @@ def test_parse_command_line_block_file_alias():
     assert args.file_path == "test.txt"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_block_file_passes_args(monkeypatch):
+    """block-file dispatches through the file-blocking parser owner."""
+    mock_command = Mock()
+    monkeypatch.setattr(file_blocking_subcommands, "command_block_file", mock_command)
+
+    args = parse_command_line(["block-file", "--local-only", "test.txt"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("test.txt", local_only=True)
 
 
 def test_parse_command_line_unblock_file():

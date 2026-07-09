@@ -29,6 +29,7 @@ from ..exceptions import CommandError
 from ..i18n import _
 from . import file_review_layout
 from .colors import Colors
+from .file_review_display_ids import display_ids_for_rows
 from .file_review_model import (
     FileReviewModel,
     FileReviewPage,
@@ -664,7 +665,7 @@ def _display_ids_for_change_pages(
         for fragment in page.changes:
             if fragment.change.index != change.index:
                 continue
-            for display_id in _display_ids_for_rows(
+            for display_id in display_ids_for_rows(
                 fragment.rows,
                 model.display_id_by_selection_id,
             ):
@@ -877,27 +878,6 @@ def make_file_review_state(
     )
 
 
-def _display_ids_for_rows(
-    rows: tuple[LineEntry, ...],
-    display_id_by_selection_id: dict[int, int] | None,
-) -> tuple[int, ...]:
-    display_ids: list[int] = []
-    seen: set[int] = set()
-    for row in rows:
-        if row.id is None:
-            continue
-        display_id = (
-            row.id
-            if display_id_by_selection_id is None else
-            display_id_by_selection_id.get(row.id)
-        )
-        if display_id is None or display_id in seen:
-            continue
-        display_ids.append(display_id)
-        seen.add(display_id)
-    return tuple(display_ids)
-
-
 def _line_spec_for_display_ids(display_ids: tuple[int, ...]) -> str:
     if not display_ids:
         return "-"
@@ -947,7 +927,10 @@ def print_file_review(
     shown_display_ids = []
     seen_display_ids: set[int] = set()
     for fragment in shown_fragments:
-        for display_id in _display_ids_for_rows(fragment.rows, model.display_id_by_selection_id):
+        for display_id in display_ids_for_rows(
+            fragment.rows,
+            model.display_id_by_selection_id,
+        ):
             if display_id in seen_display_ids:
                 continue
             shown_display_ids.append(display_id)
@@ -982,7 +965,7 @@ def print_file_review(
         for fragment in model.pages[page - 1].changes:
             change = fragment.change
             print()
-            fragment_display_ids = _display_ids_for_rows(
+            fragment_display_ids = display_ids_for_rows(
                 fragment.rows,
                 model.display_id_by_selection_id,
             )

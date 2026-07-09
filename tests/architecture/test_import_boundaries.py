@@ -747,6 +747,61 @@ def test_hunk_headers_own_hunk_header_parsing():
         assert name not in diff_parser_text
 
 
+def test_patch_headers_own_patch_file_header_parsing():
+    """Patch file header parsing should stay outside diff_parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    patch_headers_path = SRC_ROOT / "core" / "patch_headers.py"
+    diff_parser_text = diff_parser_path.read_text()
+    patch_headers_text = patch_headers_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    patch_headers = __import__(
+        "git_stage_batch.core.patch_headers",
+        fromlist=["patch_headers"],
+    )
+    public_names = {
+        "line_change_path",
+        "line_is_new_file_header",
+        "line_is_old_file_header",
+        "new_file_path_from_header",
+        "old_file_path_from_header",
+        "patch_targets_file_deletion",
+        "patch_targets_new_file",
+    }
+    helper_names = {
+        "DEV_NULL_PATH",
+        "NEW_FILE_HEADER_PREFIX",
+        "NEW_PATH_PREFIX",
+        "OLD_FILE_HEADER_PREFIX",
+        "OLD_PATH_PREFIX",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(patch_headers).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "patch_headers" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.patch_headers" not in diff_imports
+    assert "_patch_headers.line_is_old_file_header" in diff_parser_text
+    assert "_patch_headers.line_is_new_file_header" in diff_parser_text
+    assert "_patch_headers.old_file_path_from_header" in diff_parser_text
+    assert "_patch_headers.new_file_path_from_header" in diff_parser_text
+    assert "_patch_headers.line_change_path" in diff_parser_text
+    assert "_patch_headers.patch_targets_file_deletion" in diff_parser_text
+    assert "_patch_headers.patch_targets_new_file" in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_names:
+        assert name in patch_headers_text
+        assert name not in diff_parser_text
+
+
 def test_binary_diff_owns_binary_parser_helpers():
     """Binary-specific diff helpers should stay outside the general parser."""
     diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"

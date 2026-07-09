@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...batch.metadata_validation import read_validated_batch_metadata
-from ...batch.source_selector import BatchSourceSelector, CandidateOperation
+from ...batch.source_selector import (
+    BatchSourceSelector,
+    CandidateOperation,
+    require_plain_batch_name,
+)
 from ...batch.validation import batch_exists
 from ...data.file_review.records import ActionScopeResolution, FileReviewAction
 from ...data.file_review.state import resolve_batch_source_action_scope
@@ -43,6 +47,50 @@ def resolve_batch_source_action_context(
         operation,
         file=file,
     )
+    return _resolve_batch_source_action_context(
+        raw_selector=raw_selector,
+        selector=selector,
+        review_action=review_action,
+        command_name=command_name,
+        line_ids=line_ids,
+        file=file,
+        patterns=patterns,
+    )
+
+
+def resolve_plain_batch_source_action_context(
+    raw_selector: str,
+    *,
+    review_action: FileReviewAction,
+    command_name: str,
+    line_ids: str | None,
+    file: str | None,
+    patterns: list[str] | None,
+) -> BatchSourceActionContext:
+    """Resolve shared action inputs for commands that require a plain batch."""
+    batch_name = require_plain_batch_name(raw_selector, command_name)
+    selector = BatchSourceSelector(batch_name=batch_name)
+    return _resolve_batch_source_action_context(
+        raw_selector=raw_selector,
+        selector=selector,
+        review_action=review_action,
+        command_name=command_name,
+        line_ids=line_ids,
+        file=file,
+        patterns=patterns,
+    )
+
+
+def _resolve_batch_source_action_context(
+    *,
+    raw_selector: str,
+    selector: BatchSourceSelector,
+    review_action: FileReviewAction,
+    command_name: str,
+    line_ids: str | None,
+    file: str | None,
+    patterns: list[str] | None,
+) -> BatchSourceActionContext:
     batch_name = selector.batch_name
     scope_resolution = resolve_batch_source_action_scope(
         review_action,

@@ -13,7 +13,6 @@ from ..commands.check_unstaged import command_check_unstaged
 from ..commands.redo import command_redo
 from ..commands.start import command_start
 from ..commands.status import command_status
-from ..commands.stop import command_stop
 from ..commands.suggest_fixup import (
     command_suggest_fixup,
     command_suggest_fixup_line,
@@ -42,6 +41,7 @@ from .git_help import GitHelpArgumentParser
 from .include_dispatch import dispatch_include_command
 from .quick_actions import expand_quick_actions
 from .reset_dispatch import dispatch_reset_command
+from .session_subcommands import add_stop_subcommand
 from .show_dispatch import dispatch_show_command
 from .skip_dispatch import dispatch_skip_command
 from .subcommand_parser import add_subcommand_parser
@@ -128,13 +128,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_interactive.set_defaults(interactive_command=True)
 
-    # stop - Stop the selected session and clear state
-    parser_stop = add_subcommand_parser(
-        subparsers,
-        "stop",
-        help=_("Stop the selected session and clear state"),
-    )
-    parser_stop.set_defaults(func=lambda _: command_stop())
+    add_stop_subcommand(subparsers)
 
     # again - Clear state and start a fresh pass
     parser_again = add_subcommand_parser(

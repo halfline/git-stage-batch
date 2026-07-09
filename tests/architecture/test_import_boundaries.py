@@ -1402,7 +1402,7 @@ def test_file_review_fingerprints_stay_out_of_state_module():
         "fingerprint_selected_file_view",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "suggest_fixup.py": {
+        SRC_ROOT / "commands" / "fixup" / "search_targets.py": {
             "compute_current_file_review_diff_fingerprint",
         },
         SRC_ROOT / "data" / "file_review" / "freshness.py": public_names,
@@ -5812,10 +5812,59 @@ def test_suggest_fixup_search_state_stays_in_fixup_support():
     assert state_names <= helper_imported_names
 
 
+def test_suggest_fixup_search_targets_stay_in_fixup_support():
+    """Suggest-fixup target loading should stay below entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    helper_path = SRC_ROOT / "commands" / "fixup" / "search_targets.py"
+    helper = __import__(
+        "git_stage_batch.commands.fixup.search_targets",
+        fromlist=["search_targets"],
+    )
+    public_names = {
+        "SuggestFixupResolvedTarget",
+        "require_suggest_fixup_hunk_target",
+        "require_suggest_fixup_line_target",
+    }
+    target_owned_modules = {
+        "git_stage_batch.core.line_selection",
+        "git_stage_batch.data.file_hunk_display",
+        "git_stage_batch.data.file_review.fingerprints",
+        "git_stage_batch.data.line_state",
+        "git_stage_batch.data.selected_change.loading",
+        "git_stage_batch.data.selected_change.paths",
+        "git_stage_batch.utils.file_io",
+    }
+    path_owned_names = {"get_selected_hunk_hash_file_path"}
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(helper_path)
+    }
+    command_imported_names = set()
+    helper_imported_names = set()
+
+    for _imported_module, node in _import_from_nodes(command_path):
+        command_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "git_stage_batch.commands.fixup.search_targets" in command_imports
+    assert target_owned_modules.isdisjoint(command_imports)
+    assert target_owned_modules <= helper_imports
+    assert path_owned_names.isdisjoint(command_imported_names)
+    assert path_owned_names <= helper_imported_names
+
+
 def test_suggest_fixup_line_ranges_stay_in_fixup_support():
     """Suggest-fixup old-line range derivation should stay below entrypoints."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
     helper_path = SRC_ROOT / "commands" / "fixup" / "line_ranges.py"
+    resolver_path = SRC_ROOT / "commands" / "fixup" / "search_targets.py"
     command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
     helper_tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
     helper = __import__(
@@ -5835,6 +5884,10 @@ def test_suggest_fixup_line_ranges_stay_in_fixup_support():
         imported_module
         for imported_module, _node in _import_from_nodes(helper_path)
     }
+    resolver_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(resolver_path)
+    }
     command_attribute_names = {
         node.attr
         for node in ast.walk(command_tree)
@@ -5847,7 +5900,8 @@ def test_suggest_fixup_line_ranges_stay_in_fixup_support():
     }
 
     assert public_names <= vars(helper).keys()
-    assert "git_stage_batch.commands.fixup.line_ranges" in command_imports
+    assert "git_stage_batch.commands.fixup.line_ranges" not in command_imports
+    assert "git_stage_batch.commands.fixup.line_ranges" in resolver_imports
     assert "git_stage_batch.core.models" in helper_imports
     assert "old_line_number" not in command_attribute_names
     assert "old_line_number" in helper_attribute_names
@@ -9142,7 +9196,10 @@ def test_selected_change_loading_stays_out_of_hunk_tracking():
         / "commands"
         / "selection"
         / "skip_line_selection.py": {"require_selected_hunk"},
-        SRC_ROOT / "commands" / "suggest_fixup.py": {"require_selected_hunk"},
+        SRC_ROOT
+        / "commands"
+        / "fixup"
+        / "search_targets.py": {"require_selected_hunk"},
     }
     violations = []
 

@@ -5664,6 +5664,47 @@ def test_suggest_fixup_iteration_state_stays_in_fixup_support():
     assert state_names <= helper_imported_names
 
 
+def test_suggest_fixup_line_ranges_stay_in_fixup_support():
+    """Suggest-fixup old-line range derivation should stay below entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    helper_path = SRC_ROOT / "commands" / "fixup" / "line_ranges.py"
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    helper_tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
+    helper = __import__(
+        "git_stage_batch.commands.fixup.line_ranges",
+        fromlist=["line_ranges"],
+    )
+    public_names = {
+        "SuggestFixupLineRange",
+        "require_hunk_old_line_range",
+        "require_selected_old_line_range",
+    }
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(helper_path)
+    }
+    command_attribute_names = {
+        node.attr
+        for node in ast.walk(command_tree)
+        if isinstance(node, ast.Attribute)
+    }
+    helper_attribute_names = {
+        node.attr
+        for node in ast.walk(helper_tree)
+        if isinstance(node, ast.Attribute)
+    }
+
+    assert public_names <= vars(helper).keys()
+    assert "git_stage_batch.commands.fixup.line_ranges" in command_imports
+    assert "git_stage_batch.core.models" in helper_imports
+    assert "old_line_number" not in command_attribute_names
+    assert "old_line_number" in helper_attribute_names
+
+
 def test_selected_line_source_refresh_uses_public_api():
     """Cross-module source refresh callers should import public helpers."""
     source_refresh = __import__(

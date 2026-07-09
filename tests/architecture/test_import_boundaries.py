@@ -5478,6 +5478,11 @@ def test_suggest_fixup_state_stays_in_data_layer():
     """Suggest-fixup state persistence should stay below command and TUI flows."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
     data_path = SRC_ROOT / "data" / "suggest_fixup_state.py"
+    command_state_helper_paths = (
+        SRC_ROOT / "commands" / "fixup" / "iteration_state.py",
+        SRC_ROOT / "commands" / "fixup" / "search_state.py",
+        SRC_ROOT / "commands" / "fixup" / "candidate_iteration.py",
+    )
     tui_command_paths = (
         SRC_ROOT / "tui" / "fixup_menu.py",
         SRC_ROOT / "tui" / "file_review" / "__init__.py",
@@ -5494,6 +5499,13 @@ def test_suggest_fixup_state_stays_in_data_layer():
     data_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(data_path)
+    }
+    command_state_helper_imports = {
+        path: {
+            imported_module
+            for imported_module, _node in _import_from_nodes(path)
+        }
+        for path in command_state_helper_paths
     }
     suggest_fixup = __import__(
         "git_stage_batch.commands.suggest_fixup",
@@ -5525,7 +5537,9 @@ def test_suggest_fixup_state_stays_in_data_layer():
                 names = ", ".join(sorted(disallowed_names))
                 violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
-    assert "git_stage_batch.data.suggest_fixup_state" in command_imports
+    assert "git_stage_batch.data.suggest_fixup_state" not in command_imports
+    for helper_imports in command_state_helper_imports.values():
+        assert "git_stage_batch.data.suggest_fixup_state" in helper_imports
     assert "git_stage_batch.utils.paths" in data_imports
     assert command_state_names.isdisjoint(vars(suggest_fixup))
     assert violations == []
@@ -5571,8 +5585,50 @@ def test_suggest_fixup_history_stays_in_fixup_support():
     assert history_names <= vars(history).keys()
     assert old_command_helper_names.isdisjoint(command_defined_functions)
     assert command_names.isdisjoint(vars(history))
-    assert "git_stage_batch.commands.fixup.history" in command_imports
+    assert "git_stage_batch.commands.fixup.history" not in command_imports
     assert "git_stage_batch.utils.git_command" in history_imports
+
+
+def test_suggest_fixup_candidate_iteration_stays_in_fixup_support():
+    """Suggest-fixup candidate advancement should stay below entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    helper_path = SRC_ROOT / "commands" / "fixup" / "candidate_iteration.py"
+    helper = __import__(
+        "git_stage_batch.commands.fixup.candidate_iteration",
+        fromlist=["candidate_iteration"],
+    )
+    public_names = {
+        "SuggestFixupCandidate",
+        "advance_suggest_fixup_candidate",
+    }
+    advanced_names = {
+        "find_next_fixup_candidate",
+        "write_suggest_fixup_state",
+        "clear_suggest_fixup_state",
+    }
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(helper_path)
+    }
+    command_imported_names = set()
+    helper_imported_names = set()
+
+    for _imported_module, node in _import_from_nodes(command_path):
+        command_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "git_stage_batch.commands.fixup.candidate_iteration" in command_imports
+    assert "git_stage_batch.commands.fixup.history" in helper_imports
+    assert "git_stage_batch.data.suggest_fixup_state" in helper_imports
+    assert advanced_names.isdisjoint(command_imported_names)
+    assert advanced_names <= helper_imported_names
 
 
 def test_suggest_fixup_candidate_display_stays_in_fixup_support():

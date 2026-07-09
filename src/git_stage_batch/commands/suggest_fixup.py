@@ -35,6 +35,10 @@ from .fixup.line_ranges import (
     require_hunk_old_line_range,
     require_selected_old_line_range,
 )
+from .fixup.search_state import (
+    SuggestFixupSearchTarget,
+    reset_suggest_fixup_state_for_search,
+)
 
 
 def command_suggest_fixup(
@@ -96,12 +100,18 @@ def command_suggest_fixup(
 
     require_suggest_fixup_boundary_range(effective_boundary)
 
-    # Check if we should reset state due to context change
-    if state and suggest_fixup_state_should_reset(
-        hunk_hash, None, effective_boundary, line_changes.path, min_line, max_line
-    ):
-        clear_suggest_fixup_state()
-        state = None
+    search_target = SuggestFixupSearchTarget(
+        hunk_hash=hunk_hash,
+        line_ids=None,
+        boundary=effective_boundary,
+        file_path=line_changes.path,
+        min_line=min_line,
+        max_line=max_line,
+    )
+    state = reset_suggest_fixup_state_for_search(
+        state=state,
+        target=search_target,
+    )
 
     if show_last:
         show_last_suggest_fixup_candidate(

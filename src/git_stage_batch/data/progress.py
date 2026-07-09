@@ -17,7 +17,7 @@ from ..utils.file_io import (
     read_text_file_line_set,
     write_text_file_contents,
 )
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 from ..utils.paths import (
     get_line_changes_json_file_path,
     get_discarded_hunks_file_path,

@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from .file_io import write_text_file_contents
-from .git import run_git_command
+from .git_command import run_git_command
 
 
 def _normalize_path(path: str) -> str:

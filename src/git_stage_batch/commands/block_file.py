@@ -15,7 +15,7 @@ from ..data.ignore_files import (
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _
 from ..utils.file_io import append_file_path_to_file, remove_file_path_from_file
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 from ..utils.git_worktree import git_remove_paths
 from ..utils.git_repository import (
     require_git_repository,

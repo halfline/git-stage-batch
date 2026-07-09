@@ -10,7 +10,7 @@ from importlib import resources
 from pathlib import Path
 
 from ..utils.command import run_command
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from .git import run_git_command, stream_git_command
+from .git_command import run_git_command, stream_git_command
 
 
 def _git_ref_exists(ref_name: str) -> bool:

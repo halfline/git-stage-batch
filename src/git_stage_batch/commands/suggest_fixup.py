@@ -22,7 +22,7 @@ from ..data.suggest_fixup_state import (
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_text_file_contents
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,

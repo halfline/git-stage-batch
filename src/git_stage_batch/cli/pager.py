@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from ..utils.command import start_command
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 
 
 _PAGEABLE_COMMANDS = {

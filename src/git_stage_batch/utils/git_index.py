@@ -9,7 +9,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from .git import run_git_command, stream_git_command
+from .git_command import run_git_command, stream_git_command
 
 
 @dataclass(frozen=True)

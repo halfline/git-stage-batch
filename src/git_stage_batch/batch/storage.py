@@ -36,7 +36,7 @@ from ..editor.line_endings import (
     detect_line_ending,
 )
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 from ..utils.git_index import (
     GitIndexEntryUpdate,
     git_commit_tree,

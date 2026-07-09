@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Iterable, Sequence
 
-from .git import run_git_command
+from .git_command import run_git_command
 
 
 def git_apply_to_worktree(

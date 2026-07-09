@@ -23,7 +23,7 @@ from . import undo_restore as _undo_restore
 from . import undo_worktree as _undo_worktree
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.git import (
+from ..utils.git_command import (
     run_git_command,
 )
 from ..utils.git_refs import (

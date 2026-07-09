@@ -2882,6 +2882,40 @@ def test_file_review_output_uses_display_id_module():
     assert "def _display_ids_for_rows" not in review_output_text
 
 
+def test_file_review_rows_own_row_rendering():
+    """File-review row rendering should stay out of page orchestration."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    row_output_path = SRC_ROOT / "output" / "file_review_rows.py"
+    row_output_text = row_output_path.read_text()
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    row_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(row_output_path)
+    }
+    file_review_rows = __import__(
+        "git_stage_batch.output.file_review_rows",
+        fromlist=["file_review_rows"],
+    )
+    public_names = {
+        "maximum_display_id_digit_count",
+        "print_file_review_rows",
+    }
+
+    assert "git_stage_batch.output.file_review_rows" in review_imports
+    assert "git_stage_batch.core.models" not in review_imports
+    assert "git_stage_batch.core.models" in row_imports
+    assert public_names <= vars(file_review_rows).keys()
+    assert "def _maximum_display_id_digit_count" not in review_output_text
+    assert "def _print_rows" not in review_output_text
+    assert "LineEntry" not in review_output_text
+    assert "display_text()" not in review_output_text
+    assert "display_text()" in row_output_text
+
+
 def test_file_review_callers_use_model_builder():
     """File-review callers should not import model construction from rendering."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"

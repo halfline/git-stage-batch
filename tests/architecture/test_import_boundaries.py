@@ -9525,6 +9525,76 @@ def test_selected_change_discarding_owns_discard_pipeline():
     assert helper_imports <= helper_imported_names
 
 
+def test_selected_change_skipping_owns_skip_pipeline():
+    """Selected change skip support should stay out of skip.py."""
+    skip_path = SRC_ROOT / "commands" / "skip.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_skipping.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.selected_change_skipping",
+        fromlist=["selected_change_skipping"],
+    )
+    public_names = {
+        "skip_selected_change",
+    }
+    internal_names = {
+        "_skip_loaded_selected_change",
+    }
+    moved_names = {
+        "append_lines_to_file",
+        "fetch_next_change",
+        "get_block_list_file_path",
+        "get_selected_hunk_hash_file_path",
+        "load_selected_change",
+        "read_text_file_contents",
+        "record_binary_hunk_skipped",
+        "record_gitlink_hunk_skipped",
+        "record_hunk_skipped",
+        "record_rename_hunk_skipped",
+        "record_text_deletion_hunk_skipped",
+    }
+    helper_imports = moved_names | {
+        "BinaryFileChange",
+        "GitlinkChange",
+        "NoMoreHunks",
+        "RenameChange",
+        "TextFileDeletionChange",
+        "finish_selected_change_action",
+        "undo_checkpoint",
+    }
+
+    assert public_names <= vars(helper).keys()
+    assert internal_names <= vars(helper).keys()
+
+    skip_tree = ast.parse(skip_path.read_text(), filename=str(skip_path))
+    skip_functions = {
+        node.name: node
+        for node in ast.walk(skip_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_skip_names = {
+        node.id
+        for node in ast.walk(skip_functions["command_skip"])
+        if isinstance(node, ast.Name)
+    }
+    skip_selection_imports = set()
+
+    for imported_module, node in _import_from_nodes(skip_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        skip_selection_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "_skip_loaded_selected_change" not in skip_functions
+    assert "selected_change_skipping" in skip_selection_imports
+    assert moved_names.isdisjoint(command_skip_names)
+    assert helper_imports <= helper_imported_names
+
+
 def test_discard_file_selection_stays_in_command_helper():
     """Discard file selection should stay out of the command entrypoint."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import json
 
-from ...batch.operations import create_batch
+from ...batch.operations import create_batch, delete_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.query import get_batch_baseline_commit, read_batch_metadata
+from ...batch.state_refs import (
+    delete_batch_state_refs,
+    get_batch_content_ref_name,
+    sync_batch_state_refs,
+)
 from ...batch.storage import (
     add_binary_file_to_batch,
     remove_file_from_batch_commit,
@@ -24,10 +29,14 @@ from ...utils.git import (
     git_read_tree,
     git_update_index,
     git_write_tree,
+    run_git_command,
     temp_git_index,
 )
 from ...utils.paths import get_batch_metadata_file_path
 from .sift_results import SiftedBinaryFileResult, SiftedFileResult
+
+
+RetainedSiftedFile = tuple[str, dict, SiftedFileResult]
 
 
 def create_synthetic_batch_source_commit(
@@ -160,3 +169,67 @@ def add_sifted_file_to_batch(
         file_mode=file_mode,
         change_type=result.change_type,
     )
+
+
+def replace_batch_with_sifted_files(
+    batch_name: str,
+    retained_files: list[RetainedSiftedFile],
+    source_metadata: dict,
+) -> None:
+    """Replace a batch atomically with retained sifted file results."""
+    temp_batch_name = f"{batch_name}-sift-temp"
+
+    if batch_exists(temp_batch_name):
+        delete_batch(temp_batch_name)
+
+    create_batch(
+        temp_batch_name,
+        note=f"Temporary sift of {batch_name}",
+        baseline_commit=source_metadata.get("baseline"),
+    )
+
+    try:
+        for file_path, file_meta, result in retained_files:
+            add_sifted_file_to_batch(
+                temp_batch_name,
+                file_path,
+                file_meta,
+                result,
+            )
+
+        temp_commit = run_git_command(
+            ["rev-parse", get_batch_content_ref_name(temp_batch_name)],
+            check=False,
+            requires_index_lock=False,
+        )
+        if temp_commit.returncode == 0:
+            commit_sha = temp_commit.stdout.strip()
+            temp_metadata = read_batch_metadata(temp_batch_name)
+            metadata_path = get_batch_metadata_file_path(batch_name)
+            write_text_file_contents(
+                metadata_path,
+                json.dumps(temp_metadata, indent=2),
+            )
+            sync_batch_state_refs(
+                batch_name,
+                content_commit=commit_sha,
+                source_buffers=_source_buffers_from_sift_results(retained_files),
+            )
+
+        delete_batch_state_refs(temp_batch_name)
+
+    except Exception:
+        if batch_exists(temp_batch_name):
+            delete_batch(temp_batch_name)
+        raise
+
+
+def _source_buffers_from_sift_results(
+    retained_files: list[RetainedSiftedFile],
+) -> dict[str, LineBuffer]:
+    source_buffers: dict[str, LineBuffer] = {}
+    for file_path, _file_meta, result in retained_files:
+        target_buffer = result.target_source_buffer()
+        if target_buffer is not None:
+            source_buffers[file_path] = target_buffer
+    return source_buffers

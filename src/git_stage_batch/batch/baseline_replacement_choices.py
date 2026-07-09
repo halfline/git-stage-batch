@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING, Any
 
-from ..utils.text import normalize_line_endings
+from ..core.text_lines import normalize_line_endings
 from .line_sequence_equality import line_slice_equals as _line_slice_matches
 
 if TYPE_CHECKING:

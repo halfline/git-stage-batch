@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import overload
 
 from ..core.buffer import LineBuffer
-from ..utils.text import normalize_line_ending
+from ..core.text_lines import normalize_line_ending
 from .line_endings import detect_line_ending, restore_line_endings_in_chunks
 from .line_export import line_body, line_body_chunks
 from .piece_table import LineLike, LinePieceTable, LineRange, SOURCE_RUN

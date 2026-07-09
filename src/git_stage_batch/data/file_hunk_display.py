@@ -36,7 +36,7 @@ from ..utils.paths import (
     get_processed_skip_ids_file_path,
     get_selected_hunk_hash_file_path,
 )
-from ..utils.text import bytes_to_lines
+from ..core.text_lines import bytes_to_lines
 from .file_tracking import auto_add_untracked_files
 from .line_state import convert_line_changes_to_serializable_dict
 from .live_diff import stream_live_git_diff

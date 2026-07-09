@@ -32,7 +32,7 @@ from ..exceptions import (
     MergeError as _MergeError,
 )
 from ..i18n import _
-from ..utils.text import (
+from ..core.text_lines import (
     AcquirableLineSequence,
     normalize_line_sequence_endings,
 )

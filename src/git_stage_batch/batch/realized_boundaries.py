@@ -16,7 +16,7 @@ from ..exceptions import (
     MissingAnchorError as _MissingAnchorError,
 )
 from ..i18n import _
-from ..utils.text import normalize_line_endings as _normalize_line_endings
+from ..core.text_lines import normalize_line_endings as _normalize_line_endings
 
 
 def _normalize_line_content(content: object) -> bytes:

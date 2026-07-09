@@ -42,20 +42,7 @@ from .quick_actions import expand_quick_actions
 from .reset_dispatch import dispatch_reset_command
 from .show_dispatch import dispatch_show_command
 from .skip_dispatch import dispatch_skip_command
-
-
-def _add_subcommand_parser(
-    subparsers,
-    command_name: str,
-    **kwargs,
-) -> GitHelpArgumentParser:
-    """Add a subcommand parser wired to its git help topic."""
-    help_topic = kwargs.pop("help_topic", f"stage-batch-{command_name}")
-    return subparsers.add_parser(
-        command_name,
-        help_topic=help_topic,
-        **kwargs,
-    )
+from .subcommand_parser import add_subcommand_parser
 
 
 def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Namespace | None:
@@ -102,7 +89,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     # check-unstaged - Check whether the index fits an unstaged-only workflow
-    parser_check_unstaged = _add_subcommand_parser(
+    parser_check_unstaged = add_subcommand_parser(
         subparsers,
         "check-unstaged",
         help=_("Check whether the index fits an unstaged-only workflow"),
@@ -110,7 +97,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_check_unstaged.set_defaults(func=lambda _: command_check_unstaged())
 
     # start - Start a new batch staging session
-    parser_start = _add_subcommand_parser(
+    parser_start = add_subcommand_parser(
         subparsers,
         "start",
         help=_("Start a new batch staging session"),
@@ -132,7 +119,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     # interactive - Start interactive hunk-by-hunk mode
-    parser_interactive = _add_subcommand_parser(
+    parser_interactive = add_subcommand_parser(
         subparsers,
         "interactive",
         help=_("Start interactive hunk-by-hunk mode"),
@@ -140,7 +127,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_interactive.set_defaults(interactive_command=True)
 
     # stop - Stop the selected session and clear state
-    parser_stop = _add_subcommand_parser(
+    parser_stop = add_subcommand_parser(
         subparsers,
         "stop",
         help=_("Stop the selected session and clear state"),
@@ -148,7 +135,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_stop.set_defaults(func=lambda _: command_stop())
 
     # again - Clear state and start a fresh pass
-    parser_again = _add_subcommand_parser(
+    parser_again = add_subcommand_parser(
         subparsers,
         "again",
         aliases=["a"],
@@ -160,7 +147,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     # undo - Undo the most recent undoable session operation
-    parser_undo = _add_subcommand_parser(
+    parser_undo = add_subcommand_parser(
         subparsers,
         "undo",
         aliases=["u", "back"],
@@ -174,7 +161,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_undo.set_defaults(func=lambda args: command_undo(force=args.force))
 
     # redo - Redo the most recently undone session operation
-    parser_redo = _add_subcommand_parser(
+    parser_redo = add_subcommand_parser(
         subparsers,
         "redo",
         aliases=["forward"],
@@ -188,7 +175,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_redo.set_defaults(func=lambda args: command_redo(force=args.force))
 
     # show - Show the selected hunk
-    parser_show = _add_subcommand_parser(
+    parser_show = add_subcommand_parser(
         subparsers,
         "show",
         help=_("Show the selected hunk"),
@@ -252,7 +239,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_show.set_defaults(func=dispatch_show_command)
 
     # status - Show selected session status
-    parser_status = _add_subcommand_parser(
+    parser_status = add_subcommand_parser(
         subparsers,
         "status",
         aliases=["st"],
@@ -280,7 +267,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     # include - Stage the selected hunk
-    parser_include = _add_subcommand_parser(
+    parser_include = add_subcommand_parser(
         subparsers,
         "include",
         aliases=["i"],
@@ -341,7 +328,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_include.set_defaults(func=dispatch_include_command)
 
     # skip - Skip the selected hunk without staging
-    parser_skip = _add_subcommand_parser(
+    parser_skip = add_subcommand_parser(
         subparsers,
         "skip",
         aliases=["s"],
@@ -365,7 +352,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_skip.set_defaults(func=dispatch_skip_command)
 
     # discard - Remove the selected hunk from working tree
-    parser_discard = _add_subcommand_parser(
+    parser_discard = add_subcommand_parser(
         subparsers,
         "discard",
         aliases=["d"],
@@ -426,7 +413,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_discard.set_defaults(func=dispatch_discard_command)
 
     # abort - Restore repository to pre-session state
-    parser_abort = _add_subcommand_parser(
+    parser_abort = add_subcommand_parser(
         subparsers,
         "abort",
         help=_("Restore repository to pre-session state"),
@@ -434,7 +421,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_abort.set_defaults(func=lambda _: command_abort())
 
     # block-file - Permanently exclude a file
-    parser_block_file = _add_subcommand_parser(
+    parser_block_file = add_subcommand_parser(
         subparsers,
         "block-file",
         aliases=["bf"],
@@ -455,7 +442,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_block_file.set_defaults(func=lambda args: command_block_file(args.file_path, local_only=args.local_only))
 
     # unblock-file - Remove a file from blocked list
-    parser_unblock_file = _add_subcommand_parser(
+    parser_unblock_file = add_subcommand_parser(
         subparsers,
         "unblock-file",
         aliases=["ubf"],
@@ -468,7 +455,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_unblock_file.set_defaults(func=lambda args: command_unblock_file(args.file_path))
 
     # suggest-fixup - Suggest which commit the selected hunk should be fixed up to
-    parser_suggest_fixup = _add_subcommand_parser(
+    parser_suggest_fixup = add_subcommand_parser(
         subparsers,
         "suggest-fixup",
         aliases=["x"],
@@ -519,7 +506,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     ))
 
     # new - Create a new batch
-    parser_new = _add_subcommand_parser(
+    parser_new = add_subcommand_parser(
         subparsers,
         "new",
         help=_("Create a new batch"),
@@ -536,7 +523,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_new.set_defaults(func=lambda args: command_new_batch(args.batch_name, args.note))
 
     # list - List all batches
-    parser_list = _add_subcommand_parser(
+    parser_list = add_subcommand_parser(
         subparsers,
         "list",
         help=_("List all batches"),
@@ -544,7 +531,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_list.set_defaults(func=lambda _: command_list_batches())
 
     # drop - Delete a batch
-    parser_drop = _add_subcommand_parser(
+    parser_drop = add_subcommand_parser(
         subparsers,
         "drop",
         help=_("Delete a batch"),
@@ -556,7 +543,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_drop.set_defaults(func=lambda args: command_drop_batch(args.batch_name))
 
     # annotate - Add/update batch description
-    parser_annotate = _add_subcommand_parser(
+    parser_annotate = add_subcommand_parser(
         subparsers,
         "annotate",
         help=_("Add or update batch description"),
@@ -572,7 +559,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_annotate.set_defaults(func=lambda args: command_annotate_batch(args.batch_name, args.note))
 
     # apply - Apply batch changes to working tree
-    parser_apply = _add_subcommand_parser(
+    parser_apply = add_subcommand_parser(
         subparsers,
         "apply",
         help=_("Apply batch changes to working tree"),
@@ -601,7 +588,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_apply.set_defaults(func=dispatch_apply_command)
 
     # reset - Remove claims from batch
-    parser_reset = _add_subcommand_parser(
+    parser_reset = add_subcommand_parser(
         subparsers,
         "reset",
         help=_("Remove claims from batch"),
@@ -636,7 +623,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     parser_reset.set_defaults(func=dispatch_reset_command)
 
     # sift - Reconcile batch against current tip
-    parser_sift = _add_subcommand_parser(
+    parser_sift = add_subcommand_parser(
         subparsers,
         "sift",
         help=_("Remove already-present portions from a batch"),
@@ -657,7 +644,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_sift.set_defaults(func=lambda args: command_sift_batch(args.from_batch, args.to_batch))
 
-    parser_install_assets = _add_subcommand_parser(
+    parser_install_assets = add_subcommand_parser(
         subparsers,
         "install-assets",
         help=_("Install bundled assistant assets into the repository"),

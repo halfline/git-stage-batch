@@ -13,8 +13,6 @@ from .absence_content import (
 from .ownership import (
     AbsenceClaim,
     BatchOwnership,
-    ReplacementUnit,
-    ReplacementUnitOrigin,
 )
 from .ownership_claims import LineRangeBuilder, presence_claims_from_source_lines
 from .ownership_line_entries import (
@@ -25,7 +23,11 @@ from .ownership_line_entries import (
     replacement_unit_origin_for_line_run as _replacement_unit_origin_for_line_run,
 )
 from .ownership_references import BaselineReference
-from .ownership_replacement_units import normalize_replacement_units
+from .ownership_replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+    normalize_replacement_units,
+)
 from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
 
 

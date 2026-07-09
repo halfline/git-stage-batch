@@ -11,14 +11,13 @@ from .match import match_lines
 from .ownership import (
     AbsenceClaim,
     BatchOwnership,
-    ReplacementUnit,
 )
 from .ownership_claims import (
     format_ownership_line_set,
     parse_ownership_line_ranges,
     presence_claims_from_source_lines,
 )
-from .ownership_replacement_units import normalize_replacement_units
+from .ownership_replacement_units import ReplacementUnit, normalize_replacement_units
 
 
 def _remap_replacement_units(

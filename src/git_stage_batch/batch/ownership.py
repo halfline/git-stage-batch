@@ -33,6 +33,7 @@ from .ownership_metadata_blobs import (
 )
 from .ownership_references import BaselineReference as _BaselineReference
 from .ownership_replacement_units import (
+    ReplacementUnit as _ReplacementUnit,
     normalize_replacement_units as _replacement_normalize_units,
 )
 
@@ -101,99 +102,6 @@ class AbsenceClaim:
 
 
 @dataclass
-class ReplacementUnitOrigin:
-    """Original full replacement region for a selectable replacement sub-unit.
-
-    Split replacement units may be smaller than the file-derived replacement run
-    that created them. This context records that original run so merge/discard
-    code can validate placement against the parent replacement boundary instead
-    of treating the selected sub-unit as an unrelated edit.
-    """
-
-    old_start: int
-    old_end: int
-    new_start: int
-    new_end: int
-    baseline_reference: _BaselineReference | None = None
-
-    @property
-    def old_line_count(self) -> int:
-        """Return the number of baseline lines covered by the original unit."""
-        return self.old_end - self.old_start + 1
-
-    def to_dict(self) -> dict:
-        """Serialize to metadata dictionary."""
-        data = {
-            "old_start": self.old_start,
-            "old_end": self.old_end,
-            "new_start": self.new_start,
-            "new_end": self.new_end,
-        }
-        if self.baseline_reference is not None:
-            data["baseline_reference"] = self.baseline_reference.to_dict()
-        return data
-
-    @classmethod
-    def from_dict(
-        cls,
-        data: dict,
-        blob_contents: dict[str, bytes] | None = None,
-    ) -> ReplacementUnitOrigin:
-        """Deserialize from metadata dictionary."""
-        baseline_metadata = data.get("baseline_reference")
-        return cls(
-            old_start=data["old_start"],
-            old_end=data["old_end"],
-            new_start=data["new_start"],
-            new_end=data["new_end"],
-            baseline_reference=(
-                _BaselineReference.from_dict(baseline_metadata, blob_contents)
-                if baseline_metadata is not None else None
-            ),
-        )
-
-
-@dataclass
-class ReplacementUnit:
-    """Explicit coupling between presence claims and absence claims.
-
-    The deletion side references indexes in BatchOwnership.deletions so the
-    canonical deletion constraint is stored only once in metadata.
-    """
-
-    presence_lines: list[str]
-    deletion_indices: list[int]
-    origin: ReplacementUnitOrigin | None = field(default=None, compare=False)
-
-    def to_dict(self) -> dict:
-        """Serialize to metadata dictionary."""
-        data = {
-            "presence_lines": self.presence_lines,
-            "deletion_indices": self.deletion_indices,
-        }
-        if self.origin is not None:
-            data["original_unit"] = self.origin.to_dict()
-        return data
-
-    @classmethod
-    def from_dict(
-        cls,
-        data: dict,
-        blob_contents: dict[str, bytes] | None = None,
-    ) -> ReplacementUnit:
-        """Deserialize from metadata dictionary."""
-        origin_metadata = data.get("original_unit")
-        return cls(
-            presence_lines=data.get("presence_lines", data.get("claimed_lines", [])),
-            deletion_indices=data.get("deletion_indices", []),
-            origin=(
-                ReplacementUnitOrigin.from_dict(origin_metadata, blob_contents)
-                if isinstance(origin_metadata, dict) else None
-            ),
-        )
-
-
-@dataclass
 class BatchOwnership:
     """Represents batch ownership in batch source space.
 
@@ -204,7 +112,7 @@ class BatchOwnership:
     """
     presence_claims: list[_PresenceClaim]
     deletions: list[AbsenceClaim]  # Separate deletion constraints
-    replacement_units: list[ReplacementUnit] = field(default_factory=list)
+    replacement_units: list[_ReplacementUnit] = field(default_factory=list)
 
     @classmethod
     def from_presence_lines(
@@ -212,7 +120,7 @@ class BatchOwnership:
         source_lines: list[str],
         deletions: list[AbsenceClaim] | None = None,
         *,
-        replacement_units: list[ReplacementUnit] | None = None,
+        replacement_units: list[_ReplacementUnit] | None = None,
         baseline_references: dict[int, _BaselineReference] | None = None,
     ) -> BatchOwnership:
         """Create ownership from source-line ranges.
@@ -332,7 +240,7 @@ class BatchOwnership:
             for d in deletion_metadata
         ]
         replacement_units = [
-            ReplacementUnit.from_dict(d, blob_contents)
+            _ReplacementUnit.from_dict(d, blob_contents)
             for d in data.get("replacement_units", [])
         ]
         return cls(

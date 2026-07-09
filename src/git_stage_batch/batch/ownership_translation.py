@@ -8,7 +8,6 @@ from .absence_content import (
 from .ownership import (
     AbsenceClaim,
     BatchOwnership,
-    ReplacementUnit as _ReplacementUnit,
 )
 from .ownership_claims import LineRangeBuilder, presence_claims_from_source_lines
 from .ownership_line_entries import (
@@ -16,7 +15,10 @@ from .ownership_line_entries import (
     ReplacementUnitBuilder as _ReplacementUnitBuilder,
 )
 from .ownership_references import BaselineReference
-from .ownership_replacement_units import normalize_replacement_units
+from .ownership_replacement_units import (
+    ReplacementUnit as _ReplacementUnit,
+    normalize_replacement_units,
+)
 
 
 def detect_stale_batch_source_for_selection(selected_lines: list) -> bool:

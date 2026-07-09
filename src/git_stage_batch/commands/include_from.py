@@ -6,6 +6,7 @@ import sys
 from typing import Optional
 
 from .batch_source import action_context as _action_context
+from .batch_source import action_selection as _action_selection
 from .batch_source import action_plans as _action_plans
 from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import candidate_materialization as _candidate_materialization
@@ -14,7 +15,6 @@ from .batch_source import candidate_refusals as _candidate_refusals
 from .batch_source import merge_refusals as _merge_refusals
 from .batch_source import text_plan_builders as _text_plan_builders
 from .batch_source import text_file_actions as _text_file_actions
-from .selection import replacement_selection
 from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.operation_candidates import (
     clear_candidate_preview_state_for_file,
@@ -24,21 +24,16 @@ from ..core.replacement import (
     coerce_replacement_payload,
 )
 from ..batch.selection import (
-    resolve_current_batch_binary_file_scope,
-    resolve_batch_file_scope,
-    require_single_file_context_for_line_selection,
     translate_atomic_unit_error_to_gutter_ids,
 )
 from ..batch.submodule_pointer import (
     is_batch_submodule_pointer,
-    refuse_batch_submodule_pointer_lines,
     stage_submodule_pointer_from_batch,
 )
 from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
     finish_review_scoped_line_action,
 )
-from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import (
@@ -152,57 +147,27 @@ def command_include_from_batch(
     selector = context.selector
     batch_name = context.batch_name
     scope_resolution = context.scope_resolution
-    file = context.file
-    all_files = context.all_files
 
     # Refresh index to ensure git's cached stat info is up-to-date
     git_refresh_index(check=False)
 
-    file = resolve_current_batch_binary_file_scope(batch_name, all_files, file, patterns, line_ids)
-
-    # Determine which files to operate on
-    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
-
-    # Parse line selection and enforce single-file context
-    selected_ids = require_single_file_context_for_line_selection(
-        batch_name, files, line_ids, "include"
-    )
     replacement_payload = (
         coerce_replacement_payload(replacement_text)
         if replacement_text is not None
         else None
     )
-
-    if replacement_payload is not None and not selected_ids:
-        exit_with_error(_("`include --from --as` requires `--line`."))
-
-    if selected_ids:
-        file_path_for_check = list(files.keys())[0]  # Single file context enforced above
-        if files[file_path_for_check].get("file_type") == "binary":
-            exit_with_error(_("Cannot use --lines with binary files. Include the whole file instead."))
-        if is_batch_submodule_pointer(files[file_path_for_check]):
-            refuse_batch_submodule_pointer_lines(_("Include"))
-
-    # Translate gutter IDs to selection IDs if line selection is active
-    selection_ids_to_include = selected_ids
-    rendered = None  # Store for error translation
-    if selected_ids:
-        if replacement_payload is not None:
-            replacement_selection.require_contiguous_display_selection(selected_ids)
-        file_path_for_render = list(files.keys())[0]  # Single file context enforced above
-        selection_ids_to_include, rendered = translate_batch_file_gutter_ids_to_selection_ids(
-            batch_name,
-            file_path_for_render,
-            selected_ids,
-            FileReviewAction.INCLUDE_FROM_BATCH,
-        )
-    operation_parts = ["include", "--from", raw_selector]
-    if line_ids is not None:
-        operation_parts.extend(["--line", line_ids])
-    if file is not None:
-        operation_parts.extend(["--file", file])
-    if replacement_payload is not None:
-        operation_parts.extend(["--as", replacement_payload.display_text or "<stdin>"])
+    selection = _action_selection.resolve_include_action_selection(
+        context,
+        line_ids=line_ids,
+        patterns=patterns,
+        replacement_payload=replacement_payload,
+    )
+    file = selection.file
+    files = selection.files
+    selected_ids = selection.selected_ids
+    selection_ids_to_include = selection.selection_ids
+    rendered = selection.rendered
+    operation_parts = list(selection.operation_parts)
     if selector.candidate_ordinal is not None:
         _execute_include_candidate(
             batch_name=batch_name,

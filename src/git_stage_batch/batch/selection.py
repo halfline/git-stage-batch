@@ -6,13 +6,13 @@ from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Optional
 
-from .ownership import (
-    BatchOwnership,
+from .ownership import BatchOwnership
+from .ownership_units import (
+    build_ownership_units_from_batch_source_lines,
     select_ownership_units_by_display_ids,
     validate_ownership_units,
     rebuild_ownership_from_units,
 )
-from .ownership_units import build_ownership_units_from_batch_source_lines
 from ..core.line_selection import (
     LineRanges,
     LineSelection,

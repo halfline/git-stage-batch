@@ -7,8 +7,8 @@ from typing import Optional
 from . import display as batch_display
 from . import merge as batch_merge
 from .match import match_lines
-from .ownership import (
-    BatchOwnership,
+from .ownership import BatchOwnership
+from .ownership_units import (
     build_ownership_units_from_display_lines,
     rebuild_ownership_from_units,
     validate_ownership_units,

@@ -11934,10 +11934,16 @@ def test_candidate_preview_diff_owns_buffer_diff_rendering():
         "git_stage_batch.output.candidate_preview_diff",
         fromlist=["candidate_preview_diff"],
     )
+    operation_candidates = __import__(
+        "git_stage_batch.batch.operation_candidates",
+        fromlist=["operation_candidates"],
+    )
     candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
     candidate_diff_path = SRC_ROOT / "output" / "candidate_preview_diff.py"
+    operation_candidates_path = SRC_ROOT / "batch" / "operation_candidates.py"
     candidate_preview_text = candidate_preview_path.read_text()
     candidate_diff_text = candidate_diff_path.read_text()
+    operation_candidates_text = operation_candidates_path.read_text()
     candidate_preview_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(candidate_preview_path)
@@ -11955,9 +11961,12 @@ def test_candidate_preview_diff_owns_buffer_diff_rendering():
 
     assert "git_stage_batch.output.candidate_preview_diff" in candidate_preview_imports
     assert "print_candidate_buffer_diff" in vars(candidate_preview_diff)
+    assert "render_candidate_buffer_diff" in vars(candidate_preview_diff)
+    assert "render_candidate_buffer_diff" not in vars(operation_candidates)
     assert old_diff_names.isdisjoint(vars(candidate_preview))
     assert "git_stage_batch.core.diff_parser" not in candidate_preview_imports
     assert "git_stage_batch.core.diff_parser" in candidate_diff_imports
+    assert "git_stage_batch.batch.operation_candidates" not in candidate_diff_imports
     assert "git_stage_batch.core.buffer" not in candidate_preview_imports
     assert "git_stage_batch.core.buffer" in candidate_diff_imports
     assert "def _candidate_diff_hunks" not in candidate_preview_text
@@ -11968,6 +11977,9 @@ def test_candidate_preview_diff_owns_buffer_diff_rendering():
     assert "splitlines(keepends=True)" not in candidate_preview_text
     assert "render_candidate_buffer_diff" in candidate_diff_text
     assert "splitlines(keepends=True)" in candidate_diff_text
+    assert "def render_candidate_buffer_diff" not in operation_candidates_text
+    assert "import difflib" not in operation_candidates_text
+    assert "import difflib" in candidate_diff_text
 
 
 def test_candidate_preview_commands_own_command_text():

@@ -10,7 +10,6 @@ from .. import __version__
 from ..commands.abort import command_abort
 from ..commands.again import command_again
 from ..commands.annotate import command_annotate_batch
-from ..commands.apply_from import command_apply_from_batch
 from ..commands.block_file import command_block_file
 from ..commands.check_unstaged import command_check_unstaged
 from ..commands.discard import (
@@ -55,6 +54,7 @@ from ..commands.undo import command_undo
 from ..exceptions import CommandError
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
+from .apply_dispatch import dispatch_apply_command
 from .auto_advance_options import add_auto_advance_arguments
 from .completion import command_complete_files
 from .file_arguments import add_file_argument, normalize_parsed_file_arguments
@@ -826,21 +826,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
           "With --line, operates on line IDs from entire file."),
     )
 
-    def dispatch_apply(args: argparse.Namespace) -> None:
-        resolved_file_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-        run_for_each_resolved_file(
-            resolved_file_scope,
-            lambda file: command_apply_from_batch(
-                args.from_batch,
-                line_ids=args.line_ids if hasattr(args, "line_ids") else None,
-                file=file,
-            ),
-            line_ids=args.line_ids if hasattr(args, "line_ids") else None,
-            undo_operation=f"apply --from {shlex.quote(args.from_batch)}",
-            worktree_paths=resolved_file_scope.files,
-        )
-
-    parser_apply.set_defaults(func=dispatch_apply)
+    parser_apply.set_defaults(func=dispatch_apply_command)
 
     # reset - Remove claims from batch
     parser_reset = _add_subcommand_parser(

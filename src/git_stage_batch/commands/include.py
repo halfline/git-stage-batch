@@ -17,9 +17,6 @@ from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
 )
-from ..data.file_hunk_display import (
-    cache_unstaged_file_as_single_hunk,
-)
 from ..data.file_review.records import FileReviewAction
 from ..data.file_review.action_scope import (
     finish_review_scoped_line_action,

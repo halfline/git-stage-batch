@@ -10,7 +10,10 @@ from ..data.asset_catalog import (
     AssetGroup,
     Traversable,
 )
-from ..data.asset_installation import copy_asset_tree
+from ..data.asset_installation import (
+    copy_asset_tree,
+    validate_asset_destination_path as _validate_asset_destination,
+)
 from ..data.asset_inventory import (
     get_companion_asset_source as _companion_asset_source,
     get_entry_companion_assets as _entry_companion_assets,
@@ -23,41 +26,6 @@ from ..output.install_assets import (
 )
 from ..utils.file_patterns import resolve_gitignore_style_patterns
 from ..utils.git import get_git_repository_root_path, require_git_repository
-
-
-def _validate_destination_path_shape(
-    source: Traversable,
-    destination: Path,
-    repo_root: Path,
-) -> None:
-    """Reject installs that would collide with non-directory path components."""
-    for parent in destination.parents:
-        if parent == repo_root.parent:
-            break
-        if not parent.exists():
-            continue
-        if not parent.is_dir():
-            raise CommandError(
-                _("Cannot install bundled assets because '{path}' is not a directory.").format(
-                    path=str(parent.relative_to(repo_root)),
-                )
-            )
-
-    if not destination.exists():
-        return
-
-    if source.is_dir() and not destination.is_dir():
-        raise CommandError(
-            _("Cannot install bundled assets because '{path}' is not a directory.").format(
-                path=str(destination.relative_to(repo_root)),
-            )
-        )
-    if source.is_file() and destination.is_dir():
-        raise CommandError(
-            _("Cannot install bundled assets because '{path}' is a directory.").format(
-                path=str(destination.relative_to(repo_root)),
-            )
-        )
 
 
 def command_install_assets(
@@ -112,7 +80,7 @@ def command_install_assets(
         target_root = repo_root.joinpath(*group.target_segments)
         for entry_name, entry in selected_entries.items():
             destination = target_root / (entry.name if entry.is_file() else entry_name)
-            _validate_destination_path_shape(entry, destination, repo_root)
+            _validate_asset_destination(entry, destination, repo_root)
             if destination.exists() and not force:
                 raise CommandError(
                     _("Refusing to overwrite existing {kind} '{name}'. Use --force to replace it.").format(
@@ -124,7 +92,7 @@ def command_install_assets(
             for companion in _entry_companion_assets(group, entry_name):
                 destination = repo_root.joinpath(*companion.target_segments)
                 companion_source = _companion_asset_source(companion)
-                _validate_destination_path_shape(companion_source, destination, repo_root)
+                _validate_asset_destination(companion_source, destination, repo_root)
                 if destination.exists() and not force:
                     raise CommandError(
                         _("Refusing to overwrite existing {kind} '{name}'. Use --force to replace it.").format(
@@ -136,7 +104,7 @@ def command_install_assets(
         for companion in group.companion_assets:
             destination = repo_root.joinpath(*companion.target_segments)
             companion_source = _companion_asset_source(companion)
-            _validate_destination_path_shape(companion_source, destination, repo_root)
+            _validate_asset_destination(companion_source, destination, repo_root)
             if destination.exists() and not force:
                 raise CommandError(
                     _("Refusing to overwrite existing {kind} '{name}'. Use --force to replace it.").format(

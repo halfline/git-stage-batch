@@ -1,4 +1,4 @@
-"""Tests for start-time staged rename normalization."""
+"""Tests for start-time staged change normalization."""
 
 import subprocess
 

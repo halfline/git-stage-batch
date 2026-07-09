@@ -8,8 +8,8 @@ Tests cover:
 
 import pytest
 
+from git_stage_batch.batch.discard import discard_batch_from_line_sequences_as_buffer
 from git_stage_batch.batch.merge import (
-    discard_batch_from_line_sequences_as_buffer,
     merge_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.realized_boundaries import (

@@ -10,14 +10,16 @@ from git_stage_batch.batch.baseline_edits import (
     try_apply_baseline_replacement_units,
 )
 from git_stage_batch.batch.discard_reversal import reverse_presence_constraints
+from git_stage_batch.batch.discard import (
+    _build_realized_entries_for_discard,
+    _discard_batch_line_chunks,
+    discard_batch_from_line_sequences_as_buffer,
+)
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.batch.merge_validation import check_structural_validity
 from git_stage_batch.batch.merge import (
-    _build_realized_entries_for_discard,
-    _discard_batch_line_chunks,
     _merge_batch_line_chunks,
     can_merge_batch_from_line_sequences,
-    discard_batch_from_line_sequences_as_buffer,
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
 )

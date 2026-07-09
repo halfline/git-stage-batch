@@ -8828,7 +8828,10 @@ def test_batch_realized_entries_uses_public_entry_helpers():
         "_realized_entry_content_chunks",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "merge.py": public_names,
+        SRC_ROOT / "batch" / "discard.py": public_names,
+        SRC_ROOT / "batch" / "merge.py": {
+            "realized_entry_content_chunks",
+        },
         SRC_ROOT / "batch" / "source_advancement.py": {
             "realized_entry_content_chunks",
         },
@@ -8878,6 +8881,7 @@ def test_baseline_correspondence_stays_out_of_merge_module():
         fromlist=["merge"],
     )
     correspondence_path = SRC_ROOT / "batch" / "baseline_correspondence.py"
+    discard_path = SRC_ROOT / "batch" / "discard.py"
     merge_path = SRC_ROOT / "batch" / "merge.py"
     public_names = {
         "BaselineCorrespondence",
@@ -8885,11 +8889,11 @@ def test_baseline_correspondence_stays_out_of_merge_module():
         "RegionKind",
         "build_baseline_correspondence",
     }
-    merge_dependency_names = {
+    discard_dependency_names = {
         "build_baseline_correspondence",
     }
     stale_merge_names = public_names | {"_build_baseline_correspondence"}
-    imported_by_merge = set()
+    imported_by_discard = set()
     violations = []
 
     assert public_names <= vars(baseline_correspondence).keys()
@@ -8912,8 +8916,8 @@ def test_baseline_correspondence_stays_out_of_merge_module():
             if imported_module != "git_stage_batch.batch.baseline_correspondence":
                 continue
 
-            if path == merge_path:
-                imported_by_merge |= imported_names & public_names
+            if path == discard_path:
+                imported_by_discard |= imported_names & public_names
                 for alias in node.names:
                     if alias.name not in public_names:
                         continue
@@ -8923,7 +8927,7 @@ def test_baseline_correspondence_stays_out_of_merge_module():
                             f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
                         )
 
-    assert merge_dependency_names <= imported_by_merge
+    assert discard_dependency_names <= imported_by_discard
     assert violations == []
 
 
@@ -8938,6 +8942,7 @@ def test_discard_reversal_stays_out_of_merge_module():
         fromlist=["merge"],
     )
     discard_reversal_path = SRC_ROOT / "batch" / "discard_reversal.py"
+    discard_path = SRC_ROOT / "batch" / "discard.py"
     merge_path = SRC_ROOT / "batch" / "merge.py"
     public_names = {
         "reverse_presence_constraints",
@@ -8947,7 +8952,7 @@ def test_discard_reversal_stays_out_of_merge_module():
         "BaselineCorrespondence",
         "RegionKind",
     }
-    imported_by_merge = set()
+    imported_by_discard = set()
     violations = []
     discard_reversal_imports = {
         imported_module
@@ -8976,8 +8981,8 @@ def test_discard_reversal_stays_out_of_merge_module():
             if imported_module != "git_stage_batch.batch.discard_reversal":
                 continue
 
-            if path == merge_path:
-                imported_by_merge |= imported_names & public_names
+            if path == discard_path:
+                imported_by_discard |= imported_names & public_names
                 for alias in node.names:
                     if alias.name not in public_names:
                         continue
@@ -8987,7 +8992,7 @@ def test_discard_reversal_stays_out_of_merge_module():
                             f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
                         )
 
-    assert public_names <= imported_by_merge
+    assert public_names <= imported_by_discard
     assert violations == []
 
 
@@ -9003,6 +9008,7 @@ def test_realized_boundaries_stay_out_of_merge_module():
     )
     realized_boundaries_path = SRC_ROOT / "batch" / "realized_boundaries.py"
     absence_constraints_path = SRC_ROOT / "batch" / "absence_constraints.py"
+    discard_path = SRC_ROOT / "batch" / "discard.py"
     merge_path = SRC_ROOT / "batch" / "merge.py"
     public_names = {
         "boundary_choices_after_source_line",
@@ -9022,7 +9028,7 @@ def test_realized_boundaries_stay_out_of_merge_module():
             "find_boundary_after_source_line",
             "find_realization_fallback_boundary",
         },
-        merge_path: {
+        discard_path: {
             "find_boundary_after_source_line",
             "sequence_present_at_boundary",
         },
@@ -9066,6 +9072,74 @@ def test_realized_boundaries_stay_out_of_merge_module():
                         violations.append(
                             f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
                         )
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_discard_owns_discard_application():
+    """Discard application should live outside merge operations."""
+    discard = __import__(
+        "git_stage_batch.batch.discard",
+        fromlist=["discard"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    discard_path = SRC_ROOT / "batch" / "discard.py"
+    public_names = {
+        "discard_batch_from_line_sequences_as_buffer",
+    }
+    moved_private_names = {
+        "_build_realized_entries_for_discard",
+        "_discard_batch_acquired_line_chunks",
+        "_discard_batch_line_chunks",
+        "_discard_result_line_ending_from_lines",
+        "_restore_absence_constraints",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_source" / "text_plan_builders.py": (
+            public_names
+        ),
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(discard)
+        assert public_name not in vars(merge)
+    assert moved_private_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == discard_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & (
+                    public_names | moved_private_names
+                )
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.discard":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & moved_private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
         if path in expected_imports:
             assert expected_imports[path] <= imported_public_names
@@ -9978,6 +10052,9 @@ def test_batch_source_text_plan_builders_own_discard_text_planning():
         "build_discard_text_file_action_plan",
     }
     disallowed_imports = {
+        "git_stage_batch.batch.discard": {
+            "discard_batch_from_line_sequences_as_buffer",
+        },
         "git_stage_batch.batch.merge": {
             "discard_batch_from_line_sequences_as_buffer",
         },

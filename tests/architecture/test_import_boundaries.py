@@ -73,7 +73,7 @@ def test_diff_parser_does_not_import_snapshot_runtime_io():
     }
 
     assert "git_stage_batch.data.selected_change.snapshots" not in imported_modules
-    assert "git_stage_batch.utils.git" not in imported_modules
+    assert "git_stage_batch.utils.git_command" not in imported_modules
     assert "git_stage_batch.utils.journal" not in imported_modules
     assert "git_stage_batch.utils.paths" not in imported_modules
     assert not hasattr(
@@ -841,9 +841,9 @@ def test_ignore_file_helpers_stay_in_data_layer():
         "git_stage_batch.data.ignore_files",
         fromlist=["ignore_files"],
     )
-    git_utils = __import__(
-        "git_stage_batch.utils.git",
-        fromlist=["git"],
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
     )
     public_names = {
         "add_file_to_gitignore",
@@ -875,7 +875,7 @@ def test_ignore_file_helpers_stay_in_data_layer():
 
     for public_name in public_names:
         assert public_name in vars(ignore_files)
-    assert public_names.isdisjoint(vars(git_utils))
+    assert public_names.isdisjoint(vars(git_command))
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == SRC_ROOT / "data" / "ignore_files.py":
@@ -888,7 +888,7 @@ def test_ignore_file_helpers_stay_in_data_layer():
             imported_names = {alias.name for alias in node.names}
             if imported_module == "git_stage_batch.data.ignore_files":
                 imported_public_names |= imported_names & public_names
-            if imported_module == "git_stage_batch.utils.git":
+            if imported_module == "git_stage_batch.utils.git_command":
                 moved_names = imported_names & public_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -903,9 +903,15 @@ def test_ignore_file_helpers_stay_in_data_layer():
     assert violations == []
 
 
+def test_git_command_module_uses_specific_filename():
+    """Git command execution should not use the generic git module name."""
+    assert not (SRC_ROOT / "utils" / "git.py").exists()
+    assert (SRC_ROOT / "utils" / "git_command.py").exists()
+
+
 def test_git_index_lock_waiting_stays_out_of_git_command_module():
     """Git command execution should delegate index-lock waiting."""
-    git_path = SRC_ROOT / "utils" / "git.py"
+    git_path = SRC_ROOT / "utils" / "git_command.py"
     git_text = git_path.read_text()
     git_imports = _import_from_nodes(git_path)
     imports_lock_module = any(
@@ -913,7 +919,10 @@ def test_git_index_lock_waiting_stays_out_of_git_command_module():
         and any(alias.name == "git_index_lock" for alias in node.names)
         for imported_module, node in git_imports
     )
-    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
     git_index_lock = __import__(
         "git_stage_batch.utils.git_index_lock",
         fromlist=["git_index_lock"],
@@ -922,7 +931,7 @@ def test_git_index_lock_waiting_stays_out_of_git_command_module():
     assert imports_lock_module
     assert "wait_for_git_index_lock" in vars(git_index_lock)
     assert "DEFAULT_INDEX_LOCK_WAIT_SECONDS" in vars(git_index_lock)
-    assert "wait_for_git_index_lock" not in vars(git_utils)
+    assert "wait_for_git_index_lock" not in vars(git_command)
     assert "def wait_for_git_index_lock" not in git_text
     assert "def _git_index_lock_path" not in git_text
     assert "def _custom_index_lock_path" not in git_text
@@ -930,10 +939,13 @@ def test_git_index_lock_waiting_stays_out_of_git_command_module():
 
 def test_git_object_io_stays_out_of_git_command_module():
     """Git object IO should live beside the command wrapper."""
-    git_path = SRC_ROOT / "utils" / "git.py"
+    git_path = SRC_ROOT / "utils" / "git_command.py"
     object_io_path = SRC_ROOT / "utils" / "git_object_io.py"
     git_text = git_path.read_text()
-    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
     git_object_io = __import__(
         "git_stage_batch.utils.git_object_io",
         fromlist=["git_object_io"],
@@ -948,7 +960,7 @@ def test_git_object_io_stays_out_of_git_command_module():
     violations = []
 
     assert public_names <= vars(git_object_io).keys()
-    assert public_names.isdisjoint(vars(git_utils))
+    assert public_names.isdisjoint(vars(git_command))
 
     for public_name in public_names:
         assert f"def {public_name}" not in git_text
@@ -965,7 +977,7 @@ def test_git_object_io_stays_out_of_git_command_module():
             continue
 
         for imported_module, node in _import_from_nodes(path):
-            if imported_module != "git_stage_batch.utils.git":
+            if imported_module != "git_stage_batch.utils.git_command":
                 continue
 
             moved_names = {alias.name for alias in node.names} & public_names
@@ -979,10 +991,13 @@ def test_git_object_io_stays_out_of_git_command_module():
 
 def test_git_repository_helpers_stay_out_of_git_command_module():
     """Git repository helpers should live beside the command wrapper."""
-    git_path = SRC_ROOT / "utils" / "git.py"
+    git_path = SRC_ROOT / "utils" / "git_command.py"
     repository_path = SRC_ROOT / "utils" / "git_repository.py"
     git_text = git_path.read_text()
-    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
     git_repository = __import__(
         "git_stage_batch.utils.git_repository",
         fromlist=["git_repository"],
@@ -996,7 +1011,7 @@ def test_git_repository_helpers_stay_out_of_git_command_module():
     violations = []
 
     assert public_names <= vars(git_repository).keys()
-    assert public_names.isdisjoint(vars(git_utils))
+    assert public_names.isdisjoint(vars(git_command))
 
     for public_name in public_names:
         assert f"def {public_name}" not in git_text
@@ -1012,7 +1027,7 @@ def test_git_repository_helpers_stay_out_of_git_command_module():
             continue
 
         for imported_module, node in _import_from_nodes(path):
-            if imported_module != "git_stage_batch.utils.git":
+            if imported_module != "git_stage_batch.utils.git_command":
                 continue
 
             moved_names = {alias.name for alias in node.names} & public_names
@@ -1026,10 +1041,13 @@ def test_git_repository_helpers_stay_out_of_git_command_module():
 
 def test_git_index_helpers_stay_out_of_git_command_module():
     """Git index helpers should live beside the command wrapper."""
-    git_path = SRC_ROOT / "utils" / "git.py"
+    git_path = SRC_ROOT / "utils" / "git_command.py"
     index_path = SRC_ROOT / "utils" / "git_index.py"
     git_text = git_path.read_text()
-    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
     git_index = __import__(
         "git_stage_batch.utils.git_index",
         fromlist=["git_index"],
@@ -1051,7 +1069,7 @@ def test_git_index_helpers_stay_out_of_git_command_module():
     violations = []
 
     assert public_names <= vars(git_index).keys()
-    assert public_names.isdisjoint(vars(git_utils))
+    assert public_names.isdisjoint(vars(git_command))
 
     for public_name in public_names:
         assert f"def {public_name}" not in git_text
@@ -1068,7 +1086,7 @@ def test_git_index_helpers_stay_out_of_git_command_module():
             continue
 
         for imported_module, node in _import_from_nodes(path):
-            if imported_module != "git_stage_batch.utils.git":
+            if imported_module != "git_stage_batch.utils.git_command":
                 continue
 
             moved_names = {alias.name for alias in node.names} & public_names
@@ -1082,10 +1100,13 @@ def test_git_index_helpers_stay_out_of_git_command_module():
 
 def test_git_worktree_helpers_stay_out_of_git_command_module():
     """Git worktree helpers should live beside the command wrapper."""
-    git_path = SRC_ROOT / "utils" / "git.py"
+    git_path = SRC_ROOT / "utils" / "git_command.py"
     worktree_path = SRC_ROOT / "utils" / "git_worktree.py"
     git_text = git_path.read_text()
-    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
     git_worktree = __import__(
         "git_stage_batch.utils.git_worktree",
         fromlist=["git_worktree"],
@@ -1102,7 +1123,7 @@ def test_git_worktree_helpers_stay_out_of_git_command_module():
     violations = []
 
     assert public_names <= vars(git_worktree).keys()
-    assert public_names.isdisjoint(vars(git_utils))
+    assert public_names.isdisjoint(vars(git_command))
 
     for public_name in public_names:
         assert f"def {public_name}" not in git_text
@@ -1118,7 +1139,7 @@ def test_git_worktree_helpers_stay_out_of_git_command_module():
             continue
 
         for imported_module, node in _import_from_nodes(path):
-            if imported_module != "git_stage_batch.utils.git":
+            if imported_module != "git_stage_batch.utils.git_command":
                 continue
 
             moved_names = {alias.name for alias in node.names} & public_names
@@ -1132,10 +1153,13 @@ def test_git_worktree_helpers_stay_out_of_git_command_module():
 
 def test_git_ref_helpers_stay_out_of_git_command_module():
     """Git ref helpers should live beside the command wrapper."""
-    git_path = SRC_ROOT / "utils" / "git.py"
+    git_path = SRC_ROOT / "utils" / "git_command.py"
     refs_path = SRC_ROOT / "utils" / "git_refs.py"
     git_text = git_path.read_text()
-    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
     git_refs = __import__(
         "git_stage_batch.utils.git_refs",
         fromlist=["git_refs"],
@@ -1144,7 +1168,7 @@ def test_git_ref_helpers_stay_out_of_git_command_module():
     violations = []
 
     assert public_names <= vars(git_refs).keys()
-    assert public_names.isdisjoint(vars(git_utils))
+    assert public_names.isdisjoint(vars(git_command))
     assert "_git_ref_exists" in vars(git_refs)
 
     assert "def update_git_refs" not in git_text
@@ -1161,7 +1185,7 @@ def test_git_ref_helpers_stay_out_of_git_command_module():
             continue
 
         for imported_module, node in _import_from_nodes(path):
-            if imported_module != "git_stage_batch.utils.git":
+            if imported_module != "git_stage_batch.utils.git_command":
                 continue
 
             moved_names = {alias.name for alias in node.names} & public_names
@@ -2458,9 +2482,9 @@ def test_argument_parser_delegates_git_help_display():
 
     assert "git_stage_batch.cli.git_help" in parser_imports
     assert "git_stage_batch.utils.command" not in parser_imports
-    assert "git_stage_batch.utils.git" not in parser_imports
+    assert "git_stage_batch.utils.git_command" not in parser_imports
     assert "git_stage_batch.utils.command" in git_help_imports
-    assert "git_stage_batch.utils.git" in git_help_imports
+    assert "git_stage_batch.utils.git_command" in git_help_imports
     assert "GitHelpArgumentParser" in vars(git_help)
     assert moved_names.isdisjoint(vars(parser))
     assert "_show_git_stage_batch_help(" not in parser_text
@@ -5406,7 +5430,7 @@ def test_batch_transform_sift_persistence_owns_file_writes():
             "TextFileChangeType",
             "normalized_text_change_type",
         },
-        "git_stage_batch.utils.git": {
+        "git_stage_batch.utils.git_command": {
             "run_git_command",
         },
         "git_stage_batch.utils.git_index": {

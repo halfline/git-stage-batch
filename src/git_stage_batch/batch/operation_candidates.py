@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from itertools import product
-from typing import Literal
 
 from ..core.buffer import LineBuffer
 from ..core.replacement import ReplacementPayload
@@ -16,7 +14,14 @@ from .merge import (
 )
 from .merge_candidates import (
     MergeCandidate,
-    MergeResolution,
+)
+from .operation_candidate_types import (
+    CandidateEnumerationLimitError as _CandidateEnumerationLimitError,
+    CandidateOperation as _CandidateOperation,
+    CandidateTarget as _CandidateTarget,
+    MAX_OPERATION_CANDIDATES as _MAX_OPERATION_CANDIDATES,
+    OperationCandidatePreview as _OperationCandidatePreview,
+    TargetCandidatePreview as _TargetCandidatePreview,
 )
 from .operation_candidate_fingerprints import (
     batch_fingerprint as _fingerprint_batch,
@@ -25,75 +30,6 @@ from .operation_candidate_fingerprints import (
     target_fingerprint as _fingerprint_target,
     target_result_fingerprint as _fingerprint_target_result,
 )
-
-
-CandidateOperation = Literal["apply", "include"]
-CandidateTarget = Literal["index", "worktree"]
-MAX_OPERATION_CANDIDATES = 50
-
-
-class CandidateEnumerationLimitError(ValueError):
-    """Raised when a candidate set is too large to preview safely."""
-
-
-@dataclass(frozen=True)
-class CandidatePreviewCount:
-    """Candidate preview count result for one file."""
-
-    count: int = 0
-    too_many: bool = False
-    error: str | None = None
-
-
-@dataclass
-class TargetCandidatePreview:
-    """Materialized candidate result for one target."""
-
-    target: CandidateTarget
-    file_path: str
-    before_buffer: LineBuffer
-    after_buffer: LineBuffer
-    file_mode: str | None
-    change_type: str
-    destination_exists: bool
-    resolution: MergeResolution | None
-    resolution_ordinal: int
-    resolution_count: int
-    summary: str
-    explanation: str
-    ambiguity_target_line_range: tuple[int, int] | None
-
-    def close(self) -> None:
-        self.before_buffer.close()
-        self.after_buffer.close()
-
-
-@dataclass
-class OperationCandidatePreview:
-    """Materialized preview for one complete operation candidate."""
-
-    operation: CandidateOperation
-    batch_name: str
-    file_path: str
-    ordinal: int
-    count: int
-    candidate_id: str
-    targets: tuple[TargetCandidatePreview, ...]
-    batch_fingerprint: str
-    target_fingerprints: dict[str, str]
-    target_result_fingerprints: dict[str, str]
-    scope_fingerprint: str
-
-    def require_target(self, target: CandidateTarget) -> TargetCandidatePreview:
-        """Return a target preview or raise when the candidate shape is invalid."""
-        for candidate_target in self.targets:
-            if candidate_target.target == target:
-                return candidate_target
-        raise KeyError(target)
-
-    def close(self) -> None:
-        for target in self.targets:
-            target.close()
 
 
 def _merge_candidates_or_unambiguous(
@@ -118,7 +54,7 @@ def _merge_candidates_or_unambiguous(
         source_lines,
         ownership,
         target_lines,
-        max_candidates=MAX_OPERATION_CANDIDATES,
+        max_candidates=_MAX_OPERATION_CANDIDATES,
     )
     if candidate_set.candidates:
         return candidate_set.candidates
@@ -127,7 +63,7 @@ def _merge_candidates_or_unambiguous(
 
 def _materialize_target_candidate(
     *,
-    target: CandidateTarget,
+    target: _CandidateTarget,
     file_path: str,
     source_lines: LineBuffer,
     ownership,
@@ -137,7 +73,7 @@ def _materialize_target_candidate(
     text_change_type,
     destination_exists: bool,
     selected_ids: set[int] | None,
-) -> TargetCandidatePreview:
+) -> _TargetCandidatePreview:
     before_copy = LineBuffer.from_bytes(before_lines.to_bytes())
     after = merge_batch_from_line_sequences_as_buffer(
         source_lines,
@@ -145,7 +81,7 @@ def _materialize_target_candidate(
         before_lines,
         resolution=None if candidate is None else candidate.resolution,
     )
-    return TargetCandidatePreview(
+    return _TargetCandidatePreview(
         target=target,
         file_path=file_path,
         before_buffer=before_copy,
@@ -182,7 +118,7 @@ def build_apply_candidate_previews(
     worktree_exists: bool,
     selected_ids: set[int] | None,
     selection_ids: set[int] | None,
-) -> tuple[OperationCandidatePreview, ...]:
+) -> tuple[_OperationCandidatePreview, ...]:
     """Return apply candidates for a single file, or an empty tuple."""
     merge_candidates = _merge_candidates_or_unambiguous(
         source_lines,
@@ -207,7 +143,7 @@ def build_apply_candidate_previews(
         selection_ids=selection_ids,
     )
     count = len(merge_candidates)
-    previews: list[OperationCandidatePreview] = []
+    previews: list[_OperationCandidatePreview] = []
     for ordinal, merge_candidate in enumerate(merge_candidates, start=1):
         target_preview = _materialize_target_candidate(
             target="worktree",
@@ -232,7 +168,7 @@ def build_apply_candidate_previews(
             "worktree": _fingerprint_target_result(target_preview)
         }
         targets = (target_preview,)
-        preview = OperationCandidatePreview(
+        preview = _OperationCandidatePreview(
             operation="apply",
             batch_name=batch_name,
             file_path=file_path,
@@ -277,7 +213,7 @@ def build_include_candidate_previews(
     selected_ids: set[int] | None,
     selection_ids: set[int] | None,
     replacement_payload: ReplacementPayload | None = None,
-) -> tuple[OperationCandidatePreview, ...]:
+) -> tuple[_OperationCandidatePreview, ...]:
     """Return include candidates for a single file, or an empty tuple."""
     index_candidates = _merge_candidates_or_unambiguous(source_lines, ownership, index_lines)
     worktree_candidates = _merge_candidates_or_unambiguous(source_lines, ownership, worktree_lines)
@@ -285,8 +221,8 @@ def build_include_candidate_previews(
         return ()
 
     products = list(product(index_candidates, worktree_candidates))
-    if len(products) > MAX_OPERATION_CANDIDATES:
-        raise CandidateEnumerationLimitError("too many include candidates to preview safely")
+    if len(products) > _MAX_OPERATION_CANDIDATES:
+        raise _CandidateEnumerationLimitError("too many include candidates to preview safely")
 
     batch_fingerprint = _fingerprint_batch(
         batch_name=batch_name,
@@ -304,7 +240,7 @@ def build_include_candidate_previews(
         replacement_payload=replacement_payload,
     )
     count = len(products)
-    previews: list[OperationCandidatePreview] = []
+    previews: list[_OperationCandidatePreview] = []
     for ordinal, (index_candidate, worktree_candidate) in enumerate(products, start=1):
         index_preview = _materialize_target_candidate(
             target="index",
@@ -347,7 +283,7 @@ def build_include_candidate_previews(
             "index": _fingerprint_target_result(index_preview),
             "worktree": _fingerprint_target_result(worktree_preview),
         }
-        preview = OperationCandidatePreview(
+        preview = _OperationCandidatePreview(
             operation="include",
             batch_name=batch_name,
             file_path=file_path,

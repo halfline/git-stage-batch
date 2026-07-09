@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from ...batch.operation_candidates import CandidatePreviewCount
+from ...batch.operation_candidate_types import CandidatePreviewCount
 from ...exceptions import exit_with_error
 from ...i18n import _
 

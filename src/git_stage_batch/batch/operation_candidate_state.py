@@ -11,7 +11,7 @@ from ..utils.paths import get_batch_candidate_state_file_path
 from .operation_candidate_fingerprints import ALGORITHM_VERSION
 
 if TYPE_CHECKING:
-    from .operation_candidates import OperationCandidatePreview
+    from .operation_candidate_types import OperationCandidatePreview
 
 
 def _empty_state() -> dict:

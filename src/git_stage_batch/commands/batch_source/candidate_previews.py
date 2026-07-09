@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from ...batch.operation_candidates import (
-    OperationCandidatePreview,
-)
+from ...batch.operation_candidate_types import OperationCandidatePreview
 from ...batch.operation_candidate_state import load_candidate_preview_state
 from ...exceptions import CommandError
 from ...i18n import _

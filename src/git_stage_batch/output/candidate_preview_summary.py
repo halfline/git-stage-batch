@@ -5,7 +5,7 @@ from __future__ import annotations
 import difflib
 from dataclasses import dataclass
 
-from ..batch.operation_candidates import OperationCandidatePreview
+from ..batch.operation_candidate_types import OperationCandidatePreview
 from ..core.buffer import LineBuffer
 from ..i18n import _
 from . import candidate_preview_snippets

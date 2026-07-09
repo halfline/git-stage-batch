@@ -7,42 +7,10 @@ import sys
 
 from .. import __version__
 from ..i18n import _
-from .asset_subcommands import add_install_assets_subcommand
-from .batch_subcommands import (
-    add_annotate_subcommand,
-    add_apply_subcommand,
-    add_drop_subcommand,
-    add_list_subcommand,
-    add_new_subcommand,
-    add_reset_subcommand,
-    add_sift_subcommand,
-)
-from .completion import add_completion_subcommand
-from .file_blocking_subcommands import (
-    add_block_file_subcommand,
-    add_unblock_file_subcommand,
-)
 from .file_arguments import normalize_parsed_file_arguments
-from .fixup_subcommands import add_suggest_fixup_subcommand
 from .git_help import GitHelpArgumentParser
 from .quick_actions import expand_quick_actions
-from .session_subcommands import (
-    add_abort_subcommand,
-    add_again_subcommand,
-    add_check_unstaged_subcommand,
-    add_redo_subcommand,
-    add_start_subcommand,
-    add_status_subcommand,
-    add_stop_subcommand,
-    add_undo_subcommand,
-)
-from .selection_subcommands import (
-    add_discard_subcommand,
-    add_include_subcommand,
-    add_show_subcommand,
-    add_skip_subcommand,
-)
-from .tui_subcommands import add_interactive_subcommand
+from .subcommand_registry import add_cli_subcommands
 
 
 def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Namespace | None:
@@ -88,55 +56,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Available commands"),
     )
 
-    add_check_unstaged_subcommand(subparsers)
-
-    add_start_subcommand(subparsers)
-
-    add_interactive_subcommand(subparsers)
-
-    add_stop_subcommand(subparsers)
-
-    add_again_subcommand(subparsers)
-
-    add_undo_subcommand(subparsers)
-
-    add_redo_subcommand(subparsers)
-
-    add_show_subcommand(subparsers)
-
-    add_status_subcommand(subparsers)
-
-    add_include_subcommand(subparsers)
-
-    add_skip_subcommand(subparsers)
-
-    add_discard_subcommand(subparsers)
-
-    add_abort_subcommand(subparsers)
-
-    add_block_file_subcommand(subparsers)
-
-    add_unblock_file_subcommand(subparsers)
-
-    add_suggest_fixup_subcommand(subparsers)
-
-    add_new_subcommand(subparsers)
-
-    add_list_subcommand(subparsers)
-
-    add_drop_subcommand(subparsers)
-
-    add_annotate_subcommand(subparsers)
-
-    add_apply_subcommand(subparsers)
-
-    add_reset_subcommand(subparsers)
-
-    add_sift_subcommand(subparsers)
-
-    add_install_assets_subcommand(subparsers)
-
-    add_completion_subcommand(subparsers)
+    add_cli_subcommands(subparsers)
 
     # Parse arguments, return None on failure
     try:

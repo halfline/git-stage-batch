@@ -32,7 +32,10 @@ from .fixup.candidate_display import (
 )
 from .fixup.history import find_next_fixup_candidate
 from .fixup.iteration_state import prepare_suggest_fixup_iteration
-from .fixup.line_ranges import require_hunk_old_line_range
+from .fixup.line_ranges import (
+    require_hunk_old_line_range,
+    require_selected_old_line_range,
+)
 
 
 def command_suggest_fixup(
@@ -244,18 +247,9 @@ def command_suggest_fixup_line(
     requested_ids = parse_line_selection(line_id_specification)
     requested_ids_sorted = sorted(requested_ids)
 
-    # Extract old line numbers only for the specified line IDs
-    old_line_numbers = []
-    for entry in line_changes.lines:
-        if entry.id in requested_ids and entry.old_line_number is not None:
-            old_line_numbers.append(entry.old_line_number)
-
-    if not old_line_numbers:
-        exit_with_error(_("No old line numbers found for specified lines (they may be newly added lines)."))
-
-    # Get the range of old lines
-    min_line = min(old_line_numbers)
-    max_line = max(old_line_numbers)
+    line_range = require_selected_old_line_range(line_changes, requested_ids)
+    min_line = line_range.min_line
+    max_line = line_range.max_line
 
     # Validate boundary ref
     try:

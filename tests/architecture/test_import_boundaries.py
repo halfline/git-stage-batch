@@ -9849,6 +9849,78 @@ def test_include_line_selection_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_include_line_action_stays_in_command_helper():
+    """Live include-line action support should stay out of the entrypoint."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_action.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.include_line_action",
+        fromlist=["include_line_action"],
+    )
+    public_names = {"include_live_line_selection"}
+    action_dependency_names = {
+        "LineBuffer",
+        "buffer_matches",
+        "build_target_index_buffer_from_lines",
+        "exit_with_error",
+        "get_index_snapshot_file_path",
+        "get_working_tree_snapshot_file_path",
+        "load_git_object_as_buffer",
+        "parse_line_selection",
+        "read_line_ids_file",
+        "require_line_selection_in_view",
+        "restore_selected_change_state",
+        "undo_checkpoint",
+        "write_line_ids_file",
+    }
+    helper_imports = action_dependency_names | {
+        "ExitStack",
+        "SelectedChangeKind",
+        "finish_review_scoped_line_action",
+        "get_processed_include_ids_file_path",
+        "include_line_selection",
+        "log_journal",
+        "read_selected_change_kind",
+        "refresh_selected_hunk_after_line_action",
+        "replacement_selection",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_include_line_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_line"])
+        if isinstance(node, ast.Name)
+    }
+    command_include_line_attributes = {
+        node.attr
+        for node in ast.walk(include_functions["command_include_line"])
+        if isinstance(node, ast.Attribute)
+    }
+    include_selection_imports = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        include_selection_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "include_line_action" in include_selection_imports
+    assert "include_live_line_selection" in command_include_line_attributes
+    assert action_dependency_names.isdisjoint(command_include_line_names)
+    assert helper_imports <= helper_imported_names
+
+
 def test_include_line_replacement_stays_in_command_helper():
     """Include line-replacement support should stay out of the command entrypoint."""
     include_path = SRC_ROOT / "commands" / "include.py"

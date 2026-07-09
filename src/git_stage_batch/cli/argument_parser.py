@@ -15,7 +15,6 @@ from ..commands.drop import command_drop_batch
 from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
 from ..commands.redo import command_redo
-from ..commands.sift import command_sift_batch
 from ..commands.start import command_start
 from ..commands.status import command_status
 from ..commands.stop import command_stop
@@ -30,6 +29,7 @@ from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .apply_dispatch import dispatch_apply_command
 from .asset_subcommands import add_install_assets_subcommand
 from .auto_advance_options import add_auto_advance_arguments
+from .batch_subcommands import add_sift_subcommand
 from .completion import add_completion_subcommand
 from .discard_dispatch import dispatch_discard_command
 from .file_arguments import add_file_argument, normalize_parsed_file_arguments
@@ -622,27 +622,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     parser_reset.set_defaults(func=dispatch_reset_command)
 
-    # sift - Reconcile batch against current tip
-    parser_sift = add_subcommand_parser(
-        subparsers,
-        "sift",
-        help=_("Remove already-present portions from a batch"),
-    )
-    parser_sift.add_argument(
-        "--from",
-        dest="from_batch",
-        metavar="BATCH",
-        required=True,
-        help=_("Source batch to sift"),
-    )
-    parser_sift.add_argument(
-        "--to",
-        dest="to_batch",
-        metavar="BATCH",
-        required=True,
-        help=_("Destination batch (may equal source for in-place sift)"),
-    )
-    parser_sift.set_defaults(func=lambda args: command_sift_batch(args.from_batch, args.to_batch))
+    add_sift_subcommand(subparsers)
 
     add_install_assets_subcommand(subparsers)
 

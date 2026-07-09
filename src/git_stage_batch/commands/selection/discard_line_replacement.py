@@ -34,11 +34,11 @@ from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
 from ...core.line_selection import parse_line_selection
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
-from ...batch.source_snapshots import (
-    create_batch_source_commit,
+from ...batch.source_cache import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
+from ...batch.source_snapshots import create_batch_source_commit
 from ...data.file_modes import detect_file_mode
 from ...data.file_hunk_display import build_file_hunk_from_buffer
 from ...data.line_state import load_line_changes_from_state

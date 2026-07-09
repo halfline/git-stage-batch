@@ -1,8 +1,7 @@
-"""Session batch source management for batch operations."""
+"""Batch source commit construction for batch operations."""
 
 from __future__ import annotations
 
-import json
 import os
 import stat
 import tempfile
@@ -17,7 +16,7 @@ from ..utils.repository_buffers import (
 )
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
+from ..utils.file_io import read_file_paths_file, read_text_file_contents
 from ..utils.git_command import (
     run_git_command,
 )
@@ -39,7 +38,6 @@ from ..utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
-    get_session_batch_sources_file_path,
 )
 
 
@@ -445,44 +443,3 @@ def create_batch_source_commit(
     )
 
     return batch_source_commit
-
-
-def get_batch_source_for_file(file_path: str) -> str | None:
-    """Retrieve existing batch source commit for a file from session cache.
-
-    Args:
-        file_path: Repository-relative path to the file
-
-    Returns:
-        Batch source commit SHA if found, None otherwise
-    """
-    batch_sources = load_session_batch_sources()
-    return batch_sources.get(file_path)
-
-
-def load_session_batch_sources() -> dict[str, str]:
-    """Load session batch sources from session-batch-sources.json.
-
-    Returns:
-        Dictionary mapping file paths to batch source commit SHAs
-    """
-    batch_sources_path = get_session_batch_sources_file_path()
-    if not batch_sources_path.exists():
-        return {}
-
-    try:
-        content = read_text_file_contents(batch_sources_path)
-        return json.loads(content)
-    except (json.JSONDecodeError, ValueError):
-        return {}
-
-
-def save_session_batch_sources(batch_sources: dict[str, str]) -> None:
-    """Save session batch sources to session-batch-sources.json.
-
-    Args:
-        batch_sources: Dictionary mapping file paths to batch source commit SHAs
-    """
-    batch_sources_path = get_session_batch_sources_file_path()
-    content = json.dumps(batch_sources, indent=2)
-    write_text_file_contents(batch_sources_path, content)

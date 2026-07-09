@@ -12,11 +12,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
-from .source_snapshots import (
-    create_batch_source_commit,
+from .source_cache import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
+from .source_snapshots import create_batch_source_commit
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,

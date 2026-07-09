@@ -5,11 +5,11 @@ from __future__ import annotations
 import sys
 
 from . import action_selection as _action_selection
+from . import atomic_unit_refusals as _atomic_unit_refusals
 from . import binary_file_actions as _binary_file_actions
 from . import text_file_actions as _text_file_actions
 from . import text_plan_builders as _text_plan_builders
 from ...batch.metadata_validation import get_validated_baseline_commit
-from ...batch.selection import translate_atomic_unit_error_to_gutter_ids
 from ...batch.submodule_pointer import (
     discard_submodule_pointer_from_batch,
     is_batch_submodule_pointer,
@@ -98,7 +98,7 @@ def execute_discard_action(
                     )
                 except AtomicUnitError as e:
                     if rendered:
-                        translate_atomic_unit_error_to_gutter_ids(
+                        _atomic_unit_refusals.translate_atomic_unit_error_to_gutter_ids(
                             e,
                             rendered,
                             "discard from",

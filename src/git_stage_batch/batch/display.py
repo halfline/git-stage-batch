@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, TypeVar
 
 from ..core.models import LineLevelChange, LineEntry
-from .source_snapshots import get_batch_source_for_file
+from .source_cache import get_batch_source_for_file
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,

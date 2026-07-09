@@ -14,6 +14,8 @@ from ..utils.repository_buffers import load_git_object_as_buffer
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import (
     run_git_command,
+)
+from ..utils.git_refs import (
     update_git_refs,
 )
 from ..utils.git_index import (

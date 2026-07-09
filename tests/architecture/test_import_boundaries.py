@@ -725,6 +725,31 @@ def test_cli_argument_parser_delegates_suggest_fixup_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in fixup_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_show_subcommand_registration():
+    """Argument parsing should not own show parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
+    }
+    selection_subcommands = __import__(
+        "git_stage_batch.cli.selection_subcommands",
+        fromlist=["selection_subcommands"],
+    )
+
+    assert "add_show_subcommand" in vars(selection_subcommands)
+    assert "git_stage_batch.cli.selection_subcommands" in argument_parser_imports
+    assert "git_stage_batch.cli.show_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.show_dispatch" in selection_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in selection_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in selection_subcommands_imports
+
+
 def test_cli_argument_parser_delegates_stop_subcommand_registration():
     """Argument parsing should not own stop parser details."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -3202,11 +3227,16 @@ def test_argument_parser_delegates_quick_action_expansion():
 def test_argument_parser_delegates_show_dispatch():
     """Parser construction should not own show workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
     show_dispatch_path = SRC_ROOT / "cli" / "show_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
     }
     show_dispatch_imports = {
         imported_module
@@ -3233,7 +3263,9 @@ def test_argument_parser_delegates_show_dispatch():
         "git_stage_batch.commands.show_from",
     }
 
-    assert "git_stage_batch.cli.show_dispatch" in parser_imports
+    assert "git_stage_batch.cli.selection_subcommands" in parser_imports
+    assert "git_stage_batch.cli.show_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.show_dispatch" in selection_subcommands_imports
     assert show_runtime_imports.isdisjoint(parser_imports)
     assert show_runtime_imports <= show_dispatch_imports
     assert "git_stage_batch.cli.file_scope" in show_dispatch_imports
@@ -6423,7 +6455,7 @@ def test_argument_parser_does_not_import_command_facade():
     assert "from .. import commands" not in parser_text
     assert "commands.command_" not in parser_text
     assert "commands.DEFAULT_PROMPT_FORMAT" not in parser_text
-    assert "git_stage_batch.cli.show_dispatch" in imported_modules
+    assert "git_stage_batch.cli.show_dispatch" not in imported_modules
     assert "git_stage_batch.commands.show" not in imported_modules
     assert "git_stage_batch.commands.show_from" not in imported_modules
     assert "git_stage_batch.cli.include_dispatch" in imported_modules
@@ -6442,6 +6474,7 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.status" not in imported_modules
     assert "git_stage_batch.cli.file_blocking_subcommands" in imported_modules
     assert "git_stage_batch.cli.fixup_subcommands" in imported_modules
+    assert "git_stage_batch.cli.selection_subcommands" in imported_modules
     assert "git_stage_batch.cli.session_subcommands" in imported_modules
 
 

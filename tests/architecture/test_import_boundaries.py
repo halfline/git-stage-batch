@@ -15031,15 +15031,29 @@ def test_index_entry_lookup_stays_in_data_module():
         "git_stage_batch.data.index_entries",
         fromlist=["index_entries"],
     )
+    old_start_time_path = SRC_ROOT / "data" / "staged_renames.py"
     expected_imports = {
         SRC_ROOT
         / "commands"
         / "selection"
         / "selected_change_staging.py": {"read_index_entry"},
-        SRC_ROOT / "data" / "staged_renames.py": {"read_index_entry"},
+        SRC_ROOT / "data" / "start_time_changes.py": {"read_index_entry"},
     }
+    old_imports = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.staged_renames":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            old_imports.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
 
     assert {"IndexEntry", "read_index_entry"} <= vars(index_entries).keys()
+    assert not old_start_time_path.exists()
+    assert old_imports == []
 
     for path, expected_names in expected_imports.items():
         tree = ast.parse(path.read_text(), filename=str(path))

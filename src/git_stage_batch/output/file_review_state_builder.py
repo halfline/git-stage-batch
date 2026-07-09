@@ -14,6 +14,7 @@ from ..data.file_review.records import (
     FileReviewState,
     ReviewSource,
 )
+from ..data.file_review.pages import normalize_page_spec, parse_page_selection
 from ..data.selected_change.store import SelectedChangeKind
 from .file_review_action_selections import (
     change_index_containing_review_display_ids,
@@ -23,7 +24,6 @@ from .file_review_action_selections import (
     selection_ids_for_display_ids,
 )
 from .file_review_model import FileReviewModel, ReviewChange
-from ..data.file_review.pages import normalize_page_spec, parse_page_selection
 
 
 def _coerce_actionable_reason(reason: str) -> ActionableSelectionReason:

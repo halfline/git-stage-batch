@@ -41,6 +41,7 @@ from ..data.file_change_display import (
     render_rename_change,
     render_text_deletion_change,
 )
+from ..data.file_review.pages import normalize_page_spec
 from ..data.file_review.records import ReviewSource
 from ..data.file_review.state import (
     clear_last_file_review_state,
@@ -63,7 +64,6 @@ from ..output.file_review import (
     print_file_review,
 )
 from ..output.file_review_model_builder import build_file_review_model
-from ..data.file_review.pages import normalize_page_spec
 from ..output.file_review_state_builder import (
     make_file_review_state,
     resolve_default_review_pages,

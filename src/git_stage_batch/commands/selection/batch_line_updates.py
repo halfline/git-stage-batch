@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 
-from ...batch.operations import create_batch
+from ...batch.lifecycle import create_batch
 from ...batch.query import read_batch_metadata
 from ...batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ...batch.text_file_storage import add_file_to_batch

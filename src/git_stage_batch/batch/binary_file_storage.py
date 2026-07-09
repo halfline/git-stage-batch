@@ -17,7 +17,7 @@ from ..utils.git_object_io import create_git_blob
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.paths import get_batch_metadata_file_path
 from . import content_commits as _content_commits
-from .operations import create_batch
+from .lifecycle import create_batch
 from .query import read_batch_metadata
 from .validation import batch_exists, validate_batch_name
 

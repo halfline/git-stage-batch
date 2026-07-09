@@ -8,7 +8,7 @@ from ..core.models import GitlinkChange
 from ..utils.file_io import write_text_file_contents
 from ..utils.paths import get_batch_metadata_file_path
 from . import content_commits as _content_commits
-from .operations import create_batch
+from .lifecycle import create_batch
 from .query import read_batch_metadata
 from .validation import batch_exists, validate_batch_name
 

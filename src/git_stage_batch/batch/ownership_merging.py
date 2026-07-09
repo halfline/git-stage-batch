@@ -9,11 +9,10 @@ from ..core.buffer import buffer_byte_chunks
 from .ownership import (
     AbsenceClaim,
     BatchOwnership,
-    ReplacementUnit,
 )
 from .ownership_claims import presence_claims_from_source_lines
 from .ownership_references import BaselineReference
-from .ownership_replacement_units import normalize_replacement_units
+from .ownership_replacement_units import ReplacementUnit, normalize_replacement_units
 
 
 @dataclass(frozen=True, slots=True)

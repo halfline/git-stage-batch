@@ -12,7 +12,8 @@ from ..core.replacement import (
     replacement_line_chunks,
 )
 from ..core.buffer import LineBuffer
-from .ownership import BatchOwnership, AbsenceClaim, ReplacementUnit
+from .ownership import BatchOwnership, AbsenceClaim
+from .ownership_replacement_units import ReplacementUnit
 
 
 __all__ = [

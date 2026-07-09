@@ -9,7 +9,7 @@ import hashlib
 from ..core.line_selection import LineSelection
 from .line_mapping import LineMapping
 from .line_sequence_equality import line_slice_equals as _line_slice_matches
-from .match import iter_exact_context_gaps
+from .line_sequence_search import iter_exact_context_gaps
 from .presence_missing_claims import (
     mapped_missing_source_lines as _mapped_missing_source_lines,
 )

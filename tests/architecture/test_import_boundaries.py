@@ -234,6 +234,28 @@ def test_editor_package_does_not_reexport_editor_apis():
     assert violations == []
 
 
+def test_editor_edit_uses_piece_table_module():
+    """Editor mutations should not own line piece-table storage."""
+    edit_path = SRC_ROOT / "editor" / "edit.py"
+    edit_text = edit_path.read_text()
+    edit_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(edit_path)
+    }
+    piece_table = __import__(
+        "git_stage_batch.editor.piece_table",
+        fromlist=["piece_table"],
+    )
+
+    assert "git_stage_batch.editor.piece_table" in edit_imports
+    assert "LinePieceTable" in vars(piece_table)
+    assert "LineRange" in vars(piece_table)
+    assert "class LinePieceTable" not in edit_text
+    assert "class LineRange" not in edit_text
+    assert "from array import array" not in edit_text
+    assert "bytearray(" not in edit_text
+
+
 def test_cli_package_does_not_reexport_cli_apis():
     """CLI callers should import concrete modules instead of the package."""
     cli_path = SRC_ROOT / "cli" / "__init__.py"

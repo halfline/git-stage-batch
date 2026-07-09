@@ -50,7 +50,7 @@ from ...utils.repository_buffers import (
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...staging.operations import (
+from ...staging.content_buffers import (
     build_target_working_tree_buffer_from_lines,
     build_target_working_tree_buffer_with_replaced_lines,
 )

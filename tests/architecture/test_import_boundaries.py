@@ -317,7 +317,10 @@ def test_data_package_does_not_reexport_data_apis():
     }
     data = __import__("git_stage_batch.data", fromlist=["data"])
     facade_names = {
+        "ASSET_GROUPS",
+        "AssetGroup",
         "auto_add_untracked_files",
+        "CompanionAsset",
         "estimate_remaining_hunks",
         "format_id_range",
         "get_file_progress",
@@ -328,6 +331,7 @@ def test_data_package_does_not_reexport_data_apis():
         "read_status_summary",
         "restore_batch_refs",
         "snapshot_batch_refs",
+        "Traversable",
     }
 
     assert imported_modules <= {"__future__"}
@@ -2515,6 +2519,82 @@ def test_tui_asset_menu_owns_install_assets_action():
     assert "git_stage_batch.commands.install_assets" not in interactive_imports
     assert "git_stage_batch.commands.install_assets" not in action_dispatch_imports
     assert "git_stage_batch.commands.install_assets" in asset_menu_imports
+
+
+def test_install_asset_catalog_owns_asset_groups():
+    """Install asset group definitions should live in the data catalog."""
+    asset_catalog = __import__(
+        "git_stage_batch.data.asset_catalog",
+        fromlist=["asset_catalog"],
+    )
+    install_assets = __import__(
+        "git_stage_batch.commands.install_assets",
+        fromlist=["install_assets"],
+    )
+    command_path = SRC_ROOT / "commands" / "install_assets.py"
+    asset_menu_path = SRC_ROOT / "tui" / "asset_menu.py"
+    public_names = {
+        "ASSET_GROUPS",
+        "AssetGroup",
+        "CompanionAsset",
+        "Traversable",
+    }
+    old_command_names = {
+        "AssetGroup",
+        "CompanionAsset",
+        "Traversable",
+    }
+    old_command_snippets = {
+        "ASSET_GROUPS: dict",
+        "@dataclass",
+        "class AssetGroup",
+        "class CompanionAsset",
+        "class Traversable",
+    }
+    disallowed_imports = {
+        "dataclasses": {"dataclass"},
+        "typing": {"Protocol"},
+    }
+    inspected_paths = {asset_menu_path, command_path}
+    catalog_imports = {path: set() for path in inspected_paths}
+    direct_definition_imports = {path: set() for path in inspected_paths}
+
+    for path in inspected_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.asset_catalog":
+                catalog_imports[path] |= {
+                    alias.asname or alias.name for alias in node.names
+                }
+            direct_definition_imports[path] |= (
+                imported_names & disallowed_imports.get(imported_module, set())
+            )
+
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    command_names = {
+        node.name
+        for node in ast.walk(command_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    command_text = command_path.read_text()
+
+    assert public_names <= vars(asset_catalog).keys()
+    assert "ASSET_GROUPS" not in vars(install_assets)
+    assert old_command_names.isdisjoint(command_names)
+    assert all(snippet not in command_text for snippet in old_command_snippets)
+    assert catalog_imports == {
+        asset_menu_path: {"ASSET_GROUPS"},
+        command_path: {
+            "AssetGroup",
+            "CompanionAsset",
+            "Traversable",
+            "_ASSET_GROUPS",
+        },
+    }
+    assert direct_definition_imports == {
+        asset_menu_path: set(),
+        command_path: set(),
+    }
 
 
 def test_tui_flow_menu_owns_batch_selection_menus():

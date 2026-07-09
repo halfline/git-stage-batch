@@ -246,12 +246,12 @@ class TestCommandStatus:
         ensure_state_directory_exists()
         initialize_abort_state()
 
-        def fail_estimate_remaining_hunks():
+        def fail_read_status_summary():
             raise AssertionError("full status should not be read")
 
         monkeypatch.setattr(
-            "git_stage_batch.commands.status._estimate_remaining_hunks",
-            fail_estimate_remaining_hunks,
+            "git_stage_batch.commands.status._read_status_summary",
+            fail_read_status_summary,
         )
 
         command_status(prompt_format=" STAGING")

@@ -12,9 +12,9 @@ from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffe
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.absence_content import AbsenceContentBuilder
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
-    AbsenceClaim,
 )
 from git_stage_batch.batch.ownership_detachment import acquire_detached_batch_ownership
 from git_stage_batch.batch.ownership_merging import (

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
-    AbsenceClaim,
 )
 from git_stage_batch.batch.ownership_merging import merge_batch_ownership
 from git_stage_batch.batch.ownership_remapping import (

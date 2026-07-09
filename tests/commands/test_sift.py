@@ -6,7 +6,8 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch.validation import batch_exists
-from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.commands.new import command_new_batch

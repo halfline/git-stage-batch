@@ -5,7 +5,7 @@ from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
-from git_stage_batch.batch.ownership import AbsenceClaim
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.batch.file_display import render_batch_file_display
 import git_stage_batch.batch.merge as merge_module
 import git_stage_batch.batch.display as display_module

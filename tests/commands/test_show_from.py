@@ -10,6 +10,7 @@ from git_stage_batch.batch.file_display import render_batch_file_display
 import git_stage_batch.batch.merge as merge_module
 import git_stage_batch.batch.display as display_module
 import git_stage_batch.batch.file_display as file_display
+import git_stage_batch.batch.file_mergeability as file_mergeability
 import git_stage_batch.data.selected_change.paths as selected_change_paths
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.commands.batch_source.file_list_action as file_list_action
@@ -372,26 +373,30 @@ class TestCommandShowFromBatch:
             "100644",
         )
 
-        original_renderer_match_lines = file_display.match_lines
+        original_mergeability_match_lines = file_mergeability.match_lines
         original_merge_match_lines = merge_module.match_lines
         calls = []
 
-        def counting_renderer_match_lines(*args, **kwargs):
-            calls.append("renderer")
-            return original_renderer_match_lines(*args, **kwargs)
+        def counting_mergeability_match_lines(*args, **kwargs):
+            calls.append("mergeability")
+            return original_mergeability_match_lines(*args, **kwargs)
 
         def counting_merge_match_lines(*args, **kwargs):
             calls.append("merge")
             return original_merge_match_lines(*args, **kwargs)
 
-        monkeypatch.setattr(file_display, "match_lines", counting_renderer_match_lines)
+        monkeypatch.setattr(
+            file_mergeability,
+            "match_lines",
+            counting_mergeability_match_lines,
+        )
         monkeypatch.setattr(merge_module, "match_lines", counting_merge_match_lines)
 
         rendered = render_batch_file_display("multi-unit-batch", "file.txt")
 
         assert rendered is not None
         assert len(rendered.review_action_groups) == 2
-        assert calls == ["renderer"]
+        assert calls == ["mergeability"]
 
     def test_show_from_keeps_mergeable_display_ids_range_backed(self, temp_git_repo, monkeypatch):
         """Rendering should not compare each unit with a set of mergeable IDs."""

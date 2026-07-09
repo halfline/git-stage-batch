@@ -3441,6 +3441,61 @@ def test_file_scope_file_list_action_owns_live_list_rendering():
     assert helper_imports <= helper_imported_names
 
 
+def test_file_scope_file_list_action_owns_show_entry_flow():
+    """The show file-list entrypoint should delegate live list rendering."""
+    show_path = SRC_ROOT / "commands" / "show.py"
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "file_list_action.py"
+    action_dependency_names = {
+        "compute_rename_change_hash",
+        "clear_selected_change_state_files",
+        "make_binary_file_review_list_entry",
+        "make_file_review_list_entry",
+        "make_gitlink_file_review_list_entry",
+        "make_rename_file_review_list_entry",
+        "make_text_deletion_file_review_list_entry",
+        "mark_selected_change_cleared_by_file_list",
+        "print_file_review_list",
+        "render_binary_file_change",
+        "render_file_as_single_hunk",
+        "render_gitlink_change",
+        "render_rename_change",
+        "render_text_deletion_change",
+        "text_deletion_change_is_batched",
+    }
+
+    show_tree = ast.parse(show_path.read_text(), filename=str(show_path))
+    show_functions = {
+        node.name: node
+        for node in ast.walk(show_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_names = {
+        node.id
+        for node in ast.walk(show_functions["command_show_file_list"])
+        if isinstance(node, ast.Name)
+    }
+    command_attrs = {
+        node.attr
+        for node in ast.walk(show_functions["command_show_file_list"])
+        if isinstance(node, ast.Attribute)
+    }
+    file_scope_imports = set()
+    for imported_module, node in _import_from_nodes(show_path):
+        if imported_module != "git_stage_batch.commands.file_scope":
+            continue
+        file_scope_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "file_list_action" in file_scope_imports
+    assert "show_live_file_list" in command_attrs
+    assert action_dependency_names.isdisjoint(command_names)
+    assert action_dependency_names.isdisjoint(command_attrs)
+    assert action_dependency_names <= helper_imported_names
+
+
 def test_file_scope_target_path_stays_in_file_scope_support():
     """File-scope target fallback should stay out of command entrypoints."""
     command_paths = {

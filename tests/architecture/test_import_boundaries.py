@@ -1659,7 +1659,7 @@ def test_status_summary_rendering_stays_in_output_module():
     assert public_names <= vars(status_output).keys()
     assert "print_status_summary" not in vars(command_status)
     assert old_status_names.isdisjoint(status_names)
-    assert old_status_snippets.isdisjoint(status_text)
+    assert all(snippet not in status_text for snippet in old_status_snippets)
     assert "_print_status_summary" in imported_status_output_names
     assert direct_render_imports == set()
 

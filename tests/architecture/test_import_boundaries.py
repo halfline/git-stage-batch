@@ -12741,6 +12741,84 @@ def test_attribution_projection_stays_out_of_attribution_builder():
     assert violations == []
 
 
+def test_attribution_units_own_file_comparison_units():
+    """File-comparison attribution units should live outside the builder."""
+    attribution = __import__(
+        "git_stage_batch.batch.attribution",
+        fromlist=["attribution"],
+    )
+    attribution_units = __import__(
+        "git_stage_batch.batch.attribution_units",
+        fromlist=["attribution_units"],
+    )
+    units_path = SRC_ROOT / "batch" / "attribution_units.py"
+    public_names = {
+        "AttributionUnit",
+        "AttributionUnitKind",
+        "FileComparison",
+        "build_file_comparison_from_lines",
+        "enumerate_units_from_file_comparison",
+        "make_attribution_unit_id",
+    }
+    private_names = {
+        "_anchors_match",
+        "_find_structural_predecessor",
+        "_group_consecutive",
+        "_make_unit_id",
+        "_single_line_content",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "attribution.py": {
+            "AttributionUnit",
+            "AttributionUnitKind",
+            "build_file_comparison_from_lines",
+            "enumerate_units_from_file_comparison",
+            "make_attribution_unit_id",
+        },
+        SRC_ROOT / "batch" / "attribution_projection.py": {
+            "AttributionUnitKind",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(attribution_units).keys()
+    for public_name in public_names:
+        assert public_name not in vars(attribution)
+    assert private_names.isdisjoint(vars(attribution))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == units_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.attribution":
+                moved_names = imported_names & (public_names | private_names)
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.attribution_units":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_attribution_fingerprints_stay_out_of_attribution_builder():
     """Attribution content hashing should live outside attribution building."""
     attribution = __import__(

@@ -12,7 +12,7 @@ from ...batch.source_selector import (
 )
 from ...batch.validation import batch_exists
 from ...data.file_review.records import ActionScopeResolution, FileReviewAction
-from ...data.file_review.state import resolve_batch_source_action_scope
+from ...data.file_review.action_scope import resolve_batch_source_action_scope
 from ...exceptions import BatchMetadataError, exit_with_error
 from ...i18n import _
 from . import candidate_selectors

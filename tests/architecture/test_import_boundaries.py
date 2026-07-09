@@ -9106,6 +9106,73 @@ def test_batch_ownership_claims_owns_line_range_helpers():
     assert violations == []
 
 
+def test_batch_ownership_absence_claims_own_value_records():
+    """Absence-claim records should live outside aggregate ownership."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    ownership_absence_claims = __import__(
+        "git_stage_batch.batch.ownership_absence_claims",
+        fromlist=["ownership_absence_claims"],
+    )
+    absence_claim_path = SRC_ROOT / "batch" / "ownership_absence_claims.py"
+    public_names = {
+        "AbsenceClaim",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "absence_constraints.py": public_names,
+        SRC_ROOT / "batch" / "baseline_edits.py": public_names,
+        SRC_ROOT / "batch" / "baseline_replacement_choices.py": public_names,
+        SRC_ROOT / "batch" / "discard.py": public_names,
+        SRC_ROOT / "batch" / "display.py": public_names,
+        SRC_ROOT / "batch" / "hunk_ownership_translation.py": public_names,
+        SRC_ROOT / "batch" / "merge_candidate_enumeration.py": public_names,
+        SRC_ROOT / "batch" / "merge_validation.py": public_names,
+        SRC_ROOT / "batch" / "ownership.py": public_names,
+        SRC_ROOT / "batch" / "ownership_detachment.py": public_names,
+        SRC_ROOT / "batch" / "ownership_merging.py": public_names,
+        SRC_ROOT / "batch" / "ownership_metadata_loading.py": public_names,
+        SRC_ROOT / "batch" / "ownership_remapping.py": public_names,
+        SRC_ROOT / "batch" / "ownership_translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership_unit_types.py": public_names,
+        SRC_ROOT / "batch" / "presence_constraints.py": public_names,
+        SRC_ROOT / "batch" / "replacement.py": public_names,
+        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(ownership_absence_claims).keys()
+    assert public_names.isdisjoint(vars(ownership))
+    ownership_text = (SRC_ROOT / "batch" / "ownership.py").read_text()
+    assert "class AbsenceClaim" not in ownership_text
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == absence_claim_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.ownership":
+                stale_imports = imported_names & public_names
+                if stale_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(stale_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.ownership_absence_claims":
+                continue
+
+            imported_public_names |= imported_names & public_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_ownership_replacement_units_own_value_records():
     """Replacement-unit records should live with normalization helpers."""
     ownership = __import__(
@@ -10104,8 +10171,10 @@ def test_batch_transform_sift_results_own_result_planning():
             "merge_batch_from_line_sequences_as_buffer",
         },
         "git_stage_batch.batch.ownership": {
-            "AbsenceClaim",
             "AbsenceContentBuilder",
+        },
+        "git_stage_batch.batch.ownership_absence_claims": {
+            "AbsenceClaim",
         },
         "git_stage_batch.batch.text_file_storage": {
             "build_realized_buffer_from_lines",

@@ -18,7 +18,6 @@ from ..commands.suggest_fixup import (
     command_suggest_fixup_line,
 )
 from ..commands.unblock_file import command_unblock_file
-from ..commands.undo import command_undo
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .apply_dispatch import dispatch_apply_command
@@ -41,7 +40,7 @@ from .git_help import GitHelpArgumentParser
 from .include_dispatch import dispatch_include_command
 from .quick_actions import expand_quick_actions
 from .reset_dispatch import dispatch_reset_command
-from .session_subcommands import add_stop_subcommand
+from .session_subcommands import add_stop_subcommand, add_undo_subcommand
 from .show_dispatch import dispatch_show_command
 from .skip_dispatch import dispatch_skip_command
 from .subcommand_parser import add_subcommand_parser
@@ -142,19 +141,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         func=lambda args: command_again(auto_advance=args.auto_advance)
     )
 
-    # undo - Undo the most recent undoable session operation
-    parser_undo = add_subcommand_parser(
-        subparsers,
-        "undo",
-        aliases=["u", "back"],
-        help=_("Undo the most recent undoable session operation"),
-    )
-    parser_undo.add_argument(
-        "--force",
-        action="store_true",
-        help=_("Overwrite changes made after the undo checkpoint"),
-    )
-    parser_undo.set_defaults(func=lambda args: command_undo(force=args.force))
+    add_undo_subcommand(subparsers)
 
     # redo - Redo the most recently undone session operation
     parser_redo = add_subcommand_parser(

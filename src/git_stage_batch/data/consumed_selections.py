@@ -7,8 +7,8 @@ from typing import Any
 
 from ..batch.ownership import (
     BatchOwnership,
-    merge_batch_ownership,
 )
+from ..batch.ownership_merging import merge_batch_ownership
 from ..batch.ownership_translation import (
     detect_stale_batch_source_for_selection,
     translate_lines_to_batch_ownership,

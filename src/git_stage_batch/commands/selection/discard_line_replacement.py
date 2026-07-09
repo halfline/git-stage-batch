@@ -12,8 +12,8 @@ from ...batch.display import annotate_with_batch_source_working_lines
 from ...batch.operations import create_batch
 from ...batch.ownership import (
     BatchOwnership,
-    merge_batch_ownership,
 )
+from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_remapping import remap_batch_ownership_with_lineage
 from ...batch.ownership_translation import translate_lines_to_batch_ownership
 from ...batch.query import read_batch_metadata

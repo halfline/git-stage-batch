@@ -23,7 +23,7 @@ from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunk_discarded
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
 from ...utils.git_command import run_git_command

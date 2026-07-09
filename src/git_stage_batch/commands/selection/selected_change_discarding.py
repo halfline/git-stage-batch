@@ -18,7 +18,7 @@ from ...data.hunk_tracking import fetch_next_change
 from ...data.progress import record_hunk_discarded
 from ...data.selected_change.loading import load_selected_change
 from ...data.session import snapshot_file_if_untracked, snapshot_files_if_untracked
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import CommandError, NoMoreHunks, exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, path_is_empty, read_text_file_contents

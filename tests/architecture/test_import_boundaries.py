@@ -4880,20 +4880,25 @@ def test_batch_source_candidate_refusals_own_candidate_count_refusals():
 
 
 def test_batch_source_action_context_owns_action_prologue():
-    """Shared apply/include setup should live outside action entries."""
+    """Shared batch-source setup should live outside action entries."""
     action_context = __import__(
         "git_stage_batch.commands.batch_source.action_context",
         fromlist=["action_context"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     public_names = {
         "BatchSourceActionContext",
         "resolve_batch_source_action_context",
+        "resolve_plain_batch_source_action_context",
     }
     disallowed_imports = {
         "git_stage_batch.batch.metadata_validation": {
             "read_validated_batch_metadata",
+        },
+        "git_stage_batch.batch.source_selector": {
+            "require_plain_batch_name",
         },
         "git_stage_batch.batch.validation": {
             "batch_exists",
@@ -4901,12 +4906,23 @@ def test_batch_source_action_context_owns_action_prologue():
         "git_stage_batch.data.file_review.state": {
             "resolve_batch_source_action_scope",
         },
-        "git_stage_batch.exceptions": {
-            "BatchMetadataError",
+    }
+    disallowed_imports_by_path = {
+        apply_from_path: {
+            "git_stage_batch.exceptions": {
+                "BatchMetadataError",
+            },
         },
+        include_from_path: {
+            "git_stage_batch.exceptions": {
+                "BatchMetadataError",
+            },
+        },
+        discard_from_path: {},
     }
     command_paths = {
         apply_from_path,
+        discard_from_path,
         include_from_path,
     }
     imports_action_context = {
@@ -4930,14 +4946,21 @@ def test_batch_source_action_context_owns_action_prologue():
                 imported_module,
                 set(),
             )
+            path_disallowed_imports = disallowed_imports_by_path[path]
+            direct_setup_imports[path] |= imported_names & path_disallowed_imports.get(
+                imported_module,
+                set(),
+            )
 
     assert public_names <= vars(action_context).keys()
     assert imports_action_context == {
         apply_from_path: True,
+        discard_from_path: True,
         include_from_path: True,
     }
     assert direct_setup_imports == {
         apply_from_path: set(),
+        discard_from_path: set(),
         include_from_path: set(),
     }
 

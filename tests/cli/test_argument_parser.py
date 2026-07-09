@@ -11,6 +11,7 @@ from git_stage_batch.cli import (
     git_help,
     replacement_input,
     show_dispatch,
+    skip_dispatch,
 )
 from git_stage_batch.cli.argument_parser import parse_command_line
 
@@ -911,7 +912,7 @@ def test_parse_command_line_skip_alias():
 
 def test_parse_command_line_skip_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_skip", mock_command)
+    monkeypatch.setattr(skip_dispatch, "command_skip", mock_command)
 
     args = parse_command_line(["skip", "--no-auto-advance"], quiet=True)
 
@@ -972,7 +973,7 @@ def test_parse_command_line_skip_files_dispatches_per_file(monkeypatch):
     """Skip should dispatch once per file resolved from --files."""
     mock_command = Mock()
     monkeypatch.setattr(
-        argument_parser,
+        skip_dispatch,
         "skip_each_resolved_file",
         mock_command,
     )
@@ -1011,7 +1012,7 @@ def test_parse_command_line_skip_combines_file_and_files_patterns(monkeypatch):
     """Argument-bearing --file and --files should resolve together."""
     mock_command = Mock()
     monkeypatch.setattr(
-        argument_parser,
+        skip_dispatch,
         "skip_each_resolved_file",
         mock_command,
     )

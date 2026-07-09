@@ -6149,6 +6149,68 @@ def test_batch_realized_entries_uses_public_entry_helpers():
     assert violations == []
 
 
+def test_baseline_correspondence_stays_out_of_merge_module():
+    """Baseline restoration mapping should live outside merge operations."""
+    baseline_correspondence = __import__(
+        "git_stage_batch.batch.baseline_correspondence",
+        fromlist=["baseline_correspondence"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    correspondence_path = SRC_ROOT / "batch" / "baseline_correspondence.py"
+    merge_path = SRC_ROOT / "batch" / "merge.py"
+    public_names = {
+        "BaselineCorrespondence",
+        "BaselineRegion",
+        "RegionKind",
+        "build_baseline_correspondence",
+    }
+    merge_dependency_names = {
+        "BaselineCorrespondence",
+        "RegionKind",
+        "build_baseline_correspondence",
+    }
+    stale_merge_names = public_names | {"_build_baseline_correspondence"}
+    imported_by_merge = set()
+    violations = []
+
+    assert public_names <= vars(baseline_correspondence).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == correspondence_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & stale_merge_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+            if imported_module != "git_stage_batch.batch.baseline_correspondence":
+                continue
+
+            if path == merge_path:
+                imported_by_merge |= imported_names & public_names
+                for alias in node.names:
+                    if alias.name not in public_names:
+                        continue
+                    if alias.asname is None or not alias.asname.startswith("_"):
+                        relative_path = path.relative_to(REPO_ROOT)
+                        violations.append(
+                            f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
+                        )
+
+    assert merge_dependency_names <= imported_by_merge
+    assert violations == []
+
+
 def test_batch_merge_candidates_uses_public_data_types():
     """Batch callers should import public merge-candidate data types."""
     merge_candidates = __import__(

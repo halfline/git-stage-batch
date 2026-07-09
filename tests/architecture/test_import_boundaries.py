@@ -318,6 +318,7 @@ def test_data_package_does_not_reexport_data_apis():
     data = __import__("git_stage_batch.data", fromlist=["data"])
     facade_names = {
         "auto_add_untracked_files",
+        "estimate_remaining_hunks",
         "format_id_range",
         "get_file_progress",
         "get_hunk_counts",
@@ -1278,6 +1279,82 @@ def test_status_does_not_import_hunk_navigation():
     }
 
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_status_remaining_hunk_estimate_stays_in_data_module():
+    """Status should not own live-diff remaining hunk accounting."""
+    remaining_hunks = __import__(
+        "git_stage_batch.data.remaining_hunks",
+        fromlist=["remaining_hunks"],
+    )
+    status = __import__(
+        "git_stage_batch.commands.status",
+        fromlist=["status"],
+    )
+    status_path = SRC_ROOT / "commands" / "status.py"
+    public_names = {
+        "estimate_remaining_hunks",
+    }
+    disallowed_imports = {
+        "git_stage_batch.core.diff_parser": {
+            "acquire_unified_diff",
+        },
+        "git_stage_batch.core.hashing": {
+            "compute_binary_file_hash",
+            "compute_gitlink_change_hash",
+            "compute_rename_change_hash",
+            "compute_stable_hunk_hash_from_lines",
+            "compute_text_file_deletion_hash",
+        },
+        "git_stage_batch.core.models": {
+            "BinaryFileChange",
+            "GitlinkChange",
+            "RenameChange",
+            "TextFileDeletionChange",
+        },
+        "git_stage_batch.data.change_freshness": {
+            "text_deletion_change_is_batched",
+        },
+        "git_stage_batch.data.live_diff": {
+            "stream_live_git_diff",
+        },
+        "git_stage_batch.utils.file_io": {
+            "is_path_blocked",
+            "read_file_paths_file",
+            "read_text_file_line_set",
+        },
+        "git_stage_batch.utils.paths": {
+            "get_block_list_file_path",
+            "get_blocked_files_file_path",
+            "get_context_lines",
+        },
+    }
+    status_tree = ast.parse(status_path.read_text(), filename=str(status_path))
+    status_names = {
+        node.name
+        for node in ast.walk(status_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    status_remaining_imports = set()
+    direct_estimate_imports = set()
+
+    for imported_module, node in _import_from_nodes(status_path):
+        imported_names = {alias.name for alias in node.names}
+        if imported_module == "git_stage_batch.data.remaining_hunks":
+            status_remaining_imports |= {
+                alias.asname or alias.name
+                for alias in node.names
+            }
+        direct_estimate_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(remaining_hunks).keys()
+    assert "estimate_remaining_hunks" not in vars(status)
+    assert "estimate_remaining_hunks" not in status_names
+    assert "_estimate_remaining_hunks" in status_remaining_imports
+    assert direct_estimate_imports == set()
 
 
 def test_active_session_query_stays_in_session_data():

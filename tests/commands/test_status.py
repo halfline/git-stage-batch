@@ -250,7 +250,7 @@ class TestCommandStatus:
             raise AssertionError("full status should not be read")
 
         monkeypatch.setattr(
-            "git_stage_batch.commands.status.estimate_remaining_hunks",
+            "git_stage_batch.commands.status._estimate_remaining_hunks",
             fail_estimate_remaining_hunks,
         )
 

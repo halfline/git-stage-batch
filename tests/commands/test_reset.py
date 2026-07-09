@@ -23,7 +23,8 @@ from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.line_selection import LineRanges, parse_line_selection
 from git_stage_batch.core.models import RenderedBatchDisplay, ReviewActionGroup
-from git_stage_batch.data.batch_sources import create_batch_source_commit, save_session_batch_sources
+from git_stage_batch.batch.source_cache import save_session_batch_sources
+from git_stage_batch.batch.source_snapshots import create_batch_source_commit
 from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.core.buffer import LineBuffer

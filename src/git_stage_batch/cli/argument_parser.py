@@ -40,7 +40,6 @@ from ..commands.install_assets import command_install_assets
 from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
 from ..commands.redo import command_redo
-from ..commands.reset import command_reset_from_batch
 from ..commands.sift import command_sift_batch
 from ..commands.start import command_start
 from ..commands.status import command_status
@@ -66,6 +65,7 @@ from .file_scope import (
 from .git_help import GitHelpArgumentParser
 from .quick_actions import expand_quick_actions
 from .replacement_input import resolve_replacement_text
+from .reset_dispatch import dispatch_reset_command
 from .show_dispatch import dispatch_show_command
 from .skip_dispatch import dispatch_skip_command
 
@@ -861,27 +861,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
           "With --line, operates on line IDs from entire file."),
     )
 
-    def dispatch_reset(args: argparse.Namespace) -> None:
-        resolved_file_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-        command_parts = ["reset", "--from", shlex.quote(args.from_batch)]
-        if args.to_batch is not None:
-            command_parts.extend(["--to", shlex.quote(args.to_batch)])
-        if args.line_ids is not None:
-            command_parts.extend(["--line", shlex.quote(args.line_ids)])
-        run_for_each_resolved_file(
-            resolved_file_scope,
-            lambda file: command_reset_from_batch(
-                args.from_batch,
-                args.line_ids,
-                file,
-                None,
-                args.to_batch,
-            ),
-            line_ids=args.line_ids,
-            undo_operation=" ".join(command_parts),
-        )
-
-    parser_reset.set_defaults(func=dispatch_reset)
+    parser_reset.set_defaults(func=dispatch_reset_command)
 
     # sift - Reconcile batch against current tip
     parser_sift = _add_subcommand_parser(

@@ -21,6 +21,7 @@ from ..utils.git_object_io import (
     read_git_blobs_as_bytes,
 )
 from .ownership_claims import (
+    PresenceClaim as _PresenceClaim,
     parse_ownership_line_ranges as _claim_parse_line_ranges,
     presence_claims_from_source_lines as _claim_presence_claims_from_source_lines,
 )
@@ -96,53 +97,6 @@ class AbsenceClaim:
             anchor_line=anchor_line,
             content_lines=content_lines,
             baseline_reference=baseline_reference,
-        )
-
-
-@dataclass
-class PresenceClaim:
-    """A presence constraint over batch-source lines.
-
-    Presence claims are the first-class representation for content that must
-    exist after a batch is applied. Source lines identify the content in the
-    batch source; optional baseline references record where those source lines came
-    from in the original index/tree diff.
-    """
-
-    source_lines: list[str]
-    baseline_references: dict[int, _BaselineReference] = field(default_factory=dict)
-
-    def source_line_set(self) -> LineRanges:
-        """Return batch-source line numbers covered by this presence claim."""
-        return _claim_parse_line_ranges(self.source_lines)
-
-    def to_dict(self) -> dict:
-        """Serialize to metadata dictionary."""
-        data = {"source_lines": self.source_lines}
-        if self.baseline_references:
-            data["baseline_references"] = {
-                str(line): reference.to_dict()
-                for line, reference in sorted(self.baseline_references.items())
-            }
-        return data
-
-    @classmethod
-    def from_dict(
-        cls,
-        data: dict,
-        blob_contents: dict[str, bytes] | None = None,
-    ) -> PresenceClaim:
-        """Deserialize from metadata dictionary."""
-        references_metadata = data.get("baseline_references", {})
-        return cls(
-            source_lines=data.get("source_lines", []),
-            baseline_references={
-                int(line): _BaselineReference.from_dict(
-                    reference,
-                    blob_contents,
-                )
-                for line, reference in references_metadata.items()
-            },
         )
 
 
@@ -248,7 +202,7 @@ class BatchOwnership:
     - deletions: Suppression constraints for baseline content (absence claims)
     - replacement_units: Optional explicit coupling between claims and deletions
     """
-    presence_claims: list[PresenceClaim]
+    presence_claims: list[_PresenceClaim]
     deletions: list[AbsenceClaim]  # Separate deletion constraints
     replacement_units: list[ReplacementUnit] = field(default_factory=list)
 
@@ -366,7 +320,7 @@ class BatchOwnership:
         presence_metadata = data.get("presence_claims", [])
         legacy_claimed_lines = data.get("claimed_lines", [])
         presence_claims = [
-            PresenceClaim.from_dict(d, blob_contents)
+            _PresenceClaim.from_dict(d, blob_contents)
             for d in presence_metadata
         ]
         if not presence_claims and legacy_claimed_lines:

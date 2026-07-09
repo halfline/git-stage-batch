@@ -7,7 +7,6 @@ from .absence_content import (
 )
 from .ownership import (
     AbsenceClaim,
-    BaselineReference,
     BatchOwnership,
     ReplacementUnit as _ReplacementUnit,
 )
@@ -16,6 +15,7 @@ from .ownership_line_entries import (
     LineEntryContentSequence as _LineEntryContentSequence,
     ReplacementUnitBuilder as _ReplacementUnitBuilder,
 )
+from .ownership_references import BaselineReference
 from .ownership_replacement_units import normalize_replacement_units
 
 

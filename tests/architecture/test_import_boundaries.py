@@ -643,6 +643,30 @@ def test_cli_argument_parser_delegates_redo_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_abort_subcommand_registration():
+    """Argument parsing should not own abort parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_abort_subcommand" in vars(session_subcommands)
+    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    assert "git_stage_batch.commands.abort" not in argument_parser_imports
+    assert "git_stage_batch.commands.abort" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
 def test_tui_package_does_not_reexport_tui_apis():
     """TUI callers should import concrete modules instead of the package."""
     tui_path = SRC_ROOT / "tui" / "__init__.py"

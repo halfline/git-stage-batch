@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ...batch.display import annotate_with_batch_source
+from ...batch.source_annotation import annotate_with_batch_source
 from ...batch.lifecycle import create_batch
 from ...batch.query import read_batch_metadata
 from ...batch.source_refresh import acquire_batch_ownership_update_for_selection

@@ -17,6 +17,7 @@ from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_d
 from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_remapping import remap_batch_ownership_with_lineage
 from ...batch.ownership_translation import translate_lines_to_batch_ownership
+from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.query import read_batch_metadata
 from ...batch.replacement_line_runs import (
     ReplacementLineRun,
@@ -24,9 +25,6 @@ from ...batch.replacement_line_runs import (
 )
 from ...batch.selection import require_line_selection_in_view
 from ...batch.source_advancement import advance_source_lines_preserving_existing_presence
-from ...batch.source_refresh import (
-    acquire_batch_ownership_update_for_selection,
-)
 from ...batch.selected_line_source_refresh import (
     refresh_selected_lines_against_source_lines,
 )

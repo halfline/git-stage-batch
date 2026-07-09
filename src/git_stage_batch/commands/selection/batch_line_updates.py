@@ -6,8 +6,8 @@ from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 
 from ...batch.lifecycle import create_batch
+from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.query import read_batch_metadata
-from ...batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...data.file_modes import detect_file_mode

@@ -8,8 +8,8 @@ from dataclasses import dataclass
 
 from ...batch.source_annotation import annotate_with_batch_source
 from ...batch.lifecycle import create_batch
+from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.query import read_batch_metadata
-from ...batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ...batch.text_file_storage import BatchFileUpdate, add_files_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer

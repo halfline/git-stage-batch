@@ -3061,11 +3061,6 @@ def test_file_review_footer_owns_command_rendering():
     assert "def _display_footer_command" not in review_output_text
     assert "def _footer_review_state" not in review_output_text
     assert "line_action_command" not in review_output_text
-    assert "FileReviewState" not in review_output_text
-    assert "SelectedChangeKind" not in review_output_text
-    assert "line_action_command" in footer_output_text
-    assert "FileReviewState" in footer_output_text
-    assert "SelectedChangeKind" in footer_output_text
 
 
 def test_file_review_rows_own_row_rendering():

@@ -1,8 +1,8 @@
-"""Tests for CLI mode dispatch."""
+"""Tests for runtime mode dispatch."""
 
 import argparse
 
-import git_stage_batch.cli.mode_dispatch as mode_dispatch
+import git_stage_batch.runtime as mode_dispatch
 
 
 def test_dispatch_cli_mode_no_command(monkeypatch):

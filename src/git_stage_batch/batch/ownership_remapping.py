@@ -6,7 +6,8 @@ from collections.abc import Sequence
 
 from ..core.line_selection import LineSelection
 from .lineage import BatchSourceLineage
-from .match import LineMapping, match_lines
+from .line_mapping import LineMapping
+from .match import match_lines
 from .ownership import (
     AbsenceClaim,
     BatchOwnership,

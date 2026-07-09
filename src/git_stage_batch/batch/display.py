@@ -16,7 +16,7 @@ from ..utils.git_repository import get_git_repository_root_path
 from .match import match_lines
 
 if TYPE_CHECKING:
-    from .match import LineMapping
+    from .line_mapping import LineMapping
     from .ownership import BatchOwnership, AbsenceClaim
 
 

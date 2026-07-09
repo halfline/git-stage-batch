@@ -2918,6 +2918,41 @@ def test_file_review_model_selections_own_actionable_derivation():
     )
 
 
+def test_file_review_changes_own_review_change_assembly():
+    """ReviewChange assembly should stay out of model orchestration."""
+    review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
+    changes_path = SRC_ROOT / "output" / "file_review_changes.py"
+    review_model_builder_text = review_model_builder_path.read_text()
+    changes_text = changes_path.read_text()
+    builder_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_model_builder_path)
+    }
+    builder_model_imports = {
+        alias.name
+        for imported_module, node in _import_from_nodes(review_model_builder_path)
+        if imported_module == "git_stage_batch.output.file_review_model"
+        for alias in node.names
+    }
+    file_review_changes = __import__(
+        "git_stage_batch.output.file_review_changes",
+        fromlist=["file_review_changes"],
+    )
+
+    assert "git_stage_batch.output.file_review_changes" in builder_imports
+    assert "build_file_review_changes" in vars(file_review_changes)
+    assert builder_model_imports == {"FileReviewModel"}
+    assert "ActionableSelectionReason" not in review_model_builder_text
+    assert "format_line_ids" not in review_model_builder_text
+    assert "LineEntry" not in review_model_builder_text
+    assert "ReviewChange" not in review_model_builder_text
+    assert "not currently selectable" not in review_model_builder_text
+    assert "flush_segment" not in review_model_builder_text
+    assert "ReviewChange" in changes_text
+    assert "format_line_ids" in changes_text
+    assert "flush_segment" in changes_text
+
+
 def test_file_review_output_uses_model_module():
     """File-review output should not own passive model records."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"

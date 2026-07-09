@@ -62,10 +62,10 @@ from ..output.patch import (
 from ..output.file_review import (
     build_file_review_model,
     make_file_review_state,
-    normalize_page_spec,
     print_file_review,
     resolve_default_review_pages,
 )
+from ..data.file_review.pages import normalize_page_spec
 from ..output.file_review_list import (
     make_binary_file_review_list_entry,
     make_file_review_list_entry,

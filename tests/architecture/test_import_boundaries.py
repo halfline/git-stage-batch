@@ -5629,6 +5629,55 @@ def test_suggest_fixup_candidate_display_stays_in_fixup_support():
     assert "json" in helper_plain_imports
 
 
+def test_suggest_fixup_boundary_stays_in_fixup_support():
+    """Suggest-fixup boundary validation should stay below entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    helper_path = SRC_ROOT / "commands" / "fixup" / "boundary.py"
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    helper_tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
+    helper = __import__(
+        "git_stage_batch.commands.fixup.boundary",
+        fromlist=["boundary"],
+    )
+    public_names = {"require_suggest_fixup_boundary_range"}
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(helper_path)
+    }
+    command_imported_names = set()
+    helper_imported_names = set()
+    command_plain_imports = {
+        alias.name
+        for node in ast.walk(command_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    helper_plain_imports = {
+        alias.name
+        for node in ast.walk(helper_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+
+    for _imported_module, node in _import_from_nodes(command_path):
+        command_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "git_stage_batch.commands.fixup.boundary" in command_imports
+    assert "git_stage_batch.utils.git_command" in helper_imports
+    assert "run_git_command" not in command_imported_names
+    assert "run_git_command" in helper_imported_names
+    assert "subprocess" not in command_plain_imports
+    assert "subprocess" in helper_plain_imports
+
+
 def test_suggest_fixup_iteration_state_stays_in_fixup_support():
     """Suggest-fixup iteration state should stay below entrypoints."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"

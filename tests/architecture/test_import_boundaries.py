@@ -7611,6 +7611,41 @@ def test_tui_action_prompt_menu_owns_grouped_section_layout():
     assert "format_hotkey" in menu_text
 
 
+def test_tui_action_prompt_choices_own_action_vocabulary():
+    """Interactive action prompt choices should stay out of input prompts."""
+    prompts = __import__(
+        "git_stage_batch.tui.prompts",
+        fromlist=["prompts"],
+    )
+    action_prompt_choices = __import__(
+        "git_stage_batch.tui.action_prompt_choices",
+        fromlist=["action_prompt_choices"],
+    )
+    prompts_path = SRC_ROOT / "tui" / "prompts.py"
+    choices_path = SRC_ROOT / "tui" / "action_prompt_choices.py"
+    prompts_text = prompts_path.read_text()
+    choices_text = choices_path.read_text()
+    prompts_imports_choices = any(
+        imported_module == "git_stage_batch.tui"
+        and any(alias.name == "action_prompt_choices" for alias in node.names)
+        for imported_module, node in _import_from_nodes(prompts_path)
+    )
+    public_names = {
+        "ActionPromptOptionGroups",
+        "action_prompt_option_groups",
+        "normalize_action_prompt_choice",
+    }
+
+    assert public_names <= vars(action_prompt_choices).keys()
+    assert public_names.isdisjoint(vars(prompts))
+    assert prompts_imports_choices
+    assert '"install-assets"' not in prompts_text
+    assert "action_prompt_option_groups" in choices_text
+    assert "normalize_action_prompt_choice" in choices_text
+    assert '"install-assets"' in choices_text
+    assert "Colors.GREEN" in choices_text
+
+
 def test_tui_file_review_action_router_owns_standard_actions():
     """TUI file review action router should own standard action gates."""
     browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"

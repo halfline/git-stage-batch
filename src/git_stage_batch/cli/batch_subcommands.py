@@ -10,6 +10,7 @@ from ..commands.sift import command_sift_batch
 from ..i18n import _
 from .apply_dispatch import dispatch_apply_command
 from .file_arguments import add_file_argument
+from .reset_dispatch import dispatch_reset_command
 from .subcommand_parser import add_subcommand_parser
 
 
@@ -135,3 +136,41 @@ def add_apply_subcommand(subparsers) -> None:
         ),
     )
     parser_apply.set_defaults(func=dispatch_apply_command)
+
+
+def add_reset_subcommand(subparsers) -> None:
+    """Register the reset subcommand."""
+    parser_reset = add_subcommand_parser(
+        subparsers,
+        "reset",
+        help=_("Remove claims from batch"),
+    )
+    parser_reset.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        required=True,
+        help=_("Remove claims from batch"),
+    )
+    parser_reset.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        help=_("Move reset claims to another batch"),
+    )
+    parser_reset.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Reset only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    add_file_argument(
+        parser_reset,
+        _(
+            "Operate on entire file from batch. "
+            "If PATH omitted, uses selected hunk's file. "
+            "With --line, operates on line IDs from entire file."
+        ),
+    )
+    parser_reset.set_defaults(func=dispatch_reset_command)

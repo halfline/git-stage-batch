@@ -7,10 +7,10 @@ import sys
 
 from .. import __version__
 from ..i18n import _
-from .apply_dispatch import dispatch_apply_command
 from .asset_subcommands import add_install_assets_subcommand
 from .batch_subcommands import (
     add_annotate_subcommand,
+    add_apply_subcommand,
     add_drop_subcommand,
     add_list_subcommand,
     add_new_subcommand,
@@ -137,34 +137,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_annotate_subcommand(subparsers)
 
-    # apply - Apply batch changes to working tree
-    parser_apply = add_subcommand_parser(
-        subparsers,
-        "apply",
-        help=_("Apply batch changes to working tree"),
-    )
-    parser_apply.add_argument(
-        "--from",
-        dest="from_batch",
-        metavar="BATCH",
-        required=True,
-        help=_("Apply changes from batch to working tree"),
-    )
-    parser_apply.add_argument(
-        "--line",
-        "--lines",
-        dest="line_ids",
-        metavar="IDS",
-        help=_("Apply only specific line IDs (e.g., '1,3,5-7')"),
-    )
-    add_file_argument(
-        parser_apply,
-        _("Operate on entire file from batch. "
-          "If PATH omitted, uses first file in batch (sorted order). "
-          "With --line, operates on line IDs from entire file."),
-    )
-
-    parser_apply.set_defaults(func=dispatch_apply_command)
+    add_apply_subcommand(subparsers)
 
     # reset - Remove claims from batch
     parser_reset = add_subcommand_parser(

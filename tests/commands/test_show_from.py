@@ -24,6 +24,7 @@ from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import ensure_state_directory_exists
+from tests.ownership_metadata_helpers import reject_materialized_ownership_metadata
 
 
 @pytest.fixture
@@ -307,14 +308,9 @@ class TestCommandShowFromBatch:
             "100644",
         )
 
-        def fail_from_metadata_dict(cls, data):
-            raise AssertionError("rendering should use acquired ownership")
-
-        monkeypatch.setattr(
-            BatchOwnership,
-            "from_metadata_dict",
-            classmethod(fail_from_metadata_dict),
-            raising=False,
+        reject_materialized_ownership_metadata(
+            monkeypatch,
+            "rendering should use acquired ownership",
         )
 
         rendered = render_batch_file_display(

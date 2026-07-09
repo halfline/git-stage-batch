@@ -27,6 +27,10 @@ from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError, MergeError
+from tests.ownership_metadata_helpers import (
+    acquire_ownership_for_metadata,
+    reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
+)
 
 
 def merge_batch(
@@ -45,18 +49,6 @@ def merge_batch(
         ) as buffer,
     ):
         return buffer.to_bytes()
-
-
-def _reject_materialized_ownership_metadata(monkeypatch):
-    def fail_from_metadata_dict(cls, data):
-        raise AssertionError("sift should use acquired ownership metadata")
-
-    monkeypatch.setattr(
-        BatchOwnership,
-        "from_metadata_dict",
-        classmethod(fail_from_metadata_dict),
-        raising=False,
-    )
 
 
 def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
@@ -199,7 +191,7 @@ class TestSiftBasicBehavior:
         # Verify the ownership reflects only the needed change
         metadata = read_batch_metadata("sifted-batch")
         file_meta = metadata["files"]["README.md"]
-        with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+        with acquire_ownership_for_metadata(file_meta) as ownership:
             resolved = ownership.resolve()
             # Should claim line 3 (Line B modified) but not line 2 (Line A modified already present)
             assert 3 in resolved.presence_line_set
@@ -942,7 +934,7 @@ class TestSiftPersistenceModel:
             # Get working content
             working_content = readme.read_bytes()
 
-            with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+            with acquire_ownership_for_metadata(file_meta) as ownership:
                 # Merge should produce the realized target
                 merged = merge_batch(
                     batch_source_content=batch_source_content,

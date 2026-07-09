@@ -29,6 +29,10 @@ from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
+from tests.ownership_metadata_helpers import (
+    acquire_ownership_for_metadata,
+    reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
+)
 
 
 _RESET_ACTIONS = ("reset-from-batch",)
@@ -61,20 +65,8 @@ def _presence_line_ids_from_ownership(ownership: BatchOwnership) -> set[int]:
     return line_ids
 
 
-def _reject_materialized_ownership_metadata(monkeypatch):
-    def fail_from_metadata_dict(cls, data):
-        raise AssertionError("reset should use acquired ownership metadata")
-
-    monkeypatch.setattr(
-        BatchOwnership,
-        "from_metadata_dict",
-        classmethod(fail_from_metadata_dict),
-        raising=False,
-    )
-
-
 def _ownership_summary_from_metadata(file_meta: dict) -> tuple[set[int], int]:
-    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+    with acquire_ownership_for_metadata(file_meta) as ownership:
         return _presence_line_ids_from_ownership(ownership), len(ownership.deletions)
 
 

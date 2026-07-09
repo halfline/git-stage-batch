@@ -14371,11 +14371,16 @@ def test_attribution_fingerprints_stay_out_of_attribution_builder():
 
 def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     """Consumed replacement metadata should stay outside hunk navigation."""
+    attribution_path = SRC_ROOT / "batch" / "attribution.py"
     filtering_path = SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py"
     hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
     filtering_imports = _import_from_nodes(filtering_path)
     filtering_imported_modules = {
         imported_module for imported_module, _node in filtering_imports
+    }
+    attribution_imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(attribution_path)
     }
     hunk_tracking_imported_modules = {
         imported_module
@@ -14390,6 +14395,10 @@ def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
         "git_stage_batch.data.hunk_tracking",
         fromlist=["hunk_tracking"],
     )
+    attribution = __import__(
+        "git_stage_batch.batch.attribution",
+        fromlist=["attribution"],
+    )
     consumed_masks = __import__(
         "git_stage_batch.data.consumed_replacement_masks",
         fromlist=["consumed_replacement_masks"],
@@ -14399,6 +14408,11 @@ def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     assert (
         "git_stage_batch.data.consumed_replacement_masks"
         not in filtering_imported_modules
+    )
+    assert "git_stage_batch.data.consumed_selections" in filtering_imported_modules
+    assert (
+        "git_stage_batch.data.consumed_selections"
+        not in attribution_imported_modules
     )
     assert (
         "git_stage_batch.data.consumed_selections"
@@ -14411,6 +14425,7 @@ def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     assert "filter_consumed_replacement_masks" in vars(consumed_masks)
     assert "filter_consumed_replacement_masks" not in vars(hunk_tracking)
     assert "_filter_consumed_replacement_masks" not in vars(hunk_tracking)
+    assert "read_consumed_file_metadata" not in vars(attribution)
     assert "read_consumed_file_metadata" not in vars(hunk_tracking)
 
 

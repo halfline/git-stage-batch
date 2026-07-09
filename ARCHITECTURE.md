@@ -248,6 +248,8 @@ Key modules:
   Baseline restoration mapping for discarding batch-owned changes.
 - `batch.discard_reversal`
   Presence-constraint reversal for batch discard operations.
+- `batch.realized_boundaries`
+  Boundary lookup over realized entries for anchored absence logic.
 - `batch.attribution`
   Ownership attribution for filtering live diffs.
 - `batch.source_refresh`

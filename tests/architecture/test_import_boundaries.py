@@ -1603,7 +1603,9 @@ def test_file_review_records_stay_out_of_state_module():
             "FileReviewAction",
         },
         SRC_ROOT / "commands" / "show.py": {"ReviewSource"},
-        SRC_ROOT / "commands" / "show_from.py": {"ReviewSource"},
+        SRC_ROOT / "commands" / "batch_source" / "file_list_action.py": {
+            "ReviewSource",
+        },
         SRC_ROOT / "commands" / "batch_source" / "replacement_previews.py": {
             "FileReviewAction",
         },

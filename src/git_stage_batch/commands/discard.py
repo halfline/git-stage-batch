@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..core.replacement import (
     ReplacementPayload,
 )
-from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ..core.models import BinaryFileChange, RenameChange, TextFileDeletionChange
 from ..data.selected_change.loading import (
     load_selected_change,
 )
@@ -17,7 +17,6 @@ from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
 )
-from ..data.file_hunk_display import cache_unstaged_file_as_single_hunk
 from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.action_scope import (
     finish_review_scoped_line_action,
@@ -28,12 +27,8 @@ from ..data.file_review.action_scope import (
 )
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
-from ..core.buffer import (
-    LineBuffer,
-)
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.git_command import run_git_command
 from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (

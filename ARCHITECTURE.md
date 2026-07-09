@@ -30,7 +30,9 @@ its output, and stores tool-specific metadata alongside that workflow.
 The codebase is organized as a set of layers:
 
 - `cli/`
-  Argument parsing, help, completion, and top-level command dispatch.
+  Argument parsing, help, completion, and command-specific dispatch helpers.
+- `runtime.py`
+  Top-level mode dispatch between parsed CLI arguments and the interactive TUI.
 - `commands/`
   User-facing command implementations.
 - `data/`
@@ -67,9 +69,11 @@ That split is intentional:
 The usual entry path is:
 
 1. `cli.argument_parser` builds the command-line interface.
-2. `cli.dispatch` selects the command implementation.
-3. A function in `commands/` performs the operation.
-4. That command uses `data/`, `core/`, `staging/`, `batch/`, and `utils/`
+2. `runtime.dispatch_cli_mode` chooses interactive mode or noninteractive
+   execution.
+3. `cli.execution` invokes the parsed command function.
+4. A function in `commands/` performs the operation.
+5. That command uses `data/`, `core/`, `staging/`, `batch/`, and `utils/`
    modules as needed.
 
 For a typical non-batch staging workflow:
@@ -381,15 +385,20 @@ For a contributor new to the codebase, a good reading order is:
    Understand the product-level workflow.
 2. `src/git_stage_batch/cli/argument_parser.py`
    See the public command surface.
-3. `src/git_stage_batch/cli/dispatch.py`
-   See how parsed commands are routed.
+3. `src/git_stage_batch/runtime.py` and
+   `src/git_stage_batch/cli/execution.py`
+   See how parsed arguments enter interactive mode or command execution.
 4. `src/git_stage_batch/commands/start.py`,
-   `show.py`, `include.py`, `skip.py`, `discard.py`
+   `src/git_stage_batch/commands/show.py`,
+   `src/git_stage_batch/commands/include.py`,
+   `src/git_stage_batch/commands/skip.py`,
+   `src/git_stage_batch/commands/discard.py`
    Understand the core non-batch workflow.
 5. `src/git_stage_batch/data/session.py` and
    `src/git_stage_batch/data/hunk_tracking.py`
    Understand state and navigation.
-6. `src/git_stage_batch/core/diff_parser.py` and `core/models.py`
+6. `src/git_stage_batch/core/diff_parser.py` and
+   `src/git_stage_batch/core/models.py`
    Understand the shared representation of change.
 7. `BATCHES.md` and then `src/git_stage_batch/batch/*`
    Understand the advanced deferred-change architecture.

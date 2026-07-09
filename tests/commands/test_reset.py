@@ -13,7 +13,8 @@ import git_stage_batch.data.file_review.batch_selection as batch_review_selectio
 import git_stage_batch.data.file_review.freshness as file_review_freshness_module
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.query import read_batch_metadata
-from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
+from git_stage_batch.batch.file_entry_storage import read_file_from_batch
+from git_stage_batch.batch.storage import add_file_to_batch
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.new import command_new_batch

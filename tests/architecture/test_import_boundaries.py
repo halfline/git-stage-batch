@@ -8568,7 +8568,6 @@ def test_batch_source_candidate_materialization_owns_reviewed_candidate_loading(
     }
     materialization_consumer_paths = {
         candidate_execution_path,
-        include_from_path,
     }
     preview_free_paths = command_paths | {
         candidate_execution_path,
@@ -8618,7 +8617,6 @@ def test_batch_source_candidate_materialization_owns_reviewed_candidate_loading(
     assert public_names <= vars(candidate_materialization).keys()
     assert imports_candidate_materialization == {
         candidate_execution_path: True,
-        include_from_path: True,
     }
     assert imports_candidate_previews == {
         apply_from_path: False,
@@ -8735,6 +8733,46 @@ def test_batch_source_candidate_execution_owns_apply_from_flow():
     assert "candidate_execution" in command_imported_names
     assert "execute_apply_candidate" in command_attrs
     assert "_execute_apply_candidate" not in command_functions
+    assert "candidate_materialization" not in command_imported_names
+    assert "clear_candidate_preview_state_for_file" not in command_imported_names
+    assert "candidate_materialization" in helper_imported_names
+    assert "clear_candidate_preview_state_for_file" in helper_imported_names
+
+
+def test_batch_source_candidate_execution_owns_include_from_flow():
+    """Include-from should delegate reviewed candidate execution."""
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "batch_source" / "candidate_execution.py"
+    )
+    command_tree = ast.parse(
+        include_from_path.read_text(),
+        filename=str(include_from_path),
+    )
+    command_functions = {
+        node.name: node
+        for node in ast.walk(command_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_attrs = {
+        node.attr
+        for node in ast.walk(command_functions["command_include_from_batch"])
+        if isinstance(node, ast.Attribute)
+    }
+    command_imports = set()
+    command_imported_names = set()
+    for imported_module, node in _import_from_nodes(include_from_path):
+        command_imports.add(imported_module)
+        command_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "git_stage_batch.commands.batch_source" in command_imports
+    assert "candidate_execution" in command_imported_names
+    assert "execute_include_candidate" in command_attrs
+    assert "_execute_include_candidate" not in command_functions
     assert "candidate_materialization" not in command_imported_names
     assert "clear_candidate_preview_state_for_file" not in command_imported_names
     assert "candidate_materialization" in helper_imported_names

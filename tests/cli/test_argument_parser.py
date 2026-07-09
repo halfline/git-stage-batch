@@ -16,6 +16,7 @@ from git_stage_batch.cli import (
     skip_dispatch,
 )
 from git_stage_batch.cli.argument_parser import parse_command_line
+from git_stage_batch.exceptions import CommandError
 
 
 def _stdin_with_bytes(data: bytes) -> io.TextIOWrapper:
@@ -326,7 +327,7 @@ def test_parse_command_line_show_no_auto_advance_is_show_local(monkeypatch):
 def test_show_page_requires_file():
     args = parse_command_line(["show", "--page", "2"], quiet=True)
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="requires `--file`"):
+    with pytest.raises(CommandError, match="requires `--file`"):
         args.func(args)
 
 
@@ -334,7 +335,7 @@ def test_show_pages_alias_requires_file():
     args = parse_command_line(["show", "--pages", "2"], quiet=True)
     assert args is not None
     assert args.page == "2"
-    with pytest.raises(argument_parser.CommandError, match="requires `--file` or a single-file `--files` match"):
+    with pytest.raises(CommandError, match="requires `--file` or a single-file `--files` match"):
         args.func(args)
 
 
@@ -406,7 +407,7 @@ def test_show_page_rejects_multiple_files_matches(monkeypatch):
     args = parse_command_line(["show", "--files", "*.py", "--page", "2"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="requires exactly one resolved file"):
+    with pytest.raises(CommandError, match="requires exactly one resolved file"):
         args.func(args)
 
 
@@ -416,7 +417,7 @@ def test_show_page_rejects_multiple_file_pattern_matches(monkeypatch):
     args = parse_command_line(["show", "--file", "*.py", "--page", "2"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="requires exactly one resolved file"):
+    with pytest.raises(CommandError, match="requires exactly one resolved file"):
         args.func(args)
 
 
@@ -424,7 +425,7 @@ def test_show_page_rejects_line_selection(monkeypatch):
     _mock_live_file_candidates(monkeypatch, ["src/parser.py"])
     args = parse_command_line(["show", "--file", "src/parser.py", "--page", "2", "--line", "1"], quiet=True)
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="together with `show --line`"):
+    with pytest.raises(CommandError, match="together with `show --line`"):
         args.func(args)
 
 
@@ -432,7 +433,7 @@ def test_show_page_rejects_porcelain(monkeypatch):
     _mock_live_file_candidates(monkeypatch, ["src/parser.py"])
     args = parse_command_line(["show", "--file", "src/parser.py", "--page", "2", "--porcelain"], quiet=True)
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="with `--porcelain`"):
+    with pytest.raises(CommandError, match="with `--porcelain`"):
         args.func(args)
 
 
@@ -456,7 +457,7 @@ def test_show_from_page_rejects_multi_file_batch_without_file(monkeypatch):
     args = parse_command_line(["show", "--from", "batch", "--page", "2"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="single-file batch"):
+    with pytest.raises(CommandError, match="single-file batch"):
         args.func(args)
     mock_command.assert_not_called()
 
@@ -474,7 +475,7 @@ def test_show_from_page_missing_batch_reports_missing_batch(monkeypatch):
     args = parse_command_line(["show", "--from", "missing", "--page", "2"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="Batch 'missing' does not exist"):
+    with pytest.raises(CommandError, match="Batch 'missing' does not exist"):
         args.func(args)
     mock_command.assert_not_called()
 
@@ -770,7 +771,7 @@ def test_parse_command_line_include_line_rejects_multiple_file_pattern_matches(m
     args = parse_command_line(["include", "--file", "*.py", "--line", "1"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="Cannot use --lines with multiple files"):
+    with pytest.raises(CommandError, match="Cannot use --lines with multiple files"):
         args.func(args)
 
 
@@ -798,7 +799,7 @@ def test_parse_command_line_include_with_files_and_as_rejects_multiple_matches(m
     args = parse_command_line(["include", "--files", "*.py", "--as", "replacement"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="Cannot use --as with multiple files"):
+    with pytest.raises(CommandError, match="Cannot use --as with multiple files"):
         args.func(args)
 
 
@@ -846,7 +847,7 @@ def test_parse_command_line_include_rejects_as_and_as_stdin_together(monkeypatch
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="Cannot use `--as` and `--as-stdin` together"):
+    with pytest.raises(CommandError, match="Cannot use `--as` and `--as-stdin` together"):
         args.func(args)
 
 
@@ -880,7 +881,7 @@ def test_parse_command_line_include_rejects_no_edge_overlap_without_line_as():
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`--no-edge-overlap` requires `include --line --as`"):
+    with pytest.raises(CommandError, match="`--no-edge-overlap` requires `include --line --as`"):
         args.func(args)
 
 
@@ -890,7 +891,7 @@ def test_parse_command_line_include_invalid_as_stdin_shape_does_not_read(monkeyp
     args = parse_command_line(["include", "--to", "batch", "--as-stdin"], quiet=True)
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`include --as` requires"):
+    with pytest.raises(CommandError, match="`include --as` requires"):
         args.func(args)
 
 
@@ -997,7 +998,7 @@ def test_parse_command_line_skip_rejects_lines_with_multiple_files(monkeypatch):
     args = parse_command_line(["skip", "--files", "*.py", "--lines", "1"], quiet=True)
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="Cannot use --lines with multiple files"):
+    with pytest.raises(CommandError, match="Cannot use --lines with multiple files"):
         args.func(args)
 
 
@@ -1006,7 +1007,7 @@ def test_parse_command_line_skip_rejects_pathless_file_with_files():
     args = parse_command_line(["skip", "--file", "--files", "*.py"], quiet=True)
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="Cannot use --file together with --files"):
+    with pytest.raises(CommandError, match="Cannot use --file together with --files"):
         args.func(args)
 
 
@@ -1143,7 +1144,7 @@ def test_parse_command_line_show_with_files_raises_command_error_for_no_matches(
     args = parse_command_line(["show", "--files", "*.md"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="No changed files matched: \\*.md"):
+    with pytest.raises(CommandError, match="No changed files matched: \\*.md"):
         args.func(args)
 
 
@@ -1336,7 +1337,7 @@ def test_parse_command_line_discard_rejects_as_and_as_stdin_together(monkeypatch
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="Cannot use `--as` and `--as-stdin` together"):
+    with pytest.raises(CommandError, match="Cannot use `--as` and `--as-stdin` together"):
         args.func(args)
 
 
@@ -1371,7 +1372,7 @@ def test_parse_command_line_discard_rejects_no_edge_overlap_without_to_line_as()
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`--no-edge-overlap` requires `discard --to --line --as`"):
+    with pytest.raises(CommandError, match="`--no-edge-overlap` requires `discard --to --line --as`"):
         args.func(args)
 
 
@@ -1381,7 +1382,7 @@ def test_parse_command_line_discard_invalid_as_stdin_shape_does_not_read(monkeyp
     args = parse_command_line(["discard", "--from", "batch", "--as-stdin"], quiet=True)
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`discard --as` requires"):
+    with pytest.raises(CommandError, match="`discard --as` requires"):
         args.func(args)
 
 

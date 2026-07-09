@@ -9,8 +9,8 @@ import uuid
 
 from ...batch.operations import create_batch, delete_batch
 from ...batch.merge import merge_batch_from_line_sequences_as_buffer
-from ...batch.ownership import (
-    BatchOwnership,
+from ...batch.ownership import BatchOwnership
+from ...batch.ownership_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
 from ...batch.query import read_batch_metadata

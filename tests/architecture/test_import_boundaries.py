@@ -3633,6 +3633,9 @@ def test_batch_transform_sift_results_own_result_planning():
     )
     sift_path = SRC_ROOT / "commands" / "sift.py"
     public_names = {
+        "SiftedBinaryFileResult",
+        "SiftedFileResult",
+        "SiftedTextFileResult",
         "build_ownership_from_working_and_target_lines",
         "compute_sifted_binary_file",
         "compute_sifted_text_file",
@@ -3701,11 +3704,38 @@ def test_batch_transform_sift_results_own_result_planning():
         for node in ast.walk(sift_tree)
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
+    result_mapping_accesses = []
+
+    for node in ast.walk(sift_tree):
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "result"
+        ):
+            result_mapping_accesses.append(node.lineno)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "result"
+        ):
+            result_mapping_accesses.append(node.lineno)
 
     assert public_names <= vars(sift_results).keys()
     assert imports_sift_results
     assert direct_result_imports == set()
     assert old_helper_names.isdisjoint(sift_helpers)
+    assert result_mapping_accesses == []
+
+    for class_name in ("SiftedBinaryFileResult", "SiftedTextFileResult"):
+        result_class = getattr(sift_results, class_name)
+        result_methods = {
+            name
+            for name, value in vars(result_class).items()
+            if callable(value)
+        }
+        assert {"__contains__", "__getitem__", "get"}.isdisjoint(result_methods)
 
 
 def test_batch_transform_sift_persistence_owns_text_writes():

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 
 from ..core.line_selection import LineRanges, LineSelection
-from ..exceptions import AtomicUnitError, MergeError
+from ..exceptions import MergeError
 from ..i18n import _
 from .display import build_display_lines_from_batch_source_lines
 from .ownership import (
@@ -384,82 +384,6 @@ def validate_ownership_units(units: list[_UnitRecord]) -> None:
                     raise MergeError(
                         _("Invalid deletion in batch metadata: expected removed lines only.")
                     )
-
-
-def select_ownership_units_by_display_ids(
-    units: list[_UnitRecord],
-    selected_display_ids: LineSelection | Iterable[int],
-) -> list[_UnitRecord]:
-    """Select ownership units that match the given display line IDs.
-
-    Validates that atomic units are not partially selected.
-
-    Args:
-        units: List of ownership units
-        selected_display_ids: Display line IDs to select
-
-    Returns:
-        List of units that match the selection
-
-    Raises:
-        MergeError: If atomic unit is partially selected
-    """
-    selected = []
-    selected_display_ranges = (
-        selected_display_ids
-        if isinstance(selected_display_ids, LineRanges)
-        else LineRanges.from_lines(selected_display_ids)
-    )
-
-    for unit in units:
-        # Check if any display IDs from this unit are selected
-        intersection = unit.display_line_ids.intersection(selected_display_ranges)
-
-        if not intersection:
-            # Not selected - skip it
-            continue
-        elif unit.is_atomic and intersection != unit.display_line_ids:
-            # Partial selection of atomic unit - error
-            raise AtomicUnitError(
-                _("Cannot select only part of this change.\n"
-                  "Select all related lines together: {required_ids}\n"
-                  "You selected: {selected_ids}").format(
-                    required_ids=unit.display_line_ids.to_line_spec(),
-                    selected_ids=intersection.to_line_spec()
-                ),
-                required_selection_ids=unit.display_line_ids,
-                unit_kind=unit.kind.value
-            )
-        else:
-            # Fully selected (or non-atomic with partial selection allowed)
-            selected.append(unit)
-
-    return selected
-
-
-def filter_ownership_units_by_display_ids(
-    units: list[_UnitRecord],
-    selected_display_ids: LineSelection | Iterable[int],
-) -> tuple[list[_UnitRecord], list[_UnitRecord]]:
-    """Filter ownership units, removing those that match display line IDs.
-
-    This is a convenience wrapper around select_ownership_units_by_display_ids
-    for reset-style operations where you want both remaining and removed units.
-
-    Args:
-        units: List of ownership units
-        selected_display_ids: Display line IDs to remove
-
-    Returns:
-        Tuple of (remaining_units, removed_units)
-
-    Raises:
-        MergeError: If atomic unit is partially selected
-    """
-    removed = select_ownership_units_by_display_ids(units, selected_display_ids)
-    removed_ids = {id(unit) for unit in removed}
-    remaining = [unit for unit in units if id(unit) not in removed_ids]
-    return remaining, removed
 
 
 def rebuild_ownership_from_units(units: list[_UnitRecord]) -> BatchOwnership:

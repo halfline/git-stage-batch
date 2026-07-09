@@ -15,10 +15,10 @@ from ...batch.ownership import (
 from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_units import (
     build_ownership_units_from_batch_source_lines,
-    filter_ownership_units_by_display_ids,
     rebuild_ownership_from_units,
     validate_ownership_units,
 )
+from ...batch.ownership_unit_selection import filter_ownership_units_by_display_ids
 from ...batch.query import read_batch_metadata
 from ...batch.selection import require_display_ids_available, resolve_batch_file_scope
 from ...batch.state_refs import sync_batch_state_refs

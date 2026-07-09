@@ -7,9 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 import git_stage_batch.batch.operation_candidates as operation_candidates
+import git_stage_batch.commands.batch_source.action_selection as action_selection
 import git_stage_batch.commands.batch_source.candidate_preview_counts as candidate_preview_counts
-import git_stage_batch.commands.apply_from as apply_from_module
-import git_stage_batch.commands.include_from as include_from_module
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.output.candidate_preview as candidate_preview_module
 from git_stage_batch.batch.operations import create_batch
@@ -353,7 +352,7 @@ def test_candidate_preview_allows_equivalent_line_selection_spelling(
         resolve_selected_lines,
     )
     monkeypatch.setattr(
-        apply_from_module,
+        action_selection,
         "translate_batch_file_gutter_ids_to_selection_ids",
         resolve_selected_lines,
     )

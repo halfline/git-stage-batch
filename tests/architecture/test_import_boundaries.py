@@ -1166,7 +1166,7 @@ def test_batch_review_selection_translation_stays_in_data_layer():
         "translate_reset_batch_file_gutter_ids_to_selection_ranges",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "apply_from.py": {
+        SRC_ROOT / "commands" / "batch_source" / "action_selection.py": {
             "translate_batch_file_gutter_ids_to_selection_ids",
         },
         SRC_ROOT / "commands" / "discard_from.py": {

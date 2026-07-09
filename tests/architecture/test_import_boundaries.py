@@ -324,8 +324,11 @@ def test_data_package_does_not_reexport_data_apis():
         "copy_asset_tree",
         "estimate_remaining_hunks",
         "format_id_range",
+        "get_companion_asset_source",
+        "get_entry_companion_assets",
         "get_file_progress",
         "get_hunk_counts",
+        "list_asset_group_entries",
         "record_hunk_discarded",
         "record_hunk_included",
         "record_hunk_skipped",
@@ -2636,7 +2639,6 @@ def test_install_asset_catalog_owns_asset_groups():
         asset_menu_path: {"ASSET_GROUPS"},
         command_path: {
             "AssetGroup",
-            "CompanionAsset",
             "Traversable",
             "_ASSET_GROUPS",
         },
@@ -2694,6 +2696,61 @@ def test_asset_installation_owns_asset_tree_copying():
     assert old_command_names.isdisjoint(command_names)
     assert all(snippet not in command_text for snippet in old_command_snippets)
     assert command_imports == {"copy_asset_tree"}
+
+
+def test_asset_inventory_owns_packaged_asset_lookup():
+    """Packaged asset lookup should live in the data inventory helper."""
+    asset_inventory = __import__(
+        "git_stage_batch.data.asset_inventory",
+        fromlist=["asset_inventory"],
+    )
+    install_assets = __import__(
+        "git_stage_batch.commands.install_assets",
+        fromlist=["install_assets"],
+    )
+    command_path = SRC_ROOT / "commands" / "install_assets.py"
+    public_names = {
+        "get_companion_asset_source",
+        "get_entry_companion_assets",
+        "list_asset_group_entries",
+    }
+    old_command_names = {
+        "_get_companion_source",
+        "_get_entry_companion_assets",
+        "_get_group_root",
+        "_get_install_entry_name",
+        "_list_group_entries",
+    }
+    old_command_snippets = {
+        "from importlib import resources",
+        "resources.files",
+        "CompanionAsset",
+    }
+    imported_inventory_names = set()
+
+    for imported_module, node in _import_from_nodes(command_path):
+        if imported_module == "git_stage_batch.data.asset_inventory":
+            imported_inventory_names |= {
+                alias.asname or alias.name for alias in node.names
+            }
+
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    command_names = {
+        node.name
+        for node in ast.walk(command_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    command_text = command_path.read_text()
+
+    assert public_names <= vars(asset_inventory).keys()
+    assert public_names.isdisjoint(vars(install_assets))
+    assert old_command_names.isdisjoint(command_names)
+    assert all(snippet not in command_text for snippet in old_command_snippets)
+    assert imported_inventory_names == {
+        "_asset_group_entries",
+        "_companion_asset_source",
+        "_entry_companion_assets",
+    }
 
 
 def test_tui_flow_menu_owns_batch_selection_menus():

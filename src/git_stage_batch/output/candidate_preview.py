@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shlex
 
 from ..batch.operation_candidates import (
     OperationCandidatePreview,
@@ -14,43 +13,15 @@ from ..core.diff_parser import build_line_changes_from_patch_lines
 from ..i18n import _
 from ..utils.paths import get_context_lines
 from . import candidate_preview_summary
+from .candidate_preview_commands import (
+    candidate_selector_text,
+    execute_candidate_command,
+    show_candidate_command,
+)
 from .colors import Colors
 
 
 _CANDIDATE_OVERVIEW_MAX_CANDIDATES = 10
-
-
-def _candidate_selector_text(
-    batch_name: str,
-    operation: str,
-    ordinal: int | None = None,
-) -> str:
-    if ordinal is None:
-        return f"{batch_name}:{operation}"
-    return f"{batch_name}:{operation}:{ordinal}"
-
-
-def _show_candidate_command(preview: OperationCandidatePreview, ordinal: int | None = None) -> str:
-    return "git-stage-batch show --from {selector} --file {file}".format(
-        selector=_candidate_selector_text(
-            preview.batch_name,
-            preview.operation,
-            ordinal,
-        ),
-        file=shlex.quote(preview.file_path),
-    )
-
-
-def _execute_candidate_command(preview: OperationCandidatePreview) -> str:
-    return "git-stage-batch {command} --from {selector} --file {file}".format(
-        command=preview.operation,
-        selector=_candidate_selector_text(
-            preview.batch_name,
-            preview.operation,
-            preview.ordinal,
-        ),
-        file=shlex.quote(preview.file_path),
-    )
 
 
 def _candidate_choice_count(count: int) -> str:
@@ -326,24 +297,18 @@ def render_operation_candidate_overview(
             "candidates": [
                 {
                     "ordinal": preview.ordinal,
-                    "selector": _candidate_selector_text(
+                    "selector": candidate_selector_text(
                         preview.batch_name,
                         preview.operation,
                         preview.ordinal,
                     ),
                     "commands": {
-                        "preview": (
-                            "git-stage-batch show --from {selector} --file {file}".format(
-                                selector=_candidate_selector_text(
-                                    preview.batch_name,
-                                    preview.operation,
-                                    preview.ordinal,
-                                ),
-                                file=shlex.quote(preview.file_path),
-                            )
+                        "preview": show_candidate_command(
+                            preview,
+                            preview.ordinal,
                         ),
                         "execute": (
-                            _execute_candidate_command(preview)
+                            execute_candidate_command(preview)
                         ),
                     },
                     "targets": [
@@ -411,9 +376,9 @@ def render_operation_candidate_overview(
                 _print_candidate_summary_block(summary, indent="      ")
         action = _("Apply") if preview.operation == "apply" else _("Include")
         print(f"   {_('Preview this candidate:')}")
-        print(f"     {_show_candidate_command(preview, preview.ordinal)}")
+        print(f"     {show_candidate_command(preview, preview.ordinal)}")
         print(f"   {_('{action} this candidate:').format(action=action)}")
-        print(f"     {_execute_candidate_command(preview)}")
+        print(f"     {execute_candidate_command(preview)}")
         print()
 
     if len(previews) > len(shown_previews):
@@ -421,7 +386,10 @@ def render_operation_candidate_overview(
         print(
             _("... {count} more candidates. Preview another candidate with {selector}:N.").format(
                 count=remaining,
-                selector=_candidate_selector_text(first.batch_name, first.operation),
+                selector=candidate_selector_text(
+                    first.batch_name,
+                    first.operation,
+                ),
             )
         )
         print()
@@ -500,19 +468,19 @@ def render_operation_candidate(
     print(
         _("{action} this candidate:\n  {command}").format(
             action=action,
-            command=_execute_candidate_command(preview),
+            command=execute_candidate_command(preview),
         ),
     )
     print()
     print(_("Review candidates:"))
     print(_("  overview: {command}").format(
-        command=_show_candidate_command(preview),
+        command=show_candidate_command(preview),
     ))
     if preview.ordinal > 1:
         print(_("  previous: {command}").format(
-            command=_show_candidate_command(preview, preview.ordinal - 1),
+            command=show_candidate_command(preview, preview.ordinal - 1),
         ))
     if preview.ordinal < preview.count:
         print(_("  next: {command}").format(
-            command=_show_candidate_command(preview, preview.ordinal + 1),
+            command=show_candidate_command(preview, preview.ordinal + 1),
         ))

@@ -1172,9 +1172,6 @@ def test_batch_review_selection_translation_stays_in_data_layer():
         SRC_ROOT / "commands" / "discard_from.py": {
             "translate_batch_file_gutter_ids_to_selection_ids",
         },
-        SRC_ROOT / "commands" / "include_from.py": {
-            "translate_batch_file_gutter_ids_to_selection_ids",
-        },
         SRC_ROOT / "commands" / "reset.py": {
             "translate_reset_batch_file_gutter_ids_to_selection_ranges",
         },
@@ -6987,6 +6984,9 @@ def test_replacement_selection_stays_in_command_helper():
     """Include and discard should use the replacement-selection helper module."""
     include_path = SRC_ROOT / "commands" / "include.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    action_selection_path = (
+        SRC_ROOT / "commands" / "batch_source" / "action_selection.py"
+    )
     discard_path = SRC_ROOT / "commands" / "discard.py"
     show_from_path = SRC_ROOT / "commands" / "show_from.py"
     replacement_previews_path = (
@@ -7021,7 +7021,7 @@ def test_replacement_selection_stays_in_command_helper():
     }
     helper_user_paths = (
         include_path,
-        include_from_path,
+        action_selection_path,
         discard_replacement_path,
         replacement_previews_path,
     )

@@ -7923,6 +7923,79 @@ def test_batch_source_candidate_preview_builders_own_show_candidate_construction
     assert direct_operation_builder_imports == set()
 
 
+def test_batch_source_candidate_preview_action_owns_show_flow():
+    """Show-from candidate preview flow should live in batch-source support."""
+    helper = __import__(
+        "git_stage_batch.commands.batch_source.candidate_preview_action",
+        fromlist=["candidate_preview_action"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "batch_source" / "candidate_preview_action.py"
+    )
+    public_names = {
+        "show_batch_source_candidate_preview",
+    }
+    action_dependency_names = {
+        "build_batch_source_candidate_previews",
+        "candidate_preview_builders",
+        "candidate_previews",
+        "close_candidate_previews",
+        "render_operation_candidate",
+        "render_operation_candidate_overview",
+        "require_candidate_preview_for_ordinal",
+        "save_candidate_preview_state",
+    }
+    helper_imports = {
+        "MergeError",
+        "ReplacementPayload",
+        "candidate_preview_builders",
+        "candidate_previews",
+        "exit_with_error",
+        "render_operation_candidate",
+        "render_operation_candidate_overview",
+        "save_candidate_preview_state",
+        "translate_batch_file_gutter_ids_to_selection_ids",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    show_from_tree = ast.parse(
+        show_from_path.read_text(),
+        filename=str(show_from_path),
+    )
+    show_from_functions = {
+        node.name: node
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_names = {
+        node.id
+        for node in ast.walk(show_from_functions["command_show_from_batch"])
+        if isinstance(node, ast.Name)
+    }
+    command_attrs = {
+        node.attr
+        for node in ast.walk(show_from_functions["command_show_from_batch"])
+        if isinstance(node, ast.Attribute)
+    }
+    batch_source_imports = set()
+    for imported_module, node in _import_from_nodes(show_from_path):
+        if imported_module != "git_stage_batch.commands.batch_source":
+            continue
+        batch_source_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "candidate_preview_action" in batch_source_imports
+    assert "show_batch_source_candidate_preview" in command_attrs
+    assert action_dependency_names.isdisjoint(command_names)
+    assert action_dependency_names.isdisjoint(command_attrs)
+    assert helper_imports <= helper_imported_names
+
+
 def test_batch_source_candidate_preview_counts_own_failure_enumeration():
     """Apply/include candidate count enumeration should live in batch-source support."""
     candidate_preview_counts = __import__(

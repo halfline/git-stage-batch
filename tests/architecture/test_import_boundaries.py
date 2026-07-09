@@ -317,7 +317,7 @@ def test_batch_source_cache_owns_session_mapping():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "binary_file_storage.py": public_names,
-        SRC_ROOT / "batch" / "display.py": {"get_batch_source_for_file"},
+        SRC_ROOT / "batch" / "source_annotation.py": {"get_batch_source_for_file"},
         SRC_ROOT / "batch" / "source_refresh.py": {
             "load_session_batch_sources",
             "save_session_batch_sources",
@@ -352,6 +352,97 @@ def test_batch_source_cache_owns_session_mapping():
                 continue
 
             if imported_module != "git_stage_batch.batch.source_cache":
+                continue
+
+            imported_public_names |= imported_names & public_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_source_annotation_owns_line_annotation():
+    """Batch-source line annotation should stay outside display rendering."""
+    display = __import__(
+        "git_stage_batch.batch.display",
+        fromlist=["display"],
+    )
+    source_annotation = __import__(
+        "git_stage_batch.batch.source_annotation",
+        fromlist=["source_annotation"],
+    )
+    source_annotation_path = SRC_ROOT / "batch" / "source_annotation.py"
+    public_names = {
+        "annotate_with_batch_source",
+        "annotate_with_batch_source_lines",
+        "annotate_with_batch_source_working_lines",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "file_scope" / "discard_file_to_batch.py": {
+            "annotate_with_batch_source",
+        },
+        SRC_ROOT / "commands" / "file_scope" / "discard_to_batch.py": {
+            "annotate_with_batch_source",
+        },
+        SRC_ROOT / "commands" / "file_scope" / "include_file_to_batch.py": {
+            "annotate_with_batch_source",
+        },
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py": {
+            "annotate_with_batch_source",
+        },
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
+            "annotate_with_batch_source_working_lines",
+        },
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py": {
+            "annotate_with_batch_source",
+        },
+        SRC_ROOT / "commands" / "selection" / "include_line_replacement.py": {
+            "annotate_with_batch_source",
+        },
+        SRC_ROOT / "commands" / "selection" / "next_change_display.py": {
+            "annotate_with_batch_source",
+        },
+        (
+            SRC_ROOT
+            / "commands"
+            / "selection"
+            / "selected_change_batch_discarding.py"
+        ): {"annotate_with_batch_source"},
+        (
+            SRC_ROOT
+            / "commands"
+            / "selection"
+            / "selected_change_batch_staging.py"
+        ): {"annotate_with_batch_source"},
+        SRC_ROOT / "data" / "hunk_tracking.py": {
+            "annotate_with_batch_source",
+        },
+        SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py": {
+            "annotate_with_batch_source",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(source_annotation).keys()
+    assert public_names.isdisjoint(vars(display))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == source_annotation_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.display":
+                stale_imports = imported_names & public_names
+                if stale_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(stale_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.source_annotation":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11088,12 +11179,12 @@ def test_batch_line_mapping_owns_public_mapping_type():
         SRC_ROOT / "batch" / "attribution.py": public_names,
         SRC_ROOT / "batch" / "baseline_edits.py": public_names,
         SRC_ROOT / "batch" / "discard.py": public_names,
-        SRC_ROOT / "batch" / "display.py": public_names,
         SRC_ROOT / "batch" / "merge.py": public_names,
         SRC_ROOT / "batch" / "merge_validation.py": public_names,
         SRC_ROOT / "batch" / "ownership_remapping.py": public_names,
         SRC_ROOT / "batch" / "presence_constraints.py": public_names,
         SRC_ROOT / "batch" / "realized_mapping.py": public_names,
+        SRC_ROOT / "batch" / "source_annotation.py": public_names,
     }
     violations = []
 

@@ -339,7 +339,7 @@ def test_line_range_coercion_stays_in_core_line_selection():
     }
     allowed_paths = {
         SRC_ROOT / "core" / "line_selection.py",
-        SRC_ROOT / "editor" / "edit.py",
+        SRC_ROOT / "editor" / "line_editor.py",
     }
     violations = []
 
@@ -570,9 +570,9 @@ def test_editor_package_does_not_reexport_editor_apis():
     editor = __import__("git_stage_batch.editor", fromlist=["editor"])
     facade_names = {
         "BufferInput",
-        "Cursor",
-        "Editor",
         "LineBuffer",
+        "LineCursor",
+        "LineEditor",
         "buffer_byte_chunks",
         "buffer_byte_count",
         "buffer_has_data",
@@ -607,52 +607,66 @@ def test_editor_package_does_not_reexport_editor_apis():
     assert violations == []
 
 
-def test_editor_edit_uses_piece_table_module():
-    """Editor mutations should not own line piece-table storage."""
-    edit_path = SRC_ROOT / "editor" / "edit.py"
-    edit_text = edit_path.read_text()
-    edit_imports = {
+def test_line_editor_uses_piece_table_module():
+    """Line editor mutations should not own line piece-table storage."""
+    old_edit_path = SRC_ROOT / "editor" / "edit.py"
+    line_editor_path = SRC_ROOT / "editor" / "line_editor.py"
+    line_editor_text = line_editor_path.read_text()
+    line_editor_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(edit_path)
+        for imported_module, _node in _import_from_nodes(line_editor_path)
     }
     piece_table = __import__(
         "git_stage_batch.editor.piece_table",
         fromlist=["piece_table"],
     )
+    old_imports = []
 
-    assert "git_stage_batch.editor.piece_table" in edit_imports
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.editor.edit":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            old_imports.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_edit_path.exists()
+    assert old_imports == []
+    assert "git_stage_batch.editor.piece_table" in line_editor_imports
     assert "LinePieceTable" in vars(piece_table)
     assert "LineRange" in vars(piece_table)
-    assert "class LinePieceTable" not in edit_text
-    assert "class LineRange" not in edit_text
-    assert "from array import array" not in edit_text
-    assert "bytearray(" not in edit_text
+    assert "class LinePieceTable" not in line_editor_text
+    assert "class LineRange" not in line_editor_text
+    assert "from array import array" not in line_editor_text
+    assert "bytearray(" not in line_editor_text
 
 
-def test_editor_edit_uses_line_export_module():
-    """Editor mutations should not own stateless line export helpers."""
-    edit_path = SRC_ROOT / "editor" / "edit.py"
-    edit_text = edit_path.read_text()
-    edit_imports = {
+def test_line_editor_uses_line_export_module():
+    """Line editor mutations should not own stateless line export helpers."""
+    line_editor_path = SRC_ROOT / "editor" / "line_editor.py"
+    line_editor_text = line_editor_path.read_text()
+    line_editor_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(edit_path)
+        for imported_module, _node in _import_from_nodes(line_editor_path)
     }
-    edit = __import__(
-        "git_stage_batch.editor.edit",
-        fromlist=["edit"],
+    line_editor = __import__(
+        "git_stage_batch.editor.line_editor",
+        fromlist=["line_editor"],
     )
     line_export = __import__(
         "git_stage_batch.editor.line_export",
         fromlist=["line_export"],
     )
 
-    assert "git_stage_batch.editor.line_export" in edit_imports
+    assert "git_stage_batch.editor.line_export" in line_editor_imports
     assert "export_lines_as_buffer" in vars(line_export)
-    assert "export_lines_as_buffer" not in vars(edit)
-    assert "def export_lines_as_buffer" not in edit_text
-    assert "def _line_body" not in edit_text
-    assert "def _line_bytes" not in edit_text
-    assert "def _line_body_chunks" not in edit_text
+    assert "export_lines_as_buffer" not in vars(line_editor)
+    assert "def export_lines_as_buffer" not in line_editor_text
+    assert "def _line_body" not in line_editor_text
+    assert "def _line_bytes" not in line_editor_text
+    assert "def _line_body_chunks" not in line_editor_text
 
 
 def test_cli_package_does_not_reexport_cli_apis():

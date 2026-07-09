@@ -4,6 +4,7 @@ import pytest
 
 from git_stage_batch.core.line_selection import (
     LineRanges,
+    coerce_line_ranges,
     format_line_ids,
     parse_line_selection,
     parse_line_selection_ranges,
@@ -166,6 +167,28 @@ class TestFormatLineIds:
 
 class TestLineRanges:
     """Tests for range-backed line selections."""
+
+    def test_coerce_line_ranges_keeps_range_instance(self):
+        selection = LineRanges.from_ranges([(1, 3)])
+
+        assert coerce_line_ranges(selection) is selection
+
+    def test_coerce_line_ranges_uses_selection_ranges_without_expansion(self):
+        class RangeOnlySelection:
+            def ranges(self):
+                return ((1, 1_000_000),)
+
+            def __iter__(self):
+                raise AssertionError("range-backed selection should not expand")
+
+        selection = coerce_line_ranges(RangeOnlySelection())
+
+        assert selection.ranges() == ((1, 1_000_000),)
+
+    def test_coerce_line_ranges_accepts_line_iterables(self):
+        selection = coerce_line_ranges([3, 1, 2])
+
+        assert selection.ranges() == ((1, 3),)
 
     def test_parse_selection_ranges_does_not_expand_ranges(self):
         selection = parse_line_selection_ranges("1-1000000,1000002")

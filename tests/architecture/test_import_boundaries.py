@@ -11665,6 +11665,46 @@ def test_candidate_preview_snippets_own_snippet_formatting():
     assert "def candidate_line_in_range" in candidate_snippets_text
 
 
+def test_candidate_preview_porcelain_owns_json_rendering():
+    """Candidate preview porcelain should stay out of terminal rendering."""
+    candidate_preview = __import__(
+        "git_stage_batch.output.candidate_preview",
+        fromlist=["candidate_preview"],
+    )
+    candidate_preview_porcelain = __import__(
+        "git_stage_batch.output.candidate_preview_porcelain",
+        fromlist=["candidate_preview_porcelain"],
+    )
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    candidate_porcelain_path = SRC_ROOT / "output" / "candidate_preview_porcelain.py"
+    candidate_preview_text = candidate_preview_path.read_text()
+    candidate_porcelain_text = candidate_porcelain_path.read_text()
+    preview_imports = tuple(_import_from_nodes(candidate_preview_path))
+    preview_imports_porcelain = any(
+        imported_module == "git_stage_batch.output"
+        and any(alias.name == "candidate_preview_porcelain" for alias in node.names)
+        for imported_module, node in preview_imports
+    )
+    porcelain_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_porcelain_path)
+    }
+    public_names = {
+        "print_operation_candidate_overview_porcelain",
+        "print_operation_candidate_porcelain",
+    }
+
+    assert public_names <= vars(candidate_preview_porcelain).keys()
+    assert public_names.isdisjoint(vars(candidate_preview))
+    assert preview_imports_porcelain
+    assert "import json" not in candidate_preview_text
+    assert "json.dumps" not in candidate_preview_text
+    assert "import json" in candidate_porcelain_text
+    assert "json.dumps" in candidate_porcelain_text
+    assert "git_stage_batch.output.colors" not in porcelain_imports
+    assert "candidate_preview_snippets" in candidate_porcelain_text
+
+
 def test_candidate_preview_diff_owns_buffer_diff_rendering():
     """Candidate preview diff rendering should stay out of overview pages."""
     candidate_preview = __import__(

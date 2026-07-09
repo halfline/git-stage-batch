@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from .absence_constraints import (
     apply_absence_constraints as _apply_merge_absence_constraints,
 )
+from .line_sequence_equality import line_slice_equals as _line_slice_matches
 from .line_mapping import LineMapping
 from .match import iter_exact_context_gaps, match_lines
 from .merge_candidates import MergeResolution as _MergeResolution
@@ -409,7 +410,7 @@ def presence_choices_for_missing_claimed_run(
         end_gap=after_target_line - 1,
         max_results=max_results,
     ):
-        if _line_slice_equals(working_lines, gap.gap_index, claimed_run):
+        if _line_slice_matches(working_lines, gap.gap_index, claimed_run):
             continue
         choices.append(
             PresenceChoice(
@@ -448,17 +449,3 @@ def presence_ambiguity_target_line_range(
     if start > end:
         return None
     return start, end
-
-
-def _line_slice_equals(
-    lines: Sequence[bytes],
-    start: int,
-    expected: Sequence[bytes],
-) -> bool:
-    """Return whether a sequence slice equals the expected byte lines."""
-    if start < 0 or start + len(expected) > len(lines):
-        return False
-    return all(
-        lines[start + offset] == expected[offset]
-        for offset in range(len(expected))
-    )

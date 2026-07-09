@@ -12,6 +12,24 @@ from .import_boundary_helpers import (
 )
 
 
+def _imported_modules_for(path):
+    return {imported_module for imported_module, _node in _import_from_nodes(path)}
+
+
+def _assert_parser_delegates_subcommand_registry(
+    parser_imports: set[str],
+    delegated_module: str,
+) -> None:
+    delegated_module_name = f"git_stage_batch.cli.{delegated_module}"
+    registry_imports = _imported_modules_for(
+        SRC_ROOT / "cli" / "subcommand_registry.py"
+    )
+
+    assert "git_stage_batch.cli.subcommand_registry" in parser_imports
+    assert delegated_module_name not in parser_imports
+    assert delegated_module_name in registry_imports
+
+
 def test_selected_change_display_names_data_modules_at_import_sites():
     """Selected-change display should not import data modules through the package."""
     assert _child_import_violations(
@@ -443,7 +461,7 @@ def test_cli_argument_parser_delegates_asset_subcommand_registration():
     )
 
     assert "add_install_assets_subcommand" in vars(asset_subcommands)
-    assert "git_stage_batch.cli.asset_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "asset_subcommands")
     assert "git_stage_batch.commands.install_assets" not in argument_parser_imports
     assert "git_stage_batch.commands.install_assets" in asset_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in asset_subcommands_imports
@@ -462,7 +480,7 @@ def test_cli_argument_parser_delegates_completion_subcommand_registration():
         fromlist=["completion"],
     )
 
-    assert "git_stage_batch.cli.completion" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "completion")
     assert "add_completion_subcommand" in vars(completion)
     assert "command_complete_files" in vars(completion)
     assert "__complete-files" not in argument_parser_text
@@ -487,7 +505,7 @@ def test_cli_argument_parser_delegates_interactive_subcommand_registration():
     )
 
     assert "add_interactive_subcommand" in vars(tui_subcommands)
-    assert "git_stage_batch.cli.tui_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "tui_subcommands")
     assert "git_stage_batch.cli.subcommand_parser" not in argument_parser_imports
     assert "git_stage_batch.cli.subcommand_parser" in tui_subcommands_imports
     assert "interactive_command=True" not in argument_parser_text
@@ -511,7 +529,7 @@ def test_cli_argument_parser_delegates_sift_subcommand_registration():
     )
 
     assert "add_sift_subcommand" in vars(batch_subcommands)
-    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
     assert "git_stage_batch.commands.sift" not in argument_parser_imports
     assert "git_stage_batch.commands.sift" in batch_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
@@ -535,7 +553,7 @@ def test_cli_argument_parser_delegates_apply_subcommand_registration():
     )
 
     assert "add_apply_subcommand" in vars(batch_subcommands)
-    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
     assert "git_stage_batch.cli.apply_dispatch" not in argument_parser_imports
     assert "git_stage_batch.cli.apply_dispatch" in batch_subcommands_imports
     assert "git_stage_batch.cli.file_arguments" in batch_subcommands_imports
@@ -560,7 +578,7 @@ def test_cli_argument_parser_delegates_reset_subcommand_registration():
     )
 
     assert "add_reset_subcommand" in vars(batch_subcommands)
-    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
     assert "git_stage_batch.cli.reset_dispatch" not in argument_parser_imports
     assert "git_stage_batch.cli.reset_dispatch" in batch_subcommands_imports
     assert "git_stage_batch.cli.file_arguments" in batch_subcommands_imports
@@ -585,7 +603,7 @@ def test_cli_argument_parser_delegates_new_batch_subcommand_registration():
     )
 
     assert "add_new_subcommand" in vars(batch_subcommands)
-    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
     assert "git_stage_batch.commands.new" not in argument_parser_imports
     assert "git_stage_batch.commands.new" in batch_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
@@ -609,7 +627,7 @@ def test_cli_argument_parser_delegates_list_batch_subcommand_registration():
     )
 
     assert "add_list_subcommand" in vars(batch_subcommands)
-    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
     assert "git_stage_batch.commands.list" not in argument_parser_imports
     assert "git_stage_batch.commands.list" in batch_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
@@ -633,7 +651,7 @@ def test_cli_argument_parser_delegates_drop_batch_subcommand_registration():
     )
 
     assert "add_drop_subcommand" in vars(batch_subcommands)
-    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
     assert "git_stage_batch.commands.drop" not in argument_parser_imports
     assert "git_stage_batch.commands.drop" in batch_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
@@ -657,7 +675,7 @@ def test_cli_argument_parser_delegates_annotate_batch_subcommand_registration():
     )
 
     assert "add_annotate_subcommand" in vars(batch_subcommands)
-    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
     assert "git_stage_batch.commands.annotate" not in argument_parser_imports
     assert "git_stage_batch.commands.annotate" in batch_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
@@ -681,7 +699,7 @@ def test_cli_argument_parser_delegates_check_unstaged_subcommand_registration():
     )
 
     assert "add_check_unstaged_subcommand" in vars(session_subcommands)
-    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
     assert "git_stage_batch.commands.check_unstaged" not in argument_parser_imports
     assert "git_stage_batch.commands.check_unstaged" in session_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
@@ -705,7 +723,7 @@ def test_cli_argument_parser_delegates_start_subcommand_registration():
     )
 
     assert "add_start_subcommand" in vars(session_subcommands)
-    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
     assert "git_stage_batch.commands.start" not in argument_parser_imports
     assert "git_stage_batch.commands.start" in session_subcommands_imports
     assert "git_stage_batch.cli.auto_advance_options" in session_subcommands_imports
@@ -730,7 +748,7 @@ def test_cli_argument_parser_delegates_again_subcommand_registration():
     )
 
     assert "add_again_subcommand" in vars(session_subcommands)
-    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
     assert "git_stage_batch.commands.again" not in argument_parser_imports
     assert "git_stage_batch.commands.again" in session_subcommands_imports
     assert "git_stage_batch.cli.auto_advance_options" in session_subcommands_imports
@@ -759,7 +777,9 @@ def test_cli_argument_parser_delegates_block_file_subcommand_registration():
     )
 
     assert "add_block_file_subcommand" in vars(file_blocking_subcommands)
-    assert "git_stage_batch.cli.file_blocking_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(
+        argument_parser_imports, "file_blocking_subcommands"
+    )
     assert "git_stage_batch.commands.block_file" not in argument_parser_imports
     assert "git_stage_batch.commands.block_file" in file_blocking_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in file_blocking_subcommands_imports
@@ -787,7 +807,9 @@ def test_cli_argument_parser_delegates_unblock_file_subcommand_registration():
     )
 
     assert "add_unblock_file_subcommand" in vars(file_blocking_subcommands)
-    assert "git_stage_batch.cli.file_blocking_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(
+        argument_parser_imports, "file_blocking_subcommands"
+    )
     assert "git_stage_batch.commands.unblock_file" not in argument_parser_imports
     assert "git_stage_batch.commands.unblock_file" in file_blocking_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in file_blocking_subcommands_imports
@@ -811,7 +833,7 @@ def test_cli_argument_parser_delegates_suggest_fixup_subcommand_registration():
     )
 
     assert "add_suggest_fixup_subcommand" in vars(fixup_subcommands)
-    assert "git_stage_batch.cli.fixup_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "fixup_subcommands")
     assert "git_stage_batch.commands.suggest_fixup" not in argument_parser_imports
     assert "git_stage_batch.commands.suggest_fixup" in fixup_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in fixup_subcommands_imports
@@ -835,7 +857,7 @@ def test_cli_argument_parser_delegates_show_subcommand_registration():
     )
 
     assert "add_show_subcommand" in vars(selection_subcommands)
-    assert "git_stage_batch.cli.selection_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "selection_subcommands")
     assert "git_stage_batch.cli.show_dispatch" not in argument_parser_imports
     assert "git_stage_batch.cli.show_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.cli.file_arguments" in selection_subcommands_imports
@@ -860,7 +882,7 @@ def test_cli_argument_parser_delegates_include_subcommand_registration():
     )
 
     assert "add_include_subcommand" in vars(selection_subcommands)
-    assert "git_stage_batch.cli.selection_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "selection_subcommands")
     assert "git_stage_batch.cli.include_dispatch" not in argument_parser_imports
     assert "git_stage_batch.cli.include_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
@@ -886,7 +908,7 @@ def test_cli_argument_parser_delegates_skip_subcommand_registration():
     )
 
     assert "add_skip_subcommand" in vars(selection_subcommands)
-    assert "git_stage_batch.cli.selection_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "selection_subcommands")
     assert "git_stage_batch.cli.skip_dispatch" not in argument_parser_imports
     assert "git_stage_batch.cli.skip_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
@@ -912,7 +934,7 @@ def test_cli_argument_parser_delegates_discard_subcommand_registration():
     )
 
     assert "add_discard_subcommand" in vars(selection_subcommands)
-    assert "git_stage_batch.cli.selection_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "selection_subcommands")
     assert "git_stage_batch.cli.discard_dispatch" not in argument_parser_imports
     assert "git_stage_batch.cli.discard_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
@@ -938,7 +960,7 @@ def test_cli_argument_parser_delegates_stop_subcommand_registration():
     )
 
     assert "add_stop_subcommand" in vars(session_subcommands)
-    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
     assert "git_stage_batch.commands.stop" not in argument_parser_imports
     assert "git_stage_batch.commands.stop" in session_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
@@ -962,7 +984,7 @@ def test_cli_argument_parser_delegates_undo_subcommand_registration():
     )
 
     assert "add_undo_subcommand" in vars(session_subcommands)
-    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
     assert "git_stage_batch.commands.undo" not in argument_parser_imports
     assert "git_stage_batch.commands.undo" in session_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
@@ -986,7 +1008,7 @@ def test_cli_argument_parser_delegates_redo_subcommand_registration():
     )
 
     assert "add_redo_subcommand" in vars(session_subcommands)
-    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
     assert "git_stage_batch.commands.redo" not in argument_parser_imports
     assert "git_stage_batch.commands.redo" in session_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
@@ -1010,7 +1032,7 @@ def test_cli_argument_parser_delegates_abort_subcommand_registration():
     )
 
     assert "add_abort_subcommand" in vars(session_subcommands)
-    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
     assert "git_stage_batch.commands.abort" not in argument_parser_imports
     assert "git_stage_batch.commands.abort" in session_subcommands_imports
     assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
@@ -1034,7 +1056,7 @@ def test_cli_argument_parser_delegates_status_subcommand_registration():
     )
 
     assert "add_status_subcommand" in vars(session_subcommands)
-    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
     assert "git_stage_batch.commands.status" not in argument_parser_imports
     assert "git_stage_batch.commands.status" in session_subcommands_imports
     assert "git_stage_batch.output.status_prompt" in session_subcommands_imports
@@ -3433,7 +3455,7 @@ def test_argument_parser_delegates_show_dispatch():
         "git_stage_batch.commands.show_from",
     }
 
-    assert "git_stage_batch.cli.selection_subcommands" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "selection_subcommands")
     assert "git_stage_batch.cli.show_dispatch" not in parser_imports
     assert "git_stage_batch.cli.show_dispatch" in selection_subcommands_imports
     assert show_runtime_imports.isdisjoint(parser_imports)
@@ -3476,7 +3498,7 @@ def test_argument_parser_delegates_skip_dispatch():
         fromlist=["skip_dispatch"],
     )
 
-    assert "git_stage_batch.cli.selection_subcommands" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "selection_subcommands")
     assert "git_stage_batch.cli.skip_dispatch" not in parser_imports
     assert "git_stage_batch.cli.skip_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.commands.skip" not in parser_imports
@@ -3528,7 +3550,7 @@ def test_argument_parser_delegates_apply_dispatch():
         "git_stage_batch.commands.file_scope.multi_file_actions",
     }
 
-    assert "git_stage_batch.cli.batch_subcommands" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "batch_subcommands")
     assert "git_stage_batch.cli.apply_dispatch" not in parser_imports
     assert "git_stage_batch.cli.apply_dispatch" in batch_subcommands_imports
     assert "git_stage_batch.commands.apply_from" not in parser_imports
@@ -3572,7 +3594,7 @@ def test_argument_parser_delegates_reset_dispatch():
         "git_stage_batch.commands.file_scope.multi_file_actions",
     }
 
-    assert "git_stage_batch.cli.batch_subcommands" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "batch_subcommands")
     assert "git_stage_batch.cli.reset_dispatch" not in parser_imports
     assert "git_stage_batch.cli.reset_dispatch" in batch_subcommands_imports
     assert "git_stage_batch.commands.reset" not in parser_imports
@@ -3627,7 +3649,7 @@ def test_argument_parser_delegates_include_dispatch():
         "include_each_resolved_file",
     }
 
-    assert "git_stage_batch.cli.selection_subcommands" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "selection_subcommands")
     assert "git_stage_batch.cli.include_dispatch" not in parser_imports
     assert "git_stage_batch.cli.include_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.commands.include" not in parser_imports
@@ -3693,7 +3715,7 @@ def test_argument_parser_delegates_discard_dispatch():
         "discard_to_batch_each_resolved_file",
     }
 
-    assert "git_stage_batch.cli.selection_subcommands" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "selection_subcommands")
     assert "git_stage_batch.cli.discard_dispatch" not in parser_imports
     assert "git_stage_batch.cli.discard_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.commands.discard" not in parser_imports
@@ -6683,6 +6705,17 @@ def test_argument_parser_does_not_import_command_facade():
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
     }
+    registry_imports = _imported_modules_for(SRC_ROOT / "cli" / "subcommand_registry.py")
+    delegated_subcommand_modules = {
+        "git_stage_batch.cli.asset_subcommands",
+        "git_stage_batch.cli.batch_subcommands",
+        "git_stage_batch.cli.completion",
+        "git_stage_batch.cli.file_blocking_subcommands",
+        "git_stage_batch.cli.fixup_subcommands",
+        "git_stage_batch.cli.selection_subcommands",
+        "git_stage_batch.cli.session_subcommands",
+        "git_stage_batch.cli.tui_subcommands",
+    }
 
     assert "git_stage_batch.commands" not in imported_modules
     assert "from .. import commands" not in parser_text
@@ -6705,10 +6738,9 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.check_unstaged" not in imported_modules
     assert "git_stage_batch.commands.start" not in imported_modules
     assert "git_stage_batch.commands.status" not in imported_modules
-    assert "git_stage_batch.cli.file_blocking_subcommands" in imported_modules
-    assert "git_stage_batch.cli.fixup_subcommands" in imported_modules
-    assert "git_stage_batch.cli.selection_subcommands" in imported_modules
-    assert "git_stage_batch.cli.session_subcommands" in imported_modules
+    assert "git_stage_batch.cli.subcommand_registry" in imported_modules
+    assert delegated_subcommand_modules.isdisjoint(imported_modules)
+    assert delegated_subcommand_modules <= registry_imports
 
 
 def test_argument_parser_command_entries_stay_in_commands_modules():

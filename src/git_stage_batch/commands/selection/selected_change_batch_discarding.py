@@ -39,7 +39,7 @@ from ...utils.file_io import (
     read_text_file_contents,
     read_text_file_line_set,
 )
-from ...utils.git import (
+from ...utils.git_worktree import (
     git_apply_to_worktree,
     git_remove_paths,
 )

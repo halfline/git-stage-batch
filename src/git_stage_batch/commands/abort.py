@@ -12,10 +12,10 @@ from ..data.staged_renames import read_staged_renames
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
-from ..utils.git import (
+from ..utils.git import run_git_command
+from ..utils.git_worktree import (
     git_apply_stash,
     git_reset_hard,
-    run_git_command,
 )
 from ..utils.git_index import (
     git_add_paths,

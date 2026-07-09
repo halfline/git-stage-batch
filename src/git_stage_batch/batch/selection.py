@@ -19,12 +19,10 @@ from ..core.line_selection import (
     parse_line_selection,
     parse_line_selection_ranges,
 )
-from ..data.progress import format_id_range
 from ..exceptions import exit_with_error
 from ..i18n import _
 
 if TYPE_CHECKING:
-    from ..exceptions import AtomicUnitError
     from ..core.models import LineLevelChange
 
 
@@ -182,55 +180,6 @@ def _line_selection_has_single_file_context(
         )
 
     return True
-
-
-def translate_atomic_unit_error_to_gutter_ids(
-    error: 'AtomicUnitError',
-    rendered: 'RenderedBatchDisplay',
-    operation_verb: str,
-    batch_name: str
-) -> None:
-    """Translate AtomicUnitError selection IDs to gutter IDs and exit with user-friendly message.
-
-    Args:
-        error: The AtomicUnitError containing selection IDs
-        rendered: The RenderedBatchDisplay with gutter<->selection ID mapping
-        operation_verb: Operation name for error message (e.g., "apply", "include")
-        batch_name: Name of the batch
-
-    Raises:
-        CommandError: Always exits with translated error message
-    """
-    if error.required_selection_ids:
-        # Translate required selection IDs to gutter IDs
-        gutter_ids = []
-        for sel_id in sorted(error.required_selection_ids):
-            if sel_id in rendered.selection_id_to_gutter:
-                gutter_ids.append(rendered.selection_id_to_gutter[sel_id])
-
-        if gutter_ids:
-            required_range = format_id_range(gutter_ids)
-
-            # User-friendly message based on unit kind
-            if error.unit_kind == "replacement":
-                explanation = _("These lines form a replacement (deletion + addition) and must be selected together.")
-            elif error.unit_kind == "deletion_only":
-                explanation = _("These lines form a deletion and must be selected together.")
-            else:
-                explanation = _("These lines must be selected together.")
-
-            exit_with_error(
-                _("{explanation}\nUse: --line {range}").format(
-                    explanation=explanation,
-                    range=required_range
-                ))
-
-    # Fallback: show original error
-    exit_with_error(_("Failed to {operation} batch '{name}': {error}").format(
-        operation=operation_verb,
-        name=batch_name,
-        error=str(error)
-    ))
 
 
 @contextmanager

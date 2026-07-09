@@ -5717,35 +5717,48 @@ def test_batch_source_advancement_uses_public_entry_helpers():
     assert violations == []
 
 
-def test_batch_ownership_uses_public_absence_builder():
-    """Cross-module ownership callers should import the public absence builder."""
+def test_batch_absence_content_owns_public_builders():
+    """Absence content construction should live outside ownership metadata."""
+    absence_content = __import__(
+        "git_stage_batch.batch.absence_content",
+        fromlist=["absence_content"],
+    )
     ownership = __import__(
         "git_stage_batch.batch.ownership",
         fromlist=["ownership"],
     )
     public_names = {
         "AbsenceContentBuilder",
+        "build_absence_content_from_range",
+        "copy_absence_content",
     }
     private_names = {
         "_AbsenceContentBuilder",
+        "_build_absence_content_from_range",
+        "_copy_absence_content",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": public_names,
+        SRC_ROOT / "batch" / "ownership.py": public_names,
+        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
+            "AbsenceContentBuilder",
+        },
     }
     violations = []
 
-    assert "AbsenceContentBuilder" in vars(ownership)
-    assert private_names.isdisjoint(vars(ownership))
+    for public_name in public_names:
+        assert public_name in vars(absence_content)
+    assert "AbsenceContentBuilder" not in vars(ownership)
+    assert private_names.isdisjoint(vars(absence_content))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "ownership.py":
+        if path == SRC_ROOT / "batch" / "absence_content.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.ownership":
+            if imported_module != "git_stage_batch.batch.absence_content":
                 continue
 
             imported_names = {alias.name for alias in node.names}

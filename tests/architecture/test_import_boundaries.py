@@ -2007,11 +2007,13 @@ def test_file_review_action_scope_stays_out_of_state_module():
             "resolve_live_to_batch_action_scope",
         },
         SRC_ROOT / "commands" / "include.py": {
-            "finish_review_scoped_line_action",
             "refuse_ambiguous_bare_action_after_partial_file_review",
             "refuse_live_action_for_batch_selection",
             "resolve_live_line_action_scope",
             "resolve_live_to_batch_action_scope",
+        },
+        SRC_ROOT / "commands" / "selection" / "include_to_batch_action.py": {
+            "finish_review_scoped_line_action",
         },
         SRC_ROOT / "commands" / "skip.py": {
             "refuse_ambiguous_bare_action_after_partial_file_review",
@@ -3227,6 +3229,7 @@ def test_whole_file_batch_staging_owns_include_pipeline():
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "whole_file_batch_staging.py"
     )
+    action_path = SRC_ROOT / "commands" / "selection" / "include_to_batch_action.py"
     helper = __import__(
         "git_stage_batch.commands.selection.whole_file_batch_staging",
         fromlist=["whole_file_batch_staging"],
@@ -3271,11 +3274,17 @@ def test_whole_file_batch_staging_owns_include_pipeline():
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
+    action_selection_imports = set()
+    for imported_module, node in _import_from_nodes(action_path):
+        if imported_module == "git_stage_batch.commands.selection":
+            action_selection_imports |= {alias.name for alias in node.names}
 
     assert public_names <= vars(helper).keys()
     assert old_command_helper_names.isdisjoint(include_names)
     assert old_command_helper_names.isdisjoint(vars(helper).keys())
-    assert "whole_file_batch_staging" in include_selection_imports
+    assert "include_to_batch_action" in include_selection_imports
+    assert "whole_file_batch_staging" not in include_selection_imports
+    assert "whole_file_batch_staging" in action_selection_imports
     assert moved_import_names.isdisjoint(include_imported_names)
     assert moved_import_names <= helper_imported_names
 
@@ -3286,6 +3295,7 @@ def test_selected_change_batch_staging_owns_include_pipeline():
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "selected_change_batch_staging.py"
     )
+    action_path = SRC_ROOT / "commands" / "selection" / "include_to_batch_action.py"
     helper = __import__(
         "git_stage_batch.commands.selection.selected_change_batch_staging",
         fromlist=["selected_change_batch_staging"],
@@ -3332,11 +3342,17 @@ def test_selected_change_batch_staging_owns_include_pipeline():
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
+    action_selection_imports = set()
+    for imported_module, node in _import_from_nodes(action_path):
+        if imported_module == "git_stage_batch.commands.selection":
+            action_selection_imports |= {alias.name for alias in node.names}
 
     assert public_names <= vars(helper).keys()
     assert old_command_helper_names.isdisjoint(include_names)
     assert old_command_helper_names.isdisjoint(vars(helper).keys())
-    assert "selected_change_batch_staging" in include_selection_imports
+    assert "include_to_batch_action" in include_selection_imports
+    assert "selected_change_batch_staging" not in include_selection_imports
+    assert "selected_change_batch_staging" in action_selection_imports
     assert moved_import_names.isdisjoint(include_imported_names)
     assert helper_imports <= helper_imported_names
 
@@ -3379,6 +3395,71 @@ def test_include_to_batch_action_owns_resolved_dispatch():
     assert "require_file_scope_target_path" in action_imports[
         "git_stage_batch.commands.file_scope.target_path"
     ]
+
+
+def test_include_delegates_include_to_batch_action_routing():
+    """The include-to-batch command should delegate resolved action routing."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_attrs = {
+        node.attr
+        for node in ast.walk(include_functions["command_include_to_batch"])
+        if isinstance(node, ast.Attribute)
+    }
+    include_imports = {}
+    for imported_module, node in _import_from_nodes(include_path):
+        include_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+    disallowed_imports = {
+        "git_stage_batch.core.models": {
+            "BinaryFileChange",
+            "GitlinkChange",
+            "RenameChange",
+            "TextFileDeletionChange",
+        },
+        "git_stage_batch.data.file_review.action_scope": {
+            "finish_review_scoped_line_action",
+        },
+        "git_stage_batch.data.selected_change.loading": {
+            "load_selected_change",
+        },
+        "git_stage_batch.data.undo": {
+            "undo_checkpoint",
+        },
+        "git_stage_batch.exceptions": {
+            "exit_with_error",
+        },
+        "git_stage_batch.commands.selection": {
+            "include_line_batching",
+            "selected_change_batch_staging",
+            "whole_file_batch_staging",
+        },
+        "git_stage_batch.commands.file_scope": {
+            "include_file_to_batch",
+        },
+        "git_stage_batch.commands.file_scope.target_path": {
+            "require_file_scope_target_path",
+        },
+    }
+    violations = []
+
+    for imported_module, disallowed_names in disallowed_imports.items():
+        stale_names = include_imports.get(imported_module, set()) & disallowed_names
+        if stale_names:
+            names = ", ".join(sorted(stale_names))
+            violations.append(f"{imported_module} imports {names}")
+
+    assert "include_to_batch_action" in include_imports[
+        "git_stage_batch.commands.selection"
+    ]
+    assert "execute_include_to_batch_action" in command_attrs
+    assert violations == []
 
 
 def test_file_scope_include_file_owns_file_pipeline():
@@ -3662,10 +3743,11 @@ def test_file_scope_file_display_action_owns_show_entry_flow():
 
 def test_file_scope_target_path_stays_in_file_scope_support():
     """File-scope target fallback should stay out of command entrypoints."""
-    command_paths = {
+    direct_target_path_paths = {
         SRC_ROOT / "commands" / "discard.py",
-        SRC_ROOT / "commands" / "include.py",
+        SRC_ROOT / "commands" / "selection" / "include_to_batch_action.py",
     }
+    include_path = SRC_ROOT / "commands" / "include.py"
     helper_path = SRC_ROOT / "commands" / "file_scope" / "target_path.py"
     helper = __import__(
         "git_stage_batch.commands.file_scope.target_path",
@@ -3673,14 +3755,14 @@ def test_file_scope_target_path_stays_in_file_scope_support():
     )
     public_names = {"require_file_scope_target_path"}
     moved_names = {"get_selected_change_file_path"}
-    command_imports = {}
-    command_imported_names = set()
+    imports_by_path = {}
+    imported_names = set()
 
-    for path in command_paths:
-        command_imports[path] = set()
+    for path in direct_target_path_paths | {include_path}:
+        imports_by_path[path] = set()
         for imported_module, node in _import_from_nodes(path):
-            command_imports[path].add(imported_module)
-            command_imported_names |= {alias.name for alias in node.names}
+            imports_by_path[path].add(imported_module)
+            imported_names |= {alias.name for alias in node.names}
 
     helper_imports = set()
     helper_imported_names = set()
@@ -3689,11 +3771,18 @@ def test_file_scope_target_path_stays_in_file_scope_support():
         helper_imported_names |= {alias.name for alias in node.names}
 
     assert public_names <= vars(helper).keys()
-    for imports in command_imports.values():
-        assert "git_stage_batch.commands.file_scope.target_path" in imports
+    for path in direct_target_path_paths:
+        assert (
+            "git_stage_batch.commands.file_scope.target_path" in imports_by_path[path]
+        )
+    assert (
+        "git_stage_batch.commands.file_scope.target_path"
+        not in imports_by_path[include_path]
+    )
+    for imports in imports_by_path.values():
         assert "git_stage_batch.data.selected_change.paths" not in imports
     assert "git_stage_batch.data.selected_change.paths" in helper_imports
-    assert moved_names.isdisjoint(command_imported_names)
+    assert moved_names.isdisjoint(imported_names)
     assert moved_names <= helper_imported_names
 
 
@@ -3774,6 +3863,7 @@ def test_file_scope_skip_owns_file_pipeline():
 def test_file_scope_include_to_batch_owns_file_pipeline():
     """Explicit file-scope include-to-batch support should stay out of include.py."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    action_path = SRC_ROOT / "commands" / "selection" / "include_to_batch_action.py"
     helper_path = SRC_ROOT / "commands" / "file_scope" / "include_file_to_batch.py"
     helper = __import__(
         "git_stage_batch.commands.file_scope.include_file_to_batch",
@@ -3814,9 +3904,16 @@ def test_file_scope_include_to_batch_owns_file_pipeline():
     }
     include_names = set(include_functions)
     include_file_scope_imports = set()
+    include_selection_imports = set()
     for imported_module, node in _import_from_nodes(include_path):
         if imported_module == "git_stage_batch.commands.file_scope":
             include_file_scope_imports |= {alias.name for alias in node.names}
+        if imported_module == "git_stage_batch.commands.selection":
+            include_selection_imports |= {alias.name for alias in node.names}
+    action_file_scope_imports = set()
+    for imported_module, node in _import_from_nodes(action_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            action_file_scope_imports |= {alias.name for alias in node.names}
 
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
@@ -3824,7 +3921,9 @@ def test_file_scope_include_to_batch_owns_file_pipeline():
 
     assert public_names <= vars(helper).keys()
     assert old_command_helper_names.isdisjoint(include_names)
-    assert "include_file_to_batch" in include_file_scope_imports
+    assert "include_to_batch_action" in include_selection_imports
+    assert "include_file_to_batch" not in include_file_scope_imports
+    assert "include_file_to_batch" in action_file_scope_imports
     assert moved_names.isdisjoint(command_include_to_batch_names)
     assert helper_imports <= helper_imported_names
 
@@ -10307,7 +10406,10 @@ def test_selected_change_loading_stays_out_of_hunk_tracking():
         "require_selected_hunk",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": {"load_selected_change"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "include_to_batch_action.py": {"load_selected_change"},
         SRC_ROOT
         / "commands"
         / "selection"
@@ -11417,6 +11519,7 @@ def test_include_file_selection_stays_in_command_helper():
 def test_include_line_batching_stays_in_command_helper():
     """Include line-to-batch support should stay out of the command entrypoint."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    action_path = SRC_ROOT / "commands" / "selection" / "include_to_batch_action.py"
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "include_line_batching.py"
     )
@@ -11449,12 +11552,19 @@ def test_include_line_batching_stays_in_command_helper():
         node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
     }
     include_imports_helper = False
+    action_imports_helper = False
     for imported_module, node in _import_from_nodes(include_path):
         if imported_module != "git_stage_batch.commands.selection":
             continue
         imported_names = {alias.name for alias in node.names}
         if "include_line_batching" in imported_names:
             include_imports_helper = True
+    for imported_module, node in _import_from_nodes(action_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "include_line_batching" in imported_names:
+            action_imports_helper = True
 
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
@@ -11463,7 +11573,8 @@ def test_include_line_batching_stays_in_command_helper():
     assert public_names <= vars(helper).keys()
     assert old_include_names.isdisjoint(include_names)
     assert old_include_names.isdisjoint(vars(helper).keys())
-    assert include_imports_helper
+    assert not include_imports_helper
+    assert action_imports_helper
     assert helper_imports <= helper_imported_names
 
 

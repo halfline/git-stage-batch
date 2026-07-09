@@ -75,10 +75,17 @@ def _line_ranges_count(ranges: Iterable[tuple[int, int]]) -> int:
 def _selection_ranges(
     selection: LineSelection | Iterable[int],
 ) -> tuple[tuple[int, int], ...]:
+    return coerce_line_ranges(selection).ranges()
+
+
+def coerce_line_ranges(selection: LineSelection | Iterable[int]) -> LineRanges:
+    """Return a range-backed line selection without expanding range inputs."""
+    if isinstance(selection, LineRanges):
+        return selection
     ranges = getattr(selection, "ranges", None)
     if ranges is not None:
-        return ranges()
-    return LineRanges.from_lines(selection).ranges()
+        return LineRanges.from_ranges(ranges())
+    return LineRanges.from_lines(selection)
 
 
 @dataclass(frozen=True, slots=True)

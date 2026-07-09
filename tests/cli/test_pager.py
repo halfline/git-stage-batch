@@ -136,7 +136,11 @@ def test_main_wraps_dispatch_with_pager(monkeypatch):
             events.append("exit")
 
     monkeypatch.setattr(main_module, "pager_output", fake_pager_output)
-    monkeypatch.setattr(main_module, "dispatch_args", lambda _args: events.append("dispatch"))
+    monkeypatch.setattr(
+        main_module,
+        "dispatch_cli_mode",
+        lambda _args: events.append("dispatch"),
+    )
 
     main_module.main()
 
@@ -150,7 +154,11 @@ def test_main_skips_pager_when_command_is_not_pageable(monkeypatch):
 
     monkeypatch.setattr(main_module, "parse_command_line", lambda _argv, quiet=False: args)
     monkeypatch.setattr(main_module, "should_page_output", lambda _args: False)
-    monkeypatch.setattr(main_module, "dispatch_args", lambda _args: events.append("dispatch"))
+    monkeypatch.setattr(
+        main_module,
+        "dispatch_cli_mode",
+        lambda _args: events.append("dispatch"),
+    )
 
     main_module.main()
 

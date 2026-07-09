@@ -1,33 +1,33 @@
-"""Tests for CLI command dispatch."""
+"""Tests for CLI mode dispatch."""
 
 import argparse
 
-import git_stage_batch.cli.dispatch as dispatch
+import git_stage_batch.cli.mode_dispatch as mode_dispatch
 
 
-def test_dispatch_args_no_command(monkeypatch):
+def test_dispatch_cli_mode_no_command(monkeypatch):
     """Noninteractive args should be delegated to the execution layer."""
     args = argparse.Namespace(command=None)
     called = []
 
     monkeypatch.setattr(
-        dispatch,
+        mode_dispatch,
         "execute_non_interactive_args",
         lambda delegated_args: called.append(delegated_args),
     )
 
-    dispatch.dispatch_args(args)
+    mode_dispatch.dispatch_cli_mode(args)
 
     assert called == [args]
 
 
-def test_dispatch_args_callable():
-    """Test that dispatch_args is callable."""
-    assert dispatch.dispatch_args is not None
-    assert callable(dispatch.dispatch_args)
+def test_dispatch_cli_mode_callable():
+    """Test that dispatch_cli_mode is callable."""
+    assert mode_dispatch.dispatch_cli_mode is not None
+    assert callable(mode_dispatch.dispatch_cli_mode)
 
 
-def test_dispatch_args_with_command(monkeypatch):
+def test_dispatch_cli_mode_with_command(monkeypatch):
     """Commands should be delegated to the execution layer."""
     executed = []
 
@@ -35,28 +35,28 @@ def test_dispatch_args_with_command(monkeypatch):
         executed.append(args)
 
     args = argparse.Namespace(command="test")
-    monkeypatch.setattr(dispatch, "execute_non_interactive_args", fake_execute)
-    dispatch.dispatch_args(args)
+    monkeypatch.setattr(mode_dispatch, "execute_non_interactive_args", fake_execute)
+    mode_dispatch.dispatch_cli_mode(args)
     assert executed == [args]
 
 
-def test_dispatch_args_interactive_flag_uses_interactive_runner(monkeypatch):
+def test_dispatch_cli_mode_interactive_flag_uses_interactive_runner(monkeypatch):
     """The top-level interactive flag should launch through dispatch."""
     called = []
     args = argparse.Namespace(command=None, interactive_flag=True)
 
     monkeypatch.setattr(
-        dispatch,
+        mode_dispatch,
         "_run_interactive_command",
         lambda: called.append(True),
     )
 
-    dispatch.dispatch_args(args)
+    mode_dispatch.dispatch_cli_mode(args)
 
     assert called == [True]
 
 
-def test_dispatch_args_interactive_command_uses_interactive_runner(monkeypatch):
+def test_dispatch_cli_mode_interactive_command_uses_interactive_runner(monkeypatch):
     """The interactive subcommand should launch through dispatch."""
     called = []
     args = argparse.Namespace(
@@ -66,12 +66,12 @@ def test_dispatch_args_interactive_command_uses_interactive_runner(monkeypatch):
     )
 
     monkeypatch.setattr(
-        dispatch,
+        mode_dispatch,
         "_run_interactive_command",
         lambda: called.append(True),
     )
 
-    dispatch.dispatch_args(args)
+    mode_dispatch.dispatch_cli_mode(args)
 
     assert called == [True]
 
@@ -85,6 +85,6 @@ def test_run_interactive_command_launches_tui(monkeypatch):
         lambda: called.append(True),
     )
 
-    dispatch._run_interactive_command()
+    mode_dispatch._run_interactive_command()
 
     assert called == [True]

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Iterable, Iterator, Union
 
 from . import binary_diff as _binary_diff
+from . import empty_file_diff as _empty_file_diff
 from . import gitlink_diff as _gitlink_diff
 from .buffer import LineBuffer
 from .models import (
@@ -43,7 +44,10 @@ def patch_is_new_file(patch_lines: Iterable[bytes]) -> bool:
 
 def patch_is_empty_file_change(patch_lines: Iterable[bytes]) -> bool:
     """Return whether patch lines describe a synthetic empty-file change."""
-    return any(line.rstrip(b"\n") == b"@@ -0,0 +0,0 @@" for line in patch_lines)
+    return any(
+        line.rstrip(b"\n") == _empty_file_diff.SYNTHETIC_EMPTY_HUNK_HEADER
+        for line in patch_lines
+    )
 
 
 def _metadata_indicates_rename(metadata_lines: list[bytes]) -> bool:
@@ -309,23 +313,16 @@ class _UnifiedDiffParserBuildContext:
                             yield TextFileDeletionChange(old_path=old_path)
                             continue
 
-                        # Check if this is an empty new file (new file with no content)
-                        # Empty new files have "new file mode" and "index 0000000..e69de29" (empty blob, short hash)
-                        EMPTY_BLOB_SHORT_HASH = b"e69de29"  # Short hash for empty blob
-                        is_new_file = any(b"new file mode" in m for m in metadata_lines)
-                        is_empty = any(EMPTY_BLOB_SHORT_HASH in m for m in metadata_lines)
-
-                        if is_new_file and is_empty:
-                            # Yield empty new file as a special patch with synthetic hunk
-                            # Create fake ---/+++ lines and an empty hunk header (with \n terminators)
+                        if _empty_file_diff.metadata_indicates_new_empty_file(
+                            metadata_lines
+                        ):
                             yield self._build_single_hunk_patch(
                                 old_path="/dev/null",
                                 new_path=new_path,
-                                lines=[
-                                    b"--- /dev/null\n",
-                                    f"+++ b/{new_path}\n".encode('utf-8'),
-                                    b"@@ -0,0 +0,0 @@\n",
-                                ],
+                                lines=_empty_file_diff.synthetic_empty_file_patch_lines(
+                                    b"--- /dev/null",
+                                    f"+++ b/{new_path}".encode("utf-8"),
+                                ),
                             )
                         # Skip other files without hunks (mode-only, rename-only, etc.)
                         continue
@@ -436,24 +433,17 @@ class _UnifiedDiffParserBuildContext:
                             lines=patch_lines,
                         )
 
-                    # If we got --- and +++ but no hunks, check if it's an empty new file
                     if not has_hunks:
-                        # Check if this is an empty new file (new file with no content)
-                        # Empty new files have "new file mode" and "index 0000000..e69de29" (empty blob)
-                        EMPTY_BLOB_SHORT_HASH = b"e69de29"
-                        is_new_file = any(b"new file mode" in m for m in metadata_lines)
-                        is_empty = any(EMPTY_BLOB_SHORT_HASH in m for m in metadata_lines)
-
-                        if is_new_file and is_empty:
-                            # Yield empty new file as a special patch with synthetic hunk
+                        if _empty_file_diff.metadata_indicates_new_empty_file(
+                            metadata_lines
+                        ):
                             yield self._build_single_hunk_patch(
                                 old_path=old_path,
                                 new_path=new_path,
-                                lines=[
-                                    old_file_line + b'\n',
-                                    new_file_line + b'\n',
-                                    b"@@ -0,0 +0,0 @@\n",
-                                ],
+                                lines=_empty_file_diff.synthetic_empty_file_patch_lines(
+                                    old_file_line,
+                                    new_file_line,
+                                ),
                             )
                         elif is_deleted_file:
                             yield TextFileDeletionChange(old_path=old_path)

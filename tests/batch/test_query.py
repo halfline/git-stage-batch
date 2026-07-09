@@ -12,7 +12,7 @@ from git_stage_batch.batch.query import (
     list_batch_names,
     read_batch_metadata,
 )
-from git_stage_batch.batch.operations import create_batch
+from git_stage_batch.batch.lifecycle import create_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.data.session import initialize_abort_state

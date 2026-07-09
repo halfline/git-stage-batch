@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.data.batch_refs import restore_batch_refs, snapshot_batch_refs
-from git_stage_batch.batch.operations import create_batch, update_batch_note
+from git_stage_batch.batch.lifecycle import create_batch, update_batch_note
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.git_command import run_git_command

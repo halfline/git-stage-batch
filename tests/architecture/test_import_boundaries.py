@@ -6109,66 +6109,89 @@ def test_batch_transform_sift_persistence_owns_file_writes():
     assert "add_sifted_text_file_to_batch" not in persistence_calls
 
 
-def test_batch_ownership_units_bridge_keeps_display_out_of_ownership():
-    """Source-line unit construction should live in the bridge module."""
+def test_batch_ownership_units_owns_unit_operations():
+    """Ownership unit operations should live outside ownership metadata."""
     ownership = __import__(
         "git_stage_batch.batch.ownership",
         fromlist=["ownership"],
     )
-    bridge = __import__(
+    ownership_units = __import__(
         "git_stage_batch.batch.ownership_units",
         fromlist=["ownership_units"],
     )
     ownership_path = SRC_ROOT / "batch" / "ownership.py"
-    bridge_path = SRC_ROOT / "batch" / "ownership_units.py"
-    expected_bridge_callers = {
-        SRC_ROOT / "batch" / "selection.py",
-        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py",
+    unit_path = SRC_ROOT / "batch" / "ownership_units.py"
+    public_names = {
+        "OwnershipUnit",
+        "OwnershipUnitKind",
+        "build_ownership_units_from_batch_source_lines",
+        "build_ownership_units_from_display_lines",
+        "filter_ownership_units_by_display_ids",
+        "rebuild_ownership_from_units",
+        "select_ownership_units_by_display_ids",
+        "validate_ownership_units",
     }
-    moved_name = "build_ownership_units_from_batch_source_lines"
+    expected_unit_imports = {
+        SRC_ROOT / "batch" / "file_display.py": {
+            "build_ownership_units_from_display_lines",
+            "rebuild_ownership_from_units",
+            "validate_ownership_units",
+        },
+        SRC_ROOT / "batch" / "selection.py": {
+            "build_ownership_units_from_batch_source_lines",
+            "rebuild_ownership_from_units",
+            "select_ownership_units_by_display_ids",
+            "validate_ownership_units",
+        },
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": {
+            "build_ownership_units_from_batch_source_lines",
+            "filter_ownership_units_by_display_ids",
+            "rebuild_ownership_from_units",
+            "validate_ownership_units",
+        },
+    }
     violations = []
 
-    assert moved_name not in vars(ownership)
-    assert moved_name in vars(bridge)
+    for public_name in public_names:
+        assert public_name not in vars(ownership)
+        assert public_name in vars(ownership_units)
 
     ownership_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(ownership_path)
     }
-    bridge_imports = {
+    unit_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(bridge_path)
+        for imported_module, _node in _import_from_nodes(unit_path)
     }
 
     assert "git_stage_batch.batch.display" not in ownership_imports
-    assert "git_stage_batch.batch.display" in bridge_imports
-    assert "git_stage_batch.batch.ownership" in bridge_imports
+    assert "git_stage_batch.batch.display" in unit_imports
+    assert "git_stage_batch.batch.ownership" in unit_imports
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path in {ownership_path, bridge_path}:
+        if path in {ownership_path, unit_path}:
             continue
 
         imports = _import_from_nodes(path)
-        imports_bridge = False
+        imported_unit_names = set()
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
             if (
                 imported_module == "git_stage_batch.batch.ownership"
-                and moved_name in imported_names
+                and imported_names & public_names
             ):
                 relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(imported_names & public_names))
                 violations.append(
-                    f"{relative_path}:{node.lineno} imports {moved_name}"
+                    f"{relative_path}:{node.lineno} imports {names}"
                 )
-            if (
-                imported_module == "git_stage_batch.batch.ownership_units"
-                and moved_name in imported_names
-            ):
-                imports_bridge = True
+            if imported_module == "git_stage_batch.batch.ownership_units":
+                imported_unit_names |= imported_names & public_names
 
-        if path in expected_bridge_callers:
-            assert imports_bridge
+        if path in expected_unit_imports:
+            assert expected_unit_imports[path] <= imported_unit_names
 
     assert violations == []
 
@@ -7675,13 +7698,13 @@ def test_batch_source_reset_claims_own_reset_mutations():
         "git_stage_batch.batch.ownership": {
             "BatchOwnership",
             "acquire_detached_batch_ownership",
-            "filter_ownership_units_by_display_ids",
             "merge_batch_ownership",
-            "rebuild_ownership_from_units",
-            "validate_ownership_units",
         },
         "git_stage_batch.batch.ownership_units": {
             "build_ownership_units_from_batch_source_lines",
+            "filter_ownership_units_by_display_ids",
+            "rebuild_ownership_from_units",
+            "validate_ownership_units",
         },
         "git_stage_batch.batch.selection": {
             "require_display_ids_available",

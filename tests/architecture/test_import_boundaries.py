@@ -660,6 +660,50 @@ def test_diff_parser_uses_core_buffer_boundary():
     assert imported_exception_names == {"CommandError"}
 
 
+def test_binary_diff_owns_binary_parser_helpers():
+    """Binary-specific diff helpers should stay outside the general parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    binary_diff_path = SRC_ROOT / "core" / "binary_diff.py"
+    diff_parser_text = diff_parser_path.read_text()
+    binary_diff_text = binary_diff_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    binary_diff = __import__(
+        "git_stage_batch.core.binary_diff",
+        fromlist=["binary_diff"],
+    )
+    public_names = {
+        "binary_change_type",
+        "binary_file_diff_line",
+        "metadata_indicates_binary_file",
+    }
+    helper_constants = {
+        "BINARY_FILES_MARKER",
+        "DEV_NULL_PATH",
+        "NEW_BINARY_PATH_MARKER",
+        "OLD_BINARY_PATH_MARKER",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(binary_diff).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "binary_diff" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.binary_diff" not in diff_imports
+    assert "_binary_diff.metadata_indicates_binary_file" in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_constants:
+        assert name in binary_diff_text
+        assert name not in diff_parser_text
+
+
 def test_gitlink_diff_owns_gitlink_parser_helpers():
     """Gitlink-specific diff helpers should stay outside the general parser."""
     diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"

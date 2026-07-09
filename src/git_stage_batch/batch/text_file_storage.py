@@ -15,7 +15,7 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     resolve_text_change_type,
 )
-from ..data.batch_sources import (
+from .source_snapshots import (
     create_batch_source_commits,
     load_session_batch_sources,
     save_session_batch_sources,

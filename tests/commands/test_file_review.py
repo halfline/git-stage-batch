@@ -20,7 +20,7 @@ from git_stage_batch.commands.reset import command_reset_from_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
 import git_stage_batch.commands.show_from as show_from_module
 from git_stage_batch.commands.show import command_show, command_show_file_list
-import git_stage_batch.commands.show as show_module
+import git_stage_batch.commands.selection.next_change_display as next_change_display
 from git_stage_batch.commands.skip import command_skip, command_skip_file, command_skip_line
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
@@ -499,7 +499,11 @@ def test_plain_show_with_only_batch_filtered_hunks_preserves_partial_file_review
     state = read_last_file_review_state()
     assert state is not None
 
-    monkeypatch.setattr(show_module, "apply_line_level_batch_filter_to_cached_hunk", lambda: True)
+    monkeypatch.setattr(
+        next_change_display,
+        "apply_line_level_batch_filter_to_cached_hunk",
+        lambda: True,
+    )
 
     command_show()
     capsys.readouterr()

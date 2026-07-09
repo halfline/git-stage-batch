@@ -10,7 +10,7 @@ from git_stage_batch.batch.storage import read_file_from_batch
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.data.session import initialize_abort_state
-from git_stage_batch.utils.git import get_git_repository_root_path
+from git_stage_batch.utils.git_repository import get_git_repository_root_path
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 

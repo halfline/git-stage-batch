@@ -4,7 +4,6 @@ from git_stage_batch.utils import git as git_utils
 from git_stage_batch.utils import git_index_lock
 from git_stage_batch.utils.git import stream_git_command
 from git_stage_batch.utils.git import stream_git_diff
-from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
 
 import subprocess
 from pathlib import Path
@@ -13,12 +12,10 @@ import pytest
 
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git import (
-    get_git_repository_root_path,
     git_commit_tree,
     git_read_tree,
     git_update_index,
     git_write_tree,
-    require_git_repository,
     run_git_command,
     temp_git_index,
 )
@@ -481,67 +478,3 @@ class TestGitIndexPlumbing:
                 blob_sha="0" * 40,
                 force_remove=True,
             )
-
-
-class TestRequireGitRepository:
-    """Tests for require_git_repository function."""
-
-    def test_succeeds_in_git_repository(self, temp_git_repo):
-        """Test that function succeeds when inside a git repository."""
-        # Should not raise
-        require_git_repository()
-
-    def test_exits_outside_git_repository(self, tmp_path, monkeypatch):
-        """Test that function exits with error outside git repository."""
-        # Change to non-git directory
-        monkeypatch.chdir(tmp_path)
-
-        with pytest.raises(CommandError):
-            require_git_repository()
-
-
-class TestGetGitRepositoryRootPath:
-    """Tests for get_git_repository_root_path function."""
-
-    def test_returns_repository_root(self, temp_git_repo):
-        """Test that function returns the repository root path."""
-        root = get_git_repository_root_path()
-
-        assert isinstance(root, Path)
-        assert root.is_absolute()
-        assert (root / ".git").exists()
-
-    def test_returns_same_path_from_subdirectory(self, temp_git_repo, monkeypatch):
-        """Test that function returns root even from subdirectory."""
-        # Create subdirectory and change to it
-        subdir = temp_git_repo / "subdir"
-        subdir.mkdir()
-        monkeypatch.chdir(subdir)
-
-        root = get_git_repository_root_path()
-
-        assert root == temp_git_repo
-
-
-class TestResolveFilePathToRepoRelative:
-    """Tests for resolve_file_path_to_repo_relative function."""
-
-    def test_resolve_file_path_to_repo_relative_relative(self, temp_git_repo):
-        """Test that relative paths are returned as-is."""
-
-        result = resolve_file_path_to_repo_relative("src/file.py")
-        assert result == "src/file.py"
-
-    def test_resolve_file_path_to_repo_relative_absolute(self, temp_git_repo):
-        """Test that absolute paths inside repo are made relative."""
-
-        absolute_path = str(temp_git_repo / "src" / "file.py")
-        result = resolve_file_path_to_repo_relative(absolute_path)
-        assert result == "src/file.py"
-
-    def test_resolve_file_path_to_repo_relative_outside_repo(self, temp_git_repo, tmp_path):
-        """Test that paths outside repo are returned as-is."""
-
-        outside_path = str(tmp_path / "outside.txt")
-        result = resolve_file_path_to_repo_relative(outside_path)
-        assert result == outside_path

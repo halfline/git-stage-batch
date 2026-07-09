@@ -5554,7 +5554,7 @@ def test_batch_lineage_uses_public_data_types():
         "_LineageRun",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership.py": {
+        SRC_ROOT / "batch" / "ownership_remapping.py": {
             "BatchSourceLineage",
         },
         SRC_ROOT / "batch" / "source_advancement.py": public_names,
@@ -5593,16 +5593,22 @@ def test_batch_lineage_uses_public_data_types():
     assert violations == []
 
 
-def test_batch_ownership_uses_public_lineage_remapping():
-    """Cross-module ownership callers should import public lineage remapping."""
+def test_batch_ownership_remapping_owns_public_helpers():
+    """Ownership remapping should live outside ownership metadata."""
+    remapping = __import__(
+        "git_stage_batch.batch.ownership_remapping",
+        fromlist=["ownership_remapping"],
+    )
     ownership = __import__(
         "git_stage_batch.batch.ownership",
         fromlist=["ownership"],
     )
     public_names = {
+        "remap_batch_ownership_to_new_source_lines",
         "remap_batch_ownership_with_lineage",
     }
     private_names = {
+        "_remap_batch_ownership_to_new_source_lines",
         "_remap_batch_ownership_with_lineage",
     }
     moved_names = {
@@ -5611,18 +5617,22 @@ def test_batch_ownership_uses_public_lineage_remapping():
         "SourceContentWithLineProvenance",
         "BatchSourceAdvanceResult",
     }
+    lineage_remap_names = {
+        "remap_batch_ownership_with_lineage",
+    }
     expected_imports = {
         SRC_ROOT
         / "commands"
         / "selection"
-        / "discard_line_replacement.py": public_names,
-        SRC_ROOT / "batch" / "source_advancement.py": public_names,
+        / "discard_line_replacement.py": lineage_remap_names,
+        SRC_ROOT / "batch" / "source_advancement.py": lineage_remap_names,
     }
     violations = []
 
     for public_name in public_names:
-        assert public_name in vars(ownership)
-    assert private_names.isdisjoint(vars(ownership))
+        assert public_name in vars(remapping)
+        assert public_name not in vars(ownership)
+    assert private_names.isdisjoint(vars(remapping))
     assert moved_names.isdisjoint(vars(ownership))
 
     ownership_imports = {
@@ -5641,10 +5651,18 @@ def test_batch_ownership_uses_public_lineage_remapping():
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.ownership":
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.ownership":
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            imported_names = {alias.name for alias in node.names}
+            if imported_module != "git_stage_batch.batch.ownership_remapping":
+                continue
+
             imported_public_names |= imported_names & public_names
             disallowed_names = imported_names & private_names
             if disallowed_names:

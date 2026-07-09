@@ -29,7 +29,6 @@ from .file_scope import (
 )
 from .fixup_subcommands import add_suggest_fixup_subcommand
 from .git_help import GitHelpArgumentParser
-from .include_dispatch import dispatch_include_command
 from .quick_actions import expand_quick_actions
 from .reset_dispatch import dispatch_reset_command
 from .session_subcommands import (
@@ -42,7 +41,7 @@ from .session_subcommands import (
     add_stop_subcommand,
     add_undo_subcommand,
 )
-from .selection_subcommands import add_show_subcommand
+from .selection_subcommands import add_include_subcommand, add_show_subcommand
 from .skip_dispatch import dispatch_skip_command
 from .subcommand_parser import add_subcommand_parser
 
@@ -114,66 +113,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_status_subcommand(subparsers)
 
-    # include - Stage the selected hunk
-    parser_include = add_subcommand_parser(
-        subparsers,
-        "include",
-        aliases=["i"],
-        help=_("Stage the selected hunk"),
-    )
-    parser_include.add_argument(
-        "--line",
-        "--lines",
-        dest="line_ids",
-        metavar="IDS",
-        help=_("Stage only specific line IDs (e.g., '1,3,5-7')"),
-    )
-    add_file_argument(
-        parser_include,
-        _("Operate on entire file (live working tree state). "
-          "If PATH omitted, uses selected hunk's file. "
-          "Without --line, stages entire file. "
-          "With --line, operates on line IDs from entire file."),
-    )
-    parser_include.add_argument(
-        "--from",
-        dest="from_batch",
-        metavar="BATCH",
-        help=_("Include changes from batch"),
-    )
-    parser_include.add_argument(
-        "--to",
-        dest="to_batch",
-        metavar="BATCH",
-        help=_("Include changes to batch"),
-    )
-    parser_include.add_argument(
-        "--as",
-        dest="as_text",
-        metavar="TEXT",
-        help=_("Replace selected lines, or full file with --file, using TEXT before staging"),
-    )
-    parser_include.add_argument(
-        "--as-stdin",
-        dest="as_stdin",
-        action="store_true",
-        help=_("Read replacement text from standard input exactly, preserving trailing newlines"),
-    )
-    parser_include.add_argument(
-        "--no-edge-overlap",
-        dest="no_edge_overlap",
-        action="store_true",
-        help=_("Do not strip unchanged edge-overlap lines from replacement text used with --as"),
-    )
-    parser_include.add_argument(
-        "--no-anchor",
-        dest="no_edge_overlap",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
-    add_auto_advance_arguments(parser_include)
-
-    parser_include.set_defaults(func=dispatch_include_command)
+    add_include_subcommand(subparsers)
 
     # skip - Skip the selected hunk without staging
     parser_skip = add_subcommand_parser(

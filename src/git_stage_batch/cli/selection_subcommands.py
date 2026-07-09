@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 
 from ..i18n import _
+from .auto_advance_options import add_auto_advance_arguments
 from .file_arguments import add_file_argument
+from .include_dispatch import dispatch_include_command
 from .show_dispatch import dispatch_show_command
 from .subcommand_parser import add_subcommand_parser
 
@@ -79,3 +81,76 @@ def add_show_subcommand(subparsers) -> None:
         help=_("Read replacement preview text from standard input exactly"),
     )
     parser_show.set_defaults(func=dispatch_show_command)
+
+
+def add_include_subcommand(subparsers) -> None:
+    """Register the include subcommand."""
+    parser_include = add_subcommand_parser(
+        subparsers,
+        "include",
+        aliases=["i"],
+        help=_("Stage the selected hunk"),
+    )
+    parser_include.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Stage only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    add_file_argument(
+        parser_include,
+        _(
+            "Operate on entire file (live working tree state). "
+            "If PATH omitted, uses selected hunk's file. "
+            "Without --line, stages entire file. "
+            "With --line, operates on line IDs from entire file."
+        ),
+    )
+    parser_include.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        help=_("Include changes from batch"),
+    )
+    parser_include.add_argument(
+        "--to",
+        dest="to_batch",
+        metavar="BATCH",
+        help=_("Include changes to batch"),
+    )
+    parser_include.add_argument(
+        "--as",
+        dest="as_text",
+        metavar="TEXT",
+        help=_(
+            "Replace selected lines, or full file with --file, "
+            "using TEXT before staging"
+        ),
+    )
+    parser_include.add_argument(
+        "--as-stdin",
+        dest="as_stdin",
+        action="store_true",
+        help=_(
+            "Read replacement text from standard input exactly, "
+            "preserving trailing newlines"
+        ),
+    )
+    parser_include.add_argument(
+        "--no-edge-overlap",
+        dest="no_edge_overlap",
+        action="store_true",
+        help=_(
+            "Do not strip unchanged edge-overlap lines from replacement "
+            "text used with --as"
+        ),
+    )
+    parser_include.add_argument(
+        "--no-anchor",
+        dest="no_edge_overlap",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    add_auto_advance_arguments(parser_include)
+    parser_include.set_defaults(func=dispatch_include_command)

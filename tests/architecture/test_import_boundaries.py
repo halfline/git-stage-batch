@@ -2832,6 +2832,47 @@ def test_file_review_model_builder_uses_layout_module():
     assert "file_review_layout" not in review_output_text
 
 
+def test_file_review_pagination_owns_page_assembly():
+    """File-review pagination should stay out of change construction."""
+    review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
+    pagination_path = SRC_ROOT / "output" / "file_review_pagination.py"
+    review_model_builder_text = review_model_builder_path.read_text()
+    pagination_text = pagination_path.read_text()
+    builder_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_model_builder_path)
+    }
+    pagination_imports = tuple(_import_from_nodes(pagination_path))
+    pagination_imports_layout = any(
+        imported_module == "git_stage_batch.output"
+        and any(alias.name == "file_review_layout" for alias in node.names)
+        for imported_module, node in pagination_imports
+    )
+    builder_imports_layout = any(
+        imported_module == "git_stage_batch.output"
+        and any(alias.name == "file_review_layout" for alias in node.names)
+        for imported_module, node in _import_from_nodes(review_model_builder_path)
+    )
+    file_review_pagination = __import__(
+        "git_stage_batch.output.file_review_pagination",
+        fromlist=["file_review_pagination"],
+    )
+
+    assert "git_stage_batch.output.file_review_pagination" in builder_imports
+    assert "paginate_file_review_changes" in vars(file_review_pagination)
+    assert not builder_imports_layout
+    assert pagination_imports_layout
+    assert "file_review_layout.body_budget" not in review_model_builder_text
+    assert "ReviewChangeFragment" not in review_model_builder_text
+    assert "FileReviewPage" not in review_model_builder_text
+    assert "page_fragments" not in review_model_builder_text
+    assert "change_pages" not in review_model_builder_text
+    assert "is_first_fragment" not in review_model_builder_text
+    assert "file_review_layout.body_budget" in pagination_text
+    assert "ReviewChangeFragment" in pagination_text
+    assert "page_fragments" in pagination_text
+
+
 def test_file_review_output_uses_model_module():
     """File-review output should not own passive model records."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"

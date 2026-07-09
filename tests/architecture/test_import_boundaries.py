@@ -60,6 +60,40 @@ def test_tui_batch_menus_name_query_module_at_import_sites():
     ) == []
 
 
+def test_batch_package_stays_below_workflow_data():
+    """Batch domain modules should not import workflow data storage."""
+    old_source_path = SRC_ROOT / "data" / "batch_sources.py"
+    source_snapshots = __import__(
+        "git_stage_batch.batch.source_snapshots",
+        fromlist=["source_snapshots"],
+    )
+    public_source_names = {
+        "BatchSourceCommit",
+        "create_batch_source_commit",
+        "create_batch_source_commits",
+        "get_batch_source_for_file",
+        "load_saved_session_file_as_buffer",
+        "load_session_batch_sources",
+        "save_session_batch_sources",
+    }
+    violations = []
+
+    for path in (SRC_ROOT / "batch").rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if not imported_module:
+                continue
+            if not imported_module.startswith("git_stage_batch.data"):
+                continue
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_source_path.exists()
+    assert public_source_names <= vars(source_snapshots).keys()
+    assert violations == []
+
+
 def test_replacement_payload_imports_use_core_boundary():
     """Non-batch code should not depend on batch replacement for neutral payloads."""
     neutral_names = {
@@ -14466,7 +14500,7 @@ def test_consumed_selection_recording_stays_out_of_data_store():
         "git_stage_batch.batch.source_advancement": {
             "advance_batch_source_for_file_with_provenance",
         },
-        "git_stage_batch.data.batch_sources": {"create_batch_source_commit"},
+        "git_stage_batch.batch.source_snapshots": {"create_batch_source_commit"},
         "git_stage_batch.data.consumed_selections": {
             "read_consumed_file_metadata",
             "write_consumed_file_metadata",

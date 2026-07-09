@@ -235,6 +235,8 @@ Key modules:
   Reading batch metadata and refs.
 - `batch.ownership`
   Ownership data structures and ownership transformations.
+- `batch.ownership_units`
+  Ownership-unit grouping, filtering, validation, and rebuild logic.
 - `batch.absence_content`
   Streaming builders for absence-claim content buffers.
 - `batch.replacement_line_runs`

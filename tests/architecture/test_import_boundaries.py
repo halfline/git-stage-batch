@@ -7531,6 +7531,101 @@ def test_batch_owns_atomic_file_change_metadata_conversion():
     assert action_model_imports == set()
 
 
+def test_batch_source_file_display_action_owns_show_flow():
+    """Show-from single-file display should live in batch-source support."""
+    helper = __import__(
+        "git_stage_batch.commands.batch_source.file_display_action",
+        fromlist=["file_display_action"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "batch_source" / "file_display_action.py"
+    )
+    public_names = {
+        "show_batch_source_file_display",
+    }
+    action_dependency_names = {
+        "LineLevelChange",
+        "SelectedChangeKind",
+        "_shown_pages_for_display_ids",
+        "build_file_review_model",
+        "cache_binary_file_change",
+        "cache_gitlink_change",
+        "cache_rendered_batch_file_display",
+        "clear_last_file_review_state",
+        "compute_batch_binary_fingerprint",
+        "compute_batch_gitlink_fingerprint",
+        "make_file_review_state",
+        "normalize_page_spec",
+        "print_binary_file_change",
+        "print_file_review",
+        "print_gitlink_change",
+        "print_line_level_changes",
+        "resolve_default_review_pages",
+        "write_last_file_review_state",
+    }
+    helper_imports = {
+        "LineLevelChange",
+        "SelectedChangeKind",
+        "binary_change_from_batch_file_metadata",
+        "build_file_review_model",
+        "cache_binary_file_change",
+        "cache_gitlink_change",
+        "cache_rendered_batch_file_display",
+        "clear_last_file_review_state",
+        "compute_batch_binary_fingerprint",
+        "compute_batch_gitlink_fingerprint",
+        "exit_with_error",
+        "gitlink_change_from_batch_file_metadata",
+        "make_file_review_state",
+        "normalize_page_spec",
+        "print_binary_file_change",
+        "print_file_review",
+        "print_gitlink_change",
+        "print_line_level_changes",
+        "render_batch_file_display",
+        "resolve_default_review_pages",
+        "write_last_file_review_state",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    show_from_tree = ast.parse(
+        show_from_path.read_text(),
+        filename=str(show_from_path),
+    )
+    show_from_functions = {
+        node.name: node
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_names = {
+        node.id
+        for node in ast.walk(show_from_functions["command_show_from_batch"])
+        if isinstance(node, ast.Name)
+    }
+    command_attrs = {
+        node.attr
+        for node in ast.walk(show_from_functions["command_show_from_batch"])
+        if isinstance(node, ast.Attribute)
+    }
+    batch_source_imports = set()
+    for imported_module, node in _import_from_nodes(show_from_path):
+        if imported_module != "git_stage_batch.commands.batch_source":
+            continue
+        batch_source_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "file_display_action" in batch_source_imports
+    assert "show_batch_source_file_display" in command_attrs
+    assert action_dependency_names.isdisjoint(command_names)
+    assert action_dependency_names.isdisjoint(command_attrs)
+    assert helper_imports <= helper_imported_names
+
+
 def test_batch_owns_binary_file_content_loading():
     """Stored binary batch content loading should live in batch."""
     binary_file_content = __import__(

@@ -10397,6 +10397,66 @@ def test_discard_line_selection_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_discard_line_action_stays_in_command_helper():
+    """Live discard-line action support should stay out of the entrypoint."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_action.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.discard_line_action",
+        fromlist=["discard_line_action"],
+    )
+    public_names = {"discard_live_line_selection"}
+    action_dependency_names = {
+        "discard_worktree_line_selection",
+        "finish_review_scoped_line_action",
+        "print",
+        "refresh_selected_hunk_after_line_action",
+        "sys",
+        "undo_checkpoint",
+    }
+    helper_imports = {
+        "discard_line_selection",
+        "finish_review_scoped_line_action",
+        "refresh_selected_hunk_after_line_action",
+        "undo_checkpoint",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_discard_line_names = {
+        node.id
+        for node in ast.walk(discard_functions["command_discard_line"])
+        if isinstance(node, ast.Name)
+    }
+    command_discard_line_attributes = {
+        node.attr
+        for node in ast.walk(discard_functions["command_discard_line"])
+        if isinstance(node, ast.Attribute)
+    }
+    discard_selection_imports = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        discard_selection_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "discard_line_action" in discard_selection_imports
+    assert "discard_live_line_selection" in command_discard_line_attributes
+    assert action_dependency_names.isdisjoint(command_discard_line_names)
+    assert helper_imports <= helper_imported_names
+
+
 def test_skip_line_selection_stays_in_command_helper():
     """Skip line-selection editing should stay out of the command entrypoint."""
     skip_path = SRC_ROOT / "commands" / "skip.py"

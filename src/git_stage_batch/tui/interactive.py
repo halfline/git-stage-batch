@@ -3,26 +3,21 @@
 from __future__ import annotations
 
 import sys
+
 from ..data.selected_change.batch_file_cache import cache_batch_as_single_hunk
 from ..data.progress import get_hunk_counts
 from ..data.line_state import load_line_changes_from_state
-from ..data.session import session_is_active
-from ..exceptions import BypassRefresh, CommandError, QuitInteractive
+from ..exceptions import BypassRefresh, QuitInteractive
 from ..i18n import _
 from ..output.colors import Colors
 from ..output.hunk import print_line_level_changes
-from ..utils.file_io import write_text_file_contents
-from ..utils.git_command import run_git_command
-from ..utils.paths import (
-    get_start_head_file_path,
-    get_start_index_tree_file_path,
-)
 from .action_dispatch import dispatch_action
 from .display import print_status_bar
 from .flow import FlowLocation, LocationRole, FlowState
 from .prompts import (
     prompt_action,
 )
+from .session_startup import prepare_interactive_session
 
 
 def start_interactive_mode() -> None:
@@ -35,29 +30,8 @@ def start_interactive_mode() -> None:
     If no changes exist, enters degraded mode where hunk-based actions
     are disabled but help, shell commands, and abort remain available.
     """
-    # Import commands locally to avoid circular dependency
-    from ..commands.start import command_start
-
-    session_was_active = session_is_active()
-
-    # Auto-initialize session (allow degraded mode if no changes)
-    degraded_mode = False
-    try:
-        command_start(quiet=True, auto_advance=True)
-    except CommandError as e:
-        if e.exit_code == 2:
-            degraded_mode = True
-            print(_("No changes to stage."), file=sys.stderr)
-        else:
-            raise
-
-    # Record start HEAD and index tree for smart quit detection (if not degraded)
-    if not degraded_mode:
-        head_result = run_git_command(["rev-parse", "HEAD"], requires_index_lock=False)
-        write_text_file_contents(get_start_head_file_path(), head_result.stdout.strip())
-
-        index_tree_result = run_git_command(["write-tree"], requires_index_lock=False)
-        write_text_file_contents(get_start_index_tree_file_path(), index_tree_result.stdout.strip())
+    startup = prepare_interactive_session()
+    degraded_mode = startup.degraded_mode
 
     use_color = Colors.enabled()
     should_refresh = True
@@ -67,7 +41,7 @@ def start_interactive_mode() -> None:
     flow_state = FlowState(
         source=FlowLocation.WORKING_TREE,
         target=FlowLocation.STAGING_AREA,
-        stop_session_on_quit=not session_was_active,
+        stop_session_on_quit=not startup.session_was_active,
     )
 
     # Main interactive loop

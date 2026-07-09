@@ -7,7 +7,11 @@ import json
 from ...batch.operations import create_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.query import get_batch_baseline_commit, read_batch_metadata
-from ...batch.storage import remove_file_from_batch_commit, update_batch_commit
+from ...batch.storage import (
+    add_binary_file_to_batch,
+    remove_file_from_batch_commit,
+    update_batch_commit,
+)
 from ...batch.validation import batch_exists, validate_batch_name
 from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_type
@@ -23,6 +27,7 @@ from ...utils.git import (
     temp_git_index,
 )
 from ...utils.paths import get_batch_metadata_file_path
+from .sift_results import SiftedBinaryFileResult, SiftedFileResult
 
 
 def create_synthetic_batch_source_commit(
@@ -127,3 +132,31 @@ def add_sifted_text_file_to_batch(
             file_mode,
             source_buffers=source_buffers,
         )
+
+
+def add_sifted_file_to_batch(
+    batch_name: str,
+    file_path: str,
+    file_meta: dict,
+    result: SiftedFileResult,
+) -> None:
+    """Persist any retained sifted file result into a batch."""
+    file_mode = file_meta.get("mode", "100644")
+
+    if isinstance(result, SiftedBinaryFileResult):
+        add_binary_file_to_batch(
+            batch_name,
+            result.binary_change,
+            file_mode=file_mode,
+            file_buffer_override=result.target_buffer,
+        )
+        return
+
+    add_sifted_text_file_to_batch(
+        batch_name=batch_name,
+        file_path=file_path,
+        target_buffer=result.target_buffer,
+        ownership=result.ownership,
+        file_mode=file_mode,
+        change_type=result.change_type,
+    )

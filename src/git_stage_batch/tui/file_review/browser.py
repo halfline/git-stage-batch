@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 
-from ...data.file_review.state import read_last_file_review_state
 from ...data.line_state import load_line_changes_from_state
 from ...exceptions import BypassRefresh, CommandError
 from ...i18n import _
@@ -25,6 +24,11 @@ from .fixup_actions import (
     read_last_fixup_commit_hash,
     suggest_fixup_for_lines,
 )
+from .page_navigation import (
+    next_page_spec as _next_page_spec,
+    previous_page_spec as _previous_page_spec,
+    prompt_page_spec as _prompt_page_spec,
+)
 from .prompts import (
     normalize_review_action,
     print_review_help,
@@ -36,7 +40,6 @@ from ..prompts import (
     confirm_destructive_operation,
     prompt_fixup_action,
     prompt_line_ids,
-    wrap_prompt_for_readline,
 )
 
 
@@ -122,44 +125,6 @@ def _review_loop(state: FileReviewSessionState) -> None:
             continue
 
         print(_("Unknown review action: {action}").format(action=action))
-
-
-def _prompt_page_spec() -> str | None:
-    try:
-        value = input(
-            wrap_prompt_for_readline(_("Page(s), for example 1, 2-4, all: "))
-        ).strip()
-    except (KeyboardInterrupt, EOFError):
-        return None
-    return value or None
-
-
-def _next_page_spec() -> str | None:
-    review_state = read_last_file_review_state()
-    if review_state is None:
-        print(_("No file review page state is available."), file=sys.stderr)
-        return None
-
-    current_page = max(review_state.shown_pages)
-    if current_page >= review_state.page_count:
-        print(_("Already at the last file review page."), file=sys.stderr)
-        return review_state.page_spec
-
-    return str(current_page + 1)
-
-
-def _previous_page_spec() -> str | None:
-    review_state = read_last_file_review_state()
-    if review_state is None:
-        print(_("No file review page state is available."), file=sys.stderr)
-        return None
-
-    current_page = min(review_state.shown_pages)
-    if current_page <= 1:
-        print(_("Already at the first file review page."), file=sys.stderr)
-        return review_state.page_spec
-
-    return str(current_page - 1)
 
 
 def _apply_block_action(state: FileReviewSessionState, action: str) -> None:

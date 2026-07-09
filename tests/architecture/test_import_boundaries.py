@@ -5572,6 +5572,41 @@ def test_suggest_fixup_history_stays_in_fixup_support():
     assert "git_stage_batch.utils.git_command" in history_imports
 
 
+def test_suggest_fixup_iteration_state_stays_in_fixup_support():
+    """Suggest-fixup iteration state should stay below entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    helper_path = SRC_ROOT / "commands" / "fixup" / "iteration_state.py"
+    helper = __import__(
+        "git_stage_batch.commands.fixup.iteration_state",
+        fromlist=["iteration_state"],
+    )
+    public_names = {
+        "SuggestFixupIterationContext",
+        "prepare_suggest_fixup_iteration",
+    }
+    state_names = {
+        "clear_suggest_fixup_state",
+        "read_suggest_fixup_state",
+    }
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    command_imported_names = set()
+    helper_imported_names = set()
+
+    for _imported_module, node in _import_from_nodes(command_path):
+        command_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "git_stage_batch.commands.fixup.iteration_state" in command_imports
+    assert "read_suggest_fixup_state" not in command_imported_names
+    assert state_names <= helper_imported_names
+
+
 def test_selected_line_source_refresh_uses_public_api():
     """Cross-module source refresh callers should import public helpers."""
     source_refresh = __import__(

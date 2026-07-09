@@ -334,6 +334,8 @@ def test_data_package_does_not_reexport_data_apis():
         "record_hunk_skipped",
         "read_status_summary",
         "restore_batch_refs",
+        "SelectedAssetGroup",
+        "select_asset_entries",
         "snapshot_batch_refs",
         "Traversable",
         "validate_asset_destination_path",
@@ -2639,9 +2641,7 @@ def test_install_asset_catalog_owns_asset_groups():
     assert catalog_imports == {
         asset_menu_path: {"ASSET_GROUPS"},
         command_path: {
-            "AssetGroup",
             "Traversable",
-            "_ASSET_GROUPS",
         },
     }
     assert direct_definition_imports == {
@@ -2794,10 +2794,50 @@ def test_asset_inventory_owns_packaged_asset_lookup():
     assert old_command_names.isdisjoint(command_names)
     assert all(snippet not in command_text for snippet in old_command_snippets)
     assert imported_inventory_names == {
-        "_asset_group_entries",
         "_companion_asset_source",
         "_entry_companion_assets",
     }
+
+
+def test_asset_selection_owns_group_filter_selection():
+    """Asset group and filter selection should live in the data selector."""
+    asset_selection = __import__(
+        "git_stage_batch.data.asset_selection",
+        fromlist=["asset_selection"],
+    )
+    install_assets = __import__(
+        "git_stage_batch.commands.install_assets",
+        fromlist=["install_assets"],
+    )
+    command_path = SRC_ROOT / "commands" / "install_assets.py"
+    public_names = {
+        "SelectedAssetGroup",
+        "select_asset_entries",
+    }
+    old_command_snippets = {
+        "ASSET_GROUPS",
+        "AssetGroup",
+        "No bundled assets in",
+        "Unknown asset group",
+        "resolve_gitignore_style_patterns",
+        "subprocess",
+        "_asset_group_entries",
+        "selected_groups",
+    }
+    imported_selection_names = set()
+
+    for imported_module, node in _import_from_nodes(command_path):
+        if imported_module == "git_stage_batch.data.asset_selection":
+            imported_selection_names |= {
+                alias.asname or alias.name for alias in node.names
+            }
+
+    command_text = command_path.read_text()
+
+    assert public_names <= vars(asset_selection).keys()
+    assert public_names.isdisjoint(vars(install_assets))
+    assert all(snippet not in command_text for snippet in old_command_snippets)
+    assert imported_selection_names == {"_select_asset_entries"}
 
 
 def test_tui_flow_menu_owns_batch_selection_menus():

@@ -7866,7 +7866,14 @@ def test_batch_ownership_claims_owns_line_range_helpers():
             "LineRangeBuilder",
             "presence_claims_from_source_lines",
         },
-        SRC_ROOT / "batch" / "ownership_units.py": public_names,
+        SRC_ROOT / "batch" / "ownership_unit_rebuild.py": {
+            "format_ownership_line_set",
+            "presence_claims_from_source_lines",
+        },
+        SRC_ROOT / "batch" / "ownership_units.py": {
+            "LineRangeBuilder",
+            "parse_ownership_line_ranges",
+        },
     }
     violations = []
 
@@ -8923,27 +8930,26 @@ def test_batch_ownership_units_owns_unit_operations():
     public_names = {
         "build_ownership_units_from_batch_source_lines",
         "build_ownership_units_from_display_lines",
-        "rebuild_ownership_from_units",
         "validate_ownership_units",
     }
     moved_selection_names = {
         "filter_ownership_units_by_display_ids",
         "select_ownership_units_by_display_ids",
     }
+    moved_rebuild_names = {
+        "rebuild_ownership_from_units",
+    }
     expected_unit_imports = {
         SRC_ROOT / "batch" / "file_display.py": {
             "build_ownership_units_from_display_lines",
-            "rebuild_ownership_from_units",
             "validate_ownership_units",
         },
         SRC_ROOT / "batch" / "selection.py": {
             "build_ownership_units_from_batch_source_lines",
-            "rebuild_ownership_from_units",
             "validate_ownership_units",
         },
         SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": {
             "build_ownership_units_from_batch_source_lines",
-            "rebuild_ownership_from_units",
             "validate_ownership_units",
         },
     }
@@ -8953,6 +8959,7 @@ def test_batch_ownership_units_owns_unit_operations():
         assert public_name not in vars(ownership)
         assert public_name in vars(ownership_units)
     assert moved_selection_names.isdisjoint(vars(ownership_units))
+    assert moved_rebuild_names.isdisjoint(vars(ownership_units))
 
     ownership_imports = {
         imported_module
@@ -8990,6 +8997,56 @@ def test_batch_ownership_units_owns_unit_operations():
 
         if path in expected_unit_imports:
             assert expected_unit_imports[path] <= imported_unit_names
+
+    assert violations == []
+
+
+def test_batch_ownership_unit_rebuild_owns_metadata_reconstruction():
+    """Ownership metadata rebuild should live outside unit construction."""
+    ownership_units = __import__(
+        "git_stage_batch.batch.ownership_units",
+        fromlist=["ownership_units"],
+    )
+    ownership_unit_rebuild = __import__(
+        "git_stage_batch.batch.ownership_unit_rebuild",
+        fromlist=["ownership_unit_rebuild"],
+    )
+    rebuild_path = SRC_ROOT / "batch" / "ownership_unit_rebuild.py"
+    public_names = {
+        "rebuild_ownership_from_units",
+    }
+    private_names = {
+        "_rebuild_ownership_from_units",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "file_display.py": public_names,
+        SRC_ROOT / "batch" / "selection.py": public_names,
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(ownership_unit_rebuild).keys()
+    assert public_names.isdisjoint(vars(ownership_units))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == rebuild_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module != "git_stage_batch.batch.ownership_unit_rebuild":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            private_imports = imported_names & private_names
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
 
     assert violations == []
 
@@ -12316,8 +12373,10 @@ def test_batch_source_reset_claims_own_reset_mutations():
         },
         "git_stage_batch.batch.ownership_units": {
             "build_ownership_units_from_batch_source_lines",
-            "rebuild_ownership_from_units",
             "validate_ownership_units",
+        },
+        "git_stage_batch.batch.ownership_unit_rebuild": {
+            "rebuild_ownership_from_units",
         },
         "git_stage_batch.batch.ownership_unit_selection": {
             "filter_ownership_units_by_display_ids",

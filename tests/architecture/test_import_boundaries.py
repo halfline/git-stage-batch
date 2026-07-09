@@ -11659,6 +11659,53 @@ def test_attribution_projection_stays_out_of_attribution_builder():
     assert violations == []
 
 
+def test_attribution_fingerprints_stay_out_of_attribution_builder():
+    """Attribution content hashing should live outside attribution building."""
+    attribution = __import__(
+        "git_stage_batch.batch.attribution",
+        fromlist=["attribution"],
+    )
+    attribution_fingerprints = __import__(
+        "git_stage_batch.batch.attribution_fingerprints",
+        fromlist=["attribution_fingerprints"],
+    )
+    fingerprint_path = SRC_ROOT / "batch" / "attribution_fingerprints.py"
+    public_names = {
+        "ContentFingerprint",
+        "blob_matches_content",
+        "fingerprint_bytes",
+        "fingerprint_chunks",
+        "fingerprint_git_blob",
+        "fingerprint_numbered_lines",
+    }
+    stale_builder_names = public_names | {
+        "_deletion_blob_matches_content",
+        "_fingerprint_bytes",
+        "_fingerprint_chunks",
+        "_fingerprint_git_blob",
+        "_fingerprint_numbered_lines",
+    }
+    violations = []
+
+    assert public_names <= vars(attribution_fingerprints).keys()
+    assert stale_builder_names.isdisjoint(vars(attribution))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == fingerprint_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.attribution":
+                moved_names = imported_names & stale_builder_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     """Consumed replacement metadata should stay outside hunk navigation."""
     filtering_path = SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py"

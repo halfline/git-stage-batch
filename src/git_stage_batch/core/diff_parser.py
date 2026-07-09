@@ -6,6 +6,8 @@ import re
 from collections.abc import Callable
 from typing import Iterable, Iterator, Union
 
+from . import gitlink_diff as _gitlink_diff
+from .buffer import LineBuffer
 from .models import (
     BinaryFileChange,
     GitlinkChange,
@@ -16,7 +18,6 @@ from .models import (
     SingleHunkPatch,
     TextFileDeletionChange,
 )
-from .buffer import LineBuffer
 from ..exceptions import CommandError
 from ..i18n import _
 
@@ -27,9 +28,6 @@ UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, Rename
 
 
 HUNK_HEADER_PATTERN = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
-INDEX_LINE_PATTERN = re.compile(br"^index ([0-9a-f]+)\.\.([0-9a-f]+)(?: ([0-7]+))?$")
-SUBPROJECT_COMMIT_PATTERN = re.compile(br"^([+-])Subproject commit ([0-9a-f]+)(?:-[^\s]+)?$")
-NULL_OBJECT_PREFIX = "0" * 7
 
 
 def patch_is_file_deletion(patch_lines: Iterable[bytes]) -> bool:
@@ -47,22 +45,6 @@ def patch_is_empty_file_change(patch_lines: Iterable[bytes]) -> bool:
     return any(line.rstrip(b"\n") == b"@@ -0,0 +0,0 @@" for line in patch_lines)
 
 
-def _metadata_indicates_gitlink(metadata_lines: list[bytes]) -> bool:
-    """Return whether diff metadata describes a mode-160000 entry."""
-    for line in metadata_lines:
-        if line in (
-            b"new file mode 160000",
-            b"deleted file mode 160000",
-            b"old mode 160000",
-            b"new mode 160000",
-        ):
-            return True
-        match = INDEX_LINE_PATTERN.match(line)
-        if match is not None and match.group(3) == b"160000":
-            return True
-    return False
-
-
 def _metadata_indicates_rename(metadata_lines: list[bytes]) -> bool:
     """Return whether diff metadata describes a path rename."""
     has_rename_from = any(line.startswith(b"rename from ") for line in metadata_lines)
@@ -73,115 +55,6 @@ def _metadata_indicates_rename(metadata_lines: list[bytes]) -> bool:
 def _metadata_indicates_deleted_file(metadata_lines: list[bytes]) -> bool:
     """Return whether diff metadata describes a deleted file."""
     return any(line.startswith(b"deleted file mode ") for line in metadata_lines)
-
-
-def _gitlink_oids_from_index(metadata_lines: list[bytes]) -> tuple[str | None, str | None]:
-    """Extract old and new object ids from a gitlink index line."""
-    for line in metadata_lines:
-        match = INDEX_LINE_PATTERN.match(line)
-        if match is not None:
-            return (
-                match.group(1).decode("ascii"),
-                match.group(2).decode("ascii"),
-            )
-    return None, None
-
-
-def _non_null_git_oid(oid: str | None) -> str | None:
-    """Return an object id unless it represents the null side of a diff."""
-    if oid is None:
-        return None
-    if oid.startswith(NULL_OBJECT_PREFIX):
-        return None
-    return oid
-
-
-def _gitlink_old_path(path: str, old_oid: str | None) -> str:
-    """Return /dev/null for the old side of an added gitlink."""
-    return "/dev/null" if _non_null_git_oid(old_oid) is None else path
-
-
-def _gitlink_new_path(path: str, new_oid: str | None) -> str:
-    """Return /dev/null for the new side of a deleted gitlink."""
-    return "/dev/null" if _non_null_git_oid(new_oid) is None else path
-
-
-def _gitlink_change_type(
-    metadata_lines: list[bytes],
-    old_oid: str | None,
-    new_oid: str | None,
-) -> str:
-    """Derive added/modified/deleted from gitlink diff metadata."""
-    if any(line == b"new file mode 160000" for line in metadata_lines):
-        return "added"
-    if any(line == b"deleted file mode 160000" for line in metadata_lines):
-        return "deleted"
-    if _non_null_git_oid(old_oid) is None:
-        return "added"
-    if _non_null_git_oid(new_oid) is None:
-        return "deleted"
-    return "modified"
-
-
-def _consume_gitlink_hunks(
-    next_line: Callable[[], bytes | None],
-    peek_line: Callable[[], bytes | None],
-) -> tuple[str | None, str | None]:
-    """Consume all gitlink hunks for the current file and return full oids."""
-    old_oid = None
-    new_oid = None
-
-    while True:
-        next_l = peek_line()
-        if next_l is None:
-            break
-        next_l_stripped = next_l.rstrip(b"\n")
-        if next_l_stripped.startswith(b"diff --git "):
-            break
-        if next_l_stripped.startswith(b"---"):
-            break
-
-        next_line()
-        match = SUBPROJECT_COMMIT_PATTERN.match(next_l_stripped)
-        if match is not None:
-            oid = match.group(2).decode("ascii")
-            if match.group(1) == b"-":
-                old_oid = oid
-            else:
-                new_oid = oid
-
-    return old_oid, new_oid
-
-
-def _gitlink_oids_from_subproject_commit_patch(
-    patch_lines: Iterable[bytes],
-) -> tuple[str | None, str | None] | None:
-    """Return gitlink oids when a patch only changes Subproject commit lines."""
-    old_oid = None
-    new_oid = None
-    changed_line_count = 0
-
-    for line in patch_lines:
-        stripped = line.rstrip(b"\n")
-        if stripped.startswith((b"--- ", b"+++ ", b"@@ ", b"\\ ")):
-            continue
-        if not stripped or stripped[0:1] not in (b"+", b"-"):
-            continue
-
-        changed_line_count += 1
-        match = SUBPROJECT_COMMIT_PATTERN.match(stripped)
-        if match is None:
-            return None
-
-        oid = match.group(2).decode("ascii")
-        if match.group(1) == b"-":
-            old_oid = oid
-        else:
-            new_oid = oid
-
-    if changed_line_count == 0:
-        return None
-    return old_oid, new_oid
 
 
 class _UnifiedDiffParserBuildContext:
@@ -384,10 +257,14 @@ class _UnifiedDiffParserBuildContext:
                             lookahead = next_l + b'\n'
                             break
 
-                    is_gitlink = _metadata_indicates_gitlink(metadata_lines)
+                    is_gitlink = _gitlink_diff.metadata_indicates_gitlink(
+                        metadata_lines
+                    )
                     is_rename = _metadata_indicates_rename(metadata_lines)
                     is_deleted_file = _metadata_indicates_deleted_file(metadata_lines)
-                    index_old_oid, index_new_oid = _gitlink_oids_from_index(metadata_lines)
+                    index_old_oid, index_new_oid = (
+                        _gitlink_diff.gitlink_oids_from_index(metadata_lines)
+                    )
 
                     # Handle files without unified diff hunks
                     if old_file_line is None:
@@ -396,11 +273,17 @@ class _UnifiedDiffParserBuildContext:
 
                         if is_gitlink:
                             yield GitlinkChange(
-                                old_path=_gitlink_old_path(old_path, index_old_oid),
-                                new_path=_gitlink_new_path(new_path, index_new_oid),
-                                old_oid=_non_null_git_oid(index_old_oid),
-                                new_oid=_non_null_git_oid(index_new_oid),
-                                change_type=_gitlink_change_type(
+                                old_path=_gitlink_diff.gitlink_old_path(
+                                    old_path,
+                                    index_old_oid,
+                                ),
+                                new_path=_gitlink_diff.gitlink_new_path(
+                                    new_path,
+                                    index_new_oid,
+                                ),
+                                old_oid=_gitlink_diff.non_null_git_oid(index_old_oid),
+                                new_oid=_gitlink_diff.non_null_git_oid(index_new_oid),
+                                change_type=_gitlink_diff.gitlink_change_type(
                                     metadata_lines,
                                     index_old_oid,
                                     index_new_oid,
@@ -479,17 +362,32 @@ class _UnifiedDiffParserBuildContext:
                         yield RenameChange(old_path=old_path, new_path=new_path)
 
                     if is_gitlink:
-                        hunk_old_oid, hunk_new_oid = _consume_gitlink_hunks(next_line, peek_line)
-                        old_oid = hunk_old_oid or _non_null_git_oid(index_old_oid)
-                        new_oid = hunk_new_oid or _non_null_git_oid(index_new_oid)
+                        hunk_old_oid, hunk_new_oid = (
+                            _gitlink_diff.consume_gitlink_hunks(
+                                next_line,
+                                peek_line,
+                            )
+                        )
+                        old_oid = hunk_old_oid or _gitlink_diff.non_null_git_oid(
+                            index_old_oid
+                        )
+                        new_oid = hunk_new_oid or _gitlink_diff.non_null_git_oid(
+                            index_new_oid
+                        )
                         if old_oid is not None and old_oid == new_oid:
                             continue
                         yield GitlinkChange(
-                            old_path=_gitlink_old_path(old_path, old_oid or index_old_oid),
-                            new_path=_gitlink_new_path(new_path, new_oid or index_new_oid),
+                            old_path=_gitlink_diff.gitlink_old_path(
+                                old_path,
+                                old_oid or index_old_oid,
+                            ),
+                            new_path=_gitlink_diff.gitlink_new_path(
+                                new_path,
+                                new_oid or index_new_oid,
+                            ),
                             old_oid=old_oid,
                             new_oid=new_oid,
-                            change_type=_gitlink_change_type(
+                            change_type=_gitlink_diff.gitlink_change_type(
                                 metadata_lines,
                                 old_oid or index_old_oid,
                                 new_oid or index_new_oid,
@@ -522,19 +420,27 @@ class _UnifiedDiffParserBuildContext:
                         subproject_oids = None
                         if not is_gitlink and not metadata_lines:
                             patch_lines = list(patch_lines)
-                            subproject_oids = _gitlink_oids_from_subproject_commit_patch(
-                                patch_lines
+                            subproject_oids = (
+                                _gitlink_diff.gitlink_oids_from_subproject_commit_patch(
+                                    patch_lines
+                                )
                             )
                         if subproject_oids is not None:
                             old_oid, new_oid = subproject_oids
                             if old_oid is not None and old_oid == new_oid:
                                 continue
                             yield GitlinkChange(
-                                old_path=_gitlink_old_path(old_path, old_oid),
-                                new_path=_gitlink_new_path(new_path, new_oid),
+                                old_path=_gitlink_diff.gitlink_old_path(
+                                    old_path,
+                                    old_oid,
+                                ),
+                                new_path=_gitlink_diff.gitlink_new_path(
+                                    new_path,
+                                    new_oid,
+                                ),
                                 old_oid=old_oid,
                                 new_oid=new_oid,
-                                change_type=_gitlink_change_type(
+                                change_type=_gitlink_diff.gitlink_change_type(
                                     metadata_lines,
                                     old_oid,
                                     new_oid,

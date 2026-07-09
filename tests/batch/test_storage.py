@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.operations import create_batch
+from git_stage_batch.batch.lifecycle import create_batch
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch

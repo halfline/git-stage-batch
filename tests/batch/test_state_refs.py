@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.operations import create_batch, delete_batch, update_batch_note
+from git_stage_batch.batch.lifecycle import create_batch, delete_batch, update_batch_note
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name, get_batch_state_ref_name
 from git_stage_batch.batch.text_file_storage import add_file_to_batch

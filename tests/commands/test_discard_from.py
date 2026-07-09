@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.operations import create_batch
+from git_stage_batch.batch.lifecycle import create_batch
 from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.data.session import initialize_abort_state

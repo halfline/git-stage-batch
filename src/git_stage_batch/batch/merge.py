@@ -42,7 +42,7 @@ from .realized_boundaries import (
     find_boundary_after_source_line as _locate_boundary_after_source_line,
     sequence_present_at_boundary as _boundary_sequence_present,
 )
-from ..core.line_selection import LineRanges, LineSelection
+from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..core.buffer import (
     LineBuffer,
     buffer_has_data,
@@ -109,7 +109,7 @@ def _replacement_origin_candidate_set(
     """Enumerate reviewed placements for one unresolved split replacement."""
     owned_mapping = match_lines(source_lines, working_lines)
     try:
-        selected_presence = _presence_constraints.as_line_ranges(presence_line_set)
+        selected_presence = coerce_line_ranges(presence_line_set)
         unresolved: list[
             tuple[list[int], int, str, tuple[_BaselineReplacementOriginChoice, ...]]
         ] = []

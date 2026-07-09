@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING
@@ -20,7 +20,7 @@ from .realized_entries import (
     _entry_source_line_at,
 )
 from . import realized_mapping as _realized_mapping
-from ..core.line_selection import LineRanges, LineSelection
+from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
 
@@ -29,16 +29,6 @@ if TYPE_CHECKING:
 
 
 _PRESENCE_CANDIDATE_CAP = 50
-
-
-def as_line_ranges(lines: LineSelection | Iterable[int]) -> LineRanges:
-    """Return a normalized range selection for line-oriented inputs."""
-    if isinstance(lines, LineRanges):
-        return lines
-    ranges = getattr(lines, "ranges", None)
-    if ranges is not None:
-        return LineRanges.from_ranges(ranges())
-    return LineRanges.from_lines(lines)
 
 
 def apply_presence_constraints(
@@ -90,7 +80,7 @@ def _mapped_missing_source_lines(
     missing_ranges: list[tuple[int, int]] = []
     current_start: int | None = None
     current_end: int | None = None
-    source_selection = as_line_ranges(source_lines)
+    source_selection = coerce_line_ranges(source_lines)
 
     for start, end in source_selection.ranges():
         for source_line in range(max(1, start), min(end, source_line_count) + 1):
@@ -260,7 +250,7 @@ def _missing_claimed_lines(
 ) -> LineRanges:
     """Return claimed source lines that are not present as claimed entries."""
     claimed_ranges: list[tuple[int, int]] = []
-    presence_lines = as_line_ranges(presence_line_set)
+    presence_lines = coerce_line_ranges(presence_line_set)
 
     if isinstance(entries, _RealizedEntries):
         for run in entries.provenance_runs():

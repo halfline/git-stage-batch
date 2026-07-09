@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from typing import Optional
 
+from .batch_source import action_context as _action_context
 from .batch_source import action_plans as _action_plans
 from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import candidate_materialization as _candidate_materialization
@@ -15,7 +16,6 @@ from .batch_source import merge_refusals as _merge_refusals
 from .batch_source import text_file_actions as _text_file_actions
 from .batch_source import text_plan_builders as _text_plan_builders
 from ..batch.binary_file_content import read_binary_file_from_batch
-from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     clear_candidate_preview_state_for_file,
 )
@@ -30,16 +30,14 @@ from ..batch.submodule_pointer import (
     is_batch_submodule_pointer,
     refuse_batch_submodule_pointer_lines,
 )
-from ..batch.validation import batch_exists
 from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
     finish_review_scoped_line_action,
-    resolve_batch_source_action_scope,
 )
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
-from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError, BatchMetadataError
+from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError
 from ..i18n import _
 from ..utils.git import require_git_repository
 
@@ -136,36 +134,20 @@ def command_apply_from_batch(
     """
     require_git_repository()
     raw_selector = batch_name
-    selector = _candidate_selectors.resolve_batch_source_action_selector(
+    context = _action_context.resolve_batch_source_action_context(
         raw_selector,
-        "apply",
-        file=file,
-    )
-    batch_name = selector.batch_name
-    scope_resolution = resolve_batch_source_action_scope(
-        FileReviewAction.APPLY_FROM_BATCH,
+        operation="apply",
+        review_action=FileReviewAction.APPLY_FROM_BATCH,
         command_name="apply",
-        batch_name=batch_name,
         line_ids=line_ids,
         file=file,
         patterns=patterns,
     )
-    file = scope_resolution.file
-
-    # Check batch exists
-    if not batch_exists(batch_name):
-        exit_with_error(_("Batch '{name}' does not exist").format(name=batch_name))
-
-    # Read and validate batch metadata
-    try:
-        metadata = read_validated_batch_metadata(batch_name)
-    except BatchMetadataError as e:
-        exit_with_error(str(e))
-
-    all_files = metadata.get("files", {})
-
-    if not all_files:
-        exit_with_error(_("Batch '{name}' is empty").format(name=batch_name))
+    selector = context.selector
+    batch_name = context.batch_name
+    scope_resolution = context.scope_resolution
+    file = context.file
+    all_files = context.all_files
 
     file = resolve_current_batch_binary_file_scope(batch_name, all_files, file, patterns, line_ids)
 

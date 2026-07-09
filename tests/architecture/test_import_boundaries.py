@@ -1243,6 +1243,33 @@ def test_file_review_output_uses_layout_module():
     assert "REVIEW_HEADER_LINES" not in review_output_text
 
 
+def test_file_review_output_uses_model_module():
+    """File-review output should not own passive model records."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    file_review_model = __import__(
+        "git_stage_batch.output.file_review_model",
+        fromlist=["file_review_model"],
+    )
+    model_names = {
+        "FileReviewModel",
+        "FileReviewPage",
+        "FileReviewView",
+        "ReviewChange",
+        "ReviewChangeFragment",
+    }
+
+    assert "git_stage_batch.output.file_review_model" in imported_modules
+    assert model_names <= vars(file_review_model).keys()
+    for model_name in model_names:
+        assert f"class {model_name}" not in review_output_text
+    assert "from dataclasses import dataclass" not in review_output_text
+
+
 def test_file_review_action_commands_stay_out_of_state_module():
     """File-review command text should live beside validation state."""
     action_commands = __import__(

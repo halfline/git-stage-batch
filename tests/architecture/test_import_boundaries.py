@@ -7843,27 +7843,22 @@ def test_batch_replacement_line_runs_own_public_derivation():
     assert violations == []
 
 
-def test_batch_storage_uses_public_content_helpers():
-    """Cross-module storage callers should import public content helpers."""
+def test_batch_storage_uses_public_commit_helpers():
+    """Cross-module storage callers should import public commit helpers."""
     storage = __import__(
         "git_stage_batch.batch.storage",
         fromlist=["storage"],
     )
     public_names = {
         "add_binary_file_to_batch",
-        "build_realized_buffer_from_lines",
         "remove_file_from_batch_commit",
         "update_batch_commit",
     }
     private_names = {
-        "_build_realized_buffer_from_lines",
         "_remove_file_from_batch_commit",
         "_update_batch_commit",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
-            "build_realized_buffer_from_lines",
-        },
         SRC_ROOT / "commands" / "batch_transform" / "sift_persistence.py": {
             "add_binary_file_to_batch",
             "remove_file_from_batch_commit",
@@ -7888,6 +7883,77 @@ def test_batch_storage_uses_public_content_helpers():
                 continue
 
             imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_realized_file_content_owns_text_materialization():
+    """Text materialization should live outside batch storage."""
+    realized_file_content = __import__(
+        "git_stage_batch.batch.realized_file_content",
+        fromlist=["realized_file_content"],
+    )
+    storage = __import__(
+        "git_stage_batch.batch.storage",
+        fromlist=["storage"],
+    )
+    public_names = {
+        "build_realized_buffer_from_lines",
+    }
+    private_names = {
+        "_build_realized_buffer_from_lines",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
+            "build_realized_buffer_from_lines",
+        },
+    }
+    storage_module_imports = _import_from_nodes(SRC_ROOT / "batch" / "storage.py")
+    violations = []
+
+    assert public_names <= vars(realized_file_content).keys()
+    assert public_names.isdisjoint(vars(storage))
+    assert private_names.isdisjoint(vars(realized_file_content))
+    assert any(
+        imported_module == "git_stage_batch.batch"
+        and any(
+            alias.name == "realized_file_content"
+            and alias.asname == "_realized_file_content"
+            for alias in node.names
+        )
+        for imported_module, node in storage_module_imports
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "realized_file_content.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.storage":
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names} "
+                        "from batch.storage"
+                    )
+            if imported_module != "git_stage_batch.batch.realized_file_content":
+                continue
+
             imported_public_names |= imported_names & public_names
             disallowed_names = imported_names & private_names
             if disallowed_names:
@@ -8218,7 +8284,7 @@ def test_batch_realized_entries_uses_public_entry_helpers():
         SRC_ROOT / "batch" / "source_advancement.py": {
             "realized_entry_content_chunks",
         },
-        SRC_ROOT / "batch" / "storage.py": {
+        SRC_ROOT / "batch" / "realized_file_content.py": {
             "realized_entry_content_chunks",
         },
     }
@@ -11231,7 +11297,7 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
         SRC_ROOT / "batch" / "source_advancement.py": {
             "apply_presence_constraints",
         },
-        SRC_ROOT / "batch" / "storage.py": {
+        SRC_ROOT / "batch" / "realized_file_content.py": {
             "satisfy_constraints",
         },
     }

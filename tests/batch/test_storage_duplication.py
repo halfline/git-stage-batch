@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from git_stage_batch.batch.ownership import BatchOwnership
-from git_stage_batch.batch.storage import (
+from git_stage_batch.batch.realized_file_content import (
     build_realized_buffer_from_lines,
 )
 from git_stage_batch.core.buffer import LineBuffer

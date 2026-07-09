@@ -25,6 +25,7 @@ from .merge_candidates import (
 from .merge_validation import (
     check_structural_validity as _check_merge_structural_validity,
 )
+from . import presence_placement_choices as _presence_placement_choices
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
@@ -173,7 +174,7 @@ def _presence_candidate_set(
     presence_mapping = match_lines(source_lines, working_lines)
     try:
         presence_key, presence_choices = (
-            _presence_constraints.presence_choices_for_missing_claimed_run(
+            _presence_placement_choices.presence_choices_for_missing_claimed_run(
                 source_lines,
                 working_lines,
                 presence_line_set,
@@ -189,7 +190,7 @@ def _presence_candidate_set(
     if presence_key is None or len(presence_choices) <= 1:
         return _MergeCandidateSet(())
 
-    valid_choices: list[_presence_constraints.PresenceChoice] = []
+    valid_choices: list[_presence_placement_choices.PresenceChoice] = []
     for choice in presence_choices:
         resolution = _MergeResolution({presence_key: choice.choice_index})
         if resolution_is_valid(resolution):
@@ -200,7 +201,7 @@ def _presence_candidate_set(
 
     count = len(valid_choices)
     ambiguity_target_line_range = (
-        _presence_constraints.presence_ambiguity_target_line_range(
+        _presence_placement_choices.presence_ambiguity_target_line_range(
             valid_choices,
             len(working_lines),
         )

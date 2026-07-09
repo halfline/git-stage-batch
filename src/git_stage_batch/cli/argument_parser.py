@@ -12,7 +12,6 @@ from ..commands.annotate import command_annotate_batch
 from ..commands.block_file import command_block_file
 from ..commands.check_unstaged import command_check_unstaged
 from ..commands.drop import command_drop_batch
-from ..commands.install_assets import command_install_assets
 from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
 from ..commands.redo import command_redo
@@ -29,6 +28,7 @@ from ..commands.undo import command_undo
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .apply_dispatch import dispatch_apply_command
+from .asset_subcommands import add_install_assets_subcommand
 from .auto_advance_options import add_auto_advance_arguments
 from .completion import command_complete_files
 from .discard_dispatch import dispatch_discard_command
@@ -644,36 +644,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_sift.set_defaults(func=lambda args: command_sift_batch(args.from_batch, args.to_batch))
 
-    parser_install_assets = add_subcommand_parser(
-        subparsers,
-        "install-assets",
-        help=_("Install bundled assistant assets into the repository"),
-    )
-    parser_install_assets.add_argument(
-        "asset_group",
-        choices=["claude-agents", "claude-skills", "codex-skills"],
-        nargs="?",
-        help=_("Bundled asset group to install"),
-    )
-    parser_install_assets.add_argument(
-        "--filter",
-        dest="filters",
-        metavar="PATTERN",
-        nargs="+",
-        help=_("Install only bundled assets whose names match one or more gitignore-style PATTERNs"),
-    )
-    parser_install_assets.add_argument(
-        "--force",
-        action="store_true",
-        help=_("Overwrite an existing installed asset"),
-    )
-    parser_install_assets.set_defaults(
-        func=lambda args: command_install_assets(
-            args.asset_group,
-            args.filters,
-            force=args.force,
-        )
-    )
+    add_install_assets_subcommand(subparsers)
 
     parser_complete_files = subparsers.add_parser(
         "__complete-files",

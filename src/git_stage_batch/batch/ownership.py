@@ -24,6 +24,13 @@ from .ownership_claims import (
     parse_ownership_line_ranges as _claim_parse_line_ranges,
     presence_claims_from_source_lines as _claim_presence_claims_from_source_lines,
 )
+from .ownership_metadata_blobs import (
+    deletion_content_blob_ids as _metadata_deletion_content_blob_ids,
+    deletion_reference_blob_ids as _metadata_deletion_reference_blob_ids,
+    presence_claim_reference_blob_ids as _metadata_presence_reference_blob_ids,
+    read_metadata_blob as _metadata_blob_content,
+    replacement_origin_reference_blob_ids as _metadata_replacement_reference_blob_ids,
+)
 from .ownership_replacement_units import (
     normalize_replacement_units as _replacement_normalize_units,
 )
@@ -70,8 +77,8 @@ class BaselineReference:
 
         after_blob = data.get("after_blob")
         before_blob = data.get("before_blob")
-        after_content = _read_metadata_blob(after_blob, blob_contents)
-        before_content = _read_metadata_blob(before_blob, blob_contents)
+        after_content = _metadata_blob_content(after_blob, blob_contents)
+        before_content = _metadata_blob_content(before_blob, blob_contents)
         return cls(
             after_line=data.get("after_line"),
             after_content=after_content,
@@ -140,35 +147,6 @@ class AbsenceClaim:
         )
 
 
-def _read_metadata_blob(
-    blob_sha: str | None,
-    blob_contents: dict[str, bytes] | None,
-) -> bytes | None:
-    if blob_sha is None:
-        return None
-    if blob_contents is None:
-        raise ValueError("metadata blobs must be loaded before deserialization")
-    return blob_contents[blob_sha]
-
-
-def _baseline_reference_blob_ids(reference_metadata: dict) -> list[str]:
-    if not isinstance(reference_metadata, dict):
-        return []
-    blob_ids: list[str] = []
-    for key in ("after_blob", "before_blob"):
-        blob_sha = reference_metadata.get(key)
-        if blob_sha:
-            blob_ids.append(blob_sha)
-    return blob_ids
-
-
-def _baseline_references_blob_ids(references_metadata: dict) -> list[str]:
-    blob_ids: list[str] = []
-    for value in references_metadata.values():
-        blob_ids.extend(_baseline_reference_blob_ids(value))
-    return blob_ids
-
-
 @dataclass
 class PresenceClaim:
     """A presence constraint over batch-source lines.
@@ -214,49 +192,6 @@ class PresenceClaim:
                 for line, reference in references_metadata.items()
             },
         )
-
-
-def _presence_claim_reference_blob_ids(presence_metadata: list[dict]) -> list[str]:
-    blob_ids: list[str] = []
-    for claim in presence_metadata:
-        blob_ids.extend(
-            _baseline_references_blob_ids(
-                claim.get("baseline_references", {})
-            )
-        )
-    return blob_ids
-
-
-def _deletion_content_blob_ids(deletion_metadata: list[dict]) -> list[str]:
-    return [
-        metadata["blob"]
-        for metadata in deletion_metadata
-        if "blob" in metadata
-    ]
-
-
-def _deletion_reference_blob_ids(deletion_metadata: list[dict]) -> list[str]:
-    return [
-        blob_id
-        for metadata in deletion_metadata
-        for blob_id in _baseline_reference_blob_ids(
-            metadata.get("baseline_reference", {})
-        )
-    ]
-
-
-def _replacement_origin_reference_blob_ids(replacement_metadata: list[dict]) -> list[str]:
-    blob_ids: list[str] = []
-    for metadata in replacement_metadata:
-        origin_metadata = metadata.get("original_unit", {})
-        if not isinstance(origin_metadata, dict):
-            continue
-        blob_ids.extend(
-            _baseline_reference_blob_ids(
-                origin_metadata.get("baseline_reference", {})
-            )
-        )
-    return blob_ids
 
 
 @dataclass
@@ -436,7 +371,7 @@ class BatchOwnership:
         blob_buffers: dict[str, LineBuffer] = {}
         buffers: list[LineBuffer] = []
         try:
-            for blob_sha in _deletion_content_blob_ids(deletion_metadata):
+            for blob_sha in _metadata_deletion_content_blob_ids(deletion_metadata):
                 if blob_sha in blob_buffers:
                     continue
                 buffer = load_git_blob_as_buffer(blob_sha)
@@ -445,9 +380,9 @@ class BatchOwnership:
 
             blob_contents = read_git_blobs_as_bytes(
                 [
-                    *_deletion_reference_blob_ids(deletion_metadata),
-                    *_presence_claim_reference_blob_ids(presence_metadata),
-                    *_replacement_origin_reference_blob_ids(replacement_metadata),
+                    *_metadata_deletion_reference_blob_ids(deletion_metadata),
+                    *_metadata_presence_reference_blob_ids(presence_metadata),
+                    *_metadata_replacement_reference_blob_ids(replacement_metadata),
                 ]
             )
             ownership = cls._from_metadata_dict(

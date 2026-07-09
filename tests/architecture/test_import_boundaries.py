@@ -189,11 +189,14 @@ def test_line_id_file_persistence_stays_in_data_layer():
         "write_line_ids_file",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": {"write_line_ids_file"},
         SRC_ROOT
         / "commands"
         / "selection"
         / "include_line_action.py": file_helper_names,
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "include_line_replacement_action.py": {"write_line_ids_file"},
         SRC_ROOT / "commands" / "file_scope" / "include_file_replacement.py": {
             "write_line_ids_file",
         },
@@ -9924,6 +9927,9 @@ def test_include_line_action_stays_in_command_helper():
 def test_include_line_replacement_stays_in_command_helper():
     """Include line-replacement support should stay out of the command entrypoint."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    action_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_replacement_action.py"
+    )
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "include_line_replacement.py"
     )
@@ -9996,19 +10002,25 @@ def test_include_line_replacement_stays_in_command_helper():
         for node in ast.walk(include_tree)
         if isinstance(node, ast.FunctionDef)
     }
-    include_imports_helper = False
+    action_imports_helper = False
 
-    for imported_module, node in _import_from_nodes(include_path):
+    for imported_module, node in _import_from_nodes(action_path):
         if imported_module != "git_stage_batch.commands.selection":
             continue
         imported_names = {alias.name for alias in node.names}
         if "include_line_replacement" in imported_names:
-            include_imports_helper = True
+            action_imports_helper = True
 
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
 
+    action_tree = ast.parse(action_path.read_text(), filename=str(action_path))
+    action_functions = {
+        node.name: node
+        for node in ast.walk(action_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
     command_line_as_names = {
         node.id
         for node in ast.walk(include_functions["command_include_line_as"])
@@ -10019,11 +10031,16 @@ def test_include_line_replacement_stays_in_command_helper():
         for node in ast.walk(include_functions["command_include_line_as"])
         if isinstance(node, ast.Attribute)
     }
+    action_line_as_attributes = {
+        node.attr
+        for node in ast.walk(action_functions["include_live_line_replacement"])
+        if isinstance(node, ast.Attribute)
+    }
 
     assert old_include_names.isdisjoint(include_names)
-    assert include_imports_helper
-    assert "prepare_file_include_line_replacement" in command_line_as_attributes
-    assert "prepare_pathless_include_line_replacement" in command_line_as_attributes
+    assert action_imports_helper
+    assert "prepare_file_include_line_replacement" in action_line_as_attributes
+    assert "prepare_pathless_include_line_replacement" in action_line_as_attributes
     assert replacement_context_names.isdisjoint(command_line_as_names)
     assert replacement_context_names.isdisjoint(command_line_as_attributes)
     assert helper_imports <= helper_imported_names
@@ -11063,14 +11080,19 @@ def test_advance_display_stays_in_command_helper():
 
 def test_line_action_refresh_header_stays_in_command_helper():
     """Include and discard line actions should use the command refresh helper."""
-    command_paths = (
-        SRC_ROOT / "commands" / "include.py",
+    action_paths = (
+        SRC_ROOT / "commands" / "selection" / "include_line_action.py",
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "include_line_replacement_action.py",
+        SRC_ROOT / "commands" / "selection" / "discard_line_action.py",
         SRC_ROOT / "commands" / "discard.py",
     )
     violations = []
 
-    for command_path in command_paths:
-        imports = _import_from_nodes(command_path)
+    for action_path in action_paths:
+        imports = _import_from_nodes(action_path)
         imports_refresh_helper = False
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
@@ -11083,7 +11105,7 @@ def test_line_action_refresh_header_stays_in_command_helper():
             if imported_module != "git_stage_batch.output":
                 continue
             if "print_remaining_line_changes_header" in imported_names:
-                relative_path = command_path.relative_to(REPO_ROOT)
+                relative_path = action_path.relative_to(REPO_ROOT)
                 violations.append(
                     f"{relative_path}:{node.lineno} imports "
                     "print_remaining_line_changes_header"

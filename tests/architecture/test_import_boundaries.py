@@ -9,6 +9,7 @@ from .import_boundary_helpers import (
     SRC_ROOT,
     external_package_child_module_import_violations as _child_import_violations,
     import_from_nodes as _import_from_nodes,
+    module_name_for_path as _module_name_for_path,
 )
 
 
@@ -88,6 +89,58 @@ def test_top_level_packages_are_acyclic():
     """Top-level packages should not import each other in cycles."""
     edges = _top_level_package_import_edges()
     cycle = _cycle_from_edges(edges)
+
+    assert cycle is None
+
+
+def _batch_module_import_edges() -> set[tuple[str, str]]:
+    batch_root = SRC_ROOT / "batch"
+    module_names = {
+        _module_name_for_path(path)
+        for path in batch_root.glob("*.py")
+        if path.name != "__init__.py"
+    }
+    edges = set()
+
+    def batch_module_for(imported_module: str) -> str | None:
+        if not imported_module.startswith("git_stage_batch.batch."):
+            return None
+
+        module_parts = imported_module.split(".")[:3]
+        module_name = ".".join(module_parts)
+        if module_name in module_names:
+            return module_name
+        return None
+
+    for path in batch_root.glob("*.py"):
+        if path.name == "__init__.py":
+            continue
+
+        source_module = _module_name_for_path(path)
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module is None:
+                continue
+
+            if imported_module == "git_stage_batch.batch":
+                for alias in node.names:
+                    target_module = f"{imported_module}.{alias.name}"
+                    if (
+                        target_module in module_names
+                        and target_module != source_module
+                    ):
+                        edges.add((source_module, target_module))
+                continue
+
+            target_module = batch_module_for(imported_module)
+            if target_module is not None and target_module != source_module:
+                edges.add((source_module, target_module))
+
+    return edges
+
+
+def test_batch_modules_are_acyclic():
+    """Batch modules should not form internal import cycles."""
+    cycle = _cycle_from_edges(_batch_module_import_edges())
 
     assert cycle is None
 

@@ -388,21 +388,38 @@ def test_cli_package_does_not_reexport_cli_apis():
     assert violations == []
 
 
-def test_cli_argument_parser_uses_subcommand_parser_module():
-    """Argument parsing should not own reusable subcommand construction."""
+def test_cli_subcommand_modules_use_subcommand_parser_module():
+    """Subcommand registration should own reusable parser construction."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
     subcommand_parser_path = SRC_ROOT / "cli" / "subcommand_parser.py"
+    registration_paths = (
+        SRC_ROOT / "cli" / "asset_subcommands.py",
+        SRC_ROOT / "cli" / "batch_subcommands.py",
+        SRC_ROOT / "cli" / "file_blocking_subcommands.py",
+        SRC_ROOT / "cli" / "fixup_subcommands.py",
+        SRC_ROOT / "cli" / "selection_subcommands.py",
+        SRC_ROOT / "cli" / "session_subcommands.py",
+        SRC_ROOT / "cli" / "tui_subcommands.py",
+    )
     argument_parser_text = argument_parser_path.read_text()
     argument_parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    registration_imports = {
+        path: {imported_module for imported_module, _node in _import_from_nodes(path)}
+        for path in registration_paths
     }
     subcommand_parser = __import__(
         "git_stage_batch.cli.subcommand_parser",
         fromlist=["subcommand_parser"],
     )
 
-    assert "git_stage_batch.cli.subcommand_parser" in argument_parser_imports
+    assert "git_stage_batch.cli.subcommand_parser" not in argument_parser_imports
+    assert all(
+        "git_stage_batch.cli.subcommand_parser" in imports
+        for imports in registration_imports.values()
+    )
     assert "add_subcommand_parser" in vars(subcommand_parser)
     assert "def _add_subcommand_parser" not in argument_parser_text
     assert subcommand_parser_path.exists()
@@ -449,6 +466,31 @@ def test_cli_argument_parser_delegates_completion_subcommand_registration():
     assert "add_completion_subcommand" in vars(completion)
     assert "command_complete_files" in vars(completion)
     assert "__complete-files" not in argument_parser_text
+
+
+def test_cli_argument_parser_delegates_interactive_subcommand_registration():
+    """Argument parsing should not own interactive parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    tui_subcommands_path = SRC_ROOT / "cli" / "tui_subcommands.py"
+    argument_parser_text = argument_parser_path.read_text()
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    tui_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(tui_subcommands_path)
+    }
+    tui_subcommands = __import__(
+        "git_stage_batch.cli.tui_subcommands",
+        fromlist=["tui_subcommands"],
+    )
+
+    assert "add_interactive_subcommand" in vars(tui_subcommands)
+    assert "git_stage_batch.cli.tui_subcommands" in argument_parser_imports
+    assert "git_stage_batch.cli.subcommand_parser" not in argument_parser_imports
+    assert "git_stage_batch.cli.subcommand_parser" in tui_subcommands_imports
+    assert "interactive_command=True" not in argument_parser_text
 
 
 def test_cli_argument_parser_delegates_sift_subcommand_registration():

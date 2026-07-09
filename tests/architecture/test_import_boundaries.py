@@ -2527,6 +2527,20 @@ def test_argument_parser_delegates_multi_file_action_flow():
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
     }
+    dispatch_paths = [
+        SRC_ROOT / "cli" / "apply_dispatch.py",
+        SRC_ROOT / "cli" / "discard_dispatch.py",
+        SRC_ROOT / "cli" / "include_dispatch.py",
+        SRC_ROOT / "cli" / "reset_dispatch.py",
+        SRC_ROOT / "cli" / "skip_dispatch.py",
+    ]
+    dispatch_imports = {
+        path: {
+            imported_module
+            for imported_module, _node in _import_from_nodes(path)
+        }
+        for path in dispatch_paths
+    }
     helper_path = (
         SRC_ROOT / "commands" / "file_scope" / "multi_file_actions.py"
     )
@@ -2539,7 +2553,11 @@ def test_argument_parser_delegates_multi_file_action_flow():
     assert "git_stage_batch.data.undo" not in parser_imports
     assert (
         "git_stage_batch.commands.file_scope.multi_file_actions"
-        in parser_imports
+        not in parser_imports
+    )
+    assert all(
+        "git_stage_batch.commands.file_scope.multi_file_actions" in imports
+        for imports in dispatch_imports.values()
     )
     assert "git_stage_batch.data.hunk_tracking" in helper_imports
     assert "git_stage_batch.data.undo" in helper_imports
@@ -2841,6 +2859,66 @@ def test_argument_parser_delegates_include_dispatch():
     assert "include --to" not in parser_text
 
 
+def test_argument_parser_delegates_discard_dispatch():
+    """Parser construction should not own discard workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    discard_dispatch_path = SRC_ROOT / "cli" / "discard_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    discard_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(discard_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    discard_dispatch = __import__(
+        "git_stage_batch.cli.discard_dispatch",
+        fromlist=["discard_dispatch"],
+    )
+    discard_runtime_imports = {
+        "git_stage_batch.commands.discard",
+        "git_stage_batch.commands.discard_from",
+        "git_stage_batch.commands.file_scope.multi_file_actions",
+    }
+    discard_command_names = {
+        "command_discard",
+        "command_discard_file",
+        "command_discard_file_as",
+        "command_discard_from_batch",
+        "command_discard_line",
+        "command_discard_line_as_to_batch",
+        "command_discard_to_batch",
+        "discard_to_batch_each_resolved_file",
+    }
+
+    assert "git_stage_batch.cli.discard_dispatch" in parser_imports
+    assert "git_stage_batch.commands.discard" not in parser_imports
+    assert "git_stage_batch.commands.discard_from" not in parser_imports
+    assert discard_runtime_imports <= discard_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in discard_dispatch_imports
+    assert "git_stage_batch.cli.replacement_input" in discard_dispatch_imports
+    assert "dispatch_discard_command" in vars(discard_dispatch)
+    assert "_dispatch_discard_replacement" in vars(discard_dispatch)
+    assert discard_command_names.isdisjoint(vars(parser))
+    assert "def dispatch_discard(" not in parser_text
+    assert "discard_to_batch_each_resolved_file(" not in parser_text
+    assert "command_discard_from_batch(" not in parser_text
+    assert "command_discard_to_batch(" not in parser_text
+    assert "command_discard_line_as_to_batch(" not in parser_text
+    assert "command_discard_line(" not in parser_text
+    assert "command_discard_file_as(" not in parser_text
+    assert "command_discard_file(" not in parser_text
+    assert "command_discard(" not in parser_text
+    assert "discard --from" not in parser_text
+    assert "discard --to" not in parser_text
+    assert "git_stage_batch.exceptions" not in parser_imports
+
+
 def test_argument_parser_delegates_replacement_input_decoding():
     """Parser branches should not own replacement payload decoding."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -2854,6 +2932,18 @@ def test_argument_parser_delegates_replacement_input_decoding():
         imported_module
         for imported_module, _node in _import_from_nodes(replacement_input_path)
     }
+    dispatch_paths = [
+        SRC_ROOT / "cli" / "discard_dispatch.py",
+        SRC_ROOT / "cli" / "include_dispatch.py",
+        SRC_ROOT / "cli" / "show_dispatch.py",
+    ]
+    dispatch_imports = {
+        path: {
+            imported_module
+            for imported_module, _node in _import_from_nodes(path)
+        }
+        for path in dispatch_paths
+    }
     parser = __import__(
         "git_stage_batch.cli.argument_parser",
         fromlist=["argument_parser"],
@@ -2863,10 +2953,15 @@ def test_argument_parser_delegates_replacement_input_decoding():
         fromlist=["replacement_input"],
     )
 
-    assert "git_stage_batch.cli.replacement_input" in parser_imports
+    assert "git_stage_batch.cli.replacement_input" not in parser_imports
+    assert all(
+        "git_stage_batch.cli.replacement_input" in imports
+        for imports in dispatch_imports.values()
+    )
     assert "git_stage_batch.core.replacement" not in parser_imports
     assert "git_stage_batch.core.replacement" in replacement_input_imports
     assert "resolve_replacement_text" in vars(replacement_input)
+    assert "resolve_replacement_text" not in vars(parser)
     assert "_resolve_replacement_text" not in vars(parser)
     assert "ReplacementText" not in parser_text
     assert "stdin.buffer.read" not in parser_text
@@ -5178,7 +5273,9 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.cli.include_dispatch" in imported_modules
     assert "git_stage_batch.commands.include" not in imported_modules
     assert "git_stage_batch.commands.include_from" not in imported_modules
-    assert "git_stage_batch.commands.discard" in imported_modules
+    assert "git_stage_batch.cli.discard_dispatch" in imported_modules
+    assert "git_stage_batch.commands.discard" not in imported_modules
+    assert "git_stage_batch.commands.discard_from" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.commands.status" in imported_modules
 

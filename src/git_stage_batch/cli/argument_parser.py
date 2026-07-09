@@ -26,7 +26,6 @@ from ..commands.discard import (
 )
 from ..commands.discard_from import command_discard_from_batch
 from ..commands.drop import command_drop_batch
-from ..core.replacement import ReplacementText
 from ..commands.file_scope.multi_file_actions import (
     discard_to_batch_each_resolved_file,
     include_each_resolved_file,
@@ -71,6 +70,7 @@ from .file_scope import (
 )
 from .git_help import GitHelpArgumentParser
 from .quick_actions import expand_quick_actions
+from .replacement_input import resolve_replacement_text
 
 
 def _add_subcommand_parser(
@@ -162,23 +162,6 @@ def _normalize_parsed_file_arguments(args: argparse.Namespace) -> None:
         args.file = file_values[0]
     else:
         args.file = file_values
-
-
-def _resolve_replacement_text(args: argparse.Namespace) -> str | None:
-    """Return replacement text from `--as` or exact stdin content."""
-    if getattr(args, "as_text", None) is not None and getattr(args, "as_stdin", False):
-        raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-    if getattr(args, "as_stdin", False):
-        data = sys.stdin.buffer.read()
-        return ReplacementText(
-            data.decode("utf-8", errors="surrogateescape"),
-            data=data,
-            exact=True,
-        )
-    as_text = getattr(args, "as_text", None)
-    if as_text is not None:
-        return ReplacementText(as_text, exact=True)
-    return None
 
 
 def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Namespace | None:
@@ -407,7 +390,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.porcelain:
                 raise CommandError(_("Cannot use `show --page` with `--porcelain`."))
         if args.from_batch:
-            replacement_text = _resolve_replacement_text(args) if replacement_requested else None
+            replacement_text = resolve_replacement_text(args) if replacement_requested else None
             show_kwargs = {"page": args.page}
             if args.porcelain:
                 show_kwargs["porcelain"] = args.porcelain
@@ -563,7 +546,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     raise CommandError(_("`--no-edge-overlap` only applies to live `include --line --as` operations."))
                 resolved_batch_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
                 resolved_file = resolved_batch_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_include_from_batch(
                     args.from_batch,
                     args.line_ids,
@@ -574,7 +557,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.line_ids and not args.from_batch and not args.to_batch:
                 resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
                 resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_include_line_as(
                     args.line_ids,
                     replacement_text,
@@ -601,7 +584,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     raise CommandError(_("`--no-edge-overlap` requires `include --line --as`."))
                 if resolved_live_scope.is_multiple:
                     raise CommandError(_("Cannot use --as with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_include_file_as(
                     replacement_text,
                     file=resolved_live_scope.optional_file(),
@@ -774,7 +757,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.to_batch and args.line_ids and not args.from_batch:
                 resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
                 resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_discard_line_as_to_batch(
                     args.to_batch,
                     args.line_ids,
@@ -798,7 +781,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
                 if resolved_live_scope.is_multiple:
                     raise CommandError(_("Cannot use --as with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_discard_file_as(
                     replacement_text,
                     file=resolved_live_scope.optional_file(),

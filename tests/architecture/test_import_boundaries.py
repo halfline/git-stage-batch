@@ -1781,7 +1781,7 @@ def test_file_review_callers_use_model_builder():
     review_output_text = review_output_path.read_text()
     caller_paths = (
         SRC_ROOT / "commands" / "show.py",
-        SRC_ROOT / "commands" / "show_from.py",
+        SRC_ROOT / "commands" / "batch_source" / "file_display_action.py",
         SRC_ROOT / "output" / "file_review_list.py",
     )
     file_review_model_builder = __import__(
@@ -1809,12 +1809,16 @@ def test_file_review_callers_use_model_builder():
     assert "def build_file_review_model" not in review_output_text
     assert direct_model_builder_imports == {
         "src/git_stage_batch/commands/show.py": public_names,
-        "src/git_stage_batch/commands/show_from.py": public_names,
+        "src/git_stage_batch/commands/batch_source/file_display_action.py": (
+            public_names
+        ),
         "src/git_stage_batch/output/file_review_list.py": public_names,
     }
     assert old_renderer_imports == {
         "src/git_stage_batch/commands/show.py": set(),
-        "src/git_stage_batch/commands/show_from.py": set(),
+        "src/git_stage_batch/commands/batch_source/file_display_action.py": (
+            set()
+        ),
         "src/git_stage_batch/output/file_review_list.py": set(),
     }
 
@@ -1854,13 +1858,13 @@ def test_file_review_output_uses_action_selection_module():
     assert "def _selection_ids_for_display_ids" not in review_output_text
 
 
-def test_show_commands_use_file_review_state_builder():
-    """Show commands should not import review state assembly from rendering."""
+def test_show_file_display_uses_file_review_state_builder():
+    """Show file display should not import review state assembly from rendering."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
     show_paths = (
         SRC_ROOT / "commands" / "show.py",
-        SRC_ROOT / "commands" / "show_from.py",
+        SRC_ROOT / "commands" / "batch_source" / "file_display_action.py",
     )
     file_review_state_builder = __import__(
         "git_stage_batch.output.file_review_state_builder",
@@ -1892,11 +1896,15 @@ def test_show_commands_use_file_review_state_builder():
     assert "def resolve_default_review_pages" not in review_output_text
     assert direct_state_builder_imports == {
         "src/git_stage_batch/commands/show.py": public_names,
-        "src/git_stage_batch/commands/show_from.py": public_names,
+        "src/git_stage_batch/commands/batch_source/file_display_action.py": (
+            public_names
+        ),
     }
     assert old_renderer_imports == {
         "src/git_stage_batch/commands/show.py": set(),
-        "src/git_stage_batch/commands/show_from.py": set(),
+        "src/git_stage_batch/commands/batch_source/file_display_action.py": (
+            set()
+        ),
     }
 
 

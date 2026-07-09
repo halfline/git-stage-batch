@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from ..batch.operation_candidates import OperationCandidatePreview
 from ..i18n import _
 from ..utils.paths import get_context_lines
@@ -15,6 +13,7 @@ from .candidate_preview_commands import (
     show_candidate_command,
 )
 from .candidate_preview_diff import print_candidate_buffer_diff
+from . import candidate_preview_porcelain
 from .colors import Colors
 
 
@@ -166,50 +165,10 @@ def render_operation_candidate_overview(
     ]
 
     if porcelain:
-        print(json.dumps({
-            "status": "candidates",
-            "changed": False,
-            "batch": first.batch_name,
-            "selector": {
-                "operation": first.operation,
-                "count": len(previews),
-            },
-            "scope": {
-                "file": first.file_path,
-            },
-            "candidates": [
-                {
-                    "ordinal": preview.ordinal,
-                    "selector": candidate_selector_text(
-                        preview.batch_name,
-                        preview.operation,
-                        preview.ordinal,
-                    ),
-                    "commands": {
-                        "preview": show_candidate_command(
-                            preview,
-                            preview.ordinal,
-                        ),
-                        "execute": (
-                            execute_candidate_command(preview)
-                        ),
-                    },
-                    "targets": [
-                        {
-                            "target": target.target,
-                            "summary": summary.title,
-                            "context": list(
-                                candidate_preview_snippets.plain_candidate_snippet_lines(
-                                    summary.lines
-                                )
-                            ),
-                        }
-                        for target, summary in zip(preview.targets, summaries)
-                    ],
-                }
-                for preview, summaries in zip(previews, candidate_summaries)
-            ],
-        }, sort_keys=True))
+        candidate_preview_porcelain.print_operation_candidate_overview_porcelain(
+            previews,
+            candidate_summaries,
+        )
         return previews
 
     targets, verb = candidate_preview_summary.candidate_overview_subject(previews)
@@ -291,30 +250,7 @@ def render_operation_candidate(
     note: str | None,
 ) -> None:
     if porcelain:
-        print(json.dumps({
-            "status": "candidate",
-            "changed": False,
-            "batch": preview.batch_name,
-            "selector": {
-                "operation": preview.operation,
-                "ordinal": preview.ordinal,
-                "count": preview.count,
-                "id": preview.candidate_id,
-            },
-            "scope": {
-                "file": preview.file_path,
-            },
-            "targets": [
-                {
-                    "target": target.target,
-                    "file": target.file_path,
-                    "summary": target.summary,
-                    "resolution_ordinal": target.resolution_ordinal,
-                    "resolution_count": target.resolution_count,
-                }
-                for target in preview.targets
-            ],
-        }, sort_keys=True))
+        candidate_preview_porcelain.print_operation_candidate_porcelain(preview)
         return
 
     _print_candidate_detail_header(preview, note=note)

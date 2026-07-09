@@ -11432,9 +11432,7 @@ def test_output_owns_operation_candidate_preview_rendering():
         "render_operation_candidate_overview",
     }
     renderer_helper_names = {
-        "_execute_candidate_command",
         "_print_candidate_buffer_diff",
-        "_show_candidate_command",
     }
     summary_names = {
         "CandidateSnippetLine",

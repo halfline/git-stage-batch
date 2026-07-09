@@ -18,11 +18,7 @@ from ..batch.selection import require_line_selection_in_view
 from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.line_id_files import read_line_ids_file, write_line_ids_file
-from ..data.hunk_tracking import (
-    fetch_next_change,
-)
 from ..data.selected_change.loading import (
-    load_selected_change,
     require_selected_hunk,
 )
 from ..data.selected_change.store import (
@@ -79,6 +75,7 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_processed_skip_ids_file_path,
 )
+from .selection import selected_change_skipping as _selected_change_skipping
 from .selection.action_completion import finish_selected_change_action
 
 
@@ -105,110 +102,10 @@ def command_skip(
         command_skip_file("", auto_advance=auto_advance)
         return
 
-    item = load_selected_change()
-    if item is None:
-        try:
-            item = fetch_next_change()
-        except NoMoreHunks:
-            if not quiet:
-                print(_("No more hunks to process."), file=sys.stderr)
-            return
-    with undo_checkpoint("skip"):
-        # Read cached hash
-        patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-
-        # Handle based on item type
-        if isinstance(item, RenameChange):
-            blocklist_path = get_block_list_file_path()
-            append_lines_to_file(blocklist_path, [patch_hash])
-            record_rename_hunk_skipped(item, patch_hash)
-
-            if not quiet:
-                print(
-                    _("✓ Rename skipped: {old} -> {new}").format(
-                        old=item.old_path,
-                        new=item.new_path,
-                    ),
-                    file=sys.stderr,
-                )
-
-            finish_selected_change_action(
-                quiet=quiet,
-                auto_advance=auto_advance,
-            )
-            return
-
-        if isinstance(item, TextFileDeletionChange):
-            blocklist_path = get_block_list_file_path()
-            append_lines_to_file(blocklist_path, [patch_hash])
-            record_text_deletion_hunk_skipped(item, patch_hash)
-
-            if not quiet:
-                print(_("✓ Text file deletion skipped: {file}").format(file=item.path()), file=sys.stderr)
-
-            finish_selected_change_action(
-                quiet=quiet,
-                auto_advance=auto_advance,
-            )
-            return
-
-        if isinstance(item, GitlinkChange):
-            blocklist_path = get_block_list_file_path()
-            append_lines_to_file(blocklist_path, [patch_hash])
-            record_gitlink_hunk_skipped(item, patch_hash)
-
-            if not quiet:
-                print(
-                    _("✓ Submodule pointer {desc} skipped: {file}").format(
-                        desc=item.change_type,
-                        file=item.path(),
-                    ),
-                    file=sys.stderr,
-                )
-
-            finish_selected_change_action(
-                quiet=quiet,
-                auto_advance=auto_advance,
-            )
-            return
-
-        if isinstance(item, BinaryFileChange):
-            # Binary file - just add to blocklist
-            file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
-
-            # Add hash to blocklist (without staging)
-            blocklist_path = get_block_list_file_path()
-            append_lines_to_file(blocklist_path, [patch_hash])
-
-            record_binary_hunk_skipped(item, patch_hash)
-
-            if not quiet:
-                change_desc = "added" if item.is_new_file() else ("deleted" if item.is_deleted_file() else "modified")
-                print(_("✓ Binary file {desc} skipped: {file}").format(desc=change_desc, file=file_path), file=sys.stderr)
-
-            finish_selected_change_action(
-                quiet=quiet,
-                auto_advance=auto_advance,
-            )
-            return
-
-        # Text hunk - item is LineLevelChange here
-        filename = item.path
-
-        # Add hash to blocklist (without staging)
-        blocklist_path = get_block_list_file_path()
-        append_lines_to_file(blocklist_path, [patch_hash])
-
-        # Record for progress tracking
-        record_hunk_skipped(item, patch_hash)
-
-        if not quiet:
-            print(_("✓ Hunk skipped from {file}").format(file=filename), file=sys.stderr)
-
-        finish_selected_change_action(
-            quiet=quiet,
-            auto_advance=auto_advance,
-        )
+    _selected_change_skipping.skip_selected_change(
+        quiet=quiet,
+        auto_advance=auto_advance,
+    )
 
 
 def command_skip_file(

@@ -32,6 +32,11 @@ from .realized_entries import (
     _entry_target_line_at,
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
+from .realized_boundaries import (
+    boundary_choices_after_source_line as _boundary_choices_for_source_line,
+    find_boundary_after_source_line as _locate_boundary_after_source_line,
+    find_realization_fallback_boundary as _realization_fallback_boundary,
+)
 from ..core.line_selection import LineRanges, LineSelection
 from ..core.buffer import (
     LineBuffer,
@@ -883,11 +888,11 @@ def _apply_absence_constraints(
 
         # Find boundary (fails if ambiguous or missing - appropriate for both modes)
         try:
-            boundary = _find_boundary_after_source_line(result, claim.anchor_line)
+            boundary = _locate_boundary_after_source_line(result, claim.anchor_line)
         except _MissingAnchorError:
             if strict:
                 raise
-            boundary = _find_realization_fallback_boundary(result, claim.anchor_line)
+            boundary = _realization_fallback_boundary(result, claim.anchor_line)
 
         old_result = result
         result = suppress_fn(result, boundary, forbidden_sequence)
@@ -997,151 +1002,6 @@ def satisfy_constraints(
     except Exception:
         realized_entries.close()
         raise
-
-
-def _find_realization_fallback_boundary(
-    entries: Sequence[_RealizedEntry],
-    source_line: int | None
-) -> int:
-    """Find a lenient boundary for realization when an anchor is absent.
-
-    Realized batch content may intentionally omit unclaimed source-only lines,
-    and earlier absence constraints may remove entries that carried later anchor
-    provenance. In that storage/display path, fall back to the nearest earlier
-    realized source line and let exact sequence matching decide whether anything
-    should be suppressed.
-    """
-    if source_line is None:
-        return 0
-
-    prior_source_line: int | None = None
-    if isinstance(entries, _RealizedEntries):
-        for run in entries.provenance_runs():
-            if run.source_start == 0:
-                continue
-            run_length = run.dest_end - run.dest_start
-            run_source_end = run.source_start + run_length
-            if run.source_start >= source_line:
-                continue
-            candidate = min(source_line - 1, run_source_end - 1)
-            if candidate >= run.source_start:
-                prior_source_line = max(prior_source_line or candidate, candidate)
-    else:
-        for index in range(len(entries)):
-            entry_source_line = _entry_source_line_at(entries, index)
-            if entry_source_line is not None and entry_source_line < source_line:
-                prior_source_line = max(
-                    prior_source_line or entry_source_line,
-                    entry_source_line,
-                )
-
-    if prior_source_line is None:
-        return 0
-
-    return _find_boundary_after_source_line(entries, prior_source_line)
-
-
-def _find_boundary_after_source_line(
-    entries: Sequence[_RealizedEntry],
-    source_line: int | None
-) -> int:
-    """Find the index representing the boundary after a source line.
-
-    The boundary is the position where content anchored "after source line N"
-    would appear in the realized output.
-
-    This is strict about ambiguity: if multiple distinct occurrences of the
-    same source line exist (e.g., from duplicates or working tree extras),
-    we verify there is exactly one claimed occurrence to use as the anchor.
-
-    Args:
-        entries: Realized entries with source provenance
-        source_line: Anchor line (1-indexed), or None for start-of-file
-
-    Returns:
-        Index in entries representing the boundary (0 = start of file)
-
-    Raises:
-        MissingAnchorError: If anchor line not present in realized content
-        AmbiguousAnchorError: If boundary cannot be determined uniquely
-    """
-    if source_line is None:
-        return 0
-
-    matching_indices = []
-    claimed_indices = []
-
-    if isinstance(entries, _RealizedEntries):
-        for run in entries.provenance_runs():
-            if run.source_start == 0:
-                continue
-            run_length = run.dest_end - run.dest_start
-            if not run.source_start <= source_line < run.source_start + run_length:
-                continue
-            index = run.dest_start + (source_line - run.source_start)
-            matching_indices.append(index)
-            if run.is_claimed:
-                claimed_indices.append(index)
-    else:
-        for i in range(len(entries)):
-            if _entry_source_line_at(entries, i) == source_line:
-                matching_indices.append(i)
-                if _entry_is_claimed_at(entries, i):
-                    claimed_indices.append(i)
-
-    if not matching_indices:
-        raise _MissingAnchorError(
-            _("Cannot locate anchor boundary after source line {line}: "
-              "anchor not present in realized content").format(line=source_line)
-        )
-
-    if len(matching_indices) > 1:
-        if len(claimed_indices) == 1:
-            return claimed_indices[0] + 1
-        elif len(claimed_indices) == 0:
-            raise _AmbiguousAnchorError(
-                _("Anchor ambiguity: source line {line} appears {count} times "
-                  "in realized content but none are claimed").format(
-                    line=source_line, count=len(matching_indices))
-            )
-        else:
-            raise _AmbiguousAnchorError(
-                _("Anchor ambiguity: source line {line} claimed {count} times").format(
-                    line=source_line, count=len(claimed_indices))
-            )
-
-    return matching_indices[0] + 1
-
-
-def _boundary_choices_after_source_line(
-    entries: Sequence[_RealizedEntry],
-    source_line: int | None,
-) -> tuple[int, ...]:
-    """Return all concrete boundary positions after a source line."""
-    if source_line is None:
-        return (0,)
-
-    matching_indices: list[int] = []
-    if isinstance(entries, _RealizedEntries):
-        for run in entries.provenance_runs():
-            if run.source_start == 0:
-                continue
-            run_length = run.dest_end - run.dest_start
-            if not run.source_start <= source_line < run.source_start + run_length:
-                continue
-            matching_indices.append(run.dest_start + (source_line - run.source_start))
-    else:
-        for index in range(len(entries)):
-            if _entry_source_line_at(entries, index) == source_line:
-                matching_indices.append(index)
-
-    if not matching_indices:
-        raise _MissingAnchorError(
-            _("Cannot locate anchor boundary after source line {line}: "
-              "anchor not present in realized content").format(line=source_line)
-        )
-
-    return tuple(index + 1 for index in matching_indices)
 
 
 def _absence_ambiguity_key(
@@ -1309,7 +1169,7 @@ def _absence_choices_for_claim(
         seen.add(position)
         positions.append((position, explanation))
 
-    for boundary in _boundary_choices_after_source_line(entries, anchor_line):
+    for boundary in _boundary_choices_for_source_line(entries, anchor_line):
         add_position(boundary, _("deletion content appears at the anchored boundary"))
         after_claimed = _position_after_claimed_insertions_at_boundary(entries, boundary)
         if after_claimed != boundary:
@@ -1321,7 +1181,7 @@ def _absence_choices_for_claim(
     if len(positions) <= 1:
         for position in iter_sequence_occurrences_nearby(
             entries,
-            _boundary_choices_after_source_line(entries, anchor_line)[0],
+            _boundary_choices_for_source_line(entries, anchor_line)[0],
             forbidden_sequence,
             window=20,
             max_results=(max_results or _MERGE_CANDIDATE_CAP) + 1,
@@ -2891,7 +2751,7 @@ def _restore_absence_constraints(
 
     for claim in deletion_claims:
         try:
-            boundary = _find_boundary_after_source_line(result, claim.anchor_line)
+            boundary = _locate_boundary_after_source_line(result, claim.anchor_line)
         except _MissingAnchorError:
             continue
         except _AmbiguousAnchorError:

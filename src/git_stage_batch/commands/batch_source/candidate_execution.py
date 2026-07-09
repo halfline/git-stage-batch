@@ -6,7 +6,7 @@ import sys
 
 from . import candidate_materialization as _candidate_materialization
 from . import text_file_actions as _text_file_actions
-from ...batch.operation_candidates import clear_candidate_preview_state_for_file
+from ...batch.operation_candidate_state import clear_candidate_preview_state_for_file
 from ...core.replacement import ReplacementPayload
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo import undo_checkpoint

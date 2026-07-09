@@ -196,7 +196,7 @@ class TestMatchLines:
         assert mapping.get_target_line_from_source_line(3) == 4
         assert mapping.get_source_line_from_target_line(2) is None
 
-    def test_acquires_editor_buffer_lines(self):
+    def test_acquires_line_buffer_lines(self):
         """LineBuffer inputs are matched through scoped line acquisition."""
         with (
             _IndexGuardedLineBuffer.from_bytes(
@@ -213,7 +213,7 @@ class TestMatchLines:
         assert mapping.get_target_line_from_source_line(3) == 4
         assert mapping.get_source_line_from_target_line(2) is None
 
-    def test_acquires_normalized_editor_buffer_lines(self):
+    def test_acquires_normalized_line_buffer_lines(self):
         """Normalized LineBuffer inputs forward scoped acquisition."""
         with (
             _IndexGuardedLineBuffer.from_bytes(
@@ -769,7 +769,7 @@ class TestMergeLineSequences:
         ) as result:
             assert result.to_bytes() == b"line1\r\nold\r\nline3\r\n"
 
-    def test_merge_chunks_acquire_normalized_editor_buffer_lines(self):
+    def test_merge_chunks_acquire_normalized_line_buffer_lines(self):
         """Merge realization uses scoped normalized line acquisition."""
         with (
             _IndexGuardedLineBuffer.from_bytes(
@@ -792,7 +792,7 @@ class TestMergeLineSequences:
 
         assert result == b"line1\nline2\nline3\n"
 
-    def test_discard_chunks_acquire_normalized_editor_buffer_lines(self):
+    def test_discard_chunks_acquire_normalized_line_buffer_lines(self):
         """Discard realization uses scoped normalized line acquisition."""
         with (
             _IndexGuardedLineBuffer.from_bytes(

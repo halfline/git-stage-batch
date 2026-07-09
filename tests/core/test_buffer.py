@@ -26,7 +26,7 @@ class _CopyFailingBytearray(bytearray):
         raise AssertionError("chunk should stream without being copied")
 
 
-def test_editor_buffer_indexes_in_memory_lines():
+def test_line_buffer_indexes_in_memory_lines():
     """In-memory buffer exposes Git-coordinate byte lines by index."""
     buffer = LineBuffer.from_bytes(b"one\ntwo\r\nthree\rfour")
 
@@ -39,7 +39,7 @@ def test_editor_buffer_indexes_in_memory_lines():
     assert buffer[1:3] == [b"two\r\n", b"three\rfour"]
 
 
-def test_editor_buffer_slices_are_lazy_sequences():
+def test_line_buffer_slices_are_lazy_sequences():
     """Buffer slices expose indexed views without materializing lists."""
     buffer = LineBuffer.from_bytes(b"zero\none\ntwo\nthree\n")
 
@@ -59,7 +59,7 @@ def test_editor_buffer_slices_are_lazy_sequences():
     assert list(nested) == [b"two\n", b"three\n"]
 
 
-def test_editor_buffer_acquires_scoped_line_views():
+def test_line_buffer_acquires_scoped_line_views():
     """Acquired line sequences expose bytes-compatible scoped views."""
     with LineBuffer.from_bytes(b"alpha\nbeta\r\n") as buffer:
         with buffer.acquire_lines() as lines:
@@ -83,7 +83,7 @@ def test_editor_buffer_acquires_scoped_line_views():
             assert list(lines[0:2]) == [b"alpha\n", b"beta\r\n"]
 
 
-def test_editor_buffer_acquires_single_scoped_line_view():
+def test_line_buffer_acquires_single_scoped_line_view():
     """Single-line acquisition supports negative indexes."""
     with LineBuffer.from_bytes(b"alpha\nbeta\n") as buffer:
         with buffer.acquire_line(-1) as line:
@@ -91,7 +91,7 @@ def test_editor_buffer_acquires_single_scoped_line_view():
             assert line == b"beta\n"
 
 
-def test_editor_buffer_slices_acquire_scoped_line_views():
+def test_line_buffer_slices_acquire_scoped_line_views():
     """Buffer slices forward scoped line acquisition to their parent."""
     with LineBuffer.from_bytes(b"zero\none\ntwo\nthree\n") as buffer:
         sliced = buffer[-3:-1]
@@ -110,7 +110,7 @@ def test_editor_buffer_slices_acquire_scoped_line_views():
             bytes(first)
 
 
-def test_editor_buffer_line_views_use_acquisition_lifetime():
+def test_line_buffer_line_views_use_acquisition_lifetime():
     """Line views reject access after their acquisition scope closes."""
     with LineBuffer.from_bytes(b"alpha\n") as buffer:
         with buffer.acquire_line(0) as line:
@@ -124,7 +124,7 @@ def test_editor_buffer_line_views_use_acquisition_lifetime():
             hash(line)
 
 
-def test_editor_buffer_acquired_line_views_do_not_hold_mmap_exports(tmp_path):
+def test_line_buffer_acquired_line_views_do_not_hold_mmap_exports(tmp_path):
     """Acquired line views release temporary memoryviews before scope exit."""
     file_path = tmp_path / "buffer.txt"
     file_path.write_bytes(b"alpha\nbeta\n")
@@ -140,7 +140,7 @@ def test_editor_buffer_acquired_line_views_do_not_hold_mmap_exports(tmp_path):
         bytes(line)
 
 
-def test_editor_buffer_slice_uses_parent_lifetime():
+def test_line_buffer_slice_uses_parent_lifetime():
     """Buffer slices depend on the parent buffer remaining open."""
     buffer = LineBuffer.from_bytes(b"one\ntwo\n")
     sliced = buffer[0:1]
@@ -151,7 +151,7 @@ def test_editor_buffer_slice_uses_parent_lifetime():
         _ = sliced[0]
 
 
-def test_editor_buffer_iterates_byte_chunks():
+def test_line_buffer_iterates_byte_chunks():
     """Buffer exposes byte chunks without changing line indexing."""
     buffer = LineBuffer.from_bytes(b"alpha\nbeta\ngamma")
 
@@ -159,7 +159,7 @@ def test_editor_buffer_iterates_byte_chunks():
     assert buffer[1] == b"beta\n"
 
 
-def test_editor_buffer_handles_empty_buffer():
+def test_line_buffer_handles_empty_buffer():
     """Empty buffer has no byte lines."""
     buffer = LineBuffer.from_bytes(b"")
 
@@ -240,7 +240,7 @@ def test_buffer_matches_buffers():
         assert buffer_matches(left, right) is True
 
 
-def test_editor_buffer_uses_heap_for_files_smaller_than_memory_page(tmp_path):
+def test_line_buffer_uses_heap_for_files_smaller_than_memory_page(tmp_path):
     """Small file buffers stay on the Python heap."""
     file_path = tmp_path / "buffer.txt"
     file_path.write_bytes(b"alpha\nbeta\n")
@@ -254,7 +254,7 @@ def test_editor_buffer_uses_heap_for_files_smaller_than_memory_page(tmp_path):
         assert buffer[1] == b"beta\n"
 
 
-def test_editor_buffer_uses_mapped_storage_for_page_sized_files(tmp_path):
+def test_line_buffer_uses_mapped_storage_for_page_sized_files(tmp_path):
     """Page-sized file buffers use mapped storage."""
     data = b"alpha\n" + b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
     file_path = tmp_path / "buffer.txt"
@@ -267,7 +267,7 @@ def test_editor_buffer_uses_mapped_storage_for_page_sized_files(tmp_path):
         assert buffer[1] == b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
 
 
-def test_editor_buffer_skips_mapped_storage_for_empty_files(tmp_path):
+def test_line_buffer_skips_mapped_storage_for_empty_files(tmp_path):
     """Empty files do not use mapped storage but still expose an empty buffer."""
     file_path = tmp_path / "empty.txt"
     file_path.write_bytes(b"")
@@ -277,7 +277,7 @@ def test_editor_buffer_skips_mapped_storage_for_empty_files(tmp_path):
         assert len(buffer) == 0
 
 
-def test_editor_buffer_uses_heap_for_generated_chunks_smaller_than_page():
+def test_line_buffer_uses_heap_for_generated_chunks_smaller_than_page():
     """Small generated buffers stay on the Python heap."""
     chunks = iter([b"alpha\nbe", b"ta\n", memoryview(b"gamma")])
 
@@ -289,7 +289,7 @@ def test_editor_buffer_uses_heap_for_generated_chunks_smaller_than_page():
         assert buffer[2] == b"gamma"
 
 
-def test_editor_buffer_copies_small_generated_chunks_for_heap_storage():
+def test_line_buffer_copies_small_generated_chunks_for_heap_storage():
     """Small mutable generated chunks are copied before storage."""
     chunk = bytearray(b"alpha\n")
 
@@ -298,7 +298,7 @@ def test_editor_buffer_copies_small_generated_chunks_for_heap_storage():
         assert buffer.to_bytes() == b"alpha\n"
 
 
-def test_editor_buffer_spools_page_sized_generated_chunks_to_mapped_storage():
+def test_line_buffer_spools_page_sized_generated_chunks_to_mapped_storage():
     """Page-sized generated buffers are spooled to mapped storage."""
     prefix = b"alpha\nbeta\n"
     chunks = iter([
@@ -315,7 +315,7 @@ def test_editor_buffer_spools_page_sized_generated_chunks_to_mapped_storage():
         assert buffer[2] == b"x" * (mmap.PAGESIZE - len(prefix))
 
 
-def test_editor_buffer_streams_threshold_chunk_without_copying():
+def test_line_buffer_streams_threshold_chunk_without_copying():
     """The chunk that reaches the mapped-storage threshold streams directly."""
     prefix = b"alpha\n"
     threshold_chunk = _CopyFailingBytearray(
@@ -329,7 +329,7 @@ def test_editor_buffer_streams_threshold_chunk_without_copying():
         assert buffer[1] == bytes(bytearray(threshold_chunk))
 
 
-def test_editor_buffer_streams_remaining_large_chunks_without_copying():
+def test_line_buffer_streams_remaining_large_chunks_without_copying():
     """Chunks after the mapped-storage threshold stream directly."""
     threshold_chunk = b"x" * mmap.PAGESIZE
     remaining_chunk = _CopyFailingBytearray(b"omega\n")
@@ -340,20 +340,20 @@ def test_editor_buffer_streams_remaining_large_chunks_without_copying():
         assert buffer[0] == threshold_chunk + b"omega\n"
 
 
-def test_editor_buffer_handles_empty_generated_chunks():
+def test_line_buffer_handles_empty_generated_chunks():
     """Empty generated buffers have no byte lines."""
     with LineBuffer.from_chunks([]) as buffer:
         assert buffer.uses_mapped_storage is False
         assert len(buffer) == 0
 
 
-def test_editor_buffer_rejects_non_byte_chunks():
+def test_line_buffer_rejects_non_byte_chunks():
     """Generated buffers must yield bytes-like chunks."""
     with pytest.raises(TypeError, match="expected bytes-like object"):
         LineBuffer.from_chunks([b"ok\n", "not bytes"])
 
 
-def test_editor_buffer_rejects_non_positive_chunk_size():
+def test_line_buffer_rejects_non_positive_chunk_size():
     """Chunk iteration requires a positive chunk size."""
     buffer = LineBuffer.from_bytes(b"alpha")
 
@@ -361,7 +361,7 @@ def test_editor_buffer_rejects_non_positive_chunk_size():
         list(buffer.byte_chunks(0))
 
 
-def test_editor_buffer_close_is_idempotent(tmp_path):
+def test_line_buffer_close_is_idempotent(tmp_path):
     """Closed buffers reject later access."""
     file_path = tmp_path / "buffer.txt"
     file_path.write_bytes(b"alpha\n")

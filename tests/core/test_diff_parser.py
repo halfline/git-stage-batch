@@ -70,7 +70,7 @@ index abc123..def456 100644
         assert b"@@ -1,3 +1,3 @@" in patches[0].lines[2]
         assert b"@@ -10,3 +10,3 @@" in patches[1].lines[2]
 
-    def test_scoped_parser_uses_editor_buffers(self):
+    def test_scoped_parser_uses_line_buffers(self):
         """Test scoped parsing returns buffer-backed hunk payloads."""
         with acquire_unified_diff(_two_hunk_diff_lines()) as patches:
             patch = next(patches)

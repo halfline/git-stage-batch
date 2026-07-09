@@ -5007,6 +5007,54 @@ def test_batch_source_action_selection_owns_file_line_selection():
     }
 
 
+def test_batch_source_action_completion_owns_review_finalization():
+    """Shared apply/include review completion should live outside entries."""
+    action_completion = __import__(
+        "git_stage_batch.commands.batch_source.action_completion",
+        fromlist=["action_completion"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "finish_batch_source_action_review",
+    }
+    command_paths = {
+        apply_from_path,
+        include_from_path,
+    }
+    imports_action_completion = {
+        path: False
+        for path in command_paths
+    }
+    direct_review_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "action_completion" in imported_names
+            ):
+                imports_action_completion[path] = True
+            if imported_module == "git_stage_batch.data.file_review.state":
+                direct_review_imports[path] |= (
+                    imported_names & {"finish_review_scoped_line_action"}
+                )
+
+    assert public_names <= vars(action_completion).keys()
+    assert imports_action_completion == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_review_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+
+
 def test_batch_source_candidate_selectors_own_action_selector_validation():
     """Shared candidate selector validation should live outside action entries."""
     candidate_selectors = __import__(

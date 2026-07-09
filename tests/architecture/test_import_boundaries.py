@@ -165,20 +165,10 @@ def test_batch_package_stays_below_workflow_data():
         "git_stage_batch.batch.source_snapshots",
         fromlist=["source_snapshots"],
     )
-    try:
-        source_buffers = __import__(
-            "git_stage_batch.batch.source_buffers",
-            fromlist=["source_buffers"],
-        )
-    except ModuleNotFoundError:
-        source_buffers = source_snapshots
     public_snapshot_names = {
         "BatchSourceCommit",
         "create_batch_source_commit",
         "create_batch_source_commits",
-    }
-    public_buffer_names = {
-        "load_saved_session_file_as_buffer",
     }
     violations = []
 
@@ -195,7 +185,64 @@ def test_batch_package_stays_below_workflow_data():
 
     assert not old_source_path.exists()
     assert public_snapshot_names <= vars(source_snapshots).keys()
-    assert public_buffer_names <= vars(source_buffers).keys()
+    assert violations == []
+
+
+def test_batch_source_buffers_own_session_start_loading():
+    """Session-start buffer loading should live outside source snapshots."""
+    source_buffers = __import__(
+        "git_stage_batch.batch.source_buffers",
+        fromlist=["source_buffers"],
+    )
+    source_snapshots = __import__(
+        "git_stage_batch.batch.source_snapshots",
+        fromlist=["source_snapshots"],
+    )
+    source_buffers_path = SRC_ROOT / "batch" / "source_buffers.py"
+    source_snapshots_path = SRC_ROOT / "batch" / "source_snapshots.py"
+    public_names = {
+        "load_saved_session_file_as_buffer",
+        "read_session_file_buffers",
+    }
+    old_private_definitions = {
+        "def _read_session_file_buffers",
+    }
+    expected_imports = {
+        source_snapshots_path: public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(source_buffers).keys()
+    assert public_names.isdisjoint(vars(source_snapshots))
+
+    source_snapshots_text = source_snapshots_path.read_text()
+    assert "def load_saved_session_file_as_buffer" not in source_snapshots_text
+    for old_definition in old_private_definitions:
+        assert old_definition not in source_snapshots_text
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == source_buffers_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.source_snapshots":
+                stale_imports = imported_names & public_names
+                if stale_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(stale_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.source_buffers":
+                continue
+
+            imported_public_names |= imported_names & public_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
     assert violations == []
 
 

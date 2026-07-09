@@ -6,15 +6,13 @@ import shlex
 import sys
 from typing import Optional
 
-from .batch_source import candidate_preview_builders as _candidate_preview_builders
-from .batch_source import candidate_previews as _candidate_previews
+from .batch_source import candidate_preview_action as _candidate_preview_action
 from .batch_source import replacement_previews as _replacement_previews
 from ..batch.atomic_file_changes import (
     binary_change_from_batch_file_metadata,
     gitlink_change_from_batch_file_metadata,
 )
 from ..batch.metadata_validation import read_validated_batch_metadata
-from ..batch.operation_candidates import save_candidate_preview_state
 from ..core.replacement import ReplacementPayload
 from ..batch.selection import (
     resolve_batch_file_scope,
@@ -65,14 +63,9 @@ from ..output.file_review_list import (
     make_gitlink_file_review_list_entry,
     print_file_review_list,
 )
-from ..output.candidate_preview import (
-    render_operation_candidate,
-    render_operation_candidate_overview,
-)
 from ..exceptions import (
     exit_with_error,
     BatchMetadataError,
-    MergeError,
 )
 from ..i18n import _
 from ..core.models import LineLevelChange
@@ -145,63 +138,16 @@ def command_show_from_batch(
     )
 
     if selector.candidate_operation is not None:
-        if patterns is not None or len(files) != 1:
-            exit_with_error(_("Candidate preview requires exactly one file."))
-        file_path = list(files.keys())[0]
-        try:
-            previews = _candidate_preview_builders.build_batch_source_candidate_previews(
-                selector=selector,
-                files=files,
-                file_path=file_path,
-                selected_ids=selected_ids,
-                replacement_text=replacement_text,
-                translate_selection_ids=(
-                    translate_batch_file_gutter_ids_to_selection_ids
-                ),
-            )
-        except ValueError as e:
-            exit_with_error(str(e))
-        except MergeError as e:
-            exit_with_error(str(e))
-
-        if not previews:
-            exit_with_error(
-                _("Batch '{batch}' has no {operation} candidates for {file}.").format(
-                    batch=batch_name,
-                    operation=selector.candidate_operation,
-                    file=file_path,
-                )
-            )
-
-        if selector.candidate_ordinal is None:
-            try:
-                reviewed_previews = render_operation_candidate_overview(
-                    previews,
-                    porcelain=porcelain,
-                    note=metadata.get("note") or None,
-                )
-                for preview in reviewed_previews:
-                    save_candidate_preview_state(preview)
-            finally:
-                _candidate_previews.close_candidate_previews(previews)
-            return
-
-        try:
-            preview = _candidate_previews.require_candidate_preview_for_ordinal(
-                previews,
-                selector.candidate_ordinal,
-                batch_name=batch_name,
-                operation=selector.candidate_operation,
-                file_path=file_path,
-            )
-            render_operation_candidate(
-                preview,
-                porcelain=porcelain,
-                note=metadata.get("note") or None,
-            )
-            save_candidate_preview_state(preview)
-        finally:
-            _candidate_previews.close_candidate_previews(previews)
+        _candidate_preview_action.show_batch_source_candidate_preview(
+            selector=selector,
+            batch_name=batch_name,
+            files=files,
+            selected_ids=selected_ids,
+            replacement_text=replacement_text,
+            patterns=patterns,
+            porcelain=porcelain,
+            note=metadata.get("note") or None,
+        )
         return
 
     if porcelain:

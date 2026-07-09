@@ -1649,36 +1649,6 @@ def _line_slice_equals(
     )
 
 
-def _try_apply_baseline_absence_constraints(
-    working_lines: Sequence[bytes],
-    deletion_claims: list['AbsenceClaim'],
-) -> Iterator[bytes] | None:
-    """Apply absence-only constraints by exact baseline coordinates."""
-    if not deletion_claims:
-        return None
-
-    edits: list[_BaselineLineEdit] = []
-    for claim in deletion_claims:
-        if not claim.content_lines:
-            continue
-        forbidden_sequence = [
-            normalize_line_endings(line)
-            for line in claim.content_lines
-        ]
-        position = _baseline_reference_absence_position(
-            claim.baseline_reference,
-            working_lines,
-            len(forbidden_sequence),
-        )
-        if position is None:
-            return None
-        if not _line_slice_equals(working_lines, position, forbidden_sequence):
-            return None
-        edits.append((position, position + len(forbidden_sequence), []))
-
-    return _apply_non_overlapping_baseline_edits(working_lines, edits)
-
-
 def _baseline_removal_edit(
     claim: 'AbsenceClaim',
     working_lines: Sequence[bytes],

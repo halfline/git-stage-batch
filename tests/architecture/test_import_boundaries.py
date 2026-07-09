@@ -1024,6 +1024,62 @@ def test_git_repository_helpers_stay_out_of_git_command_module():
     assert violations == []
 
 
+def test_git_index_helpers_stay_out_of_git_command_module():
+    """Git index helpers should live beside the command wrapper."""
+    git_path = SRC_ROOT / "utils" / "git.py"
+    index_path = SRC_ROOT / "utils" / "git_index.py"
+    git_text = git_path.read_text()
+    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_index = __import__(
+        "git_stage_batch.utils.git_index",
+        fromlist=["git_index"],
+    )
+    public_names = {
+        "GitIndexEntryUpdate",
+        "temp_git_index",
+        "git_read_tree",
+        "git_update_index",
+        "git_refresh_index",
+        "git_update_gitlink",
+        "git_update_index_entries",
+        "git_write_tree",
+        "git_commit_tree",
+        "git_apply_to_index",
+        "git_add_paths",
+        "git_reset_paths",
+    }
+    violations = []
+
+    assert public_names <= vars(git_index).keys()
+    assert public_names.isdisjoint(vars(git_utils))
+
+    for public_name in public_names:
+        assert f"def {public_name}" not in git_text
+        assert f"class {public_name}" not in git_text
+
+    git_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_path)
+    }
+    assert "git_stage_batch.utils.git_index" not in git_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == index_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.git":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & public_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
     """Batch file selection caching should not depend on hunk navigation."""
     cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"
@@ -5258,13 +5314,17 @@ def test_batch_transform_sift_persistence_owns_file_writes():
             "normalized_text_change_type",
         },
         "git_stage_batch.utils.git": {
-            "create_git_blob",
+            "run_git_command",
+        },
+        "git_stage_batch.utils.git_index": {
             "git_commit_tree",
             "git_read_tree",
             "git_update_index",
             "git_write_tree",
-            "run_git_command",
             "temp_git_index",
+        },
+        "git_stage_batch.utils.git_object_io": {
+            "create_git_blob",
         },
         "git_stage_batch.utils.file_io": {
             "write_text_file_contents",

@@ -14,6 +14,9 @@ from .line_sequence_equality import line_slice_equals as _line_slice_matches
 from .line_mapping import LineMapping
 from .match import iter_exact_context_gaps, match_lines
 from .merge_candidates import MergeResolution as _MergeResolution
+from .presence_missing_claims import (
+    mapped_missing_source_lines as _mapped_missing_source_lines,
+)
 from .realized_entries import (
     RealizedEntry as _RealizedEntry,
     _RealizedEntries,
@@ -72,40 +75,6 @@ def apply_presence_constraints(
     finally:
         if owned_mapping is not None:
             owned_mapping.close()
-
-
-def _mapped_missing_source_lines(
-    source_lines: LineSelection,
-    source_line_count: int,
-    mapping: LineMapping,
-) -> LineRanges:
-    missing_ranges: list[tuple[int, int]] = []
-    current_start: int | None = None
-    current_end: int | None = None
-    source_selection = coerce_line_ranges(source_lines)
-
-    for start, end in source_selection.ranges():
-        for source_line in range(max(1, start), min(end, source_line_count) + 1):
-            if mapping.get_target_line_from_source_line(source_line) is not None:
-                if current_start is not None and current_end is not None:
-                    missing_ranges.append((current_start, current_end))
-                    current_start = None
-                    current_end = None
-                continue
-
-            if current_start is None:
-                current_start = source_line
-            current_end = source_line
-
-        if current_start is not None and current_end is not None:
-            missing_ranges.append((current_start, current_end))
-            current_start = None
-            current_end = None
-
-    if current_start is not None and current_end is not None:
-        missing_ranges.append((current_start, current_end))
-
-    return LineRanges.from_ranges(missing_ranges)
 
 
 def _apply_presence_constraints_with_mapping(

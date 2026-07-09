@@ -11,9 +11,11 @@ import pytest
 from git_stage_batch.batch.merge import (
     discard_batch_from_line_sequences_as_buffer,
     merge_batch_from_line_sequences_as_buffer,
-    _sequence_present_at_boundary,
 )
-from git_stage_batch.batch.realized_boundaries import find_boundary_after_source_line
+from git_stage_batch.batch.realized_boundaries import (
+    find_boundary_after_source_line,
+    sequence_present_at_boundary,
+)
 from git_stage_batch.batch.realized_entries import RealizedEntry
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.core.buffer import LineBuffer
@@ -60,7 +62,7 @@ def discard_batch(
 
 
 def test_sequence_present_normalizes_both_sides():
-    """_sequence_present_at_boundary() should normalize both entry content and sequence."""
+    """Boundary sequence checks should normalize entries and sequences."""
     # Create entries with CRLF
     entries = [
         RealizedEntry(content=b"line 1\r\n", source_line=1, is_claimed=True),
@@ -70,15 +72,15 @@ def test_sequence_present_normalizes_both_sides():
 
     # Sequence with LF should match entry with CRLF
     sequence_lf = [b"line 1\n", b"line 2\n"]
-    assert _sequence_present_at_boundary(entries, 0, sequence_lf) is True
+    assert sequence_present_at_boundary(entries, 0, sequence_lf) is True
 
     # Sequence with CRLF should match entry with LF
     sequence_crlf = [b"line 3\r\n"]
-    assert _sequence_present_at_boundary(entries, 2, sequence_crlf) is True
+    assert sequence_present_at_boundary(entries, 2, sequence_crlf) is True
 
     # Non-matching content should still return False
     sequence_wrong = [b"wrong line\n"]
-    assert _sequence_present_at_boundary(entries, 0, sequence_wrong) is False
+    assert sequence_present_at_boundary(entries, 0, sequence_wrong) is False
 
 
 def test_discard_missing_anchor_skipped_gracefully():

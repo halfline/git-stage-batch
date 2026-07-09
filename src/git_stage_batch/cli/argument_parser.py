@@ -30,7 +30,7 @@ from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .apply_dispatch import dispatch_apply_command
 from .asset_subcommands import add_install_assets_subcommand
 from .auto_advance_options import add_auto_advance_arguments
-from .completion import command_complete_files
+from .completion import add_completion_subcommand
 from .discard_dispatch import dispatch_discard_command
 from .file_arguments import add_file_argument, normalize_parsed_file_arguments
 from .file_scope import (
@@ -646,23 +646,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_install_assets_subcommand(subparsers)
 
-    parser_complete_files = subparsers.add_parser(
-        "__complete-files",
-        help=argparse.SUPPRESS,
-    )
-    parser_complete_files.add_argument(
-        "current_token",
-        nargs="?",
-        default="",
-    )
-    parser_complete_files.add_argument(
-        "--from",
-        dest="from_batch",
-        default=None,
-    )
-    parser_complete_files.set_defaults(
-        func=lambda args: command_complete_files(args.current_token, from_batch=args.from_batch)
-    )
+    add_completion_subcommand(subparsers)
 
     # Parse arguments, return None on failure
     try:

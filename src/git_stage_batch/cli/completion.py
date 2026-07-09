@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 from pathlib import PurePosixPath
 
@@ -110,3 +111,27 @@ def command_complete_files(current_token: str, *, from_batch: str | None = None)
     """Print completion candidates for --file/--files, one per line."""
     for candidate in list_file_completion_candidates(current_token, from_batch=from_batch):
         print(candidate)
+
+
+def add_completion_subcommand(subparsers) -> None:
+    """Register the hidden file-completion subcommand."""
+    parser_complete_files = subparsers.add_parser(
+        "__complete-files",
+        help=argparse.SUPPRESS,
+    )
+    parser_complete_files.add_argument(
+        "current_token",
+        nargs="?",
+        default="",
+    )
+    parser_complete_files.add_argument(
+        "--from",
+        dest="from_batch",
+        default=None,
+    )
+    parser_complete_files.set_defaults(
+        func=lambda args: command_complete_files(
+            args.current_token,
+            from_batch=args.from_batch,
+        )
+    )

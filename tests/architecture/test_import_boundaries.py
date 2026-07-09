@@ -7662,6 +7662,59 @@ def test_batch_source_file_list_action_owns_list_rendering():
     assert helper_imports <= helper_imported_names
 
 
+def test_batch_source_file_list_action_owns_show_flow():
+    """Show-from multi-file list flow should stay in batch-source support."""
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    helper_path = SRC_ROOT / "commands" / "batch_source" / "file_list_action.py"
+    action_dependency_names = {
+        "ReviewSource",
+        "binary_change_from_batch_file_metadata",
+        "clear_selected_change_state_files",
+        "gitlink_change_from_batch_file_metadata",
+        "make_binary_file_review_list_entry",
+        "make_file_review_list_entry",
+        "make_gitlink_file_review_list_entry",
+        "mark_selected_change_cleared_by_file_list",
+        "print_file_review_list",
+        "render_batch_file_display",
+    }
+
+    show_from_tree = ast.parse(
+        show_from_path.read_text(),
+        filename=str(show_from_path),
+    )
+    show_from_functions = {
+        node.name: node
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_names = {
+        node.id
+        for node in ast.walk(show_from_functions["command_show_from_batch"])
+        if isinstance(node, ast.Name)
+    }
+    command_attrs = {
+        node.attr
+        for node in ast.walk(show_from_functions["command_show_from_batch"])
+        if isinstance(node, ast.Attribute)
+    }
+    batch_source_imports = set()
+    for imported_module, node in _import_from_nodes(show_from_path):
+        if imported_module != "git_stage_batch.commands.batch_source":
+            continue
+        batch_source_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "file_list_action" in batch_source_imports
+    assert "show_batch_source_file_list" in command_attrs
+    assert action_dependency_names.isdisjoint(command_names)
+    assert action_dependency_names.isdisjoint(command_attrs)
+    assert action_dependency_names <= helper_imported_names
+
+
 def test_batch_owns_binary_file_content_loading():
     """Stored binary batch content loading should live in batch."""
     binary_file_content = __import__(

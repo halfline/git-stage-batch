@@ -248,7 +248,7 @@ def test_acquire_detached_batch_ownership_streams_buffer_content(monkeypatch):
         detached_content.to_bytes()
 
 
-def test_absence_signature_streams_editor_buffer_chunks(monkeypatch):
+def test_absence_signature_streams_line_buffer_chunks(monkeypatch):
     """Absence signatures should hash buffer chunks without line indexing."""
     def fail_getitem(self, index):
         raise AssertionError("absence signature should stream byte chunks")

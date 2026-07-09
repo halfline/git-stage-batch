@@ -91,7 +91,7 @@ def test_translate_lines_builds_selected_ranges_without_line_sets(monkeypatch):
     ]
 
 
-def test_translate_lines_stores_large_deletion_as_editor_buffer():
+def test_translate_lines_stores_large_deletion_as_line_buffer():
     """Large selected deletions should keep absence content buffer-backed."""
     lines = [
         LineEntry(

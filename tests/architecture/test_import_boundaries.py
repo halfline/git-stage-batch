@@ -8842,6 +8842,98 @@ def test_batch_ownership_line_entries_own_entry_helpers():
     assert violations == []
 
 
+def test_batch_ownership_references_own_baseline_boundaries():
+    """Baseline boundary metadata should have a dedicated ownership module."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    reference_path = SRC_ROOT / "batch" / "ownership_references.py"
+    if reference_path.exists():
+        ownership_references = __import__(
+            "git_stage_batch.batch.ownership_references",
+            fromlist=["ownership_references"],
+        )
+        expected_import_module = "git_stage_batch.batch.ownership_references"
+        expected_imports = {
+            SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
+                "BaselineReference",
+            },
+            SRC_ROOT / "batch" / "ownership.py": {
+                "BaselineReference",
+            },
+            SRC_ROOT / "batch" / "ownership_claims.py": {
+                "BaselineReference",
+            },
+            SRC_ROOT / "batch" / "ownership_line_entries.py": {
+                "BaselineReference",
+            },
+            SRC_ROOT / "batch" / "ownership_merging.py": {
+                "BaselineReference",
+            },
+            SRC_ROOT / "batch" / "ownership_translation.py": {
+                "BaselineReference",
+            },
+        }
+    else:
+        ownership_references = ownership
+        expected_import_module = "git_stage_batch.batch.ownership"
+        expected_imports = {
+            SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
+                "BaselineReference",
+            },
+            SRC_ROOT / "batch" / "ownership_claims.py": {
+                "BaselineReference",
+            },
+            SRC_ROOT / "batch" / "ownership_line_entries.py": {
+                "BaselineReference",
+            },
+            SRC_ROOT / "batch" / "ownership_merging.py": {
+                "BaselineReference",
+            },
+            SRC_ROOT / "batch" / "ownership_translation.py": {
+                "BaselineReference",
+            },
+        }
+    public_names = {"BaselineReference"}
+    violations = []
+
+    assert public_names <= vars(ownership_references).keys()
+    if reference_path.exists():
+        assert public_names.isdisjoint(vars(ownership))
+        assert "class BaselineReference" not in (
+            SRC_ROOT / "batch" / "ownership.py"
+        ).read_text()
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == reference_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                reference_path.exists()
+                and imported_module == "git_stage_batch.batch.ownership"
+            ):
+                stale_imports = imported_names & public_names
+                if stale_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(stale_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != expected_import_module:
+                continue
+
+            imported_public_names |= imported_names & public_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_ownership_claims_owns_line_range_helpers():
     """Ownership claim range helpers should live outside ownership metadata."""
     ownership = __import__(

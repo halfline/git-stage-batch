@@ -17,6 +17,7 @@ from .ownership_line_entries import (
     LineEntryContentSequence as _LineEntryContentSequence,
     ReplacementUnitBuilder as _ReplacementUnitBuilder,
     baseline_reference_for_old_line_range as _baseline_reference_for_old_line_range,
+    baseline_reference_for_presence_line as _baseline_reference_for_presence_line,
     old_line_content_by_number as _old_line_content_by_number,
     replacement_unit_origin_for_line_run as _replacement_unit_origin_for_line_run,
 )
@@ -96,14 +97,10 @@ def translate_hunk_selection_to_batch_ownership(
             selected_source_lines.add_line(new_line.source_line)
             if new_line.id is not None:
                 consumed_ids.append(new_line.id)
-            if new_line.has_baseline_reference_after:
-                presence_baseline_references[new_line.source_line] = BaselineReference(
-                    after_line=new_line.baseline_reference_after_line,
-                    after_content=new_line.baseline_reference_after_text_bytes,
-                    has_after_line=new_line.has_baseline_reference_after,
-                    before_line=new_line.baseline_reference_before_line,
-                    before_content=new_line.baseline_reference_before_text_bytes,
-                    has_before_line=new_line.has_baseline_reference_before,
+            baseline_reference = _baseline_reference_for_presence_line(new_line)
+            if baseline_reference is not None:
+                presence_baseline_references[new_line.source_line] = (
+                    baseline_reference
                 )
 
         absence_claims.append(
@@ -288,14 +285,10 @@ def translate_hunk_selection_to_batch_ownership(
                     )
 
                 claimed_source_lines.add_line(line.source_line)
-                if line.has_baseline_reference_after:
-                    presence_baseline_references[line.source_line] = BaselineReference(
-                        after_line=line.baseline_reference_after_line,
-                        after_content=line.baseline_reference_after_text_bytes,
-                        has_after_line=line.has_baseline_reference_after,
-                        before_line=line.baseline_reference_before_line,
-                        before_content=line.baseline_reference_before_text_bytes,
-                        has_before_line=line.has_baseline_reference_before,
+                baseline_reference = _baseline_reference_for_presence_line(line)
+                if baseline_reference is not None:
+                    presence_baseline_references[line.source_line] = (
+                        baseline_reference
                     )
 
                 if line.kind == "+":

@@ -76,6 +76,23 @@ def baseline_reference_for_old_line_range(
     )
 
 
+def baseline_reference_for_presence_line(
+    line: LineEntry,
+) -> BaselineReference | None:
+    """Return baseline metadata carried by a selected presence line."""
+    if not line.has_baseline_reference_after:
+        return None
+
+    return BaselineReference(
+        after_line=line.baseline_reference_after_line,
+        after_content=line.baseline_reference_after_text_bytes,
+        has_after_line=line.has_baseline_reference_after,
+        before_line=line.baseline_reference_before_line,
+        before_content=line.baseline_reference_before_text_bytes,
+        has_before_line=line.has_baseline_reference_before,
+    )
+
+
 def replacement_unit_origin_for_line_run(
     replacement_run: ReplacementLineRun,
     old_line_content: dict[int, bytes],

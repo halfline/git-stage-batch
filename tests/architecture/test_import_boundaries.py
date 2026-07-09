@@ -2379,6 +2379,68 @@ def test_file_review_records_stay_out_of_state_module():
     assert violations == []
 
 
+def test_file_review_enum_coercion_stays_in_records_module():
+    """File-review persisted enum coercion should stay with record types."""
+    records = __import__(
+        "git_stage_batch.data.file_review.records",
+        fromlist=["records"],
+    )
+    records_path = SRC_ROOT / "data" / "file_review" / "records.py"
+    consumer_expected_calls = {
+        SRC_ROOT / "data" / "file_review" / "action_commands.py": {
+            "coerce_review_action",
+        },
+        SRC_ROOT / "data" / "file_review" / "action_scope.py": {
+            "coerce_review_action",
+            "coerce_review_source",
+        },
+        SRC_ROOT / "data" / "file_review" / "freshness.py": {
+            "coerce_review_action",
+        },
+        SRC_ROOT / "data" / "file_review" / "selection_validation.py": {
+            "coerce_review_action",
+        },
+        SRC_ROOT / "data" / "file_review" / "state.py": {
+            "coerce_review_action",
+            "coerce_review_source",
+        },
+    }
+    public_names = {
+        "coerce_review_action",
+        "coerce_review_source",
+    }
+    forbidden_defs = {
+        "def _coerce_review_action",
+        "def _coerce_review_source",
+    }
+    violations = []
+
+    assert public_names <= vars(records).keys()
+
+    for path in (SRC_ROOT / "data" / "file_review").glob("*.py"):
+        if path == records_path:
+            continue
+        text = path.read_text()
+        for forbidden_def in forbidden_defs:
+            if forbidden_def in text:
+                relative_path = path.relative_to(REPO_ROOT)
+                violations.append(f"{relative_path} defines {forbidden_def}")
+
+    for path, expected_calls in consumer_expected_calls.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        record_calls = {
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "_records"
+        }
+        assert expected_calls <= record_calls
+
+    assert violations == []
+
+
 def test_file_review_output_does_not_import_hunk_navigation():
     """File-review output should not depend on hunk navigation."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"

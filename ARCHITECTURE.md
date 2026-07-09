@@ -242,6 +242,8 @@ Key modules:
   Reading batch metadata and refs.
 - `batch.ownership`
   Ownership data structures and ownership transformations.
+- `batch.absence_content`
+  Streaming builders for absence-claim content buffers.
 - `batch.merge`
   Structural merge and reverse-merge logic.
 - `batch.baseline_correspondence`

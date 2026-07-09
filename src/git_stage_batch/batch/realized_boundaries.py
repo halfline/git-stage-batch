@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from .realized_entries import (
     RealizedEntry as _RealizedEntry,
     _RealizedEntries,
+    _entry_content_at,
     _entry_is_claimed_at,
     _entry_source_line_at,
 )
@@ -15,6 +16,11 @@ from ..exceptions import (
     MissingAnchorError as _MissingAnchorError,
 )
 from ..i18n import _
+from ..utils.text import normalize_line_endings as _normalize_line_endings
+
+
+def _normalize_line_content(content: object) -> bytes:
+    return _normalize_line_endings(bytes(content))
 
 
 def find_realization_fallback_boundary(
@@ -140,3 +146,19 @@ def boundary_choices_after_source_line(
         )
 
     return tuple(index + 1 for index in matching_indices)
+
+
+def sequence_present_at_boundary(
+    entries: Sequence[_RealizedEntry],
+    boundary: int,
+    sequence: list[bytes],
+) -> bool:
+    """Return whether a byte sequence is present at an exact boundary."""
+    if boundary + len(sequence) > len(entries):
+        return False
+
+    return all(
+        _normalize_line_content(_entry_content_at(entries, boundary + i))
+        == _normalize_line_endings(sequence[i])
+        for i in range(len(sequence))
+    )

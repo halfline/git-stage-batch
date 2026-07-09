@@ -7,10 +7,10 @@ import pytest
 
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.exceptions import BypassRefresh
-from git_stage_batch.tui.file_review.browser import ReviewFileEntry
+from git_stage_batch.tui.file_review.file_browser import ReviewFileEntry
 from git_stage_batch.tui.file_review.browser import handle_file_browser
 from git_stage_batch.tui.file_review.browser import handle_current_file_review
-from git_stage_batch.tui.file_review.browser import list_review_file_entries
+from git_stage_batch.tui.file_review.file_browser import list_review_file_entries
 from git_stage_batch.tui.flow import FlowLocation, FlowState
 
 
@@ -670,7 +670,7 @@ class TestHandleCurrentFileReview:
                 return_value={},
             ):
                 with patch(
-                    "git_stage_batch.tui.file_review.browser.list_review_file_entries",
+                    "git_stage_batch.tui.file_review.file_browser.list_review_file_entries",
                     return_value=[
                         ReviewFileEntry("first.txt"),
                         ReviewFileEntry("second.txt"),
@@ -696,7 +696,7 @@ class TestHandleFileBrowser:
         )
 
         with patch(
-            "git_stage_batch.tui.file_review.browser.list_review_file_entries",
+            "git_stage_batch.tui.file_review.file_browser.list_review_file_entries",
             return_value=[
                 ReviewFileEntry("first.txt"),
                 ReviewFileEntry("second.txt"),
@@ -736,7 +736,7 @@ class TestHandleFileBrowser:
             return entries_by_pattern[pattern]
 
         with patch(
-            "git_stage_batch.tui.file_review.browser.list_review_file_entries",
+            "git_stage_batch.tui.file_review.file_browser.list_review_file_entries",
             side_effect=list_entries,
         ) as mock_list:
             with patch(
@@ -764,7 +764,7 @@ class TestHandleFileBrowser:
         )
 
         with patch(
-            "git_stage_batch.tui.file_review.browser.list_review_file_entries",
+            "git_stage_batch.tui.file_review.file_browser.list_review_file_entries",
             return_value=[],
         ):
             with pytest.raises(BypassRefresh):
@@ -780,7 +780,7 @@ class TestHandleFileBrowser:
         )
 
         with patch(
-            "git_stage_batch.tui.file_review.browser.list_review_file_entries",
+            "git_stage_batch.tui.file_review.file_browser.list_review_file_entries",
             return_value=[
                 ReviewFileEntry("first.txt"),
                 ReviewFileEntry("second.txt"),
@@ -804,7 +804,7 @@ class TestHandleFileBrowser:
         )
 
         with patch(
-            "git_stage_batch.tui.file_review.browser.list_review_file_entries",
+            "git_stage_batch.tui.file_review.file_browser.list_review_file_entries",
             return_value=[
                 ReviewFileEntry("first.txt"),
                 ReviewFileEntry("second.txt"),
@@ -827,18 +827,18 @@ class TestHandleFileBrowser:
         )
 
         with patch(
-            "git_stage_batch.tui.file_review.browser.list_review_file_entries",
+            "git_stage_batch.tui.file_review.file_browser.list_review_file_entries",
             return_value=[
                 ReviewFileEntry("first.txt"),
                 ReviewFileEntry("second.txt"),
             ],
         ):
             with patch(
-                "git_stage_batch.tui.file_review.browser.confirm_destructive_operation",
+                "git_stage_batch.tui.file_review.file_browser.confirm_destructive_operation",
                 return_value=True,
             ):
                 with patch(
-                    "git_stage_batch.tui.file_review.browser._prompt_block_local_only",
+                    "git_stage_batch.tui.file_review.file_browser.prompt_block_local_only",
                     return_value=True,
                 ):
                     with patch(
@@ -866,11 +866,11 @@ class TestListReviewFileEntries:
         )
 
         with patch(
-            "git_stage_batch.tui.file_review.browser.list_changed_files",
+            "git_stage_batch.tui.file_review.file_browser.list_changed_files",
             return_value=["src/app.py", "README.md"],
         ):
             with patch(
-                "git_stage_batch.tui.file_review.browser.list_untracked_files",
+                "git_stage_batch.tui.file_review.file_browser.list_untracked_files",
                 return_value=["notes.txt"],
             ):
                 entries = list_review_file_entries(flow_state)
@@ -889,15 +889,15 @@ class TestListReviewFileEntries:
         )
 
         with patch(
-            "git_stage_batch.tui.file_review.browser.list_changed_files",
+            "git_stage_batch.tui.file_review.file_browser.list_changed_files",
             return_value=["src/app.py", "README.md"],
         ):
             with patch(
-                "git_stage_batch.tui.file_review.browser.list_untracked_files",
+                "git_stage_batch.tui.file_review.file_browser.list_untracked_files",
                 return_value=[],
             ):
                 with patch(
-                    "git_stage_batch.tui.file_review.browser.resolve_gitignore_style_patterns",
+                    "git_stage_batch.tui.file_review.file_browser.resolve_gitignore_style_patterns",
                     return_value=["src/app.py"],
                 ) as mock_resolve:
                     entries = list_review_file_entries(flow_state, pattern="src/**")
@@ -916,7 +916,7 @@ class TestListReviewFileEntries:
         )
 
         with patch(
-            "git_stage_batch.tui.file_review.browser.read_batch_metadata",
+            "git_stage_batch.tui.file_review.file_browser.read_batch_metadata",
             return_value={
                 "files": {
                     "src/app.py": {},

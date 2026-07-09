@@ -4,18 +4,14 @@ from __future__ import annotations
 
 from ..core.replacement import (
     ReplacementPayload,
-    coerce_replacement_payload,
 )
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.selected_change.loading import (
     load_selected_change,
-    require_selected_hunk,
 )
 from ..data.selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
-    restore_selected_change_state,
-    snapshot_selected_change_state,
 )
 from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
@@ -43,9 +39,11 @@ from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
 )
-from .selection import discard_file_selection as _discard_file_selection
 from .selection import discard_line_action as _discard_line_action
 from .selection import discard_line_batching as _discard_line_batching
+from .selection import (
+    discard_line_replacement_action as _discard_line_replacement_action,
+)
 from .selection import selected_change_batch_discarding as _selected_change_batch_discarding
 from .selection import selected_change_discarding as _selected_change_discarding
 from .selection import selected_file_discarding as _selected_file_discarding
@@ -57,11 +55,6 @@ from .selection.whole_file_batch_discarding import (
     discard_binary_to_batch,
     discard_text_deletion_to_batch,
 )
-from .selection.selected_hunk_refresh import (
-    recalculate_selected_hunk_for_command,
-    refresh_selected_hunk_after_line_action,
-)
-from .selection.action_completion import finish_selected_change_action
 
 
 def command_discard(
@@ -363,45 +356,13 @@ def command_discard_line_as_to_batch(
         return
     review_state = scope_resolution.review_state
 
-    replacement_payload = coerce_replacement_payload(replacement_text)
-    operation_parts = [
-        "discard",
-        "--to", batch_name,
-        "--line", line_id_specification,
-        "--as", replacement_payload.display_text or "<stdin>",
-    ]
-    if no_edge_overlap:
-        operation_parts.append("--no-edge-overlap")
-    if file is not None:
-        operation_parts.extend(["--file", file])
-    with (
-        undo_checkpoint(" ".join(operation_parts)),
-        snapshot_selected_change_state() as saved_selected_state,
-    ):
-        preserve_selected_state = file not in (None, "")
-
-        try:
-            if file is None:
-                require_selected_hunk()
-            else:
-                target_file = require_file_scope_target_path(file)
-                _discard_file_selection.load_explicit_file_selection(target_file)
-
-            _discard_line_batching.discard_lines_as_to_batch(
-                batch_name,
-                line_id_specification,
-                replacement_text,
-                no_edge_overlap=no_edge_overlap,
-                quiet=quiet,
-                auto_advance=auto_advance,
-            )
-
-            if preserve_selected_state:
-                restore_selected_change_state(saved_selected_state)
-        except Exception:
-            restore_selected_change_state(saved_selected_state)
-            raise
-    if file is None:
-        finish_review_scoped_line_action(review_state)
-    else:
-        finish_review_scoped_line_action(review_state, file_path=target_file)
+    _discard_line_replacement_action.discard_live_line_replacement_to_batch(
+        batch_name,
+        line_id_specification,
+        replacement_text,
+        file,
+        review_state=review_state,
+        no_edge_overlap=no_edge_overlap,
+        quiet=quiet,
+        auto_advance=auto_advance,
+    )

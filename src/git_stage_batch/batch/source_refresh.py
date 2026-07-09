@@ -21,6 +21,7 @@ from ..data.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
+from .hunk_ownership_translation import translate_hunk_selection_to_batch_ownership
 from .lineage import BatchSourceLineage
 from .match import match_lines
 from .ownership import (
@@ -29,7 +30,6 @@ from .ownership import (
 from .ownership_merging import merge_batch_ownership
 from .ownership_translation import (
     detect_stale_batch_source_for_selection,
-    translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
 )
 from .replacement_line_runs import ReplacementLineRun

@@ -172,6 +172,67 @@ def test_core_modules_do_not_import_editor():
     assert violations == []
 
 
+def test_line_id_file_persistence_stays_in_data_layer():
+    """Line-selection core code should not own processed-ID files."""
+    line_selection_path = SRC_ROOT / "core" / "line_selection.py"
+    line_id_files_path = SRC_ROOT / "data" / "line_id_files.py"
+    line_selection = __import__(
+        "git_stage_batch.core.line_selection",
+        fromlist=["line_selection"],
+    )
+    line_id_files = __import__(
+        "git_stage_batch.data.line_id_files",
+        fromlist=["line_id_files"],
+    )
+    file_helper_names = {
+        "read_line_ids_file",
+        "write_line_ids_file",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "include.py": file_helper_names,
+        SRC_ROOT / "commands" / "skip.py": file_helper_names,
+        SRC_ROOT / "commands" / "file_scope" / "include_file_replacement.py": {
+            "write_line_ids_file",
+        },
+        SRC_ROOT / "data" / "file_hunk_display.py": {"write_line_ids_file"},
+        SRC_ROOT / "data" / "line_state.py": {"read_line_ids_file"},
+        SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py": {
+            "write_line_ids_file",
+        },
+    }
+    line_selection_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(line_selection_path)
+    }
+    line_id_file_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(line_id_files_path)
+    }
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        imported_line_id_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.core.line_selection":
+                disallowed_names = imported_names & file_helper_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+            if imported_module == "git_stage_batch.data.line_id_files":
+                imported_line_id_names |= imported_names & file_helper_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_line_id_names
+
+    assert file_helper_names <= vars(line_id_files).keys()
+    assert file_helper_names.isdisjoint(vars(line_selection))
+    assert "git_stage_batch.utils.file_io" not in line_selection_imports
+    assert "git_stage_batch.utils.file_io" in line_id_file_imports
+    assert violations == []
+
+
 def test_live_text_lifecycle_detection_stays_out_of_core():
     """Repository-bound lifecycle detection should live under data."""
     text_lifecycle = __import__(

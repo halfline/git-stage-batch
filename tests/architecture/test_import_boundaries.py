@@ -10342,6 +10342,9 @@ def test_include_line_batching_stays_in_command_helper():
 def test_discard_line_selection_stays_in_command_helper():
     """Discard line-selection editing should stay out of the command entrypoint."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    action_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_action.py"
+    )
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_selection.py"
     )
@@ -10364,6 +10367,7 @@ def test_discard_line_selection_stays_in_command_helper():
         "load_line_changes_from_state",
         "require_selected_hunk",
     }
+    action_imports_helper = False
 
     assert public_names <= vars(helper).keys()
 
@@ -10376,21 +10380,20 @@ def test_discard_line_selection_stays_in_command_helper():
     command_names = {
         node.id for node in ast.walk(command_discard_line) if isinstance(node, ast.Name)
     }
-    discard_imports_helper = False
 
-    for imported_module, node in _import_from_nodes(discard_path):
+    for imported_module, node in _import_from_nodes(action_path):
         if imported_module != "git_stage_batch.commands.selection":
             continue
         imported_names = {alias.name for alias in node.names}
         if "discard_line_selection" in imported_names:
-            discard_imports_helper = True
+            action_imports_helper = True
 
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
 
     assert command_level_names.isdisjoint(command_names)
-    assert discard_imports_helper
+    assert action_imports_helper
     assert helper_imports <= helper_imported_names
 
 

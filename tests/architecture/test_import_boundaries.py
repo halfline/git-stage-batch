@@ -3747,9 +3747,11 @@ def test_batch_transform_sift_persistence_owns_file_writes():
     )
     sift_path = SRC_ROOT / "commands" / "sift.py"
     public_names = {
+        "RetainedSiftedFile",
         "add_sifted_file_to_batch",
         "add_sifted_text_file_to_batch",
         "create_synthetic_batch_source_commit",
+        "replace_batch_with_sifted_files",
     }
     disallowed_imports = {
         "git_stage_batch.batch.ownership": {
@@ -3757,6 +3759,11 @@ def test_batch_transform_sift_persistence_owns_file_writes():
         },
         "git_stage_batch.batch.query": {
             "get_batch_baseline_commit",
+        },
+        "git_stage_batch.batch.state_refs": {
+            "delete_batch_state_refs",
+            "get_batch_content_ref_name",
+            "sync_batch_state_refs",
         },
         "git_stage_batch.batch.storage": {
             "add_binary_file_to_batch",
@@ -3773,10 +3780,17 @@ def test_batch_transform_sift_persistence_owns_file_writes():
             "git_read_tree",
             "git_update_index",
             "git_write_tree",
+            "run_git_command",
             "temp_git_index",
+        },
+        "git_stage_batch.utils.file_io": {
+            "write_text_file_contents",
         },
     }
     old_helper_names = {
+        "_perform_atomic_in_place_sift",
+        "_source_buffers_from_sift_results",
+        "_target_buffer_from_sift_result",
         "add_sifted_text_file_to_batch",
         "create_synthetic_batch_source_commit",
     }
@@ -3816,6 +3830,7 @@ def test_batch_transform_sift_persistence_owns_file_writes():
     assert direct_persistence_imports == set()
     assert old_helper_names.isdisjoint(sift_helpers)
     assert "add_sifted_file_to_batch" in persistence_calls
+    assert "replace_batch_with_sifted_files" in persistence_calls
     assert "add_sifted_text_file_to_batch" not in persistence_calls
 
 

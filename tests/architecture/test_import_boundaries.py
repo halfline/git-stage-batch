@@ -6292,11 +6292,13 @@ def test_realized_boundaries_stay_out_of_merge_module():
         "boundary_choices_after_source_line",
         "find_boundary_after_source_line",
         "find_realization_fallback_boundary",
+        "sequence_present_at_boundary",
     }
     stale_merge_names = public_names | {
         "_boundary_choices_after_source_line",
         "_find_boundary_after_source_line",
         "_find_realization_fallback_boundary",
+        "_sequence_present_at_boundary",
     }
     imported_by_merge = set()
     violations = []

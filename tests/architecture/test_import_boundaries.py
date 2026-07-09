@@ -9282,7 +9282,11 @@ def test_selected_change_loading_stays_out_of_hunk_tracking():
         / "commands"
         / "selection"
         / "include_line_batching.py": {"require_selected_hunk"},
-        SRC_ROOT / "commands" / "discard.py": moved_names,
+        SRC_ROOT / "commands" / "discard.py": {"load_selected_change"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "discard_line_replacement_action.py": {"require_selected_hunk"},
         SRC_ROOT
         / "commands"
         / "selection"
@@ -11161,7 +11165,6 @@ def test_line_action_refresh_header_stays_in_command_helper():
         / "selection"
         / "include_line_replacement_action.py",
         SRC_ROOT / "commands" / "selection" / "discard_line_action.py",
-        SRC_ROOT / "commands" / "discard.py",
     )
     violations = []
 

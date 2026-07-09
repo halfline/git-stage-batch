@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Iterable, Iterator, Union
 
 from . import binary_diff as _binary_diff
+from . import diff_headers as _diff_headers
 from . import empty_file_diff as _empty_file_diff
 from . import gitlink_diff as _gitlink_diff
 from .buffer import LineBuffer
@@ -185,7 +186,7 @@ class _UnifiedDiffParserBuildContext:
 
                 body_line_stripped = body_line.rstrip(b'\n')
 
-                if body_line_stripped.startswith(b"diff --git "):
+                if _diff_headers.line_is_diff_git_header(body_line_stripped):
                     # Next file starting
                     break
                 if body_line_stripped.startswith(b"@@"):
@@ -225,21 +226,11 @@ class _UnifiedDiffParserBuildContext:
                 line = line.rstrip(b'\n')
 
                 # Look for start of a file diff
-                if line.startswith(b"diff --git "):
-                    # Extract file paths from the diff --git line
-                    # Format: diff --git a/path b/path
-                    rest = line[len(b"diff --git "):]
-
-                    # Find a/ and b/ markers
-                    a_start = rest.find(b"a/")
-                    b_start = rest.find(b" b/")
-
-                    if a_start == -1 or b_start == -1:
+                if _diff_headers.line_is_diff_git_header(line):
+                    file_paths = _diff_headers.diff_git_paths(line)
+                    if file_paths is None:
                         continue
-
-                    # Paths in git are always valid UTF-8, decode them to str
-                    old_path = rest[a_start + 2:b_start].decode('utf-8')
-                    new_path = rest[b_start + 3:].decode('utf-8')  # Skip " b/"
+                    old_path, new_path = file_paths
 
                     # Collect metadata lines until we hit the --- line (start of unified diff)
                     # Files with no hunks (binary, mode-only, rename-only, empty) won't have --- line
@@ -257,7 +248,7 @@ class _UnifiedDiffParserBuildContext:
                         # Collect metadata lines
                         metadata_lines.append(next_l)
                         # If we hit another diff header, this file has no hunks - check if it's an empty new file
-                        if next_l.startswith(b"diff --git "):
+                        if _diff_headers.line_is_diff_git_header(next_l):
                             # Put the line back for next iteration (with \n restored for consistency)
                             lookahead = next_l + b'\n'
                             break

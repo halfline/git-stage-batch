@@ -4609,6 +4609,41 @@ def test_status_summary_reader_owns_status_payload_assembly():
     assert direct_payload_imports == set()
 
 
+def test_status_summary_uses_batch_selected_binary_validation():
+    """Status summary should not read batch metadata for selected binaries."""
+    status_summary_path = SRC_ROOT / "data" / "status_summary.py"
+    batch_selected_path = SRC_ROOT / "data" / "batch_selected_changes.py"
+    status_summary_text = status_summary_path.read_text()
+    batch_selected = __import__(
+        "git_stage_batch.data.batch_selected_changes",
+        fromlist=["batch_selected_changes"],
+    )
+    imported_batch_selected_names = set()
+    imported_batch_query_names = {
+        alias.name
+        for imported_module, node in _import_from_nodes(batch_selected_path)
+        if imported_module == "git_stage_batch.batch.query"
+        for alias in node.names
+    }
+    status_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(status_summary_path)
+    }
+
+    for imported_module, node in _import_from_nodes(status_summary_path):
+        if imported_module != "git_stage_batch.data.batch_selected_changes":
+            continue
+        imported_batch_selected_names |= {alias.name for alias in node.names}
+
+    assert "load_current_selected_batch_binary_file" in vars(batch_selected)
+    assert "load_current_selected_batch_binary_file" in imported_batch_selected_names
+    assert "read_batch_metadata" in imported_batch_query_names
+    assert "git_stage_batch.batch.query" not in status_imports
+    assert "read_batch_metadata" not in status_summary_text
+    assert "selected_batch_binary_batch_name" not in status_summary_text
+    assert "selected_batch_binary_file_for_batch" not in status_summary_text
+
+
 def test_active_session_query_stays_in_session_data():
     """Callers should ask session data whether a session is active."""
     caller_paths = (

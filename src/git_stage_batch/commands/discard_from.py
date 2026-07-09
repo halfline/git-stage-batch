@@ -6,23 +6,19 @@ import sys
 from typing import Optional
 
 from .batch_source import action_context as _action_context
+from .batch_source import action_selection as _action_selection
 from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import text_file_actions as _text_file_actions
 from .batch_source import text_plan_builders as _text_plan_builders
 from ..batch.metadata_validation import get_validated_baseline_commit
 from ..batch.selection import (
-    resolve_current_batch_binary_file_scope,
-    resolve_batch_file_scope,
-    require_single_file_context_for_line_selection,
     translate_atomic_unit_error_to_gutter_ids,
 )
 from ..batch.submodule_pointer import (
     discard_submodule_pointer_from_batch,
     is_batch_submodule_pointer,
-    refuse_batch_submodule_pointer_lines,
 )
 from ..data.file_review.records import FileReviewAction
-from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, AtomicUnitError, CommandError, MergeError, BatchMetadataError
@@ -56,49 +52,24 @@ def command_discard_from_batch(
         patterns=patterns,
     )
     batch_name = context.batch_name
-    file = context.file
-    all_files = context.all_files
 
-    file = resolve_current_batch_binary_file_scope(batch_name, all_files, file, patterns, line_ids)
-
-    # Determine which files to operate on
-    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
-
-    # Parse line selection and enforce single-file context
-    selected_ids = require_single_file_context_for_line_selection(
-        batch_name, files, line_ids, "discard"
+    selection = _action_selection.resolve_discard_action_selection(
+        context,
+        line_ids=line_ids,
+        patterns=patterns,
     )
-
-    # Reject line selection for binary files (binary files are atomic units)
-    if selected_ids:
-        file_path_for_check = list(files.keys())[0]  # Single file context enforced above
-        if files[file_path_for_check].get("file_type") == "binary":
-            exit_with_error(_("Cannot use --lines with binary files. Discard the whole file instead."))
-        if is_batch_submodule_pointer(files[file_path_for_check]):
-            refuse_batch_submodule_pointer_lines(_("Discard"))
-
-    # Translate gutter IDs to selection IDs if line selection is active
-    selection_ids_to_discard = selected_ids
-    rendered = None
-    if selected_ids:
-        file_path_for_render = list(files.keys())[0]  # Single file context enforced above
-        selection_ids_to_discard, rendered = translate_batch_file_gutter_ids_to_selection_ids(
-            batch_name,
-            file_path_for_render,
-            selected_ids,
-            FileReviewAction.DISCARD_FROM_BATCH,
-        )
+    file = selection.file
+    files = selection.files
+    selected_ids = selection.selected_ids
+    selection_ids_to_discard = selection.selection_ids
+    rendered = selection.rendered
 
     # Get baseline commit (raises BatchMetadataError with clear message if missing)
     try:
         baseline_commit = get_validated_baseline_commit(batch_name)
     except BatchMetadataError as e:
         exit_with_error(str(e))
-    operation_parts = ["discard", "--from", batch_name]
-    if line_ids is not None:
-        operation_parts.extend(["--line", line_ids])
-    if file is not None:
-        operation_parts.extend(["--file", file])
+    operation_parts = list(selection.operation_parts)
     with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
         # Discard all files in batch
         failed_files = []

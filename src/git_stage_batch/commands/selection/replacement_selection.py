@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ...batch.comparison import derive_display_id_run_sets_from_lines
-from ...batch.ownership import (
+from ...batch.replacement_line_runs import (
     ReplacementLineRun,
     derive_replacement_line_runs_from_lines,
 )

@@ -9710,6 +9710,60 @@ def test_batch_line_mapping_owns_public_mapping_type():
     assert violations == []
 
 
+def test_batch_line_sequence_search_stays_out_of_match_module():
+    """Exact sequence search should live outside the match algorithm."""
+    line_sequence_search = __import__(
+        "git_stage_batch.batch.line_sequence_search",
+        fromlist=["line_sequence_search"],
+    )
+    match = __import__(
+        "git_stage_batch.batch.match",
+        fromlist=["match"],
+    )
+    line_sequence_search_path = SRC_ROOT / "batch" / "line_sequence_search.py"
+    public_names = {
+        "TargetGap",
+        "iter_exact_context_gaps",
+        "iter_exact_sequence_occurrences",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "presence_placement_choices.py": {
+            "iter_exact_context_gaps",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(line_sequence_search).keys()
+    assert public_names.isdisjoint(vars(match))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == line_sequence_search_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.match":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.line_sequence_search":
+                continue
+
+            imported_public_names |= imported_names & public_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_baseline_correspondence_stays_out_of_merge_module():
     """Baseline restoration mapping should live outside merge operations."""
     baseline_correspondence = __import__(

@@ -4975,6 +4975,10 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
     }
     inspected_paths = set(old_snippets_by_path) | {action_context_path}
     imports_candidate_selectors = False
+    command_selector_imports = {
+        path: False
+        for path in old_snippets_by_path
+    }
     direct_selector_imports = {
         path: set()
         for path in inspected_paths
@@ -4989,6 +4993,12 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
                 and "candidate_selectors" in imported_names
             ):
                 imports_candidate_selectors = True
+            if (
+                path in command_selector_imports
+                and imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_selectors" in imported_names
+            ):
+                command_selector_imports[path] = True
             if imported_module == "git_stage_batch.batch.source_selector":
                 direct_selector_imports[path] |= (
                     imported_names & old_source_selector_names
@@ -4996,6 +5006,10 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
 
     assert public_names <= vars(candidate_selectors).keys()
     assert imports_candidate_selectors
+    assert command_selector_imports == {
+        apply_from_path: False,
+        include_from_path: False,
+    }
     assert direct_selector_imports == {
         action_context_path: set(),
         apply_from_path: set(),

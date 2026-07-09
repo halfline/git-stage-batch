@@ -320,11 +320,13 @@ def test_tui_file_review_package_does_not_reexport_browser_apis():
         fromlist=["file_review"],
     )
     facade_names = {
+        "choose_review_file",
         "FileReviewSessionState",
         "ReviewFileEntry",
         "handle_current_file_review",
         "handle_file_browser",
         "list_review_file_entries",
+        "prompt_block_local_only",
     }
     violations = []
 
@@ -3606,21 +3608,78 @@ def test_tui_file_review_candidates_own_candidate_browser():
     assert "git_stage_batch.commands.show_from" in candidate_imports
 
 
-def test_tui_file_review_batch_actions_own_batch_transfers():
-    """TUI file review batch actions should own batch transfer commands."""
+def test_tui_file_review_file_browser_owns_file_selection():
+    """TUI file review file browser should own file choice state."""
     browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
-    batch_actions_path = SRC_ROOT / "tui" / "file_review" / "batch_actions.py"
+    file_browser_path = SRC_ROOT / "tui" / "file_review" / "file_browser.py"
     browser = __import__(
         "git_stage_batch.tui.file_review.browser",
         fromlist=["browser"],
+    )
+    file_browser = __import__(
+        "git_stage_batch.tui.file_review.file_browser",
+        fromlist=["file_browser"],
+    )
+    browser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(browser_path)
+    }
+    file_browser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(file_browser_path)
+    }
+    public_names = {
+        "ReviewFileEntry",
+        "choose_review_file",
+        "list_review_file_entries",
+        "prompt_block_local_only",
+    }
+    moved_names = {
+        "ReviewFileEntry",
+        "_apply_marked_file_action",
+        "_file_choice_to_path",
+        "_mark_file_choice",
+        "_normalize_marked_file_action",
+        "_unmark_file_choice",
+        "list_review_file_entries",
+    }
+    old_browser_snippets = {
+        "File number, /pattern",
+        "No files marked.",
+        "list_changed_files",
+        "list_untracked_files",
+        "read_batch_metadata",
+        "resolve_gitignore_style_patterns",
+    }
+    browser_text = browser_path.read_text()
+
+    assert public_names <= vars(file_browser).keys()
+    assert moved_names.isdisjoint(vars(browser))
+    assert all(snippet not in browser_text for snippet in old_browser_snippets)
+    assert "git_stage_batch.tui.file_review.file_browser" in browser_imports
+    assert "git_stage_batch.batch.query" not in browser_imports
+    assert "git_stage_batch.data.file_tracking" not in browser_imports
+    assert "git_stage_batch.utils.file_patterns" not in browser_imports
+    assert "git_stage_batch.batch.query" in file_browser_imports
+    assert "git_stage_batch.data.file_tracking" in file_browser_imports
+    assert "git_stage_batch.utils.file_patterns" in file_browser_imports
+
+
+def test_tui_file_review_batch_actions_own_batch_transfers():
+    """TUI file review batch actions should own batch transfer commands."""
+    file_browser_path = SRC_ROOT / "tui" / "file_review" / "file_browser.py"
+    batch_actions_path = SRC_ROOT / "tui" / "file_review" / "batch_actions.py"
+    file_browser = __import__(
+        "git_stage_batch.tui.file_review.file_browser",
+        fromlist=["file_browser"],
     )
     batch_actions = __import__(
         "git_stage_batch.tui.file_review.batch_actions",
         fromlist=["batch_actions"],
     )
-    browser_imports = {
+    file_browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(browser_path)
+        for imported_module, _node in _import_from_nodes(file_browser_path)
     }
     batch_action_imports = {
         imported_module
@@ -3637,29 +3696,29 @@ def test_tui_file_review_batch_actions_own_batch_transfers():
         "apply_batch_line_action",
         "apply_batch_replacement_action",
     } <= vars(batch_actions).keys()
-    assert old_review_names.isdisjoint(vars(browser))
-    assert "git_stage_batch.tui.file_review.batch_actions" in browser_imports
-    assert "git_stage_batch.commands.discard_from" not in browser_imports
-    assert "git_stage_batch.commands.include_from" not in browser_imports
+    assert old_review_names.isdisjoint(vars(file_browser))
+    assert "git_stage_batch.tui.file_review.batch_actions" in file_browser_imports
+    assert "git_stage_batch.commands.discard_from" not in file_browser_imports
+    assert "git_stage_batch.commands.include_from" not in file_browser_imports
     assert "git_stage_batch.commands.discard_from" in batch_action_imports
     assert "git_stage_batch.commands.include_from" in batch_action_imports
 
 
 def test_tui_file_review_live_actions_own_live_transfers():
     """TUI file review live actions should own live transfer commands."""
-    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
+    file_browser_path = SRC_ROOT / "tui" / "file_review" / "file_browser.py"
     live_actions_path = SRC_ROOT / "tui" / "file_review" / "live_actions.py"
-    browser = __import__(
-        "git_stage_batch.tui.file_review.browser",
-        fromlist=["browser"],
+    file_browser = __import__(
+        "git_stage_batch.tui.file_review.file_browser",
+        fromlist=["file_browser"],
     )
     live_actions = __import__(
         "git_stage_batch.tui.file_review.live_actions",
         fromlist=["live_actions"],
     )
-    browser_imports = {
+    file_browser_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(browser_path)
+        for imported_module, _node in _import_from_nodes(file_browser_path)
     }
     live_action_imports = {
         imported_module
@@ -3676,11 +3735,11 @@ def test_tui_file_review_live_actions_own_live_transfers():
         "apply_live_line_action",
         "apply_live_replacement_action",
     } <= vars(live_actions).keys()
-    assert old_review_names.isdisjoint(vars(browser))
-    assert "git_stage_batch.tui.file_review.live_actions" in browser_imports
-    assert "git_stage_batch.commands.discard" not in browser_imports
-    assert "git_stage_batch.commands.include" not in browser_imports
-    assert "git_stage_batch.commands.skip" not in browser_imports
+    assert old_review_names.isdisjoint(vars(file_browser))
+    assert "git_stage_batch.tui.file_review.live_actions" in file_browser_imports
+    assert "git_stage_batch.commands.discard" not in file_browser_imports
+    assert "git_stage_batch.commands.include" not in file_browser_imports
+    assert "git_stage_batch.commands.skip" not in file_browser_imports
     assert "git_stage_batch.commands.discard" in live_action_imports
     assert "git_stage_batch.commands.include" in live_action_imports
     assert "git_stage_batch.commands.skip" in live_action_imports
@@ -3689,6 +3748,7 @@ def test_tui_file_review_live_actions_own_live_transfers():
 def test_tui_file_review_block_actions_own_block_commands():
     """TUI file review block actions should own block command calls."""
     browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
+    file_browser_path = SRC_ROOT / "tui" / "file_review" / "file_browser.py"
     block_actions_path = SRC_ROOT / "tui" / "file_review" / "block_actions.py"
     block_actions = __import__(
         "git_stage_batch.tui.file_review.block_actions",
@@ -3697,6 +3757,10 @@ def test_tui_file_review_block_actions_own_block_commands():
     browser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(browser_path)
+    }
+    file_browser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(file_browser_path)
     }
     block_action_imports = {
         imported_module
@@ -3708,8 +3772,11 @@ def test_tui_file_review_block_actions_own_block_commands():
         "unblock_review_file",
     } <= vars(block_actions).keys()
     assert "git_stage_batch.tui.file_review.block_actions" in browser_imports
+    assert "git_stage_batch.tui.file_review.block_actions" in file_browser_imports
     assert "git_stage_batch.commands.block_file" not in browser_imports
     assert "git_stage_batch.commands.unblock_file" not in browser_imports
+    assert "git_stage_batch.commands.block_file" not in file_browser_imports
+    assert "git_stage_batch.commands.unblock_file" not in file_browser_imports
     assert "git_stage_batch.commands.block_file" in block_action_imports
     assert "git_stage_batch.commands.unblock_file" in block_action_imports
 

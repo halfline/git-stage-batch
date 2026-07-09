@@ -8918,8 +8918,6 @@ def test_batch_ownership_units_owns_unit_operations():
     ownership_path = SRC_ROOT / "batch" / "ownership.py"
     unit_path = SRC_ROOT / "batch" / "ownership_units.py"
     public_names = {
-        "OwnershipUnit",
-        "OwnershipUnitKind",
         "build_ownership_units_from_batch_source_lines",
         "build_ownership_units_from_display_lines",
         "filter_ownership_units_by_display_ids",
@@ -8988,6 +8986,66 @@ def test_batch_ownership_units_owns_unit_operations():
 
         if path in expected_unit_imports:
             assert expected_unit_imports[path] <= imported_unit_names
+
+    assert violations == []
+
+
+def test_batch_ownership_unit_types_own_value_objects():
+    """Ownership unit value objects should live outside unit operations."""
+    ownership_units = __import__(
+        "git_stage_batch.batch.ownership_units",
+        fromlist=["ownership_units"],
+    )
+    ownership_unit_types = __import__(
+        "git_stage_batch.batch.ownership_unit_types",
+        fromlist=["ownership_unit_types"],
+    )
+    unit_types_path = SRC_ROOT / "batch" / "ownership_unit_types.py"
+    public_names = {
+        "OwnershipUnit",
+        "OwnershipUnitKind",
+    }
+    stale_operation_names = public_names | {
+        "_OwnershipUnit",
+        "_OwnershipUnitKind",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "ownership_units.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(ownership_unit_types).keys()
+    assert stale_operation_names.isdisjoint(vars(ownership_units))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == unit_types_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.ownership_units":
+                moved_names = imported_names & stale_operation_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.ownership_unit_types":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            private_imports = imported_names & {
+                name for name in stale_operation_names if name.startswith("_")
+            }
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
 
     assert violations == []
 

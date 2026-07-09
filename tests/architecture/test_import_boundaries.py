@@ -1169,9 +1169,6 @@ def test_batch_review_selection_translation_stays_in_data_layer():
         SRC_ROOT / "commands" / "batch_source" / "action_selection.py": {
             "translate_batch_file_gutter_ids_to_selection_ids",
         },
-        SRC_ROOT / "commands" / "discard_from.py": {
-            "translate_batch_file_gutter_ids_to_selection_ids",
-        },
         SRC_ROOT / "commands" / "reset.py": {
             "translate_reset_batch_file_gutter_ids_to_selection_ranges",
         },
@@ -4965,16 +4962,18 @@ def test_batch_source_action_context_owns_action_prologue():
 
 
 def test_batch_source_action_selection_owns_file_line_selection():
-    """Shared apply/include file and line selection should live outside entries."""
+    """Shared batch-source file and line selection should live outside entries."""
     action_selection = __import__(
         "git_stage_batch.commands.batch_source.action_selection",
         fromlist=["action_selection"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     public_names = {
         "BatchSourceActionSelection",
         "resolve_apply_action_selection",
+        "resolve_discard_action_selection",
         "resolve_include_action_selection",
     }
     disallowed_imports = {
@@ -4995,6 +4994,7 @@ def test_batch_source_action_selection_owns_file_line_selection():
     }
     command_paths = {
         apply_from_path,
+        discard_from_path,
         include_from_path,
     }
     imports_action_selection = {
@@ -5022,10 +5022,12 @@ def test_batch_source_action_selection_owns_file_line_selection():
     assert public_names <= vars(action_selection).keys()
     assert imports_action_selection == {
         apply_from_path: True,
+        discard_from_path: True,
         include_from_path: True,
     }
     assert direct_selection_imports == {
         apply_from_path: set(),
+        discard_from_path: set(),
         include_from_path: set(),
     }
 

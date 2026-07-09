@@ -1024,10 +1024,7 @@ def test_file_review_records_stay_out_of_state_module():
         SRC_ROOT / "commands" / "discard_from.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "include.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "include_from.py": {"FileReviewAction"},
-        SRC_ROOT / "commands" / "reset.py": {
-            "FileReviewAction",
-            "ReviewSource",
-        },
+        SRC_ROOT / "commands" / "reset.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "show.py": {"ReviewSource"},
         SRC_ROOT / "commands" / "show_from.py": {"ReviewSource"},
         SRC_ROOT / "commands" / "batch_source" / "replacement_previews.py": {
@@ -5078,6 +5075,68 @@ def test_batch_source_action_completion_owns_review_finalization():
         apply_from_path: set(),
         include_from_path: set(),
     }
+
+
+def test_batch_source_selection_state_cleanup_owns_reset_cleanup():
+    """Reset selected-state cleanup should live outside the reset entry."""
+    selection_state_cleanup = __import__(
+        "git_stage_batch.commands.batch_source.selection_state_cleanup",
+        fromlist=["selection_state_cleanup"],
+    )
+    reset_path = SRC_ROOT / "commands" / "reset.py"
+    public_names = {
+        "clear_selected_batch_state_after_batch_mutation",
+    }
+    disallowed_imports = {
+        "git_stage_batch.data.batch_selected_changes": {
+            "selected_batch_binary_matches_batch",
+            "selected_batch_gitlink_matches_batch",
+        },
+        "git_stage_batch.data.file_review.records": {
+            "ReviewSource",
+        },
+        "git_stage_batch.data.file_review.state": {
+            "read_last_file_review_state",
+        },
+        "git_stage_batch.data.selected_change.clear_reasons": {
+            "mark_selected_change_cleared_by_stale_batch_selection",
+        },
+        "git_stage_batch.data.selected_change.lifecycle": {
+            "clear_selected_change_state_files",
+        },
+        "git_stage_batch.data.selected_change.paths": {
+            "get_selected_change_file_path",
+        },
+        "git_stage_batch.data.selected_change.store": {
+            "SelectedChangeKind",
+            "read_selected_change_kind",
+        },
+    }
+    reset_tree = ast.parse(reset_path.read_text(), filename=str(reset_path))
+    reset_helpers = {
+        node.name
+        for node in ast.walk(reset_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_selection_state_cleanup = False
+    direct_cleanup_imports = set()
+
+    for imported_module, node in _import_from_nodes(reset_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "selection_state_cleanup" in imported_names
+        ):
+            imports_selection_state_cleanup = True
+        direct_cleanup_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(selection_state_cleanup).keys()
+    assert imports_selection_state_cleanup
+    assert direct_cleanup_imports == set()
+    assert "_clear_selected_batch_state_after_batch_mutation" not in reset_helpers
 
 
 def test_batch_source_candidate_selectors_own_action_selector_validation():

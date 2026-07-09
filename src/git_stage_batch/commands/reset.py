@@ -2,28 +2,12 @@
 
 from __future__ import annotations
 
-import json
-import shlex
 import sys
 
 from .batch_source import reset_claims as _reset_claims
+from .batch_source import reset_selection as _reset_selection
 from .batch_source import selection_state_cleanup as _selection_state_cleanup
-from ..batch.query import read_batch_metadata
-from ..batch.selection import (
-    resolve_current_batch_binary_file_scope,
-    resolve_batch_file_scope,
-)
-from ..batch.source_selector import require_plain_batch_name
-from ..batch.validation import batch_exists, validate_batch_name
-from ..exceptions import exit_with_error
 from ..i18n import _
-from ..data.batch_file_review_selection import (
-    translate_reset_batch_file_gutter_ids_to_selection_ranges,
-)
-from ..data.file_review.records import FileReviewAction
-from ..data.file_review.state import (
-    resolve_batch_source_action_scope,
-)
 from ..data.undo import undo_checkpoint
 from ..utils.git import require_git_repository
 from ..utils.paths import ensure_state_directory_exists
@@ -48,54 +32,18 @@ def command_reset_from_batch(
     """
     require_git_repository()
     ensure_state_directory_exists()
-    batch_name = require_plain_batch_name(batch_name, "reset")
-    validate_batch_name(batch_name)
-    extra_action_parts = ()
-    if to_batch is not None:
-        extra_action_parts = ("--to", shlex.quote(to_batch))
-    scope_resolution = resolve_batch_source_action_scope(
-        FileReviewAction.RESET_FROM_BATCH,
-        command_name="reset",
+    selection = _reset_selection.resolve_reset_claim_selection(
         batch_name=batch_name,
         line_ids=line_ids,
         file=file,
         patterns=patterns,
-        extra_action_parts=extra_action_parts,
+        to_batch=to_batch,
     )
-    file = scope_resolution.file
+    batch_name = selection.batch_name
+    file = selection.file
+    effective_line_ids = selection.effective_line_ids
 
-    if not batch_exists(batch_name):
-        exit_with_error(_("Batch '{name}' does not exist").format(name=batch_name))
-
-    metadata = read_batch_metadata(batch_name)
-    all_files = metadata.get("files", {})
-    file = resolve_current_batch_binary_file_scope(batch_name, all_files, file, patterns, line_ids)
-
-    if to_batch is not None:
-        validate_batch_name(to_batch)
-        if to_batch == batch_name:
-            exit_with_error(_("--to must name a different batch"))
-
-    effective_line_ids = (
-        translate_reset_batch_file_gutter_ids_to_selection_ranges(
-            batch_name,
-            all_files,
-            file,
-            patterns,
-            line_ids,
-        )
-        if line_ids is not None else
-        None
-    )
-    affected_files = set(resolve_batch_file_scope(batch_name, all_files, file, patterns).keys())
-    operation_parts = ["reset", "--from", batch_name]
-    if to_batch is not None:
-        operation_parts.extend(["--to", to_batch])
-    if line_ids is not None:
-        operation_parts.extend(["--line", line_ids])
-    if file is not None:
-        operation_parts.extend(["--file", file])
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(selection.operation_parts)):
         if to_batch is not None:
             _reset_claims.move_claims_between_batches(
                 batch_name,
@@ -127,7 +75,7 @@ def command_reset_from_batch(
     _selection_state_cleanup.clear_selected_batch_state_after_batch_mutation(
         source_batch=batch_name,
         dest_batch=to_batch,
-        affected_files=affected_files,
+        affected_files=selection.affected_files,
     )
 
     if to_batch is not None and line_ids:

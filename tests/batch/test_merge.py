@@ -11,9 +11,9 @@ from git_stage_batch.batch.baseline_edits import (
 )
 from git_stage_batch.batch.discard_reversal import reverse_presence_constraints
 from git_stage_batch.batch.match import match_lines
+from git_stage_batch.batch.merge_validation import check_structural_validity
 from git_stage_batch.batch.merge import (
     _build_realized_entries_for_discard,
-    _check_structural_validity,
     _discard_batch_line_chunks,
     _merge_batch_line_chunks,
     can_merge_batch_from_line_sequences,
@@ -408,7 +408,7 @@ class TestMergeLineSequences:
         working = line_sequence([b"line1\n", b"line3\n"])
         mapping = match_lines(source, working)
 
-        _check_structural_validity(
+        check_structural_validity(
             mapping,
             {2},
             [],

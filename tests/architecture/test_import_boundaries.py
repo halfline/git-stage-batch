@@ -1602,7 +1602,9 @@ def test_file_review_records_stay_out_of_state_module():
         SRC_ROOT / "commands" / "batch_source" / "reset_selection.py": {
             "FileReviewAction",
         },
-        SRC_ROOT / "commands" / "show.py": {"ReviewSource"},
+        SRC_ROOT / "commands" / "file_scope" / "file_display_action.py": {
+            "ReviewSource",
+        },
         SRC_ROOT / "commands" / "batch_source" / "file_list_action.py": {
             "ReviewSource",
         },
@@ -1781,7 +1783,7 @@ def test_file_review_callers_use_model_builder():
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
     caller_paths = (
-        SRC_ROOT / "commands" / "show.py",
+        SRC_ROOT / "commands" / "file_scope" / "file_display_action.py",
         SRC_ROOT / "commands" / "batch_source" / "file_display_action.py",
         SRC_ROOT / "output" / "file_review_list.py",
     )
@@ -1809,14 +1811,16 @@ def test_file_review_callers_use_model_builder():
     assert public_names <= vars(file_review_model_builder).keys()
     assert "def build_file_review_model" not in review_output_text
     assert direct_model_builder_imports == {
-        "src/git_stage_batch/commands/show.py": public_names,
+        "src/git_stage_batch/commands/file_scope/file_display_action.py": (
+            public_names
+        ),
         "src/git_stage_batch/commands/batch_source/file_display_action.py": (
             public_names
         ),
         "src/git_stage_batch/output/file_review_list.py": public_names,
     }
     assert old_renderer_imports == {
-        "src/git_stage_batch/commands/show.py": set(),
+        "src/git_stage_batch/commands/file_scope/file_display_action.py": set(),
         "src/git_stage_batch/commands/batch_source/file_display_action.py": (
             set()
         ),
@@ -1864,7 +1868,7 @@ def test_show_file_display_uses_file_review_state_builder():
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
     show_paths = (
-        SRC_ROOT / "commands" / "show.py",
+        SRC_ROOT / "commands" / "file_scope" / "file_display_action.py",
         SRC_ROOT / "commands" / "batch_source" / "file_display_action.py",
     )
     file_review_state_builder = __import__(
@@ -1896,13 +1900,15 @@ def test_show_file_display_uses_file_review_state_builder():
     assert "def make_file_review_state" not in review_output_text
     assert "def resolve_default_review_pages" not in review_output_text
     assert direct_state_builder_imports == {
-        "src/git_stage_batch/commands/show.py": public_names,
+        "src/git_stage_batch/commands/file_scope/file_display_action.py": (
+            public_names
+        ),
         "src/git_stage_batch/commands/batch_source/file_display_action.py": (
             public_names
         ),
     }
     assert old_renderer_imports == {
-        "src/git_stage_batch/commands/show.py": set(),
+        "src/git_stage_batch/commands/file_scope/file_display_action.py": set(),
         "src/git_stage_batch/commands/batch_source/file_display_action.py": (
             set()
         ),
@@ -3540,6 +3546,75 @@ def test_file_scope_file_list_action_owns_show_entry_flow():
 
     assert "file_list_action" in file_scope_imports
     assert "show_live_file_list" in command_attrs
+    assert action_dependency_names.isdisjoint(command_names)
+    assert action_dependency_names.isdisjoint(command_attrs)
+    assert action_dependency_names <= helper_imported_names
+
+
+def test_file_scope_file_display_action_owns_show_entry_flow():
+    """The show file display entrypoint should delegate live display rendering."""
+    show_path = SRC_ROOT / "commands" / "show.py"
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "file_display_action.py"
+    action_dependency_names = {
+        "ReviewSource",
+        "SelectedChangeKind",
+        "_",
+        "build_file_review_model",
+        "cache_binary_file_change",
+        "cache_file_as_single_hunk",
+        "cache_gitlink_change",
+        "cache_rename_change",
+        "cache_text_deletion_change",
+        "clear_last_file_review_state",
+        "exit_with_error",
+        "get_selected_change_file_path",
+        "load_line_changes_from_state",
+        "make_file_review_state",
+        "normalize_page_spec",
+        "print_binary_file_change",
+        "print_file_review",
+        "print_gitlink_change",
+        "print_line_level_changes",
+        "print_rename_change",
+        "print_text_file_deletion_change",
+        "render_binary_file_change",
+        "render_file_as_single_hunk",
+        "render_gitlink_change",
+        "render_rename_change",
+        "render_text_deletion_change",
+        "resolve_default_review_pages",
+        "text_deletion_change_is_batched",
+        "write_last_file_review_state",
+    }
+
+    show_tree = ast.parse(show_path.read_text(), filename=str(show_path))
+    show_functions = {
+        node.name: node
+        for node in ast.walk(show_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_names = {
+        node.id
+        for node in ast.walk(show_functions["command_show"])
+        if isinstance(node, ast.Name)
+    }
+    command_attrs = {
+        node.attr
+        for node in ast.walk(show_functions["command_show"])
+        if isinstance(node, ast.Attribute)
+    }
+    file_scope_imports = set()
+    for imported_module, node in _import_from_nodes(show_path):
+        if imported_module != "git_stage_batch.commands.file_scope":
+            continue
+        file_scope_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "file_display_action" in file_scope_imports
+    assert "show_live_file_display" in command_attrs
     assert action_dependency_names.isdisjoint(command_names)
     assert action_dependency_names.isdisjoint(command_attrs)
     assert action_dependency_names <= helper_imported_names

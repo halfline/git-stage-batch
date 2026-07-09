@@ -432,6 +432,25 @@ def test_cli_argument_parser_delegates_asset_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in asset_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_completion_subcommand_registration():
+    """Argument parsing should not own hidden completion parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    argument_parser_text = argument_parser_path.read_text()
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    completion = __import__(
+        "git_stage_batch.cli.completion",
+        fromlist=["completion"],
+    )
+
+    assert "git_stage_batch.cli.completion" in argument_parser_imports
+    assert "add_completion_subcommand" in vars(completion)
+    assert "command_complete_files" in vars(completion)
+    assert "__complete-files" not in argument_parser_text
+
+
 def test_tui_package_does_not_reexport_tui_apis():
     """TUI callers should import concrete modules instead of the package."""
     tui_path = SRC_ROOT / "tui" / "__init__.py"

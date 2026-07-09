@@ -5,19 +5,12 @@ from __future__ import annotations
 from ..data.session import require_session_started
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import ensure_state_directory_exists
-from .fixup.boundary import require_suggest_fixup_boundary_range
-from .fixup.candidate_iteration import advance_suggest_fixup_candidate
-from .fixup.candidate_display import (
-    display_suggest_fixup_candidate,
-    show_last_suggest_fixup_candidate,
-)
 from .fixup.iteration_state import prepare_suggest_fixup_iteration
 from .fixup.search_flow import run_suggest_fixup_search
 from .fixup.search_targets import (
     require_suggest_fixup_hunk_target,
     require_suggest_fixup_line_target,
 )
-from .fixup.search_state import reset_suggest_fixup_state_for_search
 
 
 def command_suggest_fixup(
@@ -119,34 +112,9 @@ def command_suggest_fixup_line(
         boundary=effective_boundary,
         file=file,
     )
-    line_changes = resolved_target.line_changes
-    search_target = resolved_target.search_target
-
-    require_suggest_fixup_boundary_range(effective_boundary)
-
-    state = reset_suggest_fixup_state_for_search(
+    run_suggest_fixup_search(
         state=state,
-        target=search_target,
-    )
-
-    if show_last:
-        show_last_suggest_fixup_candidate(
-            state=state,
-            effective_boundary=effective_boundary,
-            file_path=line_changes.path,
-            porcelain=porcelain,
-        )
-        return
-
-    candidate = advance_suggest_fixup_candidate(
-        state=state,
-        target=search_target,
-    )
-
-    display_suggest_fixup_candidate(
-        candidate_commit=candidate.commit,
-        iteration=candidate.iteration,
-        boundary=effective_boundary,
-        file_path=line_changes.path,
+        resolved_target=resolved_target,
+        show_last=show_last,
         porcelain=porcelain,
     )

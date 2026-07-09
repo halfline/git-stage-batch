@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ..utils.paths import get_batch_candidate_state_file_path
-from .operation_candidates import ALGORITHM_VERSION
+from .operation_candidate_fingerprints import ALGORITHM_VERSION
 
 if TYPE_CHECKING:
     from .operation_candidates import OperationCandidatePreview

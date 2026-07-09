@@ -175,7 +175,7 @@ Important modules include:
 - `data.selected_change`
   Persistence, loading, snapshots, stale-cache validation, and file-scoped views
   for the current selected change.
-- `data.undo`
+- `data.undo_checkpoints`
   Undo/redo checkpoints for session operations.
 - `data.line_state`
   Serialization of the currently selected line-level view.

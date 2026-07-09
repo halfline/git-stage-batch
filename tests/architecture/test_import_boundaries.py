@@ -6692,6 +6692,75 @@ def test_batch_baseline_edits_own_replacement_fallback():
     assert violations == []
 
 
+def test_batch_merge_validation_owns_structural_checks():
+    """Structural merge validation should live outside merge."""
+    merge_validation = __import__(
+        "git_stage_batch.batch.merge_validation",
+        fromlist=["merge_validation"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    merge_validation_path = SRC_ROOT / "batch" / "merge_validation.py"
+    public_names = {
+        "check_structural_validity",
+    }
+    stale_merge_names = public_names | {
+        "ClaimedRunIntervalFacts",
+        "_ClaimedRunIntervalFacts",
+        "_check_structural_validity",
+        "_check_claimed_region_compatibility",
+        "_collect_claimed_run_interval_facts",
+        "_find_nearest_mapped_source_line_after",
+        "_find_nearest_mapped_source_line_before",
+        "_first_selected_line",
+        "_get_missing_claimed_lines",
+        "_is_claimed_run_structurally_coherent",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "merge.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(merge_validation).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == merge_validation_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & stale_merge_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.merge_validation":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            private_old_names = imported_names & {
+                name for name in stale_merge_names if name.startswith("_")
+            }
+            if private_old_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_old_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_operation_candidates_owns_candidate_preview_count():
     """Candidate preview count state should live with operation candidates."""
     operation_candidates = __import__(

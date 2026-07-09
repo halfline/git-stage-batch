@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from ...batch.query import read_batch_metadata
 from ...batch.selection import (
     resolve_batch_file_scope,
-    resolve_current_batch_binary_file_scope,
+    resolve_current_batch_atomic_file_scope,
 )
 from ...batch.source_selector import require_plain_batch_name
 from ...batch.validation import batch_exists, validate_batch_name
@@ -64,7 +64,7 @@ def resolve_reset_claim_selection(
 
     metadata = read_batch_metadata(batch_name)
     all_files = metadata.get("files", {})
-    file = resolve_current_batch_binary_file_scope(
+    file = resolve_current_batch_atomic_file_scope(
         batch_name,
         all_files,
         file,

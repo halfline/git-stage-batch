@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from ...batch.selection import (
     require_single_file_context_for_line_selection,
     resolve_batch_file_scope,
-    resolve_current_batch_binary_file_scope,
+    resolve_current_batch_atomic_file_scope,
 )
 from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
@@ -175,7 +175,7 @@ def _resolve_batch_source_action_files(
     patterns: list[str] | None,
     command_name: str,
 ) -> tuple[str | None, dict, set[int] | None]:
-    file = resolve_current_batch_binary_file_scope(
+    file = resolve_current_batch_atomic_file_scope(
         context.batch_name,
         context.all_files,
         context.file,

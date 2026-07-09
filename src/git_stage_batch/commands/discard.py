@@ -19,7 +19,6 @@ from ..data.selected_change.store import (
     restore_selected_change_state,
     snapshot_selected_change_state,
 )
-from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
@@ -401,13 +400,7 @@ def command_discard_line_as_to_batch(
             if file is None:
                 require_selected_hunk()
             else:
-                if file == "":
-                    target_file = get_selected_change_file_path()
-                    if target_file is None:
-                        exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-                else:
-                    target_file = file
-
+                target_file = require_file_scope_target_path(file)
                 _discard_file_selection.load_explicit_file_selection(target_file)
 
             _discard_line_batching.discard_lines_as_to_batch(

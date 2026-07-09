@@ -9,9 +9,9 @@ from contextlib import nullcontext
 
 from ..exceptions import CommandError
 from ..i18n import _
+from ..runtime import dispatch_cli_mode
 from ..utils.session_lock import acquire_session_lock
 from .argument_parser import parse_command_line
-from .mode_dispatch import dispatch_cli_mode
 from .pager import pager_output, should_page_output
 
 

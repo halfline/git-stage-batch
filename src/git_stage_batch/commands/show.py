@@ -60,9 +60,9 @@ from ..output.patch import (
     print_text_file_deletion_change,
 )
 from ..output.file_review import (
-    build_file_review_model,
     print_file_review,
 )
+from ..output.file_review_model_builder import build_file_review_model
 from ..output.file_review_pages import normalize_page_spec
 from ..output.file_review_state_builder import (
     make_file_review_state,

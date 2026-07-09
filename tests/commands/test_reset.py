@@ -11,7 +11,8 @@ import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.batch.file_display as file_display_module
 import git_stage_batch.data.file_review.batch_selection as batch_review_selection_module
 import git_stage_batch.data.file_review.freshness as file_review_freshness_module
-from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch

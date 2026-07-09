@@ -11,7 +11,8 @@ from git_stage_batch.batch.display import (
     annotate_with_batch_source_working_lines,
     build_display_lines_from_batch_source_lines,
 )
-from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.core.buffer import LineBuffer
 

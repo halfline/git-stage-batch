@@ -3462,6 +3462,45 @@ def test_include_delegates_include_to_batch_action_routing():
     assert violations == []
 
 
+def test_discard_to_batch_action_owns_resolved_dispatch():
+    """Discard-to-batch action routing should stay in the selection package."""
+    action_path = SRC_ROOT / "commands" / "selection" / "discard_to_batch_action.py"
+    action_tree = ast.parse(action_path.read_text(), filename=str(action_path))
+    action_names = {
+        node.name for node in ast.walk(action_tree) if isinstance(node, ast.FunctionDef)
+    }
+    action_imports = {}
+    for imported_module, node in _import_from_nodes(action_path):
+        action_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert "execute_discard_to_batch_action" in action_names
+    assert "finish_review_scoped_line_action" in action_imports[
+        "git_stage_batch.data.file_review.action_scope"
+    ]
+    assert "load_selected_change" in action_imports[
+        "git_stage_batch.data.selected_change.loading"
+    ]
+    assert "undo_checkpoint" in action_imports["git_stage_batch.data.undo"]
+    assert {
+        "BinaryFileChange",
+        "RenameChange",
+        "TextFileDeletionChange",
+    } <= action_imports["git_stage_batch.core.models"]
+    assert {
+        "discard_line_batching",
+        "selected_change_batch_discarding",
+        "whole_file_batch_discarding",
+    } <= action_imports["git_stage_batch.commands.selection"]
+    assert "discard_file_to_batch" in action_imports[
+        "git_stage_batch.commands.file_scope"
+    ]
+    assert "require_file_scope_target_path" in action_imports[
+        "git_stage_batch.commands.file_scope.target_path"
+    ]
+
+
 def test_file_scope_include_file_owns_file_pipeline():
     """Explicit file-scope include support should stay out of include.py."""
     include_path = SRC_ROOT / "commands" / "include.py"

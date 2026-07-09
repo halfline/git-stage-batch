@@ -6,6 +6,9 @@ from git_stage_batch.batch.baseline_correspondence import (
     RegionKind,
     build_baseline_correspondence,
 )
+from git_stage_batch.batch.baseline_edits import (
+    try_apply_baseline_replacement_units,
+)
 from git_stage_batch.batch.discard_reversal import reverse_presence_constraints
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.batch.merge import (
@@ -13,7 +16,6 @@ from git_stage_batch.batch.merge import (
     _check_structural_validity,
     _discard_batch_line_chunks,
     _merge_batch_line_chunks,
-    _try_apply_baseline_replacement_units,
     can_merge_batch_from_line_sequences,
     discard_batch_from_line_sequences_as_buffer,
     enumerate_merge_batch_candidates_from_line_sequences,
@@ -970,7 +972,7 @@ class TestMergeBatch:
                 for line in (2, 4)
             },
         )
-        fallback_chunks = _try_apply_baseline_replacement_units(
+        fallback_chunks = try_apply_baseline_replacement_units(
             source_lines,
             working_lines,
             ownership,

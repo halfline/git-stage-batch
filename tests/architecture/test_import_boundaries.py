@@ -5191,6 +5191,53 @@ def test_batch_source_merge_refusals_own_merge_failure_refusals():
             assert snippet not in command_text
 
 
+def test_batch_source_worktree_refusals_own_execution_refusals():
+    """Shared worktree execution refusals should live outside command entries."""
+    worktree_refusals = __import__(
+        "git_stage_batch.commands.batch_source.worktree_refusals",
+        fromlist=["worktree_refusals"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "refuse_incompatible_worktree_action",
+    }
+    old_snippets_by_path = {
+        apply_from_path: {
+            "contains changes to {file} that are incompatible",
+            "one or more files that are incompatible",
+        },
+        include_from_path: {
+            "contains changes to {file} that are incompatible",
+            "one or more files that are incompatible",
+        },
+    }
+    command_paths = set(old_snippets_by_path)
+    imports_worktree_refusals = {
+        path: False
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "worktree_refusals" in imported_names
+            ):
+                imports_worktree_refusals[path] = True
+
+    assert public_names <= vars(worktree_refusals).keys()
+    assert imports_worktree_refusals == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    for path, old_snippets in old_snippets_by_path.items():
+        command_text = path.read_text()
+        for snippet in old_snippets:
+            assert snippet not in command_text
+
+
 def test_batch_source_text_actions_own_text_file_mutations():
     """Shared text file actions should live outside command entries."""
     text_file_actions = __import__(

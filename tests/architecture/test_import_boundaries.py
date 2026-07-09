@@ -6273,6 +6273,71 @@ def test_discard_reversal_stays_out_of_merge_module():
     assert violations == []
 
 
+def test_realized_boundaries_stay_out_of_merge_module():
+    """Realized-entry boundary lookup should live outside merge operations."""
+    realized_boundaries = __import__(
+        "git_stage_batch.batch.realized_boundaries",
+        fromlist=["realized_boundaries"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    realized_boundaries_path = SRC_ROOT / "batch" / "realized_boundaries.py"
+    merge_path = SRC_ROOT / "batch" / "merge.py"
+    public_names = {
+        "boundary_choices_after_source_line",
+        "find_boundary_after_source_line",
+        "find_realization_fallback_boundary",
+    }
+    stale_merge_names = public_names | {
+        "_boundary_choices_after_source_line",
+        "_find_boundary_after_source_line",
+        "_find_realization_fallback_boundary",
+    }
+    imported_by_merge = set()
+    violations = []
+    realized_boundary_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(realized_boundaries_path)
+    }
+
+    assert public_names <= vars(realized_boundaries).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+    assert "git_stage_batch.batch.merge" not in realized_boundary_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == realized_boundaries_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & stale_merge_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+            if imported_module != "git_stage_batch.batch.realized_boundaries":
+                continue
+
+            if path == merge_path:
+                imported_by_merge |= imported_names & public_names
+                for alias in node.names:
+                    if alias.name not in public_names:
+                        continue
+                    if alias.asname is None or not alias.asname.startswith("_"):
+                        relative_path = path.relative_to(REPO_ROOT)
+                        violations.append(
+                            f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
+                        )
+
+    assert public_names <= imported_by_merge
+    assert violations == []
+
+
 def test_batch_merge_candidates_uses_public_data_types():
     """Batch callers should import public merge-candidate data types."""
     merge_candidates = __import__(

@@ -13,10 +13,10 @@ from ..data.asset_catalog import (
     CompanionAsset,
     Traversable,
 )
+from ..data.asset_installation import copy_asset_tree
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns
-from ..utils.file_io import write_file_bytes
 from ..utils.git import get_git_repository_root_path, require_git_repository
 
 
@@ -53,23 +53,6 @@ def _list_group_entries(group_name: str, group: AssetGroup) -> dict[str, Travers
             _("No bundled assets are available for '{group}'.").format(group=group_name)
         )
     return dict(sorted(entries.items()))
-
-
-def _should_skip_asset_entry(entry: Traversable) -> bool:
-    """Return whether a packaged entry is generated Python cache data."""
-    return entry.name == "__pycache__" or entry.name.endswith((".pyc", ".pyo"))
-
-
-def _copy_traversable_tree(source: Traversable, destination: Path) -> None:
-    """Copy a Traversable tree into a filesystem path."""
-    if _should_skip_asset_entry(source):
-        return
-    if source.is_dir():
-        for child in source.iterdir():
-            _copy_traversable_tree(child, destination / child.name)
-        return
-    if source.is_file():
-        write_file_bytes(destination, source.read_bytes())
 
 
 def _get_companion_source(companion: CompanionAsset) -> Traversable:
@@ -234,7 +217,7 @@ def command_install_assets(
             planned_installs.append((companion_source, destination))
 
     for entry, destination in planned_installs:
-        _copy_traversable_tree(entry, destination)
+        copy_asset_tree(entry, destination)
 
     for group, selected_entries in selected_entries_by_group:
         _print_group_install_summary(group, selected_entries)

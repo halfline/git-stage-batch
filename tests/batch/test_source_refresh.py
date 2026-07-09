@@ -8,6 +8,7 @@ from __future__ import annotations
 
 
 import inspect
+import git_stage_batch.batch.source_refresh as source_refresh_module
 from git_stage_batch.commands.selection import (
     selected_change_batch_discarding,
     selected_change_batch_staging,
@@ -254,15 +255,25 @@ def test_acquire_batch_ownership_update_uses_metadata_acquisition(monkeypatch):
             nonlocal exited
             exited = True
 
-    def acquire_for_metadata_dict(cls, metadata):
+    def acquire_for_metadata_dict(metadata):
         assert metadata == {"batch_source_commit": "source123"}
         return OwnershipContext()
 
-    monkeypatch.setattr(
-        BatchOwnership,
-        "acquire_for_metadata_dict",
-        classmethod(acquire_for_metadata_dict),
-    )
+    if hasattr(source_refresh_module, "acquire_ownership_for_metadata_dict"):
+        monkeypatch.setattr(
+            source_refresh_module,
+            "acquire_ownership_for_metadata_dict",
+            acquire_for_metadata_dict,
+        )
+    else:
+        def acquire_for_metadata_dict_method(cls, metadata):
+            return acquire_for_metadata_dict(metadata)
+
+        monkeypatch.setattr(
+            BatchOwnership,
+            "acquire_for_metadata_dict",
+            classmethod(acquire_for_metadata_dict_method),
+        )
     lines = [
         LineEntry(
             id=2,

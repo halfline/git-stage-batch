@@ -4,16 +4,10 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 
-try:
-    from git_stage_batch.batch.operation_candidate_types import (
-        CandidateEnumerationLimitError,
-        CandidatePreviewCount,
-    )
-except ModuleNotFoundError:
-    from git_stage_batch.batch.operation_candidates import (
-        CandidateEnumerationLimitError,
-        CandidatePreviewCount,
-    )
+from git_stage_batch.batch.operation_candidate_types import (
+    CandidateEnumerationLimitError,
+    CandidatePreviewCount,
+)
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.replacement import ReplacementPayload
 import git_stage_batch.commands.batch_source.candidate_preview_counts as counts

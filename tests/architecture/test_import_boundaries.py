@@ -1314,11 +1314,11 @@ def test_output_package_does_not_reexport_output_apis():
     assert violations == []
 
 
-def test_repository_buffer_helpers_stay_in_data_layer():
-    """Repository buffer readers should not be exported from editor."""
+def test_repository_buffer_helpers_stay_in_utils_layer():
+    """Repository buffer readers should live below workflow data."""
     editor = __import__("git_stage_batch.editor", fromlist=["editor"])
     repository_buffers = __import__(
-        "git_stage_batch.data.repository_buffers",
+        "git_stage_batch.utils.repository_buffers",
         fromlist=["repository_buffers"],
     )
     repository_buffer_names = {
@@ -1330,6 +1330,7 @@ def test_repository_buffer_helpers_stay_in_data_layer():
     }
     violations = []
 
+    assert not (SRC_ROOT / "data" / "repository_buffers.py").exists()
     assert not (SRC_ROOT / "editor" / "git.py").exists()
     assert repository_buffer_names <= vars(repository_buffers).keys()
     assert repository_buffer_names.isdisjoint(vars(editor))
@@ -1603,7 +1604,7 @@ def test_undo_snapshot_restore_stays_in_restore_module():
     assert restore_names.isdisjoint(vars(undo))
     assert old_undo_names.isdisjoint(vars(undo))
     assert "git_stage_batch.core.buffer" not in undo_imports
-    assert "git_stage_batch.data.repository_buffers" not in undo_imports
+    assert "git_stage_batch.utils.repository_buffers" not in undo_imports
     assert "git_stage_batch.utils.file_io" not in undo_imports
 
 
@@ -9068,7 +9069,7 @@ def test_batch_transform_sift_results_own_result_planning():
         "git_stage_batch.core.text_lifecycle": {
             "sifted_empty_text_path_change_type",
         },
-        "git_stage_batch.data.repository_buffers": {
+        "git_stage_batch.utils.repository_buffers": {
             "load_git_object_as_buffer_or_empty",
             "load_working_tree_file_as_buffer",
         },
@@ -11392,7 +11393,7 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
             "normalized_text_change_type",
             "selected_text_target_change_type",
         },
-        "git_stage_batch.data.repository_buffers": {
+        "git_stage_batch.utils.repository_buffers": {
             "load_git_object_as_buffer",
             "load_working_tree_file_as_buffer",
         },
@@ -11457,7 +11458,7 @@ def test_batch_source_text_plan_builders_own_include_text_planning():
             "normalized_text_change_type",
             "selected_text_target_change_type",
         },
-        "git_stage_batch.data.repository_buffers": {
+        "git_stage_batch.utils.repository_buffers": {
             "load_git_object_as_buffer",
             "load_working_tree_file_as_buffer",
         },
@@ -11523,7 +11524,7 @@ def test_batch_source_text_plan_builders_own_discard_text_planning():
             "normalized_text_change_type",
             "selected_text_discard_change_type",
         },
-        "git_stage_batch.data.repository_buffers": {
+        "git_stage_batch.utils.repository_buffers": {
             "load_working_tree_file_as_buffer",
         },
     }
@@ -12302,7 +12303,7 @@ def test_batch_source_replacement_previews_own_show_replacement_preview():
         "git_stage_batch.core.replacement": {
             "coerce_replacement_payload",
         },
-        "git_stage_batch.data.repository_buffers": {
+        "git_stage_batch.utils.repository_buffers": {
             "load_git_object_as_buffer",
         },
     }
@@ -13136,7 +13137,7 @@ def test_batch_source_reset_claims_own_reset_mutations():
             "is_batch_submodule_pointer",
             "refuse_batch_submodule_pointer_lines",
         },
-        "git_stage_batch.data.repository_buffers": {
+        "git_stage_batch.utils.repository_buffers": {
             "load_git_object_as_buffer",
         },
         "git_stage_batch.utils.file_io": {

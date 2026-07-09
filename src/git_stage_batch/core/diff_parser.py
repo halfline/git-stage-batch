@@ -10,6 +10,7 @@ from . import diff_headers as _diff_headers
 from . import empty_file_diff as _empty_file_diff
 from . import gitlink_diff as _gitlink_diff
 from . import hunk_headers as _hunk_headers
+from . import patch_headers as _patch_headers
 from .buffer import LineBuffer
 from .models import (
     BinaryFileChange,
@@ -32,12 +33,12 @@ UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, Rename
 
 def patch_is_file_deletion(patch_lines: Iterable[bytes]) -> bool:
     """Return whether patch lines target a deleted file path."""
-    return any(line.rstrip(b"\n") == b"+++ /dev/null" for line in patch_lines)
+    return _patch_headers.patch_targets_file_deletion(patch_lines)
 
 
 def patch_is_new_file(patch_lines: Iterable[bytes]) -> bool:
     """Return whether patch lines target a newly added file path."""
-    return any(line.rstrip(b"\n") == b"--- /dev/null" for line in patch_lines)
+    return _patch_headers.patch_targets_new_file(patch_lines)
 
 
 def patch_is_empty_file_change(patch_lines: Iterable[bytes]) -> bool:
@@ -478,15 +479,10 @@ def build_line_changes_from_patch_lines(
         # Strip only \n for comparison (preserve \r in content)
         line = line_with_ending.rstrip(b'\n')
 
-        if line.startswith(b"--- "):
-            # Decode path to str (paths are always UTF-8 in git)
-            old_path_value = line.split(b" ", 1)[1].strip().decode('utf-8')
-            if old_path_value != "/dev/null" and old_path_value.startswith("a/"):
-                old_path_value = old_path_value[2:]
-        elif line.startswith(b"+++ "):
-            new_path_value = line.split(b" ", 1)[1].strip().decode('utf-8')
-            if new_path_value != "/dev/null" and new_path_value.startswith("b/"):
-                new_path_value = new_path_value[2:]
+        if _patch_headers.line_is_old_file_header(line):
+            old_path_value = _patch_headers.old_file_path_from_header(line)
+        elif _patch_headers.line_is_new_file_header(line):
+            new_path_value = _patch_headers.new_file_path_from_header(line)
         elif _hunk_headers.line_is_hunk_header(line):
             hunk_header = _hunk_headers.parse_hunk_header_line(line)
             old_line_number = hunk_header.old_start
@@ -553,12 +549,7 @@ def build_line_changes_from_patch_lines(
                 old_line_number += 1
                 new_line_number += 1
 
-    if new_path_value and new_path_value != "/dev/null":
-        path_value = new_path_value
-    elif old_path_value and old_path_value != "/dev/null":
-        path_value = old_path_value
-    else:
-        path_value = new_path_value or old_path_value or ""
+    path_value = _patch_headers.line_change_path(old_path_value, new_path_value)
 
     if hunk_header is None:
         raise CommandError(_("Failed to parse hunk header."))

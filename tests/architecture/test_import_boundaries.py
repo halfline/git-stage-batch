@@ -1130,6 +1130,49 @@ def test_git_worktree_helpers_stay_out_of_git_command_module():
     assert violations == []
 
 
+def test_git_ref_helpers_stay_out_of_git_command_module():
+    """Git ref helpers should live beside the command wrapper."""
+    git_path = SRC_ROOT / "utils" / "git.py"
+    refs_path = SRC_ROOT / "utils" / "git_refs.py"
+    git_text = git_path.read_text()
+    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_refs = __import__(
+        "git_stage_batch.utils.git_refs",
+        fromlist=["git_refs"],
+    )
+    public_names = {"update_git_refs"}
+    violations = []
+
+    assert public_names <= vars(git_refs).keys()
+    assert public_names.isdisjoint(vars(git_utils))
+    assert "_git_ref_exists" in vars(git_refs)
+
+    assert "def update_git_refs" not in git_text
+    assert "def _git_ref_exists" not in git_text
+
+    git_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_path)
+    }
+    assert "git_stage_batch.utils.git_refs" not in git_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == refs_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.git":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & public_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
     """Batch file selection caching should not depend on hunk navigation."""
     cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"

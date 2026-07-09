@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from typing import Optional
 
+from .batch_source import action_completion as _action_completion
 from .batch_source import action_context as _action_context
 from .batch_source import action_selection as _action_selection
 from .batch_source import action_plans as _action_plans
@@ -27,9 +28,6 @@ from ..batch.submodule_pointer import (
     is_batch_submodule_pointer,
 )
 from ..data.file_review.records import FileReviewAction
-from ..data.file_review.state import (
-    finish_review_scoped_line_action,
-)
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError
@@ -140,7 +138,6 @@ def command_apply_from_batch(
     )
     selector = context.selector
     batch_name = context.batch_name
-    scope_resolution = context.scope_resolution
 
     selection = _action_selection.resolve_apply_action_selection(
         context,
@@ -302,8 +299,7 @@ def command_apply_from_batch(
     finally:
         _action_plans.close_action_plans(apply_plans)
 
-    for file_path in files:
-        finish_review_scoped_line_action(scope_resolution.review_state, file_path=file_path)
+    _action_completion.finish_batch_source_action_review(context, files)
 
     if line_ids:
         print(_("✓ Applied selected lines from batch '{name}' to working tree").format(name=batch_name), file=sys.stderr)

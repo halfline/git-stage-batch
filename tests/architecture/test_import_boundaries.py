@@ -5725,21 +5725,37 @@ def test_output_owns_operation_candidate_preview_rendering():
         "git_stage_batch.output.candidate_preview",
         fromlist=["candidate_preview"],
     )
+    candidate_preview_summary = __import__(
+        "git_stage_batch.output.candidate_preview_summary",
+        fromlist=["candidate_preview_summary"],
+    )
     show_from_path = SRC_ROOT / "commands" / "show_from.py"
     candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
-    public_names = {
+    candidate_summary_path = SRC_ROOT / "output" / "candidate_preview_summary.py"
+    public_renderer_names = {
         "render_operation_candidate",
         "render_operation_candidate_overview",
     }
-    moved_names = {
-        "_candidate_overview_subject",
+    renderer_helper_names = {
         "_execute_candidate_command",
         "_print_candidate_buffer_diff",
         "_show_candidate_command",
-        "_summarize_ambiguity_block",
-        "_summarize_candidate_target",
+    }
+    summary_names = {
+        "CandidateSnippetLine",
+        "CandidateTargetSummary",
+        "candidate_overview_subject",
+        "candidate_target_summary",
+        "common_candidate_target_indexes",
+        "plain_candidate_snippet_lines",
+        "summarize_ambiguity_block",
+    }
+    old_renderer_summary_names = {
         "_CandidateSnippetLine",
         "_CandidateTargetSummary",
+        "_candidate_overview_subject",
+        "_summarize_ambiguity_block",
+        "_summarize_candidate_target",
     }
     show_from_tree = ast.parse(show_from_path.read_text(), filename=str(show_from_path))
     show_from_helpers = {
@@ -5752,18 +5768,28 @@ def test_output_owns_operation_candidate_preview_rendering():
         imported_module
         for imported_module, _node in _import_from_nodes(candidate_preview_path)
     }
+    candidate_summary_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_summary_path)
+    }
 
     for imported_module, node in _import_from_nodes(show_from_path):
         if imported_module != "git_stage_batch.output.candidate_preview":
             continue
         show_from_renderer_imports |= {alias.name for alias in node.names}
 
-    assert public_names <= vars(candidate_preview).keys()
-    assert moved_names <= vars(candidate_preview).keys()
-    assert public_names <= show_from_renderer_imports
-    assert moved_names.isdisjoint(show_from_helpers)
+    assert public_renderer_names <= vars(candidate_preview).keys()
+    assert renderer_helper_names <= vars(candidate_preview).keys()
+    assert summary_names <= vars(candidate_preview_summary).keys()
+    assert public_renderer_names <= show_from_renderer_imports
+    assert renderer_helper_names.isdisjoint(show_from_helpers)
+    assert summary_names.isdisjoint(vars(candidate_preview))
+    assert old_renderer_summary_names.isdisjoint(vars(candidate_preview))
+    assert "git_stage_batch.output" in candidate_preview_imports
     assert "git_stage_batch.output.colors" in candidate_preview_imports
     assert "git_stage_batch.core.diff_parser" in candidate_preview_imports
+    assert "git_stage_batch.output.colors" not in candidate_summary_imports
+    assert "git_stage_batch.core.diff_parser" not in candidate_summary_imports
 
 
 def test_batch_owns_atomic_file_change_metadata_conversion():

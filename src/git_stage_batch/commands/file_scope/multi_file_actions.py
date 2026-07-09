@@ -9,13 +9,16 @@ import sys
 from typing import Protocol
 
 from ...data.hunk_tracking import select_next_change_after_action
+from ...data.session import require_session_started
 from ...data.undo import undo_checkpoint
 from ...exceptions import CommandError
 from ...i18n import _, ngettext
+from ...utils.git_repository import require_git_repository
+from ...utils.paths import ensure_state_directory_exists
 from .discard_to_batch import discard_files_to_batch
-from ..include import command_include_file
+from . import include_file as _include_file
 from ..selection.selected_change_display import show_selected_change
-from ..skip import command_skip_file
+from . import skip_file as _skip_file
 
 
 class ResolvedFileScope(Protocol):
@@ -91,18 +94,26 @@ def _format_file_summary(files: Sequence[str]) -> str:
     ).format(count=len(files))
 
 
+def _prepare_live_multi_file_action() -> None:
+    """Run command setup shared by live multi-file include and skip actions."""
+    require_git_repository()
+    require_session_started()
+    ensure_state_directory_exists()
+
+
 def include_each_resolved_file(
     files: Sequence[str],
     *,
     auto_advance: bool | None = None,
 ) -> None:
     """Stage a multi-file live scope and report one aggregate summary."""
+    _prepare_live_multi_file_action()
     total_hunks = 0
     staged_files: list[str] = []
 
     with _multi_file_undo_checkpoint("include", files):
         for file_path in files:
-            staged_hunks = command_include_file(
+            staged_hunks = _include_file.include_file_changes(
                 file_path,
                 quiet=True,
                 advance=False,
@@ -136,12 +147,13 @@ def skip_each_resolved_file(
     auto_advance: bool | None = None,
 ) -> None:
     """Skip a multi-file live scope and report one aggregate summary."""
+    _prepare_live_multi_file_action()
     total_hunks = 0
     skipped_files: list[str] = []
 
     with _multi_file_undo_checkpoint("skip", files):
         for file_path in files:
-            skipped_hunks = command_skip_file(
+            skipped_hunks = _skip_file.skip_file_changes(
                 file_path,
                 quiet=True,
                 advance=False,

@@ -5140,6 +5140,101 @@ def test_batch_source_selection_state_cleanup_owns_reset_cleanup():
     assert "_clear_selected_batch_state_after_batch_mutation" not in reset_helpers
 
 
+def test_batch_source_reset_claims_own_reset_mutations():
+    """Reset claim mutation should live outside the reset entry."""
+    reset_claims = __import__(
+        "git_stage_batch.commands.batch_source.reset_claims",
+        fromlist=["reset_claims"],
+    )
+    reset_path = SRC_ROOT / "commands" / "reset.py"
+    public_names = {
+        "move_claims_between_batches",
+        "partition_line_ownership_units",
+        "reset_all_claims_from_batch",
+        "reset_file_claims_from_batch",
+        "reset_line_claims_for_file",
+        "reset_line_claims_from_batch",
+        "reset_pattern_claims_from_batch",
+    }
+    old_helper_names = {
+        "_acquire_line_ownership_for_file",
+        "_add_ownership_to_destination",
+        "_ensure_destination_batch",
+        "_move_claims_between_batches",
+        "_partition_line_ownership_units",
+        "_reset_all_claims_from_batch",
+        "_reset_file_claims_from_batch",
+        "_reset_line_claims_for_file",
+        "_reset_line_claims_from_batch",
+        "_reset_pattern_claims_from_batch",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.operations": {
+            "create_batch",
+        },
+        "git_stage_batch.batch.ownership": {
+            "BatchOwnership",
+            "acquire_detached_batch_ownership",
+            "filter_ownership_units_by_display_ids",
+            "merge_batch_ownership",
+            "rebuild_ownership_from_units",
+            "validate_ownership_units",
+        },
+        "git_stage_batch.batch.ownership_units": {
+            "build_ownership_units_from_batch_source_lines",
+        },
+        "git_stage_batch.batch.selection": {
+            "require_display_ids_available",
+        },
+        "git_stage_batch.batch.state_refs": {
+            "sync_batch_state_refs",
+        },
+        "git_stage_batch.batch.storage": {
+            "add_file_to_batch",
+            "copy_file_from_batch_to_batch",
+            "remove_file_from_batch",
+        },
+        "git_stage_batch.batch.submodule_pointer": {
+            "is_batch_submodule_pointer",
+            "refuse_batch_submodule_pointer_lines",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_git_object_as_buffer",
+        },
+        "git_stage_batch.utils.file_io": {
+            "write_text_file_contents",
+        },
+        "git_stage_batch.utils.paths": {
+            "get_batch_metadata_file_path",
+        },
+    }
+    reset_tree = ast.parse(reset_path.read_text(), filename=str(reset_path))
+    reset_helpers = {
+        node.name
+        for node in ast.walk(reset_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_reset_claims = False
+    direct_claim_imports = set()
+
+    for imported_module, node in _import_from_nodes(reset_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "reset_claims" in imported_names
+        ):
+            imports_reset_claims = True
+        direct_claim_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(reset_claims).keys()
+    assert imports_reset_claims
+    assert direct_claim_imports == set()
+    assert old_helper_names.isdisjoint(reset_helpers)
+
+
 def test_batch_source_candidate_selectors_own_action_selector_validation():
     """Shared candidate selector validation should live outside action entries."""
     candidate_selectors = __import__(

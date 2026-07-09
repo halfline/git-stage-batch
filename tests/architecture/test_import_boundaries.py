@@ -802,6 +802,32 @@ def test_cli_argument_parser_delegates_skip_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in selection_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_discard_subcommand_registration():
+    """Argument parsing should not own discard parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
+    }
+    selection_subcommands = __import__(
+        "git_stage_batch.cli.selection_subcommands",
+        fromlist=["selection_subcommands"],
+    )
+
+    assert "add_discard_subcommand" in vars(selection_subcommands)
+    assert "git_stage_batch.cli.selection_subcommands" in argument_parser_imports
+    assert "git_stage_batch.cli.discard_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.discard_dispatch" in selection_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in selection_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in selection_subcommands_imports
+
+
 def test_cli_argument_parser_delegates_stop_subcommand_registration():
     """Argument parsing should not own stop parser details."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -3521,11 +3547,16 @@ def test_argument_parser_delegates_include_dispatch():
 def test_argument_parser_delegates_discard_dispatch():
     """Parser construction should not own discard workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
     discard_dispatch_path = SRC_ROOT / "cli" / "discard_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
     }
     discard_dispatch_imports = {
         imported_module
@@ -3555,7 +3586,9 @@ def test_argument_parser_delegates_discard_dispatch():
         "discard_to_batch_each_resolved_file",
     }
 
-    assert "git_stage_batch.cli.discard_dispatch" in parser_imports
+    assert "git_stage_batch.cli.selection_subcommands" in parser_imports
+    assert "git_stage_batch.cli.discard_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.discard_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.commands.discard" not in parser_imports
     assert "git_stage_batch.commands.discard_from" not in parser_imports
     assert discard_runtime_imports <= discard_dispatch_imports
@@ -4943,10 +4976,20 @@ def test_argument_parser_uses_file_argument_module():
 def test_argument_parser_uses_auto_advance_option_module():
     """Parser branches should not own shared auto-advance option setup."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
     }
     parser = __import__(
         "git_stage_batch.cli.argument_parser",
@@ -4957,7 +5000,9 @@ def test_argument_parser_uses_auto_advance_option_module():
         fromlist=["auto_advance_options"],
     )
 
-    assert "git_stage_batch.cli.auto_advance_options" in parser_imports
+    assert "git_stage_batch.cli.auto_advance_options" not in parser_imports
+    assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in session_subcommands_imports
     assert "add_auto_advance_arguments" in vars(auto_advance_options)
     assert "_add_auto_advance_arguments" not in vars(parser)
     assert 'dest="auto_advance"' not in parser_text
@@ -6524,7 +6569,7 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.cli.include_dispatch" not in imported_modules
     assert "git_stage_batch.commands.include" not in imported_modules
     assert "git_stage_batch.commands.include_from" not in imported_modules
-    assert "git_stage_batch.cli.discard_dispatch" in imported_modules
+    assert "git_stage_batch.cli.discard_dispatch" not in imported_modules
     assert "git_stage_batch.commands.discard" not in imported_modules
     assert "git_stage_batch.commands.discard_from" not in imported_modules
     assert "git_stage_batch.commands.block_file" not in imported_modules

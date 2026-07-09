@@ -67,9 +67,10 @@ That split is intentional:
 The usual entry path is:
 
 1. `cli.argument_parser` builds the command-line interface.
-2. `cli.dispatch` selects the command implementation.
-3. A function in `commands/` performs the operation.
-4. That command uses `data/`, `core/`, `staging/`, `batch/`, and `utils/`
+2. `cli.mode_dispatch` chooses interactive mode or noninteractive execution.
+3. `cli.execution` invokes the parsed command function.
+4. A function in `commands/` performs the operation.
+5. That command uses `data/`, `core/`, `staging/`, `batch/`, and `utils/`
    modules as needed.
 
 For a typical non-batch staging workflow:
@@ -381,8 +382,9 @@ For a contributor new to the codebase, a good reading order is:
    Understand the product-level workflow.
 2. `src/git_stage_batch/cli/argument_parser.py`
    See the public command surface.
-3. `src/git_stage_batch/cli/dispatch.py`
-   See how parsed commands are routed.
+3. `src/git_stage_batch/cli/mode_dispatch.py` and
+   `src/git_stage_batch/cli/execution.py`
+   See how parsed arguments enter interactive mode or command execution.
 4. `src/git_stage_batch/commands/start.py`,
    `show.py`, `include.py`, `skip.py`, `discard.py`
    Understand the core non-batch workflow.

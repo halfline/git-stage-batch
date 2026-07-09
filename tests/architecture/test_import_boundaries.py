@@ -5716,6 +5716,46 @@ def test_suggest_fixup_iteration_state_stays_in_fixup_support():
     assert state_names <= helper_imported_names
 
 
+def test_suggest_fixup_search_state_stays_in_fixup_support():
+    """Suggest-fixup search-state reset should stay below entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    helper_path = SRC_ROOT / "commands" / "fixup" / "search_state.py"
+    helper = __import__(
+        "git_stage_batch.commands.fixup.search_state",
+        fromlist=["search_state"],
+    )
+    public_names = {
+        "SuggestFixupSearchTarget",
+        "reset_suggest_fixup_state_for_search",
+    }
+    state_names = {
+        "clear_suggest_fixup_state",
+        "suggest_fixup_state_should_reset",
+    }
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(helper_path)
+    }
+    command_imported_names = set()
+    helper_imported_names = set()
+
+    for _imported_module, node in _import_from_nodes(command_path):
+        command_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "git_stage_batch.commands.fixup.search_state" in command_imports
+    assert "git_stage_batch.data.suggest_fixup_state" in helper_imports
+    assert "suggest_fixup_state_should_reset" not in command_imported_names
+    assert state_names <= helper_imported_names
+
+
 def test_suggest_fixup_line_ranges_stay_in_fixup_support():
     """Suggest-fixup old-line range derivation should stay below entrypoints."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"

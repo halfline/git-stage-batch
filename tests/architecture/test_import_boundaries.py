@@ -7629,6 +7629,37 @@ def test_batch_source_file_display_action_owns_show_flow():
     assert helper_imports <= helper_imported_names
 
 
+def test_batch_source_file_list_action_owns_list_rendering():
+    """Show-from multi-file list rendering should live in batch-source support."""
+    helper = __import__(
+        "git_stage_batch.commands.batch_source.file_list_action",
+        fromlist=["file_list_action"],
+    )
+    helper_path = SRC_ROOT / "commands" / "batch_source" / "file_list_action.py"
+    public_names = {
+        "show_batch_source_file_list",
+    }
+    helper_imports = {
+        "ReviewSource",
+        "binary_change_from_batch_file_metadata",
+        "clear_selected_change_state_files",
+        "gitlink_change_from_batch_file_metadata",
+        "make_binary_file_review_list_entry",
+        "make_file_review_list_entry",
+        "make_gitlink_file_review_list_entry",
+        "mark_selected_change_cleared_by_file_list",
+        "print_file_review_list",
+        "render_batch_file_display",
+    }
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert helper_imports <= helper_imported_names
+
+
 def test_batch_owns_binary_file_content_loading():
     """Stored binary batch content loading should live in batch."""
     binary_file_content = __import__(

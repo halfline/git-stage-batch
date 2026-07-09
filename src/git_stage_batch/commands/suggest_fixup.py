@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 from ..core.line_selection import parse_line_selection
 from ..data.file_review.fingerprints import compute_current_file_review_diff_fingerprint
 from ..data.selected_change.loading import require_selected_hunk
@@ -27,9 +25,9 @@ from .fixup.candidate_display import (
 )
 from .fixup.iteration_state import prepare_suggest_fixup_iteration
 from .fixup.line_ranges import (
-    require_hunk_old_line_range,
     require_selected_old_line_range,
 )
+from .fixup.search_targets import require_suggest_fixup_hunk_target
 from .fixup.search_state import (
     SuggestFixupSearchTarget,
     reset_suggest_fixup_state_for_search,
@@ -74,35 +72,15 @@ def command_suggest_fixup(
     state = iteration_context.state
     effective_boundary = iteration_context.effective_boundary
 
-    require_selected_hunk()
-    line_changes = load_line_changes_from_state()
-
-    # Ensure we have full hunk state (not just patch/hash)
-    if line_changes is None:
-        if porcelain:
-            sys.exit(1)
-        exit_with_error(_("Full hunk state not available. Run 'show' to select a hunk."))
-
-    # Get hunk hash for state tracking
-    hunk_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-
-    line_range = require_hunk_old_line_range(
-        line_changes,
+    resolved_target = require_suggest_fixup_hunk_target(
+        effective_boundary,
         porcelain=porcelain,
     )
-    min_line = line_range.min_line
-    max_line = line_range.max_line
+    line_changes = resolved_target.line_changes
+    search_target = resolved_target.search_target
 
     require_suggest_fixup_boundary_range(effective_boundary)
 
-    search_target = SuggestFixupSearchTarget(
-        hunk_hash=hunk_hash,
-        line_ids=None,
-        boundary=effective_boundary,
-        file_path=line_changes.path,
-        min_line=min_line,
-        max_line=max_line,
-    )
     state = reset_suggest_fixup_state_for_search(
         state=state,
         target=search_target,

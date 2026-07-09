@@ -11167,11 +11167,15 @@ def test_batch_merge_does_not_reexport_merge_exceptions():
     assert violations == []
 
 
-def test_batch_merge_uses_public_entry_helpers():
-    """Batch callers should import public merge entry helpers."""
+def test_batch_presence_constraints_own_presence_entry_helpers():
+    """Presence helpers should stay on the presence constraint boundary."""
     merge = __import__(
         "git_stage_batch.batch.merge",
         fromlist=["merge"],
+    )
+    presence_constraints = __import__(
+        "git_stage_batch.batch.presence_constraints",
+        fromlist=["presence_constraints"],
     )
     public_names = {
         "apply_presence_constraints",
@@ -11196,19 +11200,29 @@ def test_batch_merge_uses_public_entry_helpers():
     violations = []
 
     for public_name in public_names:
-        assert public_name in vars(merge)
+        assert public_name in vars(presence_constraints)
+    assert public_names.isdisjoint(vars(merge))
     assert private_names.isdisjoint(vars(merge))
     assert moved_names.isdisjoint(vars(merge))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "merge.py":
+        if path == SRC_ROOT / "batch" / "presence_constraints.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge":
+                imported_names = {alias.name for alias in node.names}
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.presence_constraints":
                 continue
 
             imported_names = {alias.name for alias in node.names}

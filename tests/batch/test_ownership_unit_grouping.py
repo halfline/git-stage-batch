@@ -15,10 +15,12 @@ from git_stage_batch.batch.display import (
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
+)
+from git_stage_batch.batch.ownership_references import BaselineReference
+from git_stage_batch.batch.ownership_replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
-from git_stage_batch.batch.ownership_references import BaselineReference
 from git_stage_batch.batch.ownership_units import (
     build_ownership_units_from_batch_source_lines,
 )

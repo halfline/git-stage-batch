@@ -7,6 +7,8 @@ from git_stage_batch.batch.hunk_ownership_translation import (
 )
 from git_stage_batch.batch.ownership import (
     AbsenceClaim,
+)
+from git_stage_batch.batch.ownership_replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )

@@ -42,7 +42,7 @@ from .selection_subcommands import (
     add_show_subcommand,
     add_skip_subcommand,
 )
-from .subcommand_parser import add_subcommand_parser
+from .tui_subcommands import add_interactive_subcommand
 
 
 def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Namespace | None:
@@ -92,13 +92,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_start_subcommand(subparsers)
 
-    # interactive - Start interactive hunk-by-hunk mode
-    parser_interactive = add_subcommand_parser(
-        subparsers,
-        "interactive",
-        help=_("Start interactive hunk-by-hunk mode"),
-    )
-    parser_interactive.set_defaults(interactive_command=True)
+    add_interactive_subcommand(subparsers)
 
     add_stop_subcommand(subparsers)
 

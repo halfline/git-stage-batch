@@ -15,6 +15,10 @@ from .baseline_reference_positions import (
     baseline_reference_absence_position as _find_baseline_absence_position,
     baseline_reference_insertion_position as _find_baseline_insertion_position,
 )
+from .line_sequence_equality import (
+    line_sequences_equal as _line_sequences_match,
+    line_slice_equals as _line_slice_matches,
+)
 from .line_mapping import LineMapping
 from .merge_candidates import MergeResolution as _MergeResolution
 
@@ -63,31 +67,6 @@ def _sequence_digest(lines: Sequence[bytes]) -> str:
     return hashlib.sha256(b"".join(lines)).hexdigest()[:12]
 
 
-def _line_sequences_equal(
-    left: Sequence[bytes],
-    right: Sequence[bytes],
-) -> bool:
-    """Return whether two line sequences contain the same bytes."""
-    return len(left) == len(right) and all(
-        left[index] == right[index]
-        for index in range(len(left))
-    )
-
-
-def _line_slice_equals(
-    lines: Sequence[bytes],
-    start: int,
-    expected: Sequence[bytes],
-) -> bool:
-    """Return whether a sequence slice equals the expected byte lines."""
-    if start < 0 or start + len(expected) > len(lines):
-        return False
-    return all(
-        lines[start + offset] == expected[offset]
-        for offset in range(len(expected))
-    )
-
-
 def _baseline_removal_edit(
     claim: AbsenceClaim,
     working_lines: Sequence[bytes],
@@ -106,7 +85,7 @@ def _baseline_removal_edit(
     )
     if position is None:
         return None
-    if not _line_slice_equals(working_lines, position, forbidden_sequence):
+    if not _line_slice_matches(working_lines, position, forbidden_sequence):
         return None
     return position, position + len(forbidden_sequence), []
 
@@ -213,7 +192,7 @@ def _replacement_edit_from_parent_offset(
     end = start + len(forbidden_sequence)
     if start < parent_start or end > parent_end:
         return None
-    if not _line_slice_equals(working_lines, start, forbidden_sequence):
+    if not _line_slice_matches(working_lines, start, forbidden_sequence):
         return None
     return start, end, []
 
@@ -369,7 +348,7 @@ def replacement_origin_choices_for_unit(
 
     choices: list[ReplacementOriginChoice] = []
     for position in range(0, len(working_lines) - len(forbidden_sequence) + 1):
-        if not _line_slice_equals(working_lines, position, forbidden_sequence):
+        if not _line_slice_matches(working_lines, position, forbidden_sequence):
             continue
         choices.append(
             ReplacementOriginChoice(
@@ -425,7 +404,7 @@ def try_apply_baseline_replacement_units(
         return None
 
     if (
-        _line_sequences_equal(source_lines, working_lines)
+        _line_sequences_match(source_lines, working_lines)
         and _has_complete_baseline_references(
             ownership,
             presence_line_set,
@@ -500,7 +479,7 @@ def try_apply_baseline_replacement_units(
                 source_lines[claimed_line - 1]
                 for claimed_line in claimed_lines
             ]
-            if _line_slice_equals(working_lines, position, insertion_lines):
+            if _line_slice_matches(working_lines, position, insertion_lines):
                 continue
             edits.append((
                 position,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..commands.abort import command_abort
+from ..commands.check_unstaged import command_check_unstaged
 from ..commands.redo import command_redo
 from ..commands.status import command_status
 from ..commands.stop import command_stop
@@ -10,6 +11,16 @@ from ..commands.undo import command_undo
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .subcommand_parser import add_subcommand_parser
+
+
+def add_check_unstaged_subcommand(subparsers) -> None:
+    """Register the check-unstaged subcommand."""
+    parser_check_unstaged = add_subcommand_parser(
+        subparsers,
+        "check-unstaged",
+        help=_("Check whether the index fits an unstaged-only workflow"),
+    )
+    parser_check_unstaged.set_defaults(func=lambda _: command_check_unstaged())
 
 
 def add_stop_subcommand(subparsers) -> None:

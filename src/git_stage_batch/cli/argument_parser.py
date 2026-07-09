@@ -8,7 +8,6 @@ import sys
 from .. import __version__
 from ..commands.again import command_again
 from ..commands.block_file import command_block_file
-from ..commands.check_unstaged import command_check_unstaged
 from ..commands.start import command_start
 from ..commands.suggest_fixup import (
     command_suggest_fixup,
@@ -38,6 +37,7 @@ from .quick_actions import expand_quick_actions
 from .reset_dispatch import dispatch_reset_command
 from .session_subcommands import (
     add_abort_subcommand,
+    add_check_unstaged_subcommand,
     add_redo_subcommand,
     add_status_subcommand,
     add_stop_subcommand,
@@ -91,13 +91,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Available commands"),
     )
 
-    # check-unstaged - Check whether the index fits an unstaged-only workflow
-    parser_check_unstaged = add_subcommand_parser(
-        subparsers,
-        "check-unstaged",
-        help=_("Check whether the index fits an unstaged-only workflow"),
-    )
-    parser_check_unstaged.set_defaults(func=lambda _: command_check_unstaged())
+    add_check_unstaged_subcommand(subparsers)
 
     # start - Start a new batch staging session
     parser_start = add_subcommand_parser(
